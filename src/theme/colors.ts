@@ -1,0 +1,17 @@
+export const COLORS = {
+  bg: '#0A0A0F',
+  surface: '#12121C',
+  card: '#1A1A2E',
+  inputBg: '#1C1C30',
+  purple: '#7C3AED',
+  purpleLight: '#A78BFA',
+  purpleDim: 'rgba(124, 58, 237, 0.15)',
+  purpleGlow: 'rgba(124, 58, 237, 0.3)',
+  white: '#FFFFFF',
+  textSecondary: '#8B90A7',
+  textMuted: '#4B5268',
+  border: '#252545',
+  error: '#EF4444',
+  errorBg: 'rgba(239, 68, 68, 0.1)',
+  errorBorder: 'rgba(239, 68, 68, 0.3)',
+};

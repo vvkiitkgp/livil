@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <meta name="robots" content="index,follow" />
+    <title>Privacy Policy · Livil</title>
+    <meta
+      name="description"
+      content="Privacy Policy for Livil — a social music platform. Learn what data we collect, how we use it, and how to contact us."
+    />
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: #14141c;
+        --surface-2: #1b1b26;
+        --border: #232330;
+        --text: #f5f5fa;
+        --text-secondary: #b8b8c8;
+        --text-muted: #7a7a8c;
+        --purple: #7c3aed;
+        --purple-light: #a78bfa;
+        --purple-glow: rgba(124, 58, 237, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        height: 800px;
+        background: radial-gradient(
+          circle at center,
+          var(--purple-glow) 0%,
+          transparent 60%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 22px 96px;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 18px 8px 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        margin-bottom: 28px;
+      }
+
+      .logo-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--purple);
+        box-shadow: 0 0 12px var(--purple-glow);
+      }
+
+      .logo-name {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--text);
+      }
+
+      h1 {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        margin: 0 0 10px;
+        background: linear-gradient(135deg, #fff 0%, #c4b5fd 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .tagline {
+        color: var(--text-secondary);
+        font-size: 15px;
+        margin: 0;
+      }
+
+      .updated {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 4px 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text-muted);
+        font-size: 12px;
+        letter-spacing: 0.3px;
+      }
+
+      .intro {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 22px 24px;
+        margin-bottom: 8px;
+      }
+
+      .intro p {
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 44px 0 14px;
+        letter-spacing: -0.3px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      h2::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 22px;
+        background: var(--purple);
+        border-radius: 2px;
+        box-shadow: 0 0 12px var(--purple-glow);
+      }
+
+      h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 22px 0 8px;
+        color: var(--text);
+      }
+
+      p,
+      li {
+        color: var(--text-secondary);
+      }
+
+      ul {
+        padding-left: 20px;
+        margin: 8px 0 12px;
+      }
+
+      li {
+        margin-bottom: 7px;
+      }
+
+      a {
+        color: var(--purple-light);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.15s ease;
+      }
+
+      a:hover {
+        border-bottom-color: var(--purple-light);
+      }
+
+      strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin: 14px 0;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+      }
+
+      .card:hover {
+        border-color: #2e2e42;
+      }
+
+      .card p {
+        margin: 0;
+      }
+
+      .card .name {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .contact-card {
+        background: linear-gradient(
+          135deg,
+          rgba(124, 58, 237, 0.12) 0%,
+          var(--surface) 100%
+        );
+        border: 1px solid rgba(124, 58, 237, 0.35);
+        border-radius: 16px;
+        padding: 24px;
+        margin-top: 14px;
+        text-align: center;
+      }
+
+      .contact-card .name {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--purple-light);
+        margin-bottom: 8px;
+      }
+
+      .contact-card .email {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      footer {
+        margin-top: 60px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      footer .heart {
+        color: var(--purple-light);
+      }
+
+      @media (max-width: 520px) {
+        .wrap {
+          padding: 36px 18px 72px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        h2 {
+          font-size: 19px;
+        }
+        .card,
+        .intro {
+          padding: 16px 18px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="logo">
+          <span class="logo-dot"></span>
+          <span class="logo-name">Livil</span>
+        </div>
+        <h1>Privacy Policy</h1>
+        <p class="tagline">A social music platform built around what you listen to.</p>
+        <span class="updated">Last updated: April 26, 2026</span>
+      </header>
+
+      <div class="intro">
+        <p>
+          This Privacy Policy explains what information <strong>Livil</strong>
+          (“we”, “us”, “the app”) collects, how we use it, and the choices you
+          have. By creating an account or using Livil, you agree to the
+          practices described here.
+        </p>
+      </div>
+
+      <h2>1. Information We Collect</h2>
+
+      <h3>Information you provide</h3>
+      <ul>
+        <li>
+          <strong>Email address</strong> — used to create and secure your
+          account, sign you in, and send essential account emails.
+        </li>
+        <li>
+          <strong>Username (handle)</strong> — your unique identifier inside
+          the Livil community.
+        </li>
+        <li>
+          <strong>Display name</strong> — the public name shown on your
+          profile.
+        </li>
+        <li>
+          <strong>Password</strong> — only relevant for email/password sign-up;
+          stored exclusively as a salted hash by our authentication provider.
+          We never see or store your password in plain text.
+        </li>
+        <li>
+          <strong>Profile information</strong> — bio, avatar/profile picture,
+          and any other content you choose to add to your profile.
+        </li>
+        <li>
+          <strong>Posts &amp; social activity</strong> — content you create,
+          along with likes, follows, and comments.
+        </li>
+      </ul>
+
+      <h3>Music listening activity</h3>
+      <ul>
+        <li>
+          <strong>Tracks, artists, and albums</strong> you listen to, share, or
+          interact with inside Livil.
+        </li>
+        <li>
+          <strong>Listening history and preferences</strong> — used to power
+          social features (e.g. what you’re currently listening to, your top
+          tracks) and to personalize your experience.
+        </li>
+      </ul>
+
+      <h3>Information from sign-in providers</h3>
+      <ul>
+        <li>
+          If you sign in with <strong>Google</strong>, we receive your name,
+          email address, and profile picture from Google. We do not receive
+          your Google password.
+        </li>
+      </ul>
+
+      <h3>Information collected automatically</h3>
+      <ul>
+        <li>
+          <strong>Authentication tokens</strong> stored on your device to keep
+          you signed in.
+        </li>
+        <li>
+          <strong>Basic technical data</strong> — limited diagnostic
+          information such as device type, OS version, and crash logs, used to
+          keep the service stable.
+        </li>
+      </ul>
+
+      <p>
+        Livil does <strong>not</strong> collect your precise location,
+        contacts, microphone, or camera data unless you explicitly grant
+        permission for a feature that requires it.
+      </p>
+
+      <h2>2. How We Use Your Data</h2>
+      <ul>
+        <li>
+          <strong>To provide the service</strong> — create your account,
+          authenticate you, store your profile and posts, and deliver content.
+        </li>
+        <li>
+          <strong>To enable social features</strong> — show your activity to
+          followers, recommend people and music, and power feeds and
+          notifications.
+        </li>
+        <li>
+          <strong>To personalize your experience</strong> — surface music and
+          users that match your taste based on your listening activity and
+          interactions.
+        </li>
+        <li>
+          <strong>To communicate with you</strong> — send essential service
+          emails such as verification, security alerts, and account updates.
+        </li>
+        <li>
+          <strong>To keep Livil safe</strong> — detect abuse, enforce our
+          terms, and improve reliability.
+        </li>
+      </ul>
+      <p>
+        We do <strong>not</strong> sell your personal information, and we do
+        <strong>not</strong> use your data for third-party advertising.
+      </p>
+
+      <h2>3. Third-Party Services</h2>
+      <p>
+        Livil relies on trusted third-party providers to operate. These
+        providers process limited data on our behalf, under their own privacy
+        terms:
+      </p>
+
+      <div class="card">
+        <span class="name">Supabase</span>
+        <p>
+          Provides authentication, database, and backend services. Stores your
+          email, hashed password, profile, posts, and listening activity.
+          <a href="https://supabase.com/privacy" target="_blank" rel="noopener">
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Google (OAuth Sign-In)</span>
+        <p>
+          When you choose “Sign in with Google,” Google authenticates you and
+          shares basic profile information (name, email, profile picture) with
+          Livil.
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Cloudflare R2</span>
+        <p>
+          Object storage used to host media you upload (such as profile
+          pictures and post media). Files are accessed via secure URLs.
+          <a
+            href="https://www.cloudflare.com/privacypolicy/"
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Google Play Services</span>
+        <p>
+          Required for app distribution and basic platform integrations on
+          Android.
+          <a
+            href="https://policies.google.com/privacy"
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <h2>4. Data Storage &amp; Security</h2>
+      <p>
+        Your data is stored on infrastructure operated by Supabase (account
+        and content data) and Cloudflare R2 (uploaded media). Communication
+        between the app and our servers is encrypted in transit using
+        HTTPS/TLS. Passwords are stored only as salted hashes.
+      </p>
+      <p>
+        While we take reasonable precautions to protect your information, no
+        method of electronic storage or transmission is 100% secure. You use
+        the service at your own risk.
+      </p>
+
+      <h2>5. Data Retention</h2>
+      <p>
+        We retain your account information for as long as your account is
+        active. If you delete your account, we will delete or anonymize your
+        personal data within a reasonable period, except where retention is
+        required for legal, security, or fraud-prevention reasons.
+      </p>
+
+      <h2>6. Your Rights</h2>
+      <p>You have the right to:</p>
+      <ul>
+        <li>
+          <strong>Access</strong> — see the personal data associated with your
+          account.
+        </li>
+        <li>
+          <strong>Update</strong> — edit your profile, display name, username,
+          bio, and avatar from inside the app.
+        </li>
+        <li>
+          <strong>Delete</strong> — delete your account and the personal data
+          associated with it.
+        </li>
+        <li>
+          <strong>Withdraw consent</strong> — stop using Livil and request
+          account deletion at any time.
+        </li>
+      </ul>
+      <p>
+        To exercise any of these rights, contact us at the email address below.
+        We will respond within a reasonable timeframe.
+      </p>
+
+      <h2>7. Children’s Privacy</h2>
+      <p>
+        Livil is not directed to children under 13 (or the equivalent minimum
+        age in your jurisdiction). We do not knowingly collect personal data
+        from children. If you believe a child has provided us with personal
+        information, please contact us and we will remove it.
+      </p>
+
+      <h2>8. International Users</h2>
+      <p>
+        Livil may be accessed from anywhere in the world. By using the app,
+        you understand that your information may be transferred to and
+        processed in countries other than your own, including by our service
+        providers.
+      </p>
+
+      <h2>9. Changes to This Policy</h2>
+      <p>
+        We may update this Privacy Policy from time to time. When we do, we
+        will revise the “Last updated” date above. Material changes will be
+        communicated within the app or via email where appropriate.
+      </p>
+
+      <h2>10. Contact Us</h2>
+      <p>
+        For any questions about this Privacy Policy or your data, reach out to
+        us:
+      </p>
+      <div class="contact-card">
+        <span class="name">Livil Support</span>
+        <a class="email" href="mailto:vvk.iitkgp@gmail.com"
+          >vvk.iitkgp@gmail.com</a
+        >
+      </div>
+
+      <footer>
+        © 2026 Livil — Made with <span class="heart">♪</span> for music lovers.
+      </footer>
+    </div>
+  </body>
+</html>
