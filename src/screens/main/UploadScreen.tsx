@@ -6,8 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -80,6 +80,13 @@ export default function UploadScreen() {
   const [error, setError] = useState('');
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const collaboratorCount = collaborators.length;
+  const handleDismissSuccess = useCallback(() => {
+    setShowSuccess(false);
+    navigation.goBack();
+  }, [navigation]);
 
   useEffect(() => {
     const subscription = onCollaboratorPicked(picked => {
@@ -175,16 +182,14 @@ export default function UploadScreen() {
           setProgressFraction(fraction);
         },
       );
-      Alert.alert('Posted', 'Your track is live.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      setShowSuccess(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
       setError(message);
     } finally {
       setSubmitting(false);
     }
-  }, [audio, title, description, video, cover, collaborators, navigation]);
+  }, [audio, title, description, video, cover, collaborators]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -430,6 +435,40 @@ export default function UploadScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showSuccess}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={handleDismissSuccess}
+      >
+        <View style={styles.successBackdrop}>
+          <View style={styles.successCard}>
+            <View style={styles.successGlow} />
+            <View style={styles.successIconOuter}>
+              <View style={styles.successIconInner}>
+                <Text style={styles.successCheck}>✓</Text>
+              </View>
+            </View>
+            <Text style={styles.successTitle}>Track posted</Text>
+            <Text style={styles.successBody}>
+              {collaboratorCount > 0
+                ? `Your track is live. ${collaboratorCount} collaborator${
+                    collaboratorCount === 1 ? '' : 's'
+                  } will see a request to confirm.`
+                : 'Your track is live and up on your profile.'}
+            </Text>
+            <TouchableOpacity
+              onPress={handleDismissSuccess}
+              activeOpacity={0.85}
+              style={styles.successButton}
+            >
+              <Text style={styles.successButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -735,5 +774,98 @@ const styles = StyleSheet.create({
   progressSpinner: {
     alignSelf: 'center',
     marginTop: 2,
+  },
+  successBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 5, 12, 0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  successCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 36,
+    paddingBottom: 24,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  successGlow: {
+    position: 'absolute',
+    top: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: COLORS.purpleGlow,
+    opacity: 0.65,
+  },
+  successIconOuter: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: COLORS.purpleDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+    marginBottom: 18,
+  },
+  successIconInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.6,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  successCheck: {
+    color: COLORS.white,
+    fontSize: 30,
+    fontWeight: '800',
+    lineHeight: 32,
+    marginTop: -2,
+  },
+  successTitle: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: 8,
+  },
+  successBody: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 22,
+    paddingHorizontal: 4,
+  },
+  successButton: {
+    alignSelf: 'stretch',
+    backgroundColor: COLORS.purple,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  successButtonText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });
