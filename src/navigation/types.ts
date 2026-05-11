@@ -14,4 +14,8 @@ export type AppTabParamList = {
 export type RootStackParamList = {
   Auth: undefined;
   App: undefined;
+  Upload: undefined;
+  CollaboratorPicker: {
+    excludeUserIds?: string[];
+  } | undefined;
 };

@@ -14,4 +14,10 @@ export const COLORS = {
   error: '#EF4444',
   errorBg: 'rgba(239, 68, 68, 0.1)',
   errorBorder: 'rgba(239, 68, 68, 0.3)',
+  warning: '#F59E0B',
+  warningBg: 'rgba(245, 158, 11, 0.12)',
+  warningBorder: 'rgba(245, 158, 11, 0.35)',
+  info: '#22D3EE',
+  infoBg: 'rgba(34, 211, 238, 0.12)',
+  infoBorder: 'rgba(34, 211, 238, 0.35)',
 };
