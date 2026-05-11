@@ -18,6 +18,15 @@ export type CreateTrackResult = {
   coverArtUrl?: string;
 };
 
+export type CreateTrackStage = 'preparing' | 'uploading' | 'finalizing';
+
+export type CreateTrackProgress = {
+  stage: CreateTrackStage;
+  fraction: number;
+};
+
+export type CreateTrackProgressCallback = (progress: CreateTrackProgress) => void;
+
 async function safeDeleteTrack(trackId: string): Promise<void> {
   try {
     await supabase.from('tracks').delete().eq('id', trackId);
@@ -26,7 +35,29 @@ async function safeDeleteTrack(trackId: string): Promise<void> {
   }
 }
 
-export async function createTrack(input: CreateTrackInput): Promise<CreateTrackResult> {
+function computeWeights(input: CreateTrackInput): {
+  audio: number;
+  video: number;
+  cover: number;
+} {
+  const audioBytes = input.audio.size ?? 1_000_000;
+  const videoBytes = input.video ? input.video.size ?? 1_000_000 : 0;
+  const coverBytes = input.cover ? input.cover.size ?? 100_000 : 0;
+  const total = audioBytes + videoBytes + coverBytes;
+  if (total <= 0) {
+    return { audio: 1, video: 0, cover: 0 };
+  }
+  return {
+    audio: audioBytes / total,
+    video: videoBytes / total,
+    cover: coverBytes / total,
+  };
+}
+
+export async function createTrack(
+  input: CreateTrackInput,
+  onProgress?: CreateTrackProgressCallback,
+): Promise<CreateTrackResult> {
   const title = input.title.trim();
   if (!title) {
     throw new Error('Title is required.');
@@ -35,12 +66,17 @@ export async function createTrack(input: CreateTrackInput): Promise<CreateTrackR
     throw new Error('Audio file is required.');
   }
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  onProgress?.({ stage: 'preparing', fraction: 0 });
 
-  if (userError || !user) {
+  const [
+    { data: userData, error: userError },
+    { data: sessionData },
+  ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+
+  const user = userData?.user;
+  const accessToken = sessionData.session?.access_token;
+
+  if (userError || !user || !accessToken) {
     throw new Error('You must be signed in to upload a track.');
   }
 
@@ -60,17 +96,40 @@ export async function createTrack(input: CreateTrackInput): Promise<CreateTrackR
   }
 
   const trackId = inserted.id;
+  const weights = computeWeights(input);
+
+  let audioFrac = 0;
+  let videoFrac = 0;
+  let coverFrac = 0;
+  const reportOverall = () => {
+    const fraction =
+      weights.audio * audioFrac + weights.video * videoFrac + weights.cover * coverFrac;
+    onProgress?.({ stage: 'uploading', fraction: Math.min(1, Math.max(0, fraction)) });
+  };
 
   try {
+    onProgress?.({ stage: 'uploading', fraction: 0 });
+
     const [audioUrl, videoUrl, coverArtUrl] = await Promise.all([
-      uploadTrackFile(input.audio, 'audio', trackId, user.id),
+      uploadTrackFile(input.audio, 'audio', trackId, user.id, accessToken, f => {
+        audioFrac = f;
+        reportOverall();
+      }),
       input.video
-        ? uploadTrackFile(input.video, 'video', trackId, user.id)
+        ? uploadTrackFile(input.video, 'video', trackId, user.id, accessToken, f => {
+            videoFrac = f;
+            reportOverall();
+          })
         : Promise.resolve<string | undefined>(undefined),
       input.cover
-        ? uploadTrackFile(input.cover, 'cover', trackId, user.id)
+        ? uploadTrackFile(input.cover, 'cover', trackId, user.id, accessToken, f => {
+            coverFrac = f;
+            reportOverall();
+          })
         : Promise.resolve<string | undefined>(undefined),
     ]);
+
+    onProgress?.({ stage: 'finalizing', fraction: 1 });
 
     const { error: updateError } = await supabase
       .from('tracks')

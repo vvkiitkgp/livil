@@ -11,8 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
@@ -20,10 +19,10 @@ import FormInput from '../../components/FormInput';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
-import { createTrack } from '../../services/tracks';
+import { createTrack, type CreateTrackStage } from '../../services/tracks';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
+import { onCollaboratorPicked } from '../../services/uploadEvents';
 
-type UploadRoute = RouteProp<RootStackParamList, 'Upload'>;
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
 
 type FileSlot = {
@@ -67,7 +66,6 @@ function formatBytes(bytes: number | null): string {
 
 export default function UploadScreen() {
   const navigation = useNavigation<UploadNavigation>();
-  const route = useRoute<UploadRoute>();
 
   const [audio, setAudio] = useState<PickedFile | null>(null);
   const [video, setVideo] = useState<PickedFile | null>(null);
@@ -80,19 +78,23 @@ export default function UploadScreen() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
+  const [progressFraction, setProgressFraction] = useState(0);
 
   useEffect(() => {
-    const picked = route.params?.pickedCollaborator;
-    if (!picked) {return;}
-    setCollaborators(prev => {
-      const dupe =
-        picked.kind === 'user' &&
-        prev.some(c => c.kind === 'user' && c.userId === picked.userId && c.role === picked.role);
-      if (dupe) {return prev;}
-      return [...prev, picked];
+    const subscription = onCollaboratorPicked(picked => {
+      setCollaborators(prev => {
+        const dupe =
+          picked.kind === 'user' &&
+          prev.some(
+            c => c.kind === 'user' && c.userId === picked.userId && c.role === picked.role,
+          );
+        if (dupe) {return prev;}
+        return [...prev, picked];
+      });
     });
-    navigation.setParams({ pickedCollaborator: undefined });
-  }, [route.params?.pickedCollaborator, navigation]);
+    return () => subscription.remove();
+  }, []);
 
   const handlePickFile = useCallback(
     async (slot: FileSlot) => {
@@ -156,15 +158,23 @@ export default function UploadScreen() {
     }
     setSubmitting(true);
     setError('');
+    setProgressStage('preparing');
+    setProgressFraction(0);
     try {
-      await createTrack({
-        title,
-        description,
-        audio,
-        video: video ?? undefined,
-        cover: cover ?? undefined,
-        collaborators,
-      });
+      await createTrack(
+        {
+          title,
+          description,
+          audio,
+          video: video ?? undefined,
+          cover: cover ?? undefined,
+          collaborators,
+        },
+        ({ stage, fraction }) => {
+          setProgressStage(stage);
+          setProgressFraction(fraction);
+        },
+      );
       Alert.alert('Posted', 'Your track is live.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -373,18 +383,51 @@ export default function UploadScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity
-            onPress={handleSubmit}
-            activeOpacity={0.85}
-            disabled={!canSubmit}
-            style={[styles.postButton, !canSubmit && styles.postButtonDisabled]}
-          >
-            {submitting ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
+          {submitting ? (
+            <View style={styles.progressBlock}>
+              <View style={styles.progressLabelRow}>
+                <Text style={styles.progressLabel}>
+                  {progressStage === 'preparing'
+                    ? 'Preparing files…'
+                    : progressStage === 'finalizing'
+                    ? 'Saving track…'
+                    : 'Uploading…'}
+                </Text>
+                <Text style={styles.progressPercent}>
+                  {progressStage === 'uploading'
+                    ? `${Math.round(progressFraction * 100)}%`
+                    : ''}
+                </Text>
+              </View>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width:
+                        progressStage === 'uploading'
+                          ? `${Math.max(2, Math.round(progressFraction * 100))}%`
+                          : progressStage === 'finalizing'
+                          ? '100%'
+                          : '6%',
+                    },
+                  ]}
+                />
+              </View>
+              {progressStage !== 'uploading' ? (
+                <ActivityIndicator color={COLORS.purpleLight} style={styles.progressSpinner} />
+              ) : null}
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={handleSubmit}
+              activeOpacity={0.85}
+              disabled={!canSubmit}
+              style={[styles.postButton, !canSubmit && styles.postButtonDisabled]}
+            >
               <Text style={styles.postButtonText}>Post track</Text>
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -654,5 +697,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  progressBlock: {
+    gap: 10,
+    paddingVertical: 6,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressLabel: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  progressPercent: {
+    color: COLORS.purpleLight,
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 44,
+    textAlign: 'right',
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.purple,
+    borderRadius: 4,
+  },
+  progressSpinner: {
+    alignSelf: 'center',
+    marginTop: 2,
   },
 });

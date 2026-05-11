@@ -19,6 +19,7 @@ import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { ROLES, type PendingCollaborator } from '../../constants/roles';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
+import { emitCollaboratorPicked } from '../../services/uploadEvents';
 
 type PickerRoute = RouteProp<RootStackParamList, 'CollaboratorPicker'>;
 type PickerNavigation = NativeStackNavigationProp<RootStackParamList, 'CollaboratorPicker'>;
@@ -105,11 +106,8 @@ export default function CollaboratorPickerScreen() {
         role: role.trim(),
       };
     }
-    navigation.navigate({
-      name: 'Upload',
-      params: { pickedCollaborator: collaborator },
-      merge: true,
-    });
+    emitCollaboratorPicked(collaborator);
+    navigation.goBack();
   }, [canConfirm, mode, selectedUser, customName, role, navigation]);
 
   const switchMode = useCallback((next: Mode) => {
