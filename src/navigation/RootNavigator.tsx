@@ -5,6 +5,8 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
+import UploadScreen from '../screens/main/UploadScreen';
+import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 
@@ -46,7 +48,27 @@ export default function RootNavigator() {
       }}
     >
       {session ? (
-        <Stack.Screen name="App" component={AppNavigator} />
+        <>
+          <Stack.Screen name="App" component={AppNavigator} />
+          <Stack.Screen
+            name="Upload"
+            component={UploadScreen}
+            options={{
+              presentation: 'modal',
+              gestureEnabled: false,
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="CollaboratorPicker"
+            component={CollaboratorPickerScreen}
+            options={{
+              presentation: 'modal',
+              gestureEnabled: false,
+              animation: 'slide_from_bottom',
+            }}
+          />
+        </>
       ) : (
         <Stack.Screen name="Auth" component={AuthNavigator} />
       )}

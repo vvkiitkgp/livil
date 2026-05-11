@@ -1,3 +1,5 @@
+import type { PendingCollaborator } from '../constants/roles';
+
 export type AuthStackParamList = {
   Onboarding: undefined;
   SignIn: undefined;
@@ -14,4 +16,10 @@ export type AppTabParamList = {
 export type RootStackParamList = {
   Auth: undefined;
   App: undefined;
+  Upload: {
+    pickedCollaborator?: PendingCollaborator;
+  } | undefined;
+  CollaboratorPicker: {
+    excludeUserIds?: string[];
+  } | undefined;
 };

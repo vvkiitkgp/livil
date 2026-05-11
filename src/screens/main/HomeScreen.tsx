@@ -8,7 +8,12 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
+import type { RootStackParamList } from '../../navigation/types';
+
+type HomeNavigation = NativeStackNavigationProp<RootStackParamList>;
 
 type Track = {
   id: string;
@@ -125,6 +130,8 @@ const FRIENDS_ACTIVITY: FriendActivity[] = [
 ];
 
 export default function HomeScreen() {
+  const navigation = useNavigation<HomeNavigation>();
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top bar */}
@@ -135,9 +142,19 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.wordmark}>livil</Text>
         </View>
-        <TouchableOpacity activeOpacity={0.8} style={styles.avatar}>
-          <Text style={styles.avatarText}>VK</Text>
-        </TouchableOpacity>
+        <View style={styles.topBarActions}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.uploadButton}
+            onPress={() => navigation.navigate('Upload')}
+            accessibilityLabel="Upload music"
+          >
+            <Text style={styles.uploadButtonText}>+</Text>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.8} style={styles.avatar}>
+            <Text style={styles.avatarText}>VK</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -274,6 +291,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  uploadButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  uploadButtonText: {
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 26,
+    marginTop: -2,
   },
   logoMark: {
     width: 32,
