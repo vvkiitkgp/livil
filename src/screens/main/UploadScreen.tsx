@@ -19,7 +19,7 @@ import FormInput from '../../components/FormInput';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
-import { createTrack, type CreateTrackStage } from '../../services/tracks';
+import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
 
@@ -33,7 +33,7 @@ type FileSlot = {
   accept: string;
 };
 
-const FILE_SLOTS: FileSlot[] = [
+const AUDIO_SLOTS: FileSlot[] = [
   {
     kind: 'audio',
     label: 'Audio',
@@ -42,18 +42,21 @@ const FILE_SLOTS: FileSlot[] = [
     accept: types.audio,
   },
   {
+    kind: 'cover',
+    label: 'Cover image',
+    description: 'Required · jpg, png, webp',
+    required: true,
+    accept: types.images,
+  },
+];
+
+const VIDEO_SLOTS: FileSlot[] = [
+  {
     kind: 'video',
     label: 'Video',
-    description: 'Optional · mp4, mov, webm',
-    required: false,
+    description: 'Required · mp4, mov, webm',
+    required: true,
     accept: types.video,
-  },
-  {
-    kind: 'cover',
-    label: 'Cover art',
-    description: 'Optional · jpg, png, webp',
-    required: false,
-    accept: types.images,
   },
 ];
 
@@ -67,6 +70,7 @@ function formatBytes(bytes: number | null): string {
 export default function UploadScreen() {
   const navigation = useNavigation<UploadNavigation>();
 
+  const [mode, setMode] = useState<PostMode>('audio');
   const [audio, setAudio] = useState<PickedFile | null>(null);
   const [video, setVideo] = useState<PickedFile | null>(null);
   const [cover, setCover] = useState<PickedFile | null>(null);
@@ -81,6 +85,24 @@ export default function UploadScreen() {
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  const fileSlots = mode === 'audio' ? AUDIO_SLOTS : VIDEO_SLOTS;
+
+  const handleModeChange = useCallback(
+    (next: PostMode) => {
+      if (submitting || next === mode) {return;}
+      setMode(next);
+      setError('');
+      // Drop files that don't belong in the new mode so we never carry stale state into createTrack.
+      if (next === 'audio') {
+        setVideo(null);
+      } else {
+        setAudio(null);
+        setCover(null);
+      }
+    },
+    [mode, submitting],
+  );
 
   const collaboratorCount = collaborators.length;
   const handleDismissSuccess = useCallback(() => {
@@ -153,14 +175,24 @@ export default function UploadScreen() {
     [audio, video, cover],
   );
 
-  const canSubmit = useMemo(
-    () => Boolean(audio && title.trim().length > 0) && !submitting,
-    [audio, title, submitting],
-  );
+  const canSubmit = useMemo(() => {
+    if (submitting || title.trim().length === 0) {return false;}
+    if (mode === 'audio') {return Boolean(audio && cover);}
+    return Boolean(video);
+  }, [mode, audio, cover, video, title, submitting]);
 
   const handleSubmit = useCallback(async () => {
-    if (!audio || !title.trim()) {
-      setError('Add an audio file and a title to continue.');
+    if (!title.trim()) {
+      setError('Add a title to continue.');
+      return;
+    }
+    if (mode === 'audio') {
+      if (!audio || !cover) {
+        setError('Audio posts need an audio file and a cover image.');
+        return;
+      }
+    } else if (!video) {
+      setError('Video posts need a video file.');
       return;
     }
     setSubmitting(true);
@@ -169,14 +201,22 @@ export default function UploadScreen() {
     setProgressFraction(0);
     try {
       await createTrack(
-        {
-          title,
-          description,
-          audio,
-          video: video ?? undefined,
-          cover: cover ?? undefined,
-          collaborators,
-        },
+        mode === 'audio'
+          ? {
+              mode: 'audio',
+              title,
+              description,
+              audio: audio!,
+              cover: cover!,
+              collaborators,
+            }
+          : {
+              mode: 'video',
+              title,
+              description,
+              video: video!,
+              collaborators,
+            },
         ({ stage, fraction }) => {
           setProgressStage(stage);
           setProgressFraction(fraction);
@@ -189,7 +229,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [audio, title, description, video, cover, collaborators]);
+  }, [mode, audio, title, description, video, cover, collaborators]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -222,9 +262,65 @@ export default function UploadScreen() {
             </View>
           ) : null}
 
+          <Text style={styles.sectionLabel}>Post type</Text>
+          <View style={styles.modeSegment}>
+            <TouchableOpacity
+              onPress={() => handleModeChange('audio')}
+              activeOpacity={0.85}
+              disabled={submitting}
+              style={[
+                styles.modeSegmentButton,
+                mode === 'audio' && styles.modeSegmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.modeSegmentLabel,
+                  mode === 'audio' && styles.modeSegmentLabelActive,
+                ]}
+              >
+                Audio + Cover
+              </Text>
+              <Text
+                style={[
+                  styles.modeSegmentSubLabel,
+                  mode === 'audio' && styles.modeSegmentSubLabelActive,
+                ]}
+              >
+                A song with a cover image
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleModeChange('video')}
+              activeOpacity={0.85}
+              disabled={submitting}
+              style={[
+                styles.modeSegmentButton,
+                mode === 'video' && styles.modeSegmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.modeSegmentLabel,
+                  mode === 'video' && styles.modeSegmentLabelActive,
+                ]}
+              >
+                Video
+              </Text>
+              <Text
+                style={[
+                  styles.modeSegmentSubLabel,
+                  mode === 'video' && styles.modeSegmentSubLabelActive,
+                ]}
+              >
+                A music video — audio is baked in
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.sectionLabel}>Files</Text>
           <View style={styles.filesGroup}>
-            {FILE_SLOTS.map(slot => {
+            {fileSlots.map(slot => {
               const file = fileFor(slot.kind);
               return (
                 <View key={slot.kind} style={styles.fileRow}>
@@ -531,6 +627,47 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 10,
+  },
+  modeSegment: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  modeSegmentButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  modeSegmentButtonActive: {
+    borderColor: COLORS.purple,
+    backgroundColor: COLORS.purpleDim,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  modeSegmentLabel: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  modeSegmentLabelActive: {
+    color: COLORS.purpleLight,
+  },
+  modeSegmentSubLabel: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    marginTop: 4,
+    lineHeight: 14,
+  },
+  modeSegmentSubLabelActive: {
+    color: COLORS.purpleLight,
+    opacity: 0.85,
   },
   filesGroup: {
     backgroundColor: COLORS.surface,

@@ -1,0 +1,530 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { COLORS } from '../theme/colors';
+import { usePlayback } from '../contexts/PlaybackContext';
+import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
+import SeekBar from './SeekBar';
+import type { FeedPost } from '../services/posts';
+import { recordView, toggleLike } from '../services/posts';
+
+export type PostCardProps = {
+  post: FeedPost;
+  /** Visibility from the parent FlatList — drives auto-pause when scrolled away
+   *  and triggers the dedup'd view count after a brief dwell. */
+  visible: boolean;
+};
+
+function formatCount(n: number): string {
+  if (n < 1000) {return String(n);}
+  if (n < 1_000_000) {return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, '')}k`;}
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+}
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) {return '0:00';}
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) {return '';}
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) {return `${diffSec}s`;}
+  const m = Math.floor(diffSec / 60);
+  if (m < 60) {return `${m}m`;}
+  const h = Math.floor(m / 60);
+  if (h < 24) {return `${h}h`;}
+  const d = Math.floor(h / 24);
+  if (d < 7) {return `${d}d`;}
+  const w = Math.floor(d / 7);
+  if (w < 4) {return `${w}w`;}
+  const mo = Math.floor(d / 30);
+  if (mo < 12) {return `${mo}mo`;}
+  return `${Math.floor(d / 365)}y`;
+}
+
+function avatarInitials(author: { displayName: string | null; username: string }): string {
+  const name = author.displayName?.trim() || author.username;
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {return '?';}
+  if (parts.length === 1) {return parts[0]!.slice(0, 2).toUpperCase();}
+  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+}
+
+function pickMediaShape(track: FeedPost['track']): MediaShape | null {
+  if (track.mediaKind === 'video') {
+    if (!track.videoUrl) {return null;}
+    return { kind: 'video', videoUrl: track.videoUrl };
+  }
+  if (!track.audioUrl) {return null;}
+  return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
+}
+
+export default function PostCard({ post, visible }: PostCardProps) {
+  const playback = usePlayback();
+  const playerRef = useRef<MediaPlayerHandle>(null);
+
+  const [paused, setPaused] = useState(true);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+  const [seekTo, setSeekTo] = useState<number | null>(null);
+
+  // Engagement state (optimistic).
+  const [liked, setLiked] = useState(post.viewerHasLiked);
+  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const [viewsCount, setViewsCount] = useState(post.viewsCount);
+  const [viewRecorded, setViewRecorded] = useState(false);
+
+  const media = pickMediaShape(post.track);
+
+  // If the global active id changes to anything other than ours, pause ourselves.
+  useEffect(() => {
+    if (playback.activePostId !== post.id) {
+      setPaused(true);
+    }
+  }, [playback.activePostId, post.id]);
+
+  // Off-screen → pause.
+  useEffect(() => {
+    if (!visible) {setPaused(true);}
+  }, [visible]);
+
+  // Record a view after the post has been visible for ~2s, once per session.
+  useEffect(() => {
+    if (!visible || viewRecorded) {return;}
+    const t = setTimeout(() => {
+      setViewRecorded(true);
+      setViewsCount(v => v + 1);
+      recordView(post.id).catch(() => {
+        // Already-viewed conflict is fine; any other error we silently swallow
+        // to avoid spamming the UI. The view count on next refresh will reflect truth.
+      });
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [visible, viewRecorded, post.id]);
+
+  const handleTogglePaused = useCallback(() => {
+    setPaused(prev => !prev);
+  }, []);
+
+  const handleProgress = useCallback((seconds: number) => {
+    setPosition(seconds);
+  }, []);
+
+  const handleLoaded = useCallback((seconds: number) => {
+    setDuration(seconds);
+  }, []);
+
+  const handleEnded = useCallback(() => {
+    setPaused(true);
+    setPosition(0);
+    setSeekTo(0);
+  }, []);
+
+  const handleSeekStart = useCallback(() => {
+    // No-op for now; we keep the player going while the user drags. If we
+    // wanted to "pause while scrubbing", we'd setPaused(true) here.
+  }, []);
+
+  const handleSeek = useCallback((seconds: number) => {
+    // While dragging we just update the visual position. The actual seek
+    // happens on release in handleSeekEnd to avoid spamming the native player.
+    setPosition(seconds);
+  }, []);
+
+  const handleSeekEnd = useCallback((seconds: number) => {
+    setPosition(seconds);
+    setSeekTo(seconds);
+    // Reset the seekTo ref-style state on next tick so consecutive seeks to
+    // the same value still trigger the effect in MediaPlayer.
+    setTimeout(() => setSeekTo(null), 0);
+  }, []);
+
+  const handleToggleLike = useCallback(async () => {
+    // Optimistic update — flip immediately, revert on failure.
+    const prevLiked = liked;
+    const prevCount = likesCount;
+    const nextLiked = !prevLiked;
+    setLiked(nextLiked);
+    setLikesCount(prevCount + (nextLiked ? 1 : -1));
+    try {
+      const serverLiked = await toggleLike(post.id);
+      if (serverLiked !== nextLiked) {
+        // Server disagreed (rare race) — trust the server.
+        setLiked(serverLiked);
+        setLikesCount(prevCount + (serverLiked ? 1 : 0));
+      }
+    } catch {
+      setLiked(prevLiked);
+      setLikesCount(prevCount);
+    }
+  }, [liked, likesCount, post.id]);
+
+  const headerAuthor = post.author;
+  const isRepost = post.kind === 'repost' && post.originalAuthor != null;
+
+  const initials = useMemo(() => avatarInitials(headerAuthor), [headerAuthor]);
+
+  return (
+    <View style={styles.card}>
+      {/* Repost banner sits above everything when this post is a repost. */}
+      {isRepost ? (
+        <View style={styles.repostBanner}>
+          <Text style={styles.repostBannerIcon}>↻</Text>
+          <Text style={styles.repostBannerText} numberOfLines={1}>
+            <Text style={styles.repostBannerName}>{headerAuthor.displayName ?? headerAuthor.username}</Text>
+            {' reposted from '}
+            <Text style={styles.repostBannerName}>@{post.originalAuthor!.username}</Text>
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Header: avatar + name + handle + time */}
+      <View style={styles.header}>
+        <View style={styles.avatar}>
+          {headerAuthor.avatarUrl ? (
+            <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
+          ) : (
+            <Text style={styles.avatarText}>{initials}</Text>
+          )}
+        </View>
+        <View style={styles.headerText}>
+          <View style={styles.nameRow}>
+            <Text style={styles.displayName} numberOfLines={1}>
+              {headerAuthor.displayName ?? headerAuthor.username}
+            </Text>
+            <Text style={styles.timeDot}> · </Text>
+            <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+          </View>
+          <Text style={styles.handleText} numberOfLines={1}>
+            @{headerAuthor.username}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.menuBtn} activeOpacity={0.7} accessibilityLabel="More options">
+          <View style={styles.menuDot} />
+          <View style={styles.menuDot} />
+          <View style={styles.menuDot} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Track title + caption */}
+      <View style={styles.titleBlock}>
+        <Text style={styles.trackTitle} numberOfLines={2}>
+          {post.track.title}
+        </Text>
+        {isRepost ? (
+          <View style={styles.creatorTag}>
+            <Text style={styles.creatorTagLabel}>CREATOR</Text>
+            <Text style={styles.creatorTagName} numberOfLines={1}>
+              @{post.originalAuthor!.username}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {post.caption ? (
+        <Text style={styles.caption} numberOfLines={4}>
+          {post.caption}
+        </Text>
+      ) : null}
+
+      {/* Media */}
+      <View style={styles.mediaWrap}>
+        {media ? (
+          <MediaPlayer
+            ref={playerRef}
+            postId={post.id}
+            media={media}
+            paused={paused}
+            onTogglePaused={handleTogglePaused}
+            onProgress={handleProgress}
+            onLoaded={handleLoaded}
+            onEnded={handleEnded}
+            seekTo={seekTo}
+            visible={visible}
+          />
+        ) : (
+          <View style={[styles.mediaWrap, styles.missingMedia]}>
+            <Text style={styles.missingMediaText}>Media unavailable</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Seek bar + time labels */}
+      <View style={styles.seekRow}>
+        <Text style={styles.seekTime}>{formatTime(position)}</Text>
+        <View style={styles.seekBarWrap}>
+          <SeekBar
+            position={position}
+            duration={duration}
+            onSeek={handleSeek}
+            onSeekStart={handleSeekStart}
+            onSeekEnd={handleSeekEnd}
+          />
+        </View>
+        <Text style={styles.seekTime}>{formatTime(duration)}</Text>
+      </View>
+
+      {/* Action row: play/pause + stats */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={styles.playButton}
+          activeOpacity={0.85}
+          onPress={handleTogglePaused}
+          accessibilityLabel={paused ? 'Play' : 'Pause'}
+        >
+          <Text style={styles.playButtonGlyph}>{paused ? '▶' : '❚❚'}</Text>
+        </TouchableOpacity>
+
+        <View style={styles.statsGroup}>
+          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={handleToggleLike}>
+            <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+            <Text style={[styles.statValue, liked && styles.statValueLiked]}>
+              {formatCount(likesCount)}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.statBtn}>
+            <Text style={styles.statIcon}>↻</Text>
+            <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
+          </View>
+          <View style={styles.statBtn}>
+            <Text style={styles.statIcon}>💬</Text>
+            <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
+          </View>
+          <View style={styles.statBtn}>
+            <Text style={styles.statIcon}>◉</Text>
+            <Text style={styles.statValue}>{formatCount(viewsCount)}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 14,
+    marginHorizontal: 16,
+  },
+  repostBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  repostBannerIcon: {
+    color: COLORS.purpleLight,
+    fontSize: 13,
+  },
+  repostBannerText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    flex: 1,
+  },
+  repostBannerName: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.purpleDim,
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    color: COLORS.purpleLight,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  displayName: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  timeDot: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+  },
+  timeText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+  },
+  handleText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: 1,
+  },
+  menuBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 3,
+  },
+  menuDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: COLORS.textMuted,
+  },
+  titleBlock: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  trackTitle: {
+    color: COLORS.white,
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    flex: 1,
+  },
+  creatorTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: COLORS.infoBg,
+    borderWidth: 1,
+    borderColor: COLORS.infoBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '60%',
+  },
+  creatorTagLabel: {
+    color: COLORS.info,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  creatorTagName: {
+    color: COLORS.info,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  caption: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  mediaWrap: {
+    marginTop: 12,
+  },
+  missingMedia: {
+    aspectRatio: 1,
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  missingMediaText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+  },
+  seekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 10,
+  },
+  seekBarWrap: {
+    flex: 1,
+  },
+  seekTime: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+    width: 40,
+    textAlign: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 14,
+  },
+  playButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  playButtonGlyph: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 2,
+  },
+  statsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'space-around',
+  },
+  statBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
+  statIcon: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+  },
+  statIconLiked: {
+    color: '#FF4D6D',
+  },
+  statValue: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  statValueLiked: {
+    color: '#FF4D6D',
+  },
+});

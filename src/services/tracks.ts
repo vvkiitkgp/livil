@@ -2,18 +2,29 @@ import { supabase } from '../../lib/supabase';
 import type { PendingCollaborator } from '../constants/roles';
 import { uploadTrackFile, type PickedFile } from './uploads';
 
-export type CreateTrackInput = {
-  title: string;
-  description?: string;
-  audio: PickedFile;
-  video?: PickedFile;
-  cover?: PickedFile;
-  collaborators: PendingCollaborator[];
-};
+export type PostMode = 'audio' | 'video';
+
+export type CreateTrackInput =
+  | {
+      mode: 'audio';
+      title: string;
+      description?: string;
+      audio: PickedFile;
+      cover: PickedFile;
+      collaborators: PendingCollaborator[];
+    }
+  | {
+      mode: 'video';
+      title: string;
+      description?: string;
+      video: PickedFile;
+      collaborators: PendingCollaborator[];
+    };
 
 export type CreateTrackResult = {
   trackId: string;
-  audioUrl: string;
+  postId: string;
+  audioUrl?: string;
   videoUrl?: string;
   coverArtUrl?: string;
 };
@@ -35,14 +46,27 @@ async function safeDeleteTrack(trackId: string): Promise<void> {
   }
 }
 
-function computeWeights(input: CreateTrackInput): {
+type UploadPlan = {
+  audio?: PickedFile;
+  video?: PickedFile;
+  cover?: PickedFile;
+};
+
+function planFromInput(input: CreateTrackInput): UploadPlan {
+  if (input.mode === 'audio') {
+    return { audio: input.audio, cover: input.cover };
+  }
+  return { video: input.video };
+}
+
+function computeWeights(plan: UploadPlan): {
   audio: number;
   video: number;
   cover: number;
 } {
-  const audioBytes = input.audio.size ?? 1_000_000;
-  const videoBytes = input.video ? input.video.size ?? 1_000_000 : 0;
-  const coverBytes = input.cover ? input.cover.size ?? 100_000 : 0;
+  const audioBytes = plan.audio ? plan.audio.size ?? 1_000_000 : 0;
+  const videoBytes = plan.video ? plan.video.size ?? 1_000_000 : 0;
+  const coverBytes = plan.cover ? plan.cover.size ?? 100_000 : 0;
   const total = audioBytes + videoBytes + coverBytes;
   if (total <= 0) {
     return { audio: 1, video: 0, cover: 0 };
@@ -62,8 +86,12 @@ export async function createTrack(
   if (!title) {
     throw new Error('Title is required.');
   }
-  if (!input.audio) {
-    throw new Error('Audio file is required.');
+
+  if (input.mode === 'audio') {
+    if (!input.audio) {throw new Error('Audio file is required.');}
+    if (!input.cover) {throw new Error('Cover image is required for audio posts.');}
+  } else {
+    if (!input.video) {throw new Error('Video file is required.');}
   }
 
   onProgress?.({ stage: 'preparing', fraction: 0 });
@@ -80,13 +108,20 @@ export async function createTrack(
     throw new Error('You must be signed in to upload a track.');
   }
 
+  const description = input.description?.trim() ? input.description.trim() : null;
+
+  // Insert the track row up front so we have an id to scope storage paths to.
+  // For video posts we leave audio_url null; the constraint allows that as long as
+  // video_url is set, which we fill in once uploads finish.
   const { data: inserted, error: insertError } = await supabase
     .from('tracks')
     .insert({
       uploader_id: user.id,
       title,
-      description: input.description?.trim() ? input.description.trim() : null,
-      audio_url: 'pending://placeholder',
+      description,
+      media_kind: input.mode,
+      audio_url: null,
+      video_url: input.mode === 'video' ? 'pending://placeholder' : null,
     })
     .select('id')
     .single();
@@ -96,7 +131,8 @@ export async function createTrack(
   }
 
   const trackId = inserted.id;
-  const weights = computeWeights(input);
+  const plan = planFromInput(input);
+  const weights = computeWeights(plan);
 
   let audioFrac = 0;
   let videoFrac = 0;
@@ -111,18 +147,20 @@ export async function createTrack(
     onProgress?.({ stage: 'uploading', fraction: 0 });
 
     const [audioUrl, videoUrl, coverArtUrl] = await Promise.all([
-      uploadTrackFile(input.audio, 'audio', trackId, user.id, accessToken, f => {
-        audioFrac = f;
-        reportOverall();
-      }),
-      input.video
-        ? uploadTrackFile(input.video, 'video', trackId, user.id, accessToken, f => {
+      plan.audio
+        ? uploadTrackFile(plan.audio, 'audio', trackId, user.id, accessToken, f => {
+            audioFrac = f;
+            reportOverall();
+          })
+        : Promise.resolve<string | undefined>(undefined),
+      plan.video
+        ? uploadTrackFile(plan.video, 'video', trackId, user.id, accessToken, f => {
             videoFrac = f;
             reportOverall();
           })
         : Promise.resolve<string | undefined>(undefined),
-      input.cover
-        ? uploadTrackFile(input.cover, 'cover', trackId, user.id, accessToken, f => {
+      plan.cover
+        ? uploadTrackFile(plan.cover, 'cover', trackId, user.id, accessToken, f => {
             coverFrac = f;
             reportOverall();
           })
@@ -134,7 +172,7 @@ export async function createTrack(
     const { error: updateError } = await supabase
       .from('tracks')
       .update({
-        audio_url: audioUrl,
+        audio_url: audioUrl ?? null,
         video_url: videoUrl ?? null,
         cover_art_url: coverArtUrl ?? null,
       })
@@ -161,9 +199,27 @@ export async function createTrack(
       }
     }
 
+    // Create the matching upload-kind post. The post's caption mirrors the description so
+    // the feed UI only ever has to read from posts.caption.
+    const { data: postRow, error: postError } = await supabase
+      .from('posts')
+      .insert({
+        author_id: user.id,
+        kind: 'upload',
+        track_id: trackId,
+        caption: description,
+      })
+      .select('id')
+      .single();
+
+    if (postError || !postRow) {
+      throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
+    }
+
     return {
       trackId,
-      audioUrl,
+      postId: postRow.id,
+      audioUrl: audioUrl ?? undefined,
       videoUrl: videoUrl ?? undefined,
       coverArtUrl: coverArtUrl ?? undefined,
     };

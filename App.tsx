@@ -4,6 +4,7 @@ import {NavigationContainer, DarkTheme} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import RootNavigator from './src/navigation/RootNavigator';
+import {PlaybackProvider} from './src/contexts/PlaybackContext';
 
 const AppTheme = {
   ...DarkTheme,
@@ -18,10 +19,12 @@ export default function App(): React.JSX.Element {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" />
-        <NavigationContainer theme={AppTheme}>
-          <Text>Hello</Text>
-          <RootNavigator />
-        </NavigationContainer>
+        <PlaybackProvider>
+          <NavigationContainer theme={AppTheme}>
+            <Text>Hello</Text>
+            <RootNavigator />
+          </NavigationContainer>
+        </PlaybackProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
