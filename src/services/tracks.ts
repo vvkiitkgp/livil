@@ -269,3 +269,77 @@ export async function searchProfiles(
       avatarUrl: p.avatar_url,
     }));
 }
+
+export type LibraryRecentTrack = {
+  trackId: string;
+  title: string;
+  artistLabel: string;
+  coverArtUrl: string | null;
+  playedAt: string;
+};
+
+/**
+ * Recently played rows for the Library tab (server-backed so history survives
+ * reinstall once playback hooks write to `user_recent_tracks`).
+ */
+export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRecentTrack[]> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    throw new Error('You must be signed in to view your library.');
+  }
+
+  const me = userData.user.id;
+
+  const { data, error } = await supabase
+    .from('user_recent_tracks')
+    .select(
+      `
+      played_at,
+      track:tracks (
+        id,
+        title,
+        cover_art_url,
+        uploader:profiles!tracks_uploader_id_fkey (
+          username,
+          display_name
+        )
+      )
+    `,
+    )
+    .eq('user_id', me)
+    .order('played_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  type Row = {
+    played_at: string;
+    track: {
+      id: string;
+      title: string;
+      cover_art_url: string | null;
+      uploader: { username: string; display_name: string | null } | null;
+    } | null;
+  };
+
+  return (data ?? [])
+    .map((raw: Row) => {
+      const t = raw.track;
+      if (!t) {
+        return null;
+      }
+      const up = t.uploader;
+      const artistLabel = up?.display_name?.trim() || up?.username || 'Artist';
+      return {
+        trackId: t.id,
+        title: t.title,
+        artistLabel,
+        coverArtUrl: t.cover_art_url,
+        playedAt: raw.played_at,
+      } satisfies LibraryRecentTrack;
+    })
+    .filter(Boolean) as LibraryRecentTrack[];
+}

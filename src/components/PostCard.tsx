@@ -9,9 +9,14 @@ import { recordView, toggleLike } from '../services/posts';
 
 export type PostCardProps = {
   post: FeedPost;
-  /** Visibility from the parent FlatList — drives auto-pause when scrolled away
-   *  and triggers the dedup'd view count after a brief dwell. */
+  /** Visibility from the parent FlatList — feeds MediaPlayer's debounced off-screen
+   *  pause and drives the dedup'd view count after a brief dwell. */
   visible: boolean;
+  /**
+   * When false, playback is not auto-paused from FlatList viewability (Home feed).
+   * Profile / single-column feeds should keep the default true.
+   */
+  pauseWhenOffScreen?: boolean;
 };
 
 function formatCount(n: number): string {
@@ -63,7 +68,7 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
   return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
 }
 
-export default function PostCard({ post, visible }: PostCardProps) {
+export default function PostCard({ post, visible, pauseWhenOffScreen = true }: PostCardProps) {
   const playback = usePlayback();
   const playerRef = useRef<MediaPlayerHandle>(null);
 
@@ -86,11 +91,6 @@ export default function PostCard({ post, visible }: PostCardProps) {
       setPaused(true);
     }
   }, [playback.activePostId, post.id]);
-
-  // Off-screen → pause.
-  useEffect(() => {
-    if (!visible) {setPaused(true);}
-  }, [visible]);
 
   // Record a view after the post has been visible for ~2s, once per session.
   useEffect(() => {
@@ -244,6 +244,7 @@ export default function PostCard({ post, visible }: PostCardProps) {
             onEnded={handleEnded}
             seekTo={seekTo}
             visible={visible}
+            pauseWhenOffScreen={pauseWhenOffScreen}
           />
         ) : (
           <View style={[styles.mediaWrap, styles.missingMedia]}>

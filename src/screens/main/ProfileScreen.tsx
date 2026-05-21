@@ -12,6 +12,7 @@ import {
   type ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
@@ -89,6 +90,14 @@ export default function ProfileScreen() {
       setVisibleIds(ids);
     },
   ).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        playback.pauseAll();
+      };
+    }, [playback]),
+  );
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
     const [profRes, statsData, follow] = await Promise.all([

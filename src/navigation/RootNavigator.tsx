@@ -17,18 +17,39 @@ export default function RootNavigator() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setLoading(false);
-    });
+    let cancelled = false;
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: s } }) => {
+        if (!cancelled) {
+          setSession(s);
+        }
+      })
+      .catch(() => {
+        // Offline / transient fetch failures — stay signed out but never hang on splash.
+        if (!cancelled) {
+          setSession(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
+      if (!cancelled) {
+        setSession(s);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) {

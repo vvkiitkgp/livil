@@ -401,9 +401,98 @@ export type Database = {
           },
         ];
       };
+      listen_sessions: {
+        Row: {
+          artist_name: string;
+          track_title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          artist_name: string;
+          track_title: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          artist_name?: string;
+          track_title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'listen_sessions_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: true;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      user_recent_tracks: {
+        Row: {
+          played_at: string;
+          track_id: string;
+          user_id: string;
+        };
+        Insert: {
+          played_at?: string;
+          track_id: string;
+          user_id: string;
+        };
+        Update: {
+          played_at?: string;
+          track_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'user_recent_tracks_track_id_fkey';
+            columns: ['track_id'];
+            isOneToOne: false;
+            referencedRelation: 'tracks';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'user_recent_tracks_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      fetch_home_feed: {
+        Args: {
+          p_cursor_bucket?: number | null;
+          p_cursor_id?: string | null;
+          p_cursor_sort_key?: number | null;
+          p_limit?: number | null;
+        };
+        Returns: {
+          feed_bucket: number;
+          post_id: string;
+          sort_key: number;
+          viewer_has_liked: boolean;
+        }[];
+      };
+      list_friend_listen_stories: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          artist_name: string;
+          avatar_url: string | null;
+          display_name: string | null;
+          track_title: string;
+          updated_at: string;
+          user_id: string;
+          username: string;
+        }[];
+      };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };
