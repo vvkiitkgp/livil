@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { View, StyleSheet, Image, Pressable, Text } from 'react-native';
+import { View, StyleSheet, Image, Pressable, Text, Platform } from 'react-native';
 import Video, { type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -39,9 +39,14 @@ export type MediaPlayerProps = {
   /** Externally requested seek position in seconds; used after the user drags
    *  the SeekBar thumb. */
   seekTo?: number | null;
-  /** Pause the player when the post is scrolled off-screen. Visibility detection
-   *  lives in ProfileScreen (via viewabilityConfig) and is plumbed through PostCard. */
+  /** Pause when scrolled off-screen — visibility is debounced inside MediaPlayer
+   *  because FlatList viewability can flicker during playback / layout. */
   visible: boolean;
+  /**
+   * Home feeds often mis-report viewability while `Video` surfaces resize / Android
+   * clips rows — set false there and rely on tab blur (`pauseAll`) instead.
+   */
+  pauseWhenOffScreen?: boolean;
 };
 
 /**
@@ -63,6 +68,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     onEnded,
     seekTo,
     visible,
+    pauseWhenOffScreen = true,
   },
   ref,
 ) {
@@ -70,9 +76,46 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   const videoRef = useRef<VideoRef>(null);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  // FlatList viewability can flicker for a frame or two while media loads / layout
+  // settles (especially with RefreshControl + large headers). Treat brief "hidden"
+  // blips as still on-screen so playback isn't cut off after ~1s.
+  const [visibilityGateOpen, setVisibilityGateOpen] = useState(true);
+  const visibilityHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track-throttled progress: we get ~4 callbacks per second from the player,
   // which is already a good cadence for the seek bar.
   const lastEmittedRef = useRef(0);
+
+  useEffect(() => {
+    if (!pauseWhenOffScreen) {
+      if (visibilityHideTimerRef.current != null) {
+        clearTimeout(visibilityHideTimerRef.current);
+        visibilityHideTimerRef.current = null;
+      }
+      setVisibilityGateOpen(true);
+      return;
+    }
+
+    if (visible) {
+      if (visibilityHideTimerRef.current != null) {
+        clearTimeout(visibilityHideTimerRef.current);
+        visibilityHideTimerRef.current = null;
+      }
+      setVisibilityGateOpen(true);
+      return;
+    }
+
+    visibilityHideTimerRef.current = setTimeout(() => {
+      visibilityHideTimerRef.current = null;
+      setVisibilityGateOpen(false);
+    }, 480);
+
+    return () => {
+      if (visibilityHideTimerRef.current != null) {
+        clearTimeout(visibilityHideTimerRef.current);
+        visibilityHideTimerRef.current = null;
+      }
+    };
+  }, [visible, pauseWhenOffScreen]);
 
   useImperativeHandle(
     ref,
@@ -90,8 +133,8 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   );
 
   // When another card snatches the active slot, the parent's `paused` should
-  // already flip; but we also defensively pause if visibility goes away.
-  const effectivePaused = paused || !visible;
+  // already flip; off-screen handling uses `visibilityGateOpen` (debounced).
+  const effectivePaused = paused || (pauseWhenOffScreen && !visibilityGateOpen);
 
   // If we just transitioned from paused to playing, claim the active slot.
   useEffect(() => {
@@ -159,6 +202,13 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         ref={videoRef}
         source={source}
         paused={effectivePaused}
+        {...(Platform.OS === 'android'
+          ? {
+              // Paused/off-screen ExoPlayers still request audio focus by default;
+              // dozens mount when multiple tabs/lists render and they preempt real playback.
+              disableFocus: effectivePaused,
+            }
+          : {})}
         style={styles.video}
         resizeMode="cover"
         onLoad={handleLoad}

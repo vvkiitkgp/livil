@@ -1,270 +1,586 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   StyleSheet,
   TouchableOpacity,
   Pressable,
+  RefreshControl,
+  ActivityIndicator,
+  Image,
+  Alert,
+  ScrollView,
+  type ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import type { CompositeNavigationProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
-import type { RootStackParamList } from '../../navigation/types';
+import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
+import PostCard from '../../components/PostCard';
+import { usePlayback } from '../../contexts/PlaybackContext';
+import {
+  fetchHomeFeedPage,
+  type FeedPost,
+  type HomeFeedCursor,
+} from '../../services/posts';
+import { listFriendListenStories, type FriendListenStory } from '../../services/friendActivity';
 
-type HomeNavigation = NativeStackNavigationProp<RootStackParamList>;
+type HomeNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<AppTabParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
-type Track = {
-  id: string;
-  title: string;
-  artist: string;
-  coverColors: [string, string];
-  initial: string;
-};
-
-type FriendActivity = {
-  id: string;
+type ProfileSnippet = {
   username: string;
-  displayName: string;
-  track: string;
-  artist: string;
-  timeAgo: string;
-  avatarColor: string;
-  initials: string;
+  displayName: string | null;
+  avatarUrl: string | null;
 };
 
-const FEATURED = {
-  tag: 'Featured today',
-  title: 'Midnight Sessions',
-  subtitle: 'A curated mix of late-night vibes from your community',
-  cta: 'Listen now',
-};
+/** FlatList rows — keeps `onViewableItemsMounted` wiring stable across loading ↔ loaded. */
+type FeedListItem =
+  | { kind: 'post'; post: FeedPost }
+  | { kind: 'skeleton'; id: string };
 
-const RECENTLY_PLAYED: Track[] = [
-  {
-    id: 'rp1',
-    title: 'Neon Skies',
-    artist: 'Aurora Vale',
-    coverColors: ['#7C3AED', '#3B1E6E'],
-    initial: 'N',
-  },
-  {
-    id: 'rp2',
-    title: 'Echoes',
-    artist: 'Lo-Fi Wolves',
-    coverColors: ['#EC4899', '#7C3AED'],
-    initial: 'E',
-  },
-  {
-    id: 'rp3',
-    title: 'After Hours',
-    artist: 'Kairos',
-    coverColors: ['#22D3EE', '#3B82F6'],
-    initial: 'A',
-  },
-  {
-    id: 'rp4',
-    title: 'Velvet Hour',
-    artist: 'Mira Solène',
-    coverColors: ['#F59E0B', '#EF4444'],
-    initial: 'V',
-  },
-  {
-    id: 'rp5',
-    title: 'Slow Burn',
-    artist: 'The Embers',
-    coverColors: ['#10B981', '#0EA5E9'],
-    initial: 'S',
-  },
-  {
-    id: 'rp6',
-    title: 'Glassland',
-    artist: 'Halcyon',
-    coverColors: ['#A78BFA', '#7C3AED'],
-    initial: 'G',
-  },
-];
+const FEED_PAGE_SIZE = 12;
+/** Fetch the next page while the viewer is still a few cards away from the bottom. */
+const PREFETCH_FROM_END = 5;
 
-const FRIENDS_ACTIVITY: FriendActivity[] = [
-  {
-    id: 'f1',
-    username: '@maya',
-    displayName: 'Maya Chen',
-    track: 'Borderline',
-    artist: 'Tame Impala',
-    timeAgo: '2m',
-    avatarColor: '#7C3AED',
-    initials: 'MC',
-  },
-  {
-    id: 'f2',
-    username: '@deron',
-    displayName: 'Deron Park',
-    track: 'Ribs',
-    artist: 'Lorde',
-    timeAgo: '14m',
-    avatarColor: '#EC4899',
-    initials: 'DP',
-  },
-  {
-    id: 'f3',
-    username: '@sami',
-    displayName: 'Sami Rivers',
-    track: 'Redbone',
-    artist: 'Childish Gambino',
-    timeAgo: '38m',
-    avatarColor: '#22D3EE',
-    initials: 'SR',
-  },
-  {
-    id: 'f4',
-    username: '@noor',
-    displayName: 'Noor Hassan',
-    track: 'Pink + White',
-    artist: 'Frank Ocean',
-    timeAgo: '1h',
-    avatarColor: '#F59E0B',
-    initials: 'NH',
-  },
-];
+function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const id of b) {
+    if (!a.has(id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function avatarInitials(profile: ProfileSnippet | null): string {
+  if (!profile) {
+    return '?';
+  }
+  const name = profile.displayName?.trim() || profile.username;
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return '?';
+  }
+  if (parts.length === 1) {
+    return parts[0]!.slice(0, 2).toUpperCase();
+  }
+  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+}
+
+function storyInitials(story: FriendListenStory): string {
+  const name = story.displayName?.trim() || story.username;
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return '?';
+  }
+  if (parts.length === 1) {
+    return parts[0]!.slice(0, 2).toUpperCase();
+  }
+  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+}
+
+function FriendStorySkeletonStrip() {
+  const placeholders = useMemo(() => Array.from({ length: 8 }, (_, i) => i), []);
+  return (
+    <View style={styles.storySkeletonRow}>
+      {placeholders.map(i => (
+        <View key={i} style={styles.storySkeletonBubbleOuter}>
+          <View style={styles.storySkeletonBubbleInner} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function FriendStoriesRow({
+  loading,
+  stories,
+}: {
+  loading: boolean;
+  stories: FriendListenStory[];
+}) {
+  if (loading) {
+    return (
+      <View style={styles.storiesSection}>
+        <Text style={styles.storiesHeading}>Friends</Text>
+        <FriendStorySkeletonStrip />
+      </View>
+    );
+  }
+
+  if (stories.length === 0) {
+    return (
+      <View style={styles.storiesSection}>
+        <Text style={styles.storiesHeading}>Friends</Text>
+        <Text style={styles.storiesEmpty}>
+          Add Stars or accept friendships to see live listens here.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.storiesSection}>
+      <Text style={styles.storiesHeading}>Friends</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.storiesRow}
+      >
+        {stories.map(item => (
+          <Pressable
+            key={item.userId}
+            style={styles.storyCell}
+            onPress={() =>
+              Alert.alert(
+                item.displayName?.trim() || item.username,
+                `${item.trackTitle} · ${item.artistName}`,
+                [{ text: 'OK' }],
+              )
+            }
+          >
+            <View style={styles.storyRing}>
+              <View style={styles.storyAvatar}>
+                {item.avatarUrl ? (
+                  <Image source={{ uri: item.avatarUrl }} style={styles.storyAvatarImg} />
+                ) : (
+                  <Text style={styles.storyAvatarText}>{storyInitials(item)}</Text>
+                )}
+              </View>
+            </View>
+            <Text style={styles.storyUsername} numberOfLines={1}>
+              @{item.username}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function PostCardSkeleton() {
+  return (
+    <View style={styles.skelCard}>
+      <View style={styles.skelHeader}>
+        <View style={styles.skelAvatar} />
+        <View style={styles.skelHeaderText}>
+          <View style={[styles.skelLine, { width: '46%' }]} />
+          <View style={[styles.skelLine, { width: '30%', marginTop: 8 }]} />
+        </View>
+      </View>
+      <View style={styles.skelMedia} />
+      <View style={styles.skelActions}>
+        <View style={[styles.skelPill, { width: 52 }]} />
+        <View style={[styles.skelPill, { width: 52 }]} />
+        <View style={[styles.skelPill, { width: 52 }]} />
+      </View>
+      <View style={[styles.skelLine, { width: '72%', marginTop: 14 }]} />
+      <View style={[styles.skelLine, { width: '54%', marginTop: 10 }]} />
+    </View>
+  );
+}
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
+  const playback = usePlayback();
+
+  const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
+
+  const [stories, setStories] = useState<FriendListenStory[]>([]);
+  const [storiesLoading, setStoriesLoading] = useState(true);
+
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [feedError, setFeedError] = useState('');
+
+  const nextCursorRef = useRef<HomeFeedCursor | null>(null);
+  const loadingMoreRef = useRef(false);
+  const loadingInitialRef = useRef(true);
+
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 120,
+  }).current;
+
+  const postsRef = useRef<FeedPost[]>([]);
+  postsRef.current = posts;
+
+  const appendFeedPageRef = useRef<(mode: 'initial' | 'refresh' | 'prefetch' | 'end') => Promise<void>>(
+    async () => {},
+  );
+
+  const handleViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const ids = new Set<string>();
+      let maxIndex = 0;
+      for (const v of viewableItems) {
+        if (typeof v.index === 'number') {
+          maxIndex = Math.max(maxIndex, v.index);
+        }
+        const row = v.item as FeedListItem | undefined;
+        if (row?.kind === 'post' && v.isViewable) {
+          ids.add(row.post.id);
+        }
+      }
+      setVisibleIds(prev => (visiblePostIdSetsEqual(prev, ids) ? prev : ids));
+
+      const len = postsRef.current.length;
+      const nearEnd =
+        len > 0 &&
+        nextCursorRef.current !== null &&
+        !loadingMoreRef.current &&
+        !loadingInitialRef.current &&
+        maxIndex >= len - PREFETCH_FROM_END;
+
+      if (!nearEnd) {
+        return;
+      }
+
+      // Never kick off pagination synchronously from this callback — it can trip RN invariant paths.
+      setTimeout(() => {
+        void appendFeedPageRef.current('prefetch');
+      }, 0);
+    },
+  ).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        playback.pauseAll();
+      };
+    }, [playback]),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id;
+        if (!uid) {
+          return;
+        }
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username, display_name, avatar_url')
+          .eq('id', uid)
+          .maybeSingle();
+        if (cancelled || error) {
+          return;
+        }
+        if (data) {
+          setMeProfile({
+            username: data.username,
+            displayName: data.display_name,
+            avatarUrl: data.avatar_url,
+          });
+        }
+      } catch {
+        // Hero initials simply fall back to '?'.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const appendFeedPage = useCallback(async (mode: 'initial' | 'refresh' | 'prefetch' | 'end') => {
+    if (loadingMoreRef.current) {
+      return;
+    }
+    if ((mode === 'prefetch' || mode === 'end') && nextCursorRef.current === null) {
+      return;
+    }
+
+    loadingMoreRef.current = true;
+    const showSpinner = mode === 'end';
+    if (showSpinner) {
+      setLoadingMore(true);
+    }
+    if (mode === 'initial') {
+      setLoadingInitial(true);
+      setFeedError('');
+      nextCursorRef.current = null;
+      setPosts([]);
+    }
+    if (mode === 'refresh') {
+      setFeedError('');
+      nextCursorRef.current = null;
+    }
+
+    try {
+      const cursor =
+        mode === 'initial' || mode === 'refresh'
+          ? null
+          : nextCursorRef.current;
+
+      const { posts: chunk, nextCursor } = await fetchHomeFeedPage({
+        limit: FEED_PAGE_SIZE,
+        cursor,
+      });
+
+      setPosts(prev => {
+        if (mode === 'initial' || mode === 'refresh') {
+          return chunk;
+        }
+        const seen = new Set(prev.map(p => p.id));
+        const merged = chunk.filter(p => !seen.has(p.id));
+        return [...prev, ...merged];
+      });
+
+      nextCursorRef.current = nextCursor;
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message || 'Could not load your feed.'
+          : typeof err === 'string'
+            ? err
+            : 'Could not load your feed.';
+      if (mode === 'initial' || mode === 'refresh') {
+        setFeedError(message);
+      }
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+      setLoadingInitial(false);
+    }
+  }, []);
+
+  appendFeedPageRef.current = appendFeedPage;
+
+  useEffect(() => {
+    loadingInitialRef.current = loadingInitial;
+  }, [loadingInitial]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const storiesPromise = (async () => {
+      setStoriesLoading(true);
+      try {
+        const loadedStories = await listFriendListenStories();
+        if (!cancelled) {
+          setStories(loadedStories);
+        }
+      } catch {
+        if (!cancelled) {
+          setStories([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setStoriesLoading(false);
+        }
+      }
+    })();
+
+    void Promise.all([storiesPromise, appendFeedPage('initial')]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appendFeedPage]);
+
+  const handleRefresh = useCallback(async () => {
+    playback.pauseAll();
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        (async () => {
+          try {
+            const loadedStories = await listFriendListenStories();
+            setStories(loadedStories);
+          } catch {
+            setStories([]);
+          }
+        })(),
+        appendFeedPage('refresh'),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [appendFeedPage, playback]);
+
+  const handleEndReached = useCallback(() => {
+    void appendFeedPage('end');
+  }, [appendFeedPage]);
+
+  const feedRows = useMemo((): FeedListItem[] => {
+    if (loadingInitial) {
+      return Array.from({ length: 4 }, (_, i) => ({
+        kind: 'skeleton' as const,
+        id: `sk-${i}`,
+      }));
+    }
+    return posts.map(post => ({ kind: 'post' as const, post }));
+  }, [loadingInitial, posts]);
+
+  const renderFeedItem = useCallback(
+    ({ item }: { item: FeedListItem }) => {
+      if (item.kind === 'skeleton') {
+        return <PostCardSkeleton />;
+      }
+      return <PostCard post={item.post} visible={visibleIds.has(item.post.id)} pauseWhenOffScreen={false} />;
+    },
+    [visibleIds],
+  );
+
+  const feedKeyExtractor = useCallback((item: FeedListItem) => {
+    return item.kind === 'post' ? item.post.id : item.id;
+  }, []);
+
+  const listHeader = useMemo(
+    () => (
+      <>
+        <View style={styles.topBar}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoMark}>
+              <Text style={styles.logoMarkText}>L</Text>
+            </View>
+            <Text style={styles.wordmark}>livil</Text>
+          </View>
+          <View style={styles.topBarActions}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.uploadButton}
+              onPress={() => navigation.navigate('Upload')}
+              accessibilityLabel="Upload music"
+            >
+              <Text style={styles.uploadButtonText}>+</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.avatar}
+              onPress={() => navigation.navigate('Profile')}
+              accessibilityLabel="Open profile"
+            >
+              {meProfile?.avatarUrl ? (
+                <Image source={{ uri: meProfile.avatarUrl }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{avatarInitials(meProfile)}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/*
+          TODO: Featured Today — curated editorial spotlight card once CMS + tooling exists.
+          Previous UI lived here as a purple gradient hero linking into a programmed playlist.
+
+        <Pressable style={styles.featured}>
+          ...
+        </Pressable>
+        */}
+
+        <FriendStoriesRow loading={storiesLoading} stories={stories} />
+
+        <View style={styles.feedHeadingBlock}>
+          <Text style={styles.feedHeading}>For you</Text>
+          <Text style={styles.feedSubheading}>
+            {loadingInitial
+              ? 'Loading your personalized mix…'
+              : "Mutual friends first, people you star next, then what's trending."}
+          </Text>
+        </View>
+
+        {feedError ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{feedError}</Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.retryButton}
+              onPress={() => void appendFeedPage('initial')}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </>
+    ),
+    [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage],
+  );
+
+  const footer = useMemo(() => {
+    if (!loadingMore || posts.length === 0 || loadingInitial) {
+      return <View style={styles.footerSpace} />;
+    }
+    return (
+      <View style={styles.footerSpinner}>
+        <ActivityIndicator color={COLORS.purpleLight} />
+      </View>
+    );
+  }, [loadingMore, posts.length, loadingInitial]);
+
+  const listContentStyle = useMemo(
+    () => [
+      styles.listContent,
+      !loadingInitial && feedRows.length === 0 ? styles.listContentFlex : null,
+    ],
+    [feedRows.length, loadingInitial],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <View style={styles.brandRow}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>L</Text>
-          </View>
-          <Text style={styles.wordmark}>livil</Text>
-        </View>
-        <View style={styles.topBarActions}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.uploadButton}
-            onPress={() => navigation.navigate('Upload')}
-            accessibilityLabel="Upload music"
-          >
-            <Text style={styles.uploadButtonText}>+</Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.8} style={styles.avatar}>
-            <Text style={styles.avatarText}>VK</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Featured banner */}
-        <Pressable style={styles.featured}>
-          <View style={styles.featuredGlow} />
-          <View style={styles.featuredContent}>
-            <Text style={styles.featuredTag}>{FEATURED.tag}</Text>
-            <Text style={styles.featuredTitle}>{FEATURED.title}</Text>
-            <Text style={styles.featuredSubtitle}>{FEATURED.subtitle}</Text>
-            <View style={styles.featuredCtaRow}>
-              <View style={styles.featuredCta}>
-                <Text style={styles.featuredCtaText}>{FEATURED.cta}</Text>
-                <Text style={styles.featuredCtaArrow}>→</Text>
-              </View>
+      <FlatList
+        data={feedRows}
+        keyExtractor={feedKeyExtractor}
+        renderItem={renderFeedItem}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={footer}
+        removeClippedSubviews={false}
+        ListEmptyComponent={
+          loadingInitial ? undefined : (
+            <View style={styles.emptyFeed}>
+              {feedError ? (
+                <>
+                  <Text style={styles.emptyFeedTitle}>Couldn't load the feed</Text>
+                  <Text style={styles.emptyFeedBody}>{feedError}</Text>
+                  <Text style={styles.emptyFeedHint}>Pull to refresh or tap Retry above.</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyFeedTitle}>No posts yet</Text>
+                  <Text style={styles.emptyFeedBody}>
+                    Follow friends or upload a track — new posts will appear here automatically.
+                  </Text>
+                </>
+              )}
             </View>
-          </View>
-          <View style={styles.featuredArtwork}>
-            <View style={[styles.featuredArtBlob, styles.featuredArtBlobA]} />
-            <View style={[styles.featuredArtBlob, styles.featuredArtBlobB]} />
-            <View style={[styles.featuredArtBlob, styles.featuredArtBlobC]} />
-          </View>
-        </Pressable>
-
-        {/* Recently Played */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recently Played</Text>
-          <TouchableOpacity activeOpacity={0.7}>
-            <Text style={styles.sectionLink}>See all</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.recentlyRow}
-        >
-          {RECENTLY_PLAYED.map(track => (
-            <Pressable key={track.id} style={styles.trackCard}>
-              <View
-                style={[
-                  styles.coverArt,
-                  { backgroundColor: track.coverColors[0] },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.coverArtAccent,
-                    { backgroundColor: track.coverColors[1] },
-                  ]}
-                />
-                <Text style={styles.coverArtInitial}>{track.initial}</Text>
-              </View>
-              <Text style={styles.trackTitle} numberOfLines={1}>
-                {track.title}
-              </Text>
-              <Text style={styles.trackArtist} numberOfLines={1}>
-                {track.artist}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        {/* Friends Activity */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Friends Activity</Text>
-          <TouchableOpacity activeOpacity={0.7}>
-            <Text style={styles.sectionLink}>See all</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.friendsList}>
-          {FRIENDS_ACTIVITY.map(friend => (
-            <Pressable key={friend.id} style={styles.friendCard}>
-              <View
-                style={[
-                  styles.friendAvatar,
-                  { backgroundColor: friend.avatarColor },
-                ]}
-              >
-                <Text style={styles.friendAvatarText}>{friend.initials}</Text>
-                <View style={styles.nowPlayingDot} />
-              </View>
-
-              <View style={styles.friendInfo}>
-                <View style={styles.friendNameRow}>
-                  <Text style={styles.friendName} numberOfLines={1}>
-                    {friend.displayName}
-                  </Text>
-                  <Text style={styles.friendTime}>{friend.timeAgo}</Text>
-                </View>
-                <Text style={styles.friendUsername}>{friend.username}</Text>
-                <View style={styles.nowPlayingRow}>
-                  <Text style={styles.nowPlayingIcon}>♪</Text>
-                  <Text style={styles.nowPlayingText} numberOfLines={1}>
-                    <Text style={styles.nowPlayingTrack}>{friend.track}</Text>
-                    <Text style={styles.nowPlayingDivider}> · </Text>
-                    {friend.artist}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.scrollSpacer} />
-      </ScrollView>
+          )
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.purpleLight}
+            colors={[COLORS.purple]}
+          />
+        }
+        onEndReached={() => {
+          if (!loadingInitial) {
+            handleEndReached();
+          }
+        }}
+        onEndReachedThreshold={0.35}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={handleViewableItemsChanged}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={listContentStyle}
+      />
     </SafeAreaView>
   );
 }
@@ -274,11 +590,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bg,
   },
-  scrollContent: {
-    paddingBottom: 24,
+  listContent: {
+    paddingBottom: 32,
+  },
+  listContentFlex: {
+    flexGrow: 1,
   },
 
-  // Top bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -350,6 +668,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     color: COLORS.purpleLight,
@@ -358,261 +681,216 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Featured banner
-  featured: {
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 28,
-    height: 180,
-    borderRadius: 22,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    flexDirection: 'row',
+  storiesSection: {
+    paddingBottom: 12,
   },
-  featuredGlow: {
-    position: 'absolute',
-    top: -60,
-    left: -40,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: COLORS.purpleGlow,
-    opacity: 0.7,
-  },
-  featuredContent: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'space-between',
-  },
-  featuredTag: {
-    color: COLORS.purpleLight,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  featuredTitle: {
+  storiesHeading: {
     color: COLORS.white,
-    fontSize: 24,
+    fontSize: 17,
     fontWeight: '800',
-    letterSpacing: -0.5,
-    marginTop: 6,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    letterSpacing: -0.2,
   },
-  featuredSubtitle: {
+  storiesEmpty: {
     color: COLORS.textSecondary,
     fontSize: 13,
     lineHeight: 18,
-    marginTop: 6,
-    paddingRight: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
-  featuredCtaRow: {
-    flexDirection: 'row',
-    marginTop: 10,
+  storiesRow: {
+    paddingHorizontal: 16,
+    gap: 14,
+    paddingBottom: 4,
   },
-  featuredCta: {
-    flexDirection: 'row',
+  storyCell: {
+    width: 76,
     alignItems: 'center',
     gap: 8,
+  },
+  storyRing: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    padding: 3,
+    borderWidth: 2,
+    borderColor: COLORS.purple,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  storyAvatar: {
+    flex: 1,
+    borderRadius: 34,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+  },
+  storyAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  storyAvatarText: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: 18,
+  },
+  storyUsername: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    maxWidth: 76,
+    textAlign: 'center',
+  },
+
+  storySkeletonRow: {
+    flexDirection: 'row',
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  storySkeletonBubbleOuter: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    padding: 3,
+    opacity: 0.55,
+  },
+  storySkeletonBubbleInner: {
+    flex: 1,
+    borderRadius: 34,
+    backgroundColor: COLORS.surface,
+  },
+
+  feedHeadingBlock: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 14,
+    gap: 6,
+  },
+  feedHeading: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  feedSubheading: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  errorBanner: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.errorBorder,
+    backgroundColor: COLORS.errorBg,
+  },
+  errorBannerText: {
+    color: COLORS.error,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  retryButton: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
     backgroundColor: COLORS.purple,
   },
-  featuredCtaText: {
+  retryButtonText: {
     color: COLORS.white,
     fontSize: 13,
-    fontWeight: '700',
-  },
-  featuredCtaArrow: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  featuredArtwork: {
-    width: 130,
-    height: '100%',
-  },
-  featuredArtBlob: {
-    position: 'absolute',
-    borderRadius: 999,
-  },
-  featuredArtBlobA: {
-    width: 110,
-    height: 110,
-    backgroundColor: '#7C3AED',
-    top: 30,
-    right: -30,
-    opacity: 0.85,
-  },
-  featuredArtBlobB: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#EC4899',
-    top: 80,
-    right: 40,
-    opacity: 0.7,
-  },
-  featuredArtBlobC: {
-    width: 60,
-    height: 60,
-    backgroundColor: '#22D3EE',
-    top: -10,
-    right: 20,
-    opacity: 0.6,
-  },
-
-  // Sections
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    color: COLORS.white,
-    fontSize: 20,
     fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  sectionLink: {
-    color: COLORS.purpleLight,
-    fontSize: 13,
-    fontWeight: '600',
   },
 
-  // Recently played
-  recentlyRow: {
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-    gap: 14,
-  },
-  trackCard: {
-    width: 144,
-  },
-  coverArt: {
-    width: 144,
-    height: 144,
-    borderRadius: 16,
-    overflow: 'hidden',
+  emptyFeed: {
+    paddingHorizontal: 28,
+    paddingVertical: 36,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  coverArtAccent: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    bottom: -40,
-    right: -40,
-    opacity: 0.65,
-  },
-  coverArtInitial: {
-    color: COLORS.white,
-    fontSize: 44,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  trackTitle: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  trackArtist: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-
-  // Friends activity
-  friendsList: {
-    paddingHorizontal: 20,
     gap: 10,
   },
-  friendCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  friendAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendAvatarText: {
+  emptyFeedTitle: {
     color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
   },
-  nowPlayingDot: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#22C55E',
-    borderWidth: 2,
-    borderColor: COLORS.surface,
-    bottom: -1,
-    right: -1,
-  },
-  friendInfo: {
-    flex: 1,
-  },
-  friendNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  friendName: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-    flex: 1,
-  },
-  friendTime: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginLeft: 8,
-  },
-  friendUsername: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 1,
-  },
-  nowPlayingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 6,
-  },
-  nowPlayingIcon: {
-    color: COLORS.purpleLight,
-    fontSize: 13,
-  },
-  nowPlayingText: {
-    flex: 1,
+  emptyFeedBody: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
-  nowPlayingTrack: {
-    color: COLORS.white,
-    fontWeight: '600',
-  },
-  nowPlayingDivider: {
+  emptyFeedHint: {
     color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: 12,
+    textAlign: 'center',
   },
 
-  scrollSpacer: {
-    height: 24,
+  footerSpace: {
+    height: 16,
+  },
+  footerSpinner: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+
+  skelCard: {
+    marginHorizontal: 16,
+    marginBottom: 18,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  skelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  skelAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.border,
+  },
+  skelHeaderText: {
+    flex: 1,
+    gap: 8,
+  },
+  skelLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.border,
+  },
+  skelMedia: {
+    height: 220,
+    borderRadius: 14,
+    backgroundColor: COLORS.border,
+  },
+  skelActions: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 14,
+  },
+  skelPill: {
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: COLORS.border,
   },
 });

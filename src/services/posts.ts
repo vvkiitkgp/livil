@@ -127,6 +127,147 @@ function toTrack(row: RawPostRow['track']): TrackMedia {
   };
 }
 
+type HydratePostsOptions = {
+  /** When provided, skips an extra `post_likes` round-trip for these ids. */
+  viewerLikedByPostId?: Map<string, boolean>;
+};
+
+/**
+ * Shared enrichment path for feed-shaped post rows (original author resolve +
+ * viewer liked state).
+ */
+async function hydrateRawPostRows(
+  rows: RawPostRow[],
+  options?: HydratePostsOptions,
+): Promise<FeedPost[]> {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const originalIds = Array.from(
+    new Set(rows.filter(r => r.kind === 'repost' && r.original_post_id).map(r => r.original_post_id!)),
+  );
+
+  let originalAuthorByPostId = new Map<string, AuthorRef>();
+  if (originalIds.length > 0) {
+    const { data: origs, error: origError } = await supabase
+      .from('posts')
+      .select(
+        `
+          id,
+          author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
+        `,
+      )
+      .in('id', originalIds);
+    if (origError) {
+      throw new Error(origError.message);
+    }
+    originalAuthorByPostId = new Map(
+      (origs ?? []).map((o: { id: string; author: RawPostRow['author'] }) => [o.id, toAuthor(o.author)]),
+    );
+  }
+
+  let likedSet = new Set<string>();
+  const forced = options?.viewerLikedByPostId;
+  if (!forced) {
+    const { data: viewerData } = await supabase.auth.getUser();
+    const viewerId = viewerData?.user?.id ?? null;
+    if (viewerId) {
+      const { data: likes } = await supabase
+        .from('post_likes')
+        .select('post_id')
+        .eq('user_id', viewerId)
+        .in('post_id', rows.map(r => r.id));
+      likedSet = new Set((likes ?? []).map(l => l.post_id));
+    }
+  }
+
+  return rows.map<FeedPost>(r => ({
+    id: r.id,
+    kind: r.kind,
+    caption: r.caption,
+    createdAt: r.created_at,
+    viewsCount: r.views_count,
+    likesCount: r.likes_count,
+    repostsCount: r.reposts_count,
+    commentsCount: r.comments_count,
+    author: toAuthor(r.author),
+    track: toTrack(r.track),
+    originalAuthor: r.original_post_id ? originalAuthorByPostId.get(r.original_post_id) ?? null : null,
+    originalPostId: r.original_post_id,
+    viewerHasLiked: forced ? Boolean(forced.get(r.id)) : likedSet.has(r.id),
+  }));
+}
+
+async function hydratePostsByIds(
+  orderedIds: string[],
+  viewerLikedByPostId: Map<string, boolean>,
+): Promise<FeedPost[]> {
+  if (orderedIds.length === 0) {
+    return [];
+  }
+  const { data, error } = await supabase.from('posts').select(POST_SELECT).in('id', orderedIds);
+  if (error) {
+    throw new Error(error.message);
+  }
+  const byId = new Map((data ?? []).map(r => [(r as RawPostRow).id, r as RawPostRow]));
+  const ordered = orderedIds.map(id => byId.get(id)).filter(Boolean) as RawPostRow[];
+  return hydrateRawPostRows(ordered, { viewerLikedByPostId });
+}
+
+export type HomeFeedCursor = {
+  bucket: number;
+  sortKey: number;
+  id: string;
+};
+
+type RpcHomeFeedRow = {
+  post_id: string;
+  feed_bucket: number;
+  sort_key: number;
+  viewer_has_liked: boolean;
+};
+
+/**
+ * Home ranking is computed in Postgres (`fetch_home_feed`): mutual friends →
+ * starred friends → global trending (time-decayed engagement). Pagination is
+ * keyset-based so feeds stay cheap at large scale.
+ */
+export async function fetchHomeFeedPage(options: {
+  limit?: number;
+  cursor?: HomeFeedCursor | null;
+}): Promise<{ posts: FeedPost[]; nextCursor: HomeFeedCursor | null }> {
+  const limit = options.limit ?? 12;
+  const c = options.cursor ?? null;
+
+  const { data, error } = await supabase.rpc('fetch_home_feed', {
+    p_limit: limit,
+    p_cursor_bucket: c?.bucket ?? null,
+    p_cursor_sort_key: c?.sortKey ?? null,
+    p_cursor_id: c?.id ?? null,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rpcRows = (data ?? []) as RpcHomeFeedRow[];
+  if (rpcRows.length === 0) {
+    return { posts: [], nextCursor: null };
+  }
+
+  const ids = rpcRows.map(r => r.post_id);
+  const liked = new Map(rpcRows.map(r => [r.post_id, r.viewer_has_liked]));
+  const posts = await hydratePostsByIds(ids, liked);
+
+  const last = rpcRows[rpcRows.length - 1]!;
+  const nextCursor: HomeFeedCursor | null =
+    rpcRows.length >= limit
+      ? { bucket: last.feed_bucket, sortKey: last.sort_key, id: last.post_id }
+      : null;
+
+  return { posts, nextCursor };
+}
+
 export type ListPostsOptions = {
   kind?: 'upload';
   before?: string; // ISO date for pagination cursor
@@ -163,60 +304,7 @@ export async function listPostsForUser(
   if (error) {throw new Error(error.message);}
 
   const rows = (data ?? []) as unknown as RawPostRow[];
-  if (rows.length === 0) {return [];}
-
-  // Resolve original-post authors for any reposts in this page. We do this in a
-  // single follow-up query rather than nesting the foreign relationship twice
-  // (which Supabase requires disambiguation for and is brittle).
-  const originalIds = Array.from(
-    new Set(rows.filter(r => r.kind === 'repost' && r.original_post_id).map(r => r.original_post_id!)),
-  );
-
-  let originalAuthorByPostId = new Map<string, AuthorRef>();
-  if (originalIds.length > 0) {
-    const { data: origs, error: origError } = await supabase
-      .from('posts')
-      .select(
-        `
-          id,
-          author:profiles!posts_author_id_fkey ( id, username, display_name, avatar_url )
-        `,
-      )
-      .in('id', originalIds);
-    if (origError) {throw new Error(origError.message);}
-    originalAuthorByPostId = new Map(
-      (origs ?? []).map((o: any) => [o.id as string, toAuthor(o.author)]),
-    );
-  }
-
-  // Resolve which of these posts the viewer has liked.
-  const { data: viewerData } = await supabase.auth.getUser();
-  const viewerId = viewerData?.user?.id ?? null;
-  let likedSet = new Set<string>();
-  if (viewerId) {
-    const { data: likes } = await supabase
-      .from('post_likes')
-      .select('post_id')
-      .eq('user_id', viewerId)
-      .in('post_id', rows.map(r => r.id));
-    likedSet = new Set((likes ?? []).map(l => l.post_id));
-  }
-
-  return rows.map<FeedPost>(r => ({
-    id: r.id,
-    kind: r.kind,
-    caption: r.caption,
-    createdAt: r.created_at,
-    viewsCount: r.views_count,
-    likesCount: r.likes_count,
-    repostsCount: r.reposts_count,
-    commentsCount: r.comments_count,
-    author: toAuthor(r.author),
-    track: toTrack(r.track),
-    originalAuthor: r.original_post_id ? originalAuthorByPostId.get(r.original_post_id) ?? null : null,
-    originalPostId: r.original_post_id,
-    viewerHasLiked: likedSet.has(r.id),
-  }));
+  return hydrateRawPostRows(rows);
 }
 
 export async function getProfileStats(userId: string): Promise<ProfileStats> {

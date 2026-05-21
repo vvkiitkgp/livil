@@ -1,0 +1,14 @@
+-- Optional demo seed for Home stories + ranked feed + library recent plays.
+-- Safe to re-run: uses fixed UUIDs + ON CONFLICT / upserts where supported.
+--
+-- Mock creators (password is unused in-app; accounts exist for realistic FKs):
+--   mock_maya@livil.demo   → baaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1
+--   mock_derik@livil.demo  → baaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2
+--   mock_sami@livil.demo   → baaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3
+--   mock_noor@livil.demo   → baaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4
+--
+-- Relationships wired for user `test1@livil.com`:
+--   Mutual friends: mock_maya, mock_derik
+--   Starred (friends bucket): mock_sami, mock_noor
+--
+-- Trending bucket demo post authored by `test2@livil.com` with high engagement counts.

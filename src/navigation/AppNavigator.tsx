@@ -113,7 +113,8 @@ export default function AppNavigator() {
         tabBarStyle: styles.tabBar,
         tabBarItemStyle: styles.tabItem,
         sceneStyle: { backgroundColor: COLORS.bg },
-        lazy: false,
+        // Default lazy=true: mounting Profile (many videos) while Home is visible
+        // starves Android audio focus — Home playback dies after ~1s.
       }}
     >
       <Tab.Screen

@@ -1,5 +1,5 @@
 import React from 'react';
-import {StatusBar, StyleSheet, Text} from 'react-native';
+import {StatusBar, StyleSheet} from 'react-native';
 import {NavigationContainer, DarkTheme} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
@@ -21,7 +21,6 @@ export default function App(): React.JSX.Element {
         <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" />
         <PlaybackProvider>
           <NavigationContainer theme={AppTheme}>
-            <Text>Hello</Text>
             <RootNavigator />
           </NavigationContainer>
         </PlaybackProvider>
