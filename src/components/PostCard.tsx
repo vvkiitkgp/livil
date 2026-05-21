@@ -76,6 +76,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [seekTo, setSeekTo] = useState<number | null>(null);
+  const [rate, setRate] = useState(1.0);
 
   // Engagement state (optimistic).
   const [liked, setLiked] = useState(post.viewerHasLiked);
@@ -91,6 +92,62 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
       setPaused(true);
     }
   }, [playback.activePostId, post.id]);
+
+  // Auto-start when the global queue navigation lands on this post.
+  useEffect(() => {
+    if (playback.pendingPlayId === post.id) {
+      setPaused(false);
+      playback.clearPendingPlay();
+    }
+  // clearPendingPlay is stable (useCallback []); safe to use instead of full playback object.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay]);
+
+  // Register / update handlers whenever paused state changes.
+  // Use stable method refs (not the full `playback` object) to prevent a render
+  // loop: calling setNowPlaying changes nowPlaying → changes playback → re-runs
+  // this effect → calls setNowPlaying again → ∞
+  useEffect(() => {
+    if (!paused) {
+      playback.setNowPlaying({
+        postId: post.id,
+        title: post.track.title,
+        artistName: post.author.displayName ?? post.author.username,
+        coverArtUrl: post.track.coverArtUrl,
+      });
+      playback.registerHandlers({
+        play: () => setPaused(false),
+        pause: () => setPaused(true),
+        seek: (s: number) => {
+          setSeekTo(s);
+          setTimeout(() => setSeekTo(null), 0);
+        },
+        setRate: (r: number) => setRate(r),
+      });
+    }
+    // Do not clear nowPlaying on pause — the mini-player stays visible.
+  // Primitive deps only; object deps (post.author) replaced with their primitive
+  // fields so a new post object reference alone does not re-trigger the effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    paused,
+    post.id,
+    post.track.title,
+    post.author.displayName,
+    post.author.username,
+    post.track.coverArtUrl,
+    playback.setNowPlaying,    // stable useCallback []
+    playback.registerHandlers, // stable useCallback []
+  ]);
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      playback.unregisterHandlers();
+      if (playback.isActive(post.id)) { playback.clearNowPlaying(); }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Record a view after the post has been visible for ~2s, once per session.
   useEffect(() => {
@@ -112,16 +169,20 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
 
   const handleProgress = useCallback((seconds: number) => {
     setPosition(seconds);
-  }, []);
+    playback.updatePosition(seconds);
+  }, [playback]);
 
   const handleLoaded = useCallback((seconds: number) => {
     setDuration(seconds);
-  }, []);
+    playback.updateDuration(seconds);
+  }, [playback]);
 
   const handleEnded = useCallback(() => {
     setPaused(true);
     setPosition(0);
     setSeekTo(0);
+    // Do NOT clear nowPlaying or unregister handlers here — the floating player
+    // should stay visible after the song ends so the user can replay or navigate.
   }, []);
 
   const handleSeekStart = useCallback(() => {
@@ -238,6 +299,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
             postId={post.id}
             media={media}
             paused={paused}
+            rate={rate}
             onTogglePaused={handleTogglePaused}
             onProgress={handleProgress}
             onLoaded={handleLoaded}
