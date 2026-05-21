@@ -218,6 +218,19 @@ export default function HomeScreen() {
   const postsRef = useRef<FeedPost[]>([]);
   postsRef.current = posts;
 
+  // Keep the playback queue in sync with the home feed.
+  useEffect(() => {
+    playback.setQueue(
+      posts.map(p => ({
+        postId: p.id,
+        title: p.track.title,
+        artistName: p.author.displayName ?? p.author.username,
+        coverArtUrl: p.track.coverArtUrl,
+      })),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, playback.setQueue]);
+
   const appendFeedPageRef = useRef<(mode: 'initial' | 'refresh' | 'prefetch' | 'end') => Promise<void>>(
     async () => {},
   );
@@ -261,7 +274,10 @@ export default function HomeScreen() {
       return () => {
         playback.pauseAll();
       };
-    }, [playback]),
+    // pauseAll is a stable useCallback(fn,[]) — only re-register when it changes,
+    // not every time nowPlaying or other context fields update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playback.pauseAll]),
   );
 
   useEffect(() => {

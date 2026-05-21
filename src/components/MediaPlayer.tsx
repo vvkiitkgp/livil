@@ -39,6 +39,8 @@ export type MediaPlayerProps = {
   /** Externally requested seek position in seconds; used after the user drags
    *  the SeekBar thumb. */
   seekTo?: number | null;
+  /** Playback rate. 1.0 = normal, 2.0 = 2x forward, negative = reverse (iOS only). */
+  rate?: number;
   /** Pause when scrolled off-screen — visibility is debounced inside MediaPlayer
    *  because FlatList viewability can flicker during playback / layout. */
   visible: boolean;
@@ -62,6 +64,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     postId,
     media,
     paused,
+    rate = 1.0,
     onTogglePaused,
     onProgress,
     onLoaded,
@@ -202,6 +205,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         ref={videoRef}
         source={source}
         paused={effectivePaused}
+        rate={effectivePaused ? 0 : rate}
         {...(Platform.OS === 'android'
           ? {
               // Paused/off-screen ExoPlayers still request audio focus by default;

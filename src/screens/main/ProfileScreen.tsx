@@ -78,6 +78,19 @@ export default function ProfileScreen() {
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
+  // Keep the playback queue in sync with the profile feed.
+  useEffect(() => {
+    playback.setQueue(
+      posts.map(p => ({
+        postId: p.id,
+        title: p.track.title,
+        artistName: p.author.displayName ?? p.author.username,
+        coverArtUrl: p.track.coverArtUrl,
+      })),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, playback.setQueue]);
+
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       const ids = new Set<string>();
@@ -96,7 +109,10 @@ export default function ProfileScreen() {
       return () => {
         playback.pauseAll();
       };
-    }, [playback]),
+    // pauseAll is a stable useCallback(fn,[]) — only re-register when it changes,
+    // not every time nowPlaying or other context fields update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playback.pauseAll]),
   );
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
