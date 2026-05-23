@@ -48,6 +48,7 @@ export default function FloatingPlayer() {
     handlersRef,
     playNext,
     playPrev,
+    openFullScreenPlayer,
   } = usePlayback();
 
   // ─── Animations ─────────────────────────────────────────────────────────────
@@ -111,14 +112,25 @@ export default function FloatingPlayer() {
 
   // ─── Gestures ────────────────────────────────────────────────────────────────
 
-  // Tap: Simultaneous (not Race) so it never times out the pan mid-hold.
-  const tapGesture = Gesture.Tap()
+  // Double-tap: opens full-screen player.
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .runOnJS(true)
+    .onEnd((_e, success) => {
+      if (success) { openFullScreenPlayer(); }
+    });
+
+  // Single-tap: toggle play / pause. Exclusive ensures double-tap wins when detected.
+  const singleTap = Gesture.Tap()
+    .numberOfTaps(1)
     .runOnJS(true)
     .onEnd((_e, success) => {
       if (!success) { return; }
       if (activePostId) { handlersRef.current?.pause(); }
       else { handlersRef.current?.play(); }
     });
+
+  const tapGesture = Gesture.Exclusive(doubleTap, singleTap);
 
   const panGesture = Gesture.Pan()
     .runOnJS(true)

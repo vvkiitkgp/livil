@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import FloatingPlayer from '../components/FloatingPlayer';
+import FullScreenPlayer from '../components/FullScreenPlayer';
 import HomeScreen from '../screens/main/HomeScreen';
 import SearchScreen from '../screens/main/SearchScreen';
 import LibraryScreen from '../screens/main/LibraryScreen';
@@ -140,6 +141,7 @@ export default function AppNavigator() {
         options={{ tabBarIcon: ProfileIcon }}
       />
     </Tab.Navigator>
+    <FullScreenPlayer />
     <FloatingPlayer />
     </View>
   );

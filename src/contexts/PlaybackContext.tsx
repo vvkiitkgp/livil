@@ -12,6 +12,8 @@ export type NowPlayingInfo = {
   title: string;
   artistName: string;
   coverArtUrl: string | null;
+  mediaKind: 'audio' | 'video';
+  videoUrl?: string;
 };
 
 type PlayerHandlers = {
@@ -51,6 +53,12 @@ type PlaybackContextValue = {
   playPrev: () => void;
   pendingPlayId: string | null;
   clearPendingPlay: () => void;
+  queueRef: React.MutableRefObject<NowPlayingInfo[]>;
+
+  // --- full-screen player ---
+  isFullScreenOpen: boolean;
+  openFullScreenPlayer: () => void;
+  closeFullScreenPlayer: () => void;
 };
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -61,6 +69,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
+  const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
@@ -155,6 +164,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setPendingPlayId(null);
   }, []);
 
+  const openFullScreenPlayer = useCallback(() => {
+    setIsFullScreenOpen(true);
+  }, []);
+
+  const closeFullScreenPlayer = useCallback(() => {
+    setIsFullScreenOpen(false);
+  }, []);
+
   const value = useMemo<PlaybackContextValue>(
     () => ({
       activePostId,
@@ -177,6 +194,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       playPrev,
       pendingPlayId,
       clearPendingPlay,
+      queueRef,
+      isFullScreenOpen,
+      openFullScreenPlayer,
+      closeFullScreenPlayer,
     }),
     [
       activePostId,
@@ -196,6 +217,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       playPrev,
       pendingPlayId,
       clearPendingPlay,
+      isFullScreenOpen,
+      openFullScreenPlayer,
+      closeFullScreenPlayer,
     ],
   );
 

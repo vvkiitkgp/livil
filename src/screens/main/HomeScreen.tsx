@@ -226,6 +226,8 @@ export default function HomeScreen() {
         title: p.track.title,
         artistName: p.author.displayName ?? p.author.username,
         coverArtUrl: p.track.coverArtUrl,
+        mediaKind: p.track.mediaKind,
+        videoUrl: p.track.videoUrl ?? undefined,
       })),
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps

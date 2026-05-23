@@ -114,6 +114,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         title: post.track.title,
         artistName: post.author.displayName ?? post.author.username,
         coverArtUrl: post.track.coverArtUrl,
+        mediaKind: post.track.mediaKind,
+        videoUrl: post.track.videoUrl ?? undefined,
       });
       playback.registerHandlers({
         play: () => setPaused(false),
@@ -136,6 +138,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     post.author.displayName,
     post.author.username,
     post.track.coverArtUrl,
+    post.track.mediaKind,
+    post.track.videoUrl,
     playback.setNowPlaying,    // stable useCallback []
     playback.registerHandlers, // stable useCallback []
   ]);
