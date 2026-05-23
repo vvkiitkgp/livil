@@ -229,6 +229,71 @@ export async function createTrack(
   }
 }
 
+// ─── Collaborator fetch ──────────────────────────────────────────────────────
+
+export type TrackCollaboratorInfo = {
+  /** null for custom (no-account) collaborators */
+  userId: string | null;
+  role: string;
+  /** Display name or custom name */
+  displayName: string | null;
+  username: string | null;
+  avatarUrl: string | null;
+};
+
+/**
+ * Returns all collaborators for a track (both linked-user and custom-name).
+ * Two-step query: first pull track_collaborators, then batch-fetch profiles
+ * for user-linked rows (avoids relying on an explicit FK embed).
+ */
+export async function fetchTrackCollaborators(
+  trackId: string,
+): Promise<TrackCollaboratorInfo[]> {
+  const { data: rows, error } = await supabase
+    .from('track_collaborators')
+    .select('user_id, custom_name, role')
+    .eq('track_id', trackId);
+
+  if (error || !rows || rows.length === 0) { return []; }
+
+  // Batch-fetch profiles for all user-linked collaborators.
+  const userIds = [...new Set(
+    rows.flatMap(r => (r.user_id ? [r.user_id as string] : [])),
+  )];
+
+  const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar_url')
+      .in('id', userIds);
+    for (const p of profiles ?? []) {
+      profileMap.set(p.id, p);
+    }
+  }
+
+  return rows.map(r => {
+    if (r.user_id) {
+      const p = profileMap.get(r.user_id as string);
+      return {
+        userId: r.user_id as string,
+        role: r.role as string,
+        displayName: p?.display_name ?? null,
+        username: p?.username ?? null,
+        avatarUrl: p?.avatar_url ?? null,
+      };
+    }
+    return {
+      userId: null,
+      role: r.role as string,
+      displayName: r.custom_name as string | null,
+      username: null,
+      avatarUrl: null,
+    };
+  });
+}
+
 export type ProfileSearchResult = {
   id: string;
   username: string;

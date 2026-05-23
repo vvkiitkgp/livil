@@ -83,11 +83,20 @@ export default function ProfileScreen() {
     playback.setQueue(
       posts.map(p => ({
         postId: p.id,
+        trackId: p.track.id,
         title: p.track.title,
         artistName: p.author.displayName ?? p.author.username,
+        authorId: p.author.id,
+        authorUsername: p.author.username,
+        authorAvatarUrl: p.author.avatarUrl,
         coverArtUrl: p.track.coverArtUrl,
         mediaKind: p.track.mediaKind,
         videoUrl: p.track.videoUrl ?? undefined,
+        likesCount: p.likesCount,
+        commentsCount: p.commentsCount,
+        repostsCount: p.repostsCount,
+        viewsCount: p.viewsCount,
+        viewerHasLiked: p.viewerHasLiked,
       })),
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps

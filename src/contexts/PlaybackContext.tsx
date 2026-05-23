@@ -11,11 +11,21 @@ export type RepeatMode = 'off' | 'all' | 'one';
 
 export type NowPlayingInfo = {
   postId: string;
+  trackId: string;
   title: string;
   artistName: string;
+  authorId: string;
+  authorUsername: string;
+  authorAvatarUrl: string | null;
   coverArtUrl: string | null;
   mediaKind: 'audio' | 'video';
   videoUrl?: string;
+  // Engagement snapshot at play-start time (not kept live to avoid re-renders)
+  likesCount: number;
+  commentsCount: number;
+  repostsCount: number;
+  viewsCount: number;
+  viewerHasLiked: boolean;
 };
 
 type PlayerHandlers = {

@@ -111,11 +111,21 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     if (!paused) {
       playback.setNowPlaying({
         postId: post.id,
+        trackId: post.track.id,
         title: post.track.title,
         artistName: post.author.displayName ?? post.author.username,
+        authorId: post.author.id,
+        authorUsername: post.author.username,
+        authorAvatarUrl: post.author.avatarUrl,
         coverArtUrl: post.track.coverArtUrl,
         mediaKind: post.track.mediaKind,
         videoUrl: post.track.videoUrl ?? undefined,
+        // Snapshot at play-start — not in deps to avoid resetting positionRef on like/unlike.
+        likesCount: post.likesCount,
+        commentsCount: post.commentsCount,
+        repostsCount: post.repostsCount,
+        viewsCount: post.viewsCount,
+        viewerHasLiked: post.viewerHasLiked,
       });
       playback.registerHandlers({
         play: () => setPaused(false),
@@ -137,9 +147,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     post.track.title,
     post.author.displayName,
     post.author.username,
+    post.track.id,
     post.track.coverArtUrl,
     post.track.mediaKind,
     post.track.videoUrl,
+    post.author.id,
+    post.author.avatarUrl,
     playback.setNowPlaying,    // stable useCallback []
     playback.registerHandlers, // stable useCallback []
   ]);
