@@ -528,9 +528,6 @@ export default function FullScreenPlayer() {
   const actionRowBottom = safeBottom + 8;
   const controlRowBottom = PLAYER_BOTTOM + (FLOAT_D - 44) / 2;
   const seekRowBottom = PLAYER_BOTTOM + FLOAT_D + 8;
-  // Compact stats row sits just below track info; its height (~40px) is absorbed by flex:1 media
-  const mainPaddingBottom = seekRowBottom + 64;
-
   const containerTranslateY = slideAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [SCREEN_H, 0],
@@ -569,11 +566,46 @@ export default function FullScreenPlayer() {
       style={[styles.container, { transform: [{ translateY: containerTranslateY }] }]}
       pointerEvents={isFullScreenOpen ? 'box-none' : 'none'}
     >
-      {/* ── Header + media + track info + compact stats ── */}
+      {/* ── Full-bleed media ── */}
+      <View style={StyleSheet.absoluteFillObject}>
+        {nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl ? (
+          <Video
+            ref={videoRef}
+            source={{ uri: nowPlaying.videoUrl }}
+            style={styles.video}
+            resizeMode="cover"
+            paused={fsPaused}
+            onLoad={handleVideoLoad}
+            onProgress={handleVideoProgress}
+            onEnd={() => setFsPaused(true)}
+            progressUpdateInterval={250}
+            playInBackground={false}
+            playWhenInactive={false}
+            ignoreSilentSwitch="ignore"
+            muted={false}
+            volume={1.0}
+            {...(Platform.OS === 'android' ? { disableFocus: fsPaused } : {})}
+          />
+        ) : nowPlaying.coverArtUrl ? (
+          <Image source={{ uri: nowPlaying.coverArtUrl }} style={styles.albumArt} resizeMode="cover" />
+        ) : (
+          <View style={styles.albumArtFallback}>
+            <View style={styles.fallbackBlobA} />
+            <View style={styles.fallbackBlobB} />
+          </View>
+        )}
+      </View>
+
+      {/* ── Dark scrims for text readability ── */}
+      <View style={styles.scrimTop} pointerEvents="none" />
+      <View style={styles.scrimBottom} pointerEvents="none" />
+
+      {/* ── Overlaid content + swipe-to-close ── */}
       <GestureDetector gesture={panGesture}>
-        <View style={[styles.mainContent, { paddingTop: safeTop, paddingBottom: mainPaddingBottom }]} pointerEvents="box-none">
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+
           {/* Header */}
-          <View style={[styles.header, { height: HEADER_H }]}>
+          <View style={[styles.header, { top: safeTop, height: HEADER_H }]}>
             <TouchableOpacity
               style={styles.closeBtn}
               onPress={closeFullScreenPlayer}
@@ -585,47 +617,18 @@ export default function FullScreenPlayer() {
             <View style={styles.headerSpacer} />
           </View>
 
-          {/* Media */}
-          <View style={styles.mediaArea}>
-            {nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl ? (
-              <Video
-                ref={videoRef}
-                source={{ uri: nowPlaying.videoUrl }}
-                style={styles.video}
-                resizeMode="contain"
-                paused={fsPaused}
-                onLoad={handleVideoLoad}
-                onProgress={handleVideoProgress}
-                onEnd={() => setFsPaused(true)}
-                progressUpdateInterval={250}
-                playInBackground={false}
-                playWhenInactive={false}
-                ignoreSilentSwitch="ignore"
-                muted={false}
-                volume={1.0}
-                {...(Platform.OS === 'android' ? { disableFocus: fsPaused } : {})}
-              />
-            ) : nowPlaying.coverArtUrl ? (
-              <Image source={{ uri: nowPlaying.coverArtUrl }} style={styles.albumArt} resizeMode="cover" />
-            ) : (
-              <View style={styles.albumArtFallback}>
-                <View style={styles.fallbackBlobA} />
-                <View style={styles.fallbackBlobB} />
-              </View>
-            )}
-          </View>
-
-          {/* Track info + inline credits */}
-          <View style={styles.trackInfoRow}>
+          {/* Credits widget — top-left, below header */}
+          <View style={[styles.creditsPos, { top: safeTop + HEADER_H }]}>
             <CreditsWidget nowPlaying={nowPlaying} />
-            <View style={styles.trackInfoText}>
-              <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
-              <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
-            </View>
           </View>
 
-          {/* Compact engagement stats (always-visible strip) */}
-          <CompactStats nowPlaying={nowPlaying} />
+          {/* Track title + artist + engagement stats — bottom overlay */}
+          <View style={[styles.bottomInfo, { bottom: seekRowBottom + 56 }]}>
+            <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
+            <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+            <CompactStats nowPlaying={nowPlaying} />
+          </View>
+
         </View>
       </GestureDetector>
 
@@ -780,7 +783,6 @@ const csSt = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingHorizontal: 24,
     paddingTop: 10,
     paddingBottom: 4,
   },
@@ -794,26 +796,11 @@ const csSt = StyleSheet.create({
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.bg },
-  mainContent: { flex: 1 },
+  container: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000' },
 
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  closeBtnText: { color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32 },
-  headerTitle: {
-    flex: 1, color: COLORS.textSecondary, fontSize: 13, fontWeight: '600',
-    letterSpacing: 0.3, textAlign: 'center',
-  },
-  headerSpacer: { width: 44 },
-
-  mediaArea: {
-    marginHorizontal: 24, marginTop: 10, flex: 1,
-    borderRadius: 20, overflow: 'hidden', backgroundColor: COLORS.card,
-    shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35, shadowRadius: 24, elevation: 12,
-  },
-  albumArt: { flex: 1, width: '100%' },
-  albumArtFallback: { flex: 1, backgroundColor: COLORS.card, overflow: 'hidden' },
+  // Full-bleed media fills entire container
+  albumArt: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  albumArtFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.card, overflow: 'hidden' },
   fallbackBlobA: {
     position: 'absolute', width: SCREEN_W * 0.8, height: SCREEN_W * 0.8,
     borderRadius: SCREEN_W * 0.4, backgroundColor: COLORS.purple, opacity: 0.4,
@@ -824,15 +811,48 @@ const styles = StyleSheet.create({
     borderRadius: SCREEN_W * 0.3, backgroundColor: '#EC4899', opacity: 0.3,
     bottom: -SCREEN_W * 0.15, right: -SCREEN_W * 0.1,
   },
-  video: { flex: 1, width: '100%', backgroundColor: '#000' },
+  video: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
 
-  trackInfoRow: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 2, gap: 12,
+  // Gradient scrims — dark top and bottom bands so text is readable over media
+  scrimTop: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 260,
+    backgroundColor: 'rgba(0,0,0,0.52)',
   },
-  trackInfoText: { flex: 1, minWidth: 0, paddingTop: 2 },
-  trackTitle: { color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  artistName: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '500', marginTop: 3 },
+  scrimBottom: {
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 340,
+    backgroundColor: 'rgba(0,0,0,0.60)',
+  },
+
+  // Header overlay — absolutely positioned at top
+  header: {
+    position: 'absolute', left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
+  },
+  closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  closeBtnText: {
+    color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
+  headerTitle: {
+    flex: 1, color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600',
+    letterSpacing: 0.3, textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
+  headerSpacer: { width: 44 },
+
+  // Credits column — top-left below header
+  creditsPos: { position: 'absolute', left: 20, paddingTop: 8 },
+
+  // Bottom overlay — track title + artist + stats
+  bottomInfo: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24 },
+  trackTitle: {
+    color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5,
+    textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+  },
+  artistName: {
+    color: 'rgba(255,255,255,0.75)', fontSize: 15, fontWeight: '500', marginTop: 3,
+    textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+  },
 
   seekRow: { position: 'absolute', left: 0, right: 0 },
 
