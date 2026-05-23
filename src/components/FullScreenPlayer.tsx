@@ -165,6 +165,63 @@ const iconSt = StyleSheet.create({
   repeatDot: { bottom: 5 },
 });
 
+/**
+ * Left-side credits column shown on the main player view.
+ * Big author avatar at top, then one row per collaborator role.
+ */
+function CreditsWidget({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
+  const [groups, setGroups] = useState<{ role: string; members: TrackCollaboratorInfo[] }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchTrackCollaborators(nowPlaying.trackId)
+      .then(data => {
+        if (cancelled) { return; }
+        const map = new Map<string, TrackCollaboratorInfo[]>();
+        for (const c of data) {
+          if (!map.has(c.role)) { map.set(c.role, []); }
+          map.get(c.role)!.push(c);
+        }
+        setGroups([...map.entries()].map(([role, members]) => ({ role, members })));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [nowPlaying.trackId]);
+
+  return (
+    <View style={cwSt.col}>
+      {/* Author — bigger circle */}
+      <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
+
+      {/* One row per role */}
+      {groups.map(g => (
+        <View key={g.role} style={cwSt.roleRow}>
+          <Text style={cwSt.emoji}>{roleEmoji(g.role)}</Text>
+          <View style={cwSt.avRow}>
+            {g.members.slice(0, 3).map((m, i) => (
+              <View key={m.userId ?? `c${i}`} style={i > 0 ? cwSt.overlap : undefined}>
+                <CollabAvatar
+                  uri={m.avatarUrl}
+                  name={m.displayName ?? m.username ?? '?'}
+                  size={28}
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const cwSt = StyleSheet.create({
+  col: { width: 88, gap: 10, paddingTop: 2, alignItems: 'flex-start' },
+  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  emoji: { fontSize: 16, width: 22, textAlign: 'center' },
+  avRow: { flexDirection: 'row', alignItems: 'center' },
+  overlap: { marginLeft: -8 },
+});
+
 /** Small avatar circle used in collaborator rows. */
 function CollabAvatar({ uri, name, size = 36 }: { uri: string | null; name: string; size?: number }) {
   return (
@@ -558,10 +615,13 @@ export default function FullScreenPlayer() {
             )}
           </View>
 
-          {/* Track info */}
-          <View style={styles.trackInfo}>
-            <Text style={styles.trackTitle} numberOfLines={1}>{nowPlaying.title}</Text>
-            <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+          {/* Track info + inline credits */}
+          <View style={styles.trackInfoRow}>
+            <CreditsWidget nowPlaying={nowPlaying} />
+            <View style={styles.trackInfoText}>
+              <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
+              <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+            </View>
           </View>
 
           {/* Compact engagement stats (always-visible strip) */}
@@ -766,7 +826,11 @@ const styles = StyleSheet.create({
   },
   video: { flex: 1, width: '100%', backgroundColor: '#000' },
 
-  trackInfo: { paddingHorizontal: 28, paddingTop: 12, paddingBottom: 2 },
+  trackInfoRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 2, gap: 12,
+  },
+  trackInfoText: { flex: 1, minWidth: 0, paddingTop: 2 },
   trackTitle: { color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   artistName: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '500', marginTop: 3 },
 
