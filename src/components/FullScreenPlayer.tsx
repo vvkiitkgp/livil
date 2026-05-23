@@ -15,18 +15,196 @@ import {
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
+import SeekBar from './SeekBar';
+import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/PlaybackContext';
 import { COLORS } from '../theme/colors';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// Mirrors the FloatingPlayer's tab bar heights so action buttons land below it.
 const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
 const PLAYER_BOTTOM = Math.max(SCREEN_H * 0.1, TAB_BAR_H + 10);
-const FLOAT_D = 60; // FloatingPlayer circle diameter
+const FLOAT_D = 60;
 
 type TabId = 'lyrics' | 'queue' | 'info';
 
+// ─── Seek progress sub-component (polls at 4 Hz to avoid re-rendering the whole player) ──
+function FullScreenSeekBar() {
+  const { positionRef, durationRef, handlersRef } = usePlayback();
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPosition(positionRef.current);
+      setDuration(durationRef.current);
+    }, 250);
+    return () => clearInterval(id);
+  }, [positionRef, durationRef]);
+
+  const handleSeekEnd = useCallback(
+    (seconds: number) => {
+      handlersRef.current?.seek(seconds);
+    },
+    [handlersRef],
+  );
+
+  return (
+    <View style={seekStyles.wrap}>
+      <View style={seekStyles.timeRow}>
+        <Text style={seekStyles.time}>{formatTime(position)}</Text>
+        <Text style={seekStyles.time}>{formatTime(duration)}</Text>
+      </View>
+      <SeekBar
+        position={position}
+        duration={duration}
+        onSeekEnd={handleSeekEnd}
+      />
+    </View>
+  );
+}
+
+const seekStyles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: 24,
+    paddingBottom: 4,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  time: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
+});
+
+// ─── Shuffle icon ─────────────────────────────────────────────────────────────
+function ShuffleIcon({ active }: { active: boolean }) {
+  const color = active ? COLORS.purpleLight : COLORS.textMuted;
+  return (
+    <View style={iconStyles.wrap}>
+      <View style={[iconStyles.arrowLine, { backgroundColor: color }]} />
+      <View style={[iconStyles.arrowLine, { backgroundColor: color, marginTop: 6 }]} />
+      <View style={[iconStyles.arrowHeadRight, { borderLeftColor: color, top: -2 }]} />
+      <View style={[iconStyles.arrowHeadLeft, { borderRightColor: color, bottom: -2 }]} />
+      {/* crossing line */}
+      <View style={[iconStyles.crossLine, { backgroundColor: color }]} />
+      {active && <View style={iconStyles.activeDot} />}
+    </View>
+  );
+}
+
+// ─── Repeat icon ─────────────────────────────────────────────────────────────
+function RepeatIcon({ mode }: { mode: RepeatMode }) {
+  const active = mode !== 'off';
+  const color = active ? COLORS.purpleLight : COLORS.textMuted;
+  return (
+    <View style={iconStyles.repeatWrap}>
+      <Text style={[iconStyles.repeatGlyph, { color }]}>↻</Text>
+      {mode === 'one' && (
+        <View style={iconStyles.oneBadge}>
+          <Text style={iconStyles.oneBadgeText}>1</Text>
+        </View>
+      )}
+      {active && <View style={[iconStyles.activeDot, iconStyles.repeatDot]} />}
+    </View>
+  );
+}
+
+const iconStyles = StyleSheet.create({
+  wrap: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  arrowLine: {
+    width: 18,
+    height: 2,
+    borderRadius: 1,
+  },
+  arrowHeadRight: {
+    position: 'absolute',
+    right: 8,
+    width: 0,
+    height: 0,
+    borderTopWidth: 4,
+    borderBottomWidth: 4,
+    borderLeftWidth: 6,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  arrowHeadLeft: {
+    position: 'absolute',
+    left: 8,
+    width: 0,
+    height: 0,
+    borderTopWidth: 4,
+    borderBottomWidth: 4,
+    borderRightWidth: 6,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  crossLine: {
+    position: 'absolute',
+    width: 20,
+    height: 2,
+    borderRadius: 1,
+    transform: [{ rotate: '-35deg' }],
+  },
+  activeDot: {
+    position: 'absolute',
+    bottom: 6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.purple,
+  },
+  repeatWrap: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repeatGlyph: {
+    fontSize: 22,
+    fontWeight: '300',
+  },
+  oneBadge: {
+    position: 'absolute',
+    top: 7,
+    right: 6,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oneBadgeText: {
+    color: COLORS.white,
+    fontSize: 8,
+    fontWeight: '800',
+    lineHeight: 10,
+  },
+  repeatDot: {
+    bottom: 5,
+  },
+});
+
+// ─── Time formatter ──────────────────────────────────────────────────────────
+function formatTime(s: number): string {
+  if (!Number.isFinite(s) || s < 0) { return '0:00'; }
+  const total = Math.floor(s);
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
 export default function FullScreenPlayer() {
   const {
     nowPlaying,
@@ -38,24 +216,25 @@ export default function FullScreenPlayer() {
     unregisterHandlers,
     updatePosition,
     updateDuration,
-    activePostId,
     queueRef,
+    shuffleEnabled,
+    toggleShuffle,
+    repeatMode,
+    cycleRepeatMode,
   } = usePlayback();
 
   const insets = useSafeAreaInsets();
 
-  // ─── Animation values ───────────────────────────────────────────────────────
   const slideAnim = useRef(new Animated.Value(0)).current;
   const panelAnim = useRef(new Animated.Value(0)).current;
 
-  // ─── Local state ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [fsPaused, setFsPaused] = useState(true);
   const [queueSnapshot, setQueueSnapshot] = useState<NowPlayingInfo[]>([]);
   const videoRef = useRef<VideoRef>(null);
   const initialSeekDone = useRef(false);
 
-  // ─── Open / close animation driven by context ────────────────────────────
+  // ─── Open / close slide animation ───────────────────────────────────────
   useEffect(() => {
     if (isFullScreenOpen) {
       Animated.spring(slideAnim, {
@@ -70,19 +249,16 @@ export default function FullScreenPlayer() {
         duration: 280,
         useNativeDriver: true,
       }).start();
-      // Reset panel state when closing
       panelAnim.setValue(0);
       setActiveTab(null);
     }
   }, [isFullScreenOpen, slideAnim, panelAnim]);
 
-  // ─── Video handoff when opening / closing for video tracks ──────────────
+  // ─── Video handoff for video tracks ─────────────────────────────────────
   useEffect(() => {
     if (!nowPlaying || nowPlaying.mediaKind !== 'video') { return; }
-
     if (isFullScreenOpen) {
       initialSeekDone.current = false;
-      // Pause the PostCard's player before taking over
       handlersRef.current?.pause();
       setFsPaused(false);
       registerHandlers({
@@ -101,14 +277,15 @@ export default function FullScreenPlayer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullScreenOpen]);
 
-  // ─── Snapshot the queue when opening (FlatList needs stable array) ───────
+  // ─── Snapshot queue (current + upcoming only) when opening ──────────────
   useEffect(() => {
-    if (isFullScreenOpen) {
-      setQueueSnapshot([...queueRef.current]);
-    }
-  }, [isFullScreenOpen, queueRef]);
+    if (!isFullScreenOpen) { return; }
+    const all = queueRef.current;
+    const currentIdx = all.findIndex(q => q.postId === nowPlaying?.postId);
+    setQueueSnapshot(currentIdx >= 0 ? all.slice(currentIdx) : all);
+  }, [isFullScreenOpen, queueRef, nowPlaying?.postId]);
 
-  // ─── Tab panel helpers ───────────────────────────────────────────────────
+  // ─── Panel helpers ────────────────────────────────────────────────────────
   const openTab = useCallback(
     (tab: TabId) => {
       setActiveTab(tab);
@@ -132,16 +309,12 @@ export default function FullScreenPlayer() {
 
   const handleTabPress = useCallback(
     (tab: TabId) => {
-      if (activeTab === tab) {
-        closePanel();
-      } else {
-        openTab(tab);
-      }
+      if (activeTab === tab) { closePanel(); } else { openTab(tab); }
     },
     [activeTab, openTab, closePanel],
   );
 
-  // ─── Swipe-down-to-close gesture ────────────────────────────────────────
+  // ─── Swipe-down-to-close ─────────────────────────────────────────────────
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetY([8, Infinity])
@@ -151,7 +324,7 @@ export default function FullScreenPlayer() {
       }
     });
 
-  // ─── Video callbacks ─────────────────────────────────────────────────────
+  // ─── Video callbacks ──────────────────────────────────────────────────────
   const handleVideoLoad = useCallback(
     (data: OnLoadData) => {
       updateDuration(data.duration ?? 0);
@@ -165,23 +338,26 @@ export default function FullScreenPlayer() {
   );
 
   const handleVideoProgress = useCallback(
-    (data: OnProgressData) => {
-      updatePosition(data.currentTime ?? 0);
-    },
+    (data: OnProgressData) => { updatePosition(data.currentTime ?? 0); },
     [updatePosition],
   );
 
-  // ─── Derived layout values ───────────────────────────────────────────────
+  // ─── Layout constants ─────────────────────────────────────────────────────
   const safeTop = insets.top;
   const safeBottom = insets.bottom;
   const HEADER_H = 52;
-  // Panel slides from SCREEN_H to 0 (top = safeTop + HEADER_H)
   const panelTop = safeTop + HEADER_H;
   const panelHeight = SCREEN_H - panelTop;
-  // Scroll content inside panel must avoid the floating player and action buttons
-  const panelScrollPaddingBottom = PLAYER_BOTTOM + FLOAT_D + 24 + 44 + safeBottom + 16;
-  // Action buttons sit between the screen edge and the floating player
-  const actionButtonsBottom = safeBottom + 8;
+  // Scroll content padding: needs room for FloatingPlayer + action buttons above it
+  const panelScrollPad = PLAYER_BOTTOM + FLOAT_D + 24 + 44 + safeBottom + 16;
+  // Action buttons sit between screen edge and floating player
+  const actionRowBottom = safeBottom + 8;
+  // Shuffle/repeat icons align vertically with FloatingPlayer (centered at PLAYER_BOTTOM + FLOAT_D/2)
+  const controlRowBottom = PLAYER_BOTTOM + (FLOAT_D - 44) / 2;
+  // Seek bar (with time labels) sits just above FloatingPlayer
+  const seekRowBottom = PLAYER_BOTTOM + FLOAT_D + 8;
+  // Main column stops above the seek bar
+  const mainPaddingBottom = seekRowBottom + 64;
 
   const containerTranslateY = slideAnim.interpolate({
     inputRange: [0, 1],
@@ -195,13 +371,11 @@ export default function FullScreenPlayer() {
 
   if (!nowPlaying) { return null; }
 
-  const queue = queueSnapshot;
-
-  // ─── Render queue item ───────────────────────────────────────────────────
+  // ─── Queue item renderer ──────────────────────────────────────────────────
   const renderQueueItem = ({ item }: ListRenderItemInfo<NowPlayingInfo>) => {
-    const isActive = item.postId === nowPlaying.postId;
+    const isCurrent = item.postId === nowPlaying.postId;
     return (
-      <View style={[styles.queueItem, isActive && styles.queueItemActive]}>
+      <View style={[styles.queueItem, isCurrent && styles.queueItemActive]}>
         {item.coverArtUrl ? (
           <Image source={{ uri: item.coverArtUrl }} style={styles.queueCover} />
         ) : (
@@ -209,7 +383,7 @@ export default function FullScreenPlayer() {
         )}
         <View style={styles.queueItemMeta}>
           <Text
-            style={[styles.queueItemTitle, isActive && styles.queueItemTitleActive]}
+            style={[styles.queueItemTitle, isCurrent && styles.queueItemTitleActive]}
             numberOfLines={1}
           >
             {item.title}
@@ -218,7 +392,7 @@ export default function FullScreenPlayer() {
             {item.artistName}
           </Text>
         </View>
-        {isActive && <View style={styles.queueActiveDot} />}
+        {isCurrent && <View style={styles.queueActiveDot} />}
       </View>
     );
   };
@@ -228,10 +402,12 @@ export default function FullScreenPlayer() {
       style={[styles.container, { transform: [{ translateY: containerTranslateY }] }]}
       pointerEvents={isFullScreenOpen ? 'box-none' : 'none'}
     >
-      {/* ── Main content: header + media + track info ── */}
+      {/* ── Header + media + track info ── */}
       <GestureDetector gesture={panGesture}>
-        <View style={[styles.mainContent, { paddingTop: safeTop }]} pointerEvents="box-none">
-          {/* Header */}
+        <View
+          style={[styles.mainContent, { paddingTop: safeTop, paddingBottom: mainPaddingBottom }]}
+          pointerEvents="box-none"
+        >
           <View style={[styles.header, { height: HEADER_H }]}>
             <TouchableOpacity
               style={styles.closeBtn}
@@ -246,7 +422,6 @@ export default function FullScreenPlayer() {
             <View style={styles.headerSpacer} />
           </View>
 
-          {/* Media */}
           <View style={styles.mediaArea}>
             {nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl ? (
               <Video
@@ -280,19 +455,47 @@ export default function FullScreenPlayer() {
             )}
           </View>
 
-          {/* Track info */}
           <View style={styles.trackInfo}>
-            <Text style={styles.trackTitle} numberOfLines={1}>
-              {nowPlaying.title}
-            </Text>
-            <Text style={styles.artistName} numberOfLines={1}>
-              {nowPlaying.artistName}
-            </Text>
+            <Text style={styles.trackTitle} numberOfLines={1}>{nowPlaying.title}</Text>
+            <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
           </View>
         </View>
       </GestureDetector>
 
-      {/* ── Content panel (slides up over album art when a tab is tapped) ── */}
+      {/* ── Seek bar + time labels (above FloatingPlayer) ── */}
+      <View
+        style={[styles.seekRow, { bottom: seekRowBottom }]}
+        pointerEvents="box-none"
+      >
+        <FullScreenSeekBar />
+      </View>
+
+      {/* ── Shuffle icon (left of FloatingPlayer) and Repeat icon (right) ── */}
+      <View
+        style={[styles.controlsRow, { bottom: controlRowBottom }]}
+        pointerEvents="box-none"
+      >
+        <TouchableOpacity
+          style={styles.controlBtn}
+          onPress={toggleShuffle}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ShuffleIcon active={shuffleEnabled} />
+        </TouchableOpacity>
+        {/* Center space is where FloatingPlayer floats */}
+        <View style={styles.controlCenter} />
+        <TouchableOpacity
+          style={styles.controlBtn}
+          onPress={cycleRepeatMode}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <RepeatIcon mode={repeatMode} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Content panel (slides up over album art) ── */}
       <Animated.View
         style={[
           styles.contentPanel,
@@ -300,12 +503,10 @@ export default function FullScreenPlayer() {
         ]}
         pointerEvents={activeTab ? 'box-none' : 'none'}
       >
-        {/* Drag handle — tap to close panel */}
         <TouchableOpacity style={styles.panelHandleArea} onPress={closePanel}>
           <View style={styles.panelHandleBar} />
         </TouchableOpacity>
 
-        {/* In-panel tab selector */}
         <View style={styles.panelTabs}>
           {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
             <TouchableOpacity
@@ -313,20 +514,17 @@ export default function FullScreenPlayer() {
               style={[styles.panelTab, activeTab === tab && styles.panelTabActive]}
               onPress={() => setActiveTab(tab)}
             >
-              <Text
-                style={[styles.panelTabText, activeTab === tab && styles.panelTabTextActive]}
-              >
+              <Text style={[styles.panelTabText, activeTab === tab && styles.panelTabTextActive]}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Tab content */}
         {activeTab === 'lyrics' && (
           <ScrollView
             style={styles.panelScroll}
-            contentContainerStyle={{ paddingBottom: panelScrollPaddingBottom }}
+            contentContainerStyle={{ paddingBottom: panelScrollPad }}
             showsVerticalScrollIndicator={false}
           >
             <Text style={styles.placeholderText}>Lyrics coming soon</Text>
@@ -334,35 +532,31 @@ export default function FullScreenPlayer() {
         )}
         {activeTab === 'queue' && (
           <FlatList
-            data={queue}
+            data={queueSnapshot}
             keyExtractor={(item) => item.postId}
             renderItem={renderQueueItem}
             style={styles.panelScroll}
-            contentContainerStyle={{ paddingBottom: panelScrollPaddingBottom }}
+            contentContainerStyle={{ paddingBottom: panelScrollPad }}
             showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <Text style={styles.placeholderText}>Queue is empty</Text>
-            }
+            ListEmptyComponent={<Text style={styles.placeholderText}>Queue is empty</Text>}
           />
         )}
         {activeTab === 'info' && (
           <ScrollView
             style={styles.panelScroll}
-            contentContainerStyle={{ paddingBottom: panelScrollPaddingBottom }}
+            contentContainerStyle={{ paddingBottom: panelScrollPad }}
             showsVerticalScrollIndicator={false}
           >
             <Text style={styles.infoTitle}>{nowPlaying.title}</Text>
             <Text style={styles.infoArtist}>{nowPlaying.artistName}</Text>
-            <Text style={styles.placeholderText}>
-              Track information coming soon.
-            </Text>
+            <Text style={styles.placeholderText}>Track information coming soon.</Text>
           </ScrollView>
         )}
       </Animated.View>
 
-      {/* ── Action buttons — always visible at the bottom ── */}
+      {/* ── Action buttons ── */}
       <View
-        style={[styles.actionRow, { bottom: actionButtonsBottom }]}
+        style={[styles.actionRow, { bottom: actionRowBottom }]}
         pointerEvents="box-none"
       >
         {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
@@ -387,12 +581,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: COLORS.bg,
   },
-
-  // ── Main content ──────────────────────────────────────────────────────────
   mainContent: {
     flex: 1,
   },
 
+  // ── Header ──
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,10 +611,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textAlign: 'center',
   },
-  headerSpacer: {
-    width: 44,
-  },
+  headerSpacer: { width: 44 },
 
+  // ── Media ──
   mediaArea: {
     marginHorizontal: 24,
     marginTop: 12,
@@ -429,17 +621,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: COLORS.card,
-    // Purple glow
     shadowColor: COLORS.purple,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 24,
     elevation: 12,
   },
-  albumArt: {
-    flex: 1,
-    width: '100%',
-  },
+  albumArt: { flex: 1, width: '100%' },
   albumArtFallback: {
     flex: 1,
     backgroundColor: COLORS.card,
@@ -465,16 +653,13 @@ const styles = StyleSheet.create({
     bottom: -SCREEN_W * 0.15,
     right: -SCREEN_W * 0.1,
   },
-  video: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: '#000',
-  },
+  video: { flex: 1, width: '100%', backgroundColor: '#000' },
 
+  // ── Track info ──
   trackInfo: {
     paddingHorizontal: 28,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
   trackTitle: {
     color: COLORS.white,
@@ -489,7 +674,32 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ── Content panel ─────────────────────────────────────────────────────────
+  // ── Seek row ──
+  seekRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+
+  // ── Controls row (shuffle + center + repeat) ──
+  controlsRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  controlBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Center area = 50% of screen width (same as FloatingPlayer container)
+  controlCenter: { flex: 1 },
+
+  // ── Content panel ──
   contentPanel: {
     position: 'absolute',
     left: 0,
@@ -501,10 +711,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: COLORS.border,
   },
-  panelHandleArea: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
+  panelHandleArea: { alignItems: 'center', paddingVertical: 12 },
   panelHandleBar: {
     width: 40,
     height: 4,
@@ -524,42 +731,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  panelTabActive: {
-    borderBottomColor: COLORS.purple,
-  },
-  panelTabText: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  panelTabTextActive: {
-    color: COLORS.purpleLight,
-  },
-  panelScroll: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-  },
+  panelTabActive: { borderBottomColor: COLORS.purple },
+  panelTabText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+  panelTabTextActive: { color: COLORS.purpleLight },
+  panelScroll: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
 
-  // ── Panel content ─────────────────────────────────────────────────────────
-  placeholderText: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    lineHeight: 22,
-  },
-
-  infoTitle: {
-    color: COLORS.white,
-    fontSize: 20,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  infoArtist: {
-    color: COLORS.purpleLight,
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
+  // ── Panel content ──
+  placeholderText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 22 },
+  infoTitle: { color: COLORS.white, fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  infoArtist: { color: COLORS.purpleLight, fontSize: 15, fontWeight: '600', marginBottom: 16 },
 
   queueItem: {
     flexDirection: 'row',
@@ -569,35 +749,13 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 10,
   },
-  queueItemActive: {
-    backgroundColor: COLORS.purpleDim,
-  },
-  queueCover: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: COLORS.card,
-  },
-  queueCoverFallback: {
-    backgroundColor: COLORS.purpleDim,
-  },
-  queueItemMeta: {
-    flex: 1,
-    minWidth: 0,
-  },
-  queueItemTitle: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  queueItemTitleActive: {
-    color: COLORS.purpleLight,
-  },
-  queueItemArtist: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
+  queueItemActive: { backgroundColor: COLORS.purpleDim },
+  queueCover: { width: 44, height: 44, borderRadius: 8, backgroundColor: COLORS.card },
+  queueCoverFallback: { backgroundColor: COLORS.purpleDim },
+  queueItemMeta: { flex: 1, minWidth: 0 },
+  queueItemTitle: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
+  queueItemTitleActive: { color: COLORS.purpleLight },
+  queueItemArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
   queueActiveDot: {
     width: 8,
     height: 8,
@@ -605,7 +763,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purple,
   },
 
-  // ── Action buttons ────────────────────────────────────────────────────────
+  // ── Action buttons ──
   actionRow: {
     position: 'absolute',
     left: 0,
@@ -635,13 +793,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  actionBtnText: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  actionBtnTextActive: {
-    color: COLORS.purpleLight,
-  },
+  actionBtnText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', letterSpacing: 0.3 },
+  actionBtnTextActive: { color: COLORS.purpleLight },
 });

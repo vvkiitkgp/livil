@@ -7,6 +7,8 @@ import React, {
   useState,
 } from 'react';
 
+export type RepeatMode = 'off' | 'all' | 'one';
+
 export type NowPlayingInfo = {
   postId: string;
   title: string;
@@ -59,6 +61,12 @@ type PlaybackContextValue = {
   isFullScreenOpen: boolean;
   openFullScreenPlayer: () => void;
   closeFullScreenPlayer: () => void;
+
+  // --- shuffle / repeat ---
+  shuffleEnabled: boolean;
+  toggleShuffle: () => void;
+  repeatMode: RepeatMode;
+  cycleRepeatMode: () => void;
 };
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -70,11 +78,16 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+  const [shuffleEnabled, setShuffleEnabled] = useState(false);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
   const handlersRef = useRef<PlayerHandlers | null>(null);
   const queueRef = useRef<NowPlayingInfo[]>([]);
+  // Refs so playNext/playPrev stay stable (useCallback []) while still reading latest values.
+  const shuffleRef = useRef(false);
+  const repeatModeRef = useRef<RepeatMode>('off');
 
   // --- existing ---
 
@@ -139,11 +152,22 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const playNext = useCallback(() => {
     const queue = queueRef.current;
-    const nowId = activeRef.current ?? (handlersRef.current ? null : null);
+    const nowId = activeRef.current;
     const idx = queue.findIndex(p => p.postId === nowId);
-    const next = queue[idx + 1];
+
+    let next: NowPlayingInfo | undefined;
+    if (shuffleRef.current) {
+      const remaining = queue.filter((_, i) => i !== idx);
+      if (remaining.length > 0) {
+        next = remaining[Math.floor(Math.random() * remaining.length)];
+      }
+    } else {
+      next = queue[idx + 1];
+      if (!next && repeatModeRef.current === 'all') {
+        next = queue[0];
+      }
+    }
     if (!next) { return; }
-    // Request the next post to play; its PostCard will auto-start via pendingPlayId.
     activeRef.current = next.postId;
     setActivePostId(next.postId);
     setPendingPlayId(next.postId);
@@ -172,6 +196,21 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setIsFullScreenOpen(false);
   }, []);
 
+  const toggleShuffle = useCallback(() => {
+    setShuffleEnabled(v => {
+      shuffleRef.current = !v;
+      return !v;
+    });
+  }, []);
+
+  const cycleRepeatMode = useCallback(() => {
+    setRepeatMode(prev => {
+      const next: RepeatMode = prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off';
+      repeatModeRef.current = next;
+      return next;
+    });
+  }, []);
+
   const value = useMemo<PlaybackContextValue>(
     () => ({
       activePostId,
@@ -198,6 +237,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      shuffleEnabled,
+      toggleShuffle,
+      repeatMode,
+      cycleRepeatMode,
     }),
     [
       activePostId,
@@ -220,6 +263,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      shuffleEnabled,
+      toggleShuffle,
+      repeatMode,
+      cycleRepeatMode,
     ],
   );
 

@@ -218,10 +218,14 @@ export default function HomeScreen() {
   const postsRef = useRef<FeedPost[]>([]);
   postsRef.current = posts;
 
-  // Keep the playback queue in sync with the home feed.
+  // When a track starts playing on the home feed, set the queue to that track
+  // plus all posts below it — so next/prev only navigate forward in the feed.
   useEffect(() => {
+    if (!playback.activePostId) { return; }
+    const startIdx = postsRef.current.findIndex(p => p.id === playback.activePostId);
+    const slice = startIdx >= 0 ? postsRef.current.slice(startIdx) : postsRef.current;
     playback.setQueue(
-      posts.map(p => ({
+      slice.map(p => ({
         postId: p.id,
         title: p.track.title,
         artistName: p.author.displayName ?? p.author.username,
@@ -230,8 +234,9 @@ export default function HomeScreen() {
         videoUrl: p.track.videoUrl ?? undefined,
       })),
     );
+  // postsRef.current is always up-to-date; only re-run when activePostId changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posts, playback.setQueue]);
+  }, [playback.activePostId, playback.setQueue]);
 
   const appendFeedPageRef = useRef<(mode: 'initial' | 'refresh' | 'prefetch' | 'end') => Promise<void>>(
     async () => {},

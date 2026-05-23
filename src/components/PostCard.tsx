@@ -182,12 +182,18 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   }, [playback]);
 
   const handleEnded = useCallback(() => {
-    setPaused(true);
-    setPosition(0);
-    setSeekTo(0);
-    // Do NOT clear nowPlaying or unregister handlers here — the floating player
-    // should stay visible after the song ends so the user can replay or navigate.
-  }, []);
+    if (playback.repeatMode === 'one') {
+      setPosition(0);
+      setSeekTo(0);
+      // Stay playing — seek to start and let MediaPlayer loop naturally via seekTo.
+      // setPaused stays false so playback continues immediately.
+    } else {
+      setPaused(true);
+      setPosition(0);
+      setSeekTo(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playback.repeatMode]);
 
   const handleSeekStart = useCallback(() => {
     // No-op for now; we keep the player going while the user drags. If we
