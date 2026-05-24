@@ -7,6 +7,7 @@ import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import UploadScreen from '../screens/main/UploadScreen';
 import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
+import UserProfileScreen from '../screens/main/UserProfileScreen';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 
@@ -87,6 +88,13 @@ export default function RootNavigator() {
               presentation: 'modal',
               gestureEnabled: false,
               animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="UserProfile"
+            component={UserProfileScreen}
+            options={{
+              animation: 'slide_from_right',
             }}
           />
         </>

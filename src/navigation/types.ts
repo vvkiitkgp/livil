@@ -18,4 +18,5 @@ export type RootStackParamList = {
   CollaboratorPicker: {
     excludeUserIds?: string[];
   } | undefined;
+  UserProfile: { userId: string };
 };

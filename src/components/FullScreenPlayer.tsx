@@ -16,11 +16,14 @@ import {
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import SeekBar from './SeekBar';
 import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike } from '../services/posts';
 import { COLORS } from '../theme/colors';
+import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -168,8 +171,15 @@ const iconSt = StyleSheet.create({
 /**
  * Left-side credits column shown on the main player view.
  * Big author avatar at top, then one row per collaborator role.
+ * All avatars are tappable — calls onNavigateToUser(userId).
  */
-function CreditsWidget({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
+function CreditsWidget({
+  nowPlaying,
+  onNavigateToUser,
+}: {
+  nowPlaying: NowPlayingInfo;
+  onNavigateToUser: (userId: string) => void;
+}) {
   const [groups, setGroups] = useState<{ role: string; members: TrackCollaboratorInfo[] }[]>([]);
 
   useEffect(() => {
@@ -190,23 +200,46 @@ function CreditsWidget({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
 
   return (
     <View style={cwSt.col}>
-      {/* Author — bigger circle */}
-      <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
+      {/* Author — bigger tappable circle */}
+      <TouchableOpacity
+        onPress={() => onNavigateToUser(nowPlaying.authorId)}
+        activeOpacity={0.75}
+        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+      >
+        <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
+      </TouchableOpacity>
 
       {/* One row per role */}
       {groups.map(g => (
         <View key={g.role} style={cwSt.roleRow}>
           <Text style={cwSt.emoji}>{roleEmoji(g.role)}</Text>
           <View style={cwSt.avRow}>
-            {g.members.slice(0, 3).map((m, i) => (
-              <View key={m.userId ?? `c${i}`} style={i > 0 ? cwSt.overlap : undefined}>
-                <CollabAvatar
-                  uri={m.avatarUrl}
-                  name={m.displayName ?? m.username ?? '?'}
-                  size={28}
-                />
-              </View>
-            ))}
+            {g.members.slice(0, 3).map((m, i) =>
+              m.userId ? (
+                <TouchableOpacity
+                  key={m.userId}
+                  style={i > 0 ? cwSt.overlap : undefined}
+                  onPress={() => onNavigateToUser(m.userId!)}
+                  activeOpacity={0.75}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                >
+                  <CollabAvatar
+                    uri={m.avatarUrl}
+                    name={m.displayName ?? m.username ?? '?'}
+                    size={28}
+                  />
+                </TouchableOpacity>
+              ) : (
+                // Custom-name collaborators have no profile to navigate to
+                <View key={`c${i}`} style={i > 0 ? cwSt.overlap : undefined}>
+                  <CollabAvatar
+                    uri={m.avatarUrl}
+                    name={m.displayName ?? m.username ?? '?'}
+                    size={28}
+                  />
+                </View>
+              ),
+            )}
           </View>
         </View>
       ))}
@@ -431,6 +464,13 @@ export default function FullScreenPlayer() {
   } = usePlayback();
 
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  const handleNavigateToUser = useCallback((userId: string) => {
+    closeFullScreenPlayer();
+    // Navigate to the user's profile in the root stack
+    navigation.navigate('UserProfile', { userId });
+  }, [closeFullScreenPlayer, navigation]);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const panelAnim = useRef(new Animated.Value(0)).current;
@@ -619,7 +659,7 @@ export default function FullScreenPlayer() {
 
           {/* Credits widget — top-left, below header */}
           <View style={[styles.creditsPos, { top: safeTop + HEADER_H }]}>
-            <CreditsWidget nowPlaying={nowPlaying} />
+            <CreditsWidget nowPlaying={nowPlaying} onNavigateToUser={handleNavigateToUser} />
           </View>
 
           {/* Track title + artist + engagement stats — bottom overlay */}
