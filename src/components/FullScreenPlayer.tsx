@@ -16,10 +16,10 @@ import {
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import SeekBar from './SeekBar';
-import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike } from '../services/posts';
 import { COLORS } from '../theme/colors';
@@ -469,10 +469,12 @@ export default function FullScreenPlayer() {
   const handleNavigateToUser = useCallback((userId: string) => {
     // Minimize full-screen player — floating player stays visible, music keeps playing.
     closeFullScreenPlayer();
-    // FullScreenPlayer is rendered OUTSIDE Tab.Navigator in AppNavigator, so
-    // useNavigation() already returns the root stack navigation directly.
-    // Do NOT call getParent() — that steps above the root stack to null.
-    navigation.navigate('UserProfile', { userId });
+    // dispatch(StackActions.push) always creates a fresh UserProfile screen even if
+    // one already exists in the stack. navigate() would reuse the existing screen
+    // (showing stale profile data). dispatch() works on the root navigation object
+    // that useNavigation() returns from outside the Stack.Navigator tree — push()
+    // would be undefined there, but dispatch() is available everywhere.
+    navigation.dispatch(StackActions.push('UserProfile', { userId }));
   }, [closeFullScreenPlayer, navigation]);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -483,6 +485,8 @@ export default function FullScreenPlayer() {
   const [queueSnapshot, setQueueSnapshot] = useState<NowPlayingInfo[]>([]);
   const videoRef = useRef<VideoRef>(null);
   const initialSeekDone = useRef(false);
+  // Saved PostCard handlers so we can restore them when the FS video player closes
+  const savedHandlersRef = useRef<PlayerHandlers | null>(null);
 
   // ── Open / close ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -499,6 +503,10 @@ export default function FullScreenPlayer() {
   useEffect(() => {
     if (!nowPlaying || nowPlaying.mediaKind !== 'video') { return; }
     if (isFullScreenOpen) {
+      // Save the PostCard's handlers before overwriting them so we can restore
+      // them when the FS closes — otherwise handlersRef ends up null and the
+      // floating player can no longer control playback.
+      savedHandlersRef.current = handlersRef.current;
       initialSeekDone.current = false;
       handlersRef.current?.pause();
       setFsPaused(false);
@@ -510,7 +518,16 @@ export default function FullScreenPlayer() {
       });
     } else {
       setFsPaused(true);
-      unregisterHandlers();
+      if (savedHandlersRef.current) {
+        // Restore the PostCard's handlers and resume its player so the floating
+        // player can control playback again after the FS is dismissed.
+        const handlers = savedHandlersRef.current;
+        savedHandlersRef.current = null;
+        registerHandlers(handlers);
+        handlers.play();
+      } else {
+        unregisterHandlers();
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullScreenOpen]);

@@ -28,7 +28,7 @@ export type NowPlayingInfo = {
   viewerHasLiked: boolean;
 };
 
-type PlayerHandlers = {
+export type PlayerHandlers = {
   play: () => void;
   pause: () => void;
   seek: (seconds: number) => void;
