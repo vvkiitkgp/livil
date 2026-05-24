@@ -12,7 +12,6 @@ import {
   type ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
@@ -115,16 +114,8 @@ export default function ProfileScreen() {
     },
   ).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        playback.pauseAll();
-      };
-    // pauseAll is a stable useCallback(fn,[]) — only re-register when it changes,
-    // not every time nowPlaying or other context fields update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [playback.pauseAll]),
-  );
+  // Deliberately no pauseAll() on blur — audio should keep playing when the
+  // user navigates to another screen. PostCard's `visible` prop handles inline video.
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
     const [profRes, statsData, follow] = await Promise.all([

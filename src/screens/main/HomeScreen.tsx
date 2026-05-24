@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
@@ -285,16 +285,9 @@ export default function HomeScreen() {
     },
   ).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        playback.pauseAll();
-      };
-    // pauseAll is a stable useCallback(fn,[]) — only re-register when it changes,
-    // not every time nowPlaying or other context fields update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [playback.pauseAll]),
-  );
+  // Deliberately no pauseAll() on blur — audio should keep playing when the
+  // user navigates to another screen (e.g. UserProfile). PostCard's `visible`
+  // prop already stops inline video when cards leave the viewport.
 
   useEffect(() => {
     let cancelled = false;

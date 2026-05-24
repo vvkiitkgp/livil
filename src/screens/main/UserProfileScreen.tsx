@@ -83,8 +83,12 @@ export default function UserProfileScreen() {
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
-  // Keep queue in sync with this profile's feed
+  // Only update the queue when the user explicitly plays a track from this
+  // profile — never on initial load. This prevents overwriting the queue
+  // when the user is just browsing this profile while something else plays.
   useEffect(() => {
+    if (!playback.activePostId) { return; }
+    if (!posts.some(p => p.id === playback.activePostId)) { return; }
     playback.setQueue(
       posts.map(p => ({
         postId: p.id,
@@ -104,8 +108,7 @@ export default function UserProfileScreen() {
         viewerHasLiked: p.viewerHasLiked,
       })),
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posts, playback.setQueue]);
+  }, [playback.activePostId, posts, playback.setQueue]);
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
