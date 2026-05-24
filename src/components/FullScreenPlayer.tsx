@@ -367,7 +367,7 @@ function InfoContent({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
         </View>
 
         <View style={infoSt.statBtn}>
-          <Text style={infoSt.statIcon}>👁️</Text>
+          <Text style={infoSt.statIcon}>▶</Text>
           <Text style={infoSt.statValue}>{formatCount(nowPlaying.viewsCount)}</Text>
         </View>
       </View>
@@ -771,7 +771,7 @@ function CompactStats({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
         <Text style={csSt.val}>{formatCount(nowPlaying.repostsCount)}</Text>
       </View>
       <View style={csSt.item}>
-        <Text style={csSt.icon}>👁️</Text>
+        <Text style={csSt.icon}>▶</Text>
         <Text style={csSt.val}>{formatCount(nowPlaying.viewsCount)}</Text>
       </View>
     </View>
