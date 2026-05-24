@@ -1,8 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import FloatingPlayer from '../components/FloatingPlayer';
-import FullScreenPlayer from '../components/FullScreenPlayer';
 import HomeScreen from '../screens/main/HomeScreen';
 import SearchScreen from '../screens/main/SearchScreen';
 import LibraryScreen from '../screens/main/LibraryScreen';
@@ -104,7 +102,6 @@ function ProfileIcon({ color, focused }: IconProps) {
 
 export default function AppNavigator() {
   return (
-    <View style={{ flex: 1 }}>
     <Tab.Navigator
       initialRouteName="Home"
       screenOptions={{
@@ -141,9 +138,6 @@ export default function AppNavigator() {
         options={{ tabBarIcon: ProfileIcon }}
       />
     </Tab.Navigator>
-    <FullScreenPlayer />
-    <FloatingPlayer />
-    </View>
   );
 }
 
