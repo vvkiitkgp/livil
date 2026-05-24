@@ -467,13 +467,12 @@ export default function FullScreenPlayer() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const handleNavigateToUser = useCallback((userId: string) => {
-    // Minimize the full-screen player (floating player stays visible, music keeps playing)
+    // Minimize full-screen player — floating player stays visible, music keeps playing.
     closeFullScreenPlayer();
-    // FullScreenPlayer is inside AppNavigator (tab navigator), so useNavigation() gives
-    // us the tab nav. UserProfile lives in the parent root stack — use getParent().
-    navigation
-      .getParent<NativeStackNavigationProp<RootStackParamList>>()
-      ?.navigate('UserProfile', { userId });
+    // FullScreenPlayer is rendered OUTSIDE Tab.Navigator in AppNavigator, so
+    // useNavigation() already returns the root stack navigation directly.
+    // Do NOT call getParent() — that steps above the root stack to null.
+    navigation.navigate('UserProfile', { userId });
   }, [closeFullScreenPlayer, navigation]);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
