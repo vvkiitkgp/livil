@@ -7,6 +7,9 @@ import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import UploadScreen from '../screens/main/UploadScreen';
 import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
+import UserProfileScreen from '../screens/main/UserProfileScreen';
+import FloatingPlayer from '../components/FloatingPlayer';
+import FullScreenPlayer from '../components/FullScreenPlayer';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 
@@ -61,43 +64,61 @@ export default function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'none',
-        contentStyle: { backgroundColor: COLORS.bg },
-      }}
-    >
-      {session ? (
+    <View style={styles.root}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          contentStyle: { backgroundColor: COLORS.bg },
+        }}
+      >
+        {session ? (
+          <>
+            <Stack.Screen name="App" component={AppNavigator} />
+            <Stack.Screen
+              name="Upload"
+              component={UploadScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="CollaboratorPicker"
+              component={CollaboratorPickerScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="UserProfile"
+              component={UserProfileScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+          </>
+        ) : (
+          <Stack.Screen name="Auth" component={AuthNavigator} />
+        )}
+      </Stack.Navigator>
+
+      {/* Rendered above the entire stack so they appear on every screen */}
+      {session && (
         <>
-          <Stack.Screen name="App" component={AppNavigator} />
-          <Stack.Screen
-            name="Upload"
-            component={UploadScreen}
-            options={{
-              presentation: 'modal',
-              gestureEnabled: false,
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="CollaboratorPicker"
-            component={CollaboratorPickerScreen}
-            options={{
-              presentation: 'modal',
-              gestureEnabled: false,
-              animation: 'slide_from_bottom',
-            }}
-          />
+          <FullScreenPlayer />
+          <FloatingPlayer />
         </>
-      ) : (
-        <Stack.Screen name="Auth" component={AuthNavigator} />
       )}
-    </Stack.Navigator>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   loader: {
     flex: 1,
     backgroundColor: COLORS.bg,

@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
@@ -218,18 +218,34 @@ export default function HomeScreen() {
   const postsRef = useRef<FeedPost[]>([]);
   postsRef.current = posts;
 
-  // Keep the playback queue in sync with the home feed.
+  // When a track starts playing on the home feed, set the queue to that track
+  // plus all posts below it — so next/prev only navigate forward in the feed.
   useEffect(() => {
+    if (!playback.activePostId) { return; }
+    const startIdx = postsRef.current.findIndex(p => p.id === playback.activePostId);
+    const slice = startIdx >= 0 ? postsRef.current.slice(startIdx) : postsRef.current;
     playback.setQueue(
-      posts.map(p => ({
+      slice.map(p => ({
         postId: p.id,
+        trackId: p.track.id,
         title: p.track.title,
         artistName: p.author.displayName ?? p.author.username,
+        authorId: p.author.id,
+        authorUsername: p.author.username,
+        authorAvatarUrl: p.author.avatarUrl,
         coverArtUrl: p.track.coverArtUrl,
+        mediaKind: p.track.mediaKind,
+        videoUrl: p.track.videoUrl ?? undefined,
+        likesCount: p.likesCount,
+        commentsCount: p.commentsCount,
+        repostsCount: p.repostsCount,
+        viewsCount: p.viewsCount,
+        viewerHasLiked: p.viewerHasLiked,
       })),
     );
+  // postsRef.current is always up-to-date; only re-run when activePostId changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posts, playback.setQueue]);
+  }, [playback.activePostId, playback.setQueue]);
 
   const appendFeedPageRef = useRef<(mode: 'initial' | 'refresh' | 'prefetch' | 'end') => Promise<void>>(
     async () => {},
@@ -269,16 +285,9 @@ export default function HomeScreen() {
     },
   ).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        playback.pauseAll();
-      };
-    // pauseAll is a stable useCallback(fn,[]) — only re-register when it changes,
-    // not every time nowPlaying or other context fields update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [playback.pauseAll]),
-  );
+  // Deliberately no pauseAll() on blur — audio should keep playing when the
+  // user navigates to another screen (e.g. UserProfile). PostCard's `visible`
+  // prop already stops inline video when cards leave the viewport.
 
   useEffect(() => {
     let cancelled = false;

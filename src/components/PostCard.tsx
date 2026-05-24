@@ -111,9 +111,21 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     if (!paused) {
       playback.setNowPlaying({
         postId: post.id,
+        trackId: post.track.id,
         title: post.track.title,
         artistName: post.author.displayName ?? post.author.username,
+        authorId: post.author.id,
+        authorUsername: post.author.username,
+        authorAvatarUrl: post.author.avatarUrl,
         coverArtUrl: post.track.coverArtUrl,
+        mediaKind: post.track.mediaKind,
+        videoUrl: post.track.videoUrl ?? undefined,
+        // Snapshot at play-start — not in deps to avoid resetting positionRef on like/unlike.
+        likesCount: post.likesCount,
+        commentsCount: post.commentsCount,
+        repostsCount: post.repostsCount,
+        viewsCount: post.viewsCount,
+        viewerHasLiked: post.viewerHasLiked,
       });
       playback.registerHandlers({
         play: () => setPaused(false),
@@ -135,7 +147,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     post.track.title,
     post.author.displayName,
     post.author.username,
+    post.track.id,
     post.track.coverArtUrl,
+    post.track.mediaKind,
+    post.track.videoUrl,
+    post.author.id,
+    post.author.avatarUrl,
     playback.setNowPlaying,    // stable useCallback []
     playback.registerHandlers, // stable useCallback []
   ]);
@@ -178,12 +195,18 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   }, [playback]);
 
   const handleEnded = useCallback(() => {
-    setPaused(true);
-    setPosition(0);
-    setSeekTo(0);
-    // Do NOT clear nowPlaying or unregister handlers here — the floating player
-    // should stay visible after the song ends so the user can replay or navigate.
-  }, []);
+    if (playback.repeatMode === 'one') {
+      setPosition(0);
+      setSeekTo(0);
+      // Stay playing — seek to start and let MediaPlayer loop naturally via seekTo.
+      // setPaused stays false so playback continues immediately.
+    } else {
+      setPaused(true);
+      setPosition(0);
+      setSeekTo(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playback.repeatMode]);
 
   const handleSeekStart = useCallback(() => {
     // No-op for now; we keep the player going while the user drags. If we
