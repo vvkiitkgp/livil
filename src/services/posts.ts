@@ -242,9 +242,9 @@ export async function fetchHomeFeedPage(options: {
 
   const { data, error } = await supabase.rpc('fetch_home_feed', {
     p_limit: limit,
-    p_cursor_bucket: c?.bucket ?? null,
-    p_cursor_sort_key: c?.sortKey ?? null,
-    p_cursor_id: c?.id ?? null,
+    p_cursor_bucket: c?.bucket ?? undefined,
+    p_cursor_sort_key: c?.sortKey ?? undefined,
+    p_cursor_id: c?.id ?? undefined,
   });
   if (error) {
     throw new Error(error.message);

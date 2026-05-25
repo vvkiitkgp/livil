@@ -19,4 +19,15 @@ export type RootStackParamList = {
     excludeUserIds?: string[];
   } | undefined;
   UserProfile: { userId: string };
+  PlaylistDetail: { playlistId: string; playlistName: string };
+  Following: undefined;
+  RecentlyPlayed: undefined;
+  CreatePlaylist: {
+    initialPost?: {
+      postId: string;
+      title: string;
+      artistName: string;
+      coverArtUrl: string | null;
+    };
+  } | undefined;
 };
