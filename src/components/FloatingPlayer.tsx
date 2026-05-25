@@ -30,8 +30,16 @@ const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
 const PLAYER_BOTTOM = Math.max(SCREEN_H * 0.10, TAB_BAR_H + 10);
 
 // Gesture thresholds
-const SNAP_VELOCITY = 400;  // px/s — qualifies as a "snap" gesture
-const SNAP_DISTANCE = 40;   // px  — qualifies as a "snap" gesture
+const SNAP_VELOCITY   = 400;   // px/s — horizontal flick qualifies as skip
+const SNAP_DISTANCE   = 40;    // px   — (unused, kept for reference)
+const OPEN_FS_DIST    = 80;    // px   — upward drag distance that opens full-screen player
+const OPEN_FS_VEL     = 500;   // px/s — upward velocity that opens full-screen player
+const CLOSE_FS_DIST   = 40;    // px   — downward drag (on circle) that closes full-screen player
+const CLOSE_FS_VEL    = 400;   // px/s — downward flick (on circle) that closes full-screen player
+
+// Vertical clamp for the draggable circle
+const MAX_DRAG_Y_UP   = 180;   // px — how far up the circle can travel
+const MAX_DRAG_Y_DOWN = 60;    // px — how far down the circle can travel
 
 // Playback rates while dragging
 const RATE_FORWARD = 2.0;
@@ -49,13 +57,16 @@ export default function FloatingPlayer() {
     playNext,
     playPrev,
     openFullScreenPlayer,
+    closeFullScreenPlayer,
+    isFullScreenOpen,
   } = usePlayback();
 
   // ─── Animations ─────────────────────────────────────────────────────────────
   const slideAnim   = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
-  // Horizontal offset of the draggable circle (0 = centered)
+  // 2-D offset of the draggable circle (both axes, 0 = resting center)
   const circleX = useRef(new Animated.Value(0)).current;
+  const circleY = useRef(new Animated.Value(0)).current;
 
   // Slide in / out when nowPlaying changes
   const wasVisible = useRef(false);
@@ -80,14 +91,12 @@ export default function FloatingPlayer() {
     return () => clearInterval(id);
   }, [nowPlaying, positionRef, durationRef, progressAnim]);
 
-  // ─── Helper: spring circle back to center ──────────────────────────────────
+  // ─── Helper: spring circle back to center (both axes) ─────────────────────
   const springBack = () => {
-    Animated.spring(circleX, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 10,
-      speed: 14,
-    }).start();
+    Animated.parallel([
+      Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
+      Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
+    ]).start();
   };
 
   // ─── Rewind helpers ──────────────────────────────────────────────────────────
@@ -132,24 +141,38 @@ export default function FloatingPlayer() {
 
   const tapGesture = Gesture.Exclusive(doubleTap, singleTap);
 
+  // Single pan gesture — circle follows the finger in all four directions.
+  // Horizontal drag controls playback speed / rewind; upward drag opens the
+  // full-screen player on release; downward drag is allowed physically but
+  // has no special action. Simultaneous with the tap gesture so taps still fire.
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .onStart(() => {
-      // Stop any running spring so it doesn't fight the finger on a new drag.
       circleX.stopAnimation();
+      circleY.stopAnimation();
       stopRewind();
     })
     .onUpdate((e) => {
-      // Circle physically follows the finger within bar bounds.
-      const clamped = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, e.translationX));
-      circleX.setValue(clamped);
+      // Circle follows the finger in both axes, clamped to safe ranges.
+      const clampedX = Math.max(-MAX_DRAG,       Math.min(MAX_DRAG,       e.translationX));
+      const clampedY = Math.max(-MAX_DRAG_Y_UP,  Math.min(MAX_DRAG_Y_DOWN, e.translationY));
+      circleX.setValue(clampedX);
+      circleY.setValue(clampedY);
 
-      if (e.translationX >= 0) {
-        stopRewind();
-        handlersRef.current?.setRate(RATE_FORWARD);        // 2× forward
+      // Speed / rewind effects apply only when the gesture is primarily horizontal.
+      const isHorizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
+      if (isHorizontal) {
+        if (e.translationX >= 0) {
+          stopRewind();
+          handlersRef.current?.setRate(RATE_FORWARD);      // 2× fast-forward
+        } else {
+          handlersRef.current?.setRate(1.0);
+          if (rewindTimer.current === null) { startRewind(); }
+        }
       } else {
-        handlersRef.current?.setRate(1.0);                 // normal speed while seeking back
-        if (rewindTimer.current === null) { startRewind(); }
+        // Vertical drag — keep normal playback, cancel any rewind.
+        stopRewind();
+        handlersRef.current?.setRate(1.0);
       }
     })
     .onEnd((e) => {
@@ -157,24 +180,38 @@ export default function FloatingPlayer() {
       handlersRef.current?.setRate(1.0);
       springBack();
 
-      // Snap = quick flick only (velocity). Slow hold-and-release must never
-      // trigger next/prev even if the circle travelled far.
+      // Downward drag while full screen is open → close it.
+      if (isFullScreenOpen &&
+          (e.translationY > CLOSE_FS_DIST || e.velocityY > CLOSE_FS_VEL)) {
+        closeFullScreenPlayer();
+        return;
+      }
+
+      // Upward drag past threshold → open full-screen player.
+      // Check before horizontal snap so a diagonal-up-right drag doesn't skip.
+      if (!isFullScreenOpen &&
+          (e.translationY < -OPEN_FS_DIST ||
+           (e.velocityY < -OPEN_FS_VEL && e.translationY < -20))) {
+        openFullScreenPlayer();
+        return;
+      }
+
+      // Horizontal snap = quick flick only (velocity). Slow hold-and-release
+      // must never trigger next/prev even if the circle travelled far.
       const isSnap = Math.abs(e.velocityX) > SNAP_VELOCITY;
       if (isSnap) {
         if (e.velocityX > 0) { playNext(); }
         else { playPrev(); }
       }
-      // Non-snap: rate already reset; music resumes at 1×.
     })
     .onFinalize(() => {
-      // Fires after onEnd AND on external cancellation.
+      // Fires after onEnd AND on external cancellation (e.g. incoming call).
       stopRewind();
       handlersRef.current?.setRate(1.0);
       springBack();
     });
 
-  // Simultaneous lets tap fire for pure taps while pan handles drags,
-  // without either cancelling the other mid-gesture.
+  // Simultaneous: tap and pan can both fire — tap handles press, pan handles drag.
   const gesture = Gesture.Simultaneous(tapGesture, panGesture);
 
   // ─── Arc interpolations ───────────────────────────────────────────────────
@@ -209,7 +246,7 @@ export default function FloatingPlayer() {
       {/* Draggable circle */}
       <GestureDetector gesture={gesture}>
         <Animated.View
-          style={[styles.circleContainer, { transform: [{ translateX: circleX }] }]}
+          style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }] }]}
         >
           {/* Base: gray disc */}
           <View style={styles.grayDisc} />
