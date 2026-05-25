@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Animated,
+  Easing,
   Dimensions,
   Platform,
   TouchableOpacity,
@@ -30,6 +31,9 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
 const PLAYER_BOTTOM = Math.max(SCREEN_H * 0.1, TAB_BAR_H + 10);
 const FLOAT_D = 60;
+// translateY that moves the full-screen container's center to the floating player circle center,
+// so the converge/expand animation originates from/collapses into the right spot.
+const CONVERGE_Y = SCREEN_H / 2 - PLAYER_BOTTOM - FLOAT_D / 2;
 
 type TabId = 'lyrics' | 'queue' | 'info';
 
@@ -477,8 +481,13 @@ export default function FullScreenPlayer() {
     navigation.dispatch(StackActions.push('UserProfile', { userId }));
   }, [closeFullScreenPlayer, navigation]);
 
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const panelAnim = useRef(new Animated.Value(0)).current;
+  // Three independent native-driver values replace the old slideAnim/bounceAnim pair.
+  // Keeping them separate avoids Animated.add() on interpolated values, which can
+  // silently fall back to the JS driver on Android and break gesture detection.
+  const posYAnim    = useRef(new Animated.Value(CONVERGE_Y)).current;  // translateY
+  const scaleAnim   = useRef(new Animated.Value(0.02)).current;         // scaleX / scaleY
+  const opacityAnim = useRef(new Animated.Value(0)).current;            // opacity
+  const panelAnim   = useRef(new Animated.Value(0)).current;
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [fsPaused, setFsPaused] = useState(true);
@@ -491,13 +500,42 @@ export default function FullScreenPlayer() {
   // ── Open / close ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (isFullScreenOpen) {
-      Animated.spring(slideAnim, { toValue: 1, bounciness: 4, speed: 12, useNativeDriver: true }).start();
+      // Snap to the invisible starting dot at the floating player circle, then
+      // spring outward to full screen — looks like it's bursting from the circle.
+      posYAnim.setValue(CONVERGE_Y);
+      scaleAnim.setValue(0.02);
+      opacityAnim.setValue(0);
+      Animated.parallel([
+        Animated.spring(posYAnim,  { toValue: 0, bounciness: 8, speed: 12, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, bounciness: 8, speed: 12, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+      ]).start();
     } else {
-      Animated.timing(slideAnim, { toValue: 0, duration: 280, useNativeDriver: true }).start();
       panelAnim.setValue(0);
       setActiveTab(null);
+      // Phase 1 (80 ms): quick bounce up.
+      // Phase 2 (350 ms): converge — Y moves toward the floating player, scale shrinks to dot.
+      Animated.sequence([
+        Animated.timing(posYAnim, {
+          toValue: -25, duration: 80,
+          easing: Easing.out(Easing.quad), useNativeDriver: true,
+        }),
+        Animated.parallel([
+          Animated.timing(posYAnim, {
+            toValue: CONVERGE_Y, duration: 350,
+            easing: Easing.in(Easing.quad), useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 0.02, duration: 350,
+            easing: Easing.in(Easing.quad), useNativeDriver: true,
+          }),
+          Animated.timing(opacityAnim, {
+            toValue: 0, duration: 200, useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
     }
-  }, [isFullScreenOpen, slideAnim, panelAnim]);
+  }, [isFullScreenOpen, posYAnim, scaleAnim, opacityAnim, panelAnim]);
 
   // ── Video handoff ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -588,11 +626,6 @@ export default function FullScreenPlayer() {
   const actionRowBottom = safeBottom + 8;
   const controlRowBottom = PLAYER_BOTTOM + (FLOAT_D - 44) / 2;
   const seekRowBottom = PLAYER_BOTTOM + FLOAT_D + 8;
-  const containerTranslateY = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_H, 0],
-  });
-
   const panelTranslateY = panelAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [panelHeight, 0],
@@ -623,7 +656,17 @@ export default function FullScreenPlayer() {
 
   return (
     <Animated.View
-      style={[styles.container, { transform: [{ translateY: containerTranslateY }] }]}
+      style={[
+        styles.container,
+        {
+          opacity: opacityAnim,
+          transform: [
+            { translateY: posYAnim },
+            { scaleX: scaleAnim },
+            { scaleY: scaleAnim },
+          ],
+        },
+      ]}
       pointerEvents={isFullScreenOpen ? 'box-none' : 'none'}
     >
       {/* ── Full-bleed media ── */}
@@ -661,8 +704,11 @@ export default function FullScreenPlayer() {
       <View style={styles.scrimBottom} pointerEvents="none" />
 
       {/* ── Overlaid content + swipe-to-close ── */}
+      {/* pointerEvents="auto" (default) is intentional: the view itself must be
+          hittable so the pan gesture fires on empty areas (album art, background).
+          Children (close button, etc.) still receive their own touches first. */}
       <GestureDetector gesture={panGesture}>
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        <View style={StyleSheet.absoluteFillObject}>
 
           {/* Header */}
           <View style={[styles.header, { top: safeTop, height: HEADER_H }]}>
