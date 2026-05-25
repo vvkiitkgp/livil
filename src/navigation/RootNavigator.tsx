@@ -8,8 +8,13 @@ import AppNavigator from './AppNavigator';
 import UploadScreen from '../screens/main/UploadScreen';
 import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
 import UserProfileScreen from '../screens/main/UserProfileScreen';
+import PlaylistScreen from '../screens/main/PlaylistScreen';
+import FollowingScreen from '../screens/main/FollowingScreen';
+import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
+import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
+import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 
@@ -100,6 +105,36 @@ export default function RootNavigator() {
                 animation: 'slide_from_right',
               }}
             />
+            <Stack.Screen
+              name="PlaylistDetail"
+              component={PlaylistScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Following"
+              component={FollowingScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="RecentlyPlayed"
+              component={RecentlyPlayedScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="CreatePlaylist"
+              component={CreatePlaylistScreen}
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+              }}
+            />
           </>
         ) : (
           <Stack.Screen name="Auth" component={AuthNavigator} />
@@ -109,6 +144,7 @@ export default function RootNavigator() {
       {/* Rendered above the entire stack so they appear on every screen */}
       {session && (
         <>
+          <GlobalAudioPlayer />
           <FullScreenPlayer />
           <FloatingPlayer />
         </>

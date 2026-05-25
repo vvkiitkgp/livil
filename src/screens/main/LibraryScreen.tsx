@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -10,15 +11,17 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, StackActions } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
-
-const SECTIONS = [
-  { id: 'l1', title: 'Liked Songs', count: '247 tracks', accent: '#7C3AED' },
-  { id: 'l2', title: 'Recently Saved', count: '34 tracks', accent: '#EC4899' },
-  { id: 'l3', title: 'My Playlists', count: '12 playlists', accent: '#22D3EE' },
-  { id: 'l4', title: 'Following', count: '89 artists', accent: '#F59E0B' },
-];
+import {
+  getLikedPostCount,
+  getStarredUsersCount,
+  fetchUserPlaylists,
+  type UserPlaylist,
+} from '../../services/playlists';
+import type { RootStackParamList } from '../../navigation/types';
 
 const FALLBACK_COVER_ACCENTS: [string, string][] = [
   ['#7C3AED', '#3B1E6E'],
@@ -46,10 +49,34 @@ function RecentSkeletonStrip() {
   );
 }
 
+function PlaylistSkeleton() {
+  return (
+    <View style={styles.list}>
+      {[0, 1, 2].map(i => (
+        <View key={i} style={[styles.row, { opacity: 0.5 }]}>
+          <View style={[styles.thumb, { backgroundColor: COLORS.border }]} />
+          <View style={styles.rowText}>
+            <View style={[styles.skelLine, { width: '55%', marginBottom: 6 }]} />
+            <View style={[styles.skelLine, { width: '35%' }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function LibraryScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   const [recent, setRecent] = useState<LibraryRecentTrack[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
   const [recentError, setRecentError] = useState('');
+
+  const [likedCount, setLikedCount] = useState<number | null>(null);
+  const [starsCount, setStarsCount] = useState<number | null>(null);
+  const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [playlistsLoading, setPlaylistsLoading] = useState(true);
+
   const [refreshing, setRefreshing] = useState(false);
 
   const loadRecent = useCallback(async () => {
@@ -58,23 +85,75 @@ export default function LibraryScreen() {
       const rows = await listRecentTracksForLibrary();
       setRecent(rows);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not load recently played.';
-      setRecentError(message);
+      setRecentError(err instanceof Error ? err.message : 'Could not load recently played.');
       setRecent([]);
     } finally {
       setRecentLoading(false);
     }
   }, []);
 
+  const loadPlaylists = useCallback(async () => {
+    try {
+      const [liked, stars, custom] = await Promise.all([
+        getLikedPostCount(),
+        getStarredUsersCount(),
+        fetchUserPlaylists(),
+      ]);
+      setLikedCount(liked);
+      setStarsCount(stars);
+      setPlaylists(custom);
+    } catch {
+      // non-critical — show zeros
+    } finally {
+      setPlaylistsLoading(false);
+    }
+  }, []);
+
+  // Initial load
   useEffect(() => {
     void loadRecent();
-  }, [loadRecent]);
+    void loadPlaylists();
+  }, [loadRecent, loadPlaylists]);
+
+  // Refresh playlists whenever the tab comes back into focus (e.g. after creating one)
+  const isMounted = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!isMounted.current) {
+        isMounted.current = true;
+        return;
+      }
+      void loadPlaylists();
+    }, [loadPlaylists]),
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadRecent();
+    setRecentLoading(true);
+    setPlaylistsLoading(true);
+    await Promise.all([loadRecent(), loadPlaylists()]);
     setRefreshing(false);
-  }, [loadRecent]);
+  }, [loadRecent, loadPlaylists]);
+
+  const goToLiked = useCallback(() => {
+    navigation.dispatch(StackActions.push('PlaylistDetail', { playlistId: 'liked', playlistName: 'Liked Songs' }));
+  }, [navigation]);
+
+  const goToFollowing = useCallback(() => {
+    navigation.dispatch(StackActions.push('Following'));
+  }, [navigation]);
+
+  const goToPlaylist = useCallback((playlist: UserPlaylist) => {
+    navigation.dispatch(StackActions.push('PlaylistDetail', { playlistId: playlist.id, playlistName: playlist.name }));
+  }, [navigation]);
+
+  const goToRecentlyPlayed = useCallback(() => {
+    navigation.dispatch(StackActions.push('RecentlyPlayed'));
+  }, [navigation]);
+
+  const goToCreatePlaylist = useCallback(() => {
+    navigation.dispatch(StackActions.push('CreatePlaylist'));
+  }, [navigation]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -94,9 +173,10 @@ export default function LibraryScreen() {
           <Text style={styles.subtitle}>Everything you've saved, in one place</Text>
         </View>
 
+        {/* Recently Played */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recently Played</Text>
-          <TouchableOpacity activeOpacity={0.7}>
+          <TouchableOpacity activeOpacity={0.7} onPress={goToRecentlyPlayed}>
             <Text style={styles.sectionLink}>See all</Text>
           </TouchableOpacity>
         </View>
@@ -126,45 +206,99 @@ export default function LibraryScreen() {
               return (
                 <Pressable key={`${track.trackId}-${track.playedAt}`} style={styles.recentCard}>
                   <View style={[styles.recentCover, { backgroundColor: accents[0] }]}>
-                    <View
-                      style={[styles.recentCoverAccent, { backgroundColor: accents[1] }]}
-                    />
+                    <View style={[styles.recentCoverAccent, { backgroundColor: accents[1] }]} />
                     {track.coverArtUrl ? (
                       <Image source={{ uri: track.coverArtUrl }} style={styles.recentCoverImg} />
                     ) : (
                       <Text style={styles.recentCoverInitial}>{initials}</Text>
                     )}
                   </View>
-                  <Text style={styles.recentTitle} numberOfLines={1}>
-                    {track.title}
-                  </Text>
-                  <Text style={styles.recentArtist} numberOfLines={1}>
-                    {track.artistLabel}
-                  </Text>
+                  <Text style={styles.recentTitle} numberOfLines={1}>{track.title}</Text>
+                  <Text style={styles.recentArtist} numberOfLines={1}>{track.artistLabel}</Text>
                 </Pressable>
               );
             })}
           </ScrollView>
         )}
 
+        {/* Playlists */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Collections</Text>
+          <Text style={styles.sectionTitle}>Playlists</Text>
+          <TouchableOpacity onPress={goToCreatePlaylist} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.sectionLink}>+ New</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.list}>
-          {SECTIONS.map(section => (
-            <View key={section.id} style={styles.row}>
-              <View style={[styles.thumb, { backgroundColor: section.accent }]}>
-                <Text style={styles.thumbText}>{section.title.charAt(0)}</Text>
+        {playlistsLoading ? (
+          <PlaylistSkeleton />
+        ) : (
+          <View style={styles.list}>
+            {/* Liked Songs — virtual */}
+            <TouchableOpacity style={styles.row} onPress={goToLiked} activeOpacity={0.75}>
+              <View style={[styles.thumb, { backgroundColor: '#7C3AED' }]}>
+                <Text style={styles.thumbEmoji}>♥</Text>
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{section.title}</Text>
-                <Text style={styles.rowSubtitle}>{section.count}</Text>
+                <Text style={styles.rowTitle}>Liked Songs</Text>
+                <Text style={styles.rowSubtitle}>
+                  {likedCount !== null ? `${likedCount} posts` : '—'}
+                </Text>
               </View>
               <Text style={styles.chev}>›</Text>
-            </View>
-          ))}
-        </View>
+            </TouchableOpacity>
+
+            {/* Following — virtual (user directory) */}
+            <TouchableOpacity style={styles.row} onPress={goToFollowing} activeOpacity={0.75}>
+              <View style={[styles.thumb, { backgroundColor: '#F59E0B' }]}>
+                <Text style={styles.thumbEmoji}>🎵</Text>
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>Following</Text>
+                <Text style={styles.rowSubtitle}>
+                  {starsCount !== null ? `${starsCount} artists` : '—'}
+                </Text>
+              </View>
+              <Text style={styles.chev}>›</Text>
+            </TouchableOpacity>
+
+            {/* User custom playlists */}
+            {playlists.map((playlist, index) => {
+              const accents = FALLBACK_COVER_ACCENTS[(index + 2) % FALLBACK_COVER_ACCENTS.length]!;
+              const initials = playlist.name.trim().charAt(0).toUpperCase() || '♪';
+              return (
+                <TouchableOpacity
+                  key={playlist.id}
+                  style={styles.row}
+                  onPress={() => goToPlaylist(playlist)}
+                  activeOpacity={0.75}
+                >
+                  <View style={[styles.thumb, { backgroundColor: accents[0], overflow: 'hidden' }]}>
+                    {playlist.coverArtUrl ? (
+                      <Image source={{ uri: playlist.coverArtUrl }} style={StyleSheet.absoluteFillObject} />
+                    ) : (
+                      <Text style={styles.thumbText}>{initials}</Text>
+                    )}
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle}>{playlist.name}</Text>
+                    <Text style={styles.rowSubtitle}>
+                      {playlist.postCount} {playlist.postCount === 1 ? 'post' : 'posts'}
+                    </Text>
+                  </View>
+                  <Text style={styles.chev}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {playlists.length === 0 && (
+              <View style={styles.emptyPlaylists}>
+                <Text style={styles.emptyPlaylistsText}>
+                  No playlists yet — add posts from the player using the + button.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -315,6 +449,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
   },
+  thumbEmoji: {
+    fontSize: 22,
+  },
   rowText: {
     flex: 1,
   },
@@ -333,5 +470,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '300',
     marginRight: 6,
+  },
+  emptyPlaylists: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  emptyPlaylistsText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

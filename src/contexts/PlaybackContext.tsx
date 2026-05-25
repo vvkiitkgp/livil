@@ -19,6 +19,7 @@ export type NowPlayingInfo = {
   authorAvatarUrl: string | null;
   coverArtUrl: string | null;
   mediaKind: 'audio' | 'video';
+  audioUrl?: string;
   videoUrl?: string;
   // Engagement snapshot at play-start time (not kept live to avoid re-renders)
   likesCount: number;

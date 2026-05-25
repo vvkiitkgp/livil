@@ -8,10 +8,13 @@ import {
   Dimensions,
   Platform,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Modal,
   ScrollView,
   FlatList,
   Image,
   ActivityIndicator,
+  InteractionManager,
   ListRenderItemInfo,
 } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
@@ -23,6 +26,12 @@ import SeekBar from './SeekBar';
 import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike } from '../services/posts';
+import {
+  fetchUserPlaylists,
+  isPostInPlaylist,
+  addPostToPlaylist,
+  type UserPlaylist,
+} from '../services/playlists';
 import { COLORS } from '../theme/colors';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -447,6 +456,213 @@ const infoSt = StyleSheet.create({
   statValueLiked: { color: '#FF4D6D' },
 });
 
+// ─── Add-to-playlist modal ────────────────────────────────────────────────────
+
+const MODAL_ACCENTS = ['#22D3EE', '#EC4899', '#F59E0B', '#00C853'];
+
+function AddToPlaylistModal({
+  visible,
+  nowPlaying,
+  onClose,
+  onNavigateToCreate,
+}: {
+  visible: boolean;
+  nowPlaying: NowPlayingInfo;
+  onClose: () => void;
+  onNavigateToCreate: () => void;
+}) {
+  const { setNowPlaying } = usePlayback();
+  const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
+
+  useEffect(() => {
+    if (!visible) { return; }
+    setLiked(nowPlaying.viewerHasLiked);
+    let cancelled = false;
+
+    fetchUserPlaylists()
+      .then(async pls => {
+        if (cancelled) { return; }
+        setPlaylists(pls);
+        const checks = await Promise.all(pls.map(p => isPostInPlaylist(p.id, nowPlaying.postId)));
+        if (cancelled) { return; }
+        setAddedIds(new Set(pls.filter((_, i) => checks[i]).map(p => p.id)));
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, nowPlaying.postId]);
+
+  const handleToggleLiked = useCallback(async () => {
+    const next = !liked;
+    setLiked(next);
+    try {
+      const serverLiked = await toggleLike(nowPlaying.postId);
+      setLiked(serverLiked);
+      // Sync back to PlaybackContext so CompactStats / heart icon updates
+      setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked });
+    } catch {
+      setLiked(!next);
+    }
+  }, [liked, nowPlaying, setNowPlaying]);
+
+  const handleAddToPlaylist = useCallback(async (playlistId: string) => {
+    if (addedIds.has(playlistId)) { return; }
+    setAddedIds(prev => new Set([...prev, playlistId]));
+    try {
+      await addPostToPlaylist(playlistId, nowPlaying.postId);
+    } catch {
+      setAddedIds(prev => {
+        const next = new Set(prev);
+        next.delete(playlistId);
+        return next;
+      });
+    }
+  }, [addedIds, nowPlaying.postId]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={modalSt.overlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={StyleSheet.absoluteFillObject} />
+        </TouchableWithoutFeedback>
+
+        <View style={modalSt.sheet}>
+          <View style={modalSt.handle} />
+          <Text style={modalSt.sheetTitle}>Add to playlist</Text>
+
+          <ScrollView
+            style={modalSt.list}
+            contentContainerStyle={modalSt.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Liked Songs — always first */}
+            <TouchableOpacity style={modalSt.row} onPress={handleToggleLiked} activeOpacity={0.7}>
+              <View style={[modalSt.rowThumb, { backgroundColor: '#7C3AED' }]}>
+                <Text style={modalSt.rowThumbEmoji}>♥</Text>
+              </View>
+              <View style={modalSt.rowMeta}>
+                <Text style={modalSt.rowName}>Liked Songs</Text>
+              </View>
+              {liked && <Text style={modalSt.check}>✓</Text>}
+            </TouchableOpacity>
+
+            {/* Custom playlists */}
+            {playlists.map((p, index) => {
+              const added = addedIds.has(p.id);
+              const accent = MODAL_ACCENTS[index % MODAL_ACCENTS.length]!;
+              const initial = p.name.trim().charAt(0).toUpperCase() || '♪';
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={modalSt.row}
+                  onPress={() => handleAddToPlaylist(p.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[modalSt.rowThumb, { backgroundColor: accent, overflow: 'hidden' }]}>
+                    {p.coverArtUrl ? (
+                      <Image source={{ uri: p.coverArtUrl }} style={StyleSheet.absoluteFillObject} />
+                    ) : (
+                      <Text style={modalSt.rowThumbText}>{initial}</Text>
+                    )}
+                  </View>
+                  <View style={modalSt.rowMeta}>
+                    <Text style={modalSt.rowName}>{p.name}</Text>
+                    <Text style={modalSt.rowSub}>{p.postCount} {p.postCount === 1 ? 'post' : 'posts'}</Text>
+                  </View>
+                  {added && <Text style={modalSt.check}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* New playlist */}
+            <TouchableOpacity style={modalSt.row} onPress={onNavigateToCreate} activeOpacity={0.7}>
+              <View style={[modalSt.rowThumb, { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border }]}>
+                <Text style={modalSt.newIcon}>+</Text>
+              </View>
+              <View style={modalSt.rowMeta}>
+                <Text style={[modalSt.rowName, { color: COLORS.purpleLight }]}>New playlist</Text>
+              </View>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const modalSt = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+    paddingBottom: 36,
+    height: SCREEN_H * 0.65,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  sheetTitle: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+  },
+  rowThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  rowThumbEmoji: { fontSize: 20 },
+  rowThumbText: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
+  rowMeta: { flex: 1, minWidth: 0 },
+  rowName: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  rowSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  check: { color: COLORS.purpleLight, fontSize: 18, fontWeight: '700', flexShrink: 0 },
+
+  newIcon: { color: COLORS.purpleLight, fontSize: 22, fontWeight: '300' },
+});
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FullScreenPlayer() {
@@ -490,6 +706,7 @@ export default function FullScreenPlayer() {
   const panelAnim   = useRef(new Animated.Value(0)).current;
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [fsPaused, setFsPaused] = useState(true);
   const [queueSnapshot, setQueueSnapshot] = useState<NowPlayingInfo[]>([]);
   const videoRef = useRef<VideoRef>(null);
@@ -720,7 +937,13 @@ export default function FullScreenPlayer() {
               <Text style={styles.closeBtnText}>⌄</Text>
             </TouchableOpacity>
             <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
-            <View style={styles.headerSpacer} />
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => setShowPlaylistModal(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.addBtnText}>+</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Credits widget — top-left, below header */}
@@ -829,6 +1052,33 @@ export default function FullScreenPlayer() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* ── Add to playlist modal ── */}
+      {showPlaylistModal && (
+        <AddToPlaylistModal
+          visible={showPlaylistModal}
+          nowPlaying={nowPlaying}
+          onClose={() => setShowPlaylistModal(false)}
+          onNavigateToCreate={() => {
+            setShowPlaylistModal(false);
+            // Wait for the native Modal dismiss animation to finish before
+            // navigating — dispatching while the modal is animating drops
+            // the action. Also close the full-screen player so it doesn't
+            // sit on top of the CreatePlaylist screen.
+            InteractionManager.runAfterInteractions(() => {
+              closeFullScreenPlayer();
+              navigation.dispatch(StackActions.push('CreatePlaylist', {
+                initialPost: {
+                  postId: nowPlaying.postId,
+                  title: nowPlaying.title,
+                  artistName: nowPlaying.artistName,
+                  coverArtUrl: nowPlaying.coverArtUrl,
+                },
+              }));
+            });
+          }}
+        />
+      )}
     </Animated.View>
   );
 }
@@ -836,6 +1086,7 @@ export default function FullScreenPlayer() {
 // ─── Compact stats strip (separate component to keep re-renders isolated) ────
 
 function CompactStats({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
+  const { setNowPlaying } = usePlayback();
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
   const [count, setCount] = useState(nowPlaying.likesCount);
 
@@ -852,15 +1103,17 @@ function CompactStats({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
     setCount(prevCount + (next ? 1 : -1));
     try {
       const serverLiked = await toggleLike(nowPlaying.postId);
-      if (serverLiked !== next) {
-        setLiked(serverLiked);
-        setCount(prevCount + (serverLiked ? 1 : 0));
-      }
+      const finalCount = prevCount + (serverLiked ? 1 : 0);
+      setLiked(serverLiked);
+      setCount(finalCount);
+      // Write back to PlaybackContext so the add-to-playlist modal reads the
+      // correct liked state when it opens after a like/unlike here.
+      setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked, likesCount: finalCount });
     } catch {
       setLiked(prev);
       setCount(prevCount);
     }
-  }, [liked, count, nowPlaying.postId]);
+  }, [liked, count, nowPlaying, setNowPlaying]);
 
   return (
     <View style={csSt.row}>
@@ -944,7 +1197,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3, textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
-  headerSpacer: { width: 44 },
+  addBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  addBtnText: {
+    color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
 
   // Credits column — top-left below header
   creditsPos: { position: 'absolute', left: 20, paddingTop: 8 },
