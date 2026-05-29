@@ -233,7 +233,8 @@ function ReactionPicker({
 export default function ConversationScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { conversationId, title } = route.params;
+  const { conversationId, title, kind } = route.params;
+  const isGroup = kind === 'group';
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,6 +245,7 @@ export default function ConversationScreen() {
   const [myId, setMyId] = useState<string>('');
   const [myProfile, setMyProfile] = useState<{ username: string | null; displayName: string | null; avatarUrl: string | null }>({ username: null, displayName: null, avatarUrl: null });
   const [friendActivity, setFriendActivity] = useState<FriendActivity | null>(null);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
 
   // Initial load — stale-while-revalidate
@@ -353,25 +355,37 @@ export default function ConversationScreen() {
     return () => unsubscribeFromConversation(conversationId);
   }, [conversationId, myId]);
 
-  // Friend activity (online + now-playing) — only meaningful for DMs
+  // For groups: fetch member count. For DMs: fetch friend activity.
   const friendActivityLoadedRef = useRef(false);
   useEffect(() => {
     if (friendActivityLoadedRef.current) { return; }
-    // We need the other user's id — we'll fetch it from members
-    db
-      .from('conversation_members')
-      .select('user_id')
-      .eq('conversation_id', conversationId)
-      .neq('user_id', myId || 'x')
-      .limit(1)
-      .maybeSingle()
-      .then(async ({ data }: { data: { user_id: string } | null }) => {
-        if (!data?.user_id) { return; }
-        friendActivityLoadedRef.current = true;
-        const activity = await getFriendActivity(data.user_id);
-        setFriendActivity(activity);
-      });
-  }, [conversationId, myId]);
+    if (isGroup) {
+      // Fetch member count for group header subtitle
+      db
+        .from('conversation_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('conversation_id', conversationId)
+        .then(({ count }: { count: number | null }) => {
+          friendActivityLoadedRef.current = true;
+          if (count !== null) { setMemberCount(count); }
+        });
+    } else {
+      // DM: fetch other user's activity
+      db
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', myId || 'x')
+        .limit(1)
+        .maybeSingle()
+        .then(async ({ data }: { data: { user_id: string } | null }) => {
+          if (!data?.user_id) { return; }
+          friendActivityLoadedRef.current = true;
+          const activity = await getFriendActivity(data.user_id);
+          setFriendActivity(activity);
+        });
+    }
+  }, [conversationId, myId, isGroup]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) { return; }
@@ -513,9 +527,19 @@ export default function ConversationScreen() {
         >
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
+        <TouchableOpacity
+          style={styles.headerInfo}
+          activeOpacity={isGroup ? 0.7 : 1}
+          onPress={isGroup ? () => navigation.navigate('GroupInfo', { conversationId }) : undefined}
+        >
           <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-          {headerSubtitle ? (
+          {isGroup ? (
+            memberCount !== null ? (
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {memberCount} member{memberCount !== 1 ? 's' : ''}
+              </Text>
+            ) : null
+          ) : headerSubtitle ? (
             <Text style={styles.headerSubtitle} numberOfLines={1}>
               {headerSubtitle}
             </Text>
@@ -525,7 +549,16 @@ export default function ConversationScreen() {
               <Text style={styles.onlineText}>Online</Text>
             </View>
           ) : null}
-        </View>
+        </TouchableOpacity>
+        {isGroup && (
+          <TouchableOpacity
+            style={styles.infoBtn}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('GroupInfo', { conversationId })}
+          >
+            <Text style={styles.infoBtnText}>ⓘ</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -603,7 +636,9 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 4 },
   backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
-  headerInfo: { flex: 1 },
+  headerInfo: { flex: 1, justifyContent: 'center' },
+  infoBtn: { padding: 6 },
+  infoBtnText: { color: COLORS.purpleLight, fontSize: 20 },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   headerSubtitle: { color: COLORS.purple, fontSize: 12, marginTop: 1 },
   onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },

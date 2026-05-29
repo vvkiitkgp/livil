@@ -67,27 +67,12 @@ export async function createGroup(
   name: string,
   memberIds: string[],
 ): Promise<string> {
-  const { data: userData } = await supabase.auth.getUser();
-  const me = userData?.user?.id;
-  if (!me) { throw new Error('not_authenticated'); }
-
-  const { data: conv, error: convErr } = await db
-    .from('conversations')
-    .insert({ kind: 'group', name, created_by: me })
-    .select('id')
-    .single();
-  if (convErr) { throw convErr; }
-
-  const allMembers = [...new Set([me, ...memberIds])];
-  const rows = allMembers.map((uid: string) => ({
-    conversation_id: conv.id,
-    user_id: uid,
-    role: uid === me ? 'admin' : 'member',
-  }));
-  const { error: memErr } = await db.from('conversation_members').insert(rows);
-  if (memErr) { throw memErr; }
-
-  return conv.id as string;
+  const { data, error } = await db.rpc('create_group', {
+    p_name: name,
+    p_member_ids: memberIds,
+  });
+  if (error) { throw error; }
+  return data as string;
 }
 
 export async function markAsRead(conversationId: string): Promise<void> {
@@ -153,6 +138,68 @@ export async function getFriendActivity(userId: string): Promise<FriendActivity>
       : null;
 
   return { isOnline, nowPlaying };
+}
+
+export type GroupMember = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  role: 'admin' | 'member';
+};
+
+export async function getGroupMembers(conversationId: string): Promise<GroupMember[]> {
+  const { data: members, error: membErr } = await db
+    .from('conversation_members')
+    .select('user_id, role')
+    .eq('conversation_id', conversationId);
+  if (membErr) { throw membErr; }
+  if (!members || members.length === 0) { return []; }
+
+  const ids = (members as { user_id: string; role: string }[]).map(m => m.user_id);
+  const { data: profiles, error: profErr } = await db
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', ids);
+  if (profErr) { throw profErr; }
+
+  const profMap = new Map<string, Record<string, unknown>>();
+  for (const p of (profiles ?? []) as Record<string, unknown>[]) {
+    profMap.set(p.id as string, p);
+  }
+
+  return (members as { user_id: string; role: string }[]).map(m => {
+    const p = profMap.get(m.user_id) ?? {};
+    return {
+      userId: m.user_id,
+      username: (p.username as string | null) ?? '',
+      displayName: (p.display_name as string | null) ?? null,
+      avatarUrl: (p.avatar_url as string | null) ?? null,
+      role: m.role as 'admin' | 'member',
+    };
+  });
+}
+
+export async function removeGroupMember(
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .from('conversation_members')
+    .delete()
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId);
+}
+
+export async function updateGroupName(
+  conversationId: string,
+  name: string,
+): Promise<void> {
+  const { error } = await db
+    .from('conversations')
+    .update({ name })
+    .eq('id', conversationId);
+  if (error) { throw error; }
 }
 
 export async function updatePresenceHeartbeat(): Promise<void> {

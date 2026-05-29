@@ -15,6 +15,7 @@ import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
 import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
 import NewConversationScreen from '../screens/main/NewConversationScreen';
+import GroupInfoScreen from '../screens/main/GroupInfoScreen';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
@@ -196,6 +197,11 @@ export default function RootNavigator() {
             <Stack.Screen
               name="NewConversation"
               component={NewConversationScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+              name="GroupInfo"
+              component={GroupInfoScreen}
               options={{ animation: 'slide_from_right' }}
             />
           </>
