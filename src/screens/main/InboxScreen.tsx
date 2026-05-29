@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
@@ -140,14 +140,14 @@ export default function InboxScreen() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const openConversation = useCallback((item: ConversationSummary) => {
     const isDm = item.kind === 'dm';
     const title = isDm
       ? (item.otherUserName || item.otherUserUsername || 'Chat')
       : (item.name || 'Group');
-    navigation.navigate('Conversation', { conversationId: item.id, title });
+    navigation.navigate('Conversation', { conversationId: item.id, title, kind: item.kind });
   }, [navigation]);
 
   const renderItem = useCallback(

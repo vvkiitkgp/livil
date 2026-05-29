@@ -32,7 +32,7 @@ export type RootStackParamList = {
   } | undefined;
   // ── Chat
   Inbox: undefined;
-  Conversation: { conversationId: string; title: string };
+  Conversation: { conversationId: string; title: string; kind?: 'dm' | 'group' };
   NewConversation: undefined;
   GroupInfo: { conversationId: string };
   // ── Jam Room (Phase 3)

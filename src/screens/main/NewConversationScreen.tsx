@@ -15,10 +15,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import FormInput from '../../components/FormInput';
-import { getOrCreateDm } from '../../services/conversations';
+import { getOrCreateDm, createGroup } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Tab = 'dm' | 'group';
 
 type Friend = {
   id: string;
@@ -34,13 +35,33 @@ function initials(name: string | null, username: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
+function Avatar({ friend, size = 48 }: { friend: Friend; size?: number }) {
+  const r = size / 2;
+  if (friend.avatarUrl) {
+    return <Image source={{ uri: friend.avatarUrl }} style={{ width: size, height: size, borderRadius: r }} />;
+  }
+  return (
+    <View style={[styles.avatarPlaceholder, { width: size, height: size, borderRadius: r }]}>
+      <Text style={styles.avatarText}>{initials(friend.displayName, friend.username)}</Text>
+    </View>
+  );
+}
+
 export default function NewConversationScreen() {
   const navigation = useNavigation<Nav>();
+  const [tab, setTab] = useState<Tab>('dm');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [filtered, setFiltered] = useState<Friend[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+
+  // DM state
   const [startingId, setStartingId] = useState<string | null>(null);
+
+  // Group state
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [groupName, setGroupName] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +71,6 @@ export default function NewConversationScreen() {
       const me = userData?.user?.id;
       if (!me || cancelled) { return; }
 
-      // Fetch accepted friends
       const { data, error } = await supabase
         .from('friendships')
         .select(`
@@ -91,18 +111,25 @@ export default function NewConversationScreen() {
   const handleSearch = useCallback((q: string) => {
     setQuery(q);
     const lq = q.toLowerCase().trim();
-    if (!lq) {
-      setFiltered(friends);
-      return;
-    }
     setFiltered(
-      friends.filter(f =>
-        f.username.toLowerCase().includes(lq) ||
-        (f.displayName ?? '').toLowerCase().includes(lq),
-      ),
+      lq
+        ? friends.filter(f =>
+            f.username.toLowerCase().includes(lq) ||
+            (f.displayName ?? '').toLowerCase().includes(lq),
+          )
+        : friends,
     );
   }, [friends]);
 
+  const handleTabChange = useCallback((t: Tab) => {
+    setTab(t);
+    setQuery('');
+    setFiltered(friends);
+    setSelected(new Set());
+    setGroupName('');
+  }, [friends]);
+
+  // DM: tap → open conversation immediately
   const handleSelectFriend = useCallback(async (friend: Friend) => {
     if (startingId) { return; }
     setStartingId(friend.id);
@@ -111,31 +138,62 @@ export default function NewConversationScreen() {
       navigation.replace('Conversation', {
         conversationId,
         title: friend.displayName || friend.username,
+        kind: 'dm',
       });
     } catch (err) {
       setStartingId(null);
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as { message?: string })?.message ?? JSON.stringify(err);
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
       Alert.alert('Could not open chat', msg);
     }
   }, [startingId, navigation]);
 
-  const renderItem = useCallback(({ item }: { item: Friend }) => (
+  // Group: tap → toggle selection
+  const handleToggleSelect = useCallback((friend: Friend) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(friend.id)) {
+        next.delete(friend.id);
+      } else {
+        next.add(friend.id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCreateGroup = useCallback(async () => {
+    const name = groupName.trim();
+    if (!name) {
+      Alert.alert('Name required', 'Please enter a group name.');
+      return;
+    }
+    if (selected.size < 1) {
+      Alert.alert('Add members', 'Select at least one friend.');
+      return;
+    }
+    setCreating(true);
+    try {
+      const conversationId = await createGroup(name, Array.from(selected));
+      navigation.replace('Conversation', {
+        conversationId,
+        title: name,
+        kind: 'group',
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      Alert.alert('Could not create group', msg);
+    } finally {
+      setCreating(false);
+    }
+  }, [groupName, selected, navigation]);
+
+  const renderDmItem = useCallback(({ item }: { item: Friend }) => (
     <TouchableOpacity
       style={styles.row}
       activeOpacity={0.75}
       onPress={() => void handleSelectFriend(item)}
       disabled={!!startingId}
     >
-      {item.avatarUrl ? (
-        <Image source={{ uri: item.avatarUrl }} style={styles.avatar} />
-      ) : (
-        <View style={styles.avatarPlaceholder}>
-          <Text style={styles.avatarText}>{initials(item.displayName, item.username)}</Text>
-        </View>
-      )}
+      <Avatar friend={item} />
       <View style={styles.info}>
         <Text style={styles.name}>{item.displayName || item.username}</Text>
         <Text style={styles.username}>@{item.username}</Text>
@@ -146,8 +204,31 @@ export default function NewConversationScreen() {
     </TouchableOpacity>
   ), [handleSelectFriend, startingId]);
 
+  const renderGroupItem = useCallback(({ item }: { item: Friend }) => {
+    const isSelected = selected.has(item.id);
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.75}
+        onPress={() => handleToggleSelect(item)}
+      >
+        <Avatar friend={item} />
+        <View style={styles.info}>
+          <Text style={styles.name}>{item.displayName || item.username}</Text>
+          <Text style={styles.username}>@{item.username}</Text>
+        </View>
+        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+          {isSelected && <Text style={styles.checkmark}>✓</Text>}
+        </View>
+      </TouchableOpacity>
+    );
+  }, [selected, handleToggleSelect]);
+
+  const selectedFriends = friends.filter(f => selected.has(f.id));
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -159,13 +240,69 @@ export default function NewConversationScreen() {
         <Text style={styles.headerTitle}>New Message</Text>
       </View>
 
+      {/* Tab toggle */}
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === 'dm' && styles.tabBtnActive]}
+          onPress={() => handleTabChange('dm')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabLabel, tab === 'dm' && styles.tabLabelActive]}>
+            Direct Message
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === 'group' && styles.tabBtnActive]}
+          onPress={() => handleTabChange('group')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabLabel, tab === 'group' && styles.tabLabelActive]}>
+            New Group
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Group name input (group tab only) */}
+      {tab === 'group' && (
+        <View style={styles.groupNameWrap}>
+          <FormInput
+            value={groupName}
+            onChangeText={setGroupName}
+            placeholder="Group name…"
+            placeholderTextColor={COLORS.textMuted}
+            autoFocus
+          />
+        </View>
+      )}
+
+      {/* Selected members strip (group tab, when some selected) */}
+      {tab === 'group' && selectedFriends.length > 0 && (
+        <View style={styles.selectedStrip}>
+          {selectedFriends.map(f => (
+            <TouchableOpacity
+              key={f.id}
+              style={styles.selectedChip}
+              onPress={() => handleToggleSelect(f)}
+              activeOpacity={0.7}
+            >
+              <Avatar friend={f} size={28} />
+              <Text style={styles.selectedChipName} numberOfLines={1}>
+                {f.displayName || f.username}
+              </Text>
+              <Text style={styles.selectedChipX}>×</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Search */}
       <View style={styles.searchWrap}>
         <FormInput
           value={query}
           onChangeText={handleSearch}
-          placeholder="Search friends…"
+          placeholder={tab === 'dm' ? 'Search friends…' : 'Search friends to add…'}
           placeholderTextColor={COLORS.textMuted}
-          autoFocus
+          autoFocus={tab === 'dm'}
         />
       </View>
 
@@ -177,7 +314,7 @@ export default function NewConversationScreen() {
         <FlatList
           data={filtered}
           keyExtractor={item => item.id}
-          renderItem={renderItem}
+          renderItem={tab === 'dm' ? renderDmItem : renderGroupItem}
           contentContainerStyle={
             filtered.length === 0 ? styles.emptyContent : styles.listContent
           }
@@ -189,6 +326,29 @@ export default function NewConversationScreen() {
             </View>
           }
         />
+      )}
+
+      {/* Create group button */}
+      {tab === 'group' && (
+        <View style={styles.createBtnWrap}>
+          <TouchableOpacity
+            style={[
+              styles.createBtn,
+              (selected.size === 0 || !groupName.trim() || creating) && styles.createBtnDisabled,
+            ]}
+            activeOpacity={0.8}
+            onPress={() => void handleCreateGroup()}
+            disabled={selected.size === 0 || !groupName.trim() || creating}
+          >
+            {creating ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.createBtnText}>
+                Create Group{selected.size > 0 ? ` · ${selected.size} member${selected.size > 1 ? 's' : ''}` : ''}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -207,6 +367,45 @@ const styles = StyleSheet.create({
   backButton: { padding: 4, marginRight: 4 },
   backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
+  tabRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    padding: 3,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabBtnActive: { backgroundColor: COLORS.purple },
+  tabLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  tabLabelActive: { color: COLORS.white },
+  groupNameWrap: { paddingHorizontal: 16, paddingTop: 10 },
+  selectedStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    gap: 8,
+  },
+  selectedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.purpleDim,
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 6,
+    maxWidth: 150,
+  },
+  selectedChipName: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '600', flex: 1 },
+  selectedChipX: { color: COLORS.purpleLight, fontSize: 16, lineHeight: 20 },
   searchWrap: { paddingHorizontal: 16, paddingVertical: 10 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 24 },
@@ -218,11 +417,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
   },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
   avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
     backgroundColor: COLORS.purpleDim,
     borderWidth: 1,
     borderColor: COLORS.purple,
@@ -233,6 +428,30 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   name: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   username: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
+  checkmark: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: COLORS.textSecondary, fontSize: 14 },
+  createBtnWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    paddingTop: 8,
+  },
+  createBtn: {
+    backgroundColor: COLORS.purple,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  createBtnDisabled: { opacity: 0.4 },
+  createBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
 });
