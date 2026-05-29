@@ -30,4 +30,11 @@ export type RootStackParamList = {
       coverArtUrl: string | null;
     };
   } | undefined;
+  // ── Chat
+  Inbox: undefined;
+  Conversation: { conversationId: string; title: string };
+  NewConversation: undefined;
+  GroupInfo: { conversationId: string };
+  // ── Jam Room (Phase 3)
+  JamRoom: { jamRoomId: string; conversationId: string };
 };
