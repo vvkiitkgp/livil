@@ -44,6 +44,9 @@ import {
   subscribeToConversation,
   unsubscribeFromConversation,
 } from '../../services/jamRealtime';
+import { createJamRoom, bulkAddToQueue } from '../../services/jamRooms';
+import { usePlayback } from '../../contexts/PlaybackContext';
+import { useJam } from '../../contexts/JamContext';
 import { supabase } from '../../../lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -66,19 +69,62 @@ const MORE_EMOJIS = [
 ];
 
 
+function JamInviteBubble({
+  msg,
+  conversationId,
+  title,
+}: {
+  msg: ChatMessage;
+  conversationId: string;
+  title: string;
+}) {
+  const navigation = useNavigation<Nav>();
+  const jamRoomId = msg.metadata?.jam_room_id as string | undefined;
+  if (!jamRoomId) { return null; }
+  return (
+    <View style={styles.jamInviteCard}>
+      <Text style={styles.jamInviteIcon}>🎵</Text>
+      <View style={styles.jamInviteInfo}>
+        <Text style={styles.jamInviteTitle}>Jam Room started</Text>
+        <Text style={styles.jamInviteSub}>Tap to join the listening session</Text>
+      </View>
+      <TouchableOpacity
+        style={styles.jamInviteBtn}
+        activeOpacity={0.8}
+        onPress={() => navigation.navigate('JamRoom', { jamRoomId, conversationId })}
+      >
+        <Text style={styles.jamInviteBtnText}>Join</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function MessageBubble({
   msg,
   isMe,
+  conversationId,
+  conversationTitle,
   onLongPress,
   onReactionToggle,
 }: {
   msg: ChatMessage;
   isMe: boolean;
+  conversationId: string;
+  conversationTitle: string;
   onLongPress: (msg: ChatMessage) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
+  const isJamInvite = msg.kind === 'jam_invite' && !!msg.metadata?.jam_room_id;
+
+  if (isJamInvite) {
+    return (
+      <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+        <JamInviteBubble msg={msg} conversationId={conversationId} title={conversationTitle} />
+      </View>
+    );
+  }
   const hasReactions = msg.reactions.length > 0;
 
   return (
@@ -235,6 +281,10 @@ export default function ConversationScreen() {
   const route = useRoute<Route>();
   const { conversationId, title, kind } = route.params;
   const isGroup = kind === 'group';
+
+  const { nowPlaying, queueRef } = usePlayback();
+  const { activeJam, setActiveJam } = useJam();
+  const [startingJam, setStartingJam] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -495,16 +545,45 @@ export default function ConversationScreen() {
     await handleReactionToggle(msg, emoji);
   }, [reactionTarget, handleReactionToggle]);
 
+  const handleStartJam = useCallback(async () => {
+    if (activeJam) {
+      Alert.alert(
+        'Jam Already Running',
+        'Please end the current Jam Room before starting a new one.',
+      );
+      return;
+    }
+    if (startingJam) { return; }
+    setStartingJam(true);
+    try {
+      const jamRoomId = await createJamRoom(conversationId, nowPlaying);
+      // Seed jam queue with the host's current playback queue (fire-and-forget)
+      const trackIds = queueRef.current.map(item => item.trackId).filter(Boolean);
+      if (trackIds.length > 0) {
+        void bulkAddToQueue(jamRoomId, trackIds).catch(() => {});
+      }
+      setActiveJam({ jamRoomId, conversationId, conversationTitle: title });
+      navigation.navigate('JamRoom', { jamRoomId, conversationId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      Alert.alert('Could not start Jam Room', msg);
+    } finally {
+      setStartingJam(false);
+    }
+  }, [activeJam, startingJam, conversationId, nowPlaying, queueRef, setActiveJam, title, navigation]);
+
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => (
       <MessageBubble
         msg={item}
         isMe={item.senderId === myId}
+        conversationId={conversationId}
+        conversationTitle={title}
         onLongPress={handleLongPress}
         onReactionToggle={handleReactionToggle}
       />
     ),
-    [myId, handleLongPress, handleReactionToggle],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle],
   );
 
   const headerSubtitle = useMemo(() => {
@@ -549,6 +628,17 @@ export default function ConversationScreen() {
               <Text style={styles.onlineText}>Online</Text>
             </View>
           ) : null}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.infoBtn}
+          activeOpacity={0.7}
+          onPress={() => void handleStartJam()}
+          disabled={startingJam}
+        >
+          {startingJam
+            ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
+            : <Text style={styles.infoBtnText}>🎵</Text>
+          }
         </TouchableOpacity>
         {isGroup && (
           <TouchableOpacity
@@ -710,6 +800,30 @@ const styles = StyleSheet.create({
   trackCardInfo: { flex: 1 },
   trackCardTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   trackCardArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  // Jam invite card
+  jamInviteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.purpleDim,
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+    maxWidth: '85%',
+  },
+  jamInviteIcon: { fontSize: 22 },
+  jamInviteInfo: { flex: 1 },
+  jamInviteTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  jamInviteSub: { color: COLORS.purpleLight, fontSize: 11, marginTop: 2 },
+  jamInviteBtn: {
+    backgroundColor: COLORS.purple,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  jamInviteBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
   // Reactions — Instagram style: absolute overlay at bubble bottom
   reactionOverlay: {
     position: 'absolute',

@@ -220,8 +220,8 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         onEnd={handleEnd}
         onError={handleError}
         progressUpdateInterval={250}
-        playInBackground={false}
-        playWhenInactive={false}
+        playInBackground={media.kind === 'audio'}
+        playWhenInactive={media.kind === 'audio'}
         ignoreSilentSwitch="ignore"
         muted={false}
         volume={1.0}

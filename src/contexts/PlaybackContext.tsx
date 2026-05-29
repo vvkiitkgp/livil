@@ -73,6 +73,10 @@ type PlaybackContextValue = {
   openFullScreenPlayer: () => void;
   closeFullScreenPlayer: () => void;
 
+  // --- jam lock (disables FloatingPlayer gestures while listening in a jam) ---
+  jamLocked: boolean;
+  setJamLocked: (locked: boolean) => void;
+
   // --- shuffle / repeat ---
   shuffleEnabled: boolean;
   toggleShuffle: () => void;
@@ -89,6 +93,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+  const [jamLocked, setJamLockedState] = useState(false);
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
 
@@ -207,6 +212,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setIsFullScreenOpen(false);
   }, []);
 
+  const setJamLocked = useCallback((locked: boolean) => {
+    setJamLockedState(locked);
+  }, []);
+
   const toggleShuffle = useCallback(() => {
     setShuffleEnabled(v => {
       shuffleRef.current = !v;
@@ -248,6 +257,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      jamLocked,
+      setJamLocked,
       shuffleEnabled,
       toggleShuffle,
       repeatMode,
@@ -274,6 +285,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      jamLocked,
+      setJamLocked,
       shuffleEnabled,
       toggleShuffle,
       repeatMode,

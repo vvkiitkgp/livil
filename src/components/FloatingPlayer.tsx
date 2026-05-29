@@ -59,6 +59,7 @@ export default function FloatingPlayer() {
     openFullScreenPlayer,
     closeFullScreenPlayer,
     isFullScreenOpen,
+    jamLocked,
   } = usePlayback();
 
   // ─── Animations ─────────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ export default function FloatingPlayer() {
     .numberOfTaps(2)
     .runOnJS(true)
     .onEnd((_e, success) => {
-      if (success) { openFullScreenPlayer(); }
+      if (success && !jamLocked) { openFullScreenPlayer(); }
     });
 
   // Single-tap: toggle play / pause. Exclusive ensures double-tap wins when detected.
@@ -134,7 +135,7 @@ export default function FloatingPlayer() {
     .numberOfTaps(1)
     .runOnJS(true)
     .onEnd((_e, success) => {
-      if (!success) { return; }
+      if (!success || jamLocked) { return; }
       if (activePostId) { handlersRef.current?.pause(); }
       else { handlersRef.current?.play(); }
     });
@@ -148,6 +149,7 @@ export default function FloatingPlayer() {
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .onStart(() => {
+      if (jamLocked) { return; }
       circleX.stopAnimation();
       circleY.stopAnimation();
       stopRewind();
