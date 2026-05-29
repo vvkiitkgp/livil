@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet, AppState, type AppStateStatus } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
@@ -12,17 +12,59 @@ import PlaylistScreen from '../screens/main/PlaylistScreen';
 import FollowingScreen from '../screens/main/FollowingScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
+import InboxScreen from '../screens/main/InboxScreen';
+import ConversationScreen from '../screens/main/ConversationScreen';
+import NewConversationScreen from '../screens/main/NewConversationScreen';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
+import { updatePresenceHeartbeat } from '../services/conversations';
+import { messageCache } from '../services/messageCache';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Presence heartbeat: update last_seen_at every 30s while app is foregrounded
+  useEffect(() => {
+    if (!session) {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      return;
+    }
+
+    void updatePresenceHeartbeat();
+    heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), 30_000);
+
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        void updatePresenceHeartbeat();
+        if (!heartbeatRef.current) {
+          heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), 30_000);
+        }
+      } else {
+        if (heartbeatRef.current) {
+          clearInterval(heartbeatRef.current);
+          heartbeatRef.current = null;
+        }
+      }
+    });
+
+    return () => {
+      sub.remove();
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    };
+  }, [session]);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,9 +90,14 @@ export default function RootNavigator() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange((event, s) => {
       if (!cancelled) {
         setSession(s);
+        // Clear cached chat data when the user signs out so stale messages
+        // aren't briefly visible if a different user signs in on the same device.
+        if (event === 'SIGNED_OUT') {
+          void messageCache.clearAll();
+        }
       }
     });
 
@@ -134,6 +181,22 @@ export default function RootNavigator() {
                 animation: 'slide_from_bottom',
                 gestureEnabled: true,
               }}
+            />
+            {/* ── Chat screens (full-screen, no bottom tab bar) ── */}
+            <Stack.Screen
+              name="Inbox"
+              component={InboxScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+              name="Conversation"
+              component={ConversationScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+              name="NewConversation"
+              component={NewConversationScreen}
+              options={{ animation: 'slide_from_right' }}
             />
           </>
         ) : (

@@ -29,6 +29,7 @@ import {
   type HomeFeedCursor,
 } from '../../services/posts';
 import { listFriendListenStories, type FriendListenStory } from '../../services/friendActivity';
+import { listConversations } from '../../services/conversations';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -195,6 +196,7 @@ export default function HomeScreen() {
   const playback = usePlayback();
 
   const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
+  const [totalUnread, setTotalUnread] = useState(0);
 
   const [stories, setStories] = useState<FriendListenStory[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
@@ -316,6 +318,15 @@ export default function HomeScreen() {
         }
       } catch {
         // Hero initials simply fall back to '?'.
+      }
+
+      try {
+        const convs = await listConversations();
+        if (!cancelled) {
+          setTotalUnread(convs.reduce((sum, c) => sum + c.unreadCount, 0));
+        }
+      } catch {
+        // ignore
       }
     })();
 
@@ -489,14 +500,17 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.85}
-              style={styles.avatar}
-              onPress={() => navigation.navigate('Profile')}
-              accessibilityLabel="Open profile"
+              style={styles.inboxButton}
+              onPress={() => navigation.navigate('Inbox')}
+              accessibilityLabel="Open messages"
             >
-              {meProfile?.avatarUrl ? (
-                <Image source={{ uri: meProfile.avatarUrl }} style={styles.avatarImg} />
-              ) : (
-                <Text style={styles.avatarText}>{avatarInitials(meProfile)}</Text>
+              <Text style={styles.inboxIcon}>💬</Text>
+              {totalUnread > 0 && (
+                <View style={styles.inboxBadge}>
+                  <Text style={styles.inboxBadgeText}>
+                    {totalUnread > 99 ? '99+' : totalUnread}
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
           </View>
@@ -684,7 +698,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.5,
   },
-  avatar: {
+  inboxButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -693,18 +707,23 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
+  inboxIcon: { fontSize: 18 },
+  inboxBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: COLORS.purple,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: COLORS.bg,
   },
-  avatarText: {
-    color: COLORS.purpleLight,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+  inboxBadgeText: { color: COLORS.white, fontSize: 9, fontWeight: '800' },
 
   storiesSection: {
     paddingBottom: 12,
