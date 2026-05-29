@@ -10,6 +10,17 @@ export type PlaybackBroadcast = {
   position_ms: number;
   track_id: string;
   host_ts: number;
+  // Full track info — sent on join sync and track changes so listeners can load the track
+  track_title?: string;
+  track_artist?: string;
+  track_cover_art?: string | null;
+  audio_url?: string;
+  video_url?: string;
+  media_kind?: 'audio' | 'video';
+  post_id?: string;
+  author_id?: string;
+  author_username?: string;
+  author_avatar_url?: string | null;
 };
 
 export type JamHandlers = {

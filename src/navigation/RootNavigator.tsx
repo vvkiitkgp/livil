@@ -16,6 +16,9 @@ import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
 import NewConversationScreen from '../screens/main/NewConversationScreen';
 import GroupInfoScreen from '../screens/main/GroupInfoScreen';
+import JamRoomScreen from '../screens/main/JamRoomScreen';
+import JamBanner from '../components/JamBanner';
+import { JamProvider } from '../contexts/JamContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
@@ -117,6 +120,7 @@ export default function RootNavigator() {
   }
 
   return (
+    <JamProvider>
     <View style={styles.root}>
       <Stack.Navigator
         screenOptions={{
@@ -204,6 +208,11 @@ export default function RootNavigator() {
               component={GroupInfoScreen}
               options={{ animation: 'slide_from_right' }}
             />
+            <Stack.Screen
+              name="JamRoom"
+              component={JamRoomScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
           </>
         ) : (
           <Stack.Screen name="Auth" component={AuthNavigator} />
@@ -213,12 +222,14 @@ export default function RootNavigator() {
       {/* Rendered above the entire stack so they appear on every screen */}
       {session && (
         <>
+          <JamBanner />
           <GlobalAudioPlayer />
           <FullScreenPlayer />
           <FloatingPlayer />
         </>
       )}
     </View>
+    </JamProvider>
   );
 }
 
