@@ -48,6 +48,7 @@ import { createJamRoom, bulkAddToQueue } from '../../services/jamRooms';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { supabase } from '../../../lib/supabase';
+import AddBadge from '../../components/AddBadge';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -145,9 +146,12 @@ function MessageBubble({
 
       <View style={[styles.bubbleColumn, isMe && styles.bubbleColumnMe]}>
         {!isMe && (
-          <Text style={styles.senderName}>
-            {msg.senderDisplayName || msg.senderUsername}
-          </Text>
+          <View style={styles.senderNameRow}>
+            <Text style={styles.senderName}>
+              {msg.senderDisplayName || msg.senderUsername}
+            </Text>
+            {msg.senderId ? <AddBadge userId={msg.senderId} size="sm" /> : null}
+          </View>
         )}
 
         {/* Wrapper gives us the anchor point for the absolutely-positioned reaction strip */}
@@ -760,7 +764,8 @@ const styles = StyleSheet.create({
   bubbleColumnMe: { alignItems: 'flex-end' },
   bubbleWrapper: { position: 'relative' },
   bubbleWrapperWithReactions: { marginBottom: 16 },
-  senderName: { color: COLORS.textSecondary, fontSize: 11, marginBottom: 2, marginLeft: 2 },
+  senderName: { color: COLORS.textSecondary, fontSize: 11, marginLeft: 2 },
+  senderNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   bubble: {
     borderRadius: 18,
     paddingHorizontal: 14,

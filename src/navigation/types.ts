@@ -35,6 +35,7 @@ export type RootStackParamList = {
   Conversation: { conversationId: string; title: string; kind?: 'dm' | 'group' };
   NewConversation: undefined;
   GroupInfo: { conversationId: string };
+  FriendRequests: undefined;
   // ── Jam Room (Phase 3)
   JamRoom: { jamRoomId: string; conversationId: string };
 };

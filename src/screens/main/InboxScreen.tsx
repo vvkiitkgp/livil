@@ -18,6 +18,9 @@ import {
   type ConversationSummary,
 } from '../../services/conversations';
 import { messageCache } from '../../services/messageCache';
+import { useRelationships } from '../../contexts/RelationshipContext';
+import { FriendRequestsBanner, NewFansBanner } from '../../components/InboxBanner';
+import AddBadge from '../../components/AddBadge';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -81,6 +84,7 @@ function ConversationRow({
           <Text style={styles.nameText} numberOfLines={1}>
             {displayName}
           </Text>
+          {isDm && item.otherUserId ? <AddBadge userId={item.otherUserId} size="sm" /> : null}
           <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
         </View>
         <Text
@@ -104,9 +108,11 @@ function ConversationRow({
 
 export default function InboxScreen() {
   const navigation = useNavigation<Nav>();
+  const rel = useRelationships();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [bannerKey, setBannerKey] = useState(0);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -140,7 +146,11 @@ export default function InboxScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    void load();
+    void rel.refresh();
+    setBannerKey(k => k + 1);
+  }, [load, rel]));
 
   const openConversation = useCallback((item: ConversationSummary) => {
     const isDm = item.kind === 'dm';
@@ -189,7 +199,16 @@ export default function InboxScreen() {
           keyExtractor={item => item.id}
           renderItem={renderItem}
           refreshing={refreshing}
-          onRefresh={() => void load(true)}
+          onRefresh={() => {
+            setBannerKey(k => k + 1);
+            void load(true);
+          }}
+          ListHeaderComponent={
+            <>
+              <FriendRequestsBanner refreshKey={bannerKey} />
+              <NewFansBanner refreshKey={bannerKey} />
+            </>
+          }
           contentContainerStyle={
             conversations.length === 0 ? styles.emptyContent : styles.listContent
           }

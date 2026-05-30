@@ -15,6 +15,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import FormInput from '../../components/FormInput';
+import AddBadge from '../../components/AddBadge';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { ROLES, type PendingCollaborator } from '../../constants/roles';
@@ -197,9 +198,12 @@ export default function CollaboratorPickerScreen() {
                         </Text>
                       </View>
                       <View style={styles.resultText}>
-                        <Text style={styles.resultName} numberOfLines={1}>
-                          {p.displayName ?? p.username}
-                        </Text>
+                        <View style={styles.resultNameRow}>
+                          <Text style={styles.resultName} numberOfLines={1}>
+                            {p.displayName ?? p.username}
+                          </Text>
+                          <AddBadge userId={p.id} size="sm" />
+                        </View>
                         <Text style={styles.resultUsername} numberOfLines={1}>
                           @{p.username}
                         </Text>
@@ -395,6 +399,7 @@ const styles = StyleSheet.create({
   resultText: {
     flex: 1,
   },
+  resultNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   resultName: {
     color: COLORS.white,
     fontSize: 15,

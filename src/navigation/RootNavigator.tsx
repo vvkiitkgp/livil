@@ -17,8 +17,10 @@ import ConversationScreen from '../screens/main/ConversationScreen';
 import NewConversationScreen from '../screens/main/NewConversationScreen';
 import GroupInfoScreen from '../screens/main/GroupInfoScreen';
 import JamRoomScreen from '../screens/main/JamRoomScreen';
+import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import JamBanner from '../components/JamBanner';
 import { JamProvider } from '../contexts/JamContext';
+import { RelationshipProvider } from '../contexts/RelationshipContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
@@ -138,6 +140,7 @@ export default function RootNavigator() {
 
   return (
     <JamProvider>
+    <RelationshipProvider>
     <View style={styles.root}>
       <Stack.Navigator
         screenOptions={{
@@ -230,6 +233,11 @@ export default function RootNavigator() {
               component={JamRoomScreen}
               options={{ animation: 'slide_from_right' }}
             />
+            <Stack.Screen
+              name="FriendRequests"
+              component={FriendRequestsScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
           </>
         ) : (
           <Stack.Screen name="Auth" component={AuthNavigator} />
@@ -246,6 +254,7 @@ export default function RootNavigator() {
         </>
       )}
     </View>
+    </RelationshipProvider>
     </JamProvider>
   );
 }

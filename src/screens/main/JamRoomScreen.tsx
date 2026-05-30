@@ -20,6 +20,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import FormInput from '../../components/FormInput';
 import SeekBar from '../../components/SeekBar';
+import AddBadge from '../../components/AddBadge';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import {
@@ -580,6 +581,9 @@ export default function JamRoomScreen() {
             <View key={m.userId} style={styles.presenceItem}>
               <PresenceAvatar member={m} />
               <View style={styles.presenceOnlineDot} />
+              <View style={styles.presenceAddBadge}>
+                <AddBadge userId={m.userId} size="sm" />
+              </View>
             </View>
           ))}
           {presenceMembers.length > 5 && (
@@ -751,6 +755,7 @@ const styles = StyleSheet.create({
   controlBtnText: { fontSize: 20, color: COLORS.white },
   presenceRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   presenceItem: { position: 'relative' },
+  presenceAddBadge: { position: 'absolute', top: -4, right: -4 },
   presenceAvatar: { width: 32, height: 32, borderRadius: 16 },
   presenceAvatarPlaceholder: {
     width: 32, height: 32, borderRadius: 16,
