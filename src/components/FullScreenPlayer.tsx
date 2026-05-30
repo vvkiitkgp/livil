@@ -37,12 +37,11 @@ import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
-const PLAYER_BOTTOM = Math.max(SCREEN_H * 0.1, TAB_BAR_H + 10);
 const FLOAT_D = 60;
-// translateY that moves the full-screen container's center to the floating player circle center,
-// so the converge/expand animation originates from/collapses into the right spot.
-const CONVERGE_Y = SCREEN_H / 2 - PLAYER_BOTTOM - FLOAT_D / 2;
+// PLAYER_BOTTOM and CONVERGE_Y are intentionally NOT defined at module level.
+// They depend on insets.bottom (the real Android nav bar height) which is only
+// available inside the component via useSafeAreaInsets().  See playerBottom /
+// convergeY computed at the top of FullScreenPlayer().
 
 type TabId = 'lyrics' | 'queue' | 'info';
 
@@ -686,6 +685,14 @@ export default function FullScreenPlayer() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
+  // ── Player positioning (insets-aware) ─────────────────────────────────────
+  // Computed here — not at module level — so insets.bottom (the real height of
+  // the Android system nav bar / gesture strip on this specific device) is
+  // baked in before driving layout and animations.
+  const playerTabBarH  = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
+  const playerBottom   = Math.max(SCREEN_H * 0.1, playerTabBarH + 10);
+  const convergeY      = SCREEN_H / 2 - playerBottom - FLOAT_D / 2;
+
   const handleNavigateToUser = useCallback((userId: string) => {
     // Minimize full-screen player — floating player stays visible, music keeps playing.
     closeFullScreenPlayer();
@@ -700,7 +707,7 @@ export default function FullScreenPlayer() {
   // Three independent native-driver values replace the old slideAnim/bounceAnim pair.
   // Keeping them separate avoids Animated.add() on interpolated values, which can
   // silently fall back to the JS driver on Android and break gesture detection.
-  const posYAnim    = useRef(new Animated.Value(CONVERGE_Y)).current;  // translateY
+  const posYAnim    = useRef(new Animated.Value(convergeY)).current;   // translateY
   const scaleAnim   = useRef(new Animated.Value(0.02)).current;         // scaleX / scaleY
   const opacityAnim = useRef(new Animated.Value(0)).current;            // opacity
   const panelAnim   = useRef(new Animated.Value(0)).current;
@@ -719,7 +726,7 @@ export default function FullScreenPlayer() {
     if (isFullScreenOpen) {
       // Snap to the invisible starting dot at the floating player circle, then
       // spring outward to full screen — looks like it's bursting from the circle.
-      posYAnim.setValue(CONVERGE_Y);
+      posYAnim.setValue(convergeY);
       scaleAnim.setValue(0.02);
       opacityAnim.setValue(0);
       Animated.parallel([
@@ -739,7 +746,7 @@ export default function FullScreenPlayer() {
         }),
         Animated.parallel([
           Animated.timing(posYAnim, {
-            toValue: CONVERGE_Y, duration: 350,
+            toValue: convergeY, duration: 350,
             easing: Easing.in(Easing.quad), useNativeDriver: true,
           }),
           Animated.timing(scaleAnim, {
@@ -848,10 +855,10 @@ export default function FullScreenPlayer() {
   const HEADER_H = 52;
   const panelTop = safeTop + HEADER_H;
   const panelHeight = SCREEN_H - panelTop;
-  const panelScrollPad = PLAYER_BOTTOM + FLOAT_D + 24 + 44 + safeBottom + 16;
+  const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 8;
-  const controlRowBottom = PLAYER_BOTTOM + (FLOAT_D - 44) / 2;
-  const seekRowBottom = PLAYER_BOTTOM + FLOAT_D + 8;
+  const controlRowBottom = playerBottom + (FLOAT_D - 44) / 2;
+  const seekRowBottom = playerBottom + FLOAT_D + 8;
   const panelTranslateY = panelAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [panelHeight, 0],
