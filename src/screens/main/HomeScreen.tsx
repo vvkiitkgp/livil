@@ -9,7 +9,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
-  Alert,
   ScrollView,
   type ViewToken,
 } from 'react-native';
@@ -28,7 +27,8 @@ import {
   type FeedPost,
   type HomeFeedCursor,
 } from '../../services/posts';
-import { listFriendListenStories, type FriendListenStory } from '../../services/friendActivity';
+import { listActiveStories, type Story } from '../../services/stories';
+import { useStories } from '../../contexts/StoriesContext';
 import { listConversations } from '../../services/conversations';
 
 type HomeNavigation = CompositeNavigationProp<
@@ -78,8 +78,8 @@ function avatarInitials(profile: ProfileSnippet | null): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-function storyInitials(story: FriendListenStory): string {
-  const name = story.displayName?.trim() || story.username;
+function storyInitials(story: Story): string {
+  const name = story.author.displayName?.trim() || story.author.username;
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return '?';
@@ -108,8 +108,11 @@ function FriendStoriesRow({
   stories,
 }: {
   loading: boolean;
-  stories: FriendListenStory[];
+  stories: Story[];
 }) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const storyIds = useMemo(() => stories.map(s => s.id), [stories]);
+
   if (loading) {
     return (
       <View style={styles.storiesSection}>
@@ -124,7 +127,7 @@ function FriendStoriesRow({
       <View style={styles.storiesSection}>
         <Text style={styles.storiesHeading}>Friends</Text>
         <Text style={styles.storiesEmpty}>
-          Add Stars or accept friendships to see live listens here.
+          No stories from friends yet. Reposts as stories from your friends will appear here.
         </Text>
       </View>
     );
@@ -138,32 +141,34 @@ function FriendStoriesRow({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.storiesRow}
       >
-        {stories.map(item => (
-          <Pressable
-            key={item.userId}
-            style={styles.storyCell}
-            onPress={() =>
-              Alert.alert(
-                item.displayName?.trim() || item.username,
-                `${item.trackTitle} · ${item.artistName}`,
-                [{ text: 'OK' }],
-              )
-            }
-          >
-            <View style={styles.storyRing}>
-              <View style={styles.storyAvatar}>
-                {item.avatarUrl ? (
-                  <Image source={{ uri: item.avatarUrl }} style={styles.storyAvatarImg} />
-                ) : (
-                  <Text style={styles.storyAvatarText}>{storyInitials(item)}</Text>
-                )}
+        {stories.map((item, i) => {
+          const seen = item.viewedAt !== null;
+          return (
+            <Pressable
+              key={item.id}
+              style={styles.storyCell}
+              onPress={() => navigation.navigate('StoryViewer', { storyIds, startIndex: i })}
+            >
+              <View style={[
+                styles.storyRing,
+                seen
+                  ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
+              ]}>
+                <View style={styles.storyAvatar}>
+                  {item.author.avatarUrl ? (
+                    <Image source={{ uri: item.author.avatarUrl }} style={styles.storyAvatarImg} />
+                  ) : (
+                    <Text style={styles.storyAvatarText}>{storyInitials(item)}</Text>
+                  )}
+                </View>
               </View>
-            </View>
-            <Text style={styles.storyUsername} numberOfLines={1}>
-              @{item.username}
-            </Text>
-          </Pressable>
-        ))}
+              <Text style={styles.storyUsername} numberOfLines={1}>
+                @{item.author.username}
+              </Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -194,11 +199,11 @@ function PostCardSkeleton() {
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const playback = usePlayback();
+  const { stories, setStories } = useStories();
 
   const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
   const [totalUnread, setTotalUnread] = useState(0);
 
-  const [stories, setStories] = useState<FriendListenStory[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -227,23 +232,28 @@ export default function HomeScreen() {
     const startIdx = postsRef.current.findIndex(p => p.id === playback.activePostId);
     const slice = startIdx >= 0 ? postsRef.current.slice(startIdx) : postsRef.current;
     playback.setQueue(
-      slice.map(p => ({
-        postId: p.id,
-        trackId: p.track.id,
-        title: p.track.title,
-        artistName: p.author.displayName ?? p.author.username,
-        authorId: p.author.id,
-        authorUsername: p.author.username,
-        authorAvatarUrl: p.author.avatarUrl,
-        coverArtUrl: p.track.coverArtUrl,
-        mediaKind: p.track.mediaKind,
-        videoUrl: p.track.videoUrl ?? undefined,
-        likesCount: p.likesCount,
-        commentsCount: p.commentsCount,
-        repostsCount: p.repostsCount,
-        viewsCount: p.viewsCount,
-        viewerHasLiked: p.viewerHasLiked,
-      })),
+      slice.map(p => {
+        const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
+        return {
+          postId: p.id,
+          trackId: p.track.id,
+          title: p.track.title,
+          artistName: displayAuthor.displayName ?? displayAuthor.username,
+          authorId: displayAuthor.id,
+          authorUsername: displayAuthor.username,
+          authorAvatarUrl: displayAuthor.avatarUrl,
+          coverArtUrl: p.track.coverArtUrl,
+          mediaKind: p.track.mediaKind,
+          videoUrl: p.track.videoUrl ?? undefined,
+          likesCount: p.likesCount,
+          commentsCount: p.commentsCount,
+          repostsCount: p.repostsCount,
+          viewsCount: p.viewsCount,
+          viewerHasLiked: p.viewerHasLiked,
+          clipStartSec: p.clipStartSec,
+          clipEndSec: p.clipEndSec,
+        };
+      }),
     );
   // postsRef.current is always up-to-date; only re-run when activePostId changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -409,7 +419,7 @@ export default function HomeScreen() {
     const storiesPromise = (async () => {
       setStoriesLoading(true);
       try {
-        const loadedStories = await listFriendListenStories();
+        const loadedStories = await listActiveStories();
         if (!cancelled) {
           setStories(loadedStories);
         }
@@ -438,7 +448,7 @@ export default function HomeScreen() {
       await Promise.all([
         (async () => {
           try {
-            const loadedStories = await listFriendListenStories();
+            const loadedStories = await listActiveStories();
             setStories(loadedStories);
           } catch {
             setStories([]);

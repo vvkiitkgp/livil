@@ -38,4 +38,7 @@ export type RootStackParamList = {
   FriendRequests: undefined;
   // ── Jam Room (Phase 3)
   JamRoom: { jamRoomId: string; conversationId: string };
+  // ── Repost / Story composer
+  Repost: { originalPostId: string };
+  StoryViewer: { storyIds: string[]; startIndex: number };
 };

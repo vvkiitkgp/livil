@@ -27,6 +27,10 @@ export type NowPlayingInfo = {
   repostsCount: number;
   viewsCount: number;
   viewerHasLiked: boolean;
+  // Clip window from DB (null = full song). Stored here to reset the live clip
+  // window when a new track starts playing.
+  clipStartSec: number | null;
+  clipEndSec: number | null;
 };
 
 export type PlayerHandlers = {
@@ -55,6 +59,11 @@ type PlaybackContextValue = {
   updatePosition: (seconds: number) => void;
   updateDuration: (seconds: number) => void;
 
+  // --- clip window (ref — no re-renders; mutated by FullScreenPlayer on drag) ---
+  // null = no clip active (play full track). Initialized from NowPlayingInfo.clipStartSec/clipEndSec
+  // when setNowPlaying is called, then editable by the user in FullScreenPlayer.
+  clipWindowRef: React.MutableRefObject<{ start: number; end: number } | null>;
+
   // --- player handlers (ref — no re-renders) ---
   handlersRef: React.MutableRefObject<PlayerHandlers | null>;
   registerHandlers: (handlers: PlayerHandlers) => void;
@@ -72,6 +81,10 @@ type PlaybackContextValue = {
   isFullScreenOpen: boolean;
   openFullScreenPlayer: () => void;
   closeFullScreenPlayer: () => void;
+
+  // --- story viewer (hides FloatingPlayer while stories are fullscreen) ---
+  isStoryViewerOpen: boolean;
+  setStoryViewerOpen: (open: boolean) => void;
 
   // --- jam lock (disables FloatingPlayer gestures while listening in a jam) ---
   jamLocked: boolean;
@@ -93,12 +106,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+  const [isStoryViewerOpen, setIsStoryViewerOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
+  const clipWindowRef = useRef<{ start: number; end: number } | null>(null);
   const handlersRef = useRef<PlayerHandlers | null>(null);
   const queueRef = useRef<NowPlayingInfo[]>([]);
   // Refs so playNext/playPrev stay stable (useCallback []) while still reading latest values.
@@ -131,12 +146,16 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const setNowPlaying = useCallback((info: NowPlayingInfo) => {
     positionRef.current = 0;
+    clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
+      ? { start: info.clipStartSec, end: info.clipEndSec }
+      : null;
     setNowPlayingState(info);
   }, []);
 
   const clearNowPlaying = useCallback(() => {
     positionRef.current = 0;
     durationRef.current = 0;
+    clipWindowRef.current = null;
     setNowPlayingState(null);
   }, []);
 
@@ -212,6 +231,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setIsFullScreenOpen(false);
   }, []);
 
+  const setStoryViewerOpen = useCallback((open: boolean) => {
+    setIsStoryViewerOpenState(open);
+  }, []);
+
   const setJamLocked = useCallback((locked: boolean) => {
     setJamLockedState(locked);
   }, []);
@@ -245,6 +268,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       durationRef,
       updatePosition,
       updateDuration,
+      clipWindowRef,
       handlersRef,
       registerHandlers,
       unregisterHandlers,
@@ -257,6 +281,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      isStoryViewerOpen,
+      setStoryViewerOpen,
       jamLocked,
       setJamLocked,
       shuffleEnabled,
@@ -285,6 +311,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      isStoryViewerOpen,
+      setStoryViewerOpen,
       jamLocked,
       setJamLocked,
       shuffleEnabled,

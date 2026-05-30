@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { usePlayback } from '../contexts/PlaybackContext';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
-import SeekBar from './SeekBar';
+import ClipRangeSlider from './ClipRangeSlider';
 import type { FeedPost } from '../services/posts';
 import { recordView, toggleLike } from '../services/posts';
 import type { RootStackParamList } from '../navigation/types';
@@ -87,6 +87,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   const [seekTo, setSeekTo] = useState<number | null>(null);
   const [rate, setRate] = useState(1.0);
 
+  // Prevents firing clip-end stop more than once per play session.
+  const clipEndFiredRef = useRef(false);
+  useEffect(() => {
+    if (!paused) { clipEndFiredRef.current = false; }
+  }, [paused]);
+
   // Engagement state (optimistic).
   const [liked, setLiked] = useState(post.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(post.likesCount);
@@ -118,14 +124,19 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   // this effect → calls setNowPlaying again → ∞
   useEffect(() => {
     if (!paused) {
+      // For reposts, show the original creator's info in the full-screen player,
+      // not the reposter's.
+      const displayAuthor = (post.kind === 'repost' && post.originalAuthor)
+        ? post.originalAuthor
+        : post.author;
       playback.setNowPlaying({
         postId: post.id,
         trackId: post.track.id,
         title: post.track.title,
-        artistName: post.author.displayName ?? post.author.username,
-        authorId: post.author.id,
-        authorUsername: post.author.username,
-        authorAvatarUrl: post.author.avatarUrl,
+        artistName: displayAuthor.displayName ?? displayAuthor.username,
+        authorId: displayAuthor.id,
+        authorUsername: displayAuthor.username,
+        authorAvatarUrl: displayAuthor.avatarUrl,
         coverArtUrl: post.track.coverArtUrl,
         mediaKind: post.track.mediaKind,
         videoUrl: post.track.videoUrl ?? undefined,
@@ -135,6 +146,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         repostsCount: post.repostsCount,
         viewsCount: post.viewsCount,
         viewerHasLiked: post.viewerHasLiked,
+        clipStartSec: post.clipStartSec,
+        clipEndSec: post.clipEndSec,
       });
       playback.registerHandlers({
         play: () => setPaused(false),
@@ -153,6 +166,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   }, [
     paused,
     post.id,
+    post.kind,
     post.track.title,
     post.author.displayName,
     post.author.username,
@@ -162,6 +176,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     post.track.videoUrl,
     post.author.id,
     post.author.avatarUrl,
+    post.originalAuthor?.id,
+    post.originalAuthor?.username,
+    post.originalAuthor?.displayName,
+    post.originalAuthor?.avatarUrl,
+    post.clipStartSec,
+    post.clipEndSec,
     playback.setNowPlaying,    // stable useCallback []
     playback.registerHandlers, // stable useCallback []
   ]);
@@ -196,43 +216,58 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   const handleProgress = useCallback((seconds: number) => {
     setPosition(seconds);
     playback.updatePosition(seconds);
+    const cw = playback.clipWindowRef.current;
+    if (cw && seconds >= cw.end && !clipEndFiredRef.current) {
+      clipEndFiredRef.current = true;
+      if (playback.repeatMode === 'one') {
+        // Loop single: jump back to clip start and keep playing.
+        playerRef.current?.seek(cw.start);
+        setPosition(cw.start);
+        // Re-arm after the seek settles so the next loop is detected correctly.
+        setTimeout(() => { clipEndFiredRef.current = false; }, 300);
+      } else {
+        // off / all: advance the queue. playNext() wraps around in 'all' mode
+        // and does nothing (stops) in 'off' mode once the queue is exhausted.
+        setPaused(true);
+        setPosition(cw.start);
+        playback.playNext();
+      }
+    }
   }, [playback]);
 
   const handleLoaded = useCallback((seconds: number) => {
     setDuration(seconds);
     playback.updateDuration(seconds);
+    // Seek to clip start when the media first loads. Use the native ref directly
+    // to avoid the React state cycle (setSeekTo → effect → seek) which can fire
+    // after the first video frame has already rendered at position 0.
+    const cw = playback.clipWindowRef.current;
+    if (cw && cw.start > 0) {
+      playerRef.current?.seek(cw.start);
+      setPosition(cw.start);
+    }
   }, [playback]);
 
   const handleEnded = useCallback(() => {
     if (playback.repeatMode === 'one') {
+      // Loop single, no active clip: restart from the beginning and keep playing.
       setPosition(0);
       setSeekTo(0);
-      // Stay playing — seek to start and let MediaPlayer loop naturally via seekTo.
-      // setPaused stays false so playback continues immediately.
+      setTimeout(() => setSeekTo(null), 0);
     } else {
+      // off / all: advance the queue. playNext() wraps in 'all' and stops in 'off'.
       setPaused(true);
       setPosition(0);
-      setSeekTo(0);
+      playback.playNext();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playback.repeatMode]);
+  }, [playback.repeatMode, playback.playNext]);
 
-  const handleSeekStart = useCallback(() => {
-    // No-op for now; we keep the player going while the user drags. If we
-    // wanted to "pause while scrubbing", we'd setPaused(true) here.
-  }, []);
-
-  const handleSeek = useCallback((seconds: number) => {
-    // While dragging we just update the visual position. The actual seek
-    // happens on release in handleSeekEnd to avoid spamming the native player.
-    setPosition(seconds);
-  }, []);
-
-  const handleSeekEnd = useCallback((seconds: number) => {
-    setPosition(seconds);
-    setSeekTo(seconds);
-    // Reset the seekTo ref-style state on next tick so consecutive seeks to
-    // the same value still trigger the effect in MediaPlayer.
+  // Seek handle on the PostCard's read-only slider — lets users scrub the song
+  // without moving the clip boundary handles.
+  const handlePostSeekEnd = useCallback((s: number) => {
+    setPosition(s);
+    setSeekTo(s);
     setTimeout(() => setSeekTo(null), 0);
   }, []);
 
@@ -314,10 +349,18 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
             </Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.menuBtn} activeOpacity={0.7} accessibilityLabel="More options">
-          <View style={styles.menuDot} />
-          <View style={styles.menuDot} />
-          <View style={styles.menuDot} />
+        <TouchableOpacity
+          style={styles.menuBtn}
+          activeOpacity={0.7}
+          accessibilityLabel="Repost"
+          onPress={() => {
+            const targetId = post.kind === 'repost' ? post.originalPostId : post.id;
+            if (targetId) {
+              navigation.navigate('Repost', { originalPostId: targetId });
+            }
+          }}
+        >
+          <Text style={styles.repostBtnGlyph}>↻</Text>
         </TouchableOpacity>
       </View>
 
@@ -369,12 +412,14 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
       <View style={styles.seekRow}>
         <Text style={styles.seekTime}>{formatTime(position)}</Text>
         <View style={styles.seekBarWrap}>
-          <SeekBar
-            position={position}
+          <ClipRangeSlider
+            readOnly
             duration={duration}
-            onSeek={handleSeek}
-            onSeekStart={handleSeekStart}
-            onSeekEnd={handleSeekEnd}
+            position={position}
+            start={post.clipStartSec ?? 0}
+            end={post.clipEndSec ?? duration}
+            minClipSeconds={1}
+            onSeekEnd={handlePostSeekEnd}
           />
         </View>
         <Text style={styles.seekTime}>{formatTime(duration)}</Text>
@@ -512,14 +557,10 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 3,
   },
-  menuDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: COLORS.textMuted,
+  repostBtnGlyph: {
+    color: COLORS.textSecondary,
+    fontSize: 18,
   },
   titleBlock: {
     marginTop: 12,
