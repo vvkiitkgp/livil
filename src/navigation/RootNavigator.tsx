@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet, AppState, type AppStateStatus } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, AppState, Linking, type AppStateStatus } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
@@ -69,6 +69,22 @@ export default function RootNavigator() {
       }
     };
   }, [session]);
+
+  // Handle deep links for email confirmation (livil://auth/confirm?code=...)
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      if (!url.startsWith('livil://auth')) return;
+      await supabase.auth.exchangeCodeForSession(url);
+      // Session update is picked up automatically by onAuthStateChange below
+    };
+
+    Linking.getInitialURL().then(url => {
+      if (url) void handleDeepLink(url);
+    });
+
+    const sub = Linking.addEventListener('url', ({ url }) => void handleDeepLink(url));
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
