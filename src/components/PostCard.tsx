@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { usePlayback } from '../contexts/PlaybackContext';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
 import SeekBar from './SeekBar';
 import type { FeedPost } from '../services/posts';
 import { recordView, toggleLike } from '../services/posts';
+import type { RootStackParamList } from '../navigation/types';
+import AddBadge from './AddBadge';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -70,7 +74,12 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
 
 export default function PostCard({ post, visible, pauseWhenOffScreen = true }: PostCardProps) {
   const playback = usePlayback();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const playerRef = useRef<MediaPlayerHandle>(null);
+
+  const openAuthor = useCallback((authorId: string) => {
+    navigation.navigate('UserProfile', { userId: authorId });
+  }, [navigation]);
 
   const [paused, setPaused] = useState(true);
   const [duration, setDuration] = useState(0);
@@ -259,34 +268,52 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         <View style={styles.repostBanner}>
           <Text style={styles.repostBannerIcon}>↻</Text>
           <Text style={styles.repostBannerText} numberOfLines={1}>
-            <Text style={styles.repostBannerName}>{headerAuthor.displayName ?? headerAuthor.username}</Text>
+            <Text
+              style={styles.repostBannerName}
+              onPress={() => openAuthor(headerAuthor.id)}
+            >
+              {headerAuthor.displayName ?? headerAuthor.username}
+            </Text>
             {' reposted from '}
-            <Text style={styles.repostBannerName}>@{post.originalAuthor!.username}</Text>
+            <Text
+              style={styles.repostBannerName}
+              onPress={() => openAuthor(post.originalAuthor!.id)}
+            >
+              @{post.originalAuthor!.username}
+            </Text>
           </Text>
         </View>
       ) : null}
 
       {/* Header: avatar + name + handle + time */}
       <View style={styles.header}>
-        <View style={styles.avatar}>
-          {headerAuthor.avatarUrl ? (
-            <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
-          ) : (
-            <Text style={styles.avatarText}>{initials}</Text>
-          )}
-        </View>
-        <View style={styles.headerText}>
-          <View style={styles.nameRow}>
-            <Text style={styles.displayName} numberOfLines={1}>
-              {headerAuthor.displayName ?? headerAuthor.username}
-            </Text>
-            <Text style={styles.timeDot}> · </Text>
-            <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+        <TouchableOpacity
+          style={styles.authorTap}
+          activeOpacity={0.7}
+          onPress={() => openAuthor(headerAuthor.id)}
+          accessibilityLabel={`Open @${headerAuthor.username}`}
+        >
+          <View style={styles.avatar}>
+            {headerAuthor.avatarUrl ? (
+              <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </View>
-          <Text style={styles.handleText} numberOfLines={1}>
-            @{headerAuthor.username}
-          </Text>
-        </View>
+          <View style={styles.headerText}>
+            <View style={styles.nameRow}>
+              <Text style={styles.displayName} numberOfLines={1}>
+                {headerAuthor.displayName ?? headerAuthor.username}
+              </Text>
+              <AddBadge userId={headerAuthor.id} size="sm" />
+              <Text style={styles.timeDot}> · </Text>
+              <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+            </View>
+            <Text style={styles.handleText} numberOfLines={1}>
+              @{headerAuthor.username}
+            </Text>
+          </View>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.menuBtn} activeOpacity={0.7} accessibilityLabel="More options">
           <View style={styles.menuDot} />
           <View style={styles.menuDot} />
@@ -423,6 +450,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  authorTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
+  },
   avatar: {
     width: 42,
     height: 42,
@@ -450,7 +484,8 @@ const styles = StyleSheet.create({
   },
   nameRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
+    gap: 6,
   },
   displayName: {
     color: COLORS.white,

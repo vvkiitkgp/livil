@@ -25,6 +25,7 @@ import {
   type GroupMember,
 } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
+import AddBadge from '../../components/AddBadge';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -257,7 +258,10 @@ export default function GroupInfoScreen() {
       <View style={styles.memberRow}>
         <MemberAvatar member={item} />
         <View style={styles.memberInfo}>
-          <Text style={styles.memberName}>{item.displayName || item.username}</Text>
+          <View style={styles.nameRowInline}>
+            <Text style={styles.memberName}>{item.displayName || item.username}</Text>
+            <AddBadge userId={item.userId} size="sm" />
+          </View>
           <Text style={styles.memberUsername}>@{item.username}</Text>
         </View>
         <View style={styles.memberRight}>
@@ -478,6 +482,7 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700' },
   memberInfo: { flex: 1 },
+  nameRowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   memberName: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   memberUsername: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
   memberRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -24,6 +24,8 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
+import { useRelationships } from '../../contexts/RelationshipContext';
+import AddUserSheet from '../../components/AddUserSheet';
 import type { RootStackParamList } from '../../navigation/types';
 
 type UserProfileRouteProp = RouteProp<RootStackParamList, 'UserProfile'>;
@@ -62,11 +64,39 @@ function formatStat(n: number): string {
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 }
 
+function renderCta(
+  status: ReturnType<ReturnType<typeof useRelationships>['status']>,
+  onPress: () => void,
+) {
+  if (status === 'me') { return null; }
+  const map: Record<string, { label: string; primary: boolean }> = {
+    none: { label: 'Add', primary: true },
+    pending_outgoing: { label: 'Requested', primary: false },
+    pending_incoming: { label: 'Accept Friend Request', primary: true },
+    friend: { label: 'Friends ✓', primary: false },
+    star: { label: 'Starred ✓', primary: false },
+  };
+  const conf = map[status] ?? map.none;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={[styles.ctaBtn, conf.primary ? styles.ctaBtnPrimary : styles.ctaBtnSecondary]}
+    >
+      <Text style={conf.primary ? styles.ctaBtnPrimaryText : styles.ctaBtnSecondaryText}>
+        {conf.label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function UserProfileScreen() {
   const route = useRoute<UserProfileRouteProp>();
   const navigation = useNavigation<NavProp>();
   const { userId } = route.params;
   const playback = usePlayback();
+  const rel = useRelationships();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
@@ -298,6 +328,7 @@ export default function UserProfileScreen() {
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={3}>{profile.bio}</Text>
           ) : null}
+          {renderCta(rel.status(userId), () => setSheetOpen(true))}
         </View>
 
         <View style={styles.socialPills}>
@@ -334,7 +365,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, navigation]);
+  }, [profile, stats, followCounts, error, navigation, rel, userId]);
 
   const renderFooter = useCallback(() => {
     if (!loadingMore) { return <View style={styles.listFooter} />; }
@@ -365,6 +396,13 @@ export default function UserProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
       />
+      {sheetOpen && (
+        <AddUserSheet
+          userId={userId}
+          visible={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -411,6 +449,31 @@ const styles = StyleSheet.create({
   displayName: { color: COLORS.white, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   handle: { color: COLORS.textMuted, fontSize: 14, marginTop: 2 },
   bio: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center' },
+
+  ctaBtn: {
+    marginTop: 14,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 160,
+  },
+  ctaBtnPrimary: {
+    backgroundColor: COLORS.purple,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  ctaBtnPrimaryText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  ctaBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  ctaBtnSecondaryText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
 
   socialPills: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
