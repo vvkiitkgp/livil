@@ -100,6 +100,8 @@ export default function ProfileScreen() {
           viewerHasLiked: p.viewerHasLiked,
           clipStartSec: p.clipStartSec,
           clipEndSec: p.clipEndSec,
+          kind: p.kind,
+          originalPostId: p.originalPostId,
         };
       }),
     );

@@ -148,6 +148,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         viewerHasLiked: post.viewerHasLiked,
         clipStartSec: post.clipStartSec,
         clipEndSec: post.clipEndSec,
+        kind: post.kind,
+        originalPostId: post.originalPostId,
       });
       playback.registerHandlers({
         play: () => setPaused(false),
@@ -210,8 +212,19 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   }, [visible, viewRecorded, post.id]);
 
   const handleTogglePaused = useCallback(() => {
-    setPaused(prev => !prev);
-  }, []);
+    setPaused(prev => {
+      const next = !prev;
+      // Starting playback: jump to clip start so every play begins at the
+      // post's chosen clip window, regardless of where the user last paused.
+      if (!next) {
+        const start = post.clipStartSec ?? 0;
+        playerRef.current?.seek(start);
+        setPosition(start);
+        clipEndFiredRef.current = false;
+      }
+      return next;
+    });
+  }, [post.clipStartSec]);
 
   const handleProgress = useCallback((seconds: number) => {
     setPosition(seconds);
@@ -350,17 +363,24 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
           </View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.menuBtn}
-          activeOpacity={0.7}
+          style={styles.repostBtn}
+          activeOpacity={0.85}
           accessibilityLabel="Repost"
           onPress={() => {
             const targetId = post.kind === 'repost' ? post.originalPostId : post.id;
             if (targetId) {
-              navigation.navigate('Repost', { originalPostId: targetId });
+              navigation.navigate('Repost', {
+                originalPostId: targetId,
+                // Seed the slider with this post's current clip window — what
+                // the user sees on the card right now — not the original's.
+                seedClipStartSec: post.clipStartSec,
+                seedClipEndSec: post.clipEndSec,
+              });
             }
           }}
         >
-          <Text style={styles.repostBtnGlyph}>↻</Text>
+          <Text style={styles.repostBtnIcon}>▤</Text>
+          <Text style={styles.repostBtnLabel}>Repost</Text>
         </TouchableOpacity>
       </View>
 
@@ -552,15 +572,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 1,
   },
-  menuBtn: {
-    width: 32,
-    height: 32,
+  repostBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: COLORS.purple,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  repostBtnGlyph: {
-    color: COLORS.textSecondary,
-    fontSize: 18,
+  repostBtnIcon: {
+    color: COLORS.white,
+    fontSize: 14,
+    lineHeight: 16,
+  },
+  repostBtnLabel: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   titleBlock: {
     marginTop: 12,

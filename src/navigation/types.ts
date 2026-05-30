@@ -39,6 +39,13 @@ export type RootStackParamList = {
   // ── Jam Room (Phase 3)
   JamRoom: { jamRoomId: string; conversationId: string };
   // ── Repost / Story composer
-  Repost: { originalPostId: string };
+  Repost: {
+    originalPostId: string;
+    // Seed values for the clip slider so the Repost screen opens with the
+    // same clip the user was just looking at (PostCard's stored clip, or the
+    // FullScreenPlayer's live-edited clip), not the original post's defaults.
+    seedClipStartSec?: number | null;
+    seedClipEndSec?: number | null;
+  };
   StoryViewer: { storyIds: string[]; startIndex: number };
 };

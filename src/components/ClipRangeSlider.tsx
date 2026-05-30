@@ -16,6 +16,14 @@ export type ClipRangeSliderProps = {
   end: number;
   minClipSeconds?: number;
   maxClipSeconds?: number;
+  /**
+   * When true, dragging the left (clip-start) handle shifts the whole window
+   * instead of shrinking it — the right handle slides along by the same delta,
+   * preserving the current window size. Useful for story reposts where the
+   * window is fixed at the max clip length and the user wants to *position*
+   * the window rather than resize it.
+   */
+  slideWindowOnLeftDrag?: boolean;
   /** When true, clip handles are shown in gray and are not draggable. */
   readOnly?: boolean;
   onChange?: (start: number, end: number) => void;
@@ -46,6 +54,7 @@ export default function ClipRangeSlider({
   end,
   minClipSeconds = 1,
   maxClipSeconds,
+  slideWindowOnLeftDrag = false,
   readOnly = false,
   onChange,
   onChangeEnd,
@@ -63,6 +72,11 @@ export default function ClipRangeSlider({
   const positionRef = useRef(position);   positionRef.current = position;
   const minRef      = useRef(minClipSeconds);  minRef.current = minClipSeconds;
   const maxRef      = useRef(maxClipSeconds);  maxRef.current = maxClipSeconds;
+  const slideRef    = useRef(slideWindowOnLeftDrag);
+  slideRef.current  = slideWindowOnLeftDrag;
+  // Window size captured at gesture start — kept constant while sliding so the
+  // window doesn't grow / shrink as the user drags the left handle.
+  const grabWindowRef = useRef(0);
 
   // Internal state for the seek handle while the user drags it.
   // Overrides the `position` prop so the visual updates instantly without
@@ -118,6 +132,16 @@ export default function ClipRangeSlider({
     return Math.max(0, Math.min(durationRef.current, raw));
   }, [readOnly]);
 
+  // Shift the entire clip window so its left edge lands at `raw`, preserving
+  // the window size captured at gesture start. Used in slideWindowOnLeftDrag
+  // mode so the user can position a fixed-length clip anywhere on the track.
+  const slideWindow = useCallback((raw: number): [number, number] => {
+    const dur = durationRef.current;
+    const win = grabWindowRef.current;
+    const newStart = Math.max(0, Math.min(dur - win, raw));
+    return [newStart, newStart + win];
+  }, []);
+
   // ─── Gesture ──────────────────────────────────────────────────────────────
   const activeHandleRef = useRef<ActiveHandle | null>(null);
 
@@ -154,6 +178,8 @@ export default function ClipRangeSlider({
               activeHandleRef.current = 'right';
             }
           }
+          // Lock the window size at grab time so left-slide mode preserves it.
+          grabWindowRef.current = endRef.current - startRef.current;
         },
 
         onPanResponderMove: (_e: GestureResponderEvent, g: PanResponderGestureState) => {
@@ -161,7 +187,12 @@ export default function ClipRangeSlider({
           if (activeHandleRef.current === 'seek') {
             setSeekDragPos(clampSeek(raw));
           } else if (activeHandleRef.current === 'left') {
-            onChange?.(clampLeft(raw), endRef.current);
+            if (slideRef.current) {
+              const [s, e] = slideWindow(raw);
+              onChange?.(s, e);
+            } else {
+              onChange?.(clampLeft(raw), endRef.current);
+            }
           } else if (activeHandleRef.current === 'right') {
             onChange?.(startRef.current, clampRight(raw));
           }
@@ -174,7 +205,12 @@ export default function ClipRangeSlider({
             setSeekDragPos(null);
             onSeekEnd?.(clamped);
           } else if (activeHandleRef.current === 'left') {
-            onChangeEnd?.(clampLeft(raw), endRef.current, 'left');
+            if (slideRef.current) {
+              const [s, e] = slideWindow(raw);
+              onChangeEnd?.(s, e, 'left');
+            } else {
+              onChangeEnd?.(clampLeft(raw), endRef.current, 'left');
+            }
           } else if (activeHandleRef.current === 'right') {
             onChangeEnd?.(startRef.current, clampRight(raw), 'right');
           }
@@ -188,7 +224,7 @@ export default function ClipRangeSlider({
       }),
     // readOnly is included because onPanResponderGrant branches on it.
     [refreshMeasure, secondsFromAbsX, clampLeft, clampRight, clampSeek,
-     onChange, onChangeEnd, onSeekEnd, readOnly],
+     slideWindow, onChange, onChangeEnd, onSeekEnd, readOnly],
   );
 
   // ─── Visual calculations ──────────────────────────────────────────────────
