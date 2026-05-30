@@ -119,6 +119,8 @@ export default function PlaylistScreen({ route }: Props) {
       repostsCount: 0,
       viewsCount: 0,
       viewerHasLiked: false,
+      clipStartSec: null,
+      clipEndSec: null,
     });
     const queue = items.map(toInfo);
     // Reorder queue so the tapped item is first, then the rest follow in order

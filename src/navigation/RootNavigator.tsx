@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabase';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import UploadScreen from '../screens/main/UploadScreen';
+import RepostScreen from '../screens/main/RepostScreen';
+import StoryViewerScreen from '../screens/main/StoryViewerScreen';
 import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
 import UserProfileScreen from '../screens/main/UserProfileScreen';
 import PlaylistScreen from '../screens/main/PlaylistScreen';
@@ -21,6 +23,7 @@ import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import JamBanner from '../components/JamBanner';
 import { JamProvider } from '../contexts/JamContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
+import { StoriesProvider } from '../contexts/StoriesContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
@@ -141,6 +144,7 @@ export default function RootNavigator() {
   return (
     <JamProvider>
     <RelationshipProvider>
+    <StoriesProvider>
     <View style={styles.root}>
       <Stack.Navigator
         screenOptions={{
@@ -159,6 +163,24 @@ export default function RootNavigator() {
                 presentation: 'modal',
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="Repost"
+              component={RepostScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="StoryViewer"
+              component={StoryViewerScreen}
+              options={{
+                presentation: 'transparentModal',
+                gestureEnabled: false,
+                animation: 'fade',
               }}
             />
             <Stack.Screen
@@ -254,6 +276,7 @@ export default function RootNavigator() {
         </>
       )}
     </View>
+    </StoriesProvider>
     </RelationshipProvider>
     </JamProvider>
   );

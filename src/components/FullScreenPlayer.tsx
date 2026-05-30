@@ -22,7 +22,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import SeekBar from './SeekBar';
+import ClipRangeSlider from './ClipRangeSlider';
 import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike } from '../services/posts';
@@ -83,11 +83,38 @@ function avatarInitials(name: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Polls position/duration at 4 Hz — isolated so only this view re-renders. */
-function FullScreenSeekBar() {
-  const { positionRef, durationRef, handlersRef } = usePlayback();
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
+/**
+ * Polls position/duration at 4 Hz and renders:
+ * - A ClipRangeSlider when the current track has an active clip window
+ *   (a repost with stored clip_start_sec / clip_end_sec). The user can drag the
+ *   handles freely to listen to any range of the full track. Changes are stored in
+ *   clipWindowRef so PostCard respects the new boundaries without a DB write.
+ * - A plain SeekBar for uploads with no clip window.
+ */
+function FullScreenClipBar() {
+  const { positionRef, durationRef, handlersRef, nowPlaying, clipWindowRef } = usePlayback();
+  // Lazy-init from refs so handles appear at correct positions the moment the
+  // full-screen player opens, without waiting for the first 250ms interval tick.
+  const [position, setPosition] = useState(() => positionRef.current);
+  const [duration, setDuration] = useState(() => durationRef.current);
+
+  // Local clip state — drives ClipRangeSlider during drag without touching context.
+  const [localStart, setLocalStart] = useState<number | null>(() => nowPlaying?.clipStartSec ?? null);
+  const [localEnd,   setLocalEnd]   = useState<number | null>(() => nowPlaying?.clipEndSec   ?? null);
+
+  // Track localStart in a ref so handleClipChangeEnd can detect which handle moved.
+  const localStartRef = useRef(localStart);
+  localStartRef.current = localStart;
+
+  // Sync from nowPlaying whenever the track changes.
+  useEffect(() => {
+    const cs = nowPlaying?.clipStartSec ?? null;
+    const ce = nowPlaying?.clipEndSec   ?? null;
+    setLocalStart(cs);
+    setLocalEnd(ce);
+    clipWindowRef.current = (cs !== null && ce !== null) ? { start: cs, end: ce } : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlaying?.postId]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -97,10 +124,37 @@ function FullScreenSeekBar() {
     return () => clearInterval(id);
   }, [positionRef, durationRef]);
 
-  const handleSeekEnd = useCallback(
-    (s: number) => { handlersRef.current?.seek(s); },
-    [handlersRef],
-  );
+  // Stable callbacks so ClipRangeSlider's panResponder useMemo doesn't
+  // recreate on every 250ms polling tick.
+  const handleClipChange = useCallback((s: number, e: number) => {
+    setLocalStart(s);
+    setLocalEnd(e);
+    clipWindowRef.current = { start: s, end: e };
+  }, [clipWindowRef]);
+
+  const handleClipChangeEnd = useCallback((s: number, e: number, handle: 'left' | 'right') => {
+    setLocalStart(s);
+    setLocalEnd(e);
+    clipWindowRef.current = { start: s, end: e };
+    // Only seek when the left (clip-start) handle was released — the playback
+    // position should snap to the new start so the user hears the new clip edge.
+    // Moving the right (clip-end) handle only changes the boundary; whatever was
+    // already playing keeps going from its current position.
+    // In both cases we never call play() — the caller's pause state is respected.
+    if (handle === 'left') {
+      handlersRef.current?.seek(s);
+    }
+  }, [clipWindowRef, handlersRef]);
+
+  // Seek handle (blue circle): scrubs to the chosen position.
+  // Never calls play() — if the song was paused, it stays paused after the scrub.
+  const handleSeekEnd = useCallback((s: number) => {
+    setPosition(s);
+    handlersRef.current?.seek(s);
+  }, [handlersRef]);
+
+  const start = localStart ?? 0;
+  const end = localEnd ?? duration;
 
   return (
     <View style={seekSt.wrap}>
@@ -108,7 +162,18 @@ function FullScreenSeekBar() {
         <Text style={seekSt.time}>{formatTime(position)}</Text>
         <Text style={seekSt.time}>{formatTime(duration)}</Text>
       </View>
-      <SeekBar position={position} duration={duration} onSeekEnd={handleSeekEnd} />
+      {duration > 0 ? (
+        <ClipRangeSlider
+          duration={duration}
+          position={position}
+          start={start}
+          end={end}
+          minClipSeconds={1}
+          onChange={handleClipChange}
+          onChangeEnd={handleClipChangeEnd}
+          onSeekEnd={handleSeekEnd}
+        />
+      ) : null}
     </View>
   );
 }
@@ -977,7 +1042,7 @@ export default function FullScreenPlayer() {
 
       {/* ── Seek bar + time labels ── */}
       <View style={[styles.seekRow, { bottom: seekRowBottom }]} pointerEvents="box-none">
-        <FullScreenSeekBar />
+        <FullScreenClipBar />
       </View>
 
       {/* ── Shuffle (left) + FloatingPlayer zone + Repeat (right) ── */}

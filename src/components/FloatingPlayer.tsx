@@ -53,6 +53,7 @@ export default function FloatingPlayer() {
 
   const {
     nowPlaying,
+    isStoryViewerOpen,
     activePostId,
     positionRef,
     durationRef,
@@ -66,11 +67,13 @@ export default function FloatingPlayer() {
   } = usePlayback();
 
   // ─── Animations ─────────────────────────────────────────────────────────────
-  const slideAnim   = useRef(new Animated.Value(0)).current;
+  const slideAnim    = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   // 2-D offset of the draggable circle (both axes, 0 = resting center)
   const circleX = useRef(new Animated.Value(0)).current;
   const circleY = useRef(new Animated.Value(0)).current;
+  // Scale: pops up on press, springs back on release
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   // Slide in / out when nowPlaying changes
   const wasVisible = useRef(false);
@@ -151,6 +154,17 @@ export default function FloatingPlayer() {
   // has no special action. Simultaneous with the tap gesture so taps still fire.
   const panGesture = Gesture.Pan()
     .runOnJS(true)
+    .onBegin(() => {
+      // Pop the circle up on any touch — fires before the gesture activates,
+      // so it covers both quick taps and sustained holds.
+      scaleAnim.stopAnimation();
+      Animated.spring(scaleAnim, {
+        toValue: 1.22,
+        useNativeDriver: true,
+        bounciness: 14,
+        speed: 28,
+      }).start();
+    })
     .onStart(() => {
       if (jamLocked) { return; }
       circleX.stopAnimation();
@@ -172,7 +186,9 @@ export default function FloatingPlayer() {
           handlersRef.current?.setRate(RATE_FORWARD);      // 2× fast-forward
         } else {
           handlersRef.current?.setRate(1.0);
-          if (rewindTimer.current === null) { startRewind(); }
+          // Only rewind while the song is actively playing — mirrors the
+          // forward behaviour (2× rate has no effect when paused either).
+          if (rewindTimer.current === null && activePostId !== null) { startRewind(); }
         }
       } else {
         // Vertical drag — keep normal playback, cancel any rewind.
@@ -214,6 +230,14 @@ export default function FloatingPlayer() {
       stopRewind();
       handlersRef.current?.setRate(1.0);
       springBack();
+      // Spring the circle back to its resting scale.
+      scaleAnim.stopAnimation();
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        bounciness: 8,
+        speed: 18,
+      }).start();
     });
 
   // Simultaneous: tap and pan can both fire — tap handles press, pan handles drag.
@@ -238,7 +262,7 @@ export default function FloatingPlayer() {
     outputRange: [D + 24, 0],
   });
 
-  if (!nowPlaying && !wasVisible.current) { return null; }
+  if ((!nowPlaying && !wasVisible.current) || isStoryViewerOpen) { return null; }
 
   return (
     <Animated.View
@@ -251,7 +275,7 @@ export default function FloatingPlayer() {
       {/* Draggable circle */}
       <GestureDetector gesture={gesture}>
         <Animated.View
-          style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }] }]}
+          style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }, { scale: scaleAnim }] }]}
         >
           {/* Base: gray disc */}
           <View style={styles.grayDisc} />

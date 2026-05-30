@@ -14,6 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
+      conversation_members: {
+        Row: {
+          conversation_id: string
+          joined_at: string | null
+          last_read_at: string | null
+          role: string | null
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          joined_at?: string | null
+          last_read_at?: string | null
+          role?: string | null
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          joined_at?: string | null
+          last_read_at?: string | null
+          role?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_members_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversations: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          kind: string
+          last_message_at: string | null
+          last_message_preview: string | null
+          name: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          kind: string
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          name?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          kind?: string
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follows: {
         Row: {
           created_at: string
@@ -99,6 +179,158 @@ export type Database = {
           },
         ]
       }
+      jam_queue: {
+        Row: {
+          added_at: string | null
+          id: string
+          jam_room_id: string | null
+          position: number | null
+          suggested_by: string | null
+          track_id: string | null
+          upvotes: number | null
+        }
+        Insert: {
+          added_at?: string | null
+          id?: string
+          jam_room_id?: string | null
+          position?: number | null
+          suggested_by?: string | null
+          track_id?: string | null
+          upvotes?: number | null
+        }
+        Update: {
+          added_at?: string | null
+          id?: string
+          jam_room_id?: string | null
+          position?: number | null
+          suggested_by?: string | null
+          track_id?: string | null
+          upvotes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jam_queue_jam_room_id_fkey"
+            columns: ["jam_room_id"]
+            isOneToOne: false
+            referencedRelation: "jam_rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jam_queue_suggested_by_fkey"
+            columns: ["suggested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jam_queue_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jam_room_members: {
+        Row: {
+          jam_room_id: string
+          joined_at: string | null
+          permissions: Json | null
+          role: string | null
+          user_id: string
+        }
+        Insert: {
+          jam_room_id: string
+          joined_at?: string | null
+          permissions?: Json | null
+          role?: string | null
+          user_id: string
+        }
+        Update: {
+          jam_room_id?: string
+          joined_at?: string | null
+          permissions?: Json | null
+          role?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jam_room_members_jam_room_id_fkey"
+            columns: ["jam_room_id"]
+            isOneToOne: false
+            referencedRelation: "jam_rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jam_room_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jam_rooms: {
+        Row: {
+          conversation_id: string | null
+          current_track_id: string | null
+          ended_at: string | null
+          host_clock_at: string | null
+          host_id: string | null
+          id: string
+          is_playing: boolean | null
+          playback_position_ms: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          current_track_id?: string | null
+          ended_at?: string | null
+          host_clock_at?: string | null
+          host_id?: string | null
+          id?: string
+          is_playing?: boolean | null
+          playback_position_ms?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          current_track_id?: string | null
+          ended_at?: string | null
+          host_clock_at?: string | null
+          host_id?: string | null
+          id?: string
+          is_playing?: boolean | null
+          playback_position_ms?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jam_rooms_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jam_rooms_current_track_id_fkey"
+            columns: ["current_track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jam_rooms_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listen_sessions: {
         Row: {
           artist_name: string
@@ -123,6 +355,100 @@ export type Database = {
             foreignKeyName: "listen_sessions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_reactions: {
+        Row: {
+          created_at: string | null
+          emoji: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          emoji: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          emoji?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          body: string | null
+          conversation_id: string
+          created_at: string | null
+          deleted_at: string | null
+          id: string
+          kind: string | null
+          metadata: Json | null
+          reply_to_id: string | null
+          sender_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          conversation_id: string
+          created_at?: string | null
+          deleted_at?: string | null
+          id?: string
+          kind?: string | null
+          metadata?: Json | null
+          reply_to_id?: string | null
+          sender_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: string
+          created_at?: string | null
+          deleted_at?: string | null
+          id?: string
+          kind?: string | null
+          metadata?: Json | null
+          reply_to_id?: string | null
+          sender_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -301,6 +627,8 @@ export type Database = {
         Row: {
           author_id: string
           caption: string | null
+          clip_end_sec: number | null
+          clip_start_sec: number | null
           comments_count: number
           created_at: string
           id: string
@@ -314,6 +642,8 @@ export type Database = {
         Insert: {
           author_id: string
           caption?: string | null
+          clip_end_sec?: number | null
+          clip_start_sec?: number | null
           comments_count?: number
           created_at?: string
           id?: string
@@ -327,6 +657,8 @@ export type Database = {
         Update: {
           author_id?: string
           caption?: string | null
+          clip_end_sec?: number | null
+          clip_start_sec?: number | null
           comments_count?: number
           created_at?: string
           id?: string
@@ -367,9 +699,12 @@ export type Database = {
           bio: string | null
           created_at: string | null
           display_name: string | null
+          fans_seen_at: string | null
           followers_count: number | null
           following_count: number | null
           id: string
+          last_seen_at: string | null
+          show_activity: boolean | null
           username: string
         }
         Insert: {
@@ -377,9 +712,12 @@ export type Database = {
           bio?: string | null
           created_at?: string | null
           display_name?: string | null
+          fans_seen_at?: string | null
           followers_count?: number | null
           following_count?: number | null
           id: string
+          last_seen_at?: string | null
+          show_activity?: boolean | null
           username: string
         }
         Update: {
@@ -387,12 +725,106 @@ export type Database = {
           bio?: string | null
           created_at?: string | null
           display_name?: string | null
+          fans_seen_at?: string | null
           followers_count?: number | null
           following_count?: number | null
           id?: string
+          last_seen_at?: string | null
+          show_activity?: boolean | null
           username?: string
         }
         Relationships: []
+      }
+      stories: {
+        Row: {
+          author_id: string
+          clip_end_sec: number
+          clip_start_sec: number
+          comment: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          original_post_id: string
+          track_id: string
+        }
+        Insert: {
+          author_id: string
+          clip_end_sec: number
+          clip_start_sec: number
+          comment?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          original_post_id: string
+          track_id: string
+        }
+        Update: {
+          author_id?: string
+          clip_end_sec?: number
+          clip_start_sec?: number
+          comment?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          original_post_id?: string
+          track_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stories_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stories_original_post_id_fkey"
+            columns: ["original_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stories_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      story_views: {
+        Row: {
+          story_id: string
+          viewed_at: string
+          viewer_id: string
+        }
+        Insert: {
+          story_id: string
+          viewed_at?: string
+          viewer_id: string
+        }
+        Update: {
+          story_id?: string
+          viewed_at?: string
+          viewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_views_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_views_viewer_id_fkey"
+            columns: ["viewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       track_collaborators: {
         Row: {
@@ -524,6 +956,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _friendship_pair: {
+        Args: { a: string; b: string }
+        Returns: {
+          hi: string
+          lo: string
+        }[]
+      }
+      accept_friend_request: {
+        Args: { other_user_id: string }
+        Returns: undefined
+      }
+      add_star: { Args: { target_user_id: string }; Returns: undefined }
+      assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
+      cancel_friend_request: {
+        Args: { other_user_id: string }
+        Returns: undefined
+      }
+      create_group: {
+        Args: { p_member_ids: string[]; p_name: string }
+        Returns: string
+      }
+      create_jam_room: { Args: { p_conversation_id: string }; Returns: string }
       fetch_home_feed: {
         Args: {
           p_cursor_bucket?: number
@@ -538,6 +992,46 @@ export type Database = {
           viewer_has_liked: boolean
         }[]
       }
+      get_jam_snapshot: { Args: { p_jam_room_id: string }; Returns: Json }
+      get_new_fans_summary: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          created_at: string
+          display_name: string
+          recent_user_id: string
+          total_count: number
+          username: string
+        }[]
+      }
+      get_or_create_dm: {
+        Args: { user_a: string; user_b: string }
+        Returns: string
+      }
+      is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
+      list_active_stories: {
+        Args: never
+        Returns: {
+          author_id: string
+          avatar_url: string
+          clip_end_sec: number
+          clip_start_sec: number
+          comment: string
+          created_at: string
+          display_name: string
+          expires_at: string
+          original_post_id: string
+          story_id: string
+          track_audio_url: string
+          track_cover_url: string
+          track_id: string
+          track_media_kind: string
+          track_title: string
+          track_video_url: string
+          username: string
+          viewed_at: string
+        }[]
+      }
       list_friend_listen_stories: {
         Args: never
         Returns: {
@@ -549,6 +1043,44 @@ export type Database = {
           user_id: string
           username: string
         }[]
+      }
+      list_incoming_friend_requests: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          created_at: string
+          display_name: string
+          other_user_id: string
+          username: string
+        }[]
+      }
+      list_my_conversations: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          id: string
+          kind: string
+          last_message_at: string
+          last_message_preview: string
+          name: string
+          other_user_avatar: string
+          other_user_id: string
+          other_user_name: string
+          other_user_online: boolean
+          other_user_username: string
+          unread_count: number
+        }[]
+      }
+      mark_fans_seen: { Args: never; Returns: undefined }
+      reject_friend_request: {
+        Args: { other_user_id: string }
+        Returns: undefined
+      }
+      remove_friend: { Args: { other_user_id: string }; Returns: undefined }
+      remove_star: { Args: { target_user_id: string }; Returns: undefined }
+      send_friend_request: {
+        Args: { target_user_id: string }
+        Returns: undefined
       }
     }
     Enums: {

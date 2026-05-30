@@ -80,23 +80,28 @@ export default function ProfileScreen() {
   // Keep the playback queue in sync with the profile feed.
   useEffect(() => {
     playback.setQueue(
-      posts.map(p => ({
-        postId: p.id,
-        trackId: p.track.id,
-        title: p.track.title,
-        artistName: p.author.displayName ?? p.author.username,
-        authorId: p.author.id,
-        authorUsername: p.author.username,
-        authorAvatarUrl: p.author.avatarUrl,
-        coverArtUrl: p.track.coverArtUrl,
-        mediaKind: p.track.mediaKind,
-        videoUrl: p.track.videoUrl ?? undefined,
-        likesCount: p.likesCount,
-        commentsCount: p.commentsCount,
-        repostsCount: p.repostsCount,
-        viewsCount: p.viewsCount,
-        viewerHasLiked: p.viewerHasLiked,
-      })),
+      posts.map(p => {
+        const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
+        return {
+          postId: p.id,
+          trackId: p.track.id,
+          title: p.track.title,
+          artistName: displayAuthor.displayName ?? displayAuthor.username,
+          authorId: displayAuthor.id,
+          authorUsername: displayAuthor.username,
+          authorAvatarUrl: displayAuthor.avatarUrl,
+          coverArtUrl: p.track.coverArtUrl,
+          mediaKind: p.track.mediaKind,
+          videoUrl: p.track.videoUrl ?? undefined,
+          likesCount: p.likesCount,
+          commentsCount: p.commentsCount,
+          repostsCount: p.repostsCount,
+          viewsCount: p.viewsCount,
+          viewerHasLiked: p.viewerHasLiked,
+          clipStartSec: p.clipStartSec,
+          clipEndSec: p.clipEndSec,
+        };
+      }),
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posts, playback.setQueue]);

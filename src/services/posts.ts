@@ -33,6 +33,9 @@ export type FeedPost = {
   originalPostId: string | null;
   /** True if the currently signed-in viewer has liked this post. */
   viewerHasLiked: boolean;
+  /** Optional clip window selected during repost (seconds). */
+  clipStartSec: number | null;
+  clipEndSec: number | null;
 };
 
 export type ProfileStats = {
@@ -51,6 +54,8 @@ type RawPostRow = {
   comments_count: number;
   author_id: string;
   original_post_id: string | null;
+  clip_start_sec: number | null;
+  clip_end_sec: number | null;
   track: {
     id: string;
     title: string;
@@ -78,6 +83,8 @@ const POST_SELECT = `
   comments_count,
   author_id,
   original_post_id,
+  clip_start_sec,
+  clip_end_sec,
   track:tracks (
     id,
     title,
@@ -196,6 +203,8 @@ async function hydrateRawPostRows(
     originalAuthor: r.original_post_id ? originalAuthorByPostId.get(r.original_post_id) ?? null : null,
     originalPostId: r.original_post_id,
     viewerHasLiked: forced ? Boolean(forced.get(r.id)) : likedSet.has(r.id),
+    clipStartSec: r.clip_start_sec ?? null,
+    clipEndSec: r.clip_end_sec ?? null,
   }));
 }
 
@@ -330,12 +339,15 @@ export async function getProfileStats(userId: string): Promise<ProfileStats> {
 
 /**
  * Create a repost of an existing upload post. The reposter supplies their own
- * caption ("how I feel about this song"). The new post inherits `track_id` from
- * the original so feed cards can render the same media.
+ * caption ("how I feel about this song") and an optional clip window.
+ * The new post inherits `track_id` from the original so feed cards can render
+ * the same media.
  */
 export async function createRepost(
   originalPostId: string,
   caption: string,
+  clipStartSec?: number,
+  clipEndSec?: number,
 ): Promise<{ postId: string }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
@@ -363,6 +375,8 @@ export async function createRepost(
       track_id: original.track_id,
       original_post_id: originalPostId,
       caption: caption.trim() ? caption.trim() : null,
+      clip_start_sec: clipStartSec ?? null,
+      clip_end_sec: clipEndSec ?? null,
     })
     .select('id')
     .single();
@@ -372,6 +386,35 @@ export async function createRepost(
   }
 
   return { postId: created.id };
+}
+
+/**
+ * Fetch a single post by id — used by RepostScreen to load the original post
+ * (cover art, track details, author) before the user writes their repost.
+ */
+export async function fetchPostById(postId: string): Promise<FeedPost | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(POST_SELECT)
+    .eq('id', postId)
+    .maybeSingle();
+  if (error) {throw new Error(error.message);}
+  if (!data) {return null;}
+  const rows = await hydrateRawPostRows([data as unknown as RawPostRow]);
+  return rows[0] ?? null;
+}
+
+/**
+ * Return the total cumulative plays (sum of views_count) across every post that
+ * uses the given track — displayed as a badge on the cover art in RepostScreen.
+ */
+export async function fetchTrackPlaysTotal(trackId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('views_count')
+    .eq('track_id', trackId);
+  if (error) {throw new Error(error.message);}
+  return (data ?? []).reduce((sum, r) => sum + (r.views_count ?? 0), 0);
 }
 
 /**
