@@ -70,12 +70,13 @@ export default function RootNavigator() {
     };
   }, [session]);
 
-  // Handle deep links for email confirmation (livil://auth/confirm?code=...)
+  // Handle deep links for email confirmation (livil://auth?code=...)
+  // After exchangeCodeForSession resolves, onAuthStateChange fires SIGNED_IN
+  // and the session state update switches the navigator to the App screens.
   useEffect(() => {
     const handleDeepLink = async (url: string) => {
       if (!url.startsWith('livil://auth')) return;
       await supabase.auth.exchangeCodeForSession(url);
-      // Session update is picked up automatically by onAuthStateChange below
     };
 
     Linking.getInitialURL().then(url => {
