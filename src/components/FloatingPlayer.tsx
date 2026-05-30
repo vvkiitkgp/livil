@@ -8,6 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { COLORS } from '../theme/colors';
 
@@ -23,11 +24,6 @@ const B = 4;   // arc ring width
 const CONTAINER_W = SCREEN_W * 0.5;
 // How far the circle's center can travel before hitting the bar edge
 const MAX_DRAG = CONTAINER_W / 2 - R;
-
-// Tab bar heights (must stay above these)
-const TAB_BAR_H = Platform.OS === 'ios' ? 84 : 64;
-// Position: 20% from bottom, but never closer than 10px above the tab bar
-const PLAYER_BOTTOM = Math.max(SCREEN_H * 0.10, TAB_BAR_H + 10);
 
 // Gesture thresholds
 const SNAP_VELOCITY   = 400;   // px/s — horizontal flick qualifies as skip
@@ -48,6 +44,13 @@ const RATE_REVERSE = -1.0;  // negative = reverse (iOS AVPlayer; Android clamps 
 export const FLOATING_PLAYER_HEIGHT = D;
 
 export default function FloatingPlayer() {
+  const insets = useSafeAreaInsets();
+  // Re-compute bottom here so the Android system nav bar (insets.bottom) is
+  // included.  The module-level PLAYER_BOTTOM uses a hardcoded TAB_BAR_H and
+  // must NOT be used for the actual container position.
+  const tabBarH      = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
+  const playerBottom = Math.max(SCREEN_H * 0.10, tabBarH + 10);
+
   const {
     nowPlaying,
     activePostId,
@@ -239,7 +242,7 @@ export default function FloatingPlayer() {
 
   return (
     <Animated.View
-      style={[styles.container, { transform: [{ translateY }] }]}
+      style={[styles.container, { bottom: playerBottom, transform: [{ translateY }] }]}
       pointerEvents={nowPlaying ? 'box-none' : 'none'}
     >
       {/* Continuous bar — 50% width, centered; circle sits on top of it */}
@@ -293,13 +296,13 @@ export default function FloatingPlayer() {
 }
 
 const styles = StyleSheet.create({
-  // Outer wrapper: transparent, 50% wide, centered, sitting at thumb-reach height
+  // Outer wrapper: transparent, 50% wide, centered.
+  // bottom is set via inline style (playerBottom) so insets.bottom is included.
   container: {
     position: 'absolute',
     width: CONTAINER_W,
     height: D,
     left: (SCREEN_W - CONTAINER_W) / 2,
-    bottom: PLAYER_BOTTOM,
     alignItems: 'center',
     justifyContent: 'center',
   },
