@@ -810,12 +810,21 @@ export default function FullScreenPlayer() {
     if (activeTab === tab) { closePanel(); } else { openTab(tab); }
   }, [activeTab, openTab, closePanel]);
 
-  // ── Swipe-down-to-close ───────────────────────────────────────────────────
+  // ── Swipe-down-to-close (disabled while panel is open so only the panel closes) ─
   const panGesture = Gesture.Pan()
     .runOnJS(true)
+    .enabled(activeTab === null)
     .activeOffsetY([8, Infinity])
     .onEnd((e) => {
       if (e.translationY > 120 || e.velocityY > 500) { closeFullScreenPlayer(); }
+    });
+
+  // ── Swipe-down the panel handle to dismiss the panel ─────────────────────
+  const panelDismissGesture = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetY([8, Infinity])
+    .onEnd((e) => {
+      if (e.translationY > 60 || e.velocityY > 400) { closePanel(); }
     });
 
   // ── Video callbacks ───────────────────────────────────────────────────────
@@ -920,46 +929,44 @@ export default function FullScreenPlayer() {
       <View style={styles.scrimTop} pointerEvents="none" />
       <View style={styles.scrimBottom} pointerEvents="none" />
 
-      {/* ── Overlaid content + swipe-to-close ── */}
-      {/* pointerEvents="auto" (default) is intentional: the view itself must be
-          hittable so the pan gesture fires on empty areas (album art, background).
-          Children (close button, etc.) still receive their own touches first. */}
+      {/* ── Swipe-to-close gesture — background hit zone only, no children ── */}
+      {/* Interactive elements (header, credits, stats) are siblings rendered AFTER
+          this so they sit on top and receive taps before the gesture view does.
+          box-only ensures the gesture fires on empty areas but never blocks buttons. */}
       <GestureDetector gesture={panGesture}>
-        <View style={StyleSheet.absoluteFillObject}>
-
-          {/* Header */}
-          <View style={[styles.header, { top: safeTop, height: HEADER_H }]}>
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={closeFullScreenPlayer}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Text style={styles.closeBtnText}>⌄</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
-            <TouchableOpacity
-              style={styles.addBtn}
-              onPress={() => setShowPlaylistModal(true)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Text style={styles.addBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Credits widget — top-left, below header */}
-          <View style={[styles.creditsPos, { top: safeTop + HEADER_H }]}>
-            <CreditsWidget nowPlaying={nowPlaying} onNavigateToUser={handleNavigateToUser} />
-          </View>
-
-          {/* Track title + artist + engagement stats — bottom overlay */}
-          <View style={[styles.bottomInfo, { bottom: seekRowBottom + 56 }]}>
-            <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
-            <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
-            <CompactStats nowPlaying={nowPlaying} />
-          </View>
-
-        </View>
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-only" />
       </GestureDetector>
+
+      {/* ── Header (outside GestureDetector — reliable taps on all Android devices) ── */}
+      <View style={[styles.header, { top: safeTop, height: HEADER_H }]} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.closeBtn}
+          onPress={closeFullScreenPlayer}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.closeBtnText}>⌄</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => setShowPlaylistModal(true)}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.addBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Credits widget (outside GestureDetector) ── */}
+      <View style={[styles.creditsPos, { top: safeTop + HEADER_H }]} pointerEvents="box-none">
+        <CreditsWidget nowPlaying={nowPlaying} onNavigateToUser={handleNavigateToUser} />
+      </View>
+
+      {/* ── Track title + artist + engagement stats ── */}
+      <View style={[styles.bottomInfo, { bottom: seekRowBottom + 56 }]} pointerEvents="box-none">
+        <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
+        <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+        <CompactStats nowPlaying={nowPlaying} />
+      </View>
 
       {/* ── Seek bar + time labels ── */}
       <View style={[styles.seekRow, { bottom: seekRowBottom }]} pointerEvents="box-none">
@@ -992,9 +999,11 @@ export default function FullScreenPlayer() {
         style={[styles.contentPanel, { top: panelTop, transform: [{ translateY: panelTranslateY }] }]}
         pointerEvents={activeTab ? 'box-none' : 'none'}
       >
-        <TouchableOpacity style={styles.panelHandleArea} onPress={closePanel}>
-          <View style={styles.panelHandleBar} />
-        </TouchableOpacity>
+        <GestureDetector gesture={panelDismissGesture}>
+          <TouchableOpacity style={styles.panelHandleArea} onPress={closePanel}>
+            <View style={styles.panelHandleBar} />
+          </TouchableOpacity>
+        </GestureDetector>
 
         <View style={styles.panelTabs}>
           {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (

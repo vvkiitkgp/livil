@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HomeScreen from '../screens/main/HomeScreen';
 import SearchScreen from '../screens/main/SearchScreen';
 import LibraryScreen from '../screens/main/LibraryScreen';
@@ -101,6 +102,8 @@ function ProfileIcon({ color, focused }: IconProps) {
 }
 
 export default function AppNavigator() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       initialRouteName="Home"
@@ -110,7 +113,13 @@ export default function AppNavigator() {
         tabBarActiveTintColor: COLORS.purpleLight,
         tabBarInactiveTintColor: COLORS.textMuted,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          Platform.OS === 'android' && {
+            height: 64 + insets.bottom,
+            paddingBottom: 8 + insets.bottom,
+          },
+        ],
         tabBarItemStyle: styles.tabItem,
         sceneStyle: { backgroundColor: COLORS.bg },
         // Default lazy=true: mounting Profile (many videos) while Home is visible
@@ -149,6 +158,7 @@ const styles = StyleSheet.create({
     height: Platform.OS === 'ios' ? 84 : 64,
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    // Android height/paddingBottom are overridden in screenOptions with insets.bottom
   },
   tabItem: {
     paddingVertical: 4,
