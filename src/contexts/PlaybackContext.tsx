@@ -31,6 +31,10 @@ export type NowPlayingInfo = {
   // window when a new track starts playing.
   clipStartSec: number | null;
   clipEndSec: number | null;
+  // Repost lineage — lets the player route to the *original* post when the
+  // currently-playing item is itself a repost.
+  kind: 'upload' | 'repost';
+  originalPostId: string | null;
 };
 
 export type PlayerHandlers = {
@@ -86,6 +90,10 @@ type PlaybackContextValue = {
   isStoryViewerOpen: boolean;
   setStoryViewerOpen: (open: boolean) => void;
 
+  // --- repost screen (hides FloatingPlayer while editing a repost clip) ---
+  isRepostOpen: boolean;
+  setRepostOpen: (open: boolean) => void;
+
   // --- jam lock (disables FloatingPlayer gestures while listening in a jam) ---
   jamLocked: boolean;
   setJamLocked: (locked: boolean) => void;
@@ -107,6 +115,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isStoryViewerOpen, setIsStoryViewerOpenState] = useState(false);
+  const [isRepostOpen, setIsRepostOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
@@ -235,6 +244,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setIsStoryViewerOpenState(open);
   }, []);
 
+  const setRepostOpen = useCallback((open: boolean) => {
+    setIsRepostOpenState(open);
+  }, []);
+
   const setJamLocked = useCallback((locked: boolean) => {
     setJamLockedState(locked);
   }, []);
@@ -283,6 +296,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       closeFullScreenPlayer,
       isStoryViewerOpen,
       setStoryViewerOpen,
+      isRepostOpen,
+      setRepostOpen,
       jamLocked,
       setJamLocked,
       shuffleEnabled,
@@ -313,6 +328,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       closeFullScreenPlayer,
       isStoryViewerOpen,
       setStoryViewerOpen,
+      isRepostOpen,
+      setRepostOpen,
       jamLocked,
       setJamLocked,
       shuffleEnabled,

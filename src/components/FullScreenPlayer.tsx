@@ -741,6 +741,7 @@ export default function FullScreenPlayer() {
     updatePosition,
     updateDuration,
     queueRef,
+    clipWindowRef,
     shuffleEnabled,
     toggleShuffle,
     repeatMode,
@@ -1020,6 +1021,34 @@ export default function FullScreenPlayer() {
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
         <TouchableOpacity
+          style={styles.repostBtn}
+          activeOpacity={0.85}
+          accessibilityLabel="Repost"
+          onPress={() => {
+            const targetId = nowPlaying.kind === 'repost'
+              ? nowPlaying.originalPostId
+              : nowPlaying.postId;
+            if (targetId) {
+              // Prefer the live clip window (the user may have just dragged
+              // the handles in this player); fall back to the snapshot the
+              // post was loaded with.
+              const live = clipWindowRef.current;
+              const seedStart = live ? live.start : nowPlaying.clipStartSec;
+              const seedEnd = live ? live.end : nowPlaying.clipEndSec;
+              closeFullScreenPlayer();
+              navigation.navigate('Repost', {
+                originalPostId: targetId,
+                seedClipStartSec: seedStart,
+                seedClipEndSec: seedEnd,
+              });
+            }
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        >
+          <Text style={styles.repostBtnIcon}>▤</Text>
+          <Text style={styles.repostBtnLabel}>Repost</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={styles.addBtn}
           onPress={() => setShowPlaylistModal(true)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -1282,6 +1311,31 @@ const styles = StyleSheet.create({
   addBtnText: {
     color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
     textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
+  repostBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: COLORS.purple,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  repostBtnIcon: {
+    color: COLORS.white,
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  repostBtnLabel: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 
   // Credits column — top-left below header

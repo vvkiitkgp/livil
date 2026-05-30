@@ -50,7 +50,7 @@ export default function RepostScreen() {
   const route = useRoute<RepostRoute>();
   const navigation = useNavigation<RepostNav>();
   const playback = usePlayback();
-  const { originalPostId } = route.params;
+  const { originalPostId, seedClipStartSec, seedClipEndSec } = route.params;
 
   const playerRef = useRef<MediaPlayerHandle>(null);
 
@@ -76,11 +76,17 @@ export default function RepostScreen() {
   const [submitError, setSubmitError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Stop global player on mount and leave it paused on exit.
+  // Stop global player on mount, hide FloatingPlayer for the duration of this
+  // screen, and leave the global player paused on exit. We intentionally do
+  // NOT clearNowPlaying() — leaving it set means the user can resume what was
+  // playing once they back out of the repost flow.
   useEffect(() => {
     playback.handlersRef.current?.pause();
     playback.pauseAll();
-    playback.clearNowPlaying();
+    playback.setRepostOpen(true);
+    return () => {
+      playback.setRepostOpen(false);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -110,21 +116,55 @@ export default function RepostScreen() {
     return () => { cancelled = true; };
   }, [originalPostId]);
 
-  // Initialise clip range once duration is known.
+  // First-time seed for the clip range. Uses the caller's current clip window
+  // (post-card or full-screen player) when provided, falling back to the
+  // original post's stored values. Caps to MAX_STORY_CLIP when starting in
+  // story mode. Mode switches after this are handled in handleModeChange so
+  // the user's edits aren't blown away.
+  const seededRef = useRef(false);
   useEffect(() => {
-    if (duration <= 0) {return;}
-    const end = mode === 'story' ? Math.min(MAX_STORY_CLIP, duration) : duration;
-    setClipStart(0);
-    setClipEnd(end);
-  }, [duration, mode]);
+    if (seededRef.current) {return;}
+    if (duration <= 0 || !originalPost) {return;}
+    seededRef.current = true;
+    const rawStart = seedClipStartSec ?? originalPost.clipStartSec ?? 0;
+    const rawEnd = seedClipEndSec ?? originalPost.clipEndSec ?? duration;
+    const seedStart = Math.max(0, Math.min(duration, rawStart));
+    const seedEnd = Math.max(seedStart, Math.min(duration, rawEnd));
+    let newStart: number;
+    let newEnd: number;
+    if (mode === 'story') {
+      newStart = Math.min(seedStart, Math.max(0, duration - MAX_STORY_CLIP));
+      newEnd = Math.max(newStart + 1, Math.min(newStart + MAX_STORY_CLIP, duration, seedEnd > seedStart ? seedEnd : duration));
+    } else {
+      newStart = seedStart;
+      newEnd = seedEnd;
+    }
+    setClipStart(newStart);
+    setClipEnd(newEnd);
+  }, [duration, mode, originalPost, seedClipStartSec, seedClipEndSec]);
 
   const handleModeChange = useCallback((next: PostMode) => {
     if (submitting || next === mode) {return;}
+    setPaused(true);
     setMode(next);
+    // Seed the new mode's clip window from whatever the user currently has
+    // selected, not from the original seed. Story mode caps the window at
+    // MAX_STORY_CLIP — keep the current start fixed and shrink end inward;
+    // if end was already inside the cap, leave it alone. Going back to post
+    // mode preserves the current selection as-is.
+    let newStart = clipStart;
+    let newEnd = clipEnd;
     if (next === 'story' && duration > 0) {
-      setClipEnd(prev => Math.min(prev, clipStart + MAX_STORY_CLIP, duration));
+      newEnd = Math.max(newStart + 1, Math.min(clipEnd, newStart + MAX_STORY_CLIP, duration));
     }
-  }, [mode, submitting, clipStart, duration]);
+    if (newStart !== clipStart) { setClipStart(newStart); }
+    if (newEnd !== clipEnd) { setClipEnd(newEnd); }
+    // Snap playback to the (possibly unchanged) clip start so a fresh play
+    // begins at the clip edge instead of resuming mid-song.
+    setPosition(newStart);
+    setSeekTo(newStart);
+    setTimeout(() => setSeekTo(null), 0);
+  }, [mode, submitting, clipStart, clipEnd, duration]);
 
   const handleLoaded = useCallback((dur: number) => {
     setDuration(dur);
@@ -139,9 +179,23 @@ export default function RepostScreen() {
     setClipEnd(e);
   }, []);
 
-  const handleRangeChangeEnd = useCallback((s: number, e: number) => {
+  const handleRangeChangeEnd = useCallback((s: number, e: number, handle: 'left' | 'right') => {
     setClipStart(s);
     setClipEnd(e);
+    // Only snap the playhead when the left (clip-start) handle moves — moving
+    // the right handle just reshapes the clip; playback should continue from
+    // wherever it currently is, matching the FullScreenPlayer's behavior.
+    if (handle === 'left') {
+      setSeekTo(s);
+      setTimeout(() => setSeekTo(null), 0);
+    }
+  }, []);
+
+  // Blue seek-dot drag — push the seeked position to the player so the
+  // audio/video actually jumps. Without this the slider's seek handle
+  // animates back to the playhead on release.
+  const handleSeekEnd = useCallback((s: number) => {
+    setPosition(s);
     setSeekTo(s);
     setTimeout(() => setSeekTo(null), 0);
   }, []);
@@ -349,8 +403,10 @@ export default function RepostScreen() {
                   end={clipEnd}
                   minClipSeconds={1}
                   maxClipSeconds={mode === 'story' ? MAX_STORY_CLIP : undefined}
+                  slideWindowOnLeftDrag={mode === 'story'}
                   onChange={handleRangeChange}
                   onChangeEnd={handleRangeChangeEnd}
+                  onSeekEnd={handleSeekEnd}
                 />
               </View>
 

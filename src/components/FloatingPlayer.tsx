@@ -54,6 +54,7 @@ export default function FloatingPlayer() {
   const {
     nowPlaying,
     isStoryViewerOpen,
+    isRepostOpen,
     activePostId,
     positionRef,
     durationRef,
@@ -262,7 +263,7 @@ export default function FloatingPlayer() {
     outputRange: [D + 24, 0],
   });
 
-  if ((!nowPlaying && !wasVisible.current) || isStoryViewerOpen) { return null; }
+  if ((!nowPlaying && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
 
   return (
     <Animated.View

@@ -228,18 +228,35 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       />
 
       {/* For audio posts we layer the cover (or fallback art) on top of the
-          Video so the user sees the artwork instead of a black surface. */}
+          Video so the user sees the artwork instead of a black surface.
+          The cover layer is its own Pressable that calls the same toggle —
+          relying on pointerEvents="none" to bubble taps through to the
+          outer Pressable is unreliable on Android Fabric. */}
       {media.kind === 'audio' && media.coverUrl ? (
-        // Image doesn't intercept touches by default, so taps still reach the
-        // outer Pressable that toggles play/pause.
-        <Image source={{ uri: media.coverUrl }} style={styles.cover} resizeMode="cover" />
+        <Pressable
+          style={styles.cover}
+          onPress={onTogglePaused}
+          accessibilityRole="button"
+          accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
+        >
+          <Image
+            source={{ uri: media.coverUrl }}
+            style={styles.coverImg}
+            resizeMode="cover"
+          />
+        </Pressable>
       ) : null}
 
       {media.kind === 'audio' && !media.coverUrl ? (
-        <View style={styles.fallbackArt} pointerEvents="none">
-          <View style={styles.fallbackBlobA} />
-          <View style={styles.fallbackBlobB} />
-        </View>
+        <Pressable
+          style={styles.fallbackArt}
+          onPress={onTogglePaused}
+          accessibilityRole="button"
+          accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
+        >
+          <View style={styles.fallbackBlobA} pointerEvents="none" />
+          <View style={styles.fallbackBlobB} pointerEvents="none" />
+        </Pressable>
       ) : null}
 
       {/* Center play-glyph overlay shown when paused or before first play. */}
@@ -279,6 +296,10 @@ const styles = StyleSheet.create({
   },
   cover: {
     ...StyleSheet.absoluteFillObject,
+  },
+  coverImg: {
+    width: '100%',
+    height: '100%',
   },
   video: {
     ...StyleSheet.absoluteFillObject,

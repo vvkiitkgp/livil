@@ -252,6 +252,8 @@ export default function HomeScreen() {
           viewerHasLiked: p.viewerHasLiked,
           clipStartSec: p.clipStartSec,
           clipEndSec: p.clipEndSec,
+          kind: p.kind,
+          originalPostId: p.originalPostId,
         };
       }),
     );
