@@ -45,6 +45,7 @@ export default function SignUpScreen({ navigation }: Props) {
       email: email.trim(),
       password,
       options: {
+        emailRedirectTo: 'livil://auth',
         data: {
           display_name: displayName.trim(),
           username: username.trim().toLowerCase().replace(/^@/, ''),
