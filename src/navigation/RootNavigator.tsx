@@ -22,6 +22,7 @@ import JamRoomScreen from '../screens/main/JamRoomScreen';
 import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import JamBanner from '../components/JamBanner';
 import { JamProvider } from '../contexts/JamContext';
+import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
 import { StoriesProvider } from '../contexts/StoriesContext';
 import FloatingPlayer from '../components/FloatingPlayer';
@@ -99,6 +100,9 @@ export default function RootNavigator() {
       .getSession()
       .then(({ data: { session: s } }) => {
         if (!cancelled) {
+          // Realtime channels gate on the user's JWT; without this, RLS-protected
+          // postgres_changes events (chat messages, reactions) are dropped silently.
+          supabase.realtime.setAuth(s?.access_token ?? null);
           setSession(s);
         }
       })
@@ -118,6 +122,7 @@ export default function RootNavigator() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, s) => {
       if (!cancelled) {
+        supabase.realtime.setAuth(s?.access_token ?? null);
         setSession(s);
         // Clear cached chat data when the user signs out so stale messages
         // aren't briefly visible if a different user signs in on the same device.
@@ -143,6 +148,7 @@ export default function RootNavigator() {
 
   return (
     <JamProvider>
+    <JamRealtimeProvider>
     <RelationshipProvider>
     <StoriesProvider>
     <View style={styles.root}>
@@ -278,6 +284,7 @@ export default function RootNavigator() {
     </View>
     </StoriesProvider>
     </RelationshipProvider>
+    </JamRealtimeProvider>
     </JamProvider>
   );
 }
