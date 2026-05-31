@@ -80,8 +80,16 @@ function JamInviteBubble({
   title: string;
 }) {
   const navigation = useNavigation<Nav>();
+  const { setActiveJam } = useJam();
   const jamRoomId = msg.metadata?.jam_room_id as string | undefined;
   if (!jamRoomId) { return null; }
+  const handleJoin = () => {
+    // Mark this jam active before navigating so the global JamRealtimeProvider
+    // can subscribe + start receiving the host's playback even before
+    // JamRoomScreen mounts.
+    setActiveJam({ jamRoomId, conversationId, conversationTitle: title });
+    navigation.navigate('JamRoom', { jamRoomId, conversationId });
+  };
   return (
     <View style={styles.jamInviteCard}>
       <Text style={styles.jamInviteIcon}>🎵</Text>
@@ -92,7 +100,7 @@ function JamInviteBubble({
       <TouchableOpacity
         style={styles.jamInviteBtn}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('JamRoom', { jamRoomId, conversationId })}
+        onPress={handleJoin}
       >
         <Text style={styles.jamInviteBtnText}>Join</Text>
       </TouchableOpacity>
@@ -600,7 +608,7 @@ export default function ConversationScreen() {
   }, [friendActivity]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

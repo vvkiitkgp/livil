@@ -22,6 +22,7 @@ import JamRoomScreen from '../screens/main/JamRoomScreen';
 import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import JamBanner from '../components/JamBanner';
 import { JamProvider } from '../contexts/JamContext';
+import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
 import { StoriesProvider } from '../contexts/StoriesContext';
 import FloatingPlayer from '../components/FloatingPlayer';
@@ -147,6 +148,7 @@ export default function RootNavigator() {
 
   return (
     <JamProvider>
+    <JamRealtimeProvider>
     <RelationshipProvider>
     <StoriesProvider>
     <View style={styles.root}>
@@ -282,6 +284,7 @@ export default function RootNavigator() {
     </View>
     </StoriesProvider>
     </RelationshipProvider>
+    </JamRealtimeProvider>
     </JamProvider>
   );
 }

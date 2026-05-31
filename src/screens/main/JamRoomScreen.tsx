@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,25 +22,16 @@ import SeekBar from '../../components/SeekBar';
 import AddBadge from '../../components/AddBadge';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
+import { useJamRealtime } from '../../contexts/JamRealtimeContext';
 import {
-  joinJamRoom,
   leaveJamRoom,
   endJamRoom,
   getMyJamPermissions,
-  updatePlaybackState,
   getJamQueue,
-  addToQueue,
-  type JamRoomState,
   type JamPermissions,
   type QueueItem,
 } from '../../services/jamRooms';
-import {
-  subscribeToJam,
-  unsubscribeFromJam,
-  broadcastPlaybackState,
-  type PlaybackBroadcast,
-  type PresenceMember,
-} from '../../services/jamRealtime';
+import type { PresenceMember } from '../../services/jamRealtime';
 import {
   fetchMessages,
   sendMessage,
@@ -89,24 +79,22 @@ export default function JamRoomScreen() {
     positionRef,
     durationRef,
     activePostId,
-    setJamLocked,
-    setNowPlaying,
-    clearNowPlaying,
-    pauseAll,
-    requestPlay,
   } = usePlayback();
-  const { clearActiveJam } = useJam();
+  const { activeJam, setActiveJam, clearActiveJam } = useJam();
+  // All realtime state — owned by the global JamRealtimeProvider so it keeps
+  // running when the host navigates to Home / Search / Profile to find a song.
+  const {
+    isHost,
+    hostUsername,
+    presenceMembers,
+    remotePlayback,
+    synced,
+  } = useJamRealtime();
 
-  const [myId, setMyId] = useState('');
-  const [myUsername, setMyUsername] = useState('');
-  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
-  const [jamState, setJamState] = useState<JamRoomState | null>(null);
   const [permissions, setPermissions] = useState<JamPermissions>({
     can_play_pause: false, can_seek: false, can_skip: false,
     can_change_track: false, can_suggest: true,
   });
-  const [isHost, setIsHost] = useState(false);
-  const [presenceMembers, setPresenceMembers] = useState<PresenceMember[]>([]);
   const [tab, setTab] = useState<Tab>('chat');
   const [chatUnread, setChatUnread] = useState(0);
 
@@ -116,43 +104,85 @@ export default function JamRoomScreen() {
   const [chatText, setChatText] = useState('');
   const [sending, setSending] = useState(false);
 
+  // Profile (only used for optimistic chat bubble rendering)
+  const [myUsername, setMyUsername] = useState('');
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+  const myIdRef = useRef('');
+
   // Queue state
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
 
-  // Playback display state (updated from broadcast or local position tick)
+  // Smooth seek bar position — both host and listener have local audio
+  // (listener via GlobalAudioPlayer driven by the provider's setNowPlaying),
+  // so positionRef/durationRef are valid for both.
   const [displayPositionMs, setDisplayPositionMs] = useState(0);
   const [displayDurationMs, setDisplayDurationMs] = useState(0);
-  const [broadcastTrack, setBroadcastTrack] = useState<{
-    title: string; artist: string; coverArt: string | null;
-  } | null>(null);
-  const [synced, setSynced] = useState(false);
 
-  // Stable refs to avoid stale closures in callbacks
-  const isHostRef = useRef(false);
-  const myIdRef = useRef('');
-  const jamRoomIdRef = useRef(jamRoomId);
-  const conversationIdRef = useRef(conversationId);
   const tabRef = useRef<Tab>('chat');
-  const dbSnapshotTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Listener-side: latest nowPlaying / activePostId so the broadcast handler
-  // (defined inside a [] effect) can read current values without re-subscribing.
-  const nowPlayingRef = useRef(nowPlaying);
-  const activePostIdRef = useRef(activePostId);
-  // True once a listener has loaded the host's track into their player via
-  // setNowPlaying — used on unmount to stop streaming the host's audio.
-  const loadedFromJamRef = useRef(false);
-  // Host-side: stable ref to the latest broadcast() so the 5s snapshot
-  // interval (captured once at mount) always sends fresh URLs / state.
-  const broadcastRef = useRef<(extra?: Partial<PlaybackBroadcast>) => void>(() => {});
 
-  useEffect(() => { nowPlayingRef.current = nowPlaying; }, [nowPlaying]);
-  useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
+  // ── Mount: ensure activeJam is set so the provider subscribes ──────────────
+  // For host this was already done in ConversationScreen.handleStartJam, but
+  // for a listener entering via the "Join" button it wasn't — set it here.
+  useEffect(() => {
+    if (!activeJam || activeJam.jamRoomId !== jamRoomId) {
+      setActiveJam({
+        jamRoomId,
+        conversationId,
+        // We don't have the title here — JamBanner uses this. The host path
+        // sets a real title; the listener join shows the room itself anyway.
+        conversationTitle: 'Jam Room',
+      });
+    }
+  // run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Poll local position + duration for seek bar display. Both host and
-  // listener now have a local audio source (listener loads the host's URL via
-  // setNowPlaying on first broadcast), so positionRef/durationRef are valid for
-  // both. Drift correction still happens on the host broadcast every ~5s.
+  // Load my profile + my permissions + initial chat snapshot. None of this
+  // is realtime — the provider handles channel events, this is just per-screen
+  // bootstrap state.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id ?? '';
+      myIdRef.current = uid;
+
+      const { data: prof } = await db
+        .from('profiles')
+        .select('username, avatar_url')
+        .eq('id', uid)
+        .maybeSingle();
+      if (!cancelled && prof) {
+        const p = prof as { username?: string; avatar_url?: string | null };
+        setMyUsername(p.username ?? 'User');
+        setMyAvatarUrl(p.avatar_url ?? null);
+      }
+
+      try {
+        const perms = await getMyJamPermissions(jamRoomId);
+        if (!cancelled) { setPermissions(perms); }
+      } catch {
+        // Non-fatal — defaults already applied.
+      }
+
+      try {
+        const { messages: msgs } = await fetchMessages(conversationId);
+        if (!cancelled) {
+          setMessages(msgs);
+          setMessagesLoading(false);
+        }
+      } catch {
+        if (!cancelled) { setMessagesLoading(false); }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll local position + duration for smooth seek bar movement.
   useEffect(() => {
     if (!activePostId) { return; }
     const id = setInterval(() => {
@@ -162,260 +192,19 @@ export default function JamRoomScreen() {
     return () => clearInterval(id);
   }, [activePostId, positionRef, durationRef]);
 
-  // ── Host: resolve playable media URLs to broadcast ─────────────────────────
-  // When the host starts playback from a PostCard (home feed / profile),
-  // PostCard intentionally OMITS audioUrl from nowPlaying so that
-  // GlobalAudioPlayer doesn't double-play on top of PostCard's own <Video>.
-  // That leaves us without a URL to broadcast to listeners. To bridge this,
-  // we look up the track's audio_url / video_url from the DB once we know the
-  // trackId, then re-broadcast so latecomers and the initial join sync work.
-  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
-  const [resolvedVideoUrl, setResolvedVideoUrl] = useState<string | null>(null);
-
+  // For listeners that haven't started local playback yet (no activePostId),
+  // surface the broadcast position so the UI doesn't sit at 0:00.
   useEffect(() => {
-    if (!isHost) { return; }
-    const trackId = nowPlaying?.trackId;
-    if (!trackId) {
-      setResolvedAudioUrl(null);
-      setResolvedVideoUrl(null);
-      return;
+    if (isHost) { return; }
+    if (activePostId) { return; }
+    if (remotePlayback) {
+      setDisplayPositionMs(remotePlayback.positionMs);
     }
-    // Prefer URLs already on nowPlaying (e.g. when started from a playlist).
-    const npAudio = nowPlaying?.audioUrl ?? null;
-    const npVideo = nowPlaying?.videoUrl ?? null;
-    if (npAudio || npVideo) {
-      setResolvedAudioUrl(npAudio);
-      setResolvedVideoUrl(npVideo);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const { data } = await db
-        .from('tracks')
-        .select('audio_url, video_url')
-        .eq('id', trackId)
-        .maybeSingle();
-      if (cancelled || !data) { return; }
-      const row = data as { audio_url: string | null; video_url: string | null };
-      setResolvedAudioUrl(row.audio_url);
-      setResolvedVideoUrl(row.video_url);
-    })();
-    return () => { cancelled = true; };
-  }, [isHost, nowPlaying?.trackId, nowPlaying?.audioUrl, nowPlaying?.videoUrl]);
+  }, [isHost, activePostId, remotePlayback]);
 
-  // Broadcast helper
-  const broadcast = useCallback((extraFields?: Partial<PlaybackBroadcast>) => {
-    const np = nowPlaying;
-    void broadcastPlaybackState(jamRoomIdRef.current, {
-      is_playing: !!activePostId,
-      position_ms: positionRef.current * 1000,
-      track_id: np?.trackId ?? '',
-      track_title: np?.title,
-      track_artist: np?.artistName,
-      track_cover_art: np?.coverArtUrl,
-      audio_url: np?.audioUrl ?? resolvedAudioUrl ?? undefined,
-      video_url: np?.videoUrl ?? resolvedVideoUrl ?? undefined,
-      media_kind: np?.mediaKind,
-      post_id: np?.postId,
-      author_id: np?.authorId,
-      author_username: np?.authorUsername,
-      author_avatar_url: np?.authorAvatarUrl,
-      ...extraFields,
-    });
-  }, [nowPlaying, activePostId, positionRef, resolvedAudioUrl, resolvedVideoUrl]);
-
-  // Keep broadcastRef in sync so the interval at mount-time always uses fresh
-  // closure values (resolvedAudioUrl, nowPlaying, activePostId, etc.).
-  useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
-
-  // Re-broadcast as soon as the host's URLs resolve (likely after the mount
-  // broadcast which fired before the DB lookup completed). Latecomers will
-  // also get the next 5s snapshot, but this gives the in-room listener a
-  // sub-second update.
-  useEffect(() => {
-    if (!isHost) { return; }
-    if (!resolvedAudioUrl && !resolvedVideoUrl) { return; }
-    broadcast();
-  }, [isHost, resolvedAudioUrl, resolvedVideoUrl, broadcast]);
-
-  // Mount: load profile, join jam, load messages, subscribe
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      // Load my profile
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData?.user?.id ?? '';
-      myIdRef.current = uid;
-      if (!cancelled) { setMyId(uid); }
-
-      const { data: prof } = await db
-        .from('profiles')
-        .select('username, avatar_url')
-        .eq('id', uid)
-        .maybeSingle();
-      const username = (prof as { username?: string } | null)?.username ?? 'User';
-      const avatarUrl = (prof as { avatar_url?: string | null } | null)?.avatar_url ?? null;
-      if (!cancelled) {
-        setMyUsername(username);
-        setMyAvatarUrl(avatarUrl);
-      }
-
-      // Join jam room (upserts listener row, returns snapshot)
-      let state: JamRoomState;
-      try {
-        state = await joinJamRoom(jamRoomId);
-      } catch (err) {
-        if (!cancelled) {
-          Alert.alert('Could not join jam', err instanceof Error ? err.message : String(err));
-          navigation.goBack();
-        }
-        return;
-      }
-
-      if (cancelled) { return; }
-      setJamState(state);
-      const host = state.hostId === uid;
-      isHostRef.current = host;
-      setIsHost(host);
-
-      // Get my permissions
-      const perms = await getMyJamPermissions(jamRoomId);
-      if (!cancelled) { setPermissions(perms); }
-
-      // Lock FloatingPlayer for listeners
-      if (!host) { setJamLocked(true); }
-
-      // Adjust playback position for network lag if host is playing
-      if (state.hostClockAt && state.isPlaying) {
-        const lag = Date.now() - new Date(state.hostClockAt).getTime();
-        const adjustedMs = state.playbackPositionMs + lag;
-        if (!host) {
-          setDisplayPositionMs(adjustedMs);
-        }
-      }
-
-      // Load messages (static snapshot — no realtime to avoid subscription conflict)
-      const { messages: msgs } = await fetchMessages(conversationId);
-      if (!cancelled) {
-        setMessages(msgs);
-        setMessagesLoading(false);
-      }
-
-      // Duration from current player
-      if (!cancelled) {
-        setDisplayDurationMs(0); // will update when now playing is known
-      }
-
-      // Subscribe to jam broadcast
-      subscribeToJam(jamRoomId, uid, username, avatarUrl, {
-        onPlaybackState: (bc: PlaybackBroadcast) => {
-          const adjustedMs = bc.position_ms + (Date.now() - bc.host_ts);
-          setDisplayPositionMs(adjustedMs);
-
-          if (bc.track_title) {
-            setBroadcastTrack({
-              title: bc.track_title,
-              artist: bc.track_artist ?? '',
-              coverArt: bc.track_cover_art ?? null,
-            });
-          }
-
-          if (!isHostRef.current) {
-            // (1) Load the host's track into the listener's GlobalAudioPlayer
-            // the first time we see this track. Once nowPlaying.audioUrl is set,
-            // GlobalAudioPlayer mounts, streams the URL, and auto-plays — exactly
-            // mirroring the host. Skip the seek/play below this tick because
-            // handlersRef won't be registered until the next render.
-            const currentNp = nowPlayingRef.current;
-            if (bc.audio_url && bc.track_id && (!currentNp || currentNp.trackId !== bc.track_id)) {
-              setNowPlaying({
-                postId: bc.post_id ?? '',
-                trackId: bc.track_id,
-                title: bc.track_title ?? 'Unknown',
-                artistName: bc.track_artist ?? '',
-                authorId: bc.author_id ?? '',
-                authorUsername: bc.author_username ?? '',
-                authorAvatarUrl: bc.author_avatar_url ?? null,
-                coverArtUrl: bc.track_cover_art ?? null,
-                mediaKind: bc.media_kind ?? 'audio',
-                audioUrl: bc.audio_url,
-                videoUrl: bc.video_url,
-                likesCount: 0, commentsCount: 0, repostsCount: 0, viewsCount: 0,
-                viewerHasLiked: false, clipStartSec: null, clipEndSec: null,
-                kind: 'upload', originalPostId: null,
-              });
-              if (bc.post_id) { requestPlay(bc.post_id); }
-              loadedFromJamRef.current = true;
-              setSynced(true);
-              return;
-            }
-
-            // (2) Drift-aware seek — only re-seek when local position is off by
-            // more than 1s to avoid juddery jumps every broadcast tick.
-            const localMs = positionRef.current * 1000;
-            if (handlersRef.current && Math.abs(localMs - adjustedMs) > 1000) {
-              handlersRef.current.seek(adjustedMs / 1000);
-            }
-            const localActive = activePostIdRef.current;
-            if (bc.is_playing && !localActive) {
-              handlersRef.current?.play();
-            } else if (!bc.is_playing && localActive) {
-              handlersRef.current?.pause();
-            }
-          }
-          setSynced(true);
-        },
-        onPresenceChange: (members: PresenceMember[]) => {
-          setPresenceMembers(members);
-          // Host re-broadcasts full state so any joining listener syncs.
-          // Use broadcastRef to read fresh closure (resolved URLs, latest nowPlaying).
-          if (isHostRef.current) {
-            broadcastRef.current();
-          }
-        },
-      });
-
-      // Host: broadcast immediately + start DB snapshot timer.
-      // Use broadcastRef so the interval picks up the latest closure (which
-      // is recreated whenever nowPlaying / resolved URLs / activePostId change).
-      if (host) {
-        broadcastRef.current();
-        setSynced(true);
-        dbSnapshotTimer.current = setInterval(() => {
-          void updatePlaybackState(jamRoomIdRef.current, {
-            positionMs: positionRef.current * 1000,
-            isPlaying: !!activePostIdRef.current,
-          });
-          broadcastRef.current();
-        }, 5000);
-      }
-    })();
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Unmount: leave jam, unlock player, clear banner, clear timer
-  useEffect(() => {
-    return () => {
-      if (dbSnapshotTimer.current) { clearInterval(dbSnapshotTimer.current); }
-      void leaveJamRoom(jamRoomId);
-      unsubscribeFromJam(jamRoomId);
-      setJamLocked(false);
-      // Listener: stop streaming the host's track when leaving the jam.
-      // (Host keeps their own playback going — they started it.)
-      if (loadedFromJamRef.current) {
-        pauseAll();
-        clearNowPlaying();
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Subscribe to new conversation messages for the Chat tab unread badge.
-  // Uses a unique channel key (jam:chat:jamRoomId) so it doesn't conflict with
-  // ConversationScreen's conv:conversationId channel which stays active behind us.
+  // Live chat: listen for new messages in this conversation while the screen
+  // is open. ConversationScreen has its own subscription on a different
+  // channel key so they don't conflict.
   useEffect(() => {
     const channel = supabase
       .channel(`jam:chat:${jamRoomId}`)
@@ -473,6 +262,10 @@ export default function JamRoomScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // NOTE: no unmount-time leaveJamRoom. The Android back button just navigates
+  // back, the user stays in the jam (JamBanner gives them a way back in).
+  // Leaving / ending the jam is an explicit user action via handleEnd.
+
   const handlePlayPause = useCallback(() => {
     if (!permissions.can_play_pause) { return; }
     if (activePostId) {
@@ -480,15 +273,17 @@ export default function JamRoomScreen() {
     } else {
       handlersRef.current?.play();
     }
-    broadcast();
-  }, [permissions, activePostId, handlersRef, broadcast]);
+    // The provider's broadcast-on-change effect picks up the activePostId
+    // change and broadcasts within ~one render cycle. No manual call needed.
+  }, [permissions, activePostId, handlersRef]);
 
   const handleSeekEnd = useCallback((seconds: number) => {
     if (!permissions.can_seek) { return; }
     handlersRef.current?.seek(seconds);
     setDisplayPositionMs(seconds * 1000);
-    broadcast({ position_ms: seconds * 1000 });
-  }, [permissions, handlersRef, broadcast]);
+    // The next 2s heartbeat will broadcast the new position. Listeners will
+    // drift-correct on the next tick.
+  }, [permissions, handlersRef]);
 
   const handleEnd = useCallback(() => {
     Alert.alert(
@@ -502,9 +297,17 @@ export default function JamRoomScreen() {
           text: isHost ? 'End' : 'Leave',
           style: 'destructive',
           onPress: async () => {
-            if (isHost) {
-              await endJamRoom(jamRoomId, conversationId);
+            try {
+              if (isHost) {
+                await endJamRoom(jamRoomId, conversationId);
+              } else {
+                await leaveJamRoom(jamRoomId);
+              }
+            } catch {
+              // Non-fatal — still clear local state.
             }
+            // Provider sees activeJam null → unsubscribes channel, clears
+            // listener playback, unlocks floating player.
             clearActiveJam();
             navigation.goBack();
           },
@@ -607,13 +410,21 @@ export default function JamRoomScreen() {
     </View>
   ), []);
 
-  // Determine what track to display in the player panel
+  // Track to display in the player panel: host uses their own nowPlaying;
+  // listener uses what the host broadcast.
   const displayTrack = useMemo(() => {
     if (isHost && nowPlaying) {
       return { title: nowPlaying.title, artist: nowPlaying.artistName, coverArt: nowPlaying.coverArtUrl };
     }
-    return broadcastTrack;
-  }, [isHost, nowPlaying, broadcastTrack]);
+    if (!isHost && remotePlayback?.trackId) {
+      return {
+        title: remotePlayback.trackTitle ?? 'Unknown',
+        artist: remotePlayback.trackArtist ?? '',
+        coverArt: remotePlayback.trackCoverArt ?? null,
+      };
+    }
+    return null;
+  }, [isHost, nowPlaying, remotePlayback]);
 
   const durationSec = displayDurationMs / 1000;
   const positionSec = displayPositionMs / 1000;
@@ -627,9 +438,9 @@ export default function JamRoomScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Jam Room</Text>
-          {jamState && (
+          {(isHost || hostUsername) && (
             <Text style={styles.headerSub}>
-              {isHost ? '👑 You are the host' : `👑 Host: @${jamState.hostUsername}`}
+              {isHost ? '👑 You are the host' : `👑 Host: @${hostUsername ?? 'unknown'}`}
             </Text>
           )}
         </View>
