@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
@@ -22,6 +22,7 @@ import { COLORS } from '../../theme/colors';
 import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
 import PostCard from '../../components/PostCard';
 import { usePlayback } from '../../contexts/PlaybackContext';
+import { useRelationships } from '../../contexts/RelationshipContext';
 import {
   fetchHomeFeedPage,
   type FeedPost,
@@ -200,9 +201,12 @@ export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const playback = usePlayback();
   const { stories, setStories } = useStories();
+  const { pendingIncomingCount } = useRelationships();
 
   const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
   const [totalUnread, setTotalUnread] = useState(0);
+  // Total badge count shown on the 💬 button = unread messages + incoming friend requests.
+  const notificationCount = totalUnread + pendingIncomingCount;
 
   const [storiesLoading, setStoriesLoading] = useState(true);
 
@@ -303,6 +307,7 @@ export default function HomeScreen() {
   // user navigates to another screen (e.g. UserProfile). PostCard's `visible`
   // prop already stops inline video when cards leave the viewport.
 
+  // One-time: load my profile for the hero avatar.
   useEffect(() => {
     let cancelled = false;
 
@@ -310,17 +315,13 @@ export default function HomeScreen() {
       try {
         const { data: userData } = await supabase.auth.getUser();
         const uid = userData?.user?.id;
-        if (!uid) {
-          return;
-        }
+        if (!uid) { return; }
         const { data, error } = await supabase
           .from('profiles')
           .select('username, display_name, avatar_url')
           .eq('id', uid)
           .maybeSingle();
-        if (cancelled || error) {
-          return;
-        }
+        if (cancelled || error) { return; }
         if (data) {
           setMeProfile({
             username: data.username,
@@ -331,19 +332,63 @@ export default function HomeScreen() {
       } catch {
         // Hero initials simply fall back to '?'.
       }
-
-      try {
-        const convs = await listConversations();
-        if (!cancelled) {
-          setTotalUnread(convs.reduce((sum, c) => sum + c.unreadCount, 0));
-        }
-      } catch {
-        // ignore
-      }
     })();
 
+    return () => { cancelled = true; };
+  }, []);
+
+  // Re-fetch unread message count whenever Home regains focus.
+  // Covers: user opens Inbox → reads messages (last_read_at advances) → returns
+  // to Home and expects the badge to be cleared.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const convs = await listConversations();
+          if (!cancelled) {
+            setTotalUnread(convs.reduce((sum, c) => sum + c.unreadCount, 0));
+          }
+        } catch {
+          // ignore
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []),
+  );
+
+  // Live: increment unread when a new message arrives in any of my conversations.
+  // RLS lets the realtime worker filter to messages I can SELECT (i.e. ones in
+  // conversations I'm a member of), so we don't need a per-conversation filter here.
+  // Decrement on read is handled by the focus refetch above.
+  useEffect(() => {
+    let myId: string | null = null;
+    let mounted = true;
+
+    void supabase.auth.getUser().then(({ data }) => {
+      myId = data?.user?.id ?? null;
+    });
+
+    const channel = supabase
+      .channel('home:unread')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null } }) => {
+          if (!mounted) { return; }
+          const row = payload.new;
+          if (!row) { return; }
+          if (row.kind === 'system') { return; }
+          if (row.deleted_at) { return; }
+          if (myId && row.sender_id === myId) { return; }
+          setTotalUnread(n => n + 1);
+        },
+      )
+      .subscribe();
+
     return () => {
-      cancelled = true;
+      mounted = false;
+      void supabase.removeChannel(channel);
     };
   }, []);
 
@@ -517,10 +562,10 @@ export default function HomeScreen() {
               accessibilityLabel="Open messages"
             >
               <Text style={styles.inboxIcon}>💬</Text>
-              {totalUnread > 0 && (
+              {notificationCount > 0 && (
                 <View style={styles.inboxBadge}>
                   <Text style={styles.inboxBadgeText}>
-                    {totalUnread > 99 ? '99+' : totalUnread}
+                    {notificationCount > 99 ? '99+' : notificationCount}
                   </Text>
                 </View>
               )}
@@ -562,7 +607,7 @@ export default function HomeScreen() {
         ) : null}
       </>
     ),
-    [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage],
+    [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount],
   );
 
   const footer = useMemo(() => {

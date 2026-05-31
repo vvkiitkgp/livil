@@ -87,9 +87,12 @@ export default function JamRoomScreen() {
     nowPlaying,
     handlersRef,
     positionRef,
+    durationRef,
     activePostId,
     setJamLocked,
     setNowPlaying,
+    clearNowPlaying,
+    pauseAll,
     requestPlay,
   } = usePlayback();
   const { clearActiveJam } = useJam();
@@ -132,15 +135,73 @@ export default function JamRoomScreen() {
   const conversationIdRef = useRef(conversationId);
   const tabRef = useRef<Tab>('chat');
   const dbSnapshotTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Listener-side: latest nowPlaying / activePostId so the broadcast handler
+  // (defined inside a [] effect) can read current values without re-subscribing.
+  const nowPlayingRef = useRef(nowPlaying);
+  const activePostIdRef = useRef(activePostId);
+  // True once a listener has loaded the host's track into their player via
+  // setNowPlaying — used on unmount to stop streaming the host's audio.
+  const loadedFromJamRef = useRef(false);
+  // Host-side: stable ref to the latest broadcast() so the 5s snapshot
+  // interval (captured once at mount) always sends fresh URLs / state.
+  const broadcastRef = useRef<(extra?: Partial<PlaybackBroadcast>) => void>(() => {});
 
-  // Poll local position for seek bar display (host only — listeners get position from broadcast)
+  useEffect(() => { nowPlayingRef.current = nowPlaying; }, [nowPlaying]);
+  useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
+
+  // Poll local position + duration for seek bar display. Both host and
+  // listener now have a local audio source (listener loads the host's URL via
+  // setNowPlaying on first broadcast), so positionRef/durationRef are valid for
+  // both. Drift correction still happens on the host broadcast every ~5s.
   useEffect(() => {
-    if (!isHost || !activePostId) { return; }
+    if (!activePostId) { return; }
     const id = setInterval(() => {
       setDisplayPositionMs(positionRef.current * 1000);
+      setDisplayDurationMs(durationRef.current * 1000);
     }, 500);
     return () => clearInterval(id);
-  }, [isHost, activePostId, positionRef]);
+  }, [activePostId, positionRef, durationRef]);
+
+  // ── Host: resolve playable media URLs to broadcast ─────────────────────────
+  // When the host starts playback from a PostCard (home feed / profile),
+  // PostCard intentionally OMITS audioUrl from nowPlaying so that
+  // GlobalAudioPlayer doesn't double-play on top of PostCard's own <Video>.
+  // That leaves us without a URL to broadcast to listeners. To bridge this,
+  // we look up the track's audio_url / video_url from the DB once we know the
+  // trackId, then re-broadcast so latecomers and the initial join sync work.
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
+  const [resolvedVideoUrl, setResolvedVideoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isHost) { return; }
+    const trackId = nowPlaying?.trackId;
+    if (!trackId) {
+      setResolvedAudioUrl(null);
+      setResolvedVideoUrl(null);
+      return;
+    }
+    // Prefer URLs already on nowPlaying (e.g. when started from a playlist).
+    const npAudio = nowPlaying?.audioUrl ?? null;
+    const npVideo = nowPlaying?.videoUrl ?? null;
+    if (npAudio || npVideo) {
+      setResolvedAudioUrl(npAudio);
+      setResolvedVideoUrl(npVideo);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await db
+        .from('tracks')
+        .select('audio_url, video_url')
+        .eq('id', trackId)
+        .maybeSingle();
+      if (cancelled || !data) { return; }
+      const row = data as { audio_url: string | null; video_url: string | null };
+      setResolvedAudioUrl(row.audio_url);
+      setResolvedVideoUrl(row.video_url);
+    })();
+    return () => { cancelled = true; };
+  }, [isHost, nowPlaying?.trackId, nowPlaying?.audioUrl, nowPlaying?.videoUrl]);
 
   // Broadcast helper
   const broadcast = useCallback((extraFields?: Partial<PlaybackBroadcast>) => {
@@ -152,8 +213,8 @@ export default function JamRoomScreen() {
       track_title: np?.title,
       track_artist: np?.artistName,
       track_cover_art: np?.coverArtUrl,
-      audio_url: np?.audioUrl,
-      video_url: np?.videoUrl,
+      audio_url: np?.audioUrl ?? resolvedAudioUrl ?? undefined,
+      video_url: np?.videoUrl ?? resolvedVideoUrl ?? undefined,
       media_kind: np?.mediaKind,
       post_id: np?.postId,
       author_id: np?.authorId,
@@ -161,7 +222,21 @@ export default function JamRoomScreen() {
       author_avatar_url: np?.authorAvatarUrl,
       ...extraFields,
     });
-  }, [nowPlaying, activePostId, positionRef]);
+  }, [nowPlaying, activePostId, positionRef, resolvedAudioUrl, resolvedVideoUrl]);
+
+  // Keep broadcastRef in sync so the interval at mount-time always uses fresh
+  // closure values (resolvedAudioUrl, nowPlaying, activePostId, etc.).
+  useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
+
+  // Re-broadcast as soon as the host's URLs resolve (likely after the mount
+  // broadcast which fired before the DB lookup completed). Latecomers will
+  // also get the next 5s snapshot, but this gives the in-room listener a
+  // sub-second update.
+  useEffect(() => {
+    if (!isHost) { return; }
+    if (!resolvedAudioUrl && !resolvedVideoUrl) { return; }
+    broadcast();
+  }, [isHost, resolvedAudioUrl, resolvedVideoUrl, broadcast]);
 
   // Mount: load profile, join jam, load messages, subscribe
   useEffect(() => {
@@ -247,11 +322,45 @@ export default function JamRoomScreen() {
           }
 
           if (!isHostRef.current) {
-            // Sync listener's local audio
-            handlersRef.current?.seek(adjustedMs / 1000);
-            if (bc.is_playing && !activePostId) {
+            // (1) Load the host's track into the listener's GlobalAudioPlayer
+            // the first time we see this track. Once nowPlaying.audioUrl is set,
+            // GlobalAudioPlayer mounts, streams the URL, and auto-plays — exactly
+            // mirroring the host. Skip the seek/play below this tick because
+            // handlersRef won't be registered until the next render.
+            const currentNp = nowPlayingRef.current;
+            if (bc.audio_url && bc.track_id && (!currentNp || currentNp.trackId !== bc.track_id)) {
+              setNowPlaying({
+                postId: bc.post_id ?? '',
+                trackId: bc.track_id,
+                title: bc.track_title ?? 'Unknown',
+                artistName: bc.track_artist ?? '',
+                authorId: bc.author_id ?? '',
+                authorUsername: bc.author_username ?? '',
+                authorAvatarUrl: bc.author_avatar_url ?? null,
+                coverArtUrl: bc.track_cover_art ?? null,
+                mediaKind: bc.media_kind ?? 'audio',
+                audioUrl: bc.audio_url,
+                videoUrl: bc.video_url,
+                likesCount: 0, commentsCount: 0, repostsCount: 0, viewsCount: 0,
+                viewerHasLiked: false, clipStartSec: null, clipEndSec: null,
+                kind: 'upload', originalPostId: null,
+              });
+              if (bc.post_id) { requestPlay(bc.post_id); }
+              loadedFromJamRef.current = true;
+              setSynced(true);
+              return;
+            }
+
+            // (2) Drift-aware seek — only re-seek when local position is off by
+            // more than 1s to avoid juddery jumps every broadcast tick.
+            const localMs = positionRef.current * 1000;
+            if (handlersRef.current && Math.abs(localMs - adjustedMs) > 1000) {
+              handlersRef.current.seek(adjustedMs / 1000);
+            }
+            const localActive = activePostIdRef.current;
+            if (bc.is_playing && !localActive) {
               handlersRef.current?.play();
-            } else if (!bc.is_playing && activePostId) {
+            } else if (!bc.is_playing && localActive) {
               handlersRef.current?.pause();
             }
           }
@@ -259,23 +368,26 @@ export default function JamRoomScreen() {
         },
         onPresenceChange: (members: PresenceMember[]) => {
           setPresenceMembers(members);
-          // Host re-broadcasts full state so any joining listener syncs
+          // Host re-broadcasts full state so any joining listener syncs.
+          // Use broadcastRef to read fresh closure (resolved URLs, latest nowPlaying).
           if (isHostRef.current) {
-            broadcast();
+            broadcastRef.current();
           }
         },
       });
 
-      // Host: broadcast immediately + start DB snapshot timer
+      // Host: broadcast immediately + start DB snapshot timer.
+      // Use broadcastRef so the interval picks up the latest closure (which
+      // is recreated whenever nowPlaying / resolved URLs / activePostId change).
       if (host) {
-        broadcast();
+        broadcastRef.current();
         setSynced(true);
         dbSnapshotTimer.current = setInterval(() => {
           void updatePlaybackState(jamRoomIdRef.current, {
             positionMs: positionRef.current * 1000,
-            isPlaying: !!activePostId,
+            isPlaying: !!activePostIdRef.current,
           });
-          broadcast();
+          broadcastRef.current();
         }, 5000);
       }
     })();
@@ -291,6 +403,12 @@ export default function JamRoomScreen() {
       void leaveJamRoom(jamRoomId);
       unsubscribeFromJam(jamRoomId);
       setJamLocked(false);
+      // Listener: stop streaming the host's track when leaving the jam.
+      // (Host keeps their own playback going — they started it.)
+      if (loadedFromJamRef.current) {
+        pauseAll();
+        clearNowPlaying();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

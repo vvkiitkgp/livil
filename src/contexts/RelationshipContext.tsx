@@ -29,6 +29,9 @@ type RelationshipContextValue = {
   meId: string | null;
   ready: boolean;
   status: (userId: string) => RelationshipStatus;
+  // Live count of incoming friend requests — used by HomeScreen's badge.
+  // Updates optimistically on accept/reject and live via friendships subscription.
+  pendingIncomingCount: number;
   // Mutations — optimistic, throw on RPC failure (after rollback).
   sendFriendRequest: (userId: string) => Promise<void>;
   acceptFriendRequest: (userId: string) => Promise<void>;
@@ -98,6 +101,22 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
     });
     return () => sub.subscription.unsubscribe();
   }, [refresh, applySets]);
+
+  // Live updates: any change to the friendships table that RLS lets us see
+  // (i.e. rows where we're user_a or user_b) means our sets are stale.
+  // Cheapest reliable refresh is to refetch — friendships are small.
+  useEffect(() => {
+    if (!meId) { return; }
+    const channel = supabase
+      .channel(`friendships:${meId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'friendships' },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [meId, refresh]);
 
   const status = useCallback(
     (userId: string): RelationshipStatus => {
@@ -221,11 +240,14 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
     [mutate],
   );
 
+  const pendingIncomingCount = sets.pendingIncoming.size;
+
   const value = useMemo<RelationshipContextValue>(
     () => ({
       meId,
       ready,
       status,
+      pendingIncomingCount,
       sendFriendRequest,
       acceptFriendRequest,
       rejectFriendRequest,
@@ -239,6 +261,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
       meId,
       ready,
       status,
+      pendingIncomingCount,
       sendFriendRequest,
       acceptFriendRequest,
       rejectFriendRequest,
