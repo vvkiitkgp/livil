@@ -316,6 +316,69 @@ export async function listPostsForUser(
   return hydrateRawPostRows(rows);
 }
 
+// Same shape as POST_SELECT but forces an inner join on tracks so we can apply
+// `.or` filters against track columns (title/description) without losing the row.
+const SEARCH_POST_SELECT = `
+  id,
+  kind,
+  caption,
+  created_at,
+  views_count,
+  likes_count,
+  reposts_count,
+  comments_count,
+  author_id,
+  original_post_id,
+  clip_start_sec,
+  clip_end_sec,
+  track:tracks!inner (
+    id,
+    title,
+    media_kind,
+    audio_url,
+    video_url,
+    cover_art_url
+  ),
+  author:profiles!posts_author_id_fkey (
+    id,
+    username,
+    display_name,
+    avatar_url
+  )
+` as const;
+
+/**
+ * Search upload posts by track title or description (case-insensitive). Reposts
+ * are intentionally excluded so each track appears once. Results are newest
+ * first and capped at `limit` (default 20).
+ */
+export async function searchPosts(
+  query: string,
+  options: { limit?: number } = {},
+): Promise<FeedPost[]> {
+  const trimmed = query.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+  const limit = options.limit ?? 20;
+  const pattern = `%${trimmed.replace(/[%_]/g, '\\$&')}%`;
+
+  const { data, error } = await supabase
+    .from('posts')
+    .select(SEARCH_POST_SELECT)
+    .eq('kind', 'upload')
+    .or(`title.ilike.${pattern},description.ilike.${pattern}`, { foreignTable: 'tracks' })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rows = (data ?? []) as unknown as RawPostRow[];
+  return hydrateRawPostRows(rows);
+}
+
 export async function getProfileStats(userId: string): Promise<ProfileStats> {
   // Two head:true count queries — cheap and accurate.
   const [{ count: total, error: totalError }, { count: uploads, error: uploadsError }] =
