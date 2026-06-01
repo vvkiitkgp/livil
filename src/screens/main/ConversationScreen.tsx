@@ -999,7 +999,7 @@ const styles = StyleSheet.create({
   inputWrap: { flex: 1 },
   textInput: { maxHeight: 100 },
   charCounter: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 2, marginRight: 4 },
-  charCounterOver: { color: COLORS.danger },
+  charCounterOver: { color: '#FF4444' },
   sendBtn: {
     width: 38,
     height: 38,
