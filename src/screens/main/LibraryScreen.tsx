@@ -10,7 +10,7 @@ import {
   Image,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
@@ -67,6 +67,7 @@ function PlaylistSkeleton() {
 
 export default function LibraryScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
 
   const [recent, setRecent] = useState<LibraryRecentTrack[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
@@ -156,9 +157,9 @@ export default function LibraryScreen() {
   }, [navigation]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 64 + insets.bottom + 48 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -310,7 +311,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   scroll: {
-    paddingBottom: 40,
+    paddingBottom: 0, // dynamic bottom padding set inline via insets
   },
   header: {
     paddingHorizontal: 20,

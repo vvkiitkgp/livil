@@ -116,11 +116,12 @@ export default function AppNavigator() {
         tabBarStyle: [
           styles.tabBar,
           Platform.OS === 'android' && {
-            height: 64 + insets.bottom,
-            paddingBottom: 8 + insets.bottom,
+            height: 64 + insets.bottom + 16,
+            paddingBottom: 8 + insets.bottom + 16,
           },
         ],
         tabBarItemStyle: styles.tabItem,
+        tabBarBackground: () => <View style={styles.tabBarBg} />,
         sceneStyle: { backgroundColor: COLORS.bg },
         // Default lazy=true: mounting Profile (many videos) while Home is visible
         // starves Android audio focus — Home playback dies after ~1s.
@@ -152,13 +153,20 @@ export default function AppNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: COLORS.surface,
-    borderTopColor: COLORS.border,
+    position: 'absolute',
+    backgroundColor: 'transparent',
+    borderTopColor: 'rgba(124, 58, 237, 0.25)',
     borderTopWidth: StyleSheet.hairlineWidth,
     height: Platform.OS === 'ios' ? 84 : 64,
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 24 : 8,
     // Android height/paddingBottom are overridden in screenOptions with insets.bottom
+  },
+  tabBarBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10, 10, 15, 0.90)',
+    borderTopColor: 'rgba(124, 58, 237, 0.25)',
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   tabItem: {
     paddingVertical: 4,

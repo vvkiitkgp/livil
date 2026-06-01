@@ -11,7 +11,7 @@ import {
   Image,
   type ViewToken,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
@@ -61,6 +61,7 @@ function formatStat(n: number): string {
 
 export default function ProfileScreen() {
   const playback = usePlayback();
+  const insets = useSafeAreaInsets();
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
@@ -428,7 +429,7 @@ export default function ProfileScreen() {
   }, [loadingMore]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <FlatList
         data={listData}
         keyExtractor={item => item.key}
@@ -449,7 +450,7 @@ export default function ProfileScreen() {
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 48 }]}
       />
     </SafeAreaView>
   );

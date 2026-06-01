@@ -58,7 +58,7 @@ export const FLOATING_PLAYER_HEIGHT = D;
 // ─── Repeat icon glyphs ───────────────────────────────────────────────────────
 function RepeatGlyph({ mode }: { mode: string }) {
   const active = mode !== 'off';
-  const color  = active ? COLORS.purpleLight : COLORS.textMuted;
+  const color  = COLORS.white;
   return (
     <View style={icon.wrap}>
       <Text style={[icon.glyph, { color }]}>↻</Text>
@@ -70,7 +70,7 @@ function RepeatGlyph({ mode }: { mode: string }) {
 
 // ─── Shuffle icon glyphs ──────────────────────────────────────────────────────
 function ShuffleGlyph({ active }: { active: boolean }) {
-  const color = active ? COLORS.purpleLight : COLORS.textMuted;
+  const color = COLORS.white;
   return (
     <View style={icon.wrap}>
       <Text style={[icon.glyph, { color }]}>⇄</Text>
@@ -82,7 +82,7 @@ function ShuffleGlyph({ active }: { active: boolean }) {
 const icon = StyleSheet.create({
   wrap:  { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   glyph: { fontSize: 18, fontWeight: '400' },
-  badge: { position: 'absolute', top: 3, right: 3, fontSize: 7, fontWeight: '700', color: COLORS.purpleLight },
+  badge: { position: 'absolute', top: 3, right: 3, fontSize: 7, fontWeight: '700', color: COLORS.white },
   dot:   { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2 },
 });
 
@@ -92,7 +92,7 @@ export default function FloatingPlayer() {
   const navigation = useNavigation<Nav>();
 
   const tabBarH      = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
-  const playerBottom = Math.max(SCREEN_H * 0.10, tabBarH + 10);
+  const playerBottom = Math.max(SCREEN_H * 0.10, tabBarH + 56);
 
   const {
     nowPlaying, isStoryViewerOpen, isRepostOpen,
@@ -225,7 +225,7 @@ export default function FloatingPlayer() {
   const barHeight  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_H,       PILL_H] });
   const barTop     = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_TOP_REST, BAR_TOP_PILL] });
   const barRadius  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [1, PILL_H / 2] });
-  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', 'rgba(124,58,237,0.20)'] });
+  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', 'rgba(10,10,15,0.82)'] });
   const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(124,58,237,0)', 'rgba(124,58,237,0.50)'] });
   // Content fades in only after pill is mostly open, and out before it collapses
   const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });

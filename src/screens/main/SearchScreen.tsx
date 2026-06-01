@@ -9,7 +9,7 @@ import {
   Image,
   type ViewToken,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -34,6 +34,7 @@ function initialsFor(name: string): string {
 
 export default function SearchScreen() {
   const navigation = useNavigation<NavProp>();
+  const insets = useSafeAreaInsets();
 
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<Tab>('users');
@@ -174,7 +175,7 @@ export default function SearchScreen() {
     tab === 'users' ? userResults.length > 0 : trackResults.length > 0;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Search</Text>
@@ -252,7 +253,7 @@ export default function SearchScreen() {
           data={userResults}
           keyExtractor={item => item.id}
           renderItem={renderUserRow}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 48 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />
@@ -261,7 +262,7 @@ export default function SearchScreen() {
           data={trackResults}
           keyExtractor={item => item.id}
           renderItem={renderTrackRow}
-          contentContainerStyle={styles.trackListContent}
+          contentContainerStyle={[styles.trackListContent, { paddingBottom: 64 + insets.bottom + 48 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           viewabilityConfig={viewabilityConfig}
