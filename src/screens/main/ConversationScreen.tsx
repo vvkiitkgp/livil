@@ -670,7 +670,10 @@ export default function ConversationScreen() {
       ) : (
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // On Android, AndroidManifest's `adjustResize` already pushes the
+          // layout up when the keyboard opens. Adding KeyboardAvoidingView on
+          // top double-shifts and hides the input. So we only engage KAV on iOS.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
           <FlatList

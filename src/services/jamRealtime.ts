@@ -45,6 +45,8 @@ export function subscribeToConversation(
   const key = `conv:${conversationId}`;
   activeChannels.get(key)?.unsubscribe();
 
+  console.log(`[realtime] subscribing to ${key}`);
+
   const channel = supabase
     .channel(key)
     .on(
@@ -56,6 +58,7 @@ export function subscribeToConversation(
         filter: `conversation_id=eq.${conversationId}`,
       },
       async payload => {
+        console.log(`[realtime] ${key} got messages INSERT`, payload.new?.id);
         // Fetch full message with profile join
         const { data } = await db
           .from('messages')
@@ -107,7 +110,9 @@ export function subscribeToConversation(
         }
       },
     )
-    .subscribe();
+    .subscribe(status => {
+      console.log(`[realtime] ${key} status=${status}`);
+    });
 
   activeChannels.set(key, channel);
   return channel;
@@ -123,17 +128,22 @@ export function subscribeToJam(
   const key = `jam:${jamRoomId}`;
   activeChannels.get(key)?.unsubscribe();
 
+  console.log(`[realtime] subscribing to ${key}`);
+
   const channel = supabase
     .channel(key)
     .on('broadcast', { event: 'PLAYBACK_STATE' }, ({ payload }) => {
+      console.log(`[realtime] ${key} got PLAYBACK_STATE`, (payload as PlaybackBroadcast)?.track_id);
       handlers.onPlaybackState(payload as PlaybackBroadcast);
     })
     .on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState() as Record<string, PresenceMember[]>;
       const members = Object.values(state).flat();
+      console.log(`[realtime] ${key} presence sync, members=${members.length}`);
       handlers.onPresenceChange(members);
     })
     .subscribe(async status => {
+      console.log(`[realtime] ${key} status=${status}`);
       if (status === 'SUBSCRIBED') {
         await channel.track({
           userId: currentUserId,
@@ -153,13 +163,17 @@ export async function broadcastPlaybackState(
 ): Promise<void> {
   const key = `jam:${jamRoomId}`;
   const channel = activeChannels.get(key);
-  if (!channel) { return; }
+  if (!channel) {
+    console.log(`[realtime] broadcastPlaybackState skipped — no channel for ${key}`);
+    return;
+  }
 
-  await channel.send({
+  const res = await channel.send({
     type: 'broadcast',
     event: 'PLAYBACK_STATE',
     payload: { ...state, type: 'PLAYBACK_STATE', host_ts: Date.now() },
   });
+  console.log(`[realtime] broadcast ${key} track=${state.track_id} playing=${state.is_playing} → ${res}`);
 }
 
 export function unsubscribeFromConversation(conversationId: string): void {

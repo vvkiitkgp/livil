@@ -107,14 +107,20 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
   // Cheapest reliable refresh is to refetch — friendships are small.
   useEffect(() => {
     if (!meId) { return; }
+    console.log(`[realtime] subscribing to friendships:${meId}`);
     const channel = supabase
       .channel(`friendships:${meId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'friendships' },
-        () => { void refresh(); },
+        () => {
+          console.log('[realtime] friendships change → refresh()');
+          void refresh();
+        },
       )
-      .subscribe();
+      .subscribe(status => {
+        console.log(`[realtime] friendships:${meId} status=${status}`);
+      });
     return () => { void supabase.removeChannel(channel); };
   }, [meId, refresh]);
 

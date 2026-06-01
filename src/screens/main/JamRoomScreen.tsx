@@ -206,6 +206,7 @@ export default function JamRoomScreen() {
   // is open. ConversationScreen has its own subscription on a different
   // channel key so they don't conflict.
   useEffect(() => {
+    console.log(`[realtime] subscribing to jam:chat:${jamRoomId}`);
     const channel = supabase
       .channel(`jam:chat:${jamRoomId}`)
       .on(
@@ -255,7 +256,9 @@ export default function JamRoomScreen() {
           }
         },
       )
-      .subscribe();
+      .subscribe(status => {
+        console.log(`[realtime] jam:chat:${jamRoomId} status=${status}`);
+      });
 
     return () => { void supabase.removeChannel(channel); };
   // conversationId and jamRoomId are stable route params — run once
@@ -430,7 +433,7 @@ export default function JamRoomScreen() {
   const positionSec = displayPositionMs / 1000;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={() => navigation.goBack()}>
@@ -552,7 +555,11 @@ export default function JamRoomScreen() {
       {tab === 'chat' && (
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // On Android, `adjustResize` in AndroidManifest already pushes the
+          // layout up when the keyboard opens. Layering KeyboardAvoidingView
+          // on top of that double-shifts and hides the input. So we only
+          // engage KAV on iOS.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {messagesLoading ? (
             <View style={styles.centered}>
