@@ -149,10 +149,24 @@ export function subscribeToJam(
   console.log(`[realtime] subscribing to ${key}`);
 
   const channel = supabase
-    .channel(key)
+    .channel(key, {
+      // ack:true makes channel.send() actually wait for server confirmation
+      //   ('ok' now means delivered to the server, not just written to the socket).
+      // self:true makes the sender ALSO receive their own broadcasts — used as a
+      //   live diagnostic: if the host's own onPlaybackState fires, the broadcast
+      //   pipeline is healthy end-to-end and the issue must be fan-out filtering.
+      config: { broadcast: { ack: true, self: true } },
+    })
     .on('broadcast', { event: 'PLAYBACK_STATE' }, ({ payload }) => {
       console.log(`[realtime] ${key} got PLAYBACK_STATE`, (payload as PlaybackBroadcast)?.track_id);
       handlers.onPlaybackState(payload as PlaybackBroadcast);
+    })
+    // Catch-all broadcast handler — fires for ANY broadcast event on this channel.
+    // If subscriber receives a broadcast we don't recognize, this surfaces it.
+    .on('broadcast', { event: '*' }, ({ event, payload }) => {
+      if (event !== 'PLAYBACK_STATE') {
+        console.log(`[realtime] ${key} got broadcast event=${event}`, payload);
+      }
     })
     .on('presence', { event: 'sync' }, () => {
       const state = channel.presenceState() as Record<string, PresenceMember[]>;
@@ -179,19 +193,20 @@ export async function broadcastPlaybackState(
   jamRoomId: string,
   state: Omit<PlaybackBroadcast, 'type' | 'host_ts'>,
 ): Promise<void> {
-  const key = `jam:${jamRoomId}`;
-  const channel = activeChannels.get(key);
-  if (!channel) {
-    console.log(`[realtime] broadcastPlaybackState skipped — no channel for ${key}`);
+  // NOTE: client-side channel.send() broadcasts return 'ok' but never reach
+  // subscribers on this project (verified empirically — SQL-side realtime.send
+  // works, client-side .send does not). So we route through a server RPC.
+  const payload = { ...state, type: 'PLAYBACK_STATE', host_ts: Date.now() };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc('broadcast_jam_state', {
+    p_jam_room_id: jamRoomId,
+    p_payload: payload,
+  });
+  if (error) {
+    console.log(`[realtime] broadcast jam:${jamRoomId} track=${state.track_id} → error: ${error.message}`);
     return;
   }
-
-  const res = await channel.send({
-    type: 'broadcast',
-    event: 'PLAYBACK_STATE',
-    payload: { ...state, type: 'PLAYBACK_STATE', host_ts: Date.now() },
-  });
-  console.log(`[realtime] broadcast ${key} track=${state.track_id} playing=${state.is_playing} → ${res}`);
+  console.log(`[realtime] broadcast jam:${jamRoomId} track=${state.track_id} playing=${state.is_playing} → ok (via rpc)`);
 }
 
 export function unsubscribeFromConversation(conversationId: string): void {
