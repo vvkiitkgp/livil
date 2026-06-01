@@ -102,6 +102,7 @@ export default function RootNavigator() {
         if (!cancelled) {
           // Realtime channels gate on the user's JWT; without this, RLS-protected
           // postgres_changes events (chat messages, reactions) are dropped silently.
+          console.log(`[realtime] initial setAuth token=${s?.access_token ? 'present' : 'null'}`);
           supabase.realtime.setAuth(s?.access_token ?? null);
           setSession(s);
         }
@@ -122,6 +123,7 @@ export default function RootNavigator() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, s) => {
       if (!cancelled) {
+        console.log(`[realtime] auth event=${event} token=${s?.access_token ? 'present' : 'null'}`);
         supabase.realtime.setAuth(s?.access_token ?? null);
         setSession(s);
         // Clear cached chat data when the user signs out so stale messages

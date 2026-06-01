@@ -263,10 +263,14 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
             if (handlersRef.current && Math.abs(localMs - adjustedMs) > 1000) {
               handlersRef.current.seek(adjustedMs / 1000);
             }
-            const localActive = activePostIdRef.current;
-            if (bc.is_playing && !localActive) {
+            // Mirror play/pause every tick. We don't guard on activePostId
+            // because PostCard's pause() doesn't call reportPaused, so the
+            // activePostId state would stay set after a remote pause — making
+            // the next remote-play silently skip the play() call. The handler
+            // setPaused calls are idempotent, so calling them every 2s is fine.
+            if (bc.is_playing) {
               handlersRef.current?.play();
-            } else if (!bc.is_playing && localActive) {
+            } else {
               handlersRef.current?.pause();
             }
           }

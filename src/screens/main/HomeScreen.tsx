@@ -369,12 +369,14 @@ export default function HomeScreen() {
       myId = data?.user?.id ?? null;
     });
 
+    console.log('[realtime] subscribing to home:unread');
     const channel = supabase
       .channel('home:unread')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null } }) => {
+          console.log('[realtime] home:unread got messages INSERT');
           if (!mounted) { return; }
           const row = payload.new;
           if (!row) { return; }
@@ -384,7 +386,9 @@ export default function HomeScreen() {
           setTotalUnread(n => n + 1);
         },
       )
-      .subscribe();
+      .subscribe(status => {
+        console.log(`[realtime] home:unread status=${status}`);
+      });
 
     return () => {
       mounted = false;
