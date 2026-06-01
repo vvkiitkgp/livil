@@ -18,6 +18,7 @@ export type CreateTrackInput =
       title: string;
       description?: string;
       video: PickedFile;
+      cover?: PickedFile;
       collaborators: PendingCollaborator[];
     };
 
@@ -56,7 +57,7 @@ function planFromInput(input: CreateTrackInput): UploadPlan {
   if (input.mode === 'audio') {
     return { audio: input.audio, cover: input.cover };
   }
-  return { video: input.video };
+  return { video: input.video, cover: input.cover };
 }
 
 function computeWeights(plan: UploadPlan): {
@@ -120,7 +121,7 @@ export async function createTrack(
       title,
       description,
       media_kind: input.mode,
-      audio_url: null,
+      audio_url: input.mode === 'audio' ? 'pending://placeholder' : null,
       video_url: input.mode === 'video' ? 'pending://placeholder' : null,
     })
     .select('id')

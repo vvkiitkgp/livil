@@ -18,7 +18,7 @@ import {
   Pressable,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -298,6 +298,10 @@ export default function ConversationScreen() {
   const { nowPlaying, queueRef } = usePlayback();
   const { activeJam, setActiveJam } = useJam();
   const [startingJam, setStartingJam] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
+  const [listHeight, setListHeight] = useState(0);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -390,6 +394,7 @@ export default function ConversationScreen() {
           console.log(`[realtime] ConversationScreen setMessages prepending id=${msg.id} (was ${prev.length} msgs)`);
           return [msg, ...prev];
         });
+        setTimeout(() => flatListRef.current?.scrollToIndex({ index: 0, animated: true }), 50);
         // Keep cache warm so the next open of this conversation shows the new msg
         void messageCache.prependMessages(conversationId, [msg]);
       },
@@ -498,6 +503,7 @@ export default function ConversationScreen() {
       reactions: [],
     };
     setMessages(prev => [optimistic, ...prev]);
+    setTimeout(() => flatListRef.current?.scrollToIndex({ index: 0, animated: true }), 50);
 
     try {
       const payload: SendMessagePayload = { kind: 'text', body };
@@ -620,7 +626,7 @@ export default function ConversationScreen() {
   }, [friendActivity]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -654,14 +660,17 @@ export default function ConversationScreen() {
           ) : null}
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.infoBtn}
+          style={styles.jamBtn}
           activeOpacity={0.7}
           onPress={() => void handleStartJam()}
           disabled={startingJam}
         >
           {startingJam
             ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
-            : <Text style={styles.infoBtnText}>🎵</Text>
+            : <>
+                <Text style={styles.jamBtnIcon}>🎵</Text>
+                <Text style={styles.jamBtnLabel}>Jam</Text>
+              </>
           }
         </TouchableOpacity>
         {isGroup && (
@@ -685,49 +694,63 @@ export default function ConversationScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
         >
-          <FlatList
-            data={messages}
-            keyExtractor={item => item.id}
-            renderItem={renderItem}
-            inverted
-            contentContainerStyle={styles.listContent}
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.2}
-            ListFooterComponent={
-              loadingMore ? (
-                <View style={styles.loadMoreSpinner}>
-                  <ActivityIndicator size="small" color={COLORS.purpleLight} />
-                </View>
-              ) : null
-            }
-          />
+          <View
+            style={styles.flex}
+            onLayout={e => setListHeight(e.nativeEvent.layout.height)}
+          >
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={item => item.id}
+              renderItem={renderItem}
+              inverted
+              contentContainerStyle={[
+                styles.listContent,
+                {
+                  // paddingTop in inverted = visual space below the newest message,
+                  // centering it when few messages exist
+                  paddingTop: listHeight > 0 ? listHeight * 0.4 : 200,
+                  paddingBottom: 72 + insets.bottom,
+                },
+              ]}
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.2}
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={styles.loadMoreSpinner}>
+                    <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                  </View>
+                ) : null
+              }
+            />
 
-          {/* Send bar */}
-          <View style={styles.sendBar}>
-            <View style={styles.inputWrap}>
-              <FormInput
-                value={text}
-                onChangeText={t => setText(t.slice(0, MAX_CHARS))}
-                placeholder="Message…"
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                style={styles.textInput}
-                returnKeyType="default"
-              />
-              {text.length > MAX_CHARS - 100 && (
-                <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
-                  {MAX_CHARS - text.length}
-                </Text>
-              )}
+            {/* Send bar — absolute so FlatList scrolls behind it */}
+            <View style={[styles.sendBar, { paddingBottom: 8 + 16 + insets.bottom }]}>
+              <View style={styles.inputWrap}>
+                <FormInput
+                  value={text}
+                  onChangeText={t => setText(t.slice(0, MAX_CHARS))}
+                  placeholder="Message…"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  style={styles.textInput}
+                  returnKeyType="default"
+                />
+                {text.length > MAX_CHARS - 100 && (
+                  <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
+                    {MAX_CHARS - text.length}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+                activeOpacity={0.7}
+                onPress={handleSend}
+                disabled={!text.trim() || sending}
+              >
+                <Text style={styles.sendBtnIcon}>›</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-              activeOpacity={0.7}
-              onPress={handleSend}
-              disabled={!text.trim() || sending}
-            >
-              <Text style={styles.sendBtnIcon}>›</Text>
-            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       )}
@@ -758,13 +781,27 @@ const styles = StyleSheet.create({
   headerInfo: { flex: 1, justifyContent: 'center' },
   infoBtn: { padding: 6 },
   infoBtnText: { color: COLORS.purpleLight, fontSize: 20 },
+  jamBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(124, 58, 237, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.55)',
+    marginLeft: 4,
+  },
+  jamBtnIcon: { fontSize: 14, lineHeight: 18 },
+  jamBtnLabel: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700', lineHeight: 18 },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   headerSubtitle: { color: COLORS.purple, fontSize: 12, marginTop: 1 },
   onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' },
   onlineText: { color: '#22C55E', fontSize: 11 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 72, gap: 6 },
+  listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 6 },
   loadMoreSpinner: { paddingVertical: 16, alignItems: 'center' },
   // Bubbles
   bubbleRow: {
@@ -943,17 +980,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emojiGridEmoji: { fontSize: 22 },
-  // Send bar
+  // Send bar — absolute overlay so messages scroll behind the translucent bar
   sendBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingTop: 10,
+    paddingBottom: 8 + 16, // base — insets.bottom added inline
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    borderTopColor: 'rgba(124, 58, 237, 0.25)',
     gap: 8,
-    // Semi-transparent so messages bleed through slightly when scrolled behind it
-    backgroundColor: 'rgba(10, 10, 15, 0.30)',
+    backgroundColor: 'rgba(10, 10, 15, 0.90)',
   },
   inputWrap: { flex: 1 },
   textInput: { maxHeight: 100 },

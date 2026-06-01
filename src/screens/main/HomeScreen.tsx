@@ -3,6 +3,8 @@ import {
   View,
   Text,
   FlatList,
+  Platform,
+  Animated,
   StyleSheet,
   TouchableOpacity,
   Pressable,
@@ -12,7 +14,7 @@ import {
   ScrollView,
   type ViewToken,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -202,6 +204,36 @@ export default function HomeScreen() {
   const playback = usePlayback();
   const { stories, setStories } = useStories();
   const { pendingIncomingCount } = useRelationships();
+  const insets = useSafeAreaInsets();
+
+  // Top bar hide/show on scroll direction
+  const TOP_BAR_H = 64;
+  const topBarAnim = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+  const topBarVisible = useRef(true);
+
+  const showTopBar = useCallback(() => {
+    if (!topBarVisible.current) {
+      topBarVisible.current = true;
+      Animated.spring(topBarAnim, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+    }
+  }, [topBarAnim]);
+
+  const hideTopBar = useCallback(() => {
+    if (topBarVisible.current) {
+      topBarVisible.current = false;
+      Animated.spring(topBarAnim, { toValue: -(TOP_BAR_H + insets.top), useNativeDriver: true, bounciness: 0 }).start();
+    }
+  }, [topBarAnim, insets.top]);
+
+  const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const diff = y - lastScrollY.current;
+    lastScrollY.current = y;
+    if (y < 10) { showTopBar(); return; }
+    if (diff > 4) { hideTopBar(); }
+    else if (diff < -4) { showTopBar(); }
+  }, [showTopBar, hideTopBar]);
 
   const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
   const [totalUnread, setTotalUnread] = useState(0);
@@ -543,39 +575,8 @@ export default function HomeScreen() {
   const listHeader = useMemo(
     () => (
       <>
-        <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoMark}>
-              <Text style={styles.logoMarkText}>L</Text>
-            </View>
-            <Text style={styles.wordmark}>livil</Text>
-          </View>
-          <View style={styles.topBarActions}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.uploadButton}
-              onPress={() => navigation.navigate('Upload')}
-              accessibilityLabel="Upload music"
-            >
-              <Text style={styles.uploadButtonText}>+</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.inboxButton}
-              onPress={() => navigation.navigate('Inbox')}
-              accessibilityLabel="Open messages"
-            >
-              <Text style={styles.inboxIcon}>💬</Text>
-              {notificationCount > 0 && (
-                <View style={styles.inboxBadge}>
-                  <Text style={styles.inboxBadgeText}>
-                    {notificationCount > 99 ? '99+' : notificationCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Spacer so content starts below the fixed top bar */}
+        <View style={{ height: TOP_BAR_H }} />
 
         {/*
           TODO: Featured Today — curated editorial spotlight card once CMS + tooling exists.
@@ -625,16 +626,19 @@ export default function HomeScreen() {
     );
   }, [loadingMore, posts.length, loadingInitial]);
 
+  const tabBarHeight = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
   const listContentStyle = useMemo(
     () => [
       styles.listContent,
+      { paddingBottom: tabBarHeight + 48 },
       !loadingInitial && feedRows.length === 0 ? styles.listContentFlex : null,
     ],
-    [feedRows.length, loadingInitial],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feedRows.length, loadingInitial, tabBarHeight],
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <FlatList
         data={feedRows}
         keyExtractor={feedKeyExtractor}
@@ -680,7 +684,49 @@ export default function HomeScreen() {
         onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={listContentStyle}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
+
+      {/* Fixed top bar — slides up on scroll down, returns on scroll up */}
+      <Animated.View
+        style={[styles.topBarFixed, { top: insets.top, transform: [{ translateY: topBarAnim }] }]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.topBar}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoMark}>
+              <Text style={styles.logoMarkText}>L</Text>
+            </View>
+            <Text style={styles.wordmark}>livil</Text>
+          </View>
+          <View style={styles.topBarActions}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.uploadButton}
+              onPress={() => navigation.navigate('Upload')}
+              accessibilityLabel="Upload music"
+            >
+              <Text style={styles.uploadButtonText}>+</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.inboxButton}
+              onPress={() => navigation.navigate('Inbox')}
+              accessibilityLabel="Open messages"
+            >
+              <Text style={styles.inboxIcon}>💬</Text>
+              {notificationCount > 0 && (
+                <View style={styles.inboxBadge}>
+                  <Text style={styles.inboxBadgeText}>
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -691,12 +737,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   listContent: {
-    paddingBottom: 32,
+    paddingBottom: 0, // dynamic — computed inline via insets
   },
   listContentFlex: {
     flexGrow: 1,
   },
 
+  topBarFixed: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(10, 10, 15, 0.90)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(124, 58, 237, 0.25)',
+    zIndex: 10,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

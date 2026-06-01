@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,11 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
+import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
 import FormInput from '../../components/FormInput';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
@@ -58,6 +59,13 @@ const VIDEO_SLOTS: FileSlot[] = [
     required: true,
     accept: types.video,
   },
+  {
+    kind: 'cover',
+    label: 'Thumbnail',
+    description: 'Optional · jpg, png, webp',
+    required: false,
+    accept: types.images,
+  },
 ];
 
 function formatBytes(bytes: number | null): string {
@@ -85,6 +93,22 @@ export default function UploadScreen() {
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [previewPaused, setPreviewPaused] = useState(true);
+  const previewRef = useRef<MediaPlayerHandle>(null);
+
+  const handlePreviewEnded = useCallback(() => {
+    setPreviewPaused(true);
+    previewRef.current?.seek(0);
+  }, []);
+
+  const previewMedia: MediaShape | null = useMemo(() => {
+    if (mode === 'audio') {
+      if (!audio) {return null;}
+      return { kind: 'audio', audioUrl: audio.uri, coverUrl: cover?.uri ?? null };
+    }
+    if (!video) {return null;}
+    return { kind: 'video', videoUrl: video.uri };
+  }, [mode, audio, cover, video]);
 
   const fileSlots = mode === 'audio' ? AUDIO_SLOTS : VIDEO_SLOTS;
 
@@ -98,7 +122,6 @@ export default function UploadScreen() {
         setVideo(null);
       } else {
         setAudio(null);
-        setCover(null);
       }
     },
     [mode, submitting],
@@ -125,6 +148,12 @@ export default function UploadScreen() {
     return () => subscription.remove();
   }, []);
 
+  useEffect(() => { setPreviewPaused(true); }, [previewMedia]);
+
+  useFocusEffect(
+    useCallback(() => () => { setPreviewPaused(true); }, []),
+  );
+
   const handlePickFile = useCallback(
     async (slot: FileSlot) => {
       try {
@@ -138,7 +167,9 @@ export default function UploadScreen() {
         };
         if (slot.kind === 'audio') {setAudio(file);}
         else if (slot.kind === 'video') {setVideo(file);}
-        else {setCover(file);}
+        else {
+          setCover(file);
+        }
         setError('');
       } catch (err) {
         if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {return;}
@@ -182,6 +213,7 @@ export default function UploadScreen() {
   }, [mode, audio, cover, video, title, submitting]);
 
   const handleSubmit = useCallback(async () => {
+    setPreviewPaused(true);
     if (!title.trim()) {
       setError('Add a title to continue.');
       return;
@@ -215,6 +247,7 @@ export default function UploadScreen() {
               title,
               description,
               video: video!,
+              cover: cover ?? undefined,
               collaborators,
             },
         ({ stage, fraction }) => {
@@ -373,6 +406,31 @@ export default function UploadScreen() {
               );
             })}
           </View>
+
+          {previewMedia ? (
+            <>
+              <Text style={styles.sectionLabel}>Preview</Text>
+              <View style={styles.previewCard}>
+                <MediaPlayer
+                  ref={previewRef}
+                  postId="upload_preview"
+                  media={previewMedia}
+                  paused={previewPaused}
+                  onTogglePaused={() => setPreviewPaused(p => !p)}
+                  onEnded={handlePreviewEnded}
+                  visible
+                  pauseWhenOffScreen={false}
+                />
+                {title.trim() ? (
+                  <View style={styles.previewTrackInfo}>
+                    <Text style={styles.previewTitle} numberOfLines={1}>
+                      {title}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </>
+          ) : null}
 
           <Text style={styles.sectionLabel}>Track details</Text>
           <View style={styles.fieldGroup}>
@@ -676,6 +734,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 24,
+  },
+  previewCard: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 24,
+  },
+  previewTrackInfo: {
+    padding: 14,
+    gap: 4,
+  },
+  previewTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   fileRow: {
     flexDirection: 'row',

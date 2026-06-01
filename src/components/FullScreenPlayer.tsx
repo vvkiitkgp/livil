@@ -168,7 +168,7 @@ function FullScreenClipBar() {
           position={position}
           start={start}
           end={end}
-          minClipSeconds={1}
+          minClipSeconds={2}
           onChange={handleClipChange}
           onChangeEnd={handleClipChangeEnd}
           onSeekEnd={handleSeekEnd}
@@ -181,7 +181,7 @@ function FullScreenClipBar() {
 const seekSt = StyleSheet.create({
   wrap: { paddingHorizontal: 24, paddingBottom: 4 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  time: { color: COLORS.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
+  time: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
 });
 
 /** Shuffle icon — two crossing arrows. */
@@ -752,7 +752,7 @@ export default function FullScreenPlayer() {
   // the Android system nav bar / gesture strip on this specific device) is
   // baked in before driving layout and animations.
   const playerTabBarH  = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
-  const playerBottom   = Math.max(SCREEN_H * 0.1, playerTabBarH + 10);
+  const playerBottom   = Math.max(SCREEN_H * 0.1, playerTabBarH + 56);
   const convergeY      = SCREEN_H / 2 - playerBottom - FLOAT_D / 2;
 
   const handleNavigateToUser = useCallback((userId: string) => {
@@ -918,8 +918,8 @@ export default function FullScreenPlayer() {
   const panelTop = safeTop + HEADER_H;
   const panelHeight = SCREEN_H - panelTop;
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
-  const actionRowBottom = safeBottom + 8;
-  const seekRowBottom = playerBottom + FLOAT_D + 8;
+  const actionRowBottom = safeBottom + 44;
+  const seekRowBottom = playerBottom + FLOAT_D + 24;
   const panelTranslateY = panelAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [panelHeight, 0],
@@ -993,9 +993,7 @@ export default function FullScreenPlayer() {
         )}
       </View>
 
-      {/* ── Dark scrims for text readability ── */}
-      <View style={styles.scrimTop} pointerEvents="none" />
-      <View style={styles.scrimBottom} pointerEvents="none" />
+      {/* Scrims removed — no background overlay on video */}
 
       {/* ── Swipe-to-close gesture — background hit zone only, no children ── */}
       {/* Interactive elements (header, credits, stats) are siblings rendered AFTER
@@ -1228,13 +1226,14 @@ const csSt = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingTop: 10,
-    paddingBottom: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginTop: 8,
   },
   item: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  icon: { color: COLORS.textSecondary, fontSize: 16 },
+  icon: { color: COLORS.white, fontSize: 16, textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   iconLiked: { color: '#FF4D6D' },
-  val: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  val: { color: COLORS.white, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   valLiked: { color: '#FF4D6D' },
 });
 
@@ -1276,17 +1275,17 @@ const styles = StyleSheet.create({
   closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   closeBtnText: {
     color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
-    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   headerTitle: {
-    flex: 1, color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600',
+    flex: 1, color: COLORS.white, fontSize: 13, fontWeight: '600',
     letterSpacing: 0.3, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   addBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   addBtnText: {
     color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
-    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   repostBtn: {
     flexDirection: 'row',
@@ -1321,11 +1320,11 @@ const styles = StyleSheet.create({
   bottomInfo: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24 },
   trackTitle: {
     color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5,
-    textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+    textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   artistName: {
-    color: 'rgba(255,255,255,0.75)', fontSize: 15, fontWeight: '500', marginTop: 3,
-    textShadowColor: 'rgba(0,0,0,0.7)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
+    color: COLORS.white, fontSize: 15, fontWeight: '500', marginTop: 3,
+    textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
 
   seekRow: { position: 'absolute', left: 0, right: 0 },
@@ -1379,6 +1378,6 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 4,
   },
-  actionBtnText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', letterSpacing: 0.3 },
+  actionBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '600', letterSpacing: 0.3 },
   actionBtnTextActive: { color: COLORS.purpleLight },
 });

@@ -227,7 +227,7 @@ export default function StoryViewerScreen() {
     <View style={styles.root}>
       <GestureDetector gesture={composedGesture}>
         <View style={styles.root}>
-          {/* Background media */}
+          {/* Background media — fills entire screen */}
           {media ? (
             <MediaPlayer
               postId={`story_viewer_${story.id}`}
@@ -239,12 +239,12 @@ export default function StoryViewerScreen() {
               seekTo={seekTo}
               visible
               pauseWhenOffScreen={false}
+              style={StyleSheet.absoluteFillObject}
             />
           ) : null}
 
-          {/* Dark gradient overlay at top and bottom */}
+          {/* Dark gradient overlay at top */}
           <View style={styles.topGradient} pointerEvents="none" />
-          <View style={styles.bottomGradient} pointerEvents="none" />
 
           {/* ── Top UI (not inside GestureDetector so taps are reliable) ── */}
           <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">

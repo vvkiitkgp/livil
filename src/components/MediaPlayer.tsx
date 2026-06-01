@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { View, StyleSheet, Image, Pressable, Text, Platform } from 'react-native';
+import { View, StyleSheet, Image, Pressable, Text, Platform, type StyleProp, type ViewStyle } from 'react-native';
 import Video, { type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -49,6 +49,8 @@ export type MediaPlayerProps = {
    * clips rows — set false there and rely on tab blur (`pauseAll`) instead.
    */
   pauseWhenOffScreen?: boolean;
+  /** Override the container style — e.g. pass StyleSheet.absoluteFillObject for full-screen use. */
+  style?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -72,6 +74,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     seekTo,
     visible,
     pauseWhenOffScreen = true,
+    style,
   },
   ref,
 ) {
@@ -79,6 +82,9 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   const videoRef = useRef<VideoRef>(null);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  // Natural aspect ratio of the video/cover — updated on first load.
+  // Defaults to 1 (square) until the media reports its real dimensions.
+  const [naturalAspect, setNaturalAspect] = useState(1);
   // FlatList viewability can flicker for a frame or two while media loads / layout
   // settles (especially with RefreshControl + large headers). Treat brief "hidden"
   // blips as still on-screen so playback isn't cut off after ~1s.
@@ -161,6 +167,11 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       setLoaded(true);
       setErrored(false);
       onLoaded?.(data.duration ?? 0);
+      // Capture the media's natural aspect ratio so the container resizes to fit.
+      const ns = (data as any).naturalSize;
+      if (ns && ns.width > 0 && ns.height > 0) {
+        setNaturalAspect(ns.width / ns.height);
+      }
     },
     [onLoaded],
   );
@@ -192,7 +203,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
   return (
     <Pressable
-      style={styles.container}
+      style={[styles.container, { aspectRatio: naturalAspect }, style]}
       onPress={onTogglePaused}
       accessibilityRole="button"
       accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
@@ -259,6 +270,18 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         </Pressable>
       ) : null}
 
+      {/* Transparent touch overlay for video — the native ExoPlayer/AVPlayer surface
+          can swallow taps before the React Pressable wrapper receives them on Android.
+          This view sits above the Video surface and reliably captures all taps. */}
+      {media.kind === 'video' && (
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={onTogglePaused}
+          accessibilityRole="button"
+          accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
+        />
+      )}
+
       {/* Center play-glyph overlay shown when paused or before first play. */}
       {effectivePaused ? (
         <View pointerEvents="none" style={styles.playGlyphWrap}>
@@ -288,7 +311,6 @@ export default MediaPlayer;
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    aspectRatio: 1,
     backgroundColor: '#000',
     borderRadius: 18,
     overflow: 'hidden',
