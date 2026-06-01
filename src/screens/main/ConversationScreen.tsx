@@ -56,6 +56,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Conversation'>;
 
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
+const MAX_CHARS = 500;
 
 const MORE_EMOJIS = [
   '😀','😃','😄','😁','😆','😅','🤣','😊','😇','🥰',
@@ -681,10 +682,7 @@ export default function ConversationScreen() {
       ) : (
         <KeyboardAvoidingView
           style={styles.flex}
-          // On Android, AndroidManifest's `adjustResize` already pushes the
-          // layout up when the keyboard opens. Adding KeyboardAvoidingView on
-          // top double-shifts and hides the input. So we only engage KAV on iOS.
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
         >
           <FlatList
@@ -709,13 +707,18 @@ export default function ConversationScreen() {
             <View style={styles.inputWrap}>
               <FormInput
                 value={text}
-                onChangeText={setText}
+                onChangeText={t => setText(t.slice(0, MAX_CHARS))}
                 placeholder="Message…"
                 placeholderTextColor={COLORS.textMuted}
                 multiline
                 style={styles.textInput}
                 returnKeyType="default"
               />
+              {text.length > MAX_CHARS - 100 && (
+                <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
+                  {MAX_CHARS - text.length}
+                </Text>
+              )}
             </View>
             <TouchableOpacity
               style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
@@ -723,7 +726,7 @@ export default function ConversationScreen() {
               onPress={handleSend}
               disabled={!text.trim() || sending}
             >
-              <Text style={styles.sendBtnText}>→</Text>
+              <Text style={styles.sendBtnIcon}>›</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -761,7 +764,7 @@ const styles = StyleSheet.create({
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' },
   onlineText: { color: '#22C55E', fontSize: 11 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { paddingHorizontal: 12, paddingVertical: 12, gap: 6 },
+  listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 72, gap: 6 },
   loadMoreSpinner: { paddingVertical: 16, alignItems: 'center' },
   // Bubbles
   bubbleRow: {
@@ -943,16 +946,19 @@ const styles = StyleSheet.create({
   // Send bar
   sendBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    borderTopColor: 'rgba(255,255,255,0.06)',
     gap: 8,
-    backgroundColor: COLORS.bg,
+    // Semi-transparent so messages bleed through slightly when scrolled behind it
+    backgroundColor: 'rgba(10, 10, 15, 0.30)',
   },
   inputWrap: { flex: 1 },
   textInput: { maxHeight: 100 },
+  charCounter: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 2, marginRight: 4 },
+  charCounterOver: { color: COLORS.danger },
   sendBtn: {
     width: 38,
     height: 38,
@@ -960,12 +966,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purple,
     alignItems: 'center',
     justifyContent: 'center',
+    // iOS shadow only — elevation removed to prevent Android blue-grey shadow artifact
     shadowColor: COLORS.purple,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.5,
     shadowRadius: 6,
-    elevation: 4,
+    elevation: 0,
   },
   sendBtnDisabled: { backgroundColor: COLORS.border, shadowOpacity: 0 },
-  sendBtnText: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
+  sendBtnText: { display: 'none' },
+  sendBtnIcon: {
+    fontSize: 28,
+    lineHeight: 32,
+    color: COLORS.white,
+    includeFontPadding: false,
+  },
 });

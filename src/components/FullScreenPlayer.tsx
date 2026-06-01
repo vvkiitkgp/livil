@@ -742,10 +742,6 @@ export default function FullScreenPlayer() {
     updateDuration,
     queueRef,
     clipWindowRef,
-    shuffleEnabled,
-    toggleShuffle,
-    repeatMode,
-    cycleRepeatMode,
   } = usePlayback();
 
   const insets = useSafeAreaInsets();
@@ -923,7 +919,6 @@ export default function FullScreenPlayer() {
   const panelHeight = SCREEN_H - panelTop;
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 8;
-  const controlRowBottom = playerBottom + (FLOAT_D - 44) / 2;
   const seekRowBottom = playerBottom + FLOAT_D + 8;
   const panelTranslateY = panelAnim.interpolate({
     inputRange: [0, 1],
@@ -1074,26 +1069,7 @@ export default function FullScreenPlayer() {
         <FullScreenClipBar />
       </View>
 
-      {/* ── Shuffle (left) + FloatingPlayer zone + Repeat (right) ── */}
-      <View style={[styles.controlsRow, { bottom: controlRowBottom }]} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.controlBtn}
-          onPress={toggleShuffle}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <ShuffleIcon active={shuffleEnabled} />
-        </TouchableOpacity>
-        <View style={styles.controlCenter} />
-        <TouchableOpacity
-          style={styles.controlBtn}
-          onPress={cycleRepeatMode}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <RepeatIcon mode={repeatMode} />
-        </TouchableOpacity>
-      </View>
+      {/* Shuffle + Repeat live in the FloatingPlayer pill when fullscreen is open */}
 
       {/* ── Content panel ── */}
       <Animated.View
@@ -1354,12 +1330,6 @@ const styles = StyleSheet.create({
 
   seekRow: { position: 'absolute', left: 0, right: 0 },
 
-  controlsRow: {
-    position: 'absolute', left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
-  },
-  controlBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  controlCenter: { flex: 1 },
 
   contentPanel: {
     position: 'absolute', left: 0, right: 0, bottom: 0,

@@ -1,82 +1,137 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
+  Text,
   Image,
+  TouchableOpacity,
   StyleSheet,
   Animated,
   Dimensions,
+  Keyboard,
   Platform,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 import { usePlayback } from '../contexts/PlaybackContext';
+import { useJam } from '../contexts/JamContext';
 import { COLORS } from '../theme/colors';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 // ─── Dimensions ───────────────────────────────────────────────────────────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// Circle
-const D = 60;  // diameter
-const R = D / 2;
-const B = 4;   // arc ring width
+const D    = 60;   // circle diameter
+const R    = D / 2;
+const B    = 4;    // arc ring width
 
-// The bar + circle occupy 50% of screen width, centered
-const CONTAINER_W = SCREEN_W * 0.5;
-// How far the circle's center can travel before hitting the bar edge
-const MAX_DRAG = CONTAINER_W / 2 - R;
+// Bar / pill
+const PILL_W   = SCREEN_W * 0.82;
+const BAR_H    = 2;
+const PILL_H   = 36;
+
+// Vertical offsets so bar/pill stay centred in the D-tall container
+const BAR_TOP_REST = (D - BAR_H)  / 2;   // 29
+const BAR_TOP_PILL = (D - PILL_H) / 2;   // 12
+
+// Gesture drag limits — keep same feel as the old 50%-wide container
+const MAX_DRAG      = (SCREEN_W * 0.5) / 2 - R;
+const MAX_DRAG_Y_UP   = 180;
+const MAX_DRAG_Y_DOWN = 60;
 
 // Gesture thresholds
-const SNAP_VELOCITY   = 400;   // px/s — horizontal flick qualifies as skip
-const SNAP_DISTANCE   = 40;    // px   — (unused, kept for reference)
-const OPEN_FS_DIST    = 80;    // px   — upward drag distance that opens full-screen player
-const OPEN_FS_VEL     = 500;   // px/s — upward velocity that opens full-screen player
-const CLOSE_FS_DIST   = 40;    // px   — downward drag (on circle) that closes full-screen player
-const CLOSE_FS_VEL    = 400;   // px/s — downward flick (on circle) that closes full-screen player
+const SNAP_VELOCITY = 400;
+const OPEN_FS_DIST  = 80;
+const OPEN_FS_VEL   = 500;
+const CLOSE_FS_DIST = 40;
+const CLOSE_FS_VEL  = 400;
+const RATE_FORWARD  = 2.0;
 
-// Vertical clamp for the draggable circle
-const MAX_DRAG_Y_UP   = 180;   // px — how far up the circle can travel
-const MAX_DRAG_Y_DOWN = 60;    // px — how far down the circle can travel
-
-// Playback rates while dragging
-const RATE_FORWARD = 2.0;
-const RATE_REVERSE = -1.0;  // negative = reverse (iOS AVPlayer; Android clamps to 0)
+// Avatar
+const AV = 28;  // avatar diameter
 
 export const FLOATING_PLAYER_HEIGHT = D;
 
+// ─── Repeat icon glyphs ───────────────────────────────────────────────────────
+function RepeatGlyph({ mode }: { mode: string }) {
+  const active = mode !== 'off';
+  const color  = active ? COLORS.purpleLight : COLORS.textMuted;
+  return (
+    <View style={icon.wrap}>
+      <Text style={[icon.glyph, { color }]}>↻</Text>
+      {mode === 'one' && <Text style={icon.badge}>1</Text>}
+      {active && <View style={[icon.dot, { backgroundColor: color }]} />}
+    </View>
+  );
+}
+
+// ─── Shuffle icon glyphs ──────────────────────────────────────────────────────
+function ShuffleGlyph({ active }: { active: boolean }) {
+  const color = active ? COLORS.purpleLight : COLORS.textMuted;
+  return (
+    <View style={icon.wrap}>
+      <Text style={[icon.glyph, { color }]}>⇄</Text>
+      {active && <View style={[icon.dot, { backgroundColor: color }]} />}
+    </View>
+  );
+}
+
+const icon = StyleSheet.create({
+  wrap:  { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  glyph: { fontSize: 18, fontWeight: '400' },
+  badge: { position: 'absolute', top: 3, right: 3, fontSize: 7, fontWeight: '700', color: COLORS.purpleLight },
+  dot:   { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2 },
+});
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function FloatingPlayer() {
-  const insets = useSafeAreaInsets();
-  // Re-compute bottom here so the Android system nav bar (insets.bottom) is
-  // included.  The module-level PLAYER_BOTTOM uses a hardcoded TAB_BAR_H and
-  // must NOT be used for the actual container position.
+  const insets     = useSafeAreaInsets();
+  const navigation = useNavigation<Nav>();
+
   const tabBarH      = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
   const playerBottom = Math.max(SCREEN_H * 0.10, tabBarH + 10);
 
   const {
-    nowPlaying,
-    isStoryViewerOpen,
-    isRepostOpen,
-    activePostId,
-    positionRef,
-    durationRef,
-    handlersRef,
-    playNext,
-    playPrev,
-    openFullScreenPlayer,
-    closeFullScreenPlayer,
-    isFullScreenOpen,
+    nowPlaying, isStoryViewerOpen, isRepostOpen,
+    activePostId, positionRef, durationRef, handlersRef,
+    playNext, playPrev,
+    openFullScreenPlayer, closeFullScreenPlayer, isFullScreenOpen,
     jamLocked,
+    shuffleEnabled, toggleShuffle,
+    repeatMode, cycleRepeatMode,
   } = usePlayback();
 
-  // ─── Animations ─────────────────────────────────────────────────────────────
-  const slideAnim    = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  // 2-D offset of the draggable circle (both axes, 0 = resting center)
-  const circleX = useRef(new Animated.Value(0)).current;
-  const circleY = useRef(new Animated.Value(0)).current;
-  // Scale: pops up on press, springs back on release
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const { activeJam } = useJam();
 
-  // Slide in / out when nowPlaying changes
+  // ─── Keyboard hide ────────────────────────────────────────────────────────────
+  const keyboardAnim  = useRef(new Animated.Value(0)).current;
+  const hideTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      // Ignore tiny / emulator side-panel events that aren't real keyboards
+      if (e.endCoordinates.height < 150) { return; }
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+      Animated.timing(keyboardAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      // Delay slide-back so KAV has time to reset its height before we return
+      hideTimerRef.current = setTimeout(() => {
+        Animated.timing(keyboardAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+      }, 120);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); }
+    };
+  }, [keyboardAnim]);
+
+  // ─── Slide in / out ───────────────────────────────────────────────────────────
+  const slideAnim  = useRef(new Animated.Value(0)).current;
   const wasVisible = useRef(false);
   useEffect(() => {
     if (nowPlaying && !wasVisible.current) {
@@ -88,7 +143,14 @@ export default function FloatingPlayer() {
     }
   }, [nowPlaying, slideAnim]);
 
-  // Poll progress at ~4 Hz and drive the arc
+  // Combined vertical translate — native driver only
+  const translateY = Animated.add(
+    slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
+    keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
+  );
+
+  // ─── Progress arc ─────────────────────────────────────────────────────────────
+  const progressAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!nowPlaying) { return; }
     const id = setInterval(() => {
@@ -99,214 +161,236 @@ export default function FloatingPlayer() {
     return () => clearInterval(id);
   }, [nowPlaying, positionRef, durationRef, progressAnim]);
 
-  // ─── Helper: spring circle back to center (both axes) ─────────────────────
-  const springBack = () => {
-    Animated.parallel([
-      Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
-      Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
-    ]).start();
-  };
+  // ─── Circle anims ─────────────────────────────────────────────────────────────
+  const circleX   = useRef(new Animated.Value(0)).current;
+  const circleY   = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // ─── Rewind helpers ──────────────────────────────────────────────────────────
+  const springBack = () => Animated.parallel([
+    Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
+    Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
+  ]).start();
+
   const rewindTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopRewind = () => {
-    if (rewindTimer.current !== null) {
-      clearInterval(rewindTimer.current);
-      rewindTimer.current = null;
-    }
-  };
-
+  const stopRewind  = () => { if (rewindTimer.current !== null) { clearInterval(rewindTimer.current); rewindTimer.current = null; } };
   const startRewind = () => {
     stopRewind();
-    // 0.5 s back every 250 ms ≈ 2× reverse. Seek-based so it works on Android too.
     rewindTimer.current = setInterval(() => {
-      const newPos = Math.max(0, positionRef.current - 0.5);
-      positionRef.current = newPos;
-      handlersRef.current?.seek(newPos);
+      const p = Math.max(0, positionRef.current - 0.5);
+      positionRef.current = p;
+      handlersRef.current?.seek(p);
     }, 250);
   };
 
+  // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
+  const isExpanded = isFullScreenOpen || !!activeJam;
+  // Jam active but fullscreen NOT open → narrow pill (no shuffle/repeat)
+  const isJamOnly  = !!activeJam && !isFullScreenOpen;
+
+  const morphAnim  = useRef(new Animated.Value(0)).current;
+  const narrowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(morphAnim, {
+      toValue: isExpanded ? 1 : 0,
+      useNativeDriver: false,
+      bounciness: isExpanded ? 10 : 4,
+      speed: 14,
+    }).start();
+  }, [isExpanded, morphAnim]);
+
+  useEffect(() => {
+    Animated.spring(narrowAnim, {
+      toValue: isJamOnly ? 1 : 0,
+      useNativeDriver: false,
+      bounciness: 8,
+      speed: 14,
+    }).start();
+  }, [isJamOnly, narrowAnim]);
+
+  // Resting bar: narrow white line centred in the container
+  const REST_BAR_W   = SCREEN_W * 0.30;
+  const REST_MARGIN  = (PILL_W - REST_BAR_W) / 2;
+
+  // Base margin: large when resting, 0 when pill is fully open
+  const baseSideMargin = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [REST_MARGIN, 0] });
+
+  // Extra inset when jam-only (no shuffle/repeat → narrower pill)
+  const JAM_ONLY_MARGIN = PILL_W * 0.14;
+  const jamSideMargin   = narrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, JAM_ONLY_MARGIN] });
+
+  // Combined: resting inset + jam-only inset
+  const barSideMargin = Animated.add(baseSideMargin, jamSideMargin);
+
+  const barHeight  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_H,       PILL_H] });
+  const barTop     = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_TOP_REST, BAR_TOP_PILL] });
+  const barRadius  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [1, PILL_H / 2] });
+  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', 'rgba(124,58,237,0.20)'] });
+  const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(124,58,237,0)', 'rgba(124,58,237,0.50)'] });
+  // Content fades in only after pill is mostly open, and out before it collapses
+  const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
+
+  // Pulsing live dot
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!activeJam) { pulseAnim.setValue(1); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 0.2, duration: 650, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1,   duration: 650, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [activeJam, pulseAnim]);
+
   // ─── Gestures ────────────────────────────────────────────────────────────────
+  const doubleTap = Gesture.Tap().numberOfTaps(2).runOnJS(true)
+    .onEnd((_e, ok) => { if (ok && !jamLocked) { openFullScreenPlayer(); } });
 
-  // Double-tap: opens full-screen player.
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .runOnJS(true)
-    .onEnd((_e, success) => {
-      if (success && !jamLocked) { openFullScreenPlayer(); }
-    });
-
-  // Single-tap: toggle play / pause. Exclusive ensures double-tap wins when detected.
-  const singleTap = Gesture.Tap()
-    .numberOfTaps(1)
-    .runOnJS(true)
-    .onEnd((_e, success) => {
-      if (!success || jamLocked) { return; }
+  const singleTap = Gesture.Tap().numberOfTaps(1).runOnJS(true)
+    .onEnd((_e, ok) => {
+      if (!ok || jamLocked) { return; }
       if (activePostId) { handlersRef.current?.pause(); }
       else { handlersRef.current?.play(); }
     });
 
   const tapGesture = Gesture.Exclusive(doubleTap, singleTap);
 
-  // Single pan gesture — circle follows the finger in all four directions.
-  // Horizontal drag controls playback speed / rewind; upward drag opens the
-  // full-screen player on release; downward drag is allowed physically but
-  // has no special action. Simultaneous with the tap gesture so taps still fire.
-  const panGesture = Gesture.Pan()
-    .runOnJS(true)
+  const panGesture = Gesture.Pan().runOnJS(true)
     .onBegin(() => {
-      // Pop the circle up on any touch — fires before the gesture activates,
-      // so it covers both quick taps and sustained holds.
       scaleAnim.stopAnimation();
-      Animated.spring(scaleAnim, {
-        toValue: 1.22,
-        useNativeDriver: true,
-        bounciness: 14,
-        speed: 28,
-      }).start();
+      Animated.spring(scaleAnim, { toValue: 1.22, useNativeDriver: true, bounciness: 14, speed: 28 }).start();
     })
     .onStart(() => {
       if (jamLocked) { return; }
-      circleX.stopAnimation();
-      circleY.stopAnimation();
-      stopRewind();
+      circleX.stopAnimation(); circleY.stopAnimation(); stopRewind();
     })
     .onUpdate((e) => {
-      // Circle follows the finger in both axes, clamped to safe ranges.
-      const clampedX = Math.max(-MAX_DRAG,       Math.min(MAX_DRAG,       e.translationX));
-      const clampedY = Math.max(-MAX_DRAG_Y_UP,  Math.min(MAX_DRAG_Y_DOWN, e.translationY));
-      circleX.setValue(clampedX);
-      circleY.setValue(clampedY);
-
-      // Speed / rewind effects apply only when the gesture is primarily horizontal.
-      const isHorizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
-      if (isHorizontal) {
-        if (e.translationX >= 0) {
-          stopRewind();
-          handlersRef.current?.setRate(RATE_FORWARD);      // 2× fast-forward
-        } else {
+      circleX.setValue(Math.max(-MAX_DRAG,      Math.min(MAX_DRAG,       e.translationX)));
+      circleY.setValue(Math.max(-MAX_DRAG_Y_UP, Math.min(MAX_DRAG_Y_DOWN, e.translationY)));
+      const isH = Math.abs(e.translationX) > Math.abs(e.translationY);
+      if (isH) {
+        if (e.translationX >= 0) { stopRewind(); handlersRef.current?.setRate(RATE_FORWARD); }
+        else {
           handlersRef.current?.setRate(1.0);
-          // Only rewind while the song is actively playing — mirrors the
-          // forward behaviour (2× rate has no effect when paused either).
           if (rewindTimer.current === null && activePostId !== null) { startRewind(); }
         }
-      } else {
-        // Vertical drag — keep normal playback, cancel any rewind.
-        stopRewind();
-        handlersRef.current?.setRate(1.0);
-      }
+      } else { stopRewind(); handlersRef.current?.setRate(1.0); }
     })
     .onEnd((e) => {
-      stopRewind();
-      handlersRef.current?.setRate(1.0);
-      springBack();
-
-      // Downward drag while full screen is open → close it.
-      if (isFullScreenOpen &&
-          (e.translationY > CLOSE_FS_DIST || e.velocityY > CLOSE_FS_VEL)) {
-        closeFullScreenPlayer();
-        return;
-      }
-
-      // Upward drag past threshold → open full-screen player.
-      // Check before horizontal snap so a diagonal-up-right drag doesn't skip.
-      if (!isFullScreenOpen &&
-          (e.translationY < -OPEN_FS_DIST ||
-           (e.velocityY < -OPEN_FS_VEL && e.translationY < -20))) {
-        openFullScreenPlayer();
-        return;
-      }
-
-      // Horizontal snap = quick flick only (velocity). Slow hold-and-release
-      // must never trigger next/prev even if the circle travelled far.
-      const isSnap = Math.abs(e.velocityX) > SNAP_VELOCITY;
-      if (isSnap) {
-        if (e.velocityX > 0) { playNext(); }
-        else { playPrev(); }
-      }
+      stopRewind(); handlersRef.current?.setRate(1.0); springBack();
+      if (isFullScreenOpen && (e.translationY > CLOSE_FS_DIST || e.velocityY > CLOSE_FS_VEL)) { closeFullScreenPlayer(); return; }
+      if (!isFullScreenOpen && (e.translationY < -OPEN_FS_DIST || (e.velocityY < -OPEN_FS_VEL && e.translationY < -20))) { openFullScreenPlayer(); return; }
+      if (Math.abs(e.velocityX) > SNAP_VELOCITY) { if (e.velocityX > 0) { playNext(); } else { playPrev(); } }
     })
     .onFinalize(() => {
-      // Fires after onEnd AND on external cancellation (e.g. incoming call).
-      stopRewind();
-      handlersRef.current?.setRate(1.0);
-      springBack();
-      // Spring the circle back to its resting scale.
+      stopRewind(); handlersRef.current?.setRate(1.0); springBack();
       scaleAnim.stopAnimation();
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        bounciness: 8,
-        speed: 18,
-      }).start();
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
     });
 
-  // Simultaneous: tap and pan can both fire — tap handles press, pan handles drag.
   const gesture = Gesture.Simultaneous(tapGesture, panGesture);
 
-  // ─── Arc interpolations ───────────────────────────────────────────────────
-  // Right half (0 → 50%): 180deg → 0deg
-  const rightRot = progressAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: ['180deg', '0deg', '0deg'],
-    extrapolate: 'clamp',
-  });
-  // Left half (50 → 100%): 180deg → 0deg
-  const leftRot = progressAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: ['180deg', '180deg', '0deg'],
-    extrapolate: 'clamp',
-  });
-
-  const translateY = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [D + 24, 0],
-  });
+  // ─── Arc interpolations ───────────────────────────────────────────────────────
+  const rightRot = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '0deg', '0deg'], extrapolate: 'clamp' });
+  const leftRot  = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '180deg', '0deg'], extrapolate: 'clamp' });
 
   if ((!nowPlaying && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
+
+  // First letter of jam room title for the avatar
+  const avatarLetter = (activeJam?.conversationTitle ?? '?')[0].toUpperCase();
 
   return (
     <Animated.View
       style={[styles.container, { bottom: playerBottom, transform: [{ translateY }] }]}
       pointerEvents={nowPlaying ? 'box-none' : 'none'}
     >
-      {/* Continuous bar — 50% width, centered; circle sits on top of it */}
-      <View style={styles.bar} />
+      {/* ── Bar → Pill ── */}
+      <Animated.View
+        style={[styles.barBase, {
+          top: barTop,
+          height: barHeight,
+          borderRadius: barRadius,
+          backgroundColor: barBg,
+          borderColor: barBorderC,
+          left: barSideMargin,
+          right: barSideMargin,
+        }]}
+      >
+        <Animated.View style={[styles.pillContent, { opacity: contentOpacity }]}>
 
-      {/* Draggable circle */}
+          {/* ── LEFT ── */}
+          <View style={styles.pillLeft}>
+            {/* Shuffle — fullscreen only (state 1 & 2) */}
+            {isFullScreenOpen && (
+              <TouchableOpacity onPress={toggleShuffle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <ShuffleGlyph active={shuffleEnabled} />
+              </TouchableOpacity>
+            )}
+            {/* Music icon + Avatar — jam only (state 1 & 3) */}
+            {activeJam && <Text style={styles.jamIcon}>🎵</Text>}
+            {activeJam && (
+              <View style={styles.avatarWrap}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarLetter}>{avatarLetter}</Text>
+                </View>
+                <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
+              </View>
+            )}
+          </View>
+
+          {/* Centre gap — circle sits here */}
+          <View style={styles.circleSpacer} />
+
+          {/* ── RIGHT ── */}
+          <View style={styles.pillRight}>
+            {/* ↑ Jam button — jam only (state 1 & 3) */}
+            {activeJam && (
+              <TouchableOpacity
+                style={styles.returnChip}
+                activeOpacity={0.75}
+                onPress={() =>
+                  navigation.navigate('JamRoom', {
+                    jamRoomId: activeJam.jamRoomId,
+                    conversationId: activeJam.conversationId,
+                  })
+                }
+              >
+                <Text style={styles.returnText}>↑ Jam</Text>
+              </TouchableOpacity>
+            )}
+            {/* Repeat — fullscreen only (state 1 & 2) */}
+            {isFullScreenOpen && (
+              <TouchableOpacity onPress={cycleRepeatMode} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <RepeatGlyph mode={repeatMode} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+        </Animated.View>
+      </Animated.View>
+
+      {/* ── Draggable circle ── */}
       <GestureDetector gesture={gesture}>
         <Animated.View
           style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }, { scale: scaleAnim }] }]}
         >
-          {/* Base: gray disc */}
           <View style={styles.grayDisc} />
 
-          {/* Right half progress (0 → 50%) */}
           <View style={styles.rightClip}>
-            <Animated.View
-              style={[styles.halfWrapper, { transform: [{ rotate: rightRot }] }]}
-            >
+            <Animated.View style={[styles.halfWrapper, { transform: [{ rotate: rightRot }] }]}>
               <View style={styles.rightHalfDisc} />
             </Animated.View>
           </View>
 
-          {/* Left half progress (50 → 100%) */}
           <View style={styles.leftClip}>
-            <Animated.View
-              style={[styles.halfWrapperLeft, { transform: [{ rotate: leftRot }] }]}
-            >
+            <Animated.View style={[styles.halfWrapperLeft, { transform: [{ rotate: leftRot }] }]}>
               <View style={styles.leftHalfDisc} />
             </Animated.View>
           </View>
 
-          {/* Inner disc — covers center so only the arc ring is visible */}
           <View style={styles.innerDisc}>
             {nowPlaying?.coverArtUrl ? (
-              <Image
-                source={{ uri: nowPlaying.coverArtUrl }}
-                style={styles.albumArt}
-                resizeMode="cover"
-              />
+              <Image source={{ uri: nowPlaying.coverArtUrl }} style={styles.albumArt} resizeMode="cover" />
             ) : (
               <View style={styles.fallbackArt}>
                 <View style={styles.fallbackBlobA} />
@@ -321,128 +405,120 @@ export default function FloatingPlayer() {
 }
 
 const styles = StyleSheet.create({
-  // Outer wrapper: transparent, 50% wide, centered.
-  // bottom is set via inline style (playerBottom) so insets.bottom is included.
   container: {
     position: 'absolute',
-    width: CONTAINER_W,
+    width: PILL_W,
     height: D,
-    left: (SCREEN_W - CONTAINER_W) / 2,
+    left: (SCREEN_W - PILL_W) / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // The bar runs the full 50% width; the circle is layered on top of it
-  bar: {
+  barBase: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 2,
-    backgroundColor: COLORS.border,
-    borderRadius: 1,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
 
-  // Circle sits centered on the bar and is moved by the gesture transform
-  circleContainer: {
-    width: D,
-    height: D,
-  },
-
-  // ─── Arc layers ────────────────────────────────────────────────────────────
-  grayDisc: {
-    position: 'absolute',
-    width: D,
-    height: D,
-    borderRadius: R,
-    backgroundColor: COLORS.textMuted,
-  },
-  rightClip: {
-    position: 'absolute',
-    left: R,
-    top: 0,
-    width: R,
-    height: D,
-    overflow: 'hidden',
-  },
-  halfWrapper: {
-    position: 'absolute',
-    left: -R,
-    top: 0,
-    width: D,
-    height: D,
-  },
-  rightHalfDisc: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    width: R,
-    height: D,
-    borderTopRightRadius: R,
-    borderBottomRightRadius: R,
-    backgroundColor: COLORS.purple,
-  },
-  leftClip: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: R,
-    height: D,
-    overflow: 'hidden',
-  },
-  halfWrapperLeft: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: D,
-    height: D,
-  },
-  leftHalfDisc: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: R,
-    height: D,
-    borderTopLeftRadius: R,
-    borderBottomLeftRadius: R,
-    backgroundColor: COLORS.purple,
-  },
-  innerDisc: {
-    position: 'absolute',
-    left: B,
-    top: B,
-    right: B,
-    bottom: B,
-    borderRadius: R - B,
-    backgroundColor: COLORS.bg,
-    overflow: 'hidden',
-  },
-  albumArt: {
-    width: '100%',
-    height: '100%',
-  },
-  fallbackArt: {
+  pillContent: {
     flex: 1,
-    backgroundColor: COLORS.card,
-    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 4,
   },
-  fallbackBlobA: {
+
+  // Left: flex 1, items left-aligned (shuffle · jam icon · avatar)
+  pillLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minWidth: 0,
+  },
+
+  jamIcon: {
+    fontSize: 13,
+  },
+
+  avatarWrap: {
+    position: 'relative',
+    width: AV,
+    height: AV,
+    flexShrink: 0,
+  },
+
+  avatar: {
+    width: AV,
+    height: AV,
+    borderRadius: AV / 2,
+    backgroundColor: COLORS.purpleDim,
+    borderWidth: 1.5,
+    borderColor: COLORS.purple,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  avatarLetter: {
+    color: COLORS.purpleLight,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  liveDot: {
     position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.purple,
-    opacity: 0.5,
-    top: -15,
-    left: -10,
+    bottom: 0,
+    right: 0,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF4444',
+    borderWidth: 1.5,
+    borderColor: COLORS.bg,
   },
-  fallbackBlobB: {
-    position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#EC4899',
-    opacity: 0.4,
-    bottom: -10,
-    right: -8,
+
+  // Centre gap — exactly the circle width so content never slides under it
+  circleSpacer: {
+    width: D,
+    flexShrink: 0,
   },
+
+  // Right: wraps content (return · repeat), right-aligned
+  pillRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 5,
+  },
+
+  returnChip: {
+    backgroundColor: 'rgba(124,58,237,0.40)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+
+  returnText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // ─── Circle ──────────────────────────────────────────────────────────────────
+  circleContainer: { width: D, height: D },
+  grayDisc: { position: 'absolute', width: D, height: D, borderRadius: R, backgroundColor: COLORS.textMuted },
+  rightClip: { position: 'absolute', left: R, top: 0, width: R, height: D, overflow: 'hidden' },
+  halfWrapper: { position: 'absolute', left: -R, top: 0, width: D, height: D },
+  rightHalfDisc: { position: 'absolute', right: 0, top: 0, width: R, height: D, borderTopRightRadius: R, borderBottomRightRadius: R, backgroundColor: COLORS.purple },
+  leftClip: { position: 'absolute', left: 0, top: 0, width: R, height: D, overflow: 'hidden' },
+  halfWrapperLeft: { position: 'absolute', left: 0, top: 0, width: D, height: D },
+  leftHalfDisc: { position: 'absolute', left: 0, top: 0, width: R, height: D, borderTopLeftRadius: R, borderBottomLeftRadius: R, backgroundColor: COLORS.purple },
+  innerDisc: { position: 'absolute', left: B, top: B, right: B, bottom: B, borderRadius: R - B, backgroundColor: COLORS.bg, overflow: 'hidden' },
+  albumArt: { width: '100%', height: '100%' },
+  fallbackArt: { flex: 1, backgroundColor: COLORS.card, overflow: 'hidden' },
+  fallbackBlobA: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.purple, opacity: 0.5, top: -15, left: -10 },
+  fallbackBlobB: { position: 'absolute', width: 50, height: 50, borderRadius: 25, backgroundColor: '#EC4899', opacity: 0.4, bottom: -10, right: -8 },
 });
