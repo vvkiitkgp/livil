@@ -60,10 +60,14 @@ export function subscribeToConversation(
       async payload => {
         try {
           console.log(`[realtime] ${key} got messages INSERT`, payload.new?.id);
-          // Fetch full message with profile join
+          // Fetch full message with sender's profile.
+          // NOTE: must name the FK (`sender_id`) explicitly — PostgREST sees
+          // both the direct messages.sender_id → profiles.id link AND the
+          // indirect path through message_reactions, so a bare `profiles(...)`
+          // embed throws "more than one relationship was found".
           const { data, error } = await db
             .from('messages')
-            .select('*, profiles(username, display_name, avatar_url)')
+            .select('*, profiles!sender_id(username, display_name, avatar_url)')
             .eq('id', payload.new.id)
             .single();
           if (error) {

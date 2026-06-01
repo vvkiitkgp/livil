@@ -218,7 +218,8 @@ export default function JamRoomScreen() {
 
           const { data } = await db
             .from('messages')
-            .select('*, profiles(username, display_name, avatar_url)')
+            // disambiguate FK — see jamRealtime.ts subscribeToConversation
+            .select('*, profiles!sender_id(username, display_name, avatar_url)')
             .eq('id', msgId)
             .single();
           if (!data) { return; }
