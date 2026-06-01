@@ -374,10 +374,21 @@ export default function ConversationScreen() {
 
   // Realtime subscription
   useEffect(() => {
+    console.log(`[realtime] ConversationScreen subscribing conv=${conversationId} myId=${myId}`);
     subscribeToConversation(
       conversationId,
       msg => {
-        setMessages(prev => [msg, ...prev]);
+        console.log(`[realtime] ConversationScreen onMessage id=${msg.id} sender=${msg.senderId}`);
+        setMessages(prev => {
+          // Defensive: skip if already in list (e.g. own optimistic message that
+          // already has the real DB id, or duplicate from a re-subscribe burst).
+          if (prev.some(m => m.id === msg.id)) {
+            console.log(`[realtime] ConversationScreen duplicate id=${msg.id} — skipping`);
+            return prev;
+          }
+          console.log(`[realtime] ConversationScreen setMessages prepending id=${msg.id} (was ${prev.length} msgs)`);
+          return [msg, ...prev];
+        });
         // Keep cache warm so the next open of this conversation shows the new msg
         void messageCache.prependMessages(conversationId, [msg]);
       },
@@ -670,7 +681,10 @@ export default function ConversationScreen() {
       ) : (
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // On Android, AndroidManifest's `adjustResize` already pushes the
+          // layout up when the keyboard opens. Adding KeyboardAvoidingView on
+          // top double-shifts and hides the input. So we only engage KAV on iOS.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
           <FlatList
