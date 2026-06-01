@@ -58,14 +58,22 @@ export function subscribeToConversation(
         filter: `conversation_id=eq.${conversationId}`,
       },
       async payload => {
-        console.log(`[realtime] ${key} got messages INSERT`, payload.new?.id);
-        // Fetch full message with profile join
-        const { data } = await db
-          .from('messages')
-          .select('*, profiles(username, display_name, avatar_url)')
-          .eq('id', payload.new.id)
-          .single();
-        if (data) {
+        try {
+          console.log(`[realtime] ${key} got messages INSERT`, payload.new?.id);
+          // Fetch full message with profile join
+          const { data, error } = await db
+            .from('messages')
+            .select('*, profiles(username, display_name, avatar_url)')
+            .eq('id', payload.new.id)
+            .single();
+          if (error) {
+            console.log(`[realtime] ${key} fetch error:`, error.message ?? String(error));
+            return;
+          }
+          if (!data) {
+            console.log(`[realtime] ${key} fetch returned null data`);
+            return;
+          }
           const { data: userData } = await supabase.auth.getUser();
           const myId = userData?.user?.id ?? '';
           const raw = data as {
@@ -74,6 +82,7 @@ export function subscribeToConversation(
             reply_to_id: string | null; created_at: string; deleted_at: string | null;
             profiles: { username: string; display_name: string | null; avatar_url: string | null } | null;
           };
+          console.log(`[realtime] ${key} sender=${raw.sender_id} myId=${myId} body="${(raw.body ?? '').slice(0, 30)}"`);
           const msg: ChatMessage = {
             id: raw.id,
             conversationId: raw.conversation_id,
@@ -90,8 +99,13 @@ export function subscribeToConversation(
             reactions: [],
           };
           if (raw.sender_id !== myId) {
+            console.log(`[realtime] ${key} → calling onMessage`);
             onMessage(msg);
+          } else {
+            console.log(`[realtime] ${key} skipping own message`);
           }
+        } catch (e) {
+          console.log(`[realtime] ${key} handler threw:`, (e as Error)?.message ?? String(e));
         }
       },
     )
