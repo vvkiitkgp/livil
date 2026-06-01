@@ -20,7 +20,6 @@ import NewConversationScreen from '../screens/main/NewConversationScreen';
 import GroupInfoScreen from '../screens/main/GroupInfoScreen';
 import JamRoomScreen from '../screens/main/JamRoomScreen';
 import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
-import JamBanner from '../components/JamBanner';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
@@ -277,7 +276,6 @@ export default function RootNavigator() {
       {/* Rendered above the entire stack so they appear on every screen */}
       {session && (
         <>
-          <JamBanner />
           <GlobalAudioPlayer />
           <FullScreenPlayer />
           <FloatingPlayer />

@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Alert,
 } from 'react-native';
@@ -103,6 +104,20 @@ export default function JamRoomScreen() {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [chatText, setChatText] = useState('');
   const [sending, setSending] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  // Collapse the player panel while the keyboard is open so the chat list
+  // gets the full vertical space (player UI is fixed-height and would otherwise
+  // pin the sendBar against the keyboard with no room for messages).
+  useEffect(() => {
+    const onShow = (e: { endCoordinates: { height: number } }) => {
+      if (e.endCoordinates.height >= 150) { setKeyboardOpen(true); }
+    };
+    const onHide = () => setKeyboardOpen(false);
+    const showSub = Keyboard.addListener('keyboardDidShow', onShow);
+    const hideSub = Keyboard.addListener('keyboardDidHide', onHide);
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   // Profile (only used for optimistic chat bubble rendering)
   const [myUsername, setMyUsername] = useState('');
@@ -435,6 +450,11 @@ export default function JamRoomScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={() => navigation.goBack()}>
@@ -453,7 +473,8 @@ export default function JamRoomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Playback panel */}
+      {/* Playback panel — collapsed while keyboard is open to free space for chat */}
+      {!keyboardOpen && (
       <View style={styles.playerPanel}>
         {/* Album art */}
         <View style={styles.artWrap}>
@@ -526,6 +547,7 @@ export default function JamRoomScreen() {
           )}
         </View>
       </View>
+      )}
 
       {/* Tab toggle */}
       <View style={styles.tabRow}>
@@ -554,14 +576,7 @@ export default function JamRoomScreen() {
 
       {/* Chat tab */}
       {tab === 'chat' && (
-        <KeyboardAvoidingView
-          style={styles.flex}
-          // On Android, `adjustResize` in AndroidManifest already pushes the
-          // layout up when the keyboard opens. Layering KeyboardAvoidingView
-          // on top of that double-shifts and hides the input. So we only
-          // engage KAV on iOS.
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <View style={styles.flex}>
           {messagesLoading ? (
             <View style={styles.centered}>
               <ActivityIndicator color={COLORS.purple} />
@@ -596,7 +611,7 @@ export default function JamRoomScreen() {
               <Text style={styles.sendBtnText}>→</Text>
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       )}
 
       {/* Queue tab */}
@@ -629,6 +644,7 @@ export default function JamRoomScreen() {
           </TouchableOpacity>
         </View>
       )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -133,7 +133,7 @@ export default function CollaboratorPickerScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.modeToggle}>
           <TouchableOpacity
