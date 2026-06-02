@@ -239,7 +239,7 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
                 videoUrl: bc.video_url,
                 likesCount: 0, commentsCount: 0, repostsCount: 0, viewsCount: 0,
                 viewerHasLiked: false, clipStartSec: null, clipEndSec: null,
-                kind: 'upload', originalPostId: null,
+                kind: 'upload', originalPostId: null, knownDurationSec: 0,
               });
               if (bc.post_id) { requestPlay(bc.post_id); }
               loadedFromJamRef.current = true;

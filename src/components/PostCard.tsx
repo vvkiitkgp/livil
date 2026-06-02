@@ -150,6 +150,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         clipEndSec: post.clipEndSec,
         kind: post.kind,
         originalPostId: post.originalPostId,
+        knownDurationSec: duration,
       });
       playback.registerHandlers({
         play: () => setPaused(false),

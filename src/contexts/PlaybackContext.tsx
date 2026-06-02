@@ -35,6 +35,8 @@ export type NowPlayingInfo = {
   // currently-playing item is itself a repost.
   kind: 'upload' | 'repost';
   originalPostId: string | null;
+  // Known duration at play-start (from prior onLoad); 0 if not yet loaded.
+  knownDurationSec: number;
 };
 
 export type PlayerHandlers = {
@@ -155,6 +157,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const setNowPlaying = useCallback((info: NowPlayingInfo) => {
     positionRef.current = 0;
+    durationRef.current = info.knownDurationSec ?? 0;
     clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
       ? { start: info.clipStartSec, end: info.clipEndSec }
       : null;
