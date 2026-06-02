@@ -316,17 +316,11 @@ export default function ConversationScreen() {
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [composerHeight, setComposerHeight] = useState(0);
 
   useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      setKeyboardVisible(true);
-      console.log('[keyboard] visible=true');
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardVisible(false);
-      console.log('[keyboard] visible=false');
-    });
+    if (Platform.OS !== 'ios') { return; }
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
@@ -706,7 +700,7 @@ export default function ConversationScreen() {
       ) : (
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
           <View
@@ -722,10 +716,8 @@ export default function ConversationScreen() {
               contentContainerStyle={[
                 styles.listContent,
                 {
-                  // paddingTop in inverted = visual space below the newest message,
-                  // centering it when few messages exist
                   paddingTop: listHeight > 0 ? listHeight * 0.4 : 200,
-                  paddingBottom: composerHeight > 0 ? composerHeight : 72 + insets.bottom,
+                  ...(Platform.OS === 'ios' ? { paddingBottom: 72 + insets.bottom } : {}),
                 },
               ]}
               onEndReached={loadMore}
@@ -739,14 +731,13 @@ export default function ConversationScreen() {
               }
             />
 
-            {/* Send bar — absolute so FlatList scrolls behind it */}
             <View
-              style={[styles.sendBar, { paddingBottom: 8 + 16 + (keyboardVisible ? 0 : insets.bottom) }]}
-              onLayout={e => {
-                const h = e.nativeEvent.layout.height;
-                setComposerHeight(h);
-                console.log(`[composer] height=${h} keyboardVisible=${keyboardVisible} insets.bottom=${insets.bottom}`);
-              }}
+              style={[
+                styles.sendBar,
+                Platform.OS === 'ios'
+                  ? { paddingBottom: keyboardVisible ? 0 : 8 + 16 + insets.bottom }
+                  : styles.sendBarAndroid,
+              ]}
             >
               <View style={styles.inputWrap}>
                 <FormInput
@@ -1002,21 +993,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emojiGridEmoji: { fontSize: 22 },
-  // Send bar — absolute overlay so messages scroll behind the translucent bar
   sendBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    ...(Platform.OS === 'ios' ? {
+      position: 'absolute' as const,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    } : {}),
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     paddingHorizontal: 12,
     paddingTop: 10,
-    paddingBottom: 8 + 16, // base — insets.bottom added inline
+    paddingBottom: 8 + 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(124, 58, 237, 0.25)',
     gap: 8,
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
+  },
+  sendBarAndroid: {
+    paddingBottom: 8,
   },
   inputWrap: { flex: 1 },
   textInput: { maxHeight: 100 },
