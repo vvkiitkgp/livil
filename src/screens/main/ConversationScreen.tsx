@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   Pressable,
@@ -314,6 +315,20 @@ export default function ConversationScreen() {
   const [friendActivity, setFriendActivity] = useState<FriendActivity | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      console.log('[keyboard] visible=true');
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      console.log('[keyboard] visible=false');
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   // Initial load — stale-while-revalidate
   useEffect(() => {
@@ -710,7 +725,7 @@ export default function ConversationScreen() {
                   // paddingTop in inverted = visual space below the newest message,
                   // centering it when few messages exist
                   paddingTop: listHeight > 0 ? listHeight * 0.4 : 200,
-                  paddingBottom: 72 + insets.bottom,
+                  paddingBottom: composerHeight > 0 ? composerHeight : 72 + insets.bottom,
                 },
               ]}
               onEndReached={loadMore}
@@ -725,7 +740,14 @@ export default function ConversationScreen() {
             />
 
             {/* Send bar — absolute so FlatList scrolls behind it */}
-            <View style={[styles.sendBar, { paddingBottom: 8 + 16 + insets.bottom }]}>
+            <View
+              style={[styles.sendBar, { paddingBottom: 8 + 16 + (keyboardVisible ? 0 : insets.bottom) }]}
+              onLayout={e => {
+                const h = e.nativeEvent.layout.height;
+                setComposerHeight(h);
+                console.log(`[composer] height=${h} keyboardVisible=${keyboardVisible} insets.bottom=${insets.bottom}`);
+              }}
+            >
               <View style={styles.inputWrap}>
                 <FormInput
                   value={text}
