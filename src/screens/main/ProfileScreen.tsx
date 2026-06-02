@@ -103,6 +103,7 @@ export default function ProfileScreen() {
           clipEndSec: p.clipEndSec,
           kind: p.kind,
           originalPostId: p.originalPostId,
+          knownDurationSec: 0,
         };
       }),
     );
