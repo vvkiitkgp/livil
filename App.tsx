@@ -1,9 +1,10 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import {StatusBar, StyleSheet} from 'react-native';
 import {NavigationContainer, DarkTheme} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {KeyboardProvider} from 'react-native-keyboard-controller';
+import {startMapper, stopMapper} from 'react-native-reanimated';
 import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
 
@@ -15,7 +16,34 @@ const AppTheme = {
   },
 };
 
+/**
+ * Force-initialize Reanimated's mapper registry on the UI thread.
+ *
+ * keyboard-controller's KeyboardProvider registers Reanimated event handlers
+ * immediately on mount. Those handlers call global.__mapperRun() after each
+ * event. However, __mapperRun is only assigned when the first mapper is
+ * started (via useAnimatedStyle, useDerivedValue, etc.). If no component
+ * has used any Reanimated mapper by the time the first keyboard event fires,
+ * __mapperRun is undefined → crash:
+ *
+ *   "undefined is not a function"
+ *   at [UI]: handleEvent (react-native-reanimated/src/core.ts:94)
+ *
+ * This hook starts a no-op mapper on mount to ensure the registry exists
+ * before any keyboard event can fire.
+ */
+function useInitReanimatedMappers() {
+  useEffect(() => {
+    const id = startMapper(() => {
+      'worklet';
+    });
+    return () => stopMapper(id);
+  }, []);
+}
+
 export default function App(): React.JSX.Element {
+  useInitReanimatedMappers();
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
