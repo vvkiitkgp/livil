@@ -596,7 +596,7 @@ function AddToPlaylistModal({
     >
       <View style={modalSt.overlay}>
         <TouchableWithoutFeedback onPress={onClose}>
-          <View style={StyleSheet.absoluteFillObject} />
+          <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
 
         <View style={modalSt.sheet}>
@@ -634,7 +634,7 @@ function AddToPlaylistModal({
                 >
                   <View style={[modalSt.rowThumb, { backgroundColor: accent, overflow: 'hidden' }]}>
                     {p.coverArtUrl ? (
-                      <Image source={{ uri: p.coverArtUrl }} style={StyleSheet.absoluteFillObject} />
+                      <Image source={{ uri: p.coverArtUrl }} style={StyleSheet.absoluteFill} />
                     ) : (
                       <Text style={modalSt.rowThumbText}>{initial}</Text>
                     )}
@@ -964,7 +964,7 @@ export default function FullScreenPlayer() {
       pointerEvents={isFullScreenOpen ? 'box-none' : 'none'}
     >
       {/* ── Full-bleed media ── */}
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={StyleSheet.absoluteFill}>
         {nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl ? (
           <Video
             ref={videoRef}
@@ -1000,7 +1000,7 @@ export default function FullScreenPlayer() {
           this so they sit on top and receive taps before the gesture view does.
           box-only ensures the gesture fires on empty areas but never blocks buttons. */}
       <GestureDetector gesture={panGesture}>
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-only" />
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
       </GestureDetector>
 
       {/* ── Header (outside GestureDetector — reliable taps on all Android devices) ── */}
@@ -1240,7 +1240,7 @@ const csSt = StyleSheet.create({
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000' },
+  container: { ...StyleSheet.absoluteFill, backgroundColor: '#000' },
 
   // Full-bleed media fills entire container
   albumArt: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },

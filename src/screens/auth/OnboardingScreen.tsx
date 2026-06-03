@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   orbContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
   },
   orbOuter: {

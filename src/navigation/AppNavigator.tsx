@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     // Android height/paddingBottom are overridden in screenOptions with insets.bottom
   },
   tabBarBg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
     borderTopColor: 'rgba(124, 58, 237, 0.25)',
     borderTopWidth: StyleSheet.hairlineWidth,

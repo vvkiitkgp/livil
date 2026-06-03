@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  Keyboard,
   Platform,
 } from 'react-native';
+import { useKeyboardHandler } from 'react-native-keyboard-controller';
+import { runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -107,28 +108,30 @@ export default function FloatingPlayer() {
   const { activeJam } = useJam();
 
   // ─── Keyboard hide ────────────────────────────────────────────────────────────
-  const keyboardAnim  = useRef(new Animated.Value(0)).current;
-  const hideTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => {
-      // Ignore tiny / emulator side-panel events that aren't real keyboards
-      if (e.endCoordinates.height < 150) { return; }
-      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
-      Animated.timing(keyboardAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
-    });
-    const hide = Keyboard.addListener('keyboardDidHide', () => {
-      // Delay slide-back so KAV has time to reset its height before we return
-      hideTimerRef.current = setTimeout(() => {
-        Animated.timing(keyboardAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-      }, 120);
-    });
-    return () => {
-      show.remove();
-      hide.remove();
-      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); }
-    };
+  const animateKeyboardShow = useCallback(() => {
+    Animated.timing(keyboardAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
   }, [keyboardAnim]);
+
+  const animateKeyboardHide = useCallback(() => {
+    Animated.timing(keyboardAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+  }, [keyboardAnim]);
+
+  useKeyboardHandler({
+    onStart: (e) => {
+      'worklet';
+      if (e.height > 0) {
+        runOnJS(animateKeyboardShow)();
+      }
+    },
+    onEnd: (e) => {
+      'worklet';
+      if (e.height === 0) {
+        runOnJS(animateKeyboardHide)();
+      }
+    },
+  });
 
   // ─── Slide in / out ───────────────────────────────────────────────────────────
   const slideAnim  = useRef(new Animated.Value(0)).current;
