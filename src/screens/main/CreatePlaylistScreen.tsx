@@ -9,8 +9,6 @@ import {
   Image,
   ActivityIndicator,
   ListRenderItemInfo,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -49,7 +47,7 @@ function SuggestionRow({
       <View style={[styles.cover, { backgroundColor: accents[0] }]}>
         <View style={[styles.coverAccent, { backgroundColor: accents[1] }]} />
         {item.coverArtUrl ? (
-          <Image source={{ uri: item.coverArtUrl }} style={StyleSheet.absoluteFillObject} />
+          <Image source={{ uri: item.coverArtUrl }} style={StyleSheet.absoluteFill} />
         ) : (
           <Text style={styles.coverInitial}>{initials}</Text>
         )}
@@ -200,10 +198,6 @@ export default function CreatePlaylistScreen({ route }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -237,7 +231,6 @@ export default function CreatePlaylistScreen({ route }: Props) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

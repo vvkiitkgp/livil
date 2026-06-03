@@ -49,7 +49,7 @@ export type MediaPlayerProps = {
    * clips rows — set false there and rely on tab blur (`pauseAll`) instead.
    */
   pauseWhenOffScreen?: boolean;
-  /** Override the container style — e.g. pass StyleSheet.absoluteFillObject for full-screen use. */
+  /** Override the container style — e.g. pass StyleSheet.absoluteFill for full-screen use. */
   style?: StyleProp<ViewStyle>;
 };
 
@@ -275,7 +275,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
           This view sits above the Video surface and reliably captures all taps. */}
       {media.kind === 'video' && (
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           onPress={onTogglePaused}
           accessibilityRole="button"
           accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
@@ -317,17 +317,17 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   cover: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   coverImg: {
     width: '100%',
     height: '100%',
   },
   video: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   fallbackArt: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.card,
     overflow: 'hidden',
   },
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
     right: -20,
   },
   playGlyphWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -275,7 +275,7 @@ export default function LibraryScreen() {
                 >
                   <View style={[styles.thumb, { backgroundColor: accents[0], overflow: 'hidden' }]}>
                     {playlist.coverArtUrl ? (
-                      <Image source={{ uri: playlist.coverArtUrl }} style={StyleSheet.absoluteFillObject} />
+                      <Image source={{ uri: playlist.coverArtUrl }} style={StyleSheet.absoluteFill} />
                     ) : (
                       <Text style={styles.thumbText}>{initials}</Text>
                     )}
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   recentCoverImg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   recentCoverInitial: {
     color: COLORS.white,

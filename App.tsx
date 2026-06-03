@@ -3,6 +3,7 @@ import {StatusBar, StyleSheet} from 'react-native';
 import {NavigationContainer, DarkTheme} from '@react-navigation/native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
+import {KeyboardProvider} from 'react-native-keyboard-controller';
 import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
 
@@ -18,12 +19,14 @@ export default function App(): React.JSX.Element {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
+        <KeyboardProvider>
         <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" />
         <PlaybackProvider>
           <NavigationContainer theme={AppTheme}>
             <RootNavigator />
           </NavigationContainer>
         </PlaybackProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

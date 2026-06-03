@@ -3,14 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -277,16 +275,12 @@ export default function RepostScreen() {
         <View style={styles.headerSide} />
       </View>
 
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
           {/* Loading / error state */}
           {!originalPost && !loadError ? (
             <View style={styles.loadingWrap}>
@@ -426,7 +420,7 @@ export default function RepostScreen() {
               <View style={styles.scrollSpacer} />
             </>
           ) : null}
-        </ScrollView>
+      </KeyboardAwareScrollView>
 
         {/* Footer submit button */}
         {originalPost ? (
@@ -445,7 +439,6 @@ export default function RepostScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-      </KeyboardAvoidingView>
 
       {/* Success modal */}
       <Modal

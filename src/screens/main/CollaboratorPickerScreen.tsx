@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -131,10 +129,7 @@ export default function CollaboratorPickerScreen() {
         <View style={styles.headerSide} />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={styles.flex}>
         <View style={styles.modeToggle}>
           <TouchableOpacity
             style={[styles.modePill, mode === 'user' && styles.modePillActive]}
@@ -277,7 +272,7 @@ export default function CollaboratorPickerScreen() {
             <Text style={styles.confirmButtonText}>Add to track</Text>
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

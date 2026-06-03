@@ -239,7 +239,7 @@ export default function StoryViewerScreen() {
               seekTo={seekTo}
               visible
               pauseWhenOffScreen={false}
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
             />
           ) : null}
 

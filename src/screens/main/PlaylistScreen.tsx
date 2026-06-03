@@ -52,7 +52,7 @@ function TrackRow({
       <View style={[styles.cover, { backgroundColor: accents[0] }]}>
         <View style={[styles.coverAccent, { backgroundColor: accents[1] }]} />
         {item.coverArtUrl ? (
-          <Image source={{ uri: item.coverArtUrl }} style={StyleSheet.absoluteFillObject} />
+          <Image source={{ uri: item.coverArtUrl }} style={StyleSheet.absoluteFill} />
         ) : (
           <Text style={styles.coverInitial}>{initials}</Text>
         )}

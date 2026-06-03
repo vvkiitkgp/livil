@@ -12,14 +12,17 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
   ActivityIndicator,
   Pressable,
   Alert,
+  ScrollViewProps,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  KeyboardChatScrollView,
+  KeyboardStickyView,
+  KeyboardGestureArea,
+} from 'react-native-keyboard-controller';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -302,7 +305,6 @@ export default function ConversationScreen() {
   const insets = useSafeAreaInsets();
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
-  const [listHeight, setListHeight] = useState(0);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -315,20 +317,6 @@ export default function ConversationScreen() {
   const [friendActivity, setFriendActivity] = useState<FriendActivity | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [composerHeight, setComposerHeight] = useState(0);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      setKeyboardVisible(true);
-      console.log('[keyboard] visible=true');
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardVisible(false);
-      console.log('[keyboard] visible=false');
-    });
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
 
   // Initial load — stale-while-revalidate
   useEffect(() => {
@@ -617,6 +605,20 @@ export default function ConversationScreen() {
     }
   }, [activeJam, startingJam, conversationId, nowPlaying, queueRef, setActiveJam, title, navigation]);
 
+  const renderChatScrollComponent = useCallback(
+    (props: ScrollViewProps) => (
+      <KeyboardChatScrollView
+        {...props}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+        keyboardDismissMode="interactive"
+        offset={insets.bottom}
+        inverted
+      />
+    ),
+    [insets.bottom],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => (
       <MessageBubble
@@ -704,52 +706,39 @@ export default function ConversationScreen() {
           <ActivityIndicator color={COLORS.purple} />
         </View>
       ) : (
-        <KeyboardAvoidingView
+        <KeyboardGestureArea
+          interpolator="ios"
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
+          textInputNativeID="conversation-input"
         >
-          <View
+          <FlatList
+            ref={flatListRef}
             style={styles.flex}
-            onLayout={e => setListHeight(e.nativeEvent.layout.height)}
-          >
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={item => item.id}
-              renderItem={renderItem}
-              inverted
-              contentContainerStyle={[
-                styles.listContent,
-                {
-                  // paddingTop in inverted = visual space below the newest message,
-                  // centering it when few messages exist
-                  paddingTop: listHeight > 0 ? listHeight * 0.4 : 200,
-                  paddingBottom: composerHeight > 0 ? composerHeight : 72 + insets.bottom,
-                },
-              ]}
-              onEndReached={loadMore}
-              onEndReachedThreshold={0.2}
-              ListFooterComponent={
-                loadingMore ? (
-                  <View style={styles.loadMoreSpinner}>
-                    <ActivityIndicator size="small" color={COLORS.purpleLight} />
-                  </View>
-                ) : null
-              }
-            />
+            renderScrollComponent={renderChatScrollComponent}
+            data={messages}
+            keyExtractor={item => item.id}
+            renderItem={renderItem}
+            inverted
+            contentContainerStyle={[
+              styles.listContent,
+              { paddingTop: 200 },
+            ]}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.2}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={styles.loadMoreSpinner}>
+                  <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                </View>
+              ) : null
+            }
+          />
 
-            {/* Send bar — absolute so FlatList scrolls behind it */}
-            <View
-              style={[styles.sendBar, { paddingBottom: 8 + 16 + (keyboardVisible ? 0 : insets.bottom) }]}
-              onLayout={e => {
-                const h = e.nativeEvent.layout.height;
-                setComposerHeight(h);
-                console.log(`[composer] height=${h} keyboardVisible=${keyboardVisible} insets.bottom=${insets.bottom}`);
-              }}
-            >
+          <KeyboardStickyView offset={{ closed: 0 }}>
+            <View style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}>
               <View style={styles.inputWrap}>
                 <FormInput
+                  nativeID="conversation-input"
                   value={text}
                   onChangeText={t => setText(t.slice(0, MAX_CHARS))}
                   placeholder="Message…"
@@ -773,8 +762,8 @@ export default function ConversationScreen() {
                 <Text style={styles.sendBtnIcon}>›</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardStickyView>
+        </KeyboardGestureArea>
       )}
 
       <ReactionPicker
@@ -1002,17 +991,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emojiGridEmoji: { fontSize: 22 },
-  // Send bar — absolute overlay so messages scroll behind the translucent bar
   sendBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     paddingHorizontal: 12,
     paddingTop: 10,
-    paddingBottom: 8 + 16, // base — insets.bottom added inline
+    paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(124, 58, 237, 0.25)',
     gap: 8,
@@ -1021,7 +1005,7 @@ const styles = StyleSheet.create({
   inputWrap: { flex: 1 },
   textInput: { maxHeight: 100 },
   charCounter: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 2, marginRight: 4 },
-  charCounterOver: { color: COLORS.danger },
+  charCounterOver: { color: COLORS.error },
   sendBtn: {
     width: 38,
     height: 38,

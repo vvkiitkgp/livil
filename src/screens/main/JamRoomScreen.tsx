@@ -7,12 +7,16 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
   Alert,
+  ScrollViewProps,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  KeyboardChatScrollView,
+  KeyboardStickyView,
+  useKeyboardHandler,
+} from 'react-native-keyboard-controller';
+import { runOnJS } from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -109,15 +113,20 @@ export default function JamRoomScreen() {
   // Collapse the player panel while the keyboard is open so the chat list
   // gets the full vertical space (player UI is fixed-height and would otherwise
   // pin the sendBar against the keyboard with no room for messages).
-  useEffect(() => {
-    const onShow = (e: { endCoordinates: { height: number } }) => {
-      if (e.endCoordinates.height >= 150) { setKeyboardOpen(true); }
-    };
-    const onHide = () => setKeyboardOpen(false);
-    const showSub = Keyboard.addListener('keyboardDidShow', onShow);
-    const hideSub = Keyboard.addListener('keyboardDidHide', onHide);
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, []);
+  useKeyboardHandler({
+    onStart: (e) => {
+      'worklet';
+      if (e.height > 0) {
+        runOnJS(setKeyboardOpen)(true);
+      }
+    },
+    onEnd: (e) => {
+      'worklet';
+      if (e.height === 0) {
+        runOnJS(setKeyboardOpen)(false);
+      }
+    },
+  });
 
   // Profile (only used for optimistic chat bubble rendering)
   const [myUsername, setMyUsername] = useState('');
@@ -384,6 +393,22 @@ export default function JamRoomScreen() {
     }
   }, [jamRoomId]);
 
+  const insets = useSafeAreaInsets();
+
+  const renderChatScrollComponent = useCallback(
+    (props: ScrollViewProps) => (
+      <KeyboardChatScrollView
+        {...props}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+        keyboardDismissMode="interactive"
+        offset={insets.bottom}
+        inverted
+      />
+    ),
+    [insets.bottom],
+  );
+
   const handleTabChange = useCallback((t: Tab) => {
     setTab(t);
     tabRef.current = t;
@@ -449,12 +474,7 @@ export default function JamRoomScreen() {
   const positionSec = displayPositionMs / 1000;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={() => navigation.goBack()}>
@@ -586,31 +606,35 @@ export default function JamRoomScreen() {
               data={messages}
               keyExtractor={item => item.id}
               renderItem={renderMessage}
+              renderScrollComponent={renderChatScrollComponent}
               inverted
               contentContainerStyle={styles.chatList}
             />
           )}
-          <View style={styles.sendBar}>
-            <View style={styles.inputWrap}>
-              <FormInput
-                value={chatText}
-                onChangeText={setChatText}
-                placeholder="Message…"
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                style={styles.textInput}
-                returnKeyType="default"
-              />
+          <KeyboardStickyView offset={{ closed: 0 }}>
+            <View style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}>
+              <View style={styles.inputWrap}>
+                <FormInput
+                  nativeID="jam-chat-input"
+                  value={chatText}
+                  onChangeText={setChatText}
+                  placeholder="Message…"
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  style={styles.textInput}
+                  returnKeyType="default"
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.sendBtn, (!chatText.trim() || sending) && styles.sendBtnDisabled]}
+                activeOpacity={0.7}
+                onPress={() => void handleSend()}
+                disabled={!chatText.trim() || sending}
+              >
+                <Text style={styles.sendBtnText}>→</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.sendBtn, (!chatText.trim() || sending) && styles.sendBtnDisabled]}
-              activeOpacity={0.7}
-              onPress={() => void handleSend()}
-              disabled={!chatText.trim() || sending}
-            >
-              <Text style={styles.sendBtnText}>→</Text>
-            </TouchableOpacity>
-          </View>
+          </KeyboardStickyView>
         </View>
       )}
 
@@ -644,7 +668,6 @@ export default function JamRoomScreen() {
           </TouchableOpacity>
         </View>
       )}
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
