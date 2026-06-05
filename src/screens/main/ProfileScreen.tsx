@@ -78,8 +78,11 @@ export default function ProfileScreen() {
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
-  // Keep the playback queue in sync with the profile feed.
   useEffect(() => {
+    if (!playback.activePostId) { return; }
+    if (playback.playSourceRef.current !== 'user') { return; }
+    const startIdx = posts.findIndex(p => p.id === playback.activePostId);
+    if (startIdx < 0) { return; }
     playback.setQueue(
       posts.map(p => {
         const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
@@ -106,9 +109,11 @@ export default function ProfileScreen() {
           knownDurationSec: 0,
         };
       }),
+      startIdx,
+      `profile:@${profile?.username ?? 'me'}`,
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posts, playback.setQueue]);
+  }, [playback.activePostId, posts, playback.setQueue]);
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {

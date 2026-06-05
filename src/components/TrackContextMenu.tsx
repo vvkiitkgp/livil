@@ -1,0 +1,186 @@
+import React, { useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Image,
+} from 'react-native';
+import { COLORS } from '../theme/colors';
+import type { NowPlayingInfo } from '../contexts/PlaybackContext';
+
+export type TrackContextMenuProps = {
+  visible: boolean;
+  track: NowPlayingInfo | null;
+  onClose: () => void;
+  onPlayNext: (track: NowPlayingInfo) => void;
+  onAddToQueue: (track: NowPlayingInfo) => void;
+  onAddToPlaylist?: (track: NowPlayingInfo) => void;
+  onGoToArtist?: (userId: string) => void;
+};
+
+const MENU_ITEMS = [
+  { id: 'play-next', label: 'Play Next', icon: '⏭' },
+  { id: 'add-to-queue', label: 'Add to Queue', icon: '☰' },
+  { id: 'add-to-playlist', label: 'Add to Playlist...', icon: '+' },
+  { id: 'go-to-artist', label: 'Go to Artist', icon: '→' },
+] as const;
+
+export default function TrackContextMenu({
+  visible,
+  track,
+  onClose,
+  onPlayNext,
+  onAddToQueue,
+  onAddToPlaylist,
+  onGoToArtist,
+}: TrackContextMenuProps) {
+  const handlePress = useCallback((id: string) => {
+    if (!track) { return; }
+    onClose();
+    switch (id) {
+      case 'play-next':
+        onPlayNext(track);
+        break;
+      case 'add-to-queue':
+        onAddToQueue(track);
+        break;
+      case 'add-to-playlist':
+        onAddToPlaylist?.(track);
+        break;
+      case 'go-to-artist':
+        onGoToArtist?.(track.authorId);
+        break;
+    }
+  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist]);
+
+  if (!track) { return null; }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.sheet}>
+              <View style={styles.handleBar} />
+
+              <View style={styles.trackPreview}>
+                {track.coverArtUrl ? (
+                  <Image source={{ uri: track.coverArtUrl }} style={styles.cover} />
+                ) : (
+                  <View style={[styles.cover, styles.coverFallback]} />
+                )}
+                <View style={styles.trackMeta}>
+                  <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
+                  <Text style={styles.trackArtist} numberOfLines={1}>{track.artistName}</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {MENU_ITEMS.map((item) => {
+                if (item.id === 'add-to-playlist' && !onAddToPlaylist) { return null; }
+                if (item.id === 'go-to-artist' && !onGoToArtist) { return null; }
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.menuItem}
+                    onPress={() => handlePress(item.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.menuIcon}>{item.icon}</Text>
+                    <Text style={styles.menuLabel}>{item.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  trackPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  cover: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: COLORS.card,
+  },
+  coverFallback: {
+    backgroundColor: COLORS.purpleDim,
+  },
+  trackMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  trackTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  trackArtist: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginBottom: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  menuIcon: {
+    color: COLORS.white,
+    fontSize: 18,
+    width: 24,
+    textAlign: 'center',
+  },
+  menuLabel: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+});

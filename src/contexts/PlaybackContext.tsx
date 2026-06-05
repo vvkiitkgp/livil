@@ -66,8 +66,6 @@ type PlaybackContextValue = {
   updateDuration: (seconds: number) => void;
 
   // --- clip window (ref — no re-renders; mutated by FullScreenPlayer on drag) ---
-  // null = no clip active (play full track). Initialized from NowPlayingInfo.clipStartSec/clipEndSec
-  // when setNowPlaying is called, then editable by the user in FullScreenPlayer.
   clipWindowRef: React.MutableRefObject<{ start: number; end: number } | null>;
 
   // --- player handlers (ref — no re-renders) ---
@@ -75,13 +73,24 @@ type PlaybackContextValue = {
   registerHandlers: (handlers: PlayerHandlers) => void;
   unregisterHandlers: () => void;
 
-  // --- queue + next / prev ---
-  setQueue: (posts: NowPlayingInfo[]) => void;
+  // --- queue ---
+  setQueue: (posts: NowPlayingInfo[], startIndex: number, source: string) => void;
   playNext: () => void;
   playPrev: () => void;
+  playAtIndex: (index: number) => void;
+  addToQueue: (track: NowPlayingInfo) => void;
+  playTrackNext: (track: NowPlayingInfo) => void;
+  moveQueueItem: (fromIndex: number, toIndex: number) => void;
+  removeFromQueue: (index: number) => void;
   pendingPlayId: string | null;
   clearPendingPlay: () => void;
   queueRef: React.MutableRefObject<NowPlayingInfo[]>;
+  currentIndexRef: React.MutableRefObject<number>;
+  userQueueRef: React.MutableRefObject<NowPlayingInfo[]>;
+  queueSourceRef: React.MutableRefObject<string>;
+  // 'user' = play originated from a tap in the feed/profile (screens should update queue)
+  // 'queue' = play originated from playNext/playPrev/playAtIndex (screens must NOT override queue)
+  playSourceRef: React.MutableRefObject<'user' | 'queue'>;
 
   // --- full-screen player ---
   isFullScreenOpen: boolean;
@@ -127,6 +136,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const clipWindowRef = useRef<{ start: number; end: number } | null>(null);
   const handlersRef = useRef<PlayerHandlers | null>(null);
   const queueRef = useRef<NowPlayingInfo[]>([]);
+  const currentIndexRef = useRef<number>(-1);
+  const userQueueRef = useRef<NowPlayingInfo[]>([]);
+  const shuffleOrderRef = useRef<number[]>([]);
+  const shuffleIndexRef = useRef<number>(-1);
+  const queueSourceRef = useRef<string>('home');
+  const playSourceRef = useRef<'user' | 'queue'>('user');
   // Refs so playNext/playPrev stay stable (useCallback []) while still reading latest values.
   const shuffleRef = useRef(false);
   const repeatModeRef = useRef<RepeatMode>('off');
@@ -135,6 +150,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const requestPlay = useCallback((postId: string) => {
     if (activeRef.current === postId) { return; }
+    playSourceRef.current = 'user';
     activeRef.current = postId;
     setActivePostId(postId);
   }, []);
@@ -193,42 +209,151 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   // --- queue ---
 
-  const setQueue = useCallback((posts: NowPlayingInfo[]) => {
-    queueRef.current = posts;
+  const generateShuffleOrder = useCallback((startAfter: number, length: number) => {
+    const indices: number[] = [];
+    for (let i = 0; i < length; i++) {
+      if (i !== startAfter) { indices.push(i); }
+    }
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j]!, indices[i]!];
+    }
+    shuffleOrderRef.current = indices;
+    shuffleIndexRef.current = -1;
   }, []);
+
+  const playTrackAtIndex = useCallback((idx: number) => {
+    const track = queueRef.current[idx];
+    if (!track) { return; }
+    playSourceRef.current = 'queue';
+    currentIndexRef.current = idx;
+    activeRef.current = track.postId;
+    setActivePostId(track.postId);
+    positionRef.current = 0;
+    durationRef.current = track.knownDurationSec ?? 0;
+    clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
+      ? { start: track.clipStartSec, end: track.clipEndSec }
+      : null;
+    setNowPlayingState(track);
+    setPendingPlayId(track.postId);
+  }, []);
+
+  const setQueue = useCallback((posts: NowPlayingInfo[], startIndex: number, source: string) => {
+    queueRef.current = posts;
+    currentIndexRef.current = startIndex;
+    userQueueRef.current = [];
+    queueSourceRef.current = source;
+    if (shuffleRef.current) {
+      generateShuffleOrder(startIndex, posts.length);
+    }
+  }, [generateShuffleOrder]);
 
   const playNext = useCallback(() => {
-    const queue = queueRef.current;
-    const nowId = activeRef.current;
-    const idx = queue.findIndex(p => p.postId === nowId);
-
-    let next: NowPlayingInfo | undefined;
-    if (shuffleRef.current) {
-      const remaining = queue.filter((_, i) => i !== idx);
-      if (remaining.length > 0) {
-        next = remaining[Math.floor(Math.random() * remaining.length)];
-      }
-    } else {
-      next = queue[idx + 1];
-      if (!next && repeatModeRef.current === 'all') {
-        next = queue[0];
-      }
+    if (userQueueRef.current.length > 0) {
+      const track = userQueueRef.current.shift()!;
+      activeRef.current = track.postId;
+      setActivePostId(track.postId);
+      positionRef.current = 0;
+      durationRef.current = track.knownDurationSec ?? 0;
+      clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
+        ? { start: track.clipStartSec, end: track.clipEndSec }
+        : null;
+      setNowPlayingState(track);
+      setPendingPlayId(track.postId);
+      return;
     }
-    if (!next) { return; }
-    activeRef.current = next.postId;
-    setActivePostId(next.postId);
-    setPendingPlayId(next.postId);
-  }, []);
+
+    const queue = queueRef.current;
+    if (shuffleRef.current) {
+      shuffleIndexRef.current++;
+      if (shuffleIndexRef.current >= shuffleOrderRef.current.length) {
+        if (repeatModeRef.current === 'all') {
+          generateShuffleOrder(currentIndexRef.current, queue.length);
+          shuffleIndexRef.current = 0;
+        } else {
+          return;
+        }
+      }
+      const nextIdx = shuffleOrderRef.current[shuffleIndexRef.current]!;
+      playTrackAtIndex(nextIdx);
+    } else {
+      let nextIdx = currentIndexRef.current + 1;
+      if (nextIdx >= queue.length) {
+        if (repeatModeRef.current === 'all') {
+          nextIdx = 0;
+        } else {
+          return;
+        }
+      }
+      playTrackAtIndex(nextIdx);
+    }
+  }, [generateShuffleOrder, playTrackAtIndex]);
 
   const playPrev = useCallback(() => {
-    const queue = queueRef.current;
-    const nowId = activeRef.current;
-    const idx = queue.findIndex(p => p.postId === nowId);
-    const prev = queue[idx - 1];
-    if (!prev) { return; }
-    activeRef.current = prev.postId;
-    setActivePostId(prev.postId);
-    setPendingPlayId(prev.postId);
+    if (positionRef.current > 3) {
+      handlersRef.current?.seek(0);
+      positionRef.current = 0;
+      return;
+    }
+
+    if (shuffleRef.current && shuffleIndexRef.current > 0) {
+      shuffleIndexRef.current--;
+      const prevIdx = shuffleOrderRef.current[shuffleIndexRef.current]!;
+      playTrackAtIndex(prevIdx);
+      return;
+    }
+
+    const prevIdx = currentIndexRef.current - 1;
+    if (prevIdx < 0) {
+      handlersRef.current?.seek(0);
+      positionRef.current = 0;
+      return;
+    }
+    playTrackAtIndex(prevIdx);
+  }, [playTrackAtIndex]);
+
+  const playAtIndex = useCallback((index: number) => {
+    playTrackAtIndex(index);
+    if (shuffleRef.current) {
+      generateShuffleOrder(index, queueRef.current.length);
+    }
+  }, [playTrackAtIndex, generateShuffleOrder]);
+
+  const addToQueue = useCallback((track: NowPlayingInfo) => {
+    userQueueRef.current = [...userQueueRef.current, track];
+  }, []);
+
+  const playTrackNextFn = useCallback((track: NowPlayingInfo) => {
+    userQueueRef.current = [track, ...userQueueRef.current];
+  }, []);
+
+  const moveQueueItem = useCallback((fromIndex: number, toIndex: number) => {
+    const queue = [...queueRef.current];
+    const [moved] = queue.splice(fromIndex, 1);
+    if (!moved) { return; }
+    queue.splice(toIndex, 0, moved);
+    queueRef.current = queue;
+    // Adjust currentIndexRef if it was affected by the move
+    const cur = currentIndexRef.current;
+    if (fromIndex === cur) {
+      currentIndexRef.current = toIndex;
+    } else if (fromIndex < cur && toIndex >= cur) {
+      currentIndexRef.current = cur - 1;
+    } else if (fromIndex > cur && toIndex <= cur) {
+      currentIndexRef.current = cur + 1;
+    }
+  }, []);
+
+  const removeFromQueue = useCallback((index: number) => {
+    const queue = [...queueRef.current];
+    queue.splice(index, 1);
+    queueRef.current = queue;
+    const cur = currentIndexRef.current;
+    if (index < cur) {
+      currentIndexRef.current = cur - 1;
+    } else if (index === cur && cur >= queue.length) {
+      currentIndexRef.current = Math.max(0, queue.length - 1);
+    }
   }, []);
 
   const clearPendingPlay = useCallback(() => {
@@ -257,10 +382,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const toggleShuffle = useCallback(() => {
     setShuffleEnabled(v => {
-      shuffleRef.current = !v;
-      return !v;
+      const next = !v;
+      shuffleRef.current = next;
+      if (next) {
+        generateShuffleOrder(currentIndexRef.current, queueRef.current.length);
+      } else {
+        shuffleOrderRef.current = [];
+        shuffleIndexRef.current = -1;
+      }
+      return next;
     });
-  }, []);
+  }, [generateShuffleOrder]);
 
   const cycleRepeatMode = useCallback(() => {
     setRepeatMode(prev => {
@@ -291,9 +423,18 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setQueue,
       playNext,
       playPrev,
+      playAtIndex,
+      addToQueue,
+      playTrackNext: playTrackNextFn,
+      moveQueueItem,
+      removeFromQueue,
       pendingPlayId,
       clearPendingPlay,
       queueRef,
+      currentIndexRef,
+      userQueueRef,
+      queueSourceRef,
+      playSourceRef,
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
@@ -324,6 +465,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setQueue,
       playNext,
       playPrev,
+      playAtIndex,
+      addToQueue,
+      playTrackNextFn,
+      moveQueueItem,
+      removeFromQueue,
       pendingPlayId,
       clearPendingPlay,
       isFullScreenOpen,

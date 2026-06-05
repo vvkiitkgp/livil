@@ -126,13 +126,11 @@ export default function PlaylistScreen({ route }: Props) {
       knownDurationSec: 0,
     });
     const queue = items.map(toInfo);
-    // Reorder queue so the tapped item is first, then the rest follow in order
-    const ordered = [...queue.slice(index), ...queue.slice(0, index)];
-    setQueue(ordered);
-    setNowPlaying(ordered[0]!);
-    requestPlay(ordered[0]!.postId);
+    setQueue(queue, index, `playlist:${playlistName}`);
+    setNowPlaying(queue[index]!);
+    requestPlay(queue[index]!.postId);
     openFullScreenPlayer();
-  }, [items, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer]);
+  }, [items, playlistName, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer]);
 
   const renderItem = useCallback(({ item, index }: ListRenderItemInfo<PlaylistItem>) => (
     <TrackRow

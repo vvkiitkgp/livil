@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
-import { usePlayback } from '../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
 import ClipRangeSlider from './ClipRangeSlider';
+import TrackContextMenu from './TrackContextMenu';
 import type { FeedPost } from '../services/posts';
 import { recordView, toggleLike } from '../services/posts';
 import type { RootStackParamList } from '../navigation/types';
@@ -98,6 +99,35 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   const [likesCount, setLikesCount] = useState(post.likesCount);
   const [viewsCount, setViewsCount] = useState(post.viewsCount);
   const [viewRecorded, setViewRecorded] = useState(false);
+
+  const [contextMenuVisible, setContextMenuVisible] = useState(false);
+
+  const trackInfoForMenu = useMemo((): NowPlayingInfo => {
+    const displayAuthor = (post.kind === 'repost' && post.originalAuthor) ? post.originalAuthor : post.author;
+    return {
+      postId: post.id,
+      trackId: post.track.id,
+      title: post.track.title,
+      artistName: displayAuthor.displayName ?? displayAuthor.username,
+      authorId: displayAuthor.id,
+      authorUsername: displayAuthor.username,
+      authorAvatarUrl: displayAuthor.avatarUrl,
+      coverArtUrl: post.track.coverArtUrl,
+      mediaKind: post.track.mediaKind,
+      audioUrl: post.track.audioUrl ?? undefined,
+      videoUrl: post.track.videoUrl ?? undefined,
+      likesCount: post.likesCount,
+      commentsCount: post.commentsCount,
+      repostsCount: post.repostsCount,
+      viewsCount: post.viewsCount,
+      viewerHasLiked: post.viewerHasLiked,
+      clipStartSec: post.clipStartSec,
+      clipEndSec: post.clipEndSec,
+      kind: post.kind,
+      originalPostId: post.originalPostId,
+      knownDurationSec: 0,
+    };
+  }, [post]);
 
   const media = pickMediaShape(post.track);
 
@@ -372,8 +402,6 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
             if (targetId) {
               navigation.navigate('Repost', {
                 originalPostId: targetId,
-                // Seed the slider with this post's current clip window — what
-                // the user sees on the card right now — not the original's.
                 seedClipStartSec: post.clipStartSec,
                 seedClipEndSec: post.clipEndSec,
               });
@@ -382,6 +410,14 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         >
           <Text style={styles.repostBtnIcon}>▤</Text>
           <Text style={styles.repostBtnLabel}>Repost</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moreBtn}
+          onPress={() => setContextMenuVisible(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="More options"
+        >
+          <Text style={styles.moreBtnText}>⋯</Text>
         </TouchableOpacity>
       </View>
 
@@ -478,6 +514,17 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
           </View>
         </View>
       </View>
+
+      <TrackContextMenu
+        visible={contextMenuVisible}
+        track={trackInfoForMenu}
+        onClose={() => setContextMenuVisible(false)}
+        onPlayNext={playback.playTrackNext}
+        onAddToQueue={playback.addToQueue}
+        onGoToArtist={(userId) => {
+          navigation.navigate('UserProfile', { userId });
+        }}
+      />
     </View>
   );
 }
@@ -597,6 +644,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  moreBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreBtnText: {
+    color: COLORS.textSecondary,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   titleBlock: {
     marginTop: 12,
