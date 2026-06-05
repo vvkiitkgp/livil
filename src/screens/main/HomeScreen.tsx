@@ -261,14 +261,16 @@ export default function HomeScreen() {
   const postsRef = useRef<FeedPost[]>([]);
   postsRef.current = posts;
 
-  // When a track starts playing on the home feed, set the queue to that track
-  // plus all posts below it — so next/prev only navigate forward in the feed.
   useEffect(() => {
     if (!playback.activePostId) { return; }
-    const startIdx = postsRef.current.findIndex(p => p.id === playback.activePostId);
-    const slice = startIdx >= 0 ? postsRef.current.slice(startIdx) : postsRef.current;
+    // Only reset the queue when the user tapped play in the feed, not when
+    // playback advanced programmatically (queue navigation, next/prev).
+    if (playback.playSourceRef.current !== 'user') { return; }
+    const allPosts = postsRef.current;
+    const startIdx = allPosts.findIndex(p => p.id === playback.activePostId);
+    if (startIdx < 0) { return; }
     playback.setQueue(
-      slice.map(p => {
+      allPosts.map(p => {
         const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
         return {
           postId: p.id,
@@ -293,8 +295,9 @@ export default function HomeScreen() {
           knownDurationSec: 0,
         };
       }),
+      startIdx,
+      'Home',
     );
-  // postsRef.current is always up-to-date; only re-run when activePostId changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, playback.setQueue]);
 

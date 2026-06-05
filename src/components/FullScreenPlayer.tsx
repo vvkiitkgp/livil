@@ -11,11 +11,9 @@ import {
   TouchableWithoutFeedback,
   Modal,
   ScrollView,
-  FlatList,
   Image,
   ActivityIndicator,
   InteractionManager,
-  ListRenderItemInfo,
 } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -23,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ClipRangeSlider from './ClipRangeSlider';
+import QueueList from './QueueList';
 import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike } from '../services/posts';
@@ -727,6 +726,7 @@ const modalSt = StyleSheet.create({
   newIcon: { color: COLORS.purpleLight, fontSize: 22, fontWeight: '300' },
 });
 
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FullScreenPlayer() {
@@ -740,7 +740,6 @@ export default function FullScreenPlayer() {
     unregisterHandlers,
     updatePosition,
     updateDuration,
-    queueRef,
     clipWindowRef,
   } = usePlayback();
 
@@ -777,7 +776,6 @@ export default function FullScreenPlayer() {
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [fsPaused, setFsPaused] = useState(true);
-  const [queueSnapshot, setQueueSnapshot] = useState<NowPlayingInfo[]>([]);
   const videoRef = useRef<VideoRef>(null);
   const initialSeekDone = useRef(false);
   // Saved PostCard handlers so we can restore them when the FS video player closes
@@ -856,14 +854,6 @@ export default function FullScreenPlayer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullScreenOpen]);
 
-  // ── Queue snapshot (current + upcoming) ──────────────────────────────────
-  useEffect(() => {
-    if (!isFullScreenOpen) { return; }
-    const all = queueRef.current;
-    const idx = all.findIndex(q => q.postId === nowPlaying?.postId);
-    setQueueSnapshot(idx >= 0 ? all.slice(idx) : all);
-  }, [isFullScreenOpen, queueRef, nowPlaying?.postId]);
-
   // ── Panel helpers ─────────────────────────────────────────────────────────
   const openTab = useCallback((tab: TabId) => {
     setActiveTab(tab);
@@ -926,27 +916,6 @@ export default function FullScreenPlayer() {
   });
 
   if (!nowPlaying) { return null; }
-
-  // ── Queue item ────────────────────────────────────────────────────────────
-  const renderQueueItem = ({ item }: ListRenderItemInfo<NowPlayingInfo>) => {
-    const isCurrent = item.postId === nowPlaying.postId;
-    return (
-      <View style={[styles.queueItem, isCurrent && styles.queueItemActive]}>
-        {item.coverArtUrl ? (
-          <Image source={{ uri: item.coverArtUrl }} style={styles.queueCover} />
-        ) : (
-          <View style={[styles.queueCover, styles.queueCoverFallback]} />
-        )}
-        <View style={styles.queueItemMeta}>
-          <Text style={[styles.queueItemTitle, isCurrent && styles.queueItemTitleActive]} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={styles.queueItemArtist} numberOfLines={1}>{item.artistName}</Text>
-        </View>
-        {isCurrent && <View style={styles.queueActiveDot} />}
-      </View>
-    );
-  };
 
   return (
     <Animated.View
@@ -1104,15 +1073,9 @@ export default function FullScreenPlayer() {
           </ScrollView>
         )}
         {activeTab === 'queue' && (
-          <FlatList
-            data={queueSnapshot}
-            keyExtractor={(item) => item.postId}
-            renderItem={renderQueueItem}
-            style={styles.panelScroll}
-            contentContainerStyle={{ paddingBottom: panelScrollPad }}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={<Text style={styles.placeholderText}>Queue is empty</Text>}
-          />
+          <View style={styles.panelScroll}>
+            <QueueList paddingBottom={panelScrollPad} />
+          </View>
         )}
         {activeTab === 'info' && (
           <View style={[styles.panelScroll, { paddingHorizontal: 0, paddingTop: 0 }]}>
@@ -1349,19 +1312,6 @@ const styles = StyleSheet.create({
   panelScroll: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
 
   placeholderText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 22 },
-
-  queueItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, paddingHorizontal: 4, gap: 12, borderRadius: 10,
-  },
-  queueItemActive: { backgroundColor: COLORS.purpleDim },
-  queueCover: { width: 44, height: 44, borderRadius: 8, backgroundColor: COLORS.card },
-  queueCoverFallback: { backgroundColor: COLORS.purpleDim },
-  queueItemMeta: { flex: 1, minWidth: 0 },
-  queueItemTitle: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
-  queueItemTitleActive: { color: COLORS.purpleLight },
-  queueItemArtist: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
-  queueActiveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.purple },
 
   actionRow: {
     position: 'absolute', left: 0, right: 0,

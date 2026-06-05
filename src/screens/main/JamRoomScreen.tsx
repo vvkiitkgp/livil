@@ -10,6 +10,7 @@ import {
   Alert,
   ScrollViewProps,
 } from 'react-native';
+import QueueList from '../../components/QueueList';
 import {
   KeyboardChatScrollView,
   KeyboardStickyView,
@@ -32,9 +33,7 @@ import {
   leaveJamRoom,
   endJamRoom,
   getMyJamPermissions,
-  getJamQueue,
   type JamPermissions,
-  type QueueItem,
 } from '../../services/jamRooms';
 import type { PresenceMember } from '../../services/jamRealtime';
 import {
@@ -132,10 +131,6 @@ export default function JamRoomScreen() {
   const [myUsername, setMyUsername] = useState('');
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
   const myIdRef = useRef('');
-
-  // Queue state
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [queueLoading, setQueueLoading] = useState(false);
 
   // Smooth seek bar position — both host and listener have local audio
   // (listener via GlobalAudioPlayer driven by the provider's setNowPlaying),
@@ -383,15 +378,9 @@ export default function JamRoomScreen() {
     }
   }, [chatText, sending, conversationId, myUsername, myAvatarUrl]);
 
-  const handleLoadQueue = useCallback(async () => {
-    setQueueLoading(true);
-    try {
-      const items = await getJamQueue(jamRoomId);
-      setQueueItems(items);
-    } finally {
-      setQueueLoading(false);
-    }
-  }, [jamRoomId]);
+  // Jam queue tab no longer uses the jam_queue table — it shows the same
+  // PlaybackContext queue as the FullScreenPlayer. QueueList reads from
+  // PlaybackContext internally; we just gate interactions by isHost.
 
   const insets = useSafeAreaInsets();
 
@@ -413,10 +402,7 @@ export default function JamRoomScreen() {
     setTab(t);
     tabRef.current = t;
     if (t === 'chat') { setChatUnread(0); }
-    if (t === 'queue' && queueItems.length === 0) {
-      void handleLoadQueue();
-    }
-  }, [queueItems, handleLoadQueue]);
+  }, []);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     const isMe = item.senderId === myIdRef.current;
@@ -431,28 +417,6 @@ export default function JamRoomScreen() {
       </View>
     );
   }, []);
-
-  const renderQueueItem = useCallback(({ item }: { item: QueueItem }) => (
-    <View style={styles.queueRow}>
-      {item.trackCoverArt ? (
-        <Image source={{ uri: item.trackCoverArt }} style={styles.queueCover} />
-      ) : (
-        <View style={styles.queueCoverPlaceholder}>
-          <Text style={styles.queueCoverText}>♪</Text>
-        </View>
-      )}
-      <View style={styles.queueInfo}>
-        <Text style={styles.queueTitle} numberOfLines={1}>{item.trackTitle ?? 'Unknown'}</Text>
-        <Text style={styles.queueArtist} numberOfLines={1}>{item.trackArtist ?? ''}</Text>
-        {item.suggestedByUsername && (
-          <Text style={styles.queueSuggester}>by @{item.suggestedByUsername}</Text>
-        )}
-      </View>
-      <View style={styles.queueUpvote}>
-        <Text style={styles.queueUpvoteCount}>▲ {item.upvotes}</Text>
-      </View>
-    </View>
-  ), []);
 
   // Track to display in the player panel: host uses their own nowPlaying;
   // listener uses what the host broadcast.
@@ -638,34 +602,15 @@ export default function JamRoomScreen() {
         </View>
       )}
 
-      {/* Queue tab */}
+      {/* Queue tab — same PlaybackContext queue as FullScreenPlayer */}
       {tab === 'queue' && (
         <View style={styles.flex}>
-          {queueLoading ? (
-            <View style={styles.centered}>
-              <ActivityIndicator color={COLORS.purple} />
-            </View>
-          ) : (
-            <FlatList
-              data={queueItems}
-              keyExtractor={item => item.id}
-              renderItem={renderQueueItem}
-              contentContainerStyle={queueItems.length === 0 ? styles.emptyContent : styles.queueList}
-              ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptyText}>Queue is empty.</Text>
-                  <Text style={styles.emptySubText}>Suggest a track to add it.</Text>
-                </View>
-              }
-            />
-          )}
-          <TouchableOpacity
-            style={styles.refreshBtn}
-            activeOpacity={0.8}
-            onPress={() => void handleLoadQueue()}
-          >
-            <Text style={styles.refreshBtnText}>↻ Refresh Queue</Text>
-          </TouchableOpacity>
+          <QueueList
+            canTap={isHost || permissions.can_change_track}
+            canSwipe={isHost || permissions.can_change_track}
+            canReorder={isHost || permissions.can_change_track}
+            paddingBottom={80}
+          />
         </View>
       )}
     </SafeAreaView>
@@ -810,35 +755,5 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.4 },
   sendBtnText: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
 
-  // Queue
-  queueList: { paddingBottom: 80 },
-  emptyContent: { flex: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
-  emptyText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600' },
-  emptySubText: { color: COLORS.textMuted, fontSize: 13, marginTop: 4 },
-  queueRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 10, gap: 12,
-  },
-  queueCover: { width: 44, height: 44, borderRadius: 6 },
-  queueCoverPlaceholder: {
-    width: 44, height: 44, borderRadius: 6,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  queueCoverText: { fontSize: 20 },
-  queueInfo: { flex: 1 },
-  queueTitle: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
-  queueArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
-  queueSuggester: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
-  queueUpvote: { alignItems: 'center' },
-  queueUpvoteCount: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700' },
-  refreshBtn: {
-    margin: 16,
-    backgroundColor: COLORS.purpleDim,
-    borderWidth: 1, borderColor: COLORS.purple,
-    borderRadius: 10, paddingVertical: 12,
-    alignItems: 'center',
-  },
-  refreshBtnText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '600' },
+  // Queue styles now handled by QueueList component
 });

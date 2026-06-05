@@ -22,6 +22,7 @@ export default function GlobalAudioPlayer() {
     registerHandlers,
     positionRef,
     queueRef,
+    currentIndexRef,
     playNext,
     playPrev,
   } = usePlayback();
@@ -68,15 +69,14 @@ export default function GlobalAudioPlayer() {
 
     if (!activePostId || activePostId === mine) { return; }
 
-    // Find the next track in the queue (it carries audioUrl from PlaylistScreen)
-    const next = queueRef.current.find(t => t.postId === activePostId);
+    const next = queueRef.current[currentIndexRef.current];
     if (next?.audioUrl) {
       setNowPlaying(next);
     } else {
       myPostIdRef.current = null;
       setPaused(true);
     }
-  }, [activePostId, queueRef, setNowPlaying]);
+  }, [activePostId, queueRef, currentIndexRef, setNowPlaying]);
 
   const handleLoad = useCallback((data: OnLoadData) => {
     updateDuration(data.duration ?? 0);

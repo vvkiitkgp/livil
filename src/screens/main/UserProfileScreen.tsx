@@ -113,12 +113,11 @@ export default function UserProfileScreen() {
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
-  // Only update the queue when the user explicitly plays a track from this
-  // profile — never on initial load. This prevents overwriting the queue
-  // when the user is just browsing this profile while something else plays.
   useEffect(() => {
     if (!playback.activePostId) { return; }
-    if (!posts.some(p => p.id === playback.activePostId)) { return; }
+    if (playback.playSourceRef.current !== 'user') { return; }
+    const startIdx = posts.findIndex(p => p.id === playback.activePostId);
+    if (startIdx < 0) { return; }
     playback.setQueue(
       posts.map(p => {
         const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
@@ -145,6 +144,8 @@ export default function UserProfileScreen() {
           knownDurationSec: 0,
         };
       }),
+      startIdx,
+      `profile:@${profile?.username ?? ''}`,
     );
   }, [playback.activePostId, posts, playback.setQueue]);
 
