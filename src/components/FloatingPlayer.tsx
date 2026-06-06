@@ -252,8 +252,15 @@ export default function FloatingPlayer() {
   const singleTap = Gesture.Tap().numberOfTaps(1).runOnJS(true)
     .onEnd((_e, ok) => {
       if (!ok || jamLocked) { return; }
-      if (activePostId) { handlersRef.current?.pause(); }
-      else { handlersRef.current?.play(); }
+      const hasHandlers = !!handlersRef.current;
+      console.log(`[LIVIL][FP] tap: activePostId=${activePostId} hasHandlers=${hasHandlers}`);
+      if (activePostId) {
+        console.log('[LIVIL][FP] calling pause()');
+        handlersRef.current?.pause();
+      } else {
+        console.log('[LIVIL][FP] calling play()');
+        handlersRef.current?.play();
+      }
     });
 
   const tapGesture = Gesture.Exclusive(doubleTap, singleTap);
@@ -272,10 +279,10 @@ export default function FloatingPlayer() {
       circleY.setValue(Math.max(-MAX_DRAG_Y_UP, Math.min(MAX_DRAG_Y_DOWN, e.translationY)));
       const isH = Math.abs(e.translationX) > Math.abs(e.translationY);
       if (isH) {
-        if (e.translationX >= 0) { stopRewind(); handlersRef.current?.setRate(RATE_FORWARD); }
+        if (e.translationX >= 0) { stopRewind(); console.log('[LIVIL][FP] dragging → forward 2x'); handlersRef.current?.setRate(RATE_FORWARD); }
         else {
           handlersRef.current?.setRate(1.0);
-          if (rewindTimer.current === null && activePostId !== null) { startRewind(); }
+          if (rewindTimer.current === null && activePostId !== null) { console.log('[LIVIL][FP] dragging ← rewind'); startRewind(); }
         }
       } else { stopRewind(); handlersRef.current?.setRate(1.0); }
     })
@@ -283,7 +290,10 @@ export default function FloatingPlayer() {
       stopRewind(); handlersRef.current?.setRate(1.0); springBack();
       if (isFullScreenOpen && (e.translationY > CLOSE_FS_DIST || e.velocityY > CLOSE_FS_VEL)) { closeFullScreenPlayer(); return; }
       if (!isFullScreenOpen && (e.translationY < -OPEN_FS_DIST || (e.velocityY < -OPEN_FS_VEL && e.translationY < -20))) { openFullScreenPlayer(); return; }
-      if (Math.abs(e.velocityX) > SNAP_VELOCITY) { if (e.velocityX > 0) { playNext(); } else { playPrev(); } }
+      if (Math.abs(e.velocityX) > SNAP_VELOCITY) {
+        if (e.velocityX > 0) { console.log('[LIVIL][FP] swipe → playNext'); playNext(); }
+        else { console.log('[LIVIL][FP] swipe ← playPrev'); playPrev(); }
+      }
     })
     .onFinalize(() => {
       stopRewind(); handlersRef.current?.setRate(1.0); springBack();
