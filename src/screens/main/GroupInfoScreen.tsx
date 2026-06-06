@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -26,6 +25,8 @@ import {
 } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
+import { useToast } from '../../contexts/ToastContext';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -65,6 +66,7 @@ export default function GroupInfoScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { conversationId } = route.params;
+  const { showToast } = useToast();
 
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +77,9 @@ export default function GroupInfoScreen() {
   const [saving, setSaving] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   // Add-member picker state
   const [showPicker, setShowPicker] = useState(false);
@@ -122,62 +127,53 @@ export default function GroupInfoScreen() {
     try {
       await updateGroupName(conversationId, trimmed);
       setSavedName(trimmed);
-    } catch {
-      Alert.alert('Error', 'Could not update group name.');
+    } catch (err) {
+      console.warn('[group] updateGroupName failed', err);
+      showToast("Couldn't update group name.", { kind: 'error' });
       setGroupName(savedName);
     } finally {
       setSaving(false);
     }
-  }, [groupName, savedName, conversationId]);
+  }, [groupName, savedName, conversationId, showToast]);
 
   const handleRemoveMember = useCallback((member: GroupMember) => {
-    Alert.alert(
-      'Remove member',
-      `Remove ${member.displayName || member.username} from the group?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setRemovingId(member.userId);
-            try {
-              await removeGroupMember(conversationId, member.userId);
-              setMembers(prev => prev.filter(m => m.userId !== member.userId));
-            } catch {
-              Alert.alert('Error', 'Could not remove member.');
-            } finally {
-              setRemovingId(null);
-            }
-          },
-        },
-      ],
-    );
-  }, [conversationId]);
+    setRemoveTarget(member);
+  }, []);
+
+  const confirmRemoveMember = useCallback(async () => {
+    if (!removeTarget) { return; }
+    const member = removeTarget;
+    setRemovingId(member.userId);
+    try {
+      await removeGroupMember(conversationId, member.userId);
+      setMembers(prev => prev.filter(m => m.userId !== member.userId));
+      setRemoveTarget(null);
+    } catch (err) {
+      console.warn('[group] removeGroupMember failed', err);
+      showToast("Couldn't remove member.", { kind: 'error' });
+      setRemoveTarget(null);
+    } finally {
+      setRemovingId(null);
+    }
+  }, [removeTarget, conversationId, showToast]);
 
   const handleLeave = useCallback(() => {
-    Alert.alert(
-      'Leave group',
-      'Are you sure you want to leave this group?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave',
-          style: 'destructive',
-          onPress: async () => {
-            setLeaving(true);
-            try {
-              await leaveConversation(conversationId);
-              navigation.navigate('Inbox');
-            } catch {
-              Alert.alert('Error', 'Could not leave the group.');
-              setLeaving(false);
-            }
-          },
-        },
-      ],
-    );
-  }, [conversationId, navigation]);
+    setLeaveOpen(true);
+  }, []);
+
+  const confirmLeave = useCallback(async () => {
+    setLeaving(true);
+    try {
+      await leaveConversation(conversationId);
+      setLeaveOpen(false);
+      navigation.navigate('Inbox');
+    } catch (err) {
+      console.warn('[group] leaveConversation failed', err);
+      showToast("Couldn't leave the group.", { kind: 'error' });
+      setLeaving(false);
+      setLeaveOpen(false);
+    }
+  }, [conversationId, navigation, showToast]);
 
   const loadFriends = useCallback(async () => {
     if (friendsLoading || friends.length > 0) {
@@ -237,12 +233,13 @@ export default function GroupInfoScreen() {
       setMembers(prev => [...prev, newMember]);
       setFriends(prev => prev.filter(f => f.id !== friend.id));
       setShowPicker(false);
-    } catch {
-      Alert.alert('Error', 'Could not add member.');
+    } catch (err) {
+      console.warn('[group] addGroupMember failed', err);
+      showToast("Couldn't add member.", { kind: 'error' });
     } finally {
       setAddingId(null);
     }
-  }, [conversationId]);
+  }, [conversationId, showToast]);
 
   const filteredFriends = friendQuery.trim()
     ? friends.filter(f =>
@@ -431,6 +428,36 @@ export default function GroupInfoScreen() {
           }
         </TouchableOpacity>
       </View>
+
+      <ConfirmActionModal
+        visible={!!removeTarget}
+        title="Remove member?"
+        message={`Remove ${removeTarget?.displayName || removeTarget?.username || 'this member'} from the group?`}
+        glyph="−"
+        tone="destructive"
+        confirmLabel="Remove"
+        cancelLabel="Keep in group"
+        busy={removingId === removeTarget?.userId}
+        onConfirm={confirmRemoveMember}
+        onCancel={() => setRemoveTarget(null)}
+      />
+
+      <ConfirmActionModal
+        visible={leaveOpen}
+        title="Leave this group?"
+        message="You'll stop receiving messages from this group."
+        bullets={[
+          'Past messages stay visible only to remaining members',
+          'You can be added back by any admin',
+        ]}
+        glyph="↪"
+        tone="destructive"
+        confirmLabel="Leave group"
+        cancelLabel="Stay in group"
+        busy={leaving}
+        onConfirm={confirmLeave}
+        onCancel={() => setLeaveOpen(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
   ScrollViewProps,
 } from 'react-native';
 import QueueList from '../../components/QueueList';
@@ -26,6 +25,8 @@ import { COLORS } from '../../theme/colors';
 import FormInput from '../../components/FormInput';
 import SeekBar from '../../components/SeekBar';
 import AddBadge from '../../components/AddBadge';
+import JamExitModal from '../../components/JamExitModal';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { useJamRealtime } from '../../contexts/JamRealtimeContext';
@@ -108,6 +109,9 @@ export default function JamRoomScreen() {
   const [chatText, setChatText] = useState('');
   const [sending, setSending] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [exitModalOpen, setExitModalOpen] = useState(false);
+  const [exitInFlight, setExitInFlight] = useState(false);
+  const [jamEndedOpen, setJamEndedOpen] = useState(false);
 
   // Collapse the player panel while the keyboard is open so the chat list
   // gets the full vertical space (player UI is fixed-height and would otherwise
@@ -296,11 +300,9 @@ export default function JamRoomScreen() {
       return;
     }
     if (!activeJam && !isHost) {
-      Alert.alert('Jam Ended', 'The host has ended this session.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      setJamEndedOpen(true);
     }
-  }, [activeJam, isHost, navigation]);
+  }, [activeJam, isHost]);
 
   // NOTE: no unmount-time leaveJamRoom. The Android back button just navigates
   // back, the user stays in the jam (JamBanner gives them a way back in).
@@ -326,35 +328,33 @@ export default function JamRoomScreen() {
   }, [permissions, handlersRef]);
 
   const handleEnd = useCallback(() => {
-    Alert.alert(
-      isHost ? 'End Jam Room?' : 'Leave Jam Room?',
-      isHost
-        ? 'This will end the session for all members.'
-        : 'You will leave the current jam room.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: isHost ? 'End' : 'Leave',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (isHost) {
-                await endJamRoom(jamRoomId, conversationId);
-              } else {
-                await leaveJamRoom(jamRoomId);
-              }
-            } catch {
-              // Non-fatal — still clear local state.
-            }
-            // Provider sees activeJam null → unsubscribes channel, clears
-            // listener playback, unlocks floating player.
-            clearActiveJam();
-            navigation.goBack();
-          },
-        },
-      ],
-    );
-  }, [isHost, jamRoomId, conversationId, clearActiveJam, navigation]);
+    setExitModalOpen(true);
+  }, []);
+
+  const handleExitCancel = useCallback(() => {
+    if (exitInFlight) { return; }
+    setExitModalOpen(false);
+  }, [exitInFlight]);
+
+  const handleExitConfirm = useCallback(async () => {
+    if (exitInFlight) { return; }
+    setExitInFlight(true);
+    try {
+      if (isHost) {
+        await endJamRoom(jamRoomId, conversationId);
+      } else {
+        await leaveJamRoom(jamRoomId);
+      }
+    } catch {
+      // Non-fatal — still clear local state.
+    }
+    // Provider sees activeJam null → unsubscribes channel, clears
+    // listener playback, unlocks floating player.
+    clearActiveJam();
+    setExitInFlight(false);
+    setExitModalOpen(false);
+    navigation.goBack();
+  }, [exitInFlight, isHost, jamRoomId, conversationId, clearActiveJam, navigation]);
 
   const handleSend = useCallback(async () => {
     const body = chatText.trim();
@@ -641,6 +641,29 @@ export default function JamRoomScreen() {
           />
         </View>
       )}
+
+      <JamExitModal
+        visible={exitModalOpen}
+        isHost={isHost}
+        busy={exitInFlight}
+        onConfirm={handleExitConfirm}
+        onCancel={handleExitCancel}
+      />
+
+      <ConfirmActionModal
+        visible={jamEndedOpen}
+        title="Jam ended"
+        message="The host has ended this session."
+        glyph="♪"
+        tone="primary"
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={() => {
+          setJamEndedOpen(false);
+          navigation.goBack();
+        }}
+        onCancel={() => setJamEndedOpen(false)}
+      />
     </SafeAreaView>
   );
 }

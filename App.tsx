@@ -7,6 +7,7 @@ import {KeyboardProvider} from 'react-native-keyboard-controller';
 import {startMapper, stopMapper} from 'react-native-reanimated';
 import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
+import {ToastProvider} from './src/contexts/ToastContext';
 import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
 
 const AppTheme = {
@@ -61,7 +62,9 @@ export default function App(): React.JSX.Element {
                 setCurrentRoute({ name: route.name, params: route.params as Record<string, unknown> | undefined });
               }
             }}>
-            <RootNavigator />
+            <ToastProvider>
+              <RootNavigator />
+            </ToastProvider>
           </NavigationContainer>
         </PlaybackProvider>
         </KeyboardProvider>

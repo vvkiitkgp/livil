@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   FlatList,
   RefreshControl,
   ActivityIndicator,
@@ -18,7 +17,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
+import { useToast } from '../../contexts/ToastContext';
 import {
   listPostsForUser,
   getProfileStats,
@@ -46,11 +47,8 @@ function linkHost(url: string): string {
   }
 }
 
-function openLink(url: string): void {
-  const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-  Linking.openURL(normalized).catch(() => {
-    Alert.alert("Couldn't open link", normalized);
-  });
+function normalizeUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
 }
 
 const VISIBLE_LINK_CHIPS = 5;
@@ -86,6 +84,14 @@ export default function ProfileScreen() {
   const playback = usePlayback();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { showToast } = useToast();
+
+  const openLink = useCallback((url: string) => {
+    const normalized = normalizeUrl(url);
+    Linking.openURL(normalized).catch(() => {
+      showToast("Couldn't open that link.", { kind: 'error' });
+    });
+  }, [showToast]);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
@@ -100,6 +106,9 @@ export default function ProfileScreen() {
   const [error, setError] = useState('');
 
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [signOutBusy, setSignOutBusy] = useState(false);
+  const [allLinksOpen, setAllLinksOpen] = useState(false);
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   useEffect(() => {
@@ -290,18 +299,17 @@ export default function ProfileScreen() {
   }, [endReached, fetchPosts, loadingMore, posts, tab]);
 
   const handleSignOut = useCallback(() => {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          playback.pauseAll();
-          await supabase.auth.signOut();
-        },
-      },
-    ]);
-  }, [playback]);
+    setSignOutOpen(true);
+  }, []);
+
+  const confirmSignOut = useCallback(async () => {
+    if (signOutBusy) { return; }
+    setSignOutBusy(true);
+    playback.pauseAll();
+    await supabase.auth.signOut();
+    setSignOutBusy(false);
+    setSignOutOpen(false);
+  }, [playback, signOutBusy]);
 
   // Build the list data: a sentinel item for the sticky tab bar, then either
   // posts or an empty/loading placeholder. We can't lean on ListEmptyComponent
@@ -435,12 +443,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={styles.linkChip}
                   activeOpacity={0.7}
-                  onPress={() => {
-                    Alert.alert(
-                      'All links',
-                      profile.links.join('\n'),
-                    );
-                  }}
+                  onPress={() => setAllLinksOpen(true)}
                 >
                   <Text style={styles.linkChipText}>
                     +{profile.links.length - VISIBLE_LINK_CHIPS} more
@@ -538,6 +541,37 @@ export default function ProfileScreen() {
         onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 48 }]}
+      />
+
+      <ConfirmActionModal
+        visible={signOutOpen}
+        title="Sign out of Livil?"
+        message="You'll need your password to sign back in."
+        bullets={[
+          'Playback stops on this device',
+          'Push notifications pause until you sign in again',
+          'Your music and friends stay safe',
+        ]}
+        glyph="↪"
+        tone="destructive"
+        confirmLabel="Sign out"
+        cancelLabel="Stay signed in"
+        busy={signOutBusy}
+        onConfirm={confirmSignOut}
+        onCancel={() => setSignOutOpen(false)}
+      />
+
+      <ConfirmActionModal
+        visible={allLinksOpen}
+        title="All links"
+        message={`${profile?.links.length ?? 0} link${(profile?.links.length ?? 0) === 1 ? '' : 's'} on this profile`}
+        bullets={profile?.links.map(linkHost) ?? []}
+        glyph="↗"
+        tone="primary"
+        confirmLabel="Close"
+        cancelLabel="Dismiss"
+        onConfirm={() => setAllLinksOpen(false)}
+        onCancel={() => setAllLinksOpen(false)}
       />
     </SafeAreaView>
   );
