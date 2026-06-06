@@ -73,6 +73,16 @@ type PlaybackContextValue = {
   registerHandlers: (handlers: PlayerHandlers) => void;
   unregisterHandlers: () => void;
 
+  // --- buffering state (re-rendering — for UI spinners) ---
+  isBuffering: boolean;
+  setIsBuffering: (v: boolean) => void;
+  isReadyForDisplay: boolean;
+  setIsReadyForDisplay: (v: boolean) => void;
+
+  // --- engine driving flag (true when PlaybackEngine owns audio output) ---
+  engineDriving: boolean;
+  setEngineDriving: (v: boolean) => void;
+
   // --- queue ---
   setQueue: (posts: NowPlayingInfo[], startIndex: number, source: string) => void;
   playNext: () => void;
@@ -130,6 +140,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [jamLocked, setJamLockedState] = useState(false);
   const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
+  const [isBuffering, setIsBufferingState] = useState(false);
+  const [isReadyForDisplay, setIsReadyForDisplayState] = useState(false);
+  const [engineDriving, setEngineDrivingState] = useState(false);
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
@@ -150,6 +163,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const requestPlay = useCallback((postId: string) => {
     if (activeRef.current === postId) { return; }
+    console.log(`[LIVIL][CTX] requestPlay postId=${postId}`);
     playSourceRef.current = 'user';
     activeRef.current = postId;
     setActivePostId(postId);
@@ -157,6 +171,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const reportPaused = useCallback((postId: string) => {
     if (activeRef.current === postId) {
+      console.log(`[LIVIL][CTX] reportPaused postId=${postId}`);
       activeRef.current = null;
       setActivePostId(null);
     }
@@ -172,7 +187,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- now playing ---
 
   const setNowPlaying = useCallback((info: NowPlayingInfo) => {
-    positionRef.current = 0;
+    const clipStart = (info.clipStartSec !== null && info.clipEndSec !== null)
+      ? info.clipStartSec : 0;
+    console.log(`[LIVIL][CTX] setNowPlaying postId=${info.postId} title="${info.title}" kind=${info.mediaKind} startAt=${clipStart}s`);
+    positionRef.current = clipStart;
     durationRef.current = info.knownDurationSec ?? 0;
     clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
       ? { start: info.clipStartSec, end: info.clipEndSec }
@@ -200,11 +218,27 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- handlers ---
 
   const registerHandlers = useCallback((handlers: PlayerHandlers) => {
+    console.log('[LIVIL][CTX] registerHandlers called');
     handlersRef.current = handlers;
   }, []);
 
   const unregisterHandlers = useCallback(() => {
+    console.log('[LIVIL][CTX] unregisterHandlers called');
     handlersRef.current = null;
+  }, []);
+
+  // --- buffering / engine ---
+
+  const setIsBuffering = useCallback((v: boolean) => {
+    setIsBufferingState(v);
+  }, []);
+
+  const setIsReadyForDisplay = useCallback((v: boolean) => {
+    setIsReadyForDisplayState(v);
+  }, []);
+
+  const setEngineDriving = useCallback((v: boolean) => {
+    setEngineDrivingState(v);
   }, []);
 
   // --- queue ---
@@ -420,6 +454,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       handlersRef,
       registerHandlers,
       unregisterHandlers,
+      isBuffering,
+      setIsBuffering,
+      isReadyForDisplay,
+      setIsReadyForDisplay,
+      engineDriving,
+      setEngineDriving,
       setQueue,
       playNext,
       playPrev,
@@ -462,6 +502,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       updateDuration,
       registerHandlers,
       unregisterHandlers,
+      isBuffering,
+      setIsBuffering,
+      isReadyForDisplay,
+      setIsReadyForDisplay,
+      engineDriving,
+      setEngineDriving,
       setQueue,
       playNext,
       playPrev,

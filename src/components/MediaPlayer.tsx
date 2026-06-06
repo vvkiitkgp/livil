@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { View, StyleSheet, Image, Pressable, Text, Platform, type StyleProp, type ViewStyle } from 'react-native';
+import { View, StyleSheet, Image, Pressable, Text, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import Video, { type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -82,6 +82,8 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   const videoRef = useRef<VideoRef>(null);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [readyForDisplay, setReadyForDisplay] = useState(false);
   // Natural aspect ratio of the video/cover — updated on first load.
   // Defaults to 1 (square) until the media reports its real dimensions.
   const [naturalAspect, setNaturalAspect] = useState(1);
@@ -196,6 +198,22 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     playback.reportPaused(postId);
   }, [playback, postId]);
 
+  // Debounce buffering state to avoid overlay flashing on brief ExoPlayer rebuffer events.
+  const bufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleBuffer = useCallback((e: { isBuffering: boolean }) => {
+    if (bufferTimerRef.current) { clearTimeout(bufferTimerRef.current); bufferTimerRef.current = null; }
+    if (e.isBuffering) {
+      // Only show buffering overlay after 300ms of continuous buffering
+      bufferTimerRef.current = setTimeout(() => { setBuffering(true); }, 300);
+    } else {
+      setBuffering(false);
+    }
+  }, []);
+
+  const handleReadyForDisplay = useCallback(() => {
+    setReadyForDisplay(true);
+  }, []);
+
   const source = useMemo(() => {
     if (media.kind === 'audio') {return { uri: media.audioUrl };}
     return { uri: media.videoUrl };
@@ -219,8 +237,6 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         rate={effectivePaused ? 0 : rate}
         {...(Platform.OS === 'android'
           ? {
-              // Paused/off-screen ExoPlayers still request audio focus by default;
-              // dozens mount when multiple tabs/lists render and they preempt real playback.
               disableFocus: effectivePaused,
             }
           : {})}
@@ -230,6 +246,8 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         onProgress={handleProgress}
         onEnd={handleEnd}
         onError={handleError}
+        onBuffer={handleBuffer}
+        onReadyForDisplay={handleReadyForDisplay}
         progressUpdateInterval={250}
         playInBackground={media.kind === 'audio'}
         playWhenInactive={media.kind === 'audio'}
@@ -299,7 +317,14 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
       {!loaded && !errored ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
-          <View style={styles.loadingDot} />
+          <ActivityIndicator size="small" color={COLORS.purpleLight} />
+        </View>
+      ) : null}
+
+      {/* Mid-stream rebuffer indicator — only after initial load, during playback */}
+      {loaded && buffering && !effectivePaused ? (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ActivityIndicator size="small" color={COLORS.purpleLight} />
         </View>
       ) : null}
     </Pressable>
@@ -386,12 +411,5 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  loadingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.purpleLight,
-    opacity: 0.6,
   },
 });

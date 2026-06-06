@@ -139,14 +139,23 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   }, [playback.activePostId, post.id]);
 
   // Auto-start when the global queue navigation lands on this post.
+  // Skip when FullScreenPlayer is open AND the track is video — FS has its own
+  // <Video> for video tracks and PostCard registering handlers would overwrite
+  // the FS handlers. For audio tracks, PostCard must still play since FS just
+  // shows cover art and relies on PostCard's <Video> for audio output.
   useEffect(() => {
     if (playback.pendingPlayId === post.id) {
-      setPaused(false);
+      const isVideoAndFsOpen = playback.isFullScreenOpen && post.track.mediaKind === 'video';
+      if (!isVideoAndFsOpen) {
+        setPaused(false);
+      } else {
+        console.log(`[LIVIL][PC] skipping auto-play: FS is open for video, postId=${post.id}`);
+      }
       playback.clearPendingPlay();
     }
   // clearPendingPlay is stable (useCallback []); safe to use instead of full playback object.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay]);
+  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay, playback.isFullScreenOpen, post.track.mediaKind]);
 
   // Register / update handlers whenever paused state changes.
   // Use stable method refs (not the full `playback` object) to prevent a render
@@ -182,15 +191,26 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         originalPostId: post.originalPostId,
         knownDurationSec: duration,
       });
+      console.log(`[LIVIL][PC] registering handlers for postId=${post.id}`);
       playback.registerHandlers({
-        play: () => setPaused(false),
-        pause: () => setPaused(true),
+        play: () => { console.log(`[LIVIL][PC] handler PLAY postId=${post.id}`); setPaused(false); },
+        pause: () => { console.log(`[LIVIL][PC] handler PAUSE postId=${post.id}`); setPaused(true); },
         seek: (s: number) => {
+          console.log(`[LIVIL][PC] handler SEEK to=${s.toFixed(1)}s`);
           setSeekTo(s);
           setTimeout(() => setSeekTo(null), 0);
         },
         setRate: (r: number) => setRate(r),
       });
+      // Seek the MediaPlayer to the correct start position. setNowPlaying (above)
+      // resets positionRef to clipStart or 0, but the ExoPlayer instance may still
+      // be at a stale position from a previous play session (e.g. the user seeked
+      // to 29.7s, paused, played another track, then auto-advanced back).
+      // Use playerRef.current?.seek() directly — setSeekTo(0) + setTimeout(null)
+      // gets swallowed by React 19 batching and the effect never fires.
+      const startPos = playback.positionRef.current;
+      console.log(`[LIVIL][PC] seeking to startPos=${startPos.toFixed(1)}s`);
+      playerRef.current?.seek(Math.max(0, startPos));
     }
     // Do not clear nowPlaying on pause — the mini-player stays visible.
   // Primitive deps only; object deps (post.author) replaced with their primitive
@@ -259,9 +279,19 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
 
   const handleProgress = useCallback((seconds: number) => {
     setPosition(seconds);
-    playback.updatePosition(seconds);
+    // Only update the global position when this PostCard is the active player.
+    // Without this guard, a pausing PostCard's final onProgress fires AFTER
+    // setNowPlaying reset positionRef to 0 for the new track, overwriting it
+    // with the old track's position — causing the new track to seek mid-song.
+    if (playback.isActive(post.id)) {
+      playback.updatePosition(seconds);
+    }
     const cw = playback.clipWindowRef.current;
-    if (cw && seconds >= cw.end && !clipEndFiredRef.current) {
+    // Only trigger clip-end advance when this PostCard is the active player.
+    // Without this guard, a freshly-started PostCard whose first onProgress
+    // fires before clipWindowRef resets can read stale clip bounds from the
+    // PREVIOUS track and immediately call playNext(), double-advancing.
+    if (cw && seconds >= cw.end && !clipEndFiredRef.current && playback.isActive(post.id)) {
       clipEndFiredRef.current = true;
       if (playback.repeatMode === 'one') {
         // Loop single: jump back to clip start and keep playing.
@@ -277,7 +307,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         playback.playNext();
       }
     }
-  }, [playback]);
+  }, [playback, post.id]);
 
   const handleLoaded = useCallback((seconds: number) => {
     setDuration(seconds);

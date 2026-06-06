@@ -732,6 +732,7 @@ const modalSt = StyleSheet.create({
 export default function FullScreenPlayer() {
   const {
     nowPlaying,
+    activePostId,
     isFullScreenOpen,
     closeFullScreenPlayer,
     positionRef,
@@ -741,6 +742,9 @@ export default function FullScreenPlayer() {
     updatePosition,
     updateDuration,
     clipWindowRef,
+    requestPlay,
+    reportPaused,
+    playNext,
   } = usePlayback();
 
   const insets = useSafeAreaInsets();
@@ -780,6 +784,10 @@ export default function FullScreenPlayer() {
   const initialSeekDone = useRef(false);
   // Saved PostCard handlers so we can restore them when the FS video player closes
   const savedHandlersRef = useRef<PlayerHandlers | null>(null);
+  // Guard: prevents re-saving PostCard handlers on track changes within FS
+  const fsOpenRef = useRef(false);
+  // Guard: prevents stale onProgress updates from finishing video
+  const fsVideoPostIdRef = useRef<string | null>(null);
 
   // ── Open / close ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -825,34 +833,64 @@ export default function FullScreenPlayer() {
   useEffect(() => {
     if (!nowPlaying || nowPlaying.mediaKind !== 'video') { return; }
     if (isFullScreenOpen) {
-      // Save the PostCard's handlers before overwriting them so we can restore
-      // them when the FS closes — otherwise handlersRef ends up null and the
-      // floating player can no longer control playback.
-      savedHandlersRef.current = handlersRef.current;
+      console.log(`[LIVIL][FS] handoff OPEN postId=${nowPlaying.postId} fsOpenRef=${fsOpenRef.current}`);
+      // Only save PostCard handlers on the initial open, not on track changes within FS
+      if (!fsOpenRef.current) {
+        savedHandlersRef.current = handlersRef.current;
+      }
+      fsOpenRef.current = true;
+      fsVideoPostIdRef.current = nowPlaying.postId;
       initialSeekDone.current = false;
       handlersRef.current?.pause();
       setFsPaused(false);
+      requestPlay(nowPlaying.postId);
       registerHandlers({
-        play: () => setFsPaused(false),
-        pause: () => setFsPaused(true),
-        seek: (s: number) => { positionRef.current = s; videoRef.current?.seek(s); },
+        play: () => { console.log('[LIVIL][FS] handler PLAY'); setFsPaused(false); requestPlay(nowPlaying.postId); },
+        pause: () => { console.log('[LIVIL][FS] handler PAUSE'); setFsPaused(true); reportPaused(nowPlaying.postId); },
+        seek: (s: number) => {
+          console.log(`[LIVIL][FS] handler SEEK to=${s.toFixed(1)}s`);
+          positionRef.current = s;
+          videoRef.current?.seek(s);
+        },
         setRate: () => {},
       });
+      console.log(`[LIVIL][FS] handlers registered for postId=${nowPlaying.postId}`);
     } else {
+      console.log('[LIVIL][FS] handoff CLOSE');
+      fsOpenRef.current = false;
+      fsVideoPostIdRef.current = null;
       setFsPaused(true);
       if (savedHandlersRef.current) {
-        // Restore the PostCard's handlers and resume its player so the floating
-        // player can control playback again after the FS is dismissed.
         const handlers = savedHandlersRef.current;
         savedHandlersRef.current = null;
         registerHandlers(handlers);
         handlers.play();
       } else {
         unregisterHandlers();
+        console.log('[LIVIL][FS] no saved handlers, unregistered');
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullScreenOpen]);
+  }, [isFullScreenOpen, nowPlaying?.postId]);
+
+  // Track postId changes for fsVideoPostIdRef guard (needed for next/prev within FS)
+  useEffect(() => {
+    if (nowPlaying?.mediaKind === 'video' && isFullScreenOpen) {
+      fsVideoPostIdRef.current = nowPlaying.postId;
+    }
+  }, [nowPlaying?.postId, nowPlaying?.mediaKind, isFullScreenOpen]);
+
+  // Handle next/prev track changes within FS — detect when nowPlaying changes
+  // to a different track while FS is open and advance the FS video.
+  useEffect(() => {
+    if (!isFullScreenOpen || !nowPlaying) { return; }
+    if (nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl) {
+      // FS will re-render with the new source; the handoff effect above handles
+      // handler registration. Log for debugging.
+      console.log(`[LIVIL][FS] next/prev advancing to postId=${nowPlaying.postId} title="${nowPlaying.title}"`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlaying?.postId]);
 
   // ── Panel helpers ─────────────────────────────────────────────────────────
   const openTab = useCallback((tab: TabId) => {
@@ -888,17 +926,29 @@ export default function FullScreenPlayer() {
 
   // ── Video callbacks ───────────────────────────────────────────────────────
   const handleVideoLoad = useCallback((data: OnLoadData) => {
-    updateDuration(data.duration ?? 0);
+    const dur = data.duration ?? 0;
+    console.log(`[LIVIL][FS] onLoad duration=${dur.toFixed(1)}s`);
+    updateDuration(dur);
     if (!initialSeekDone.current) {
       initialSeekDone.current = true;
       const pos = positionRef.current;
-      if (pos > 0) { videoRef.current?.seek(pos); }
+      if (pos > 0 && pos < dur) {
+        console.log(`[LIVIL][FS] seeking to saved position ${pos.toFixed(1)}s`);
+        videoRef.current?.seek(pos);
+      } else if (pos >= dur) {
+        // Stale position from a previous play — reset to start
+        positionRef.current = 0;
+      }
     }
   }, [updateDuration, positionRef]);
 
   const handleVideoProgress = useCallback(
-    (data: OnProgressData) => { updatePosition(data.currentTime ?? 0); },
-    [updatePosition],
+    (data: OnProgressData) => {
+      if (fsVideoPostIdRef.current && activePostId === fsVideoPostIdRef.current) {
+        updatePosition(data.currentTime ?? 0);
+      }
+    },
+    [updatePosition, activePostId],
   );
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -943,14 +993,33 @@ export default function FullScreenPlayer() {
             paused={fsPaused}
             onLoad={handleVideoLoad}
             onProgress={handleVideoProgress}
-            onEnd={() => setFsPaused(true)}
+            onEnd={() => {
+              console.log('[LIVIL][FS] onEnd — track finished, calling playNext');
+              setFsPaused(true);
+              playNext();
+            }}
+            onBuffer={({ isBuffering: buf }) => {
+              console.log(`[LIVIL][FS] onBuffer isBuffering=${buf}`);
+            }}
             progressUpdateInterval={250}
             playInBackground={false}
             playWhenInactive={false}
             ignoreSilentSwitch="ignore"
             muted={false}
             volume={1.0}
-            {...(Platform.OS === 'android' ? { disableFocus: fsPaused } : {})}
+            {...(Platform.OS === 'android'
+              ? {
+                  disableFocus: fsPaused,
+                  bufferConfig: {
+                    minBufferMs: 15_000,
+                    maxBufferMs: 50_000,
+                    bufferForPlaybackMs: 2_500,
+                    bufferForPlaybackAfterRebufferMs: 5_000,
+                    backBufferDurationMs: 10_000,
+                    cacheSizeMB: 200,
+                  },
+                }
+              : { preferredForwardBufferDuration: 20 })}
           />
         ) : nowPlaying.coverArtUrl ? (
           <Image source={{ uri: nowPlaying.coverArtUrl }} style={styles.albumArt} resizeMode="cover" />

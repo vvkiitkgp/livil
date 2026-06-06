@@ -1,6 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { usePlayback } from '../contexts/PlaybackContext';
+
+const AUDIO_BUFFER_CONFIG = {
+  minBufferMs: 15_000,
+  maxBufferMs: 50_000,
+  bufferForPlaybackMs: 2_500,
+  bufferForPlaybackAfterRebufferMs: 5_000,
+  backBufferDurationMs: 10_000,
+  cacheSizeMB: 200,
+};
 
 /**
  * Hidden audio player that activates whenever nowPlaying.audioUrl is set
@@ -25,6 +35,7 @@ export default function GlobalAudioPlayer() {
     currentIndexRef,
     playNext,
     playPrev,
+    engineDriving,
   } = usePlayback();
 
   const videoRef = useRef<VideoRef>(null);
@@ -37,12 +48,14 @@ export default function GlobalAudioPlayer() {
   useEffect(() => {
     const url = nowPlaying?.audioUrl;
     if (url && nowPlaying?.mediaKind === 'audio') {
+      console.log(`[LIVIL][GAP] activating for postId=${nowPlaying.postId}`);
       myPostIdRef.current = nowPlaying.postId;
       setPaused(false);
       registerHandlers({
-        play:    () => setPaused(false),
-        pause:   () => setPaused(true),
+        play:    () => { console.log('[LIVIL][GAP] handler PLAY'); setPaused(false); },
+        pause:   () => { console.log('[LIVIL][GAP] handler PAUSE'); setPaused(true); },
         seek:    (s: number) => {
+          console.log(`[LIVIL][GAP] handler SEEK to=${s.toFixed(1)}s`);
           positionRef.current = s;
           videoRef.current?.seek(s);
         },
@@ -92,8 +105,8 @@ export default function GlobalAudioPlayer() {
     playNext();
   }, [playNext]);
 
-  // Only render (and stream) when we have an audio URL to play
-  if (!nowPlaying?.audioUrl || nowPlaying.mediaKind !== 'audio') {
+  // Don't render when PlaybackEngine is handling playback, or no audio URL
+  if (engineDriving || !nowPlaying?.audioUrl || nowPlaying.mediaKind !== 'audio') {
     return null;
   }
 
@@ -111,6 +124,9 @@ export default function GlobalAudioPlayer() {
       ignoreSilentSwitch="ignore"
       muted={false}
       volume={1.0}
+      {...(Platform.OS === 'android'
+        ? { bufferConfig: AUDIO_BUFFER_CONFIG }
+        : { preferredForwardBufferDuration: 20 })}
       style={{ width: 0, height: 0, position: 'absolute' }}
     />
   );
