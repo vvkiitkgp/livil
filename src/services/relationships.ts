@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { sendPush } from './pushDispatch';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -84,11 +85,23 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
 export async function sendFriendRequest(userId: string): Promise<void> {
   const { error } = await db.rpc('send_friend_request', { target_user_id: userId });
   if (error) { throw new Error(error.message); }
+  void sendPush({
+    recipientUserId: userId,
+    kind: 'friend_request',
+    data: { route: 'FriendRequests' },
+  });
 }
 
 export async function acceptFriendRequest(userId: string): Promise<void> {
   const { error } = await db.rpc('accept_friend_request', { other_user_id: userId });
   if (error) { throw new Error(error.message); }
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  void sendPush({
+    recipientUserId: userId,
+    kind: 'friend_accepted',
+    data: { route: 'UserProfile', params: { userId: me ?? '' } },
+  });
 }
 
 export async function rejectFriendRequest(userId: string): Promise<void> {

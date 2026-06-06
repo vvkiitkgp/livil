@@ -31,6 +31,7 @@ import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 import { updatePresenceHeartbeat } from '../services/conversations';
 import { messageCache } from '../services/messageCache';
+import { initPush, registerDeviceForUser, unregisterDevice } from '../services/pushNotifications';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,6 +39,11 @@ export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pushUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    initPush();
+  }, []);
 
   // Presence heartbeat: update last_seen_at every 30s while app is foregrounded
   useEffect(() => {
@@ -104,6 +110,10 @@ export default function RootNavigator() {
           console.log(`[realtime] initial setAuth token=${s?.access_token ? 'present' : 'null'}`);
           supabase.realtime.setAuth(s?.access_token ?? null);
           setSession(s);
+          if (s?.user?.id) {
+            pushUserIdRef.current = s.user.id;
+            void registerDeviceForUser(s.user.id);
+          }
         }
       })
       .catch(() => {
@@ -129,6 +139,12 @@ export default function RootNavigator() {
         // aren't briefly visible if a different user signs in on the same device.
         if (event === 'SIGNED_OUT') {
           void messageCache.clearAll();
+          const prevUserId = pushUserIdRef.current;
+          pushUserIdRef.current = null;
+          if (prevUserId) void unregisterDevice(prevUserId);
+        } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
+          pushUserIdRef.current = s.user.id;
+          void registerDeviceForUser(s.user.id);
         }
       }
     });
