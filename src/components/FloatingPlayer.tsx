@@ -18,6 +18,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
+import { supabase } from '../../lib/supabase';
+import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { COLORS } from '../theme/colors';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -103,6 +105,7 @@ export default function FloatingPlayer() {
     jamLocked,
     shuffleEnabled, toggleShuffle,
     repeatMode, cycleRepeatMode,
+    setNowPlaying, requestPlay, setQueue,
   } = usePlayback();
 
   const { activeJam } = useJam();
@@ -136,15 +139,16 @@ export default function FloatingPlayer() {
   // ─── Slide in / out ───────────────────────────────────────────────────────────
   const slideAnim  = useRef(new Animated.Value(0)).current;
   const wasVisible = useRef(false);
+  const shouldShow = !!nowPlaying || !!activeJam;
   useEffect(() => {
-    if (nowPlaying && !wasVisible.current) {
+    if (shouldShow && !wasVisible.current) {
       wasVisible.current = true;
       Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, bounciness: 6 }).start();
-    } else if (!nowPlaying && wasVisible.current) {
+    } else if (!shouldShow && wasVisible.current) {
       wasVisible.current = false;
       Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
     }
-  }, [nowPlaying, slideAnim]);
+  }, [shouldShow, slideAnim]);
 
   // Combined vertical translate — native driver only
   const translateY = Animated.add(
@@ -249,11 +253,41 @@ export default function FloatingPlayer() {
   const doubleTap = Gesture.Tap().numberOfTaps(2).runOnJS(true)
     .onEnd((_e, ok) => { if (ok && !jamLocked) { openFullScreenPlayer(); } });
 
+  // Auto-play: fetch user's own posts and start playing
+  const autoPlayingRef = useRef(false);
+  const autoPlayMyPosts = useCallback(async () => {
+    if (autoPlayingRef.current) { return; }
+    autoPlayingRef.current = true;
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id;
+      if (!uid) { return; }
+      const posts = await listPostsForUser(uid, { limit: 20 });
+      // Filter to posts that have a playable URL
+      const playable = posts.filter(p => p.track.audioUrl || p.track.videoUrl);
+      if (playable.length === 0) { return; }
+      const queue = playable.map(feedPostToNowPlaying);
+      setQueue(queue, 0, 'profile');
+      setNowPlaying(queue[0]);
+      requestPlay(queue[0].postId);
+    } catch (err) {
+      console.log('[LIVIL][FP] autoPlayMyPosts error:', (err as Error)?.message);
+    } finally {
+      autoPlayingRef.current = false;
+    }
+  }, [setQueue, setNowPlaying, requestPlay]);
+
   const singleTap = Gesture.Tap().numberOfTaps(1).runOnJS(true)
     .onEnd((_e, ok) => {
       if (!ok || jamLocked) { return; }
       const hasHandlers = !!handlersRef.current;
-      console.log(`[LIVIL][FP] tap: activePostId=${activePostId} hasHandlers=${hasHandlers}`);
+      console.log(`[LIVIL][FP] tap: activePostId=${activePostId} hasHandlers=${hasHandlers} nowPlaying=${!!nowPlaying}`);
+      if (!nowPlaying) {
+        // No track loaded — auto-play user's posts
+        console.log('[LIVIL][FP] no track loaded — auto-playing my posts');
+        void autoPlayMyPosts();
+        return;
+      }
       if (activePostId) {
         console.log('[LIVIL][FP] calling pause()');
         handlersRef.current?.pause();
@@ -307,7 +341,7 @@ export default function FloatingPlayer() {
   const rightRot = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '0deg', '0deg'], extrapolate: 'clamp' });
   const leftRot  = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '180deg', '0deg'], extrapolate: 'clamp' });
 
-  if ((!nowPlaying && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
+  if ((!shouldShow && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
 
   // First letter of jam room title for the avatar
   const avatarLetter = (activeJam?.conversationTitle ?? '?')[0].toUpperCase();
@@ -315,7 +349,7 @@ export default function FloatingPlayer() {
   return (
     <Animated.View
       style={[styles.container, { bottom: playerBottom, transform: [{ translateY }] }]}
-      pointerEvents={nowPlaying ? 'box-none' : 'none'}
+      pointerEvents={shouldShow ? 'box-none' : 'none'}
     >
       {/* ── Bar → Pill ── */}
       <Animated.View
