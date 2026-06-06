@@ -85,16 +85,18 @@ function JamInviteBubble({
   title: string;
 }) {
   const navigation = useNavigation<Nav>();
-  const { setActiveJam } = useJam();
+  const { activeJam, setActiveJam } = useJam();
   const jamRoomId = msg.metadata?.jam_room_id as string | undefined;
   const [ended, setEnded] = useState(false);
 
+  // Re-check ended status on mount AND whenever activeJam changes (e.g. host
+  // ends the jam → activeJam becomes null → we re-query the DB).
   useEffect(() => {
     if (!jamRoomId) { return; }
     let cancelled = false;
     isJamRoomEnded(jamRoomId).then(v => { if (!cancelled) { setEnded(v); } });
     return () => { cancelled = true; };
-  }, [jamRoomId]);
+  }, [jamRoomId, activeJam]);
 
   if (!jamRoomId) { return null; }
   const handleJoin = () => {

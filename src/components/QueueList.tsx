@@ -268,6 +268,7 @@ export default function QueueList({
     if (isExternal) { return; }
     const queue = queueRef.current;
     const idx = currentIndexRef.current;
+    console.log(`[LIVIL][QL] rebuild: queueLen=${queue.length} curIdx=${idx} queueVersion=${queueVersion}`);
     const items: DisplayItem[] = [];
     for (let i = idx; i < queue.length; i++) {
       const track = queue[i];
@@ -279,6 +280,7 @@ export default function QueueList({
         isCurrent: i === idx,
       });
     }
+    console.log(`[LIVIL][QL] built ${items.length} display items`);
     setInternalData(items);
     // Re-enable layout animation after the render triggered by drag-drop commits
     if (skipNextLayoutAnim.current) {

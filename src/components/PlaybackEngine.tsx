@@ -33,6 +33,8 @@ export default function PlaybackEngine() {
     registerHandlers,
     positionRef,
     activePostId,
+    reportPaused,
+    resumePlay,
     setNowPlaying,
     queueRef,
     currentIndexRef,
@@ -203,15 +205,23 @@ export default function PlaybackEngine() {
 
   const registerEngineHandlers = useCallback(() => {
     registerHandlers({
-      play: () => setActivePaused(false),
-      pause: () => setActivePaused(true),
+      play: () => {
+        console.log('[LIVIL][ENG] handler PLAY');
+        setActivePaused(false);
+        if (nowPlayingRef.current) { resumePlay(nowPlayingRef.current.postId); }
+      },
+      pause: () => {
+        console.log('[LIVIL][ENG] handler PAUSE');
+        setActivePaused(true);
+        if (nowPlayingRef.current) { reportPaused(nowPlayingRef.current.postId); }
+      },
       seek: (s: number) => {
         positionRef.current = s;
         getActiveRef().current?.seek(s);
       },
       setRate: () => {},
     });
-  }, [registerHandlers, positionRef, getActiveRef, setActivePaused]);
+  }, [registerHandlers, positionRef, getActiveRef, setActivePaused, resumePlay, reportPaused]);
 
   // --- Video callbacks (slot A) ---
   const handleLoadA = useCallback((data: OnLoadData) => {

@@ -105,7 +105,8 @@ export default function FloatingPlayer() {
     jamLocked,
     shuffleEnabled, toggleShuffle,
     repeatMode, cycleRepeatMode,
-    setNowPlaying, requestPlay, setQueue,
+    setNowPlaying, requestPlay, resumePlay, setQueue,
+    reportPaused, playSourceRef,
   } = usePlayback();
 
   const { activeJam } = useJam();
@@ -263,13 +264,22 @@ export default function FloatingPlayer() {
       const uid = userData?.user?.id;
       if (!uid) { return; }
       const posts = await listPostsForUser(uid, { limit: 20 });
+      console.log(`[LIVIL][FP] autoPlay: fetched ${posts.length} posts`);
+      posts.forEach((p, i) => {
+        console.log(`[LIVIL][FP]   post[${i}] id=${p.id} kind=${p.kind} trackId=${p.track.id} audio=${!!p.track.audioUrl} video=${!!p.track.videoUrl} title="${p.track.title}"`);
+      });
       // Filter to posts that have a playable URL
       const playable = posts.filter(p => p.track.audioUrl || p.track.videoUrl);
+      console.log(`[LIVIL][FP] autoPlay: ${playable.length} playable out of ${posts.length}`);
       if (playable.length === 0) { return; }
       const queue = playable.map(feedPostToNowPlaying);
-      setQueue(queue, 0, 'profile');
+      console.log(`[LIVIL][FP] autoPlay: setting queue with ${queue.length} items, starting at 0`);
+      setQueue(queue, 0, 'autoplay');
       setNowPlaying(queue[0]);
-      requestPlay(queue[0].postId);
+      // Mark source as 'queue' so HomeScreen/ProfileScreen don't overwrite
+      // our queue (they only fire when playSourceRef === 'user').
+      playSourceRef.current = 'queue';
+      resumePlay(queue[0].postId);
     } catch (err) {
       console.log('[LIVIL][FP] autoPlayMyPosts error:', (err as Error)?.message);
     } finally {
@@ -291,9 +301,11 @@ export default function FloatingPlayer() {
       if (activePostId) {
         console.log('[LIVIL][FP] calling pause()');
         handlersRef.current?.pause();
+        reportPaused(activePostId);
       } else {
-        console.log('[LIVIL][FP] calling play()');
+        console.log('[LIVIL][FP] calling play() + resumePlay');
         handlersRef.current?.play();
+        resumePlay(nowPlaying.postId);
       }
     });
 

@@ -50,6 +50,8 @@ type PlaybackContextValue = {
   // --- existing ---
   activePostId: string | null;
   requestPlay: (postId: string) => void;
+  /** Resume playback without setting playSourceRef (avoids queue resets on screens). */
+  resumePlay: (postId: string) => void;
   reportPaused: (postId: string) => void;
   pauseAll: () => void;
   isActive: (postId: string) => boolean;
@@ -173,6 +175,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setActivePostId(postId);
   }, []);
 
+  /** Resume playback of the current track without triggering queue resets on screens. */
+  const resumePlay = useCallback((postId: string) => {
+    console.log(`[LIVIL][CTX] resumePlay postId=${postId}`);
+    activeRef.current = postId;
+    setActivePostId(postId);
+  }, []);
+
   const reportPaused = useCallback((postId: string) => {
     if (activeRef.current === postId) {
       console.log(`[LIVIL][CTX] reportPaused postId=${postId}`);
@@ -277,6 +286,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setQueue = useCallback((posts: NowPlayingInfo[], startIndex: number, source: string) => {
+    console.log(`[LIVIL][CTX] setQueue len=${posts.length} startIdx=${startIndex} source="${source}"`);
     queueRef.current = posts;
     currentIndexRef.current = startIndex;
     userQueueRef.current = [];
@@ -449,6 +459,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     () => ({
       activePostId,
       requestPlay,
+      resumePlay,
       reportPaused,
       pauseAll,
       isActive,
@@ -502,6 +513,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     [
       activePostId,
       requestPlay,
+      resumePlay,
       reportPaused,
       pauseAll,
       isActive,

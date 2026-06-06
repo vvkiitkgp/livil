@@ -743,6 +743,7 @@ export default function FullScreenPlayer() {
     updateDuration,
     clipWindowRef,
     requestPlay,
+    resumePlay,
     reportPaused,
     playNext,
   } = usePlayback();
@@ -845,7 +846,7 @@ export default function FullScreenPlayer() {
       setFsPaused(false);
       requestPlay(nowPlaying.postId);
       registerHandlers({
-        play: () => { console.log('[LIVIL][FS] handler PLAY'); setFsPaused(false); requestPlay(nowPlaying.postId); },
+        play: () => { console.log('[LIVIL][FS] handler PLAY'); setFsPaused(false); resumePlay(nowPlaying.postId); },
         pause: () => { console.log('[LIVIL][FS] handler PAUSE'); setFsPaused(true); reportPaused(nowPlaying.postId); },
         seek: (s: number) => {
           console.log(`[LIVIL][FS] handler SEEK to=${s.toFixed(1)}s`);

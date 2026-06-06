@@ -103,11 +103,14 @@ export function subscribeToConversation(
             senderAvatarUrl: raw.profiles?.avatar_url ?? null,
             reactions: [],
           };
-          if (raw.sender_id !== myId) {
+          // Skip own TEXT messages — they're already in the list as optimistic
+          // inserts from handleSend. Non-text messages (jam_invite, system, etc.)
+          // don't have optimistic inserts, so they must be delivered here.
+          if (raw.sender_id === myId && raw.kind === 'text') {
+            console.log(`[realtime] ${key} skipping own text message`);
+          } else {
             console.log(`[realtime] ${key} → calling onMessage`);
             onMessage(msg);
-          } else {
-            console.log(`[realtime] ${key} skipping own message`);
           }
         } catch (e) {
           console.log(`[realtime] ${key} handler threw:`, (e as Error)?.message ?? String(e));
