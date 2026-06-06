@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from './messages';
 import { broadcastJamEnded } from './jamRealtime';
+import { sendPush } from './pushDispatch';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -151,6 +152,35 @@ export async function endJamRoom(
   } catch {
     // Non-fatal
   }
+
+  // Push notify everyone except the host (the actor calling endJamRoom).
+  // Listeners who already auto-left via the JAM_ENDED broadcast still get
+  // the push if they had the app backgrounded.
+  void (async () => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const me = userData?.user?.id;
+      if (!me) return;
+      const { data: rows } = await db
+        .from('jam_room_members')
+        .select('user_id')
+        .eq('jam_room_id', jamRoomId)
+        .neq('user_id', me);
+      const members = (rows ?? []) as Array<{ user_id: string }>;
+      if (members.length === 0) return;
+      await Promise.all(
+        members.map(m =>
+          sendPush({
+            recipientUserId: m.user_id,
+            kind: 'jam_ended',
+            data: { route: 'Inbox' },
+          }),
+        ),
+      );
+    } catch (e) {
+      console.warn('[push] jam_ended fan-out failed', e);
+    }
+  })();
 }
 
 export async function updatePlaybackState(

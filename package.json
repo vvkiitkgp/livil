@@ -13,6 +13,7 @@
     "build:android": "cd android && ./gradlew bundleRelease && cd .."
   },
   "dependencies": {
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-documents/picker": "^10.1.7",
     "@react-native-firebase/app": "^24.1.0",

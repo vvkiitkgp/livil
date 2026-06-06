@@ -1,7 +1,104 @@
 import { supabase } from '../../lib/supabase';
+import { sendPush } from './pushDispatch';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
+
+/**
+ * Fan out push notifications to every other participant of a conversation
+ * after a message is sent. Fire-and-forget; runs in parallel, errors logged
+ * but never bubble back to the sender.
+ *
+ * Skipped for `system` messages — those are server-side bookkeeping (e.g.
+ * "Jam Room has ended"), and the underlying event already has its own push.
+ *
+ * For DMs the OS notification title falls back to the edge-function default
+ * (`@<sender>`); for groups we override with the group name and prefix the
+ * body so the recipient can tell who said what.
+ */
+async function dispatchMessagePush(
+  conversationId: string,
+  payload: SendMessagePayload,
+  myId: string,
+  senderInfo?: { username: string | null; displayName: string | null; avatarUrl: string | null },
+): Promise<void> {
+  // Defensive guard: endJamRoom invokes sendMessage with kind='system' via an
+  // `as never` cast that bypasses the SendMessagePayload type. Skip those.
+  if ((payload as { kind: string }).kind === 'system') return;
+  try {
+    const [convRes, membersRes] = await Promise.all([
+      db.from('conversations').select('kind, name').eq('id', conversationId).maybeSingle(),
+      db
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', myId),
+    ]);
+    const conv = convRes.data as { kind: 'dm' | 'group'; name: string | null } | null;
+    const recipients = (membersRes.data ?? []) as Array<{ user_id: string }>;
+    if (!conv || recipients.length === 0) return;
+
+    const isGroup = conv.kind === 'group';
+    const groupTitle = conv.name ?? 'Group chat';
+    const senderHandle = senderInfo?.username ?? null;
+
+    if (payload.kind === 'jam_invite') {
+      const jamRoomId = payload.metadata.jam_room_id;
+      await Promise.all(
+        recipients.map(r =>
+          sendPush({
+            recipientUserId: r.user_id,
+            kind: 'jam_invite_dm',
+            data: { route: 'JamRoom', params: { jamRoomId, conversationId } },
+          }),
+        ),
+      );
+      return;
+    }
+
+    let bodyPreview: string;
+    if (payload.kind === 'text') {
+      bodyPreview = payload.body;
+    } else if (payload.kind === 'track_share') {
+      bodyPreview = `shared a track: ${payload.metadata.title}`;
+    } else {
+      bodyPreview = 'sent a sticker';
+    }
+    bodyPreview = bodyPreview.slice(0, 200);
+
+    const title = isGroup ? groupTitle : undefined;
+    const body =
+      isGroup && senderHandle ? `@${senderHandle}: ${bodyPreview}` : bodyPreview;
+
+    const convScreenTitle = isGroup
+      ? groupTitle
+      : senderInfo?.displayName || senderHandle || '';
+
+    await Promise.all(
+      recipients.map(r =>
+        sendPush({
+          recipientUserId: r.user_id,
+          kind: 'message',
+          title,
+          body,
+          data: {
+            route: 'Conversation',
+            // Don't put a `kind` here — Conversation route's kind ('dm'|'group')
+            // would collide with the notification kind ('message') downstream
+            // and bypass the chat-style grouping. ConversationScreen looks it
+            // up from the conversation row anyway when missing.
+            params: {
+              conversationId,
+              title: convScreenTitle,
+            },
+          },
+        }),
+      ),
+    );
+  } catch (e) {
+    console.warn('[push] message fan-out failed', e);
+  }
+}
 
 export type MessageKind = 'text' | 'track_share' | 'jam_invite' | 'sticker' | 'system';
 
@@ -194,6 +291,10 @@ export async function sendMessage(
       : null,
   };
 
+  // Fan out push to other participants — fire-and-forget so the sender's
+  // send call returns immediately.
+  void dispatchMessagePush(conversationId, payload, myId, senderInfo);
+
   return toMessage(raw, myId, []);
 }
 
@@ -212,6 +313,31 @@ export async function addReaction(messageId: string, emoji: string): Promise<voi
   // One reaction per user — delete any existing reaction first, then insert
   await db.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', me);
   await db.from('message_reactions').insert({ message_id: messageId, user_id: me, emoji });
+
+  // Notify the message author (skip if reacting to your own message).
+  // Fire-and-forget; the reaction is already written.
+  void (async () => {
+    try {
+      const { data: msgRow } = await db
+        .from('messages')
+        .select('sender_id, conversation_id')
+        .eq('id', messageId)
+        .maybeSingle();
+      const msg = msgRow as { sender_id: string | null; conversation_id: string } | null;
+      if (!msg?.sender_id || msg.sender_id === me) return;
+      await sendPush({
+        recipientUserId: msg.sender_id,
+        kind: 'reaction',
+        body: `reacted ${emoji} to your message`,
+        data: {
+          route: 'Conversation',
+          params: { conversationId: msg.conversation_id, title: '' },
+        },
+      });
+    } catch (e) {
+      console.warn('[push] reaction notify failed', e);
+    }
+  })();
 }
 
 export async function removeReaction(messageId: string, emoji: string): Promise<void> {
