@@ -131,6 +131,7 @@ export default function UserProfileScreen() {
           authorAvatarUrl: displayAuthor.avatarUrl,
           coverArtUrl: p.track.coverArtUrl,
           mediaKind: p.track.mediaKind,
+          audioUrl: p.track.audioUrl ?? undefined,
           videoUrl: p.track.videoUrl ?? undefined,
           likesCount: p.likesCount,
           commentsCount: p.commentsCount,

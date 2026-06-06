@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 
 export type AuthorRef = {
   id: string;
@@ -535,4 +536,38 @@ export async function recordView(postId: string): Promise<void> {
   if (error && error.code !== '23505') {
     throw new Error(error.message);
   }
+}
+
+/**
+ * Convert a FeedPost to NowPlayingInfo for the playback engine.
+ * For reposts, the author shown is the original uploader.
+ */
+export function feedPostToNowPlaying(post: FeedPost): NowPlayingInfo {
+  const displayAuthor =
+    post.kind === 'repost' && post.originalAuthor
+      ? post.originalAuthor
+      : post.author;
+  return {
+    postId: post.id,
+    trackId: post.track.id,
+    title: post.track.title,
+    artistName: displayAuthor.displayName ?? displayAuthor.username,
+    authorId: displayAuthor.id,
+    authorUsername: displayAuthor.username,
+    authorAvatarUrl: displayAuthor.avatarUrl,
+    coverArtUrl: post.track.coverArtUrl,
+    mediaKind: post.track.mediaKind,
+    audioUrl: post.track.audioUrl ?? undefined,
+    videoUrl: post.track.videoUrl ?? undefined,
+    likesCount: post.likesCount,
+    commentsCount: post.commentsCount,
+    repostsCount: post.repostsCount,
+    viewsCount: post.viewsCount,
+    viewerHasLiked: post.viewerHasLiked,
+    clipStartSec: post.clipStartSec,
+    clipEndSec: post.clipEndSec,
+    kind: post.kind,
+    originalPostId: post.originalPostId,
+    knownDurationSec: 0,
+  };
 }

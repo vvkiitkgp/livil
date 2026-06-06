@@ -36,6 +36,8 @@ export default function GlobalAudioPlayer() {
     playNext,
     playPrev,
     engineDriving,
+    reportPaused,
+    resumePlay,
   } = usePlayback();
 
   const videoRef = useRef<VideoRef>(null);
@@ -52,8 +54,8 @@ export default function GlobalAudioPlayer() {
       myPostIdRef.current = nowPlaying.postId;
       setPaused(false);
       registerHandlers({
-        play:    () => { console.log('[LIVIL][GAP] handler PLAY'); setPaused(false); },
-        pause:   () => { console.log('[LIVIL][GAP] handler PAUSE'); setPaused(true); },
+        play:    () => { console.log('[LIVIL][GAP] handler PLAY'); setPaused(false); resumePlay(nowPlaying.postId); },
+        pause:   () => { console.log('[LIVIL][GAP] handler PAUSE'); setPaused(true); reportPaused(nowPlaying.postId); },
         seek:    (s: number) => {
           console.log(`[LIVIL][GAP] handler SEEK to=${s.toFixed(1)}s`);
           positionRef.current = s;

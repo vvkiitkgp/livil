@@ -27,6 +27,7 @@ export type JamHandlers = {
   onPlaybackState: (state: PlaybackBroadcast) => void;
   onPresenceChange: (members: PresenceMember[]) => void;
   onHostChange?: (newHostId: string) => void;
+  onJamEnded?: () => void;
 };
 
 export type PresenceMember = {
@@ -102,11 +103,14 @@ export function subscribeToConversation(
             senderAvatarUrl: raw.profiles?.avatar_url ?? null,
             reactions: [],
           };
-          if (raw.sender_id !== myId) {
+          // Skip own TEXT messages — they're already in the list as optimistic
+          // inserts from handleSend. Non-text messages (jam_invite, system, etc.)
+          // don't have optimistic inserts, so they must be delivered here.
+          if (raw.sender_id === myId && raw.kind === 'text') {
+            console.log(`[realtime] ${key} skipping own text message`);
+          } else {
             console.log(`[realtime] ${key} → calling onMessage`);
             onMessage(msg);
-          } else {
-            console.log(`[realtime] ${key} skipping own message`);
           }
         } catch (e) {
           console.log(`[realtime] ${key} handler threw:`, (e as Error)?.message ?? String(e));
@@ -161,10 +165,14 @@ export function subscribeToJam(
       console.log(`[realtime] ${key} got PLAYBACK_STATE`, (payload as PlaybackBroadcast)?.track_id);
       handlers.onPlaybackState(payload as PlaybackBroadcast);
     })
+    .on('broadcast', { event: 'JAM_ENDED' }, () => {
+      console.log(`[realtime] ${key} got JAM_ENDED`);
+      handlers.onJamEnded?.();
+    })
     // Catch-all broadcast handler — fires for ANY broadcast event on this channel.
     // If subscriber receives a broadcast we don't recognize, this surfaces it.
     .on('broadcast', { event: '*' }, ({ event, payload }) => {
-      if (event !== 'PLAYBACK_STATE') {
+      if (event !== 'PLAYBACK_STATE' && event !== 'JAM_ENDED') {
         console.log(`[realtime] ${key} got broadcast event=${event}`, payload);
       }
     })
@@ -207,6 +215,15 @@ export async function broadcastPlaybackState(
     return;
   }
   console.log(`[realtime] broadcast jam:${jamRoomId} track=${state.track_id} playing=${state.is_playing} → ok (via rpc)`);
+}
+
+export async function broadcastJamEnded(jamRoomId: string): Promise<void> {
+  const key = `jam:${jamRoomId}`;
+  const channel = activeChannels.get(key);
+  if (channel) {
+    await channel.send({ type: 'broadcast', event: 'JAM_ENDED', payload: {} });
+    console.log(`[realtime] broadcast JAM_ENDED on ${key}`);
+  }
 }
 
 export function unsubscribeFromConversation(conversationId: string): void {

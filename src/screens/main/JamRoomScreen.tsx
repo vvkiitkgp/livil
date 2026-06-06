@@ -285,6 +285,23 @@ export default function JamRoomScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-navigate back when the host ends the jam. The JamRealtimeProvider
+  // clears activeJam on receiving JAM_ENDED — detect that here. Use a ref to
+  // skip the initial mount where activeJam may briefly be null before the
+  // mount effect sets it.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (!activeJam && !isHost) {
+      Alert.alert('Jam Ended', 'The host has ended this session.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    }
+  }, [activeJam, isHost, navigation]);
+
   // NOTE: no unmount-time leaveJamRoom. The Android back button just navigates
   // back, the user stays in the jam (JamBanner gives them a way back in).
   // Leaving / ending the jam is an explicit user action via handleEnd.
@@ -405,6 +422,17 @@ export default function JamRoomScreen() {
   }, []);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
+    // System messages render as centered muted text, not a chat bubble.
+    if (item.kind === 'system') {
+      return (
+        <View style={styles.systemRow}>
+          <Text style={styles.systemText}>{item.body}</Text>
+        </View>
+      );
+    }
+    // Skip non-text messages that have no body (jam_invite, sticker, etc.)
+    // — they'd render as empty bubbles.
+    if (item.kind !== 'text' || !item.body) { return null; }
     const isMe = item.senderId === myIdRef.current;
     return (
       <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
@@ -736,6 +764,17 @@ const styles = StyleSheet.create({
   bubbleSender: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', marginBottom: 2 },
   bubbleText: { color: COLORS.white, fontSize: 14 },
   bubbleTextMe: { color: COLORS.white },
+  systemRow: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 20,
+  },
+  systemText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
   sendBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',

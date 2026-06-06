@@ -85,16 +85,18 @@ function JamInviteBubble({
   title: string;
 }) {
   const navigation = useNavigation<Nav>();
-  const { setActiveJam } = useJam();
+  const { activeJam, setActiveJam } = useJam();
   const jamRoomId = msg.metadata?.jam_room_id as string | undefined;
   const [ended, setEnded] = useState(false);
 
+  // Re-check ended status on mount AND whenever activeJam changes (e.g. host
+  // ends the jam → activeJam becomes null → we re-query the DB).
   useEffect(() => {
     if (!jamRoomId) { return; }
     let cancelled = false;
     isJamRoomEnded(jamRoomId).then(v => { if (!cancelled) { setEnded(v); } });
     return () => { cancelled = true; };
-  }, [jamRoomId]);
+  }, [jamRoomId, activeJam]);
 
   if (!jamRoomId) { return null; }
   const handleJoin = () => {
@@ -107,7 +109,7 @@ function JamInviteBubble({
   };
   return (
     <View style={[styles.jamInviteCard, ended && styles.jamInviteCardEnded]}>
-      <Text style={styles.jamInviteIcon}>{ended ? '🎵' : '🎵'}</Text>
+      <Text style={styles.jamInviteIcon}>🎵</Text>
       <View style={styles.jamInviteInfo}>
         <Text style={styles.jamInviteTitle}>
           {ended ? 'Jam Room ended' : 'Jam Room started'}
@@ -151,6 +153,15 @@ function MessageBubble({
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
   const isJamInvite = msg.kind === 'jam_invite' && !!msg.metadata?.jam_room_id;
+  const isSystem = msg.kind === 'system';
+
+  if (isSystem) {
+    return (
+      <View style={styles.systemRow}>
+        <Text style={styles.systemText}>{msg.body}</Text>
+      </View>
+    );
+  }
 
   if (isJamInvite) {
     return (
@@ -934,6 +945,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   jamInviteBtnEndedText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  // System messages (e.g. "The Jam Room has ended.")
+  systemRow: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 20,
+  },
+  systemText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
   // Reactions — Instagram style: absolute overlay at bubble bottom
   reactionOverlay: {
     position: 'absolute',

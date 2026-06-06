@@ -250,6 +250,7 @@ export default function QueueList({
     moveQueueItem,
     removeFromQueue,
     nowPlaying,
+    queueVersion,
   } = usePlayback();
 
   const isExternal = externalData !== undefined;
@@ -267,15 +268,19 @@ export default function QueueList({
     if (isExternal) { return; }
     const queue = queueRef.current;
     const idx = currentIndexRef.current;
+    console.log(`[LIVIL][QL] rebuild: queueLen=${queue.length} curIdx=${idx} queueVersion=${queueVersion}`);
     const items: DisplayItem[] = [];
     for (let i = idx; i < queue.length; i++) {
+      const track = queue[i];
+      if (!track) { continue; }
       items.push({
-        track: queue[i]!,
+        track,
         queueIndex: i,
         displayIndex: i - idx,
         isCurrent: i === idx,
       });
     }
+    console.log(`[LIVIL][QL] built ${items.length} display items`);
     setInternalData(items);
     // Re-enable layout animation after the render triggered by drag-drop commits
     if (skipNextLayoutAnim.current) {
@@ -284,7 +289,7 @@ export default function QueueList({
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExternal, nowPlaying?.postId, version]);
+  }, [isExternal, nowPlaying?.postId, queueVersion, version]);
 
   const data = isExternal ? externalData : internalData;
 
@@ -341,7 +346,7 @@ export default function QueueList({
     />
   ), [dragActiveIndex, dragTY, canTap, canSwipe, canReorder, handleTap, handleSwipe, handleDrop, handleDragToggle]);
 
-  const keyExtractor = useCallback((item: DisplayItem) => item.track.postId, []);
+  const keyExtractor = useCallback((item: DisplayItem) => item.track?.postId ?? `q-${item.queueIndex}`, []);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ROW_H,

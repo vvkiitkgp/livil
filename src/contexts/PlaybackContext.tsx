@@ -50,6 +50,8 @@ type PlaybackContextValue = {
   // --- existing ---
   activePostId: string | null;
   requestPlay: (postId: string) => void;
+  /** Resume playback without setting playSourceRef (avoids queue resets on screens). */
+  resumePlay: (postId: string) => void;
   reportPaused: (postId: string) => void;
   pauseAll: () => void;
   isActive: (postId: string) => boolean;
@@ -101,6 +103,8 @@ type PlaybackContextValue = {
   // 'user' = play originated from a tap in the feed/profile (screens should update queue)
   // 'queue' = play originated from playNext/playPrev/playAtIndex (screens must NOT override queue)
   playSourceRef: React.MutableRefObject<'user' | 'queue'>;
+  /** Bumped on every queue mutation so QueueList can re-render. */
+  queueVersion: number;
 
   // --- full-screen player ---
   isFullScreenOpen: boolean;
@@ -143,6 +147,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [isBuffering, setIsBufferingState] = useState(false);
   const [isReadyForDisplay, setIsReadyForDisplayState] = useState(false);
   const [engineDriving, setEngineDrivingState] = useState(false);
+  const [queueVersion, setQueueVersion] = useState(0);
+  const bumpQueue = useCallback(() => setQueueVersion(v => v + 1), []);
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
@@ -165,6 +171,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     if (activeRef.current === postId) { return; }
     console.log(`[LIVIL][CTX] requestPlay postId=${postId}`);
     playSourceRef.current = 'user';
+    activeRef.current = postId;
+    setActivePostId(postId);
+  }, []);
+
+  /** Resume playback of the current track without triggering queue resets on screens. */
+  const resumePlay = useCallback((postId: string) => {
+    console.log(`[LIVIL][CTX] resumePlay postId=${postId}`);
     activeRef.current = postId;
     setActivePostId(postId);
   }, []);
@@ -273,6 +286,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setQueue = useCallback((posts: NowPlayingInfo[], startIndex: number, source: string) => {
+    console.log(`[LIVIL][CTX] setQueue len=${posts.length} startIdx=${startIndex} source="${source}"`);
     queueRef.current = posts;
     currentIndexRef.current = startIndex;
     userQueueRef.current = [];
@@ -280,7 +294,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     if (shuffleRef.current) {
       generateShuffleOrder(startIndex, posts.length);
     }
-  }, [generateShuffleOrder]);
+    bumpQueue();
+  }, [generateShuffleOrder, bumpQueue]);
 
   const playNext = useCallback(() => {
     if (userQueueRef.current.length > 0) {
@@ -355,11 +370,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const addToQueue = useCallback((track: NowPlayingInfo) => {
     userQueueRef.current = [...userQueueRef.current, track];
-  }, []);
+    bumpQueue();
+  }, [bumpQueue]);
 
   const playTrackNextFn = useCallback((track: NowPlayingInfo) => {
     userQueueRef.current = [track, ...userQueueRef.current];
-  }, []);
+    bumpQueue();
+  }, [bumpQueue]);
 
   const moveQueueItem = useCallback((fromIndex: number, toIndex: number) => {
     const queue = [...queueRef.current];
@@ -376,7 +393,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     } else if (fromIndex > cur && toIndex <= cur) {
       currentIndexRef.current = cur + 1;
     }
-  }, []);
+    bumpQueue();
+  }, [bumpQueue]);
 
   const removeFromQueue = useCallback((index: number) => {
     const queue = [...queueRef.current];
@@ -388,7 +406,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     } else if (index === cur && cur >= queue.length) {
       currentIndexRef.current = Math.max(0, queue.length - 1);
     }
-  }, []);
+    bumpQueue();
+  }, [bumpQueue]);
 
   const clearPendingPlay = useCallback(() => {
     setPendingPlayId(null);
@@ -440,6 +459,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     () => ({
       activePostId,
       requestPlay,
+      resumePlay,
       reportPaused,
       pauseAll,
       isActive,
@@ -475,6 +495,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       userQueueRef,
       queueSourceRef,
       playSourceRef,
+      queueVersion,
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
@@ -492,6 +513,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     [
       activePostId,
       requestPlay,
+      resumePlay,
       reportPaused,
       pauseAll,
       isActive,
@@ -518,6 +540,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       removeFromQueue,
       pendingPlayId,
       clearPendingPlay,
+      queueVersion,
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
