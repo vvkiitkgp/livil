@@ -269,8 +269,10 @@ export default function QueueList({
     const idx = currentIndexRef.current;
     const items: DisplayItem[] = [];
     for (let i = idx; i < queue.length; i++) {
+      const track = queue[i];
+      if (!track) { continue; }
       items.push({
-        track: queue[i]!,
+        track,
         queueIndex: i,
         displayIndex: i - idx,
         isCurrent: i === idx,
@@ -341,7 +343,7 @@ export default function QueueList({
     />
   ), [dragActiveIndex, dragTY, canTap, canSwipe, canReorder, handleTap, handleSwipe, handleDrop, handleDragToggle]);
 
-  const keyExtractor = useCallback((item: DisplayItem) => item.track.postId, []);
+  const keyExtractor = useCallback((item: DisplayItem) => item.track?.postId ?? `q-${item.queueIndex}`, []);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ROW_H,
