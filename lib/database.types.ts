@@ -94,6 +94,36 @@ export type Database = {
           },
         ]
       }
+      device_tokens: {
+        Row: {
+          created_at: string
+          device_id: string
+          id: string
+          platform: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id: string
+          id?: string
+          platform?: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string
+          id?: string
+          platform?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       follows: {
         Row: {
           created_at: string
@@ -704,6 +734,7 @@ export type Database = {
           following_count: number | null
           id: string
           last_seen_at: string | null
+          links: string[]
           show_activity: boolean | null
           username: string
         }
@@ -717,6 +748,7 @@ export type Database = {
           following_count?: number | null
           id: string
           last_seen_at?: string | null
+          links?: string[]
           show_activity?: boolean | null
           username: string
         }
@@ -730,8 +762,30 @@ export type Database = {
           following_count?: number | null
           id?: string
           last_seen_at?: string | null
+          links?: string[]
           show_activity?: boolean | null
           username?: string
+        }
+        Relationships: []
+      }
+      profiles_private: {
+        Row: {
+          date_of_birth: string | null
+          phone_number: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          date_of_birth?: string | null
+          phone_number?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          date_of_birth?: string | null
+          phone_number?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -931,7 +985,7 @@ export type Database = {
         }
         Update: {
           played_at?: string
-          track_id?: string
+          track_id: string
           user_id?: string
         }
         Relationships: [
@@ -969,6 +1023,10 @@ export type Database = {
       }
       add_star: { Args: { target_user_id: string }; Returns: undefined }
       assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
+      broadcast_jam_state: {
+        Args: { p_jam_room_id: string; p_payload: Json }
+        Returns: undefined
+      }
       cancel_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined

@@ -9,9 +9,12 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Linking,
   type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
@@ -23,6 +26,7 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
+import type { RootStackParamList } from '../../navigation/types';
 
 type ProfileRow = {
   id: string;
@@ -30,7 +34,26 @@ type ProfileRow = {
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
+  links: string[];
 };
+
+function linkHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.host.replace(/^www\./, '');
+  } catch {
+    return url.replace(/^https?:\/\//, '').split('/')[0] ?? url;
+  }
+}
+
+function openLink(url: string): void {
+  const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  Linking.openURL(normalized).catch(() => {
+    Alert.alert("Couldn't open link", normalized);
+  });
+}
+
+const VISIBLE_LINK_CHIPS = 5;
 
 type Tab = 'posts' | 'creator';
 
@@ -62,6 +85,7 @@ function formatStat(n: number): string {
 export default function ProfileScreen() {
   const playback = usePlayback();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
@@ -136,7 +160,7 @@ export default function ProfileScreen() {
     const [profRes, statsData, follow] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, username, display_name, bio, avatar_url')
+        .select('id, username, display_name, bio, avatar_url, links')
         .eq('id', userId)
         .maybeSingle(),
       getProfileStats(userId),
@@ -197,6 +221,28 @@ export default function ProfileScreen() {
     // We deliberately only run on mount; tab changes are handled separately.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh profile fields when the screen regains focus (e.g. after returning
+  // from EditProfile). Posts/stats are skipped to keep the refetch cheap.
+  const hasMountedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return;
+      }
+      (async () => {
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          const me = userData?.user?.id;
+          if (!me) {return;}
+          await fetchProfileAndStats(me);
+        } catch {
+          // Silent on focus refetch; initial load already surfaces errors.
+        }
+      })();
+    }, [fetchProfileAndStats]),
+  );
 
   // Tab change → reload first page.
   const handleTabChange = useCallback(
@@ -370,6 +416,39 @@ export default function ProfileScreen() {
               {profile.bio}
             </Text>
           ) : null}
+          {profile?.links && profile.links.length > 0 ? (
+            <View style={styles.linksRow}>
+              {profile.links.slice(0, VISIBLE_LINK_CHIPS).map(url => (
+                <TouchableOpacity
+                  key={url}
+                  style={styles.linkChip}
+                  activeOpacity={0.7}
+                  onPress={() => openLink(url)}
+                >
+                  <Text style={styles.linkChipIcon}>↗</Text>
+                  <Text style={styles.linkChipText} numberOfLines={1}>
+                    {linkHost(url)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {profile.links.length > VISIBLE_LINK_CHIPS ? (
+                <TouchableOpacity
+                  style={styles.linkChip}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Alert.alert(
+                      'All links',
+                      profile.links.join('\n'),
+                    );
+                  }}
+                >
+                  <Text style={styles.linkChipText}>
+                    +{profile.links.length - VISIBLE_LINK_CHIPS} more
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         {/* Primary social stats */}
@@ -406,6 +485,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.actionButtonPrimary]}
             activeOpacity={0.85}
+            onPress={() => navigation.navigate('EditProfile')}
           >
             <Text style={styles.actionButtonPrimaryText}>Edit profile</Text>
           </TouchableOpacity>
@@ -424,7 +504,7 @@ export default function ProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, handleSignOut]);
+  }, [profile, stats, followCounts, error, handleSignOut, navigation]);
 
   const renderFooter = useCallback(() => {
     if (!loadingMore) {return <View style={styles.listFooter} />;}
@@ -566,6 +646,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
     paddingHorizontal: 24,
+  },
+  linksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 16,
+  },
+  linkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 180,
+  },
+  linkChipIcon: {
+    color: COLORS.purpleLight,
+    fontSize: 12,
+    marginRight: 5,
+  },
+  linkChipText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   socialPills: {
     flexDirection: 'row',
