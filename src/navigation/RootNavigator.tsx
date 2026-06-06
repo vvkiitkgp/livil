@@ -27,11 +27,19 @@ import { StoriesProvider } from '../contexts/StoriesContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
+import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 import { updatePresenceHeartbeat } from '../services/conversations';
 import { messageCache } from '../services/messageCache';
-import { initPush, registerDeviceForUser, unregisterDevice } from '../services/pushNotifications';
+import {
+  initPush,
+  registerDeviceForUser,
+  unregisterDevice,
+  shouldShowPushPrompt,
+  requestPushPermissionInteractive,
+  deferPushPrompt,
+} from '../services/pushNotifications';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -40,10 +48,53 @@ export default function RootNavigator() {
   const [loading, setLoading] = useState(true);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pushUserIdRef = useRef<string | null>(null);
+  const [pushPromptVisible, setPushPromptVisible] = useState(false);
+  const [pushPromptBusy, setPushPromptBusy] = useState(false);
 
   useEffect(() => {
     initPush();
   }, []);
+
+  // After sign-in, decide whether to surface the notification pre-prompt.
+  // Runs after a short delay so the user sees the home screen mount first
+  // (Android 13+ shows the modal less jarringly when it's not racing the
+  // first frame).
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setPushPromptVisible(false);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void shouldShowPushPrompt().then(should => {
+        if (!cancelled && should) setPushPromptVisible(true);
+      });
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [session?.user?.id]);
+
+  const handleEnableNotifications = async () => {
+    const uid = session?.user?.id;
+    if (!uid) {
+      setPushPromptVisible(false);
+      return;
+    }
+    setPushPromptBusy(true);
+    try {
+      await requestPushPermissionInteractive(uid);
+    } finally {
+      setPushPromptBusy(false);
+      setPushPromptVisible(false);
+    }
+  };
+
+  const handleDeferNotifications = async () => {
+    setPushPromptVisible(false);
+    void deferPushPrompt();
+  };
 
   // Presence heartbeat: update last_seen_at every 30s while app is foregrounded
   useEffect(() => {
@@ -297,6 +348,13 @@ export default function RootNavigator() {
           <FloatingPlayer />
         </>
       )}
+
+      <NotificationPermissionModal
+        visible={pushPromptVisible}
+        busy={pushPromptBusy}
+        onEnable={handleEnableNotifications}
+        onMaybeLater={handleDeferNotifications}
+      />
     </View>
     </StoriesProvider>
     </RelationshipProvider>

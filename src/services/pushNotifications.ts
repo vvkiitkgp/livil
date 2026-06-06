@@ -6,6 +6,7 @@ import {
   getInitialNotification,
   onTokenRefresh,
   requestPermission,
+  hasPermission,
   deleteToken,
   AuthorizationStatus,
 } from '@react-native-firebase/messaging';
@@ -16,6 +17,9 @@ import { navigateWhenReady } from '../navigation/navigationRef';
 import type { RootStackParamList } from '../navigation/types';
 
 const DEVICE_ID_KEY = 'livil.device_id';
+const PROMPT_STATUS_KEY = 'livil.push_prompt_status';
+
+export type PushPromptStatus = 'pending' | 'shown' | 'accepted' | 'denied';
 
 function generateDeviceId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -32,6 +36,44 @@ export async function getOrCreateDeviceId(): Promise<string> {
     await AsyncStorage.setItem(DEVICE_ID_KEY, id);
   }
   return id;
+}
+
+export async function getPushPromptStatus(): Promise<PushPromptStatus> {
+  const v = await AsyncStorage.getItem(PROMPT_STATUS_KEY);
+  if (v === 'shown' || v === 'accepted' || v === 'denied') return v;
+  return 'pending';
+}
+
+export async function setPushPromptStatus(status: PushPromptStatus): Promise<void> {
+  await AsyncStorage.setItem(PROMPT_STATUS_KEY, status);
+}
+
+/**
+ * Whether to render the pre-prompt modal. Returns true only when:
+ *  - the user has never resolved the prompt before ('pending'), AND
+ *  - the OS hasn't already granted permission (handles users who installed
+ *    a previous build that asked directly — we don't want to re-bother them).
+ *
+ * 'shown' means the user tapped "Maybe later" — we don't immediately re-show,
+ * but a follow-up nudge can flip it back to 'pending' at a later moment.
+ */
+export async function shouldShowPushPrompt(): Promise<boolean> {
+  const status = await getPushPromptStatus();
+  if (status !== 'pending') return false;
+  try {
+    const current = await hasPermission(getMessaging());
+    if (
+      current === AuthorizationStatus.AUTHORIZED ||
+      current === AuthorizationStatus.PROVISIONAL
+    ) {
+      // Already granted from a previous build; record and skip the pre-prompt.
+      await setPushPromptStatus('accepted');
+      return false;
+    }
+  } catch (e) {
+    console.warn('[push] hasPermission check failed', e);
+  }
+  return true;
 }
 
 function handleNotificationData(data: Record<string, string> | undefined): void {
@@ -65,15 +107,6 @@ export function initPush(): void {
   });
 }
 
-async function ensurePermission(): Promise<boolean> {
-  const messaging = getMessaging();
-  const status = await requestPermission(messaging);
-  return (
-    status === AuthorizationStatus.AUTHORIZED ||
-    status === AuthorizationStatus.PROVISIONAL
-  );
-}
-
 async function upsertToken(userId: string, token: string, deviceId: string): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -92,32 +125,100 @@ async function upsertToken(userId: string, token: string, deviceId: string): Pro
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Actually fetch the FCM token and write it to device_tokens. Assumes
+ * notification permission is already granted. Also wires the token-refresh
+ * listener (cancelling any previous one) so a stale closure from a prior
+ * sign-in can't write under the wrong user_id.
+ */
+async function registerTokenAndListen(userId: string): Promise<void> {
+  const messaging = getMessaging();
+  const token = await getToken(messaging);
+  const deviceId = await getOrCreateDeviceId();
+  await upsertToken(userId, token, deviceId);
+
+  if (tokenRefreshUnsub) {
+    tokenRefreshUnsub();
+    tokenRefreshUnsub = null;
+  }
+  tokenRefreshUnsub = onTokenRefresh(messaging, async (newToken: string) => {
+    try {
+      await upsertToken(userId, newToken, deviceId);
+    } catch (e) {
+      console.warn('[push] token refresh upsert failed', e);
+    }
+  });
+}
+
+/**
+ * Called on sign-in. Does NOT trigger the system permission prompt — that's
+ * gated on the pre-prompt modal so users see context before the OS dialog.
+ *
+ * - 'denied': previously refused, don't bother them
+ * - 'shown': they tapped "Maybe later" earlier this session/install
+ * - 'pending': brand new — modal will show and call requestPushPermissionInteractive
+ * - 'accepted': just register the token
+ *
+ * Edge case: if a prior build (Slice 1) auto-prompted and the user accepted,
+ * status will still be 'pending' on first launch of this build but the OS
+ * already considers permission granted. We detect that and short-circuit
+ * straight into registration.
+ */
 export async function registerDeviceForUser(userId: string): Promise<void> {
   try {
-    const granted = await ensurePermission();
-    if (!granted) {
-      console.log('[push] permission not granted');
-      return;
-    }
-    const messaging = getMessaging();
-    const token = await getToken(messaging);
-    const deviceId = await getOrCreateDeviceId();
-    await upsertToken(userId, token, deviceId);
+    const status = await getPushPromptStatus();
+    if (status === 'denied') return;
 
-    if (tokenRefreshUnsub) {
-      tokenRefreshUnsub();
-      tokenRefreshUnsub = null;
+    if (status === 'pending' || status === 'shown') {
+      const current = await hasPermission(getMessaging());
+      const alreadyGranted =
+        current === AuthorizationStatus.AUTHORIZED ||
+        current === AuthorizationStatus.PROVISIONAL;
+      if (!alreadyGranted) return;
+      await setPushPromptStatus('accepted');
     }
-    tokenRefreshUnsub = onTokenRefresh(messaging, async (newToken: string) => {
-      try {
-        await upsertToken(userId, newToken, deviceId);
-      } catch (e) {
-        console.warn('[push] token refresh upsert failed', e);
-      }
-    });
+
+    await registerTokenAndListen(userId);
   } catch (e) {
     console.warn('[push] registerDeviceForUser failed', e);
   }
+}
+
+/**
+ * Called from the pre-prompt modal's "Enable notifications" button.
+ * Triggers the real OS permission dialog, then either registers the token
+ * (on grant) or marks the status as 'denied' (on refuse) so we never
+ * re-prompt the user.
+ *
+ * Returns true if push is now active for this user.
+ */
+export async function requestPushPermissionInteractive(userId: string): Promise<boolean> {
+  try {
+    const messaging = getMessaging();
+    const status = await requestPermission(messaging);
+    const granted =
+      status === AuthorizationStatus.AUTHORIZED ||
+      status === AuthorizationStatus.PROVISIONAL;
+    if (!granted) {
+      await setPushPromptStatus('denied');
+      return false;
+    }
+    await registerTokenAndListen(userId);
+    await setPushPromptStatus('accepted');
+    return true;
+  } catch (e) {
+    console.warn('[push] requestPushPermissionInteractive failed', e);
+    return false;
+  }
+}
+
+/**
+ * Called from the modal's "Maybe later" button. Marks the prompt as shown
+ * so we don't re-render the modal on every navigation/state change, but
+ * keeps the OS permission un-touched so a later flow can still re-prompt.
+ */
+export async function deferPushPrompt(): Promise<void> {
+  await setPushPromptStatus('shown');
 }
 
 export async function unregisterDevice(userId: string): Promise<void> {
