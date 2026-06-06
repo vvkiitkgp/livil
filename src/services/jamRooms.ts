@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from './messages';
+import { broadcastJamEnded } from './jamRealtime';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,10 +116,27 @@ export async function leaveJamRoom(jamRoomId: string): Promise<void> {
     .eq('user_id', me);
 }
 
+export async function isJamRoomEnded(jamRoomId: string): Promise<boolean> {
+  const { data } = await db
+    .from('jam_rooms')
+    .select('status')
+    .eq('id', jamRoomId)
+    .single();
+  return data?.status === 'ended';
+}
+
 export async function endJamRoom(
   jamRoomId: string,
   conversationId: string,
 ): Promise<void> {
+  // Broadcast JAM_ENDED to all listeners BEFORE updating the DB status.
+  // This lets listeners auto-leave instantly via the realtime channel.
+  try {
+    await broadcastJamEnded(jamRoomId);
+  } catch {
+    // Non-fatal — listeners will still fail on next joinJamRoom call.
+  }
+
   await db
     .from('jam_rooms')
     .update({ status: 'ended', ended_at: new Date().toISOString() })

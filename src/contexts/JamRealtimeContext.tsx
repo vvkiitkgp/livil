@@ -12,6 +12,7 @@ import { useJam } from './JamContext';
 import { usePlayback, type NowPlayingInfo } from './PlaybackContext';
 import {
   joinJamRoom,
+  leaveJamRoom,
   type JamRoomState,
 } from '../services/jamRooms';
 import {
@@ -285,6 +286,16 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
           if (isHostRef.current) {
             broadcastRef.current();
           }
+        },
+        onJamEnded: () => {
+          if (cancelled || isHostRef.current) { return; }
+          console.log('[JamRealtime] host ended the jam — auto-leaving');
+          // Stop playback, clear jam state, and leave the room.
+          pauseAll();
+          clearNowPlaying();
+          loadedFromJamRef.current = false;
+          leaveJamRoom(jamRoomId).catch(() => {});
+          clearActiveJam();
         },
       });
     })();

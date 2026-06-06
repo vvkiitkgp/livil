@@ -285,6 +285,23 @@ export default function JamRoomScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-navigate back when the host ends the jam. The JamRealtimeProvider
+  // clears activeJam on receiving JAM_ENDED — detect that here. Use a ref to
+  // skip the initial mount where activeJam may briefly be null before the
+  // mount effect sets it.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (!activeJam && !isHost) {
+      Alert.alert('Jam Ended', 'The host has ended this session.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    }
+  }, [activeJam, isHost, navigation]);
+
   // NOTE: no unmount-time leaveJamRoom. The Android back button just navigates
   // back, the user stays in the jam (JamBanner gives them a way back in).
   // Leaving / ending the jam is an explicit user action via handleEnd.

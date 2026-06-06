@@ -27,6 +27,7 @@ export type JamHandlers = {
   onPlaybackState: (state: PlaybackBroadcast) => void;
   onPresenceChange: (members: PresenceMember[]) => void;
   onHostChange?: (newHostId: string) => void;
+  onJamEnded?: () => void;
 };
 
 export type PresenceMember = {
@@ -161,10 +162,14 @@ export function subscribeToJam(
       console.log(`[realtime] ${key} got PLAYBACK_STATE`, (payload as PlaybackBroadcast)?.track_id);
       handlers.onPlaybackState(payload as PlaybackBroadcast);
     })
+    .on('broadcast', { event: 'JAM_ENDED' }, () => {
+      console.log(`[realtime] ${key} got JAM_ENDED`);
+      handlers.onJamEnded?.();
+    })
     // Catch-all broadcast handler — fires for ANY broadcast event on this channel.
     // If subscriber receives a broadcast we don't recognize, this surfaces it.
     .on('broadcast', { event: '*' }, ({ event, payload }) => {
-      if (event !== 'PLAYBACK_STATE') {
+      if (event !== 'PLAYBACK_STATE' && event !== 'JAM_ENDED') {
         console.log(`[realtime] ${key} got broadcast event=${event}`, payload);
       }
     })
@@ -207,6 +212,15 @@ export async function broadcastPlaybackState(
     return;
   }
   console.log(`[realtime] broadcast jam:${jamRoomId} track=${state.track_id} playing=${state.is_playing} → ok (via rpc)`);
+}
+
+export async function broadcastJamEnded(jamRoomId: string): Promise<void> {
+  const key = `jam:${jamRoomId}`;
+  const channel = activeChannels.get(key);
+  if (channel) {
+    await channel.send({ type: 'broadcast', event: 'JAM_ENDED', payload: {} });
+    console.log(`[realtime] broadcast JAM_ENDED on ${key}`);
+  }
 }
 
 export function unsubscribeFromConversation(conversationId: string): void {
