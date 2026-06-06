@@ -122,6 +122,13 @@ export async function removeFriend(userId: string): Promise<void> {
 export async function addStar(userId: string): Promise<void> {
   const { error } = await db.rpc('add_star', { target_user_id: userId });
   if (error) { throw new Error(error.message); }
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  void sendPush({
+    recipientUserId: userId,
+    kind: 'new_fan',
+    data: { route: 'UserProfile', params: { userId: me ?? '' } },
+  });
 }
 
 export async function removeStar(userId: string): Promise<void> {
