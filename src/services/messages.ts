@@ -83,10 +83,13 @@ async function dispatchMessagePush(
           body,
           data: {
             route: 'Conversation',
+            // Don't put a `kind` here — Conversation route's kind ('dm'|'group')
+            // would collide with the notification kind ('message') downstream
+            // and bypass the chat-style grouping. ConversationScreen looks it
+            // up from the conversation row anyway when missing.
             params: {
               conversationId,
               title: convScreenTitle,
-              kind: conv.kind,
             },
           },
         }),

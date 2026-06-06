@@ -10,6 +10,7 @@ import {
   deleteToken,
   AuthorizationStatus,
 } from '@react-native-firebase/messaging';
+import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -123,6 +124,132 @@ function handleNotificationData(data: Record<string, string> | undefined): void 
   navigateWhenReady(route as keyof RootStackParamList, rest);
 }
 
+/**
+ * Kinds that represent a chat-style interaction. For these we use Android
+ * MessagingStyle so the notification renders WhatsApp/Telegram-like: a
+ * circular avatar inline, the sender's display name as the title, and the
+ * message body underneath.
+ *
+ * Non-chat kinds (friend request, new fan, jam_ended) get a simpler layout
+ * with the avatar as a regular large icon.
+ */
+const CHAT_KINDS = new Set(['message', 'reaction', 'jam_invite_dm']);
+
+async function ensureChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  // Three channels so users can mute by category via Android settings.
+  await notifee.createChannel({
+    id: 'social',
+    name: 'Social',
+    importance: AndroidImportance.DEFAULT,
+    description: 'Friend requests, new followers, and fan activity',
+  });
+  await notifee.createChannel({
+    id: 'messages',
+    name: 'Messages',
+    importance: AndroidImportance.HIGH,
+    description: 'Direct messages, group messages, and reactions',
+  });
+  await notifee.createChannel({
+    id: 'jam',
+    name: 'Jam Rooms',
+    importance: AndroidImportance.HIGH,
+    description: 'Jam invites and host activity',
+  });
+}
+
+/**
+ * Render an FCM data payload as a visual notification via notifee. Same
+ * code path is used for foreground (onMessage) and background/quit
+ * (setBackgroundMessageHandler in index.js).
+ *
+ * Edge function sends data-only FCM messages so the OS does NOT auto-display
+ * — this function is the only place that calls displayNotification.
+ */
+export async function displayPushNotification(
+  data: Record<string, string | undefined> | undefined,
+): Promise<void> {
+  if (!data) return;
+  const kind = data.kind ?? '';
+  const channelId = data.channelId ?? 'messages';
+  const title = data.title ?? '';
+  const body = data.body ?? '';
+  const actorDisplayName = data.actorDisplayName || title;
+  const actorAvatarUrl = data.actorAvatarUrl || '';
+
+  const baseAndroid = {
+    channelId,
+    importance: AndroidImportance.HIGH,
+    smallIcon: 'ic_launcher',
+    pressAction: { id: 'default' },
+  };
+
+  // Strip our internal `_keys` from the data we pass into notifee — only
+  // what's needed for the tap-routing handler.
+  const tapData: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof v === 'string') tapData[k] = v;
+  }
+
+  if (CHAT_KINDS.has(kind) && actorAvatarUrl) {
+    // Group all chat notifications from one conversation under a stable id
+    // so successive messages merge into a single expandable thread (the
+    // WhatsApp/Telegram pattern), instead of stacking as separate cards.
+    //
+    // The id is per-conversation, so different chats stay separate. For
+    // events without a conversation (rare), fall back to actorUserId.
+    const conversationId = data.conversationId ?? data.actorUserId ?? 'default';
+    const notifId = `chat:${conversationId}`;
+
+    let prior: Array<{ text: string; timestamp: number }> = [];
+    try {
+      const displayed = await notifee.getDisplayedNotifications();
+      const existing = displayed.find(d => d.id === notifId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const style = (existing?.notification?.android?.style as any) ?? null;
+      if (style && Array.isArray(style.messages)) {
+        prior = style.messages.map((m: { text: string; timestamp: number }) => ({
+          text: m.text,
+          timestamp: m.timestamp,
+        }));
+      }
+    } catch {
+      // best-effort — if we can't read prior messages, just show this one
+    }
+
+    await notifee.displayNotification({
+      id: notifId,
+      data: tapData,
+      android: {
+        ...baseAndroid,
+        groupId: 'chats',
+        style: {
+          type: AndroidStyle.MESSAGING,
+          person: {
+            name: actorDisplayName,
+            icon: actorAvatarUrl,
+          },
+          messages: [
+            ...prior,
+            { text: body, timestamp: Date.now() },
+          ],
+        },
+      },
+    });
+    return;
+  }
+
+  await notifee.displayNotification({
+    title,
+    body,
+    data: tapData,
+    android: {
+      ...baseAndroid,
+      ...(actorAvatarUrl ? { largeIcon: actorAvatarUrl } : {}),
+    },
+  });
+}
+
 const unsubFns: Array<() => void> = [];
 let initialized = false;
 let tokenRefreshUnsub: (() => void) | null = null;
@@ -131,13 +258,31 @@ export function initPush(): void {
   if (initialized) return;
   initialized = true;
 
+  void ensureChannels();
+
   const messaging = getMessaging();
 
-  const offMessage = onMessage(messaging, msg => {
-    console.log('[push] foreground', msg.notification?.title, msg.data);
+  // FCM foreground delivery: edge function sends data-only, so the OS won't
+  // auto-display. Render via notifee here so the user sees the same
+  // MessagingStyle in foreground as in background.
+  const offMessage = onMessage(messaging, async msg => {
+    await displayPushNotification(msg.data as Record<string, string> | undefined);
   });
   unsubFns.push(offMessage);
 
+  // Notifee tap handling — runs when the user taps a notification we
+  // displayed. Routes through the same handleNotificationData path the
+  // FCM auto-display tap used to.
+  const offNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+    if (type === EventType.PRESS) {
+      handleNotificationData(detail.notification?.data as Record<string, string> | undefined);
+    }
+  });
+  unsubFns.push(offNotifee);
+
+  // Legacy: if FCM ever delivers a message with a `notification` payload
+  // (e.g. from a server we don't control, or messages dispatched before the
+  // edge function was upgraded), these handlers still route the tap.
   const offOpened = onNotificationOpenedApp(messaging, msg => {
     handleNotificationData(msg.data as Record<string, string> | undefined);
   });
@@ -145,6 +290,15 @@ export function initPush(): void {
 
   void getInitialNotification(messaging).then(msg => {
     if (msg) handleNotificationData(msg.data as Record<string, string> | undefined);
+  });
+
+  // Cold-start tap on a notifee-rendered notification: app was killed,
+  // user tapped, Android launched MainActivity, notifee preserved the
+  // tapped notification's data here.
+  void notifee.getInitialNotification().then(initial => {
+    if (initial?.notification?.data) {
+      handleNotificationData(initial.notification.data as Record<string, string>);
+    }
   });
 }
 
