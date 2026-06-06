@@ -27,10 +27,19 @@ import { StoriesProvider } from '../contexts/StoriesContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
+import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
 import { updatePresenceHeartbeat } from '../services/conversations';
 import { messageCache } from '../services/messageCache';
+import {
+  initPush,
+  registerDeviceForUser,
+  unregisterDevice,
+  shouldShowPushPrompt,
+  requestPushPermissionInteractive,
+  deferPushPrompt,
+} from '../services/pushNotifications';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,6 +47,54 @@ export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pushUserIdRef = useRef<string | null>(null);
+  const [pushPromptVisible, setPushPromptVisible] = useState(false);
+  const [pushPromptBusy, setPushPromptBusy] = useState(false);
+
+  useEffect(() => {
+    initPush();
+  }, []);
+
+  // After sign-in, decide whether to surface the notification pre-prompt.
+  // Runs after a short delay so the user sees the home screen mount first
+  // (Android 13+ shows the modal less jarringly when it's not racing the
+  // first frame).
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setPushPromptVisible(false);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void shouldShowPushPrompt().then(should => {
+        if (!cancelled && should) setPushPromptVisible(true);
+      });
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [session?.user?.id]);
+
+  const handleEnableNotifications = async () => {
+    const uid = session?.user?.id;
+    if (!uid) {
+      setPushPromptVisible(false);
+      return;
+    }
+    setPushPromptBusy(true);
+    try {
+      await requestPushPermissionInteractive(uid);
+    } finally {
+      setPushPromptBusy(false);
+      setPushPromptVisible(false);
+    }
+  };
+
+  const handleDeferNotifications = async () => {
+    setPushPromptVisible(false);
+    void deferPushPrompt();
+  };
 
   // Presence heartbeat: update last_seen_at every 30s while app is foregrounded
   useEffect(() => {
@@ -104,6 +161,10 @@ export default function RootNavigator() {
           console.log(`[realtime] initial setAuth token=${s?.access_token ? 'present' : 'null'}`);
           supabase.realtime.setAuth(s?.access_token ?? null);
           setSession(s);
+          if (s?.user?.id) {
+            pushUserIdRef.current = s.user.id;
+            void registerDeviceForUser(s.user.id);
+          }
         }
       })
       .catch(() => {
@@ -129,6 +190,12 @@ export default function RootNavigator() {
         // aren't briefly visible if a different user signs in on the same device.
         if (event === 'SIGNED_OUT') {
           void messageCache.clearAll();
+          const prevUserId = pushUserIdRef.current;
+          pushUserIdRef.current = null;
+          if (prevUserId) void unregisterDevice(prevUserId);
+        } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
+          pushUserIdRef.current = s.user.id;
+          void registerDeviceForUser(s.user.id);
         }
       }
     });
@@ -281,6 +348,13 @@ export default function RootNavigator() {
           <FloatingPlayer />
         </>
       )}
+
+      <NotificationPermissionModal
+        visible={pushPromptVisible}
+        busy={pushPromptBusy}
+        onEnable={handleEnableNotifications}
+        onMaybeLater={handleDeferNotifications}
+      />
     </View>
     </StoriesProvider>
     </RelationshipProvider>

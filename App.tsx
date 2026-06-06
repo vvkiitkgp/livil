@@ -7,6 +7,7 @@ import {KeyboardProvider} from 'react-native-keyboard-controller';
 import {startMapper, stopMapper} from 'react-native-reanimated';
 import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
+import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
 
 const AppTheme = {
   ...DarkTheme,
@@ -50,7 +51,16 @@ export default function App(): React.JSX.Element {
         <KeyboardProvider>
         <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" />
         <PlaybackProvider>
-          <NavigationContainer theme={AppTheme}>
+          <NavigationContainer
+            theme={AppTheme}
+            ref={navigationRef}
+            onReady={flushPendingNavigation}
+            onStateChange={state => {
+              const route = state?.routes?.[state.index ?? 0];
+              if (route) {
+                setCurrentRoute({ name: route.name, params: route.params as Record<string, unknown> | undefined });
+              }
+            }}>
             <RootNavigator />
           </NavigationContainer>
         </PlaybackProvider>
