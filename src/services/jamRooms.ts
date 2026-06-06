@@ -115,6 +115,15 @@ export async function leaveJamRoom(jamRoomId: string): Promise<void> {
     .eq('user_id', me);
 }
 
+export async function isJamRoomEnded(jamRoomId: string): Promise<boolean> {
+  const { data } = await db
+    .from('jam_rooms')
+    .select('status')
+    .eq('id', jamRoomId)
+    .single();
+  return data?.status === 'ended';
+}
+
 export async function endJamRoom(
   jamRoomId: string,
   conversationId: string,
