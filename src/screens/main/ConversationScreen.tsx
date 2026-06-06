@@ -48,7 +48,7 @@ import {
   subscribeToConversation,
   unsubscribeFromConversation,
 } from '../../services/jamRealtime';
-import { createJamRoom, bulkAddToQueue } from '../../services/jamRooms';
+import { createJamRoom, bulkAddToQueue, isJamRoomEnded } from '../../services/jamRooms';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { supabase } from '../../../lib/supabase';
@@ -87,8 +87,18 @@ function JamInviteBubble({
   const navigation = useNavigation<Nav>();
   const { setActiveJam } = useJam();
   const jamRoomId = msg.metadata?.jam_room_id as string | undefined;
+  const [ended, setEnded] = useState(false);
+
+  useEffect(() => {
+    if (!jamRoomId) { return; }
+    let cancelled = false;
+    isJamRoomEnded(jamRoomId).then(v => { if (!cancelled) { setEnded(v); } });
+    return () => { cancelled = true; };
+  }, [jamRoomId]);
+
   if (!jamRoomId) { return null; }
   const handleJoin = () => {
+    if (ended) { return; }
     // Mark this jam active before navigating so the global JamRealtimeProvider
     // can subscribe + start receiving the host's playback even before
     // JamRoomScreen mounts.
@@ -96,19 +106,29 @@ function JamInviteBubble({
     navigation.navigate('JamRoom', { jamRoomId, conversationId });
   };
   return (
-    <View style={styles.jamInviteCard}>
-      <Text style={styles.jamInviteIcon}>🎵</Text>
+    <View style={[styles.jamInviteCard, ended && styles.jamInviteCardEnded]}>
+      <Text style={styles.jamInviteIcon}>{ended ? '🎵' : '🎵'}</Text>
       <View style={styles.jamInviteInfo}>
-        <Text style={styles.jamInviteTitle}>Jam Room started</Text>
-        <Text style={styles.jamInviteSub}>Tap to join the listening session</Text>
+        <Text style={styles.jamInviteTitle}>
+          {ended ? 'Jam Room ended' : 'Jam Room started'}
+        </Text>
+        <Text style={styles.jamInviteSub}>
+          {ended ? 'This session is no longer active' : 'Tap to join the listening session'}
+        </Text>
       </View>
-      <TouchableOpacity
-        style={styles.jamInviteBtn}
-        activeOpacity={0.8}
-        onPress={handleJoin}
-      >
-        <Text style={styles.jamInviteBtnText}>Join</Text>
-      </TouchableOpacity>
+      {ended ? (
+        <View style={styles.jamInviteBtnEnded}>
+          <Text style={styles.jamInviteBtnEndedText}>Ended</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.jamInviteBtn}
+          activeOpacity={0.8}
+          onPress={handleJoin}
+        >
+          <Text style={styles.jamInviteBtnText}>Join</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -902,6 +922,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   jamInviteBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  jamInviteCardEnded: {
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    opacity: 0.7,
+  },
+  jamInviteBtnEnded: {
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  jamInviteBtnEndedText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   // Reactions — Instagram style: absolute overlay at bubble bottom
   reactionOverlay: {
     position: 'absolute',
