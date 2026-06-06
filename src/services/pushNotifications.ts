@@ -11,7 +11,7 @@ import {
   AuthorizationStatus,
 } from '@react-native-firebase/messaging';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { navigateWhenReady } from '../navigation/navigationRef';
 import type { RootStackParamList } from '../navigation/types';
@@ -49,6 +49,54 @@ export async function setPushPromptStatus(status: PushPromptStatus): Promise<voi
 }
 
 /**
+ * Whether the OS notification permission is currently granted.
+ *
+ * On Android 13+ this is POST_NOTIFICATIONS — a real runtime permission that
+ * the Firebase SDK does NOT manage (its requestPermission() is a no-op there).
+ * On older Android the permission is implicitly granted at install time.
+ * On iOS the Firebase SDK tracks it correctly via hasPermission().
+ */
+async function checkOsNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+    return await PermissionsAndroid.check(
+      'android.permission.POST_NOTIFICATIONS' as Parameters<typeof PermissionsAndroid.check>[0],
+    );
+  }
+  if (Platform.OS === 'android') return true; // < API 33 grants at install
+  try {
+    const current = await hasPermission(getMessaging());
+    return (
+      current === AuthorizationStatus.AUTHORIZED ||
+      current === AuthorizationStatus.PROVISIONAL
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Trigger the actual OS-level runtime permission dialog.
+ *
+ * On Android 13+ this is the only path that shows a real prompt — Firebase's
+ * own requestPermission() does not. On older platforms we fall back to the
+ * Firebase API.
+ */
+async function requestOsNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+    const result = await PermissionsAndroid.request(
+      'android.permission.POST_NOTIFICATIONS' as Parameters<typeof PermissionsAndroid.request>[0],
+    );
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  }
+  if (Platform.OS === 'android') return true;
+  const status = await requestPermission(getMessaging());
+  return (
+    status === AuthorizationStatus.AUTHORIZED ||
+    status === AuthorizationStatus.PROVISIONAL
+  );
+}
+
+/**
  * Whether to render the pre-prompt modal. Returns true only when:
  *  - the user has never resolved the prompt before ('pending'), AND
  *  - the OS hasn't already granted permission (handles users who installed
@@ -60,18 +108,11 @@ export async function setPushPromptStatus(status: PushPromptStatus): Promise<voi
 export async function shouldShowPushPrompt(): Promise<boolean> {
   const status = await getPushPromptStatus();
   if (status !== 'pending') return false;
-  try {
-    const current = await hasPermission(getMessaging());
-    if (
-      current === AuthorizationStatus.AUTHORIZED ||
-      current === AuthorizationStatus.PROVISIONAL
-    ) {
-      // Already granted from a previous build; record and skip the pre-prompt.
-      await setPushPromptStatus('accepted');
-      return false;
-    }
-  } catch (e) {
-    console.warn('[push] hasPermission check failed', e);
+  const granted = await checkOsNotificationPermission();
+  if (granted) {
+    // Already granted from a previous build; record and skip the pre-prompt.
+    await setPushPromptStatus('accepted');
+    return false;
   }
   return true;
 }
@@ -170,10 +211,7 @@ export async function registerDeviceForUser(userId: string): Promise<void> {
     if (status === 'denied') return;
 
     if (status === 'pending' || status === 'shown') {
-      const current = await hasPermission(getMessaging());
-      const alreadyGranted =
-        current === AuthorizationStatus.AUTHORIZED ||
-        current === AuthorizationStatus.PROVISIONAL;
+      const alreadyGranted = await checkOsNotificationPermission();
       if (!alreadyGranted) return;
       await setPushPromptStatus('accepted');
     }
@@ -194,11 +232,7 @@ export async function registerDeviceForUser(userId: string): Promise<void> {
  */
 export async function requestPushPermissionInteractive(userId: string): Promise<boolean> {
   try {
-    const messaging = getMessaging();
-    const status = await requestPermission(messaging);
-    const granted =
-      status === AuthorizationStatus.AUTHORIZED ||
-      status === AuthorizationStatus.PROVISIONAL;
+    const granted = await requestOsNotificationPermission();
     if (!granted) {
       await setPushPromptStatus('denied');
       return false;
