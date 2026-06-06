@@ -14,7 +14,6 @@ import {
   Image,
   ActivityIndicator,
   Pressable,
-  Alert,
   ScrollViewProps,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -51,6 +50,7 @@ import {
 import { createJamRoom, bulkAddToQueue, isJamRoomEnded } from '../../services/jamRooms';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -332,6 +332,7 @@ export default function ConversationScreen() {
 
   const { nowPlaying, queueRef } = usePlayback();
   const { activeJam, setActiveJam } = useJam();
+  const { showToast } = useToast();
   const [startingJam, setStartingJam] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -398,18 +399,15 @@ export default function ConversationScreen() {
       .catch((err: unknown) => {
         if (!cancelled) {
           setLoading(false);
-          // If cache already rendered something, stay silent (don't disrupt UX)
-          const msg = err instanceof Error
-            ? err.message
-            : (err as { message?: string })?.message ?? JSON.stringify(err);
-          Alert.alert('Could not load messages', msg);
+          console.warn('[chat] fetchMessages failed', err);
+          showToast("Couldn't load messages. Please try again.", { kind: 'error' });
         }
       });
 
     void markAsRead(conversationId);
 
     return () => { cancelled = true; };
-  }, [conversationId]);
+  }, [conversationId, showToast]);
 
   // Realtime subscription
   useEffect(() => {
@@ -548,16 +546,14 @@ export default function ConversationScreen() {
       // Update cache: replace optimistic with the confirmed message
       void messageCache.prependMessages(conversationId, [real]);
     } catch (err) {
+      console.warn('[chat] sendMessage failed', err);
       setMessages(prev => prev.filter(m => m.id !== optimistic.id));
       setText(body);
-      const msg = err instanceof Error
-        ? err.message
-        : (err as { message?: string })?.message ?? JSON.stringify(err);
-      Alert.alert('Send failed', msg);
+      showToast("Couldn't send message. Please try again.", { kind: 'error' });
     } finally {
       setSending(false);
     }
-  }, [text, sending, conversationId, myId, myProfile]);
+  }, [text, sending, conversationId, myId, myProfile, showToast]);
 
   const handleLongPress = useCallback((msg: ChatMessage) => {
     setReactionTarget(msg);
@@ -611,10 +607,7 @@ export default function ConversationScreen() {
 
   const handleStartJam = useCallback(async () => {
     if (activeJam) {
-      Alert.alert(
-        'Jam Already Running',
-        'Please end the current Jam Room before starting a new one.',
-      );
+      showToast('End the current Jam Room first.', { kind: 'info' });
       return;
     }
     if (startingJam) { return; }
@@ -629,12 +622,12 @@ export default function ConversationScreen() {
       setActiveJam({ jamRoomId, conversationId, conversationTitle: title });
       navigation.navigate('JamRoom', { jamRoomId, conversationId });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Could not start Jam Room', msg);
+      console.warn('[jam] createJamRoom failed', err);
+      showToast("Couldn't start Jam Room. Please try again.", { kind: 'error' });
     } finally {
       setStartingJam(false);
     }
-  }, [activeJam, startingJam, conversationId, nowPlaying, queueRef, setActiveJam, title, navigation]);
+  }, [activeJam, startingJam, conversationId, nowPlaying, queueRef, setActiveJam, title, navigation, showToast]);
 
   const renderChatScrollComponent = useCallback(
     (props: ScrollViewProps) => (

@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   Platform,
@@ -18,6 +17,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FormInput from '../../components/FormInput';
 import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
+import { useToast } from '../../contexts/ToastContext';
 import {
   getMyPrivateProfile,
   getMyProfile,
@@ -102,6 +103,7 @@ function isFormEqual(a: FormState, b: FormState): boolean {
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<Nav>();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +114,7 @@ export default function EditProfileScreen() {
   const [avatar, setAvatar] = useState<AvatarState>({ kind: 'remote', url: null });
   const [username, setUsername] = useState<string>('');
   const [avatarSheetOpen, setAvatarSheetOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,9 +198,10 @@ export default function EditProfileScreen() {
       const asset = await pickAvatarFromLibrary();
       if (asset) {setAvatar({ kind: 'local', asset });}
     } catch (e) {
-      Alert.alert('Image picker', e instanceof Error ? e.message : 'Could not open library.');
+      console.warn('[profile] pickAvatarFromLibrary failed', e);
+      showToast("Couldn't open the photo library.", { kind: 'error' });
     }
-  }, [closeAvatarSheet]);
+  }, [closeAvatarSheet, showToast]);
 
   const handleTakePhoto = useCallback(async () => {
     closeAvatarSheet();
@@ -205,9 +209,10 @@ export default function EditProfileScreen() {
       const asset = await pickAvatarFromCamera();
       if (asset) {setAvatar({ kind: 'local', asset });}
     } catch (e) {
-      Alert.alert('Camera', e instanceof Error ? e.message : 'Could not open camera.');
+      console.warn('[profile] pickAvatarFromCamera failed', e);
+      showToast("Couldn't open the camera.", { kind: 'error' });
     }
-  }, [closeAvatarSheet]);
+  }, [closeAvatarSheet, showToast]);
 
   const handleRemoveAvatar = useCallback(() => {
     closeAvatarSheet();
@@ -219,16 +224,13 @@ export default function EditProfileScreen() {
       navigation.goBack();
       return;
     }
-    Alert.alert(
-      'Discard changes?',
-      'Your edits will be lost.',
-      [
-        { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
-      ],
-      { cancelable: true },
-    );
+    setDiscardOpen(true);
   }, [dirty, navigation]);
+
+  const confirmDiscard = useCallback(() => {
+    setDiscardOpen(false);
+    navigation.goBack();
+  }, [navigation]);
 
   const handleSave = useCallback(async () => {
     if (!canSave || !userId) {return;}
@@ -520,6 +522,18 @@ export default function EditProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConfirmActionModal
+        visible={discardOpen}
+        title="Discard changes?"
+        message="Your edits won't be saved."
+        glyph="!"
+        tone="destructive"
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        onConfirm={confirmDiscard}
+        onCancel={() => setDiscardOpen(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -14,6 +14,7 @@ Users can upload music (audio + video), listen together in real time (Jam rooms)
 - Never install new packages without checking compatibility with RN 0.78.0 first.
 - Bump `versionCode` in `android/app/build.gradle` before every Play Store release.
 - Never commit `android/app/livil-release.keystore` or any passwords/credentials.
+- **Never use `Alert.alert`.** For confirmations ("Are you sure?", destructive actions, decisions) use `ConfirmActionModal` (`src/components/ConfirmActionModal.tsx`) or a bespoke modal matching the `NotificationPermissionModal` / `JamExitModal` template. For errors, warnings, and short status messages use the toast — `useToast()` from `src/contexts/ToastContext.tsx` — with `kind: 'error' | 'success' | 'info'`. **Why**: `Alert.alert` renders the OS dialog which clashes with the dark theme and looks unprofessional. **How to apply**: when adding a feature that needs user feedback, reach for `ConfirmActionModal` or `useToast` first; only if neither fits, build a new modal in the same visual style.
 
 ---
 

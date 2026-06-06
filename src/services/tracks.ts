@@ -309,31 +309,61 @@ export async function searchProfiles(
   const trimmed = query.trim();
   const limit = options.limit ?? 20;
   const exclude = options.excludeUserIds ?? [];
+  const columns = 'id, username, display_name, avatar_url';
 
-  let req = supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_url')
-    .order('username', { ascending: true })
-    .limit(limit);
+  type Row = { id: string; username: string; display_name: string | null; avatar_url: string | null };
 
-  if (trimmed.length > 0) {
-    const pattern = `%${trimmed.replace(/[%_]/g, '\\$&')}%`;
-    req = req.or(`username.ilike.${pattern},display_name.ilike.${pattern}`);
+  if (trimmed.length === 0) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(columns)
+      .order('username', { ascending: true })
+      .limit(limit);
+    if (error) { throw new Error(error.message); }
+    return ((data ?? []) as Row[])
+      .filter(p => !exclude.includes(p.id))
+      .map(toResult);
   }
 
-  const { data, error } = await req;
-  if (error) {
-    throw new Error(error.message);
-  }
+  // Two parallel ilike queries — username matches rank above display-name
+  // matches in the merged list. Avoids the .or() filter-string fragility.
+  const pattern = `%${trimmed.replace(/[%_]/g, '\\$&')}%`;
+  const [usernameRes, displayNameRes] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select(columns)
+      .ilike('username', pattern)
+      .order('username', { ascending: true })
+      .limit(limit),
+    supabase
+      .from('profiles')
+      .select(columns)
+      .ilike('display_name', pattern)
+      .order('display_name', { ascending: true })
+      .limit(limit),
+  ]);
 
-  return (data ?? [])
-    .filter(p => !exclude.includes(p.id))
-    .map(p => ({
-      id: p.id,
-      username: p.username,
-      displayName: p.display_name,
-      avatarUrl: p.avatar_url,
-    }));
+  if (usernameRes.error) { throw new Error(usernameRes.error.message); }
+  if (displayNameRes.error) { throw new Error(displayNameRes.error.message); }
+
+  const seen = new Set<string>();
+  const merged: Row[] = [];
+  for (const row of [...((usernameRes.data ?? []) as Row[]), ...((displayNameRes.data ?? []) as Row[])]) {
+    if (seen.has(row.id) || exclude.includes(row.id)) { continue; }
+    seen.add(row.id);
+    merged.push(row);
+    if (merged.length >= limit) { break; }
+  }
+  return merged.map(toResult);
+}
+
+function toResult(p: { id: string; username: string; display_name: string | null; avatar_url: string | null }): ProfileSearchResult {
+  return {
+    id: p.id,
+    username: p.username,
+    displayName: p.display_name,
+    avatarUrl: p.avatar_url,
+  };
 }
 
 export type LibraryRecentTrack = {

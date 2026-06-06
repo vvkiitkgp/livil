@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,27 +13,52 @@ import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
+import { useToast } from '../../contexts/ToastContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 };
 
 export default function SignInScreen({ navigation }: Props) {
-  const [email, setEmail] = useState('');
+  const { showToast } = useToast();
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleSignIn = async () => {
-    if (!email.trim() || !password) {
-      setError('Please enter your email and password.');
+    const trimmed = identifier.trim().replace(/^@/, '');
+    if (!trimmed || !password) {
+      setError('Please enter your email or username and password.');
       return;
     }
     setLoading(true);
     setError('');
+
+    let emailToUse = trimmed;
+    if (!trimmed.includes('@')) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const { data, error: lookupError } = await db.rpc('get_email_for_username', {
+        p_username: trimmed.toLowerCase(),
+      });
+      if (lookupError) {
+        setLoading(false);
+        setError(lookupError.message);
+        return;
+      }
+      if (!data) {
+        setLoading(false);
+        // Same wording as wrong-password so we don't confirm username existence.
+        setError('Invalid login credentials.');
+        return;
+      }
+      emailToUse = data as string;
+    }
+
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: emailToUse,
       password,
     });
     setLoading(false);
@@ -47,10 +71,7 @@ export default function SignInScreen({ navigation }: Props) {
     // TODO: Implement Google OAuth for React Native
     // Requires react-native-app-auth + Google Cloud credentials
     // Docs: https://supabase.com/docs/guides/auth/social-login/auth-google?platform=react-native
-    Alert.alert(
-      'Google Sign In',
-      'Google OAuth requires additional setup with react-native-app-auth. See the Supabase React Native docs.',
-    );
+    showToast('Google sign-in is coming soon.', { kind: 'info' });
   };
 
   return (
@@ -83,11 +104,11 @@ export default function SignInScreen({ navigation }: Props) {
 
           <View style={styles.form}>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>Email or username</Text>
               <FormInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="you@example.com"
+                value={identifier}
+                onChangeText={setIdentifier}
+                placeholder="you@example.com or @handle"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}

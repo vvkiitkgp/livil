@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,10 +13,21 @@ import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignUp'>;
 };
+
+type UsernameStatus =
+  | 'idle'
+  | 'invalid'
+  | 'checking'
+  | 'available'
+  | 'taken'
+  | 'error';
+
+const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
 
 export default function SignUpScreen({ navigation }: Props) {
   const [displayName, setDisplayName] = useState('');
@@ -27,10 +37,57 @@ export default function SignUpScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const [checkEmailOpen, setCheckEmailOpen] = useState(false);
+  const [checkEmailTarget, setCheckEmailTarget] = useState('');
+
+  const cleanedUsername = useMemo(
+    () => username.trim().toLowerCase().replace(/^@/, ''),
+    [username],
+  );
+
+  // Debounced username availability check.
+  useEffect(() => {
+    if (cleanedUsername.length === 0) {
+      setUsernameStatus('idle');
+      return;
+    }
+    if (!USERNAME_RE.test(cleanedUsername)) {
+      setUsernameStatus('invalid');
+      return;
+    }
+    setUsernameStatus('checking');
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      const { data, error: rpcError } = await db.rpc('is_username_available', {
+        p_username: cleanedUsername,
+      });
+      if (cancelled) { return; }
+      if (rpcError) {
+        setUsernameStatus('error');
+        return;
+      }
+      setUsernameStatus(data ? 'available' : 'taken');
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cleanedUsername]);
 
   const handleSignUp = async () => {
-    if (!displayName.trim() || !username.trim() || !email.trim() || !password) {
+    if (!displayName.trim() || !cleanedUsername || !email.trim() || !password) {
       setError('Please fill in all fields.');
+      return;
+    }
+    if (!USERNAME_RE.test(cleanedUsername)) {
+      setError('Username must be 3–30 characters: letters, numbers, underscore.');
+      return;
+    }
+    if (usernameStatus === 'taken') {
+      setError('That username is taken. Please choose another.');
       return;
     }
     if (password.length < 6) {
@@ -46,7 +103,7 @@ export default function SignUpScreen({ navigation }: Props) {
         emailRedirectTo: 'livil://auth',
         data: {
           display_name: displayName.trim(),
-          username: username.trim().toLowerCase().replace(/^@/, ''),
+          username: cleanedUsername,
         },
       },
     });
@@ -54,11 +111,8 @@ export default function SignUpScreen({ navigation }: Props) {
     if (signUpError) {
       setError(signUpError.message);
     } else {
-      Alert.alert(
-        'Check your email ✉️',
-        `We sent a confirmation link to ${email.trim()}. Please verify your email to get started.`,
-        [{ text: 'Go to Sign In', onPress: () => navigation.navigate('SignIn') }],
-      );
+      setCheckEmailTarget(email.trim());
+      setCheckEmailOpen(true);
     }
   };
 
@@ -112,6 +166,7 @@ export default function SignUpScreen({ navigation }: Props) {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                <UsernameStatusLine status={usernameStatus} />
               </View>
             </View>
 
@@ -148,9 +203,12 @@ export default function SignUpScreen({ navigation }: Props) {
             </View>
 
             <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              style={[
+                styles.primaryButton,
+                (loading || usernameStatus === 'checking' || usernameStatus === 'taken' || usernameStatus === 'invalid') && styles.buttonDisabled,
+              ]}
               onPress={handleSignUp}
-              disabled={loading}
+              disabled={loading || usernameStatus === 'checking' || usernameStatus === 'taken' || usernameStatus === 'invalid'}
               activeOpacity={0.85}
             >
               {loading ? (
@@ -175,9 +233,67 @@ export default function SignUpScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
       </KeyboardAwareScrollView>
+
+      <ConfirmActionModal
+        visible={checkEmailOpen}
+        title="Check your email"
+        message={`We sent a confirmation link to ${checkEmailTarget}. Verify your email to get started.`}
+        glyph="✉"
+        tone="primary"
+        confirmLabel="Go to Sign In"
+        cancelLabel={null}
+        onConfirm={() => {
+          setCheckEmailOpen(false);
+          navigation.navigate('SignIn');
+        }}
+        onCancel={() => setCheckEmailOpen(false)}
+      />
     </SafeAreaView>
   );
 }
+
+function UsernameStatusLine({ status }: { status: UsernameStatus }) {
+  if (status === 'idle') { return null; }
+  if (status === 'checking') {
+    return (
+      <View style={statusStyles.row}>
+        <ActivityIndicator size="small" color={COLORS.textSecondary} />
+        <Text style={[statusStyles.text, statusStyles.muted]}>Checking…</Text>
+      </View>
+    );
+  }
+  if (status === 'available') {
+    return <Text style={[statusStyles.text, statusStyles.success]}>✓ Available</Text>;
+  }
+  if (status === 'taken') {
+    return <Text style={[statusStyles.text, statusStyles.errorText]}>Username taken</Text>;
+  }
+  if (status === 'invalid') {
+    return <Text style={[statusStyles.text, statusStyles.muted]}>3–30 letters, numbers, or _</Text>;
+  }
+  return <Text style={[statusStyles.text, statusStyles.errorText]}>Couldn't verify availability</Text>;
+}
+
+const statusStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  text: {
+    fontSize: 12,
+    marginTop: -2,
+  },
+  muted: {
+    color: COLORS.textMuted,
+  },
+  success: {
+    color: '#22C55E',
+  },
+  errorText: {
+    color: COLORS.error,
+  },
+});
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },

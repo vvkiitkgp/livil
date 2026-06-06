@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +16,7 @@ import { COLORS } from '../../theme/colors';
 import FormInput from '../../components/FormInput';
 import { getOrCreateDm, createGroup } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
+import { useToast } from '../../contexts/ToastContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Tab = 'dm' | 'group';
@@ -48,6 +48,7 @@ function Avatar({ friend, size = 48 }: { friend: Friend; size?: number }) {
 }
 
 export default function NewConversationScreen() {
+  const { showToast } = useToast();
   const navigation = useNavigation<Nav>();
   const [tab, setTab] = useState<Tab>('dm');
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -141,11 +142,11 @@ export default function NewConversationScreen() {
         kind: 'dm',
       });
     } catch (err) {
+      console.warn('[chat] getOrCreateDm failed', err);
       setStartingId(null);
-      const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      Alert.alert('Could not open chat', msg);
+      showToast("Couldn't open chat. Please try again.", { kind: 'error' });
     }
-  }, [startingId, navigation]);
+  }, [startingId, navigation, showToast]);
 
   // Group: tap → toggle selection
   const handleToggleSelect = useCallback((friend: Friend) => {
@@ -163,11 +164,11 @@ export default function NewConversationScreen() {
   const handleCreateGroup = useCallback(async () => {
     const name = groupName.trim();
     if (!name) {
-      Alert.alert('Name required', 'Please enter a group name.');
+      showToast('Enter a group name.', { kind: 'info' });
       return;
     }
     if (selected.size < 1) {
-      Alert.alert('Add members', 'Select at least one friend.');
+      showToast('Select at least one friend.', { kind: 'info' });
       return;
     }
     setCreating(true);
@@ -179,12 +180,12 @@ export default function NewConversationScreen() {
         kind: 'group',
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : JSON.stringify(err);
-      Alert.alert('Could not create group', msg);
+      console.warn('[chat] createGroup failed', err);
+      showToast("Couldn't create group. Please try again.", { kind: 'error' });
     } finally {
       setCreating(false);
     }
-  }, [groupName, selected, navigation]);
+  }, [groupName, selected, navigation, showToast]);
 
   const renderDmItem = useCallback(({ item }: { item: Friend }) => (
     <TouchableOpacity
