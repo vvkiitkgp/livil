@@ -250,6 +250,7 @@ export default function QueueList({
     moveQueueItem,
     removeFromQueue,
     nowPlaying,
+    queueVersion,
   } = usePlayback();
 
   const isExternal = externalData !== undefined;
@@ -286,7 +287,7 @@ export default function QueueList({
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExternal, nowPlaying?.postId, version]);
+  }, [isExternal, nowPlaying?.postId, queueVersion, version]);
 
   const data = isExternal ? externalData : internalData;
 
