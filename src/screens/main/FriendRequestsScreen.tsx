@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
   },
   btnAccept: { backgroundColor: COLORS.purple },
   btnAcceptText: { color: COLORS.white, fontWeight: '700', fontSize: 13 },
-  btnDecline: { borderWidth: 1, borderColor: COLORS.border },
+  btnDecline: { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: COLORS.card },
   btnDeclineText: { color: COLORS.textSecondary, fontWeight: '600', fontSize: 13 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
