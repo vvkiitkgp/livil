@@ -38,6 +38,15 @@ export default function SearchScreen() {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
   const comments = useCommentsCountDeltas();
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const handlePostDeleted = useCallback((postId: string) => {
+    setDeletedIds(prev => {
+      if (prev.has(postId)) { return prev; }
+      const next = new Set(prev);
+      next.add(postId);
+      return next;
+    });
+  }, []);
 
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<Tab>('users');
@@ -171,9 +180,10 @@ export default function SearchScreen() {
         visible={visibleIds.has(item.id)}
         pauseWhenOffScreen
         onCommentsPress={comments.openComments}
+        onDeleted={handlePostDeleted}
       />
     ),
-    [visibleIds, comments],
+    [visibleIds, comments, handlePostDeleted],
   );
 
   const trimmedQuery = query.trim();
@@ -267,7 +277,7 @@ export default function SearchScreen() {
         />
       ) : (
         <FlatList
-          data={trackResults}
+          data={trackResults.filter(p => !deletedIds.has(p.id))}
           keyExtractor={item => item.id}
           renderItem={renderTrackRow}
           contentContainerStyle={[styles.trackListContent, { paddingBottom: 64 + insets.bottom + 48 }]}

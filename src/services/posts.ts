@@ -579,6 +579,61 @@ export async function recordPlay(postId: string): Promise<void> {
   }
 }
 
+export type PostReportReason = 'spam' | 'harassment' | 'hate' | 'misinformation' | 'other';
+
+/**
+ * Report a post. Mirrors `reportComment` in src/services/comments.ts —
+ * inserts into `post_reports`; RLS guarantees `reporter_id = auth.uid()`.
+ */
+export async function reportPost(
+  postId: string,
+  reason: PostReportReason,
+  details?: string,
+): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    throw new Error('You must be signed in to report.');
+  }
+  const me = userData.user.id;
+  const trimmed = details?.trim();
+  const { error } = await supabase.from('post_reports').insert({
+    post_id: postId,
+    reporter_id: me,
+    reason,
+    details: trimmed && trimmed.length > 0 ? trimmed : null,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/**
+ * Delete a post. RLS enforces ownership (only the author can delete).
+ *
+ * FK cascades (all ON DELETE CASCADE):
+ *   - post_comments (and their likes/reports via comment cascade)
+ *   - post_likes
+ *   - post_views
+ *   - playlist_posts (removed from all playlists that contained this post)
+ *   - posts.original_post_id → reposts of this post are also deleted
+ *   - stories.original_post_id → stories sharing this post are also deleted
+ *   - post_reports (this table)
+ *
+ * The repost cascade is intentionally aggressive: deleting an upload removes
+ * every repost of it across the platform. If we want to keep reposts as
+ * orphans (still playable since `track_id` still points at the tracks table),
+ * switch posts_original_post_id_fkey to ON DELETE SET NULL in a follow-up.
+ */
+export async function deletePost(postId: string): Promise<void> {
+  const { error } = await supabase
+    .from('posts')
+    .delete()
+    .eq('id', postId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 /**
  * Convert a FeedPost to NowPlayingInfo for the playback engine.
  * For reposts, the author shown is the original uploader.

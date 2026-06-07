@@ -100,6 +100,15 @@ export default function UserProfileScreen() {
   const rel = useRelationships();
   const [sheetOpen, setSheetOpen] = useState(false);
   const comments = useCommentsCountDeltas();
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const handlePostDeleted = useCallback((postId: string) => {
+    setDeletedIds(prev => {
+      if (prev.has(postId)) { return prev; }
+      const next = new Set(prev);
+      next.add(postId);
+      return next;
+    });
+  }, []);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
@@ -260,12 +269,13 @@ export default function UserProfileScreen() {
 
   const listData = useMemo<ListItem[]>(() => {
     const head: ListItem = { kind: 'tabs', key: '__tabs__' };
-    if (posts.length > 0) {
-      return [head, ...posts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
+    const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
+    if (visiblePosts.length > 0) {
+      return [head, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
     }
     if (loading) { return [head, { kind: 'loading', key: '__loading__' }]; }
     return [head, { kind: 'empty', key: '__empty__' }];
-  }, [posts, loading]);
+  }, [posts, loading, deletedIds]);
 
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
@@ -306,10 +316,11 @@ export default function UserProfileScreen() {
           post={comments.withDelta(item.post)}
           visible={visibleIds.has(item.post.id)}
           onCommentsPress={comments.openComments}
+          onDeleted={handlePostDeleted}
         />
       );
     },
-    [handleTabChange, tab, visibleIds, comments],
+    [handleTabChange, tab, visibleIds, comments, handlePostDeleted],
   );
 
   const renderHeader = useCallback(() => {

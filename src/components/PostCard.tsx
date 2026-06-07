@@ -9,8 +9,11 @@ import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPla
 import ClipRangeSlider from './ClipRangeSlider';
 import TrackContextMenu from './TrackContextMenu';
 import type { FeedPost } from '../services/posts';
-import { toggleLike } from '../services/posts';
+import { toggleLike, deletePost } from '../services/posts';
 import { trackPlayProgress } from '../utils/playTracker';
+import PostReportModal from './PostReportModal';
+import ConfirmActionModal from './ConfirmActionModal';
+import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 
@@ -26,6 +29,11 @@ export type PostCardProps = {
   pauseWhenOffScreen?: boolean;
   /** Tap the comments stat to open the CommentsSheet for this post. */
   onCommentsPress?: (postId: string) => void;
+  /**
+   * Called after the owner successfully deletes their post. The feed screen
+   * should drop the post from its local list so the card unmounts.
+   */
+  onDeleted?: (postId: string) => void;
 };
 
 function formatCount(n: number): string {
@@ -77,11 +85,29 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
   return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
 }
 
-export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress }: PostCardProps) {
+export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
   const playerRef = useRef<MediaPlayerHandle>(null);
+
+  // Viewer id is needed to decide owner vs non-owner for the ⋯ menu actions
+  // (Delete shows only for owner, Report only for non-owner). Resolved once
+  // on mount; doesn't change during the card's lifetime.
+  const [viewerId, setViewerId] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!cancelled) { setViewerId(data?.user?.id ?? ''); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Modal state for the post-level actions launched from the ⋯ menu.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Queue actions silently mutate userQueueRef — there's no visible feedback
   // unless the user opens the QueueList in FullScreenPlayer. Wrap them with
@@ -95,6 +121,26 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     playback.addToQueue(track);
     showToast('Added to queue', { kind: 'success' });
   }, [playback, showToast]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    setDeleting(true);
+    try {
+      await deletePost(post.id);
+      setConfirmDelete(false);
+      showToast('Post deleted', { kind: 'success' });
+      // If this card was currently driving playback, stop it cleanly so a
+      // ghost player doesn't keep going after the post vanishes.
+      if (playback.isActive(post.id)) {
+        playback.pauseAll();
+        playback.clearNowPlaying();
+      }
+      onDeleted?.(post.id);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not delete post.', { kind: 'error' });
+    } finally {
+      setDeleting(false);
+    }
+  }, [post.id, playback, showToast, onDeleted]);
 
   const openAuthor = useCallback((authorId: string) => {
     navigation.navigate('UserProfile', { userId: authorId });
@@ -572,6 +618,28 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         onGoToArtist={(userId) => {
           navigation.navigate('UserProfile', { userId });
         }}
+        viewerId={viewerId}
+        postId={post.id}
+        postAuthorId={post.author.id}
+        onReportPost={() => setReportOpen(true)}
+        onDeletePost={() => setConfirmDelete(true)}
+      />
+
+      <PostReportModal
+        visible={reportOpen}
+        postId={reportOpen ? post.id : null}
+        onClose={() => setReportOpen(false)}
+      />
+
+      <ConfirmActionModal
+        visible={confirmDelete}
+        title="Delete post?"
+        message="This permanently removes the post, its comments, likes, and any reposts of it. This cannot be undone."
+        confirmLabel="Delete"
+        tone="destructive"
+        busy={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete(false)}
       />
     </View>
   );

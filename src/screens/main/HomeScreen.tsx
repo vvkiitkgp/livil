@@ -205,6 +205,17 @@ export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const playback = usePlayback();
   const comments = useCommentsCountDeltas();
+  // Posts the viewer has deleted in this session. Filtered out before the
+  // FlatList sees them, so the card unmounts immediately.
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const handlePostDeleted = useCallback((postId: string) => {
+    setDeletedIds(prev => {
+      if (prev.has(postId)) { return prev; }
+      const next = new Set(prev);
+      next.add(postId);
+      return next;
+    });
+  }, []);
   const { stories, setStories } = useStories();
   const { pendingIncomingCount } = useRelationships();
   const insets = useSafeAreaInsets();
@@ -563,8 +574,10 @@ export default function HomeScreen() {
         id: `sk-${i}`,
       }));
     }
-    return posts.map(post => ({ kind: 'post' as const, post }));
-  }, [loadingInitial, posts]);
+    return posts
+      .filter(post => !deletedIds.has(post.id))
+      .map(post => ({ kind: 'post' as const, post }));
+  }, [loadingInitial, posts, deletedIds]);
 
   const renderFeedItem = useCallback(
     ({ item }: { item: FeedListItem }) => {
@@ -577,10 +590,11 @@ export default function HomeScreen() {
           visible={visibleIds.has(item.post.id)}
           pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
+          onDeleted={handlePostDeleted}
         />
       );
     },
-    [visibleIds, comments],
+    [visibleIds, comments, handlePostDeleted],
   );
 
   const feedKeyExtractor = useCallback((item: FeedListItem) => {

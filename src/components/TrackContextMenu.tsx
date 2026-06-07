@@ -20,9 +20,26 @@ export type TrackContextMenuProps = {
   onAddToQueue: (track: NowPlayingInfo) => void;
   onAddToPlaylist?: (track: NowPlayingInfo) => void;
   onGoToArtist?: (userId: string) => void;
+  /** Opens the report modal for the post. Hidden when the viewer is the post owner. */
+  onReportPost?: (postId: string) => void;
+  /** Hard-deletes the post after confirmation. Only shown when the viewer is the post owner. */
+  onDeletePost?: (postId: string) => void;
+  /** ID of the currently signed-in user, used to decide ownership. Falsy = no ownership decisions. */
+  viewerId?: string;
+  /** ID of the post backing this menu — needed for report + delete. */
+  postId?: string;
+  /** Authoring user of the post — used to decide owner vs. non-owner. */
+  postAuthorId?: string;
 };
 
-const MENU_ITEMS = [
+type MenuItem = {
+  id: string;
+  label: string;
+  icon: string;
+  destructive?: boolean;
+};
+
+const BASE_MENU_ITEMS: readonly MenuItem[] = [
   { id: 'play-next', label: 'Play Next', icon: '⏭' },
   { id: 'add-to-queue', label: 'Add to Queue', icon: '☰' },
   { id: 'add-to-playlist', label: 'Add to Playlist...', icon: '+' },
@@ -37,10 +54,30 @@ export default function TrackContextMenu({
   onAddToQueue,
   onAddToPlaylist,
   onGoToArtist,
+  onReportPost,
+  onDeletePost,
+  viewerId,
+  postId,
+  postAuthorId,
 }: TrackContextMenuProps) {
   const insets = useSafeAreaInsets();
+
+  // Compose the menu item list dynamically — ownership decides whether Report
+  // (others' posts) or Delete (own posts) appears at the bottom.
+  const isOwner = !!viewerId && !!postAuthorId && viewerId === postAuthorId;
+  const items: MenuItem[] = [...BASE_MENU_ITEMS];
+  if (postId && onReportPost && !isOwner) {
+    items.push({ id: 'report-post', label: 'Report post', icon: '⚐' });
+  }
+  if (postId && onDeletePost && isOwner) {
+    items.push({ id: 'delete-post', label: 'Delete post', icon: '✕', destructive: true });
+  }
+
   const handlePress = useCallback((id: string) => {
     if (!track) { return; }
+    // Report + Delete need the menu to stay open until the follow-up modal
+    // takes over (the caller opens its own confirm/report modal in response).
+    // Closing here first looks cleaner than fading the menu under the modal.
     onClose();
     switch (id) {
       case 'play-next':
@@ -55,8 +92,14 @@ export default function TrackContextMenu({
       case 'go-to-artist':
         onGoToArtist?.(track.authorId);
         break;
+      case 'report-post':
+        if (postId) { onReportPost?.(postId); }
+        break;
+      case 'delete-post':
+        if (postId) { onDeletePost?.(postId); }
+        break;
     }
-  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist]);
+  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onReportPost, onDeletePost, postId]);
 
   if (!track) { return null; }
 
@@ -88,7 +131,7 @@ export default function TrackContextMenu({
 
               <View style={styles.divider} />
 
-              {MENU_ITEMS.map((item) => {
+              {items.map((item) => {
                 if (item.id === 'add-to-playlist' && !onAddToPlaylist) { return null; }
                 if (item.id === 'go-to-artist' && !onGoToArtist) { return null; }
                 return (
@@ -98,8 +141,12 @@ export default function TrackContextMenu({
                     onPress={() => handlePress(item.id)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.menuIcon}>{item.icon}</Text>
-                    <Text style={styles.menuLabel}>{item.label}</Text>
+                    <Text style={[styles.menuIcon, item.destructive && styles.menuIconDestructive]}>
+                      {item.icon}
+                    </Text>
+                    <Text style={[styles.menuLabel, item.destructive && styles.menuLabelDestructive]}>
+                      {item.label}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -181,9 +228,15 @@ const styles = StyleSheet.create({
     width: 24,
     textAlign: 'center',
   },
+  menuIconDestructive: {
+    color: COLORS.error,
+  },
   menuLabel: {
     color: COLORS.white,
     fontSize: 15,
     fontWeight: '500',
+  },
+  menuLabelDestructive: {
+    color: COLORS.error,
   },
 });
