@@ -2,7 +2,6 @@ import React, {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -444,33 +443,6 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const closeFullScreenPlayer = useCallback(() => {
     setIsFullScreenOpen(false);
   }, []);
-
-  // ── Video queue fallback ──────────────────────────────────────────────────
-  // When the queue advances to a new track, PlaybackEngine drives AUDIO
-  // independently — works regardless of which feed is on screen. Video,
-  // however, needs a visible <Video> surface, which lives in either:
-  //   (a) PostCard's <MediaPlayer> (only when the PostCard for that post is
-  //       mounted in the current feed), or
-  //   (b) FullScreenPlayer's <Video> (only when FS is open).
-  //
-  // If you queue a video track, scroll the feed away from it, and the
-  // current track ends → pendingPlayId is set but nobody is mounted to
-  // consume it. The user hears silence.
-  //
-  // Fallback: when pendingPlayId becomes non-null for a video track and FS
-  // isn't open, give mounted PostCards ~500 ms to consume it (a real
-  // consumer fires within one render frame). If it's still set after the
-  // timer, auto-open FullScreenPlayer as the playback surface.
-  useEffect(() => {
-    if (!pendingPlayId) { return; }
-    if (nowPlaying?.mediaKind !== 'video') { return; }
-    if (isFullScreenOpen) { return; }
-    const t = setTimeout(() => {
-      console.log(`[LIVIL][CTX] pendingPlayId=${pendingPlayId} unclaimed after 500ms — opening FullScreenPlayer as video fallback`);
-      setIsFullScreenOpen(true);
-    }, 500);
-    return () => clearTimeout(t);
-  }, [pendingPlayId, nowPlaying?.mediaKind, isFullScreenOpen]);
 
   const setStoryViewerOpen = useCallback((open: boolean) => {
     setIsStoryViewerOpenState(open);
