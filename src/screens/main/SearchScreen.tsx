@@ -16,6 +16,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FormInput from '../../components/FormInput';
 import AddBadge from '../../components/AddBadge';
 import PostCard from '../../components/PostCard';
+import CommentsSheet from '../../components/CommentsSheet';
+import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
@@ -35,6 +37,16 @@ function initialsFor(name: string): string {
 export default function SearchScreen() {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
+  const comments = useCommentsCountDeltas();
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const handlePostDeleted = useCallback((postId: string) => {
+    setDeletedIds(prev => {
+      if (prev.has(postId)) { return prev; }
+      const next = new Set(prev);
+      next.add(postId);
+      return next;
+    });
+  }, []);
 
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<Tab>('users');
@@ -163,9 +175,15 @@ export default function SearchScreen() {
 
   const renderTrackRow = useCallback(
     ({ item }: { item: FeedPost }) => (
-      <PostCard post={item} visible={visibleIds.has(item.id)} pauseWhenOffScreen />
+      <PostCard
+        post={comments.withDelta(item)}
+        visible={visibleIds.has(item.id)}
+        pauseWhenOffScreen
+        onCommentsPress={comments.openComments}
+        onDeleted={handlePostDeleted}
+      />
     ),
-    [visibleIds],
+    [visibleIds, comments, handlePostDeleted],
   );
 
   const trimmedQuery = query.trim();
@@ -259,7 +277,7 @@ export default function SearchScreen() {
         />
       ) : (
         <FlatList
-          data={trackResults}
+          data={trackResults.filter(p => !deletedIds.has(p.id))}
           keyExtractor={item => item.id}
           renderItem={renderTrackRow}
           contentContainerStyle={[styles.trackListContent, { paddingBottom: 64 + insets.bottom + 48 }]}
@@ -269,6 +287,17 @@ export default function SearchScreen() {
           onViewableItemsChanged={handleViewableItemsChanged}
         />
       )}
+
+      <CommentsSheet
+        visible={comments.commentsPostId !== null}
+        postId={comments.commentsPostId}
+        onClose={comments.closeComments}
+        onCommentsCountChange={delta => {
+          if (comments.commentsPostId) {
+            comments.applyDelta(comments.commentsPostId, delta);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }

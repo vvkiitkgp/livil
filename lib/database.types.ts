@@ -538,12 +538,88 @@ export type Database = {
         }
         Relationships: []
       }
+      post_comment_likes: {
+        Row: {
+          comment_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_comment_likes_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "post_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comment_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_comment_reports: {
+        Row: {
+          comment_id: string
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reporter_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason: string
+          reporter_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason?: string
+          reporter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_comment_reports_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "post_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comment_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_comments: {
         Row: {
           author_id: string
           body: string
           created_at: string
           id: string
+          like_count: number
           parent_comment_id: string | null
           post_id: string
         }
@@ -552,6 +628,7 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
+          like_count?: number
           parent_comment_id?: string | null
           post_id: string
         }
@@ -560,6 +637,7 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
+          like_count?: number
           parent_comment_id?: string | null
           post_id?: string
         }
@@ -620,19 +698,64 @@ export type Database = {
           },
         ]
       }
+      post_reports: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          post_id: string
+          reason: string
+          reporter_id: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          post_id: string
+          reason: string
+          reporter_id: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          post_id?: string
+          reason?: string
+          reporter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_reports_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_views: {
         Row: {
-          first_viewed_at: string
+          id: string
+          played_at: string
           post_id: string
           user_id: string
         }
         Insert: {
-          first_viewed_at?: string
+          id?: string
+          played_at?: string
           post_id: string
           user_id: string
         }
         Update: {
-          first_viewed_at?: string
+          id?: string
+          played_at?: string
           post_id?: string
           user_id?: string
         }
@@ -985,7 +1108,7 @@ export type Database = {
         }
         Update: {
           played_at?: string
-          track_id: string
+          track_id?: string
           user_id?: string
         }
         Relationships: [
@@ -1050,6 +1173,7 @@ export type Database = {
           viewer_has_liked: boolean
         }[]
       }
+      get_email_for_username: { Args: { p_username: string }; Returns: string }
       get_jam_snapshot: { Args: { p_jam_room_id: string }; Returns: Json }
       get_new_fans_summary: {
         Args: never
@@ -1067,6 +1191,7 @@ export type Database = {
         Returns: string
       }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
+      is_username_available: { Args: { p_username: string }; Returns: boolean }
       list_active_stories: {
         Args: never
         Returns: {

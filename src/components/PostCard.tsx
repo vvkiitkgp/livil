@@ -4,11 +4,17 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
+import { useToast } from '../contexts/ToastContext';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
 import ClipRangeSlider from './ClipRangeSlider';
 import TrackContextMenu from './TrackContextMenu';
 import type { FeedPost } from '../services/posts';
-import { recordView, toggleLike } from '../services/posts';
+import { toggleLike, deletePost } from '../services/posts';
+import { trackPlayProgress } from '../utils/playTracker';
+import { friendlyErrorMessage } from '../utils/errorMessages';
+import PostReportModal from './PostReportModal';
+import ConfirmActionModal from './ConfirmActionModal';
+import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 
@@ -22,6 +28,13 @@ export type PostCardProps = {
    * Profile / single-column feeds should keep the default true.
    */
   pauseWhenOffScreen?: boolean;
+  /** Tap the comments stat to open the CommentsSheet for this post. */
+  onCommentsPress?: (postId: string) => void;
+  /**
+   * Called after the owner successfully deletes their post. The feed screen
+   * should drop the post from its local list so the card unmounts.
+   */
+  onDeleted?: (postId: string) => void;
 };
 
 function formatCount(n: number): string {
@@ -73,10 +86,62 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
   return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
 }
 
-export default function PostCard({ post, visible, pauseWhenOffScreen = true }: PostCardProps) {
+export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { showToast } = useToast();
   const playerRef = useRef<MediaPlayerHandle>(null);
+
+  // Viewer id is needed to decide owner vs non-owner for the ⋯ menu actions
+  // (Delete shows only for owner, Report only for non-owner). Resolved once
+  // on mount; doesn't change during the card's lifetime.
+  const [viewerId, setViewerId] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!cancelled) { setViewerId(data?.user?.id ?? ''); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Modal state for the post-level actions launched from the ⋯ menu.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Queue actions silently mutate userQueueRef — there's no visible feedback
+  // unless the user opens the QueueList in FullScreenPlayer. Wrap them with
+  // a toast so the user actually knows the action took effect.
+  const handlePlayNext = useCallback((track: NowPlayingInfo) => {
+    playback.playTrackNext(track);
+    showToast('Plays next', { kind: 'success' });
+  }, [playback, showToast]);
+
+  const handleAddToQueue = useCallback((track: NowPlayingInfo) => {
+    playback.addToQueue(track);
+    showToast('Added to queue', { kind: 'success' });
+  }, [playback, showToast]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    setDeleting(true);
+    try {
+      await deletePost(post.id);
+      setConfirmDelete(false);
+      showToast('Post deleted', { kind: 'success' });
+      // If this card was currently driving playback, stop it cleanly so a
+      // ghost player doesn't keep going after the post vanishes.
+      if (playback.isActive(post.id)) {
+        playback.pauseAll();
+        playback.clearNowPlaying();
+      }
+      onDeleted?.(post.id);
+    } catch (e) {
+      showToast(friendlyErrorMessage(e, "Couldn't delete the post."), { kind: 'error' });
+    } finally {
+      setDeleting(false);
+    }
+  }, [post.id, playback, showToast, onDeleted]);
 
   const openAuthor = useCallback((authorId: string) => {
     navigation.navigate('UserProfile', { userId: authorId });
@@ -97,8 +162,6 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   // Engagement state (optimistic).
   const [liked, setLiked] = useState(post.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(post.likesCount);
-  const [viewsCount, setViewsCount] = useState(post.viewsCount);
-  const [viewRecorded, setViewRecorded] = useState(false);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
 
@@ -248,19 +311,10 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Record a view after the post has been visible for ~2s, once per session.
-  useEffect(() => {
-    if (!visible || viewRecorded) {return;}
-    const t = setTimeout(() => {
-      setViewRecorded(true);
-      setViewsCount(v => v + 1);
-      recordView(post.id).catch(() => {
-        // Already-viewed conflict is fine; any other error we silently swallow
-        // to avoid spamming the UI. The view count on next refresh will reflect truth.
-      });
-    }, 2000);
-    return () => clearTimeout(t);
-  }, [visible, viewRecorded, post.id]);
+  // Play counting is now driven by actual audio playback in `handleProgress`
+  // via `trackPlayProgress` (see src/utils/playTracker.ts). Visibility alone
+  // doesn't count — the user has to be playing the song for >= 3 cumulative
+  // seconds in a single play instance. Loops/replays each start a new instance.
 
   const handleTogglePaused = useCallback(() => {
     setPaused(prev => {
@@ -285,6 +339,9 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     // with the old track's position — causing the new track to seek mid-song.
     if (playback.isActive(post.id)) {
       playback.updatePosition(seconds);
+      // Feed the play tracker only when this card is actually driving audio.
+      // Inactive cards' final stale onProgress shouldn't count toward plays.
+      trackPlayProgress(post.id, seconds);
     }
     const cw = playback.clipWindowRef.current;
     // Only trigger clip-end advance when this PostCard is the active player.
@@ -368,7 +425,112 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
 
+  // Orphaned repost: the original upload was deleted (FK ON DELETE SET NULL
+  // nulled out original_post_id). Reposts survive with their own engagement
+  // intact, but we render a tombstone instead of playable media so the
+  // reposter — and anyone seeing it — knows the source is gone.
+  const isOrphanedRepost = post.kind === 'repost' && post.originalPostId === null;
+
   const initials = useMemo(() => avatarInitials(headerAuthor), [headerAuthor]);
+
+  if (isOrphanedRepost) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.authorTap}
+            activeOpacity={0.7}
+            onPress={() => openAuthor(headerAuthor.id)}
+          >
+            <View style={styles.avatar}>
+              {headerAuthor.avatarUrl ? (
+                <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+            </View>
+            <View style={styles.headerText}>
+              <View style={styles.nameRow}>
+                <Text style={styles.displayName} numberOfLines={1}>
+                  {headerAuthor.displayName ?? headerAuthor.username}
+                </Text>
+                <Text style={styles.timeDot}> · </Text>
+                <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+              </View>
+              <Text style={styles.handleText} numberOfLines={1}>
+                @{headerAuthor.username}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={() => setContextMenuVisible(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.moreBtnText}>⋯</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.tombstoneBody}>
+          <Text style={styles.tombstoneGlyph}>𝍃</Text>
+          <Text style={styles.tombstoneTitle}>Original post no longer available</Text>
+          <Text style={styles.tombstoneBodyText}>
+            The author removed this post. Your repost stays, but the track isn't playable from here.
+          </Text>
+        </View>
+
+        <View style={styles.tombstoneStatsRow}>
+          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={handleToggleLike}>
+            <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+            <Text style={[styles.statValue, liked && styles.statValueLiked]}>
+              {formatCount(likesCount)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.statBtn}
+            activeOpacity={0.7}
+            onPress={() => onCommentsPress?.(post.id)}
+            disabled={!onCommentsPress}
+          >
+            <Text style={styles.statIcon}>💬</Text>
+            <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TrackContextMenu
+          visible={contextMenuVisible}
+          track={trackInfoForMenu}
+          onClose={() => setContextMenuVisible(false)}
+          onPlayNext={handlePlayNext}
+          onAddToQueue={handleAddToQueue}
+          onGoToArtist={(uid) => navigation.navigate('UserProfile', { userId: uid })}
+          viewerId={viewerId}
+          postId={post.id}
+          postAuthorId={post.author.id}
+          onReportPost={() => setReportOpen(true)}
+          onDeletePost={() => setConfirmDelete(true)}
+          disablePlaybackActions
+        />
+
+        <PostReportModal
+          visible={reportOpen}
+          postId={reportOpen ? post.id : null}
+          onClose={() => setReportOpen(false)}
+        />
+
+        <ConfirmActionModal
+          visible={confirmDelete}
+          title="Remove repost?"
+          message="This permanently removes your repost and any comments and likes on it. This cannot be undone."
+          confirmLabel="Remove"
+          tone="destructive"
+          busy={deleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -530,18 +692,26 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
               {formatCount(likesCount)}
             </Text>
           </TouchableOpacity>
-          <View style={styles.statBtn}>
-            <Text style={styles.statIcon}>↻</Text>
-            <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
-          </View>
-          <View style={styles.statBtn}>
+          <TouchableOpacity
+            style={styles.statBtn}
+            activeOpacity={0.7}
+            onPress={() => onCommentsPress?.(post.id)}
+            disabled={!onCommentsPress}
+          >
             <Text style={styles.statIcon}>💬</Text>
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
-          </View>
-          <View style={styles.statBtn}>
-            <Text style={styles.statIcon}>◉</Text>
-            <Text style={styles.statValue}>{formatCount(viewsCount)}</Text>
-          </View>
+          </TouchableOpacity>
+          {/* Reposts: only meaningful on upload posts. Reposts of reposts aren't
+              allowed (createRepost throws), so a repost's repostsCount is always
+              0 — don't show it. Plays/views are intentionally removed here per
+              product decision; the cumulative track plays live in FullScreenPlayer. */}
+          {post.kind === 'upload' ? (
+            <View style={styles.statBtn}>
+              {/* Same glyph as the Repost button (line 436) for visual consistency. */}
+              <Text style={styles.statIcon}>▤</Text>
+              <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -549,11 +719,37 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
         visible={contextMenuVisible}
         track={trackInfoForMenu}
         onClose={() => setContextMenuVisible(false)}
-        onPlayNext={playback.playTrackNext}
-        onAddToQueue={playback.addToQueue}
+        onPlayNext={handlePlayNext}
+        onAddToQueue={handleAddToQueue}
         onGoToArtist={(userId) => {
           navigation.navigate('UserProfile', { userId });
         }}
+        viewerId={viewerId}
+        postId={post.id}
+        postAuthorId={post.author.id}
+        onReportPost={() => setReportOpen(true)}
+        onDeletePost={() => setConfirmDelete(true)}
+      />
+
+      <PostReportModal
+        visible={reportOpen}
+        postId={reportOpen ? post.id : null}
+        onClose={() => setReportOpen(false)}
+      />
+
+      <ConfirmActionModal
+        visible={confirmDelete}
+        title="Delete this post?"
+        message={
+          post.kind === 'upload'
+            ? "Your comments, likes, plays, and any playlist entries for this post will be permanently removed. Other people's reposts of it will stay, but the original will show as no longer available — they'll know it was removed. This cannot be undone."
+            : 'This permanently removes your repost and any comments and likes on it. This cannot be undone.'
+        }
+        confirmLabel="Delete"
+        tone="destructive"
+        busy={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setConfirmDelete(false)}
       />
     </View>
   );
@@ -799,6 +995,43 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
     paddingVertical: 6,
+  },
+  tombstoneBody: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    marginHorizontal: 14,
+    marginTop: 6,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  tombstoneGlyph: {
+    color: COLORS.textMuted,
+    fontSize: 36,
+    marginBottom: 10,
+  },
+  tombstoneTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  tombstoneBodyText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  tombstoneStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
   },
   statIcon: {
     color: COLORS.textSecondary,

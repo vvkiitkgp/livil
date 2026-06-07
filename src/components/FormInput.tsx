@@ -1,4 +1,4 @@
-import React, { useState, ReactNode } from 'react';
+import React, { useState, ReactNode, forwardRef } from 'react';
 import {
   View,
   TextInput,
@@ -14,19 +14,16 @@ type Props = TextInputProps & {
   wrapperStyle?: StyleProp<ViewStyle>;
 };
 
-export default function FormInput({
-  trailing,
-  wrapperStyle,
-  style,
-  onFocus,
-  onBlur,
-  ...rest
-}: Props) {
+const FormInput = forwardRef<TextInput, Props>(function FormInputInner(
+  { trailing, wrapperStyle, style, onFocus, onBlur, ...rest },
+  ref,
+) {
   const [focused, setFocused] = useState(false);
 
   return (
     <View style={[styles.wrapper, focused && styles.wrapperFocused, wrapperStyle]}>
       <TextInput
+        ref={ref}
         {...rest}
         style={[styles.input, trailing ? styles.inputWithTrailing : null, style]}
         placeholderTextColor={rest.placeholderTextColor ?? COLORS.textMuted}
@@ -42,7 +39,9 @@ export default function FormInput({
       {trailing}
     </View>
   );
-}
+});
+
+export default FormInput;
 
 const styles = StyleSheet.create({
   wrapper: {

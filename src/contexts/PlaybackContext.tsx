@@ -32,9 +32,15 @@ export type NowPlayingInfo = {
   clipStartSec: number | null;
   clipEndSec: number | null;
   // Repost lineage — lets the player route to the *original* post when the
-  // currently-playing item is itself a repost.
+  // currently-playing item is itself a repost. The original* counters below
+  // are hydrated by FullScreenPlayer on mount so the player surface always
+  // shows the canonical track's engagement (not the repost's).
   kind: 'upload' | 'repost';
   originalPostId: string | null;
+  originalLikesCount?: number;
+  originalCommentsCount?: number;
+  originalRepostsCount?: number;
+  originalViewerHasLiked?: boolean;
   // Known duration at play-start (from prior onLoad); 0 if not yet loaded.
   knownDurationSec: number;
 };
@@ -60,6 +66,12 @@ type PlaybackContextValue = {
   nowPlaying: NowPlayingInfo | null;
   setNowPlaying: (info: NowPlayingInfo) => void;
   clearNowPlaying: () => void;
+  /**
+   * Apply a delta to the now-playing post's commentsCount. When
+   * `isOriginal` is true (for reposts whose player surface routes to the
+   * original post), the delta updates `originalCommentsCount` instead.
+   */
+  bumpCommentsCount: (delta: number, isOriginal: boolean) => void;
 
   // --- position / duration (refs — no re-renders) ---
   positionRef: React.MutableRefObject<number>;
@@ -216,6 +228,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     durationRef.current = 0;
     clipWindowRef.current = null;
     setNowPlayingState(null);
+  }, []);
+
+  const bumpCommentsCount = useCallback((delta: number, isOriginal: boolean) => {
+    setNowPlayingState(prev => {
+      if (!prev) { return prev; }
+      if (isOriginal) {
+        const base = prev.originalCommentsCount ?? 0;
+        return { ...prev, originalCommentsCount: Math.max(base + delta, 0) };
+      }
+      return { ...prev, commentsCount: Math.max(prev.commentsCount + delta, 0) };
+    });
   }, []);
 
   // --- position / duration ---
@@ -466,6 +489,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       nowPlaying,
       setNowPlaying,
       clearNowPlaying,
+      bumpCommentsCount,
       positionRef,
       durationRef,
       updatePosition,
@@ -520,6 +544,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       nowPlaying,
       setNowPlaying,
       clearNowPlaying,
+      bumpCommentsCount,
       updatePosition,
       updateDuration,
       registerHandlers,
