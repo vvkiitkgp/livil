@@ -40,6 +40,7 @@ export default function PlaybackEngine() {
     currentIndexRef,
     playNext,
     clipWindowRef,
+    isFullScreenOpen,
   } = usePlayback();
 
   const refA = useRef<VideoRef>(null);
@@ -92,12 +93,25 @@ export default function PlaybackEngine() {
     else { setSlotAPaused(true); }
   }, []);
 
-  // Engine drives AUDIO playback only (playlist/global audio mode).
-  // Video playback is always handled by FullScreenPlayer's own <Video> or PostCard's
-  // MediaPlayer — the engine can't display video frames from its hidden 1x1 slots.
-  // The engine still preloads the next track in the queue for instant switching.
-  const shouldDrive = !!(nowPlaying?.audioUrl && nowPlaying.mediaKind === 'audio');
+  // Engine drives playback for BOTH audio and video tracks. The hidden 1x1
+  // slots render the video frames invisibly (no surface area = nothing on
+  // screen) but the audio decoder still runs — exactly what Spotify and YT
+  // Music do for music videos. The user keeps hearing the song while
+  // browsing the app, and opens FullScreenPlayer when they want to see
+  // the visuals.
+  //
+  // Audio path is unchanged from before. Video adds:
+  //   - source URL comes from videoUrl (via getTrackUrl below)
+  //   - when FS is open AND the track is video, FS renders its own visible
+  //     <Video>. To avoid double-audio, we MUTE the engine's slot in that
+  //     case. Position keeps advancing in the muted slot so audio resumes
+  //     seamlessly when FS closes.
+  const shouldDrive = !!(
+    (nowPlaying?.audioUrl && nowPlaying.mediaKind === 'audio') ||
+    (nowPlaying?.videoUrl && nowPlaying.mediaKind === 'video')
+  );
   shouldDriveRef.current = shouldDrive;
+  const muteForFsVideo = isFullScreenOpen && nowPlaying?.mediaKind === 'video';
 
   useEffect(() => {
     console.log(`[LIVIL][ENG] shouldDrive=${shouldDrive} mediaKind=${nowPlaying?.mediaKind} hasAudioUrl=${!!nowPlaying?.audioUrl}`);
@@ -318,7 +332,7 @@ export default function PlaybackEngine() {
           playInBackground
           playWhenInactive
           ignoreSilentSwitch="ignore"
-          muted={false}
+          muted={muteForFsVideo}
           volume={1.0}
           {...platformBufferProps}
           {...(Platform.OS === 'android' ? { disableFocus: slotAPaused } : {})}
@@ -339,7 +353,7 @@ export default function PlaybackEngine() {
           playInBackground
           playWhenInactive
           ignoreSilentSwitch="ignore"
-          muted={false}
+          muted={muteForFsVideo}
           volume={1.0}
           {...platformBufferProps}
           {...(Platform.OS === 'android' ? { disableFocus: slotBPaused } : {})}
