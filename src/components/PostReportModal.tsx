@@ -13,6 +13,7 @@ import { COLORS } from '../theme/colors';
 import FormInput from './FormInput';
 import { reportPost, type PostReportReason } from '../services/posts';
 import { useToast } from '../contexts/ToastContext';
+import { friendlyErrorMessage } from '../utils/errorMessages';
 
 type Props = {
   visible: boolean;
@@ -64,7 +65,7 @@ export default function PostReportModal({ visible, postId, onClose }: Props) {
       reset();
       onClose();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Could not submit report.', { kind: 'error' });
+      showToast(friendlyErrorMessage(e, "Couldn't submit your report."), { kind: 'error' });
       setBusy(false);
     }
   };

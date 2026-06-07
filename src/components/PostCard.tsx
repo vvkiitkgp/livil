@@ -11,6 +11,7 @@ import TrackContextMenu from './TrackContextMenu';
 import type { FeedPost } from '../services/posts';
 import { toggleLike, deletePost } from '../services/posts';
 import { trackPlayProgress } from '../utils/playTracker';
+import { friendlyErrorMessage } from '../utils/errorMessages';
 import PostReportModal from './PostReportModal';
 import ConfirmActionModal from './ConfirmActionModal';
 import { supabase } from '../../lib/supabase';
@@ -136,7 +137,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
       }
       onDeleted?.(post.id);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Could not delete post.', { kind: 'error' });
+      showToast(friendlyErrorMessage(e, "Couldn't delete the post."), { kind: 'error' });
     } finally {
       setDeleting(false);
     }

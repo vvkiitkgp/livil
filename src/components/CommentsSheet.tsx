@@ -37,6 +37,7 @@ import {
   type MentionProfile,
 } from '../services/comments';
 import { detectMentionTrigger } from '../utils/mentions';
+import { friendlyErrorMessage } from '../utils/errorMessages';
 
 type Props = {
   visible: boolean;
@@ -217,7 +218,7 @@ export default function CommentsSheet({
         }
       } catch (e) {
         if (!cancelled) {
-          showToast(e instanceof Error ? e.message : 'Could not load comments.', { kind: 'error' });
+          showToast(friendlyErrorMessage(e, "Couldn't load comments."), { kind: 'error' });
         }
       } finally {
         if (!cancelled) {
@@ -349,7 +350,7 @@ export default function CommentsSheet({
       // Revert optimistic insert
       setNodes(prev => pruneNode(prev, tempId).tree);
       onCommentsCountChange?.(-1);
-      showToast(e instanceof Error ? e.message : 'Failed to post comment.', { kind: 'error' });
+      showToast(friendlyErrorMessage(e, "Couldn't post your comment."), { kind: 'error' });
     } finally {
       setSending(false);
     }
@@ -366,7 +367,7 @@ export default function CommentsSheet({
       }
     } catch (e) {
       setNodes(prev => setLikedByMe(prev, node.id, wasLiked, wasLiked ? 1 : -1));
-      showToast(e instanceof Error ? e.message : 'Could not update like.', { kind: 'error' });
+      showToast(friendlyErrorMessage(e, "Couldn't update your like."), { kind: 'error' });
     }
   }, [showToast]);
 
@@ -381,7 +382,7 @@ export default function CommentsSheet({
       await deleteComment(target.id);
       setConfirmDelete(null);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Could not delete comment.', { kind: 'error' });
+      showToast(friendlyErrorMessage(e, "Couldn't delete the comment."), { kind: 'error' });
     } finally {
       setDeleting(false);
     }

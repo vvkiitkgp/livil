@@ -13,6 +13,7 @@ import { COLORS } from '../theme/colors';
 import FormInput from './FormInput';
 import { reportComment, type ReportReason } from '../services/comments';
 import { useToast } from '../contexts/ToastContext';
+import { friendlyErrorMessage } from '../utils/errorMessages';
 
 type Props = {
   visible: boolean;
@@ -59,7 +60,7 @@ export default function CommentReportModal({ visible, commentId, onClose }: Prop
       reset();
       onClose();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'Could not submit report.', { kind: 'error' });
+      showToast(friendlyErrorMessage(e, "Couldn't submit your report."), { kind: 'error' });
       setBusy(false);
     }
   };
