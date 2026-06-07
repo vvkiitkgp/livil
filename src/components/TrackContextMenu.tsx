@@ -8,6 +8,7 @@ import {
   TouchableWithoutFeedback,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 
@@ -37,6 +38,7 @@ export default function TrackContextMenu({
   onAddToPlaylist,
   onGoToArtist,
 }: TrackContextMenuProps) {
+  const insets = useSafeAreaInsets();
   const handlePress = useCallback((id: string) => {
     if (!track) { return; }
     onClose();
@@ -69,7 +71,7 @@ export default function TrackContextMenu({
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={styles.sheet}>
+            <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
               <View style={styles.handleBar} />
 
               <View style={styles.trackPreview}>
@@ -121,7 +123,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 40,
+    // paddingBottom set dynamically via insets.bottom so the last menu item
+    // clears the Android nav bar / iOS home indicator.
   },
   handleBar: {
     width: 40,
