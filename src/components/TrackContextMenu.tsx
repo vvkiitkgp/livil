@@ -30,6 +30,12 @@ export type TrackContextMenuProps = {
   postId?: string;
   /** Authoring user of the post — used to decide owner vs. non-owner. */
   postAuthorId?: string;
+  /**
+   * Hides Play Next / Add to Queue / Add to Playlist. Used for tombstoned
+   * reposts where the original was deleted — there's nothing playable so
+   * queueing it would be misleading.
+   */
+  disablePlaybackActions?: boolean;
 };
 
 type MenuItem = {
@@ -59,13 +65,17 @@ export default function TrackContextMenu({
   viewerId,
   postId,
   postAuthorId,
+  disablePlaybackActions = false,
 }: TrackContextMenuProps) {
   const insets = useSafeAreaInsets();
 
   // Compose the menu item list dynamically — ownership decides whether Report
-  // (others' posts) or Delete (own posts) appears at the bottom.
+  // (others' posts) or Delete (own posts) appears at the bottom. Playback
+  // items are suppressed for tombstoned reposts where there's nothing to play.
   const isOwner = !!viewerId && !!postAuthorId && viewerId === postAuthorId;
-  const items: MenuItem[] = [...BASE_MENU_ITEMS];
+  const items: MenuItem[] = disablePlaybackActions
+    ? BASE_MENU_ITEMS.filter(i => i.id === 'go-to-artist')
+    : [...BASE_MENU_ITEMS];
   if (postId && onReportPost && !isOwner) {
     items.push({ id: 'report-post', label: 'Report post', icon: '⚐' });
   }

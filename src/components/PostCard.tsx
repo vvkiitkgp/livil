@@ -424,7 +424,112 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
 
+  // Orphaned repost: the original upload was deleted (FK ON DELETE SET NULL
+  // nulled out original_post_id). Reposts survive with their own engagement
+  // intact, but we render a tombstone instead of playable media so the
+  // reposter — and anyone seeing it — knows the source is gone.
+  const isOrphanedRepost = post.kind === 'repost' && post.originalPostId === null;
+
   const initials = useMemo(() => avatarInitials(headerAuthor), [headerAuthor]);
+
+  if (isOrphanedRepost) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.authorTap}
+            activeOpacity={0.7}
+            onPress={() => openAuthor(headerAuthor.id)}
+          >
+            <View style={styles.avatar}>
+              {headerAuthor.avatarUrl ? (
+                <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+            </View>
+            <View style={styles.headerText}>
+              <View style={styles.nameRow}>
+                <Text style={styles.displayName} numberOfLines={1}>
+                  {headerAuthor.displayName ?? headerAuthor.username}
+                </Text>
+                <Text style={styles.timeDot}> · </Text>
+                <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+              </View>
+              <Text style={styles.handleText} numberOfLines={1}>
+                @{headerAuthor.username}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={() => setContextMenuVisible(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.moreBtnText}>⋯</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.tombstoneBody}>
+          <Text style={styles.tombstoneGlyph}>𝍃</Text>
+          <Text style={styles.tombstoneTitle}>Original post no longer available</Text>
+          <Text style={styles.tombstoneBodyText}>
+            The author removed this post. Your repost stays, but the track isn't playable from here.
+          </Text>
+        </View>
+
+        <View style={styles.tombstoneStatsRow}>
+          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={handleToggleLike}>
+            <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+            <Text style={[styles.statValue, liked && styles.statValueLiked]}>
+              {formatCount(likesCount)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.statBtn}
+            activeOpacity={0.7}
+            onPress={() => onCommentsPress?.(post.id)}
+            disabled={!onCommentsPress}
+          >
+            <Text style={styles.statIcon}>💬</Text>
+            <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TrackContextMenu
+          visible={contextMenuVisible}
+          track={trackInfoForMenu}
+          onClose={() => setContextMenuVisible(false)}
+          onPlayNext={handlePlayNext}
+          onAddToQueue={handleAddToQueue}
+          onGoToArtist={(uid) => navigation.navigate('UserProfile', { userId: uid })}
+          viewerId={viewerId}
+          postId={post.id}
+          postAuthorId={post.author.id}
+          onReportPost={() => setReportOpen(true)}
+          onDeletePost={() => setConfirmDelete(true)}
+          disablePlaybackActions
+        />
+
+        <PostReportModal
+          visible={reportOpen}
+          postId={reportOpen ? post.id : null}
+          onClose={() => setReportOpen(false)}
+        />
+
+        <ConfirmActionModal
+          visible={confirmDelete}
+          title="Remove repost?"
+          message="This permanently removes your repost and any comments and likes on it. This cannot be undone."
+          confirmLabel="Remove"
+          tone="destructive"
+          busy={deleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -633,8 +738,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
 
       <ConfirmActionModal
         visible={confirmDelete}
-        title="Delete post?"
-        message="This permanently removes the post, its comments, likes, and any reposts of it. This cannot be undone."
+        title="Delete this post?"
+        message={
+          post.kind === 'upload'
+            ? "Your comments, likes, plays, and any playlist entries for this post will be permanently removed. Other people's reposts of it will stay, but the original will show as no longer available — they'll know it was removed. This cannot be undone."
+            : 'This permanently removes your repost and any comments and likes on it. This cannot be undone.'
+        }
         confirmLabel="Delete"
         tone="destructive"
         busy={deleting}
@@ -885,6 +994,43 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
     paddingVertical: 6,
+  },
+  tombstoneBody: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    marginHorizontal: 14,
+    marginTop: 6,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  tombstoneGlyph: {
+    color: COLORS.textMuted,
+    fontSize: 36,
+    marginBottom: 10,
+  },
+  tombstoneTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  tombstoneBodyText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  tombstoneStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
   },
   statIcon: {
     color: COLORS.textSecondary,
