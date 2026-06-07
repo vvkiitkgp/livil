@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
+import { useToast } from '../contexts/ToastContext';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
 import ClipRangeSlider from './ClipRangeSlider';
 import TrackContextMenu from './TrackContextMenu';
@@ -79,7 +80,21 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
 export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { showToast } = useToast();
   const playerRef = useRef<MediaPlayerHandle>(null);
+
+  // Queue actions silently mutate userQueueRef — there's no visible feedback
+  // unless the user opens the QueueList in FullScreenPlayer. Wrap them with
+  // a toast so the user actually knows the action took effect.
+  const handlePlayNext = useCallback((track: NowPlayingInfo) => {
+    playback.playTrackNext(track);
+    showToast('Plays next', { kind: 'success' });
+  }, [playback, showToast]);
+
+  const handleAddToQueue = useCallback((track: NowPlayingInfo) => {
+    playback.addToQueue(track);
+    showToast('Added to queue', { kind: 'success' });
+  }, [playback, showToast]);
 
   const openAuthor = useCallback((authorId: string) => {
     navigation.navigate('UserProfile', { userId: authorId });
@@ -552,8 +567,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         visible={contextMenuVisible}
         track={trackInfoForMenu}
         onClose={() => setContextMenuVisible(false)}
-        onPlayNext={playback.playTrackNext}
-        onAddToQueue={playback.addToQueue}
+        onPlayNext={handlePlayNext}
+        onAddToQueue={handleAddToQueue}
         onGoToArtist={(userId) => {
           navigation.navigate('UserProfile', { userId });
         }}
