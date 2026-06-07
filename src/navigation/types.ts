@@ -37,6 +37,7 @@ export type RootStackParamList = {
   NewConversation: undefined;
   GroupInfo: { conversationId: string };
   FriendRequests: undefined;
+  ActivityCenter: undefined;
   // ── Jam Room (Phase 3)
   JamRoom: { jamRoomId: string; conversationId: string };
   // ── Repost / Story composer

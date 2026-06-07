@@ -20,6 +20,7 @@ import NewConversationScreen from '../screens/main/NewConversationScreen';
 import GroupInfoScreen from '../screens/main/GroupInfoScreen';
 import JamRoomScreen from '../screens/main/JamRoomScreen';
 import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
+import ActivityCenterScreen from '../screens/main/ActivityCenterScreen';
 import EditProfileScreen from '../screens/main/EditProfileScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
@@ -340,6 +341,11 @@ export default function RootNavigator() {
             <Stack.Screen
               name="FriendRequests"
               component={FriendRequestsScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+              name="ActivityCenter"
+              component={ActivityCenterScreen}
               options={{ animation: 'slide_from_right' }}
             />
           </>

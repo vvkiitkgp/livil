@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { sendPush } from './pushDispatch';
+import { notifyFriendOutcome, notifyNewFan } from './activity';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -10,17 +11,6 @@ export type IncomingFriendRequest = {
   displayName: string | null;
   avatarUrl: string | null;
   createdAt: string;
-};
-
-export type NewFansSummary = {
-  count: number;
-  recent: Array<{
-    userId: string;
-    username: string;
-    displayName: string | null;
-    avatarUrl: string | null;
-    createdAt: string;
-  }>;
 };
 
 export type ViewerRelationships = {
@@ -95,18 +85,15 @@ export async function sendFriendRequest(userId: string): Promise<void> {
 export async function acceptFriendRequest(userId: string): Promise<void> {
   const { error } = await db.rpc('accept_friend_request', { other_user_id: userId });
   if (error) { throw new Error(error.message); }
-  const { data: userData } = await supabase.auth.getUser();
-  const me = userData?.user?.id;
-  void sendPush({
-    recipientUserId: userId,
-    kind: 'friend_accepted',
-    data: { route: 'UserProfile', params: { userId: me ?? '' } },
-  });
+  // Surfaces the outcome in the requester's Activity center + pushes them.
+  void notifyFriendOutcome(userId, true);
 }
 
 export async function rejectFriendRequest(userId: string): Promise<void> {
   const { error } = await db.rpc('reject_friend_request', { other_user_id: userId });
   if (error) { throw new Error(error.message); }
+  // Outcome surfaces in the requester's Activity center (no OS push on reject).
+  void notifyFriendOutcome(userId, false);
 }
 
 export async function cancelFriendRequest(userId: string): Promise<void> {
@@ -122,13 +109,8 @@ export async function removeFriend(userId: string): Promise<void> {
 export async function addStar(userId: string): Promise<void> {
   const { error } = await db.rpc('add_star', { target_user_id: userId });
   if (error) { throw new Error(error.message); }
-  const { data: userData } = await supabase.auth.getUser();
-  const me = userData?.user?.id;
-  void sendPush({
-    recipientUserId: userId,
-    kind: 'new_fan',
-    data: { route: 'UserProfile', params: { userId: me ?? '' } },
-  });
+  // New fan surfaces in the starred user's Activity center + pushes them.
+  void notifyNewFan(userId);
 }
 
 export async function removeStar(userId: string): Promise<void> {
@@ -146,26 +128,4 @@ export async function listIncomingFriendRequests(): Promise<IncomingFriendReques
     avatarUrl: (row.avatar_url as string | null) ?? null,
     createdAt: row.created_at as string,
   }));
-}
-
-export async function getNewFansSummary(): Promise<NewFansSummary> {
-  const { data, error } = await db.rpc('get_new_fans_summary');
-  if (error) { throw new Error(error.message); }
-  const rows = (data ?? []) as Array<Record<string, unknown>>;
-  const count = Number(rows[0]?.total_count ?? 0);
-  const recent = rows
-    .filter(r => r.recent_user_id != null)
-    .map(r => ({
-      userId: r.recent_user_id as string,
-      username: (r.username as string | null) ?? '',
-      displayName: (r.display_name as string | null) ?? null,
-      avatarUrl: (r.avatar_url as string | null) ?? null,
-      createdAt: r.created_at as string,
-    }));
-  return { count, recent };
-}
-
-export async function markFansSeen(): Promise<void> {
-  const { error } = await db.rpc('mark_fans_seen');
-  if (error) { throw new Error(error.message); }
 }

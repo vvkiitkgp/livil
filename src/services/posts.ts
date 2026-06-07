@@ -1,5 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
+import { notifyPostActivity } from './activity';
+import { sendPush } from './pushDispatch';
 
 export type AuthorRef = {
   id: string;
@@ -449,6 +451,9 @@ export async function createRepost(
     throw new Error(insertError?.message ?? 'Failed to create repost.');
   }
 
+  // Notify the original post's author (self-repost is filtered server-side).
+  void notifyPostActivity(originalPostId, 'repost');
+
   return { postId: created.id };
 }
 
@@ -556,6 +561,9 @@ export async function toggleLike(postId: string): Promise<boolean> {
     .from('post_likes')
     .insert({ post_id: postId, user_id: me });
   if (insError) {throw new Error(insError.message);}
+  // Notify the post author on a NEW like only — aggregated per post
+  // server-side. Self-like is filtered in the RPC.
+  void notifyPostActivity(postId, 'like');
   return true;
 }
 
@@ -571,11 +579,27 @@ export async function recordPlay(postId: string): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;
   if (!me) {return;}
-  const { error } = await supabase
-    .from('post_views')
-    .insert({ post_id: postId, user_id: me });
+  // The RPC does the real post_views insert (so trg_post_views_count still
+  // fires) and, if this play crosses a milestone on an original post, writes
+  // the activity row and returns the author + threshold so we can push.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('activity_record_play', { p_post_id: postId });
   if (error) {
     throw new Error(error.message);
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { milestone_recipient: string | null; milestone_threshold: number | null }
+    | undefined;
+  if (row?.milestone_recipient && row.milestone_threshold) {
+    const t = row.milestone_threshold;
+    const label = t >= 1000 ? `${Number.isInteger(t / 1000) ? t / 1000 : (t / 1000).toFixed(1)}K` : String(t);
+    void sendPush({
+      recipientUserId: row.milestone_recipient,
+      kind: 'activity_milestone',
+      title: 'Livil',
+      body: `Your track hit ${label} plays 🎉`,
+      data: { route: 'ActivityCenter' },
+    });
   }
 }
 

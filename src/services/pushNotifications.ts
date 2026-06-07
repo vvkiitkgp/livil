@@ -144,6 +144,15 @@ async function ensureChannels(): Promise<void> {
     importance: AndroidImportance.DEFAULT,
     description: 'Friend requests, new followers, and fan activity',
   });
+  // Activity center: likes, comments, reposts, play milestones, new fans, and
+  // friend-request outcomes. HIGH importance so these surface as a heads-up
+  // banner (the 'social' channel is DEFAULT = silent tray, which users miss).
+  await notifee.createChannel({
+    id: 'activity',
+    name: 'Activity',
+    importance: AndroidImportance.HIGH,
+    description: 'Likes, comments, reposts, milestones, and new fans on your tracks',
+  });
   await notifee.createChannel({
     id: 'messages',
     name: 'Messages',

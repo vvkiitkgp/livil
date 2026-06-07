@@ -19,7 +19,7 @@ import {
 } from '../../services/conversations';
 import { messageCache } from '../../services/messageCache';
 import { useRelationships } from '../../contexts/RelationshipContext';
-import { FriendRequestsBanner, NewFansBanner } from '../../components/InboxBanner';
+import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import AddBadge from '../../components/AddBadge';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -206,7 +206,7 @@ export default function InboxScreen() {
           ListHeaderComponent={
             <>
               <FriendRequestsBanner refreshKey={bannerKey} />
-              <NewFansBanner refreshKey={bannerKey} />
+              <ActivityBanner refreshKey={bannerKey} />
             </>
           }
           contentContainerStyle={
