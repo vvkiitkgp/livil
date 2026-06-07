@@ -10,7 +10,11 @@ export type PushKind =
   | 'jam_invite_dm'
   | 'jam_started'
   | 'jam_join'
-  | 'jam_ended';
+  | 'jam_ended'
+  | 'activity_like'
+  | 'activity_comment'
+  | 'activity_repost'
+  | 'activity_milestone';
 
 export type PushArgs = {
   recipientUserId: string;

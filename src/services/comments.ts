@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { notifyPostActivity } from './activity';
 
 export type CommentAuthor = {
   id: string;
@@ -169,6 +170,9 @@ export async function createComment(
   if (error || !data) {
     throw new Error(error?.message ?? 'Failed to create comment.');
   }
+  // Fan out an activity notification to the post author (self-comment is
+  // filtered server-side). Fire-and-forget — never block the comment.
+  void notifyPostActivity(postId, 'comment');
   return rowToNode(data as unknown as RawCommentRow, false);
 }
 

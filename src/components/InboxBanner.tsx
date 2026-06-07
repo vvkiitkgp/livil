@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -12,12 +12,17 @@ import type { RootStackParamList } from '../navigation/types';
 import { COLORS } from '../theme/colors';
 import { useRelationships } from '../contexts/RelationshipContext';
 import {
-  getNewFansSummary,
   listIncomingFriendRequests,
-  markFansSeen,
   type IncomingFriendRequest,
-  type NewFansSummary,
 } from '../services/relationships';
+import {
+  activitySummary,
+  getActivityUnreadCount,
+  listActivity,
+} from '../services/activity';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LIVIL_LOGO = require('../assets/livil-logo.png');
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -102,70 +107,56 @@ export function FriendRequestsBanner({ refreshKey }: { refreshKey: number }) {
   );
 }
 
-export function NewFansBanner({ refreshKey }: { refreshKey: number }) {
-  const [summary, setSummary] = useState<NewFansSummary | null>(null);
-  const [dismissing, setDismissing] = useState(false);
+/**
+ * Pinned "Activity" row — the app's in-app notification center, rendered
+ * chat-style on tap. Always visible (so history is reachable); shows an unread
+ * badge and a live preview of the newest event. Sits just below the friend
+ * requests banner. New fans + friend-request outcomes surface here.
+ */
+export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
+  const navigation = useNavigation<Nav>();
+  const [unread, setUnread] = useState(0);
+  const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const s = await getNewFansSummary();
-        if (!cancelled) { setSummary(s); }
+        const [count, items] = await Promise.all([
+          getActivityUnreadCount(),
+          listActivity(),
+        ]);
+        if (!cancelled) {
+          setUnread(count);
+          setPreview(items[0] ? activitySummary(items[0]) : null);
+        }
       } catch {
-        // ignore
+        // leave previous data
       }
     })();
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  const handleDismiss = useCallback(async () => {
-    if (dismissing) { return; }
-    setDismissing(true);
-    try {
-      await markFansSeen();
-      setSummary({ count: 0, recent: [] });
-    } catch {
-      setDismissing(false);
-    }
-  }, [dismissing]);
-
-  if (!summary || summary.count === 0) { return null; }
-
-  const recent = summary.recent[0];
-  const title = summary.count === 1
-    ? 'You got a new fan'
-    : `+${summary.count} new fans`;
-  const subtitle = recent
-    ? `${recent.displayName || `@${recent.username}`}${summary.count > 1 ? ' and others' : ''} starred you`
-    : 'Tap to dismiss';
-
   return (
     <TouchableOpacity
-      style={[styles.banner, styles.bannerFan]}
+      style={styles.banner}
       activeOpacity={0.7}
-      onPress={handleDismiss}
-      disabled={dismissing}
+      onPress={() => navigation.navigate('ActivityCenter')}
     >
-      {recent ? (
-        recent.avatarUrl ? (
-          <Image source={{ uri: recent.avatarUrl }} style={styles.fanAvatar} />
-        ) : (
-          <View style={[styles.fanAvatar, styles.fanAvatarPlaceholder]}>
-            <Text style={styles.stackInitial}>
-              {initial(recent.displayName, recent.username)}
-            </Text>
-          </View>
-        )
-      ) : (
-        <View style={[styles.fanAvatar, styles.fanAvatarPlaceholder]}>
-          <Text style={styles.stackInitial}>★</Text>
-        </View>
-      )}
+      <Image source={LIVIL_LOGO} style={styles.activityAvatar} />
       <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={1}>{title}</Text>
-        <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
+        <Text style={styles.title} numberOfLines={1}>livil Bot</Text>
+        <Text style={styles.subtitle} numberOfLines={1}>
+          {preview ?? 'Likes, comments & milestones on your tracks'}
+        </Text>
       </View>
+      {unread > 0 ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+        </View>
+      ) : (
+        <Text style={styles.chevron}>›</Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -181,9 +172,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
-  bannerFan: {
-    backgroundColor: COLORS.purpleDim,
+  activityAvatar: { width: 44, height: 44, borderRadius: 22 },
+  badge: {
+    backgroundColor: COLORS.purple,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
   },
+  badgeText: { color: COLORS.white, fontSize: 11, fontWeight: '700' },
   stack: { width: 52, height: 36, position: 'relative' },
   stackItem: {
     position: 'absolute', top: 2,
@@ -198,11 +197,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   stackInitial: { color: COLORS.purpleLight, fontWeight: '700', fontSize: 13 },
-  fanAvatar: { width: 36, height: 36, borderRadius: 18 },
-  fanAvatarPlaceholder: {
-    backgroundColor: COLORS.purple,
-    alignItems: 'center', justifyContent: 'center',
-  },
   body: { flex: 1, gap: 2 },
   title: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   subtitle: { color: COLORS.textSecondary, fontSize: 12 },
