@@ -16,6 +16,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
+import CommentsSheet from '../../components/CommentsSheet';
+import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import {
   listPostsForUser,
@@ -97,6 +99,7 @@ export default function UserProfileScreen() {
   const playback = usePlayback();
   const rel = useRelationships();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const comments = useCommentsCountDeltas();
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
@@ -298,9 +301,15 @@ export default function UserProfileScreen() {
           </View>
         );
       }
-      return <PostCard post={item.post} visible={visibleIds.has(item.post.id)} />;
+      return (
+        <PostCard
+          post={comments.withDelta(item.post)}
+          visible={visibleIds.has(item.post.id)}
+          onCommentsPress={comments.openComments}
+        />
+      );
     },
-    [handleTabChange, tab, visibleIds],
+    [handleTabChange, tab, visibleIds, comments],
   );
 
   const renderHeader = useCallback(() => {
@@ -413,6 +422,17 @@ export default function UserProfileScreen() {
           onClose={() => setSheetOpen(false)}
         />
       )}
+
+      <CommentsSheet
+        visible={comments.commentsPostId !== null}
+        postId={comments.commentsPostId}
+        onClose={comments.closeComments}
+        onCommentsCountChange={delta => {
+          if (comments.commentsPostId) {
+            comments.applyDelta(comments.commentsPostId, delta);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }

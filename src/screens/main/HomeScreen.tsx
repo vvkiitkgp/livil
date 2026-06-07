@@ -23,6 +23,8 @@ import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
 import PostCard from '../../components/PostCard';
+import CommentsSheet from '../../components/CommentsSheet';
+import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import {
@@ -202,6 +204,7 @@ function PostCardSkeleton() {
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const playback = usePlayback();
+  const comments = useCommentsCountDeltas();
   const { stories, setStories } = useStories();
   const { pendingIncomingCount } = useRelationships();
   const insets = useSafeAreaInsets();
@@ -568,9 +571,16 @@ export default function HomeScreen() {
       if (item.kind === 'skeleton') {
         return <PostCardSkeleton />;
       }
-      return <PostCard post={item.post} visible={visibleIds.has(item.post.id)} pauseWhenOffScreen={false} />;
+      return (
+        <PostCard
+          post={comments.withDelta(item.post)}
+          visible={visibleIds.has(item.post.id)}
+          pauseWhenOffScreen={false}
+          onCommentsPress={comments.openComments}
+        />
+      );
     },
-    [visibleIds],
+    [visibleIds, comments],
   );
 
   const feedKeyExtractor = useCallback((item: FeedListItem) => {
@@ -732,6 +742,17 @@ export default function HomeScreen() {
           </View>
         </View>
       </Animated.View>
+
+      <CommentsSheet
+        visible={comments.commentsPostId !== null}
+        postId={comments.commentsPostId}
+        onClose={comments.closeComments}
+        onCommentsCountChange={delta => {
+          if (comments.commentsPostId) {
+            comments.applyDelta(comments.commentsPostId, delta);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }

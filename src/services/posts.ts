@@ -452,6 +452,47 @@ export async function createRepost(
   return { postId: created.id };
 }
 
+export type PostMetrics = {
+  likesCount: number;
+  commentsCount: number;
+  repostsCount: number;
+  viewerHasLiked: boolean;
+};
+
+/**
+ * Lightweight counts-only fetch for a post — used by FullScreenPlayer when the
+ * currently-playing item is a repost: engagement in the player surface targets
+ * the *original* post, so we re-read its counters without rehydrating the full
+ * FeedPost shape.
+ */
+export async function fetchPostMetrics(postId: string): Promise<PostMetrics> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('likes_count, comments_count, reposts_count')
+    .eq('id', postId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  const likesCount = (data?.likes_count as number | undefined) ?? 0;
+  const commentsCount = (data?.comments_count as number | undefined) ?? 0;
+  const repostsCount = (data?.reposts_count as number | undefined) ?? 0;
+
+  let viewerHasLiked = false;
+  const { data: userData } = await supabase.auth.getUser();
+  const viewerId = userData?.user?.id ?? null;
+  if (viewerId) {
+    const { data: like } = await supabase
+      .from('post_likes')
+      .select('post_id')
+      .eq('post_id', postId)
+      .eq('user_id', viewerId)
+      .maybeSingle();
+    viewerHasLiked = Boolean(like);
+  }
+  return { likesCount, commentsCount, repostsCount, viewerHasLiked };
+}
+
 /**
  * Fetch a single post by id — used by RepostScreen to load the original post
  * (cover art, track details, author) before the user writes their repost.
@@ -519,21 +560,21 @@ export async function toggleLike(postId: string): Promise<boolean> {
 }
 
 /**
- * Record a view from the current viewer for a post. De-duplicated at the DB
- * level via the (post_id, user_id) primary key — re-inserting is a no-op for
- * counting purposes (we swallow the conflict).
+ * Record a play for a post. Each call inserts a new row in `post_views`; the
+ * AFTER-INSERT trigger increments `posts.views_count`. Multiple plays per user
+ * per post are allowed (loops, replays, etc).
+ *
+ * The "when to call this" decision lives in `src/utils/playTracker.ts` —
+ * service-layer code just writes the row, no quota or dedup logic.
  */
-export async function recordView(postId: string): Promise<void> {
+export async function recordPlay(postId: string): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;
   if (!me) {return;}
-
-  // `onConflict` would require a unique constraint name; we just call insert
-  // and swallow the unique_violation (23505) — the row is already there.
   const { error } = await supabase
     .from('post_views')
     .insert({ post_id: postId, user_id: me });
-  if (error && error.code !== '23505') {
+  if (error) {
     throw new Error(error.message);
   }
 }

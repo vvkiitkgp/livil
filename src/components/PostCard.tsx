@@ -8,7 +8,8 @@ import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPla
 import ClipRangeSlider from './ClipRangeSlider';
 import TrackContextMenu from './TrackContextMenu';
 import type { FeedPost } from '../services/posts';
-import { recordView, toggleLike } from '../services/posts';
+import { toggleLike } from '../services/posts';
+import { trackPlayProgress } from '../utils/playTracker';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 
@@ -22,6 +23,8 @@ export type PostCardProps = {
    * Profile / single-column feeds should keep the default true.
    */
   pauseWhenOffScreen?: boolean;
+  /** Tap the comments stat to open the CommentsSheet for this post. */
+  onCommentsPress?: (postId: string) => void;
 };
 
 function formatCount(n: number): string {
@@ -73,7 +76,7 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
   return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
 }
 
-export default function PostCard({ post, visible, pauseWhenOffScreen = true }: PostCardProps) {
+export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const playerRef = useRef<MediaPlayerHandle>(null);
@@ -97,8 +100,6 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
   // Engagement state (optimistic).
   const [liked, setLiked] = useState(post.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(post.likesCount);
-  const [viewsCount, setViewsCount] = useState(post.viewsCount);
-  const [viewRecorded, setViewRecorded] = useState(false);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
 
@@ -248,19 +249,10 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Record a view after the post has been visible for ~2s, once per session.
-  useEffect(() => {
-    if (!visible || viewRecorded) {return;}
-    const t = setTimeout(() => {
-      setViewRecorded(true);
-      setViewsCount(v => v + 1);
-      recordView(post.id).catch(() => {
-        // Already-viewed conflict is fine; any other error we silently swallow
-        // to avoid spamming the UI. The view count on next refresh will reflect truth.
-      });
-    }, 2000);
-    return () => clearTimeout(t);
-  }, [visible, viewRecorded, post.id]);
+  // Play counting is now driven by actual audio playback in `handleProgress`
+  // via `trackPlayProgress` (see src/utils/playTracker.ts). Visibility alone
+  // doesn't count — the user has to be playing the song for >= 3 cumulative
+  // seconds in a single play instance. Loops/replays each start a new instance.
 
   const handleTogglePaused = useCallback(() => {
     setPaused(prev => {
@@ -285,6 +277,9 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
     // with the old track's position — causing the new track to seek mid-song.
     if (playback.isActive(post.id)) {
       playback.updatePosition(seconds);
+      // Feed the play tracker only when this card is actually driving audio.
+      // Inactive cards' final stale onProgress shouldn't count toward plays.
+      trackPlayProgress(post.id, seconds);
     }
     const cw = playback.clipWindowRef.current;
     // Only trigger clip-end advance when this PostCard is the active player.
@@ -530,18 +525,26 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true }: P
               {formatCount(likesCount)}
             </Text>
           </TouchableOpacity>
-          <View style={styles.statBtn}>
-            <Text style={styles.statIcon}>↻</Text>
-            <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
-          </View>
-          <View style={styles.statBtn}>
+          <TouchableOpacity
+            style={styles.statBtn}
+            activeOpacity={0.7}
+            onPress={() => onCommentsPress?.(post.id)}
+            disabled={!onCommentsPress}
+          >
             <Text style={styles.statIcon}>💬</Text>
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
-          </View>
-          <View style={styles.statBtn}>
-            <Text style={styles.statIcon}>◉</Text>
-            <Text style={styles.statValue}>{formatCount(viewsCount)}</Text>
-          </View>
+          </TouchableOpacity>
+          {/* Reposts: only meaningful on upload posts. Reposts of reposts aren't
+              allowed (createRepost throws), so a repost's repostsCount is always
+              0 — don't show it. Plays/views are intentionally removed here per
+              product decision; the cumulative track plays live in FullScreenPlayer. */}
+          {post.kind === 'upload' ? (
+            <View style={styles.statBtn}>
+              {/* Same glyph as the Repost button (line 436) for visual consistency. */}
+              <Text style={styles.statIcon}>▤</Text>
+              <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 

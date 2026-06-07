@@ -17,6 +17,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
+import CommentsSheet from '../../components/CommentsSheet';
+import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -85,6 +87,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
+  const comments = useCommentsCountDeltas();
 
   const openLink = useCallback((url: string) => {
     const normalized = normalizeUrl(url);
@@ -379,9 +382,15 @@ export default function ProfileScreen() {
           </View>
         );
       }
-      return <PostCard post={item.post} visible={visibleIds.has(item.post.id)} />;
+      return (
+        <PostCard
+          post={comments.withDelta(item.post)}
+          visible={visibleIds.has(item.post.id)}
+          onCommentsPress={comments.openComments}
+        />
+      );
     },
-    [handleTabChange, tab, visibleIds],
+    [handleTabChange, tab, visibleIds, comments],
   );
 
   const renderHeader = useCallback(() => {
@@ -572,6 +581,17 @@ export default function ProfileScreen() {
         cancelLabel="Dismiss"
         onConfirm={() => setAllLinksOpen(false)}
         onCancel={() => setAllLinksOpen(false)}
+      />
+
+      <CommentsSheet
+        visible={comments.commentsPostId !== null}
+        postId={comments.commentsPostId}
+        onClose={comments.closeComments}
+        onCommentsCountChange={delta => {
+          if (comments.commentsPostId) {
+            comments.applyDelta(comments.commentsPostId, delta);
+          }
+        }}
       />
     </SafeAreaView>
   );

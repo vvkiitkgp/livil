@@ -24,7 +24,9 @@ import ClipRangeSlider from './ClipRangeSlider';
 import QueueList from './QueueList';
 import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
-import { toggleLike } from '../services/posts';
+import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
+import { trackPlayProgress } from '../utils/playTracker';
+import CommentsSheet from './CommentsSheet';
 import {
   fetchUserPlaylists,
   isPostInPlaylist,
@@ -52,6 +54,43 @@ function formatTime(s: number): string {
   const m = Math.floor(total / 60);
   const sec = total % 60;
   return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+type EffectivePost = {
+  postId: string;
+  likesCount: number;
+  commentsCount: number;
+  repostsCount: number;
+  viewerHasLiked: boolean;
+  /** True when the player surface is targeting an original post for a repost. */
+  isOriginal: boolean;
+};
+
+/**
+ * In FullScreenPlayer, engagement (likes + comments + reposts) always targets
+ * the music's canonical post. When the playing item is a repost, that's the
+ * original upload — not the repost. The original* fields on NowPlayingInfo
+ * are hydrated on mount via `fetchPostMetrics`.
+ */
+function getEffectivePost(nowPlaying: NowPlayingInfo): EffectivePost {
+  if (nowPlaying.kind === 'repost' && nowPlaying.originalPostId) {
+    return {
+      postId: nowPlaying.originalPostId,
+      likesCount: nowPlaying.originalLikesCount ?? nowPlaying.likesCount,
+      commentsCount: nowPlaying.originalCommentsCount ?? nowPlaying.commentsCount,
+      repostsCount: nowPlaying.originalRepostsCount ?? nowPlaying.repostsCount,
+      viewerHasLiked: nowPlaying.originalViewerHasLiked ?? nowPlaying.viewerHasLiked,
+      isOriginal: true,
+    };
+  }
+  return {
+    postId: nowPlaying.postId,
+    likesCount: nowPlaying.likesCount,
+    commentsCount: nowPlaying.commentsCount,
+    repostsCount: nowPlaying.repostsCount,
+    viewerHasLiked: nowPlaying.viewerHasLiked,
+    isOriginal: false,
+  };
 }
 
 function formatCount(n: number): string {
@@ -360,7 +399,17 @@ const avSt = StyleSheet.create({
 });
 
 /** Info tab: artist + collaborators by role + engagement stats. */
-function InfoContent({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
+function InfoContent({
+  nowPlaying,
+  onCommentsPress,
+  trackPlaysTotal,
+}: {
+  nowPlaying: NowPlayingInfo;
+  onCommentsPress: () => void;
+  trackPlaysTotal: number;
+}) {
+  const { setNowPlaying } = usePlayback();
+  const effective = getEffectivePost(nowPlaying);
   const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
@@ -377,11 +426,11 @@ function InfoContent({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
     return () => { cancelled = true; };
   }, [nowPlaying.trackId]);
 
-  // Reset like state if nowPlaying changes
+  // Reset like state if the effective post changes (resolves to original for reposts).
   useEffect(() => {
-    setLiked(nowPlaying.viewerHasLiked);
-    setLikesCount(nowPlaying.likesCount);
-  }, [nowPlaying.postId, nowPlaying.viewerHasLiked, nowPlaying.likesCount]);
+    setLiked(effective.viewerHasLiked);
+    setLikesCount(effective.likesCount);
+  }, [effective.postId, effective.viewerHasLiked, effective.likesCount]);
 
   const handleToggleLike = useCallback(async () => {
     const prev = liked;
@@ -390,16 +439,28 @@ function InfoContent({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
     setLiked(next);
     setLikesCount(prevCount + (next ? 1 : -1));
     try {
-      const serverLiked = await toggleLike(nowPlaying.postId);
+      const serverLiked = await toggleLike(effective.postId);
+      const finalCount = prevCount + (serverLiked ? 1 : 0);
       if (serverLiked !== next) {
         setLiked(serverLiked);
-        setLikesCount(prevCount + (serverLiked ? 1 : 0));
+        setLikesCount(finalCount);
+      }
+      // Write back to PlaybackContext so CompactStats (and any other consumer
+      // of nowPlaying.likesCount / viewerHasLiked) stays in sync.
+      if (effective.isOriginal) {
+        setNowPlaying({
+          ...nowPlaying,
+          originalViewerHasLiked: serverLiked,
+          originalLikesCount: finalCount,
+        });
+      } else {
+        setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked, likesCount: finalCount });
       }
     } catch {
       setLiked(prev);
       setLikesCount(prevCount);
     }
-  }, [liked, likesCount, nowPlaying.postId]);
+  }, [liked, likesCount, effective.postId, effective.isOriginal, nowPlaying, setNowPlaying]);
 
   // Group collaborators by role for display
   type RoleGroup = { role: string; members: TrackCollaboratorInfo[] };
@@ -454,30 +515,40 @@ function InfoContent({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
         </View>
       ) : null}
 
-      {/* ── Engagement stats ── */}
+      {/* ── Engagement stats ──
+          Interactive (like + comments) on the left.
+          Passive info pill on the right shows plays (cumulative track plays
+          across every post using this track) and reposts (how many times the
+          original was reposted). Both are read-only — grouping them in a
+          pill makes their non-interactive nature obvious. */}
       <View style={infoSt.statsRow}>
-        <TouchableOpacity style={infoSt.statBtn} onPress={handleToggleLike} activeOpacity={0.7}>
-          <Text style={[infoSt.statIcon, liked && infoSt.statIconLiked]}>
-            {liked ? '♥' : '♡'}
-          </Text>
-          <Text style={[infoSt.statValue, liked && infoSt.statValueLiked]}>
-            {formatCount(likesCount)}
-          </Text>
-        </TouchableOpacity>
+        <View style={infoSt.activeGroup}>
+          <TouchableOpacity style={infoSt.statBtn} onPress={handleToggleLike} activeOpacity={0.7}>
+            <Text style={[infoSt.statIcon, liked && infoSt.statIconLiked]}>
+              {liked ? '♥' : '♡'}
+            </Text>
+            <Text style={[infoSt.statValue, liked && infoSt.statValueLiked]}>
+              {formatCount(likesCount)}
+            </Text>
+          </TouchableOpacity>
 
-        <View style={infoSt.statBtn}>
-          <Text style={infoSt.statIcon}>💬</Text>
-          <Text style={infoSt.statValue}>{formatCount(nowPlaying.commentsCount)}</Text>
+          <TouchableOpacity style={infoSt.statBtn} onPress={onCommentsPress} activeOpacity={0.7}>
+            <Text style={infoSt.statIcon}>💬</Text>
+            <Text style={infoSt.statValue}>{formatCount(effective.commentsCount)}</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={infoSt.statBtn}>
-          <Text style={infoSt.statIcon}>↻</Text>
-          <Text style={infoSt.statValue}>{formatCount(nowPlaying.repostsCount)}</Text>
-        </View>
-
-        <View style={infoSt.statBtn}>
-          <Text style={infoSt.statIcon}>▶</Text>
-          <Text style={infoSt.statValue}>{formatCount(nowPlaying.viewsCount)}</Text>
+        <View style={infoSt.passivePill}>
+          <View style={infoSt.passiveItem}>
+            <Text style={infoSt.passiveIcon}>▶</Text>
+            <Text style={infoSt.passiveValue}>{formatCount(trackPlaysTotal)}</Text>
+          </View>
+          <View style={infoSt.passiveDivider} />
+          <View style={infoSt.passiveItem}>
+            {/* Matches the Repost button glyph in PostCard for consistency. */}
+            <Text style={infoSt.passiveIcon}>▤</Text>
+            <Text style={infoSt.passiveValue}>{formatCount(effective.repostsCount)}</Text>
+          </View>
         </View>
       </View>
     </ScrollView>
@@ -508,15 +579,36 @@ const infoSt = StyleSheet.create({
   roleName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', flex: 1 },
 
   statsRow: {
-    flexDirection: 'row', justifyContent: 'space-around',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderTopWidth: 1, borderTopColor: COLORS.border,
     paddingTop: 20, marginTop: 4,
   },
-  statBtn: { alignItems: 'center', gap: 4 },
+  activeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 22,
+  },
+  statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statIcon: { color: COLORS.textSecondary, fontSize: 18 },
   statIconLiked: { color: '#FF4D6D' },
   statValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   statValueLiked: { color: '#FF4D6D' },
+  passivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  passiveItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  passiveDivider: { width: 1, height: 14, backgroundColor: COLORS.border, marginHorizontal: 10 },
+  passiveIcon: { color: COLORS.textMuted, fontSize: 13 },
+  passiveValue: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });
 
 // ─── Add-to-playlist modal ────────────────────────────────────────────────────
@@ -732,6 +824,8 @@ const modalSt = StyleSheet.create({
 export default function FullScreenPlayer() {
   const {
     nowPlaying,
+    setNowPlaying,
+    bumpCommentsCount,
     activePostId,
     isFullScreenOpen,
     closeFullScreenPlayer,
@@ -747,6 +841,12 @@ export default function FullScreenPlayer() {
     reportPaused,
     playNext,
   } = usePlayback();
+
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  // Cumulative track plays — sum of views_count across every post (uploads +
+  // reposts) using this track. PostCard no longer displays the per-post views,
+  // so this is the only surface that shows plays at all.
+  const [trackPlaysTotal, setTrackPlaysTotal] = useState<number>(0);
 
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -789,6 +889,55 @@ export default function FullScreenPlayer() {
   const fsOpenRef = useRef(false);
   // Guard: prevents stale onProgress updates from finishing video
   const fsVideoPostIdRef = useRef<string | null>(null);
+
+  // ── Original-post metrics hydration (reposts only) ────────────────────────
+  // When the currently playing item is a repost, the player surface shows the
+  // original post's likes + comments + reposts — fetch those once per
+  // (original) post id.
+  useEffect(() => {
+    if (!nowPlaying) { return; }
+    if (nowPlaying.kind !== 'repost' || !nowPlaying.originalPostId) { return; }
+    if (nowPlaying.originalCommentsCount !== undefined) { return; }
+    const originalId = nowPlaying.originalPostId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = await fetchPostMetrics(originalId);
+        if (cancelled) { return; }
+        setNowPlaying({
+          ...nowPlaying,
+          originalLikesCount: m.likesCount,
+          originalCommentsCount: m.commentsCount,
+          originalRepostsCount: m.repostsCount,
+          originalViewerHasLiked: m.viewerHasLiked,
+        });
+      } catch {
+        // swallow — falls back to repost counts shown.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nowPlaying, setNowPlaying]);
+
+  // ── Track plays total ─────────────────────────────────────────────────────
+  // Re-fetch whenever the playing track changes. Single-shot per track — the
+  // count is small and we don't need live updates here.
+  useEffect(() => {
+    if (!nowPlaying?.trackId) {
+      setTrackPlaysTotal(0);
+      return;
+    }
+    const trackId = nowPlaying.trackId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const total = await fetchTrackPlaysTotal(trackId);
+        if (!cancelled) { setTrackPlaysTotal(total); }
+      } catch {
+        if (!cancelled) { setTrackPlaysTotal(0); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nowPlaying?.trackId]);
 
   // ── Open / close ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -946,7 +1095,13 @@ export default function FullScreenPlayer() {
   const handleVideoProgress = useCallback(
     (data: OnProgressData) => {
       if (fsVideoPostIdRef.current && activePostId === fsVideoPostIdRef.current) {
-        updatePosition(data.currentTime ?? 0);
+        const t = data.currentTime ?? 0;
+        updatePosition(t);
+        // Drive the play tracker from the fullscreen Video as well, so plays
+        // count whether the user is in the feed or fullscreen. The handoff
+        // between PostCard and FullScreenPlayer is exclusive (only one of
+        // them is actually playing audio), so there's no double-counting.
+        trackPlayProgress(fsVideoPostIdRef.current, t);
       }
     },
     [updatePosition, activePostId],
@@ -1098,7 +1253,11 @@ export default function FullScreenPlayer() {
       <View style={[styles.bottomInfo, { bottom: seekRowBottom + 56 }]} pointerEvents="box-none">
         <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
         <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
-        <CompactStats nowPlaying={nowPlaying} />
+        <CompactStats
+          nowPlaying={nowPlaying}
+          onCommentsPress={() => setCommentsOpen(true)}
+          trackPlaysTotal={trackPlaysTotal}
+        />
       </View>
 
       {/* ── Seek bar + time labels ── */}
@@ -1149,7 +1308,11 @@ export default function FullScreenPlayer() {
         )}
         {activeTab === 'info' && (
           <View style={[styles.panelScroll, { paddingHorizontal: 0, paddingTop: 0 }]}>
-            <InfoContent nowPlaying={nowPlaying} />
+            <InfoContent
+              nowPlaying={nowPlaying}
+              onCommentsPress={() => setCommentsOpen(true)}
+              trackPlaysTotal={trackPlaysTotal}
+            />
           </View>
         )}
       </Animated.View>
@@ -1196,21 +1359,39 @@ export default function FullScreenPlayer() {
           }}
         />
       )}
+
+      <CommentsSheet
+        visible={commentsOpen}
+        postId={getEffectivePost(nowPlaying).postId}
+        onClose={() => setCommentsOpen(false)}
+        onCommentsCountChange={delta => {
+          bumpCommentsCount(delta, getEffectivePost(nowPlaying).isOriginal);
+        }}
+      />
     </Animated.View>
   );
 }
 
 // ─── Compact stats strip (separate component to keep re-renders isolated) ────
 
-function CompactStats({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
+function CompactStats({
+  nowPlaying,
+  onCommentsPress,
+  trackPlaysTotal,
+}: {
+  nowPlaying: NowPlayingInfo;
+  onCommentsPress: () => void;
+  trackPlaysTotal: number;
+}) {
   const { setNowPlaying } = usePlayback();
-  const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
-  const [count, setCount] = useState(nowPlaying.likesCount);
+  const effective = getEffectivePost(nowPlaying);
+  const [liked, setLiked] = useState(effective.viewerHasLiked);
+  const [count, setCount] = useState(effective.likesCount);
 
   useEffect(() => {
-    setLiked(nowPlaying.viewerHasLiked);
-    setCount(nowPlaying.likesCount);
-  }, [nowPlaying.postId, nowPlaying.viewerHasLiked, nowPlaying.likesCount]);
+    setLiked(effective.viewerHasLiked);
+    setCount(effective.likesCount);
+  }, [effective.postId, effective.viewerHasLiked, effective.likesCount]);
 
   const handleLike = useCallback(async () => {
     const prev = liked;
@@ -1219,36 +1400,56 @@ function CompactStats({ nowPlaying }: { nowPlaying: NowPlayingInfo }) {
     setLiked(next);
     setCount(prevCount + (next ? 1 : -1));
     try {
-      const serverLiked = await toggleLike(nowPlaying.postId);
+      const serverLiked = await toggleLike(effective.postId);
       const finalCount = prevCount + (serverLiked ? 1 : 0);
       setLiked(serverLiked);
       setCount(finalCount);
       // Write back to PlaybackContext so the add-to-playlist modal reads the
-      // correct liked state when it opens after a like/unlike here.
-      setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked, likesCount: finalCount });
+      // correct liked state when it opens after a like/unlike here. For
+      // reposts, we update both the original mirror (consumed by the player)
+      // and the live like state on the underlying post.
+      if (effective.isOriginal) {
+        setNowPlaying({
+          ...nowPlaying,
+          originalViewerHasLiked: serverLiked,
+          originalLikesCount: finalCount,
+        });
+      } else {
+        setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked, likesCount: finalCount });
+      }
     } catch {
       setLiked(prev);
       setCount(prevCount);
     }
-  }, [liked, count, nowPlaying, setNowPlaying]);
+  }, [liked, count, nowPlaying, setNowPlaying, effective.postId, effective.isOriginal]);
 
   return (
     <View style={csSt.row}>
-      <TouchableOpacity style={csSt.item} onPress={handleLike} activeOpacity={0.7}>
-        <Text style={[csSt.icon, liked && csSt.iconLiked]}>{liked ? '♥' : '♡'}</Text>
-        <Text style={[csSt.val, liked && csSt.valLiked]}>{formatCount(count)}</Text>
-      </TouchableOpacity>
-      <View style={csSt.item}>
-        <Text style={csSt.icon}>💬</Text>
-        <Text style={csSt.val}>{formatCount(nowPlaying.commentsCount)}</Text>
+      {/* Interactive group (like + comments) — bare buttons so they read as
+          actionable against the album art. */}
+      <View style={csSt.activeGroup}>
+        <TouchableOpacity style={csSt.item} onPress={handleLike} activeOpacity={0.7}>
+          <Text style={[csSt.icon, liked && csSt.iconLiked]}>{liked ? '♥' : '♡'}</Text>
+          <Text style={[csSt.val, liked && csSt.valLiked]}>{formatCount(count)}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={csSt.item} onPress={onCommentsPress} activeOpacity={0.7}>
+          <Text style={csSt.icon}>💬</Text>
+          <Text style={csSt.val}>{formatCount(effective.commentsCount)}</Text>
+        </TouchableOpacity>
       </View>
-      <View style={csSt.item}>
-        <Text style={csSt.icon}>↻</Text>
-        <Text style={csSt.val}>{formatCount(nowPlaying.repostsCount)}</Text>
-      </View>
-      <View style={csSt.item}>
-        <Text style={csSt.icon}>▶</Text>
-        <Text style={csSt.val}>{formatCount(nowPlaying.viewsCount)}</Text>
+      {/* Passive pill — plays (cumulative across every post using this track)
+          and reposts (always the original post's count). Read-only. */}
+      <View style={csSt.pill}>
+        <View style={csSt.pillItem}>
+          <Text style={csSt.pillIcon}>▶</Text>
+          <Text style={csSt.pillVal}>{formatCount(trackPlaysTotal)}</Text>
+        </View>
+        <View style={csSt.pillDivider} />
+        <View style={csSt.pillItem}>
+          {/* Matches the Repost button glyph in PostCard for consistency. */}
+          <Text style={csSt.pillIcon}>▤</Text>
+          <Text style={csSt.pillVal}>{formatCount(effective.repostsCount)}</Text>
+        </View>
       </View>
     </View>
   );
@@ -1258,16 +1459,32 @@ const csSt = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     paddingVertical: 8,
     paddingHorizontal: 16,
     marginTop: 8,
+    gap: 10,
   },
+  activeGroup: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   icon: { color: COLORS.white, fontSize: 16, textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   iconLiked: { color: '#FF4D6D' },
   val: { color: COLORS.white, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   valLiked: { color: '#FF4D6D' },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  pillItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pillDivider: { width: 1, height: 12, backgroundColor: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
+  pillIcon: { color: 'rgba(255,255,255,0.85)', fontSize: 12 },
+  pillVal: { color: COLORS.white, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });
 
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
