@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -58,10 +59,10 @@ const VIDEO_SLOTS: FileSlot[] = [
     accept: types.video,
   },
   {
-    kind: 'cover',
+    kind: 'thumbnail',
     label: 'Thumbnail',
-    description: 'Optional · jpg, png, webp',
-    required: false,
+    description: 'Required · jpg, png, webp · shown in feed',
+    required: true,
     accept: types.images,
   },
 ];
@@ -80,6 +81,7 @@ export default function UploadScreen() {
   const [audio, setAudio] = useState<PickedFile | null>(null);
   const [video, setVideo] = useState<PickedFile | null>(null);
   const [cover, setCover] = useState<PickedFile | null>(null);
+  const [thumbnail, setThumbnail] = useState<PickedFile | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -118,6 +120,7 @@ export default function UploadScreen() {
       // Drop files that don't belong in the new mode so we never carry stale state into createTrack.
       if (next === 'audio') {
         setVideo(null);
+        setThumbnail(null);
       } else {
         setAudio(null);
       }
@@ -165,6 +168,7 @@ export default function UploadScreen() {
         };
         if (slot.kind === 'audio') {setAudio(file);}
         else if (slot.kind === 'video') {setVideo(file);}
+        else if (slot.kind === 'thumbnail') {setThumbnail(file);}
         else {
           setCover(file);
         }
@@ -181,6 +185,7 @@ export default function UploadScreen() {
   const handleClearFile = useCallback((kind: TrackMediaKind) => {
     if (kind === 'audio') {setAudio(null);}
     else if (kind === 'video') {setVideo(null);}
+    else if (kind === 'thumbnail') {setThumbnail(null);}
     else {setCover(null);}
   }, []);
 
@@ -199,16 +204,17 @@ export default function UploadScreen() {
     (kind: TrackMediaKind): PickedFile | null => {
       if (kind === 'audio') {return audio;}
       if (kind === 'video') {return video;}
+      if (kind === 'thumbnail') {return thumbnail;}
       return cover;
     },
-    [audio, video, cover],
+    [audio, video, cover, thumbnail],
   );
 
   const canSubmit = useMemo(() => {
     if (submitting || title.trim().length === 0) {return false;}
     if (mode === 'audio') {return Boolean(audio && cover);}
-    return Boolean(video);
-  }, [mode, audio, cover, video, title, submitting]);
+    return Boolean(video && thumbnail);
+  }, [mode, audio, cover, video, thumbnail, title, submitting]);
 
   const handleSubmit = useCallback(async () => {
     setPreviewPaused(true);
@@ -221,9 +227,15 @@ export default function UploadScreen() {
         setError('Audio posts need an audio file and a cover image.');
         return;
       }
-    } else if (!video) {
-      setError('Video posts need a video file.');
-      return;
+    } else {
+      if (!video) {
+        setError('Video posts need a video file.');
+        return;
+      }
+      if (!thumbnail) {
+        setError('Video posts need a thumbnail image.');
+        return;
+      }
     }
     setSubmitting(true);
     setError('');
@@ -246,6 +258,7 @@ export default function UploadScreen() {
               description,
               video: video!,
               cover: cover ?? undefined,
+              thumbnail: thumbnail!,
               collaborators,
             },
         ({ stage, fraction }) => {
@@ -260,7 +273,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, collaborators]);
+  }, [mode, audio, title, description, video, cover, thumbnail, collaborators]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -422,6 +435,19 @@ export default function UploadScreen() {
                     </Text>
                   </View>
                 ) : null}
+              </View>
+            </>
+          ) : null}
+
+          {mode === 'video' && thumbnail ? (
+            <>
+              <Text style={styles.sectionLabel}>Feed thumbnail</Text>
+              <View style={styles.previewCard}>
+                <Image
+                  source={{ uri: thumbnail.uri }}
+                  style={styles.thumbnailPreview}
+                  resizeMode="cover"
+                />
               </View>
             </>
           ) : null}
@@ -740,6 +766,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: -0.2,
+  },
+  thumbnailPreview: {
+    aspectRatio: 1,
+    width: '100%',
+    backgroundColor: COLORS.card,
   },
   fileRow: {
     flexDirection: 'row',

@@ -140,6 +140,7 @@ export default function ProfileScreen() {
           authorUsername: displayAuthor.username,
           authorAvatarUrl: displayAuthor.avatarUrl,
           coverArtUrl: p.track.coverArtUrl,
+          thumbnailUrl: p.track.thumbnailUrl,
           mediaKind: p.track.mediaKind,
           audioUrl: p.track.audioUrl ?? undefined,
           videoUrl: p.track.videoUrl ?? undefined,

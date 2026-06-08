@@ -111,6 +111,7 @@ export default function PlaylistScreen({ route }: Props) {
       authorUsername: item.authorUsername,
       authorAvatarUrl: item.authorAvatarUrl,
       coverArtUrl: item.coverArtUrl,
+      thumbnailUrl: item.thumbnailUrl,
       mediaKind: item.mediaKind,
       audioUrl: item.audioUrl ?? undefined,
       videoUrl: item.videoUrl ?? undefined,

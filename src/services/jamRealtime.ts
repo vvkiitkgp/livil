@@ -14,6 +14,8 @@ export type PlaybackBroadcast = {
   track_title?: string;
   track_artist?: string;
   track_cover_art?: string | null;
+  /** Video-only: thumbnail URL shown in feed PostCard for this track. */
+  track_thumbnail?: string | null;
   audio_url?: string;
   video_url?: string;
   media_kind?: 'audio' | 'video';

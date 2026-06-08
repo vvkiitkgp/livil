@@ -16,6 +16,7 @@ export type PlaylistItem = {
   authorUsername: string;
   authorAvatarUrl: string | null;
   coverArtUrl: string | null;
+  thumbnailUrl: string | null;
   mediaKind: 'audio' | 'video';
   audioUrl: string | null;
   videoUrl: string | null;
@@ -73,7 +74,8 @@ export async function fetchLikedPosts(limit = 200): Promise<PlaylistItem[]> {
           media_kind,
           audio_url,
           video_url,
-          cover_art_url
+          cover_art_url,
+          thumbnail_url
         ),
         author:profiles!posts_author_id_fkey (
           id,
@@ -100,6 +102,7 @@ export async function fetchLikedPosts(limit = 200): Promise<PlaylistItem[]> {
         audio_url: string | null;
         video_url: string | null;
         cover_art_url: string | null;
+        thumbnail_url: string | null;
       } | null;
       author: { id: string; display_name: string | null; username: string; avatar_url: string | null } | null;
     } | null;
@@ -114,6 +117,7 @@ export async function fetchLikedPosts(limit = 200): Promise<PlaylistItem[]> {
       authorUsername: r.post!.author?.username ?? '',
       authorAvatarUrl: r.post!.author?.avatar_url ?? null,
       coverArtUrl: r.post!.track!.cover_art_url,
+      thumbnailUrl: r.post!.track!.thumbnail_url,
       mediaKind: r.post!.track!.media_kind,
       audioUrl: r.post!.track!.audio_url,
       videoUrl: r.post!.track!.video_url,
@@ -172,7 +176,8 @@ export async function fetchPlaylistPosts(playlistId: string, limit = 200): Promi
           media_kind,
           audio_url,
           video_url,
-          cover_art_url
+          cover_art_url,
+          thumbnail_url
         ),
         author:profiles!posts_author_id_fkey (
           id,
@@ -199,6 +204,7 @@ export async function fetchPlaylistPosts(playlistId: string, limit = 200): Promi
         audio_url: string | null;
         video_url: string | null;
         cover_art_url: string | null;
+        thumbnail_url: string | null;
       } | null;
       author: { id: string; display_name: string | null; username: string; avatar_url: string | null } | null;
     } | null;
@@ -213,6 +219,7 @@ export async function fetchPlaylistPosts(playlistId: string, limit = 200): Promi
       authorUsername: r.post!.author?.username ?? '',
       authorAvatarUrl: r.post!.author?.avatar_url ?? null,
       coverArtUrl: r.post!.track!.cover_art_url,
+      thumbnailUrl: r.post!.track!.thumbnail_url,
       mediaKind: r.post!.track!.media_kind,
       audioUrl: r.post!.track!.audio_url,
       videoUrl: r.post!.track!.video_url,

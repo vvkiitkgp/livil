@@ -98,6 +98,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
                 title: initialPost.title,
                 artistName: initialPost.artistName,
                 coverArtUrl: initialPost.coverArtUrl,
+                thumbnailUrl: null,
                 trackId: '',
                 authorId: '',
                 authorUsername: '',

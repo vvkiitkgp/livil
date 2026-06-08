@@ -230,6 +230,7 @@ export default function PlaybackEngine() {
         if (nowPlayingRef.current) { reportPaused(nowPlayingRef.current.postId); }
       },
       seek: (s: number) => {
+        console.log(`[LIVIL][ENG] handler SEEK to=${s.toFixed(2)}s posBefore=${positionRef.current.toFixed(2)}s`);
         positionRef.current = s;
         getActiveRef().current?.seek(s);
       },
