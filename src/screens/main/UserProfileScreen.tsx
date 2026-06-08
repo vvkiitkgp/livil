@@ -339,6 +339,11 @@ export default function UserProfileScreen() {
         <PostCard
           post={comments.withDelta(item.post)}
           visible={visibleIds.has(item.post.id)}
+          // Match HomeScreen / ProfileScreen — don't auto-pause on scroll.
+          // The active queue track should keep playing as the user navigates
+          // and FloatingPlayer play/pause must work regardless of FlatList
+          // window membership.
+          pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />

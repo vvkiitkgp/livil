@@ -140,8 +140,11 @@ function FullScreenClipBar() {
   const [duration, setDuration] = useState(() => durationRef.current);
 
   // Last known good duration. durationRef briefly drops to 0 between tracks
-  // (before the new video's onLoad fires) — without this fallback the bar
-  // would collapse and the layout would jump every track change.
+  // (before the new track's onLoad fires) — without this fallback the bar
+  // would collapse and the layout would jump every track change. We reset
+  // the fallback on every postId change so the *previous* track's duration
+  // doesn't bleed into the new track's display (e.g. switching from an 8 s
+  // video clip to a 66 s audio post momentarily showed "8 s" on the right).
   const lastDurationRef = useRef(duration);
   if (duration > 0) { lastDurationRef.current = duration; }
   const displayDuration = duration > 0 ? duration : lastDurationRef.current;
@@ -161,6 +164,11 @@ function FullScreenClipBar() {
     setLocalStart(cs);
     setLocalEnd(ce);
     clipWindowRef.current = (cs !== null && ce !== null) ? { start: cs, end: ce } : null;
+    // Reset duration fallback so the previous track's value isn't shown until
+    // the new track's onLoad lands.
+    lastDurationRef.current = 0;
+    setDuration(0);
+    setPosition(0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
 
@@ -916,6 +924,11 @@ export default function FullScreenPlayer() {
   // routes through handlersRef.setRate; without this state the FS handler was
   // a no-op and forward did nothing for video tracks.
   const [fsRate, setFsRate] = useState(1.0);
+  // Buffering / "loading first frame" state — drives a centered spinner so
+  // tapping play on the post doesn't look like a no-op while the source is
+  // being fetched. Set true on track change, false on first onLoad / when
+  // onBuffer says we're done buffering.
+  const [fsLoading, setFsLoading] = useState(false);
   const videoRef = useRef<VideoRef>(null);
   const initialSeekDone = useRef(false);
   // Saved PostCard handlers so we can restore them when the FS video player closes
@@ -1058,6 +1071,7 @@ export default function FullScreenPlayer() {
         requestPlay(nowPlaying.postId);
       }
       setFsRate(1.0);
+      setFsLoading(true);
     } else if (trackChanged) {
       // Track change while we own (next/prev from FloatingPlayer or inside
       // FS). Auto-play the new track regardless of minimized state.
@@ -1069,6 +1083,7 @@ export default function FullScreenPlayer() {
       // does setRate(1.0), but if the user lifts mid-track-change that
       // reset might never fire).
       setFsRate(1.0);
+      setFsLoading(true);
     }
 
     fsOwnerPostIdRef.current = nowPlaying.postId;
@@ -1159,6 +1174,7 @@ export default function FullScreenPlayer() {
     const dur = data.duration ?? 0;
     console.log(`[LIVIL][FS] onLoad duration=${dur.toFixed(1)}s`);
     updateDuration(dur);
+    setFsLoading(false);
     if (!initialSeekDone.current) {
       initialSeekDone.current = true;
       const pos = positionRef.current;
@@ -1299,6 +1315,7 @@ export default function FullScreenPlayer() {
             }}
             onBuffer={({ isBuffering: buf }) => {
               console.log(`[LIVIL][FS] onBuffer isBuffering=${buf}`);
+              setFsLoading(buf);
             }}
             onError={(e) => {
               // Without this, a bad URL / decode failure leaves the player in
@@ -1337,6 +1354,14 @@ export default function FullScreenPlayer() {
             <View style={styles.fallbackBlobB} />
           </View>
         )}
+        {/* Buffering / initial-load spinner. Renders over the poster so the
+            user sees feedback the instant they tap play — without this the
+            tap looked unresponsive while the source was fetched. */}
+        {fsLoading && nowPlaying.mediaKind === 'video' ? (
+          <View style={styles.fsLoadingOverlay} pointerEvents="none">
+            <ActivityIndicator size="large" color={COLORS.purpleLight} />
+          </View>
+        ) : null}
       </View>
 
       {/* Scrims removed — no background overlay on video */}
@@ -1647,6 +1672,7 @@ const styles = StyleSheet.create({
   // Full-bleed media fills entire container
   albumArt: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   albumArtFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.card, overflow: 'hidden' },
+  fsLoadingOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' },
   fallbackBlobA: {
     position: 'absolute', width: SCREEN_W * 0.8, height: SCREEN_W * 0.8,
     borderRadius: SCREEN_W * 0.4, backgroundColor: COLORS.purple, opacity: 0.4,
