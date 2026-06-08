@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollViewProps,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -40,6 +41,7 @@ import { messageCache } from '../../services/messageCache';
 import {
   markAsRead,
   getFriendActivity,
+  getOtherMemberReadAt,
   type FriendActivity,
   type ConversationSummary,
 } from '../../services/conversations';
@@ -53,6 +55,11 @@ import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
+import ChatTimeSeparator from '../../components/ChatTimeSeparator';
+import SwipeRevealRow from '../../components/SwipeRevealRow';
+import SwipeReplyRow from '../../components/SwipeReplyRow';
+import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
+import { formatChatTimestamp, shouldShowTimeSeparator } from '../../utils/chatTime';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -140,6 +147,10 @@ function MessageBubble({
   isMe,
   conversationId,
   conversationTitle,
+  repliedTo,
+  isHighlighted,
+  onReply,
+  onReplyQuotePress,
   onLongPress,
   onReactionToggle,
 }: {
@@ -147,6 +158,20 @@ function MessageBubble({
   isMe: boolean;
   conversationId: string;
   conversationTitle: string;
+  // Pre-resolved original message when this row is a reply. Null when the
+  // row is a top-level message OR when the original isn't in the loaded set
+  // (pagination not yet reached it) — in which case the preview shows a
+  // generic caption instead.
+  repliedTo: ChatMessage | null;
+  // Brief pulse applied when the user tapped a reply quote pointing at this
+  // bubble. ConversationScreen owns the timer that clears it after ~1.5s.
+  isHighlighted: boolean;
+  // Fired when the user swipes the bubble past the reply threshold. The
+  // SwipeReplyRow wrapping lives INSIDE this component so the gesture only
+  // covers the bubble itself — empty space in the row falls through to the
+  // screen-level timestamp-reveal gesture.
+  onReply: () => void;
+  onReplyQuotePress: (originalId: string) => void;
   onLongPress: (msg: ChatMessage) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
 }) {
@@ -199,6 +224,7 @@ function MessageBubble({
         )}
 
         {/* Wrapper gives us the anchor point for the absolutely-positioned reaction strip */}
+        <SwipeReplyRow onReply={onReply}>
         <View style={[styles.bubbleWrapper, hasReactions && styles.bubbleWrapperWithReactions]}>
           <Pressable
             onLongPress={() => onLongPress(msg)}
@@ -206,8 +232,33 @@ function MessageBubble({
               styles.bubble,
               isMe ? styles.bubbleMe : styles.bubbleThem,
               hasStickerMeta ? styles.bubbleSticker : null,
+              isHighlighted && styles.bubbleHighlighted,
             ]}
           >
+            {msg.replyToId && (
+              <Pressable
+                onPress={() => msg.replyToId && onReplyQuotePress(msg.replyToId)}
+                style={[styles.replyQuote, isMe ? styles.replyQuoteMe : styles.replyQuoteThem]}
+              >
+                <Text
+                  style={[styles.replyQuoteAuthor, isMe ? styles.replyQuoteAuthorMe : styles.replyQuoteAuthorThem]}
+                  numberOfLines={1}
+                >
+                  {repliedTo
+                    ? (repliedTo.senderDisplayName || repliedTo.senderUsername || 'Unknown')
+                    : 'Original message'}
+                </Text>
+                <Text
+                  style={[styles.replyQuoteBody, isMe ? styles.replyQuoteBodyMe : styles.replyQuoteBodyThem]}
+                  numberOfLines={2}
+                >
+                  {repliedTo
+                    ? (repliedTo.body || (repliedTo.kind === 'sticker' ? 'Sticker' : repliedTo.kind === 'track_share' ? 'Track' : 'Message'))
+                    : 'Tap to view'}
+                </Text>
+              </Pressable>
+            )}
+
             {msg.kind === 'text' && (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
                 {msg.body}
@@ -262,6 +313,7 @@ function MessageBubble({
             </View>
           )}
         </View>
+        </SwipeReplyRow>
       </View>
     </View>
   );
@@ -349,6 +401,70 @@ export default function ConversationScreen() {
   const [friendActivity, setFriendActivity] = useState<FriendActivity | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  // When the user taps a reply quote we scroll to the original and pulse it
+  // for ~1.5s. Cleared by the timer or by a fresh tap.
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Other DM participant's last_read_at — drives the Instagram-style
+  // "Seen / Delivered" indicator under the most recent outgoing message.
+  // Null until the first fetch resolves (we render nothing until then).
+  const [otherReadAt, setOtherReadAt] = useState<string | null>(null);
+
+  // Memoised lookup so MessageBubble can render the quoted-context strip for
+  // any message whose `replyToId` resolves into the loaded list. Falls back
+  // gracefully — if the original is missing (e.g. loaded later via pagination),
+  // the bubble just shows a generic "Replied to a message" caption.
+  const messagesById = useMemo(() => {
+    const map = new Map<string, ChatMessage>();
+    for (const m of messages) { map.set(m.id, m); }
+    return map;
+  }, [messages]);
+
+  // The most recent OUTGOING message — the only one that gets a
+  // Sending/Delivered/Seen footer (Instagram convention). messages is
+  // ordered newest→oldest, so this is the first match.
+  const latestOutgoing = useMemo<ChatMessage | null>(() => {
+    for (const m of messages) {
+      if (m.senderId === myId && m.kind !== 'system' && !m.deletedAt) { return m; }
+    }
+    return null;
+  }, [messages, myId]);
+
+  // Status string for the footer. Optimistic (id starts with `opt-`) means
+  // the server hasn't confirmed yet — show "Sending…". Once confirmed and
+  // the other party's last_read_at meets/exceeds the message createdAt, it
+  // upgrades to "Seen". In between: "Delivered".
+  const latestOutgoingStatus = useMemo<'sending' | 'delivered' | 'seen' | null>(() => {
+    if (kind !== 'dm' || !latestOutgoing) { return null; }
+    if (latestOutgoing.id.startsWith('opt-')) { return 'sending'; }
+    if (otherReadAt && new Date(otherReadAt).getTime() >= new Date(latestOutgoing.createdAt).getTime()) {
+      return 'seen';
+    }
+    return 'delivered';
+  }, [kind, latestOutgoing, otherReadAt]);
+
+  const handleReplyQuotePress = useCallback((originalId: string) => {
+    const idx = messages.findIndex(m => m.id === originalId);
+    if (idx < 0) {
+      // Original isn't in the loaded window — surface a toast and bail.
+      showToast("Original message isn't loaded yet — scroll up to find it.", { kind: 'info' });
+      return;
+    }
+    flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 });
+    setHighlightedMessageId(originalId);
+    if (highlightTimerRef.current) { clearTimeout(highlightTimerRef.current); }
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedMessageId(null);
+      highlightTimerRef.current = null;
+    }, 1500);
+  }, [messages, showToast]);
+
+  useEffect(() => () => {
+    // On unmount, clear any pending highlight timer.
+    if (highlightTimerRef.current) { clearTimeout(highlightTimerRef.current); }
+  }, []);
 
   // Initial load — stale-while-revalidate
   useEffect(() => {
@@ -409,6 +525,47 @@ export default function ConversationScreen() {
     return () => { cancelled = true; };
   }, [conversationId, showToast]);
 
+  // DM read-receipt source: the other participant's last_read_at. Fetched
+  // once when the conversation opens and kept fresh by a realtime sub on
+  // conversation_members UPDATEs scoped to this conversation. Only matters
+  // for DMs — groups would need multi-member fanout we haven't built yet.
+  useEffect(() => {
+    if (kind !== 'dm') { return; }
+    let cancelled = false;
+    void (async () => {
+      const row = await getOtherMemberReadAt(conversationId);
+      if (!cancelled && row) { setOtherReadAt(row.lastReadAt); }
+    })();
+    console.log('[realtime] conv-read subscribing', { conversationId });
+    const channel = supabase
+      .channel(`conv-read:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversation_members',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload: { new: { user_id?: string; last_read_at?: string | null } }) => {
+          const row = payload.new;
+          if (!row || !row.user_id || row.user_id === myId) { return; }
+          if (row.last_read_at) {
+            console.log('[realtime] conv-read got other last_read_at', row.last_read_at);
+            setOtherReadAt(row.last_read_at);
+          }
+        },
+      )
+      .subscribe(status => {
+        console.log('[realtime] conv-read status', status);
+      });
+    return () => {
+      cancelled = true;
+      console.log('[realtime] conv-read unsubscribing');
+      void supabase.removeChannel(channel);
+    };
+  }, [conversationId, kind, myId]);
+
   // Realtime subscription
   useEffect(() => {
     console.log(`[realtime] ConversationScreen subscribing conv=${conversationId} myId=${myId}`);
@@ -429,6 +586,15 @@ export default function ConversationScreen() {
         setTimeout(() => flatListRef.current?.scrollToIndex({ index: 0, animated: true }), 50);
         // Keep cache warm so the next open of this conversation shows the new msg
         void messageCache.prependMessages(conversationId, [msg]);
+        // Re-mark read whenever an incoming message lands while the chat is
+        // open. Without this, the receiver's last_read_at only advances at
+        // mount, so the SENDER's "Seen" indicator wouldn't catch up to
+        // messages that arrive while both are actively chatting. Skip our
+        // own outbound — markAsRead for our own message is a no-op and
+        // wastes a round trip.
+        if (msg.senderId && msg.senderId !== myId) {
+          void markAsRead(conversationId);
+        }
       },
       async messageId => {
         // Refresh reactions for that message
@@ -518,6 +684,10 @@ export default function ConversationScreen() {
     if (!body || sending) { return; }
     setText('');
     setSending(true);
+    // Capture the reply target locally so the closure isn't affected if the
+    // user starts a new reply while this one is in flight.
+    const replyTarget = replyingTo;
+    setReplyingTo(null);
 
     const optimistic: ChatMessage = {
       id: `opt-${Date.now()}`,
@@ -526,7 +696,7 @@ export default function ConversationScreen() {
       kind: 'text',
       body,
       metadata: null,
-      replyToId: null,
+      replyToId: replyTarget?.id ?? null,
       createdAt: new Date().toISOString(),
       deletedAt: null,
       senderUsername: null,
@@ -538,7 +708,9 @@ export default function ConversationScreen() {
     setTimeout(() => flatListRef.current?.scrollToIndex({ index: 0, animated: true }), 50);
 
     try {
-      const payload: SendMessagePayload = { kind: 'text', body };
+      const payload: SendMessagePayload = replyTarget
+        ? { kind: 'text', body, replyToId: replyTarget.id }
+        : { kind: 'text', body };
       const real = await sendMessage(conversationId, payload, myProfile);
       setMessages(prev =>
         prev.map(m => (m.id === optimistic.id ? real : m)),
@@ -549,13 +721,19 @@ export default function ConversationScreen() {
       console.warn('[chat] sendMessage failed', err);
       setMessages(prev => prev.filter(m => m.id !== optimistic.id));
       setText(body);
+      // Restore the reply target so the user doesn't have to swipe again on retry.
+      setReplyingTo(replyTarget);
       showToast("Couldn't send message. Please try again.", { kind: 'error' });
     } finally {
       setSending(false);
     }
-  }, [text, sending, conversationId, myId, myProfile, showToast]);
+  }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast]);
 
   const handleLongPress = useCallback((msg: ChatMessage) => {
+    // Firm tap when the picker opens — same duration as the swipe-to-reply
+    // tick so the activation feel is consistent across gestures. Requires
+    // the VIBRATE permission in AndroidManifest.xml.
+    Vibration.vibrate(35);
     setReactionTarget(msg);
   }, []);
 
@@ -600,6 +778,9 @@ export default function ConversationScreen() {
 
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
+    // Lighter confirmation tick for the selection itself — distinct from
+    // the firmer "picker opened" haptic so the two events feel different.
+    Vibration.vibrate(20);
     const msg = reactionTarget;
     setReactionTarget(null);
     await handleReactionToggle(msg, emoji);
@@ -644,17 +825,47 @@ export default function ConversationScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: ChatMessage }) => (
-      <MessageBubble
-        msg={item}
-        isMe={item.senderId === myId}
-        conversationId={conversationId}
-        conversationTitle={title}
-        onLongPress={handleLongPress}
-        onReactionToggle={handleReactionToggle}
-      />
-    ),
-    [myId, conversationId, title, handleLongPress, handleReactionToggle],
+    ({ item, index }: { item: ChatMessage; index: number }) => {
+      // FlatList is inverted, so `messages` is ordered newest→oldest.
+      // The chronologically earlier message — the one rendered visually
+      // ABOVE this row — sits at `index + 1`. Show a separator above the
+      // bubble when this row begins a new time group (oldest msg, or a
+      // gap of more than ~1h since the previous one).
+      const prev = messages[index + 1] ?? null;
+      const showSep = shouldShowTimeSeparator(item.createdAt, prev?.createdAt ?? null);
+      const repliedTo = item.replyToId ? messagesById.get(item.replyToId) ?? null : null;
+      const isHighlighted = item.id === highlightedMessageId;
+      const isLatestOutgoing = latestOutgoing?.id === item.id;
+      return (
+        <>
+          {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
+          <SwipeRevealRow timestamp={formatChatTimestamp(item.createdAt)}>
+            <MessageBubble
+              msg={item}
+              isMe={item.senderId === myId}
+              conversationId={conversationId}
+              conversationTitle={title}
+              repliedTo={repliedTo}
+              isHighlighted={isHighlighted}
+              onReply={() => setReplyingTo(item)}
+              onReplyQuotePress={handleReplyQuotePress}
+              onLongPress={handleLongPress}
+              onReactionToggle={handleReactionToggle}
+            />
+            {isLatestOutgoing && latestOutgoingStatus ? (
+              <Text style={styles.readStatus}>
+                {latestOutgoingStatus === 'seen'
+                  ? 'Seen'
+                  : latestOutgoingStatus === 'delivered'
+                    ? 'Delivered'
+                    : 'Sending…'}
+              </Text>
+            ) : null}
+          </SwipeRevealRow>
+        </>
+      );
+    },
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
   const headerSubtitle = useMemo(() => {
@@ -725,7 +936,10 @@ export default function ConversationScreen() {
         )}
       </View>
 
-      {loading ? (
+      {/* Gate the FlatList render on myId being resolved too. Otherwise the
+          first paint runs with myId='', so isMe=false for every row → all
+          bubbles render left-aligned, then snap right once auth lands. */}
+      {loading || !myId ? (
         <View style={styles.centered}>
           <ActivityIndicator color={COLORS.purple} />
         </View>
@@ -735,30 +949,59 @@ export default function ConversationScreen() {
           style={styles.flex}
           textInputNativeID="conversation-input"
         >
-          <FlatList
-            ref={flatListRef}
-            style={styles.flex}
-            renderScrollComponent={renderChatScrollComponent}
-            data={messages}
-            keyExtractor={item => item.id}
-            renderItem={renderItem}
-            inverted
-            contentContainerStyle={[
-              styles.listContent,
-              { paddingTop: 200 },
-            ]}
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.2}
-            ListFooterComponent={
-              loadingMore ? (
-                <View style={styles.loadMoreSpinner}>
-                  <ActivityIndicator size="small" color={COLORS.purpleLight} />
-                </View>
-              ) : null
-            }
-          />
+          <SwipeRevealProvider>
+            <SwipeRevealGestureView>
+              <FlatList
+                ref={flatListRef}
+                style={styles.flex}
+                renderScrollComponent={renderChatScrollComponent}
+                data={messages}
+                keyExtractor={item => item.id}
+                renderItem={renderItem}
+                inverted
+                contentContainerStyle={[
+                  styles.listContent,
+                  { paddingTop: 200 },
+                ]}
+                onEndReached={loadMore}
+                onEndReachedThreshold={0.2}
+                ListFooterComponent={
+                  loadingMore ? (
+                    <View style={styles.loadMoreSpinner}>
+                      <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                    </View>
+                  ) : null
+                }
+              />
+            </SwipeRevealGestureView>
+          </SwipeRevealProvider>
 
           <KeyboardStickyView offset={{ closed: 0 }}>
+            {replyingTo ? (
+              <View style={styles.replyPreview}>
+                <View style={styles.replyPreviewBar} />
+                <View style={styles.replyPreviewBody}>
+                  <Text style={styles.replyPreviewTitle} numberOfLines={1}>
+                    Replying to {replyingTo.senderId === myId
+                      ? 'yourself'
+                      : (replyingTo.senderDisplayName || replyingTo.senderUsername || 'Unknown')}
+                  </Text>
+                  <Text style={styles.replyPreviewBodyText} numberOfLines={1}>
+                    {replyingTo.body
+                      || (replyingTo.kind === 'sticker' ? 'Sticker'
+                        : replyingTo.kind === 'track_share' ? 'Track'
+                        : 'Message')}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.replyPreviewClose}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() => setReplyingTo(null)}
+                >
+                  <Text style={styles.replyPreviewCloseIcon}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}>
               <View style={styles.inputWrap}>
                 <FormInput
@@ -882,6 +1125,57 @@ const styles = StyleSheet.create({
   },
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
+  // Brief pulse applied when the user taps a reply quote pointing at this
+  // bubble — same purple tint as the comment-row highlight in CommentsSheet.
+  bubbleHighlighted: {
+    borderWidth: 1.5,
+    borderColor: COLORS.purpleLight,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  // Quoted-reply strip rendered above the body text inside a reply bubble.
+  // Mirrors Instagram — a tinted block with a left bar, sender name, and a
+  // truncated snippet of the original message. me/them get distinct
+  // colour pairs so the strip is legible against either bubble background.
+  replyQuote: {
+    borderLeftWidth: 3,
+    paddingLeft: 8,
+    paddingRight: 10,
+    paddingVertical: 6,
+    borderRadius: 4,
+    marginBottom: 6,
+  },
+  // "me" bubble is bright purple — darken the strip and use white text so
+  // it doesn't disappear against the bubble.
+  replyQuoteMe: {
+    backgroundColor: 'rgba(0,0,0,0.30)',
+    borderLeftColor: COLORS.white,
+  },
+  replyQuoteAuthorMe: { color: COLORS.white },
+  replyQuoteBodyMe: { color: 'rgba(255,255,255,0.85)' },
+  // "them" bubble is dark surface — lift the strip and keep the purple bar.
+  replyQuoteThem: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderLeftColor: COLORS.purpleLight,
+  },
+  replyQuoteAuthorThem: { color: COLORS.purpleLight },
+  replyQuoteBodyThem: { color: COLORS.white },
+  replyQuoteAuthor: { fontSize: 12, fontWeight: '700' },
+  replyQuoteBody: { fontSize: 13, lineHeight: 17, marginTop: 2 },
+  // Read-receipt footer below the latest outgoing DM message — small,
+  // muted, right-aligned to sit under the bubble.
+  readStatus: {
+    alignSelf: 'flex-end',
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+    marginRight: 14,
+    marginBottom: 2,
+  },
   stickerImg: { width: 120, height: 120 },
   trackCard: {
     flexDirection: 'row',
@@ -950,34 +1244,39 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
   },
-  // Reactions — Instagram style: absolute overlay at bubble bottom
+  // Reactions — Instagram-style: a small rounded pill that sits at the
+  // bottom corner of the bubble. No hard border (the previous bg-coloured
+  // border created an awkward visible frame on dark mode). Subtle shadow
+  // lifts the chip off the chat background without a stroke.
   reactionOverlay: {
     position: 'absolute',
-    bottom: -14,
+    bottom: -12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
   },
-  reactionOverlayThem: { left: 10 },
-  reactionOverlayMe: { right: 10 },
+  reactionOverlayThem: { left: 8 },
+  reactionOverlayMe: { right: 8 },
   reactionChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    backgroundColor: COLORS.surface,
-    borderRadius: 10,
-    paddingHorizontal: 6,
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 14,
+    paddingHorizontal: 8,
     paddingVertical: 3,
-    borderWidth: 2,
-    borderColor: COLORS.bg,
-    minWidth: 28,
-    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 3,
   },
   reactionChipActive: {
-    backgroundColor: COLORS.purpleDim,
-    borderColor: COLORS.purple,
+    // Own reaction picks up a saturated purple tint — Instagram uses a
+    // similar accent-coloured fill, no extra border.
+    backgroundColor: 'rgba(124,58,237,0.35)',
   },
-  reactionEmoji: { fontSize: 13 },
+  reactionEmoji: { fontSize: 14, lineHeight: 16 },
   reactionCount: { color: COLORS.white, fontSize: 11, fontWeight: '600' },
   // Reaction picker overlay
   reactionPickerOverlay: {
@@ -1039,6 +1338,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emojiGridEmoji: { fontSize: 22 },
+  // Inline banner that appears between the message list and the input when
+  // the user has armed a reply via the swipe gesture. Tap × to cancel and
+  // fall back to a normal send.
+  replyPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    backgroundColor: 'rgba(124, 58, 237, 0.10)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(124, 58, 237, 0.25)',
+  },
+  replyPreviewBar: {
+    width: 3,
+    alignSelf: 'stretch',
+    backgroundColor: COLORS.purpleLight,
+    borderRadius: 2,
+  },
+  replyPreviewBody: { flex: 1 },
+  replyPreviewTitle: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '700' },
+  replyPreviewBodyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
+  replyPreviewClose: { padding: 4 },
+  replyPreviewCloseIcon: { color: COLORS.textSecondary, fontSize: 22, lineHeight: 22 },
   sendBar: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

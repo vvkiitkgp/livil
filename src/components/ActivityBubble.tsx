@@ -2,7 +2,7 @@ import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import {
-  activitySummary,
+  activityBubbleParts,
   type ActivityItem,
   type ActivityPostRef,
 } from '../services/activity';
@@ -16,7 +16,7 @@ const LIVIL_LOGO = require('../assets/livil-logo.png');
 // Every activity type maps to one RenderFormat. Adding a new activity kind
 // means adding a union member in services/activity.ts and a `case` below — the
 // render formats (text / post / track) are reused as-is. The message text comes
-// from the shared activitySummary().
+// from activityBubbleParts(), which also surfaces the actor as a tappable name.
 
 type RenderFormat =
   | { format: 'text'; icon: string }            // new_fan, friend outcomes
@@ -41,13 +41,18 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
 
 export default function ActivityBubble({
   item,
-  onPlayPost,
+  onActorPress,
+  onPostPress,
 }: {
   item: ActivityItem;
-  onPlayPost?: (postId: string) => void;
+  onActorPress?: (actorId: string) => void;
+  onPostPress?: (item: ActivityItem) => void;
 }) {
   const body = toRenderFormat(item);
   const post = body.format === 'post' || body.format === 'track' ? body.post : null;
+  const parts = activityBubbleParts(item);
+  const actor = parts.actor;
+  const name = actor ? (actor.displayName?.trim() || `@${actor.username}`) : null;
 
   return (
     <View style={styles.bubbleRow}>
@@ -59,14 +64,23 @@ export default function ActivityBubble({
         <View style={[styles.bubble, styles.bubbleThem]}>
           <Text style={styles.bubbleText}>
             {body.format === 'text' ? `${body.icon} ` : ''}
-            {activitySummary(item)}
+            {actor && name ? (
+              <Text
+                style={styles.actorName}
+                suppressHighlighting
+                onPress={actor.id ? () => onActorPress?.(actor.id) : undefined}
+              >
+                {name}
+              </Text>
+            ) : null}
+            {parts.text}
           </Text>
 
           {post && (
             <TouchableOpacity
               style={styles.trackCard}
               activeOpacity={0.7}
-              onPress={post.postId ? () => onPlayPost?.(post.postId) : undefined}
+              onPress={post.postId ? () => onPostPress?.(item) : undefined}
               disabled={!post.postId}
             >
               {post.coverArtUrl ? (
@@ -78,10 +92,10 @@ export default function ActivityBubble({
               )}
               <View style={styles.trackCardInfo}>
                 <Text style={styles.trackCardTitle} numberOfLines={1}>
-                  {post.title || 'Your track'}
+                  {post.title || 'Your post'}
                 </Text>
                 <Text style={styles.trackCardArtist} numberOfLines={1}>
-                  Tap to play
+                  Tap to view
                 </Text>
               </View>
             </TouchableOpacity>
@@ -98,7 +112,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 6,
-    marginVertical: 2,
+    marginVertical: 6,
     paddingHorizontal: 12,
   },
   senderAvatarWrap: {},
@@ -115,6 +129,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
+  actorName: { color: COLORS.white, fontWeight: '700' },
   trackCard: {
     flexDirection: 'row',
     alignItems: 'center',

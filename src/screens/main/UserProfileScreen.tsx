@@ -95,11 +95,15 @@ function renderCta(
 export default function UserProfileScreen() {
   const route = useRoute<UserProfileRouteProp>();
   const navigation = useNavigation<NavProp>();
-  const { userId } = route.params;
+  const { userId, focusPostId, openComments, highlightCommentId } = route.params;
   const playback = usePlayback();
   const rel = useRelationships();
   const [sheetOpen, setSheetOpen] = useState(false);
   const comments = useCommentsCountDeltas();
+  const listRef = useRef<FlatList<ListItem>>(null);
+  // Tracks whether the activity-center deep-link side effects (scroll-to-post,
+  // auto-open comments) have already fired this mount — they're one-shot.
+  const focusHandledRef = useRef(false);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const handlePostDeleted = useCallback((postId: string) => {
     setDeletedIds(prev => {
@@ -226,6 +230,25 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // One-shot deep-link side effects when arriving from an activity-center tap.
+  // Runs once after posts load: scroll the focused post into view, then (for a
+  // comment notification) auto-open the CommentsSheet so the highlight fires.
+  useEffect(() => {
+    if (focusHandledRef.current) { return; }
+    if (loading || !focusPostId) { return; }
+    const idx = posts.findIndex(p => p.id === focusPostId);
+    if (idx < 0) { return; }  // not in the first page — bail; user can scroll manually
+    focusHandledRef.current = true;
+    // +1 to skip the sticky tab-bar row at listData[0].
+    const listIndex = idx + 1;
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.1 });
+    }, 150);
+    if (openComments) {
+      setTimeout(() => comments.openComments(focusPostId), 450);
+    }
+  }, [loading, posts, focusPostId, openComments, comments]);
 
   const handleTabChange = useCallback(
     async (next: Tab) => {
@@ -405,12 +428,14 @@ export default function UserProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
+        ref={listRef}
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         stickyHeaderIndices={[1]}
+        onScrollToIndexFailed={() => { /* item not laid out yet — silently skip */ }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -443,6 +468,14 @@ export default function UserProfileScreen() {
             comments.applyDelta(comments.commentsPostId, delta);
           }
         }}
+        highlightCommentId={
+          // Only honour the highlight when the open request is for the post that
+          // triggered the activity tap — otherwise an unrelated open would still
+          // try to pulse a stale comment id.
+          comments.commentsPostId && comments.commentsPostId === focusPostId
+            ? highlightCommentId ?? null
+            : null
+        }
       />
     </SafeAreaView>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { COLORS } from '../theme/colors';
+import { supabase } from '../../lib/supabase';
 import { useRelationships } from '../contexts/RelationshipContext';
 import {
   listIncomingFriendRequests,
@@ -117,10 +118,13 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
   const navigation = useNavigation<Nav>();
   const [unread, setUnread] = useState(0);
   const [preview, setPreview] = useState<string | null>(null);
+  // refetch closure shared between the focus-refresh effect and the realtime
+  // subscription — keeps both paths in lock-step without duplicating logic.
+  const refetchRef = useRef<() => Promise<void>>(async () => { });
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const refetch = async () => {
       try {
         const [count, items] = await Promise.all([
           getActivityUnreadCount(),
@@ -133,9 +137,50 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
       } catch {
         // leave previous data
       }
-    })();
+    };
+    refetchRef.current = refetch;
+    void refetch();
     return () => { cancelled = true; };
   }, [refreshKey]);
+
+  // Live updates: any change on activity_notifications for the current user
+  // refreshes the badge count and the preview text — so the livil Bot row in
+  // the Inbox stays current without backing out of the screen. Subscription
+  // is keyed on myId so it tears down + reattaches cleanly if auth changes
+  // (sign-in/out across the lifetime of the banner).
+  const [myId, setMyId] = useState<string | null>(null);
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      setMyId(data?.user?.id ?? null);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!myId) { return; }
+    console.log('[realtime] activity-banner subscribing', { myId });
+    const channel = supabase
+      .channel(`activity-banner:${myId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activity_notifications',
+          filter: `recipient_id=eq.${myId}`,
+        },
+        (payload) => {
+          console.log('[realtime] activity-banner got event', payload.eventType);
+          void refetchRef.current();
+        },
+      )
+      .subscribe(status => {
+        console.log('[realtime] activity-banner status', status);
+      });
+    return () => {
+      console.log('[realtime] activity-banner unsubscribing');
+      void supabase.removeChannel(channel);
+    };
+  }, [myId]);
 
   return (
     <TouchableOpacity

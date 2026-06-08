@@ -75,6 +75,29 @@ export async function createGroup(
   return data as string;
 }
 
+// For a DM conversation, returns the other participant's last_read_at —
+// the timestamp the chat UI compares against the latest outgoing message
+// to decide whether to show "Seen". Returns null if the conversation has
+// no other member (shouldn't happen for DMs) or the call fails.
+export async function getOtherMemberReadAt(
+  conversationId: string,
+): Promise<{ userId: string; lastReadAt: string | null } | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  if (!me) { return null; }
+
+  const { data, error } = await db
+    .from('conversation_members')
+    .select('user_id, last_read_at')
+    .eq('conversation_id', conversationId)
+    .neq('user_id', me)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) { return null; }
+  const row = data as { user_id: string; last_read_at: string | null };
+  return { userId: row.user_id, lastReadAt: row.last_read_at };
+}
+
 export async function markAsRead(conversationId: string): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;

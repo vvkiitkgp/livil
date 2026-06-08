@@ -49,6 +49,13 @@ type Props = {
    * in sync without refetching.
    */
   onCommentsCountChange?: (delta: number) => void;
+  /**
+   * Optional id of a comment to scroll to and pulse briefly when the sheet
+   * opens. Set by activity-center deep links so the originating comment is
+   * surfaced. The pulse reuses the same flashHighlight() path used for new
+   * realtime inserts (~1.5s tint).
+   */
+  highlightCommentId?: string | null;
 };
 
 type FlatRow =
@@ -170,6 +177,7 @@ export default function CommentsSheet({
   postId,
   onClose,
   onCommentsCountChange,
+  highlightCommentId,
 }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
@@ -187,6 +195,9 @@ export default function CommentsSheet({
   const [sending, setSending] = useState(false);
 
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Remembers the deep-link highlight id we've already handled for the current
+  // open of the sheet — keeps the scroll+pulse from re-firing on every render.
+  const deepLinkFiredFor = useRef<string | null>(null);
   const composerInputRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<FlatRow>>(null);
   const insets = useSafeAreaInsets();
@@ -265,6 +276,7 @@ export default function CommentsSheet({
     setHighlightIds(new Set());
     for (const t of highlightTimers.current.values()) { clearTimeout(t); }
     highlightTimers.current.clear();
+    deepLinkFiredFor.current = null;
   }, [visible]);
 
   // When the user taps Reply, scroll the parent comment to the top of the
@@ -319,6 +331,24 @@ export default function CommentsSheet({
     }, HIGHLIGHT_MS);
     highlightTimers.current.set(id, t);
   }, []);
+
+  // Deep-link arrival from ActivityCenter: when the sheet opens with a target
+  // commentId, locate it in the loaded tree, scroll it into view, and pulse.
+  // Guarded by a ref so the effect only fires once per (open, id) — re-runs
+  // from re-renders of `nodes` won't re-trigger.
+  useEffect(() => {
+    if (!visible || !highlightCommentId) { return; }
+    if (loading) { return; }
+    if (deepLinkFiredFor.current === highlightCommentId) { return; }
+    const flat = flattenTree(nodes);
+    const idx = flat.findIndex(r => r.kind === 'comment' && r.node.id === highlightCommentId);
+    if (idx < 0) { return; }  // not in the loaded set — bail silently
+    deepLinkFiredFor.current = highlightCommentId;
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.2 });
+      flashHighlight(highlightCommentId);
+    }, 200);
+  }, [visible, loading, nodes, highlightCommentId, flashHighlight]);
 
   const handleSend = useCallback(async () => {
     if (!postId) { return; }
