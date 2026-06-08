@@ -870,6 +870,7 @@ export default function FullScreenPlayer() {
     playNext,
     repeatMode,
     fsOwnerPostIdRef,
+    isBuffering,
   } = usePlayback();
 
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -912,6 +913,9 @@ export default function FullScreenPlayer() {
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [fsPaused, setFsPaused] = useState(true);
+  // Buffering spinner for video. ExoPlayer/AVPlayer fire onBuffer while loading
+  // and onReadyForDisplay once the first frame is decodable.
+  const [fsBuffering, setFsBuffering] = useState(false);
   // Native playback rate. FloatingPlayer's drag-right "forward 2x" gesture
   // routes through handlersRef.setRate; without this state the FS handler was
   // a no-op and forward did nothing for video tracks.
@@ -1038,6 +1042,7 @@ export default function FullScreenPlayer() {
         fsOpenRef.current = false;
         fsVideoPostIdRef.current = null;
         setFsPaused(true);
+        setFsBuffering(false);
       }
       return;
     }
@@ -1079,6 +1084,8 @@ export default function FullScreenPlayer() {
       // New track = new play session — re-arm the clip-end one-shot so the
       // loop / advance logic can fire for it.
       clipEndFiredRef.current = false;
+      // New video source will load → show the spinner until the first frame.
+      setFsBuffering(true);
     }
 
     // Always re-register so the handler closure has the current postId.
@@ -1244,6 +1251,10 @@ export default function FullScreenPlayer() {
 
   if (!nowPlaying) { return null; }
 
+  // Video buffering is local (onBuffer/onReadyForDisplay); audio buffering comes
+  // from GlobalAudioPlayer via the shared isBuffering flag.
+  const showSpinner = nowPlaying.mediaKind === 'video' ? fsBuffering : isBuffering;
+
   return (
     <Animated.View
       style={[
@@ -1299,6 +1310,11 @@ export default function FullScreenPlayer() {
             }}
             onBuffer={({ isBuffering: buf }) => {
               console.log(`[LIVIL][FS] onBuffer isBuffering=${buf}`);
+              setFsBuffering(buf);
+            }}
+            onReadyForDisplay={() => {
+              console.log('[LIVIL][FS] onReadyForDisplay');
+              setFsBuffering(false);
             }}
             onError={(e) => {
               // Without this, a bad URL / decode failure leaves the player in
@@ -1338,6 +1354,13 @@ export default function FullScreenPlayer() {
           </View>
         )}
       </View>
+
+      {/* Buffering spinner — shown while the active media loads / rebuffers. */}
+      {showSpinner ? (
+        <View style={styles.bufferOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color={COLORS.purpleLight} />
+        </View>
+      ) : null}
 
       {/* Scrims removed — no background overlay on video */}
 
@@ -1658,6 +1681,7 @@ const styles = StyleSheet.create({
     bottom: -SCREEN_W * 0.15, right: -SCREEN_W * 0.1,
   },
   video: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
+  bufferOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
 
   // Gradient scrims — dark top and bottom bands so text is readable over media
   scrimTop: {

@@ -370,6 +370,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
       ? { start: track.clipStartSec, end: track.clipEndSec }
       : null;
+    // Arm the seek guard so a stale onProgress from the OUTGOING player (e.g. the
+    // video we're advancing away from fires one last sample at ~clipEnd) can't
+    // clobber positionRef back off the new track's start before the new player
+    // loads. Without this the next track audibly starts mid-song.
+    seekGuardRef.current = { target: startPos, until: Date.now() + 1200 };
     console.log(`[LIVIL][CTX] playTrackAtIndex idx=${idx} postId=${track.postId} clip=[${track.clipStartSec},${track.clipEndSec}] posRef=${startPos} dur=${track.knownDurationSec ?? 0}`);
     setNowPlayingState(track);
     setPendingPlayId(track.postId);
@@ -399,6 +404,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
         ? { start: track.clipStartSec, end: track.clipEndSec }
         : null;
+      seekGuardRef.current = { target: startPos, until: Date.now() + 1200 };
       console.log(`[LIVIL][CTX] playNext (userQueue) postId=${track.postId} clip=[${track.clipStartSec},${track.clipEndSec}] posRef=${startPos}`);
       setNowPlayingState(track);
       setPendingPlayId(track.postId);

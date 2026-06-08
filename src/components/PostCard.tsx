@@ -1,16 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
-import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from './MediaPlayer';
 import ClipRangeSlider from './ClipRangeSlider';
 import TrackContextMenu from './TrackContextMenu';
 import type { FeedPost } from '../services/posts';
 import { toggleLike, deletePost } from '../services/posts';
-import { trackPlayProgress } from '../utils/playTracker';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import PostReportModal from './PostReportModal';
 import ConfirmActionModal from './ConfirmActionModal';
@@ -77,20 +75,10 @@ function avatarInitials(author: { displayName: string | null; username: string }
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-function pickMediaShape(track: FeedPost['track']): MediaShape | null {
-  if (track.mediaKind === 'video') {
-    if (!track.videoUrl) {return null;}
-    return { kind: 'video', videoUrl: track.videoUrl };
-  }
-  if (!track.audioUrl) {return null;}
-  return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
-}
-
 export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
-  const playerRef = useRef<MediaPlayerHandle>(null);
 
   // Viewer id is needed to decide owner vs non-owner for the ⋯ menu actions
   // (Delete shows only for owner, Report only for non-owner). Resolved once
@@ -147,17 +135,10 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     navigation.navigate('UserProfile', { userId: authorId });
   }, [navigation]);
 
-  const [paused, setPaused] = useState(true);
+  // Position + duration for the read-only seek bar. Polled from the global
+  // playback refs while this post is the current track (see effect below).
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
-  const [seekTo, setSeekTo] = useState<number | null>(null);
-  const [rate, setRate] = useState(1.0);
-
-  // Prevents firing clip-end stop more than once per play session.
-  const clipEndFiredRef = useRef(false);
-  useEffect(() => {
-    if (!paused) { clipEndFiredRef.current = false; }
-  }, [paused]);
 
   // Engagement state (optimistic).
   const [liked, setLiked] = useState(post.viewerHasLiked);
@@ -195,247 +176,53 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
 
   const isVideo = post.track.mediaKind === 'video';
   const isThisActive = playback.activePostId === post.id;
-  const media = isVideo ? null : pickMediaShape(post.track);
+  // True when this post is the loaded track (playing OR paused). At most one
+  // card is the current track, so only that card polls the position refs.
+  const isCurrentTrack = playback.nowPlaying?.postId === post.id;
 
-  // If the global active id changes to anything other than ours, pause ourselves.
-  // For video posts the local `paused` state is unused at render time (the play
-  // button glyph reads from isThisActive instead), but we still reset it to
-  // keep the audio fall-back paths consistent.
-  useEffect(() => {
-    if (playback.activePostId !== post.id) {
-      setPaused(true);
-    }
-  }, [playback.activePostId, post.id]);
-
-  // Auto-start when the global queue navigation lands on this post (audio only).
-  // Video posts in the feed never auto-play — the user taps the play button or
-  // thumbnail to start. The pendingPlayId still gets cleared so the engine
-  // doesn't re-dispatch.
+  // Auto-advance landed on this post. Playback itself is handled globally
+  // (GlobalAudioPlayer for audio, FullScreenPlayer for video) off the queue —
+  // PostCard no longer drives it — so we just clear the pending flag.
   useEffect(() => {
     if (playback.pendingPlayId === post.id) {
-      if (!isVideo) {
-        setPaused(false);
-      }
       playback.clearPendingPlay();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay, isVideo]);
+  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay]);
 
-  // Register / update handlers whenever paused state changes.
-  // Use stable method refs (not the full `playback` object) to prevent a render
-  // loop: calling setNowPlaying changes nowPlaying → changes playback → re-runs
-  // this effect → calls setNowPlaying again → ∞
-  //
-  // VIDEO POSTS: handler registration lives entirely in FullScreenPlayer (its
-  // <Video> is the sole video player; PostCard renders only a thumbnail). The
-  // effect below is for audio playback only.
-  useEffect(() => {
-    if (isVideo) { return; }
-    if (!paused) {
-      // For reposts, show the original creator's info in the full-screen player,
-      // not the reposter's.
-      const displayAuthor = (post.kind === 'repost' && post.originalAuthor)
-        ? post.originalAuthor
-        : post.author;
-      playback.setNowPlaying({
-        postId: post.id,
-        trackId: post.track.id,
-        title: post.track.title,
-        artistName: displayAuthor.displayName ?? displayAuthor.username,
-        authorId: displayAuthor.id,
-        authorUsername: displayAuthor.username,
-        authorAvatarUrl: displayAuthor.avatarUrl,
-        coverArtUrl: post.track.coverArtUrl,
-        thumbnailUrl: post.track.thumbnailUrl,
-        mediaKind: post.track.mediaKind,
-        videoUrl: post.track.videoUrl ?? undefined,
-        // Snapshot at play-start — not in deps to avoid resetting positionRef on like/unlike.
-        likesCount: post.likesCount,
-        commentsCount: post.commentsCount,
-        repostsCount: post.repostsCount,
-        viewsCount: post.viewsCount,
-        viewerHasLiked: post.viewerHasLiked,
-        clipStartSec: post.clipStartSec,
-        clipEndSec: post.clipEndSec,
-        kind: post.kind,
-        originalPostId: post.originalPostId,
-        knownDurationSec: duration,
-      });
-      console.log(`[LIVIL][PC] registering handlers for postId=${post.id}`);
-      playback.registerHandlers({
-        play: () => { console.log(`[LIVIL][PC] handler PLAY postId=${post.id}`); setPaused(false); },
-        pause: () => { console.log(`[LIVIL][PC] handler PAUSE postId=${post.id}`); setPaused(true); },
-        seek: (s: number) => {
-          console.log(`[LIVIL][PC] handler SEEK to=${s.toFixed(1)}s`);
-          setSeekTo(s);
-          setTimeout(() => setSeekTo(null), 0);
-        },
-        setRate: (r: number) => setRate(r),
-      });
-      // Seek the MediaPlayer to the correct start position. setNowPlaying (above)
-      // resets positionRef to clipStart or 0, but the ExoPlayer instance may still
-      // be at a stale position from a previous play session (e.g. the user seeked
-      // to 29.7s, paused, played another track, then auto-advanced back).
-      // Use playerRef.current?.seek() directly — setSeekTo(0) + setTimeout(null)
-      // gets swallowed by React 19 batching and the effect never fires.
-      const startPos = playback.positionRef.current;
-      console.log(`[LIVIL][PC] seeking to startPos=${startPos.toFixed(1)}s`);
-      playerRef.current?.seek(Math.max(0, startPos));
-    }
-    // Do not clear nowPlaying on pause — the mini-player stays visible.
-  // Primitive deps only; object deps (post.author) replaced with their primitive
-  // fields so a new post object reference alone does not re-trigger the effect.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    isVideo, // early-returns for video posts
-    paused,
-    post.id,
-    post.kind,
-    post.track.title,
-    post.author.displayName,
-    post.author.username,
-    post.track.id,
-    post.track.coverArtUrl,
-    post.track.mediaKind,
-    post.track.videoUrl,
-    post.author.id,
-    post.author.avatarUrl,
-    post.originalAuthor?.id,
-    post.originalAuthor?.username,
-    post.originalAuthor?.displayName,
-    post.originalAuthor?.avatarUrl,
-    post.clipStartSec,
-    post.clipEndSec,
-    playback.setNowPlaying,    // stable useCallback []
-    playback.registerHandlers, // stable useCallback []
-  ]);
+  // Play counting is driven by actual audio/video playback in the global
+  // players (GlobalAudioPlayer.handleProgress / FullScreenPlayer) via
+  // trackPlayProgress — not from the feed card.
 
-  // Cleanup on unmount.
-  useEffect(() => {
-    return () => {
-      playback.unregisterHandlers();
-      if (playback.isActive(post.id)) { playback.clearNowPlaying(); }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Play counting is now driven by actual audio playback in `handleProgress`
-  // via `trackPlayProgress` (see src/utils/playTracker.ts). Visibility alone
-  // doesn't count — the user has to be playing the song for >= 3 cumulative
-  // seconds in a single play instance. Loops/replays each start a new instance.
-
-  const handleTogglePaused = useCallback(() => {
-    setPaused(prev => {
-      const next = !prev;
-      // Starting playback: jump to clip start so every play begins at the
-      // post's chosen clip window, regardless of where the user last paused.
-      if (!next) {
-        const start = post.clipStartSec ?? 0;
-        playerRef.current?.seek(start);
-        setPosition(start);
-        clipEndFiredRef.current = false;
-      }
-      return next;
-    });
-  }, [post.clipStartSec]);
-
-  const handleProgress = useCallback((seconds: number) => {
-    setPosition(seconds);
-    // Only update the global position when this PostCard is the active player.
-    // Without this guard, a pausing PostCard's final onProgress fires AFTER
-    // setNowPlaying reset positionRef to 0 for the new track, overwriting it
-    // with the old track's position — causing the new track to seek mid-song.
-    if (playback.isActive(post.id)) {
-      playback.updatePosition(seconds);
-      // Feed the play tracker only when this card is actually driving audio.
-      // Inactive cards' final stale onProgress shouldn't count toward plays.
-      trackPlayProgress(post.id, seconds);
-    }
-    const cw = playback.clipWindowRef.current;
-    // Only trigger clip-end advance when this PostCard is the active player.
-    // Without this guard, a freshly-started PostCard whose first onProgress
-    // fires before clipWindowRef resets can read stale clip bounds from the
-    // PREVIOUS track and immediately call playNext(), double-advancing.
-    if (cw && seconds >= cw.end && !clipEndFiredRef.current && playback.isActive(post.id)) {
-      clipEndFiredRef.current = true;
-      if (playback.repeatMode === 'one') {
-        // Loop single: jump back to clip start and keep playing.
-        playerRef.current?.seek(cw.start);
-        setPosition(cw.start);
-        // Re-arm after the seek settles so the next loop is detected correctly.
-        setTimeout(() => { clipEndFiredRef.current = false; }, 300);
-      } else {
-        // off / all: advance the queue. playNext() wraps around in 'all' mode
-        // and does nothing (stops) in 'off' mode once the queue is exhausted.
-        setPaused(true);
-        setPosition(cw.start);
-        playback.playNext();
-      }
-    }
-  }, [playback, post.id]);
-
-  const handleLoaded = useCallback((seconds: number) => {
-    setDuration(seconds);
-    playback.updateDuration(seconds);
-    // Seek to clip start when the media first loads. Use the native ref directly
-    // to avoid the React state cycle (setSeekTo → effect → seek) which can fire
-    // after the first video frame has already rendered at position 0.
-    const cw = playback.clipWindowRef.current;
-    if (cw && cw.start > 0) {
-      playerRef.current?.seek(cw.start);
-      setPosition(cw.start);
-    }
-  }, [playback]);
-
-  const handleEnded = useCallback(() => {
-    if (playback.repeatMode === 'one') {
-      // Loop single, no active clip: restart from the beginning and keep playing.
-      setPosition(0);
-      setSeekTo(0);
-      setTimeout(() => setSeekTo(null), 0);
-    } else {
-      // off / all: advance the queue. playNext() wraps in 'all' and stops in 'off'.
-      setPaused(true);
-      setPosition(0);
-      playback.playNext();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playback.repeatMode, playback.playNext]);
-
-  // Seek handle on the PostCard's read-only slider — lets users scrub the song
-  // without moving the clip boundary handles.
-  // For audio posts, scrub locally via setSeekTo (MediaPlayer picks it up).
-  // For video posts, route through the global seek so FS's <Video> moves.
+  // Seek handle on the PostCard's read-only slider. Routes through the global
+  // seek handler (GlobalAudioPlayer for audio, FullScreenPlayer for video) so
+  // the real player moves. Guarded to the current track so a scrub on a
+  // non-playing card can't seek whatever is actually playing.
   const handlePostSeekEnd = useCallback((s: number) => {
-    if (isVideo) {
-      playback.markSeekTarget(s);
-      playback.handlersRef.current?.seek(s);
-      return;
-    }
+    if (!isCurrentTrack) { return; }
+    playback.markSeekTarget(s);
     setPosition(s);
-    setSeekTo(s);
-    setTimeout(() => setSeekTo(null), 0);
-  }, [isVideo, playback]);
+    playback.handlersRef.current?.seek(s);
+  }, [isCurrentTrack, playback]);
 
-  // ── Video-only state + handlers ────────────────────────────────────────────
-  // For video posts the position/duration shown on PostCard's seek bar mirrors
-  // FullScreenPlayer's <Video> via positionRef/durationRef. Poll at 10 Hz only
-  // while this card is the active video — keeps N-1 PostCards in the FlatList
-  // from running idle intervals.
+  // The position/duration on PostCard's seek bar mirror the global playback
+  // refs (driven by GlobalAudioPlayer for audio, FullScreenPlayer for video).
+  // Poll only while this card is the current track — at most one card is, so
+  // the other cards in the FlatList run no idle intervals.
   useEffect(() => {
-    if (!isVideo) { return; }
-    if (!isThisActive) {
-      // Not the active video — show "0:00 / clipEnd" until tapped.
+    if (!isCurrentTrack) {
+      // Not the current track — show "0:00 / clipEnd" until tapped.
       setPosition(0);
       setDuration(0);
       return;
     }
+    setPosition(playback.positionRef.current);
+    setDuration(playback.durationRef.current);
     const id = setInterval(() => {
       setPosition(playback.positionRef.current);
       setDuration(playback.durationRef.current);
-    }, 100);
+    }, 250);
     return () => clearInterval(id);
-  }, [isVideo, isThisActive, playback.positionRef, playback.durationRef]);
+  }, [isCurrentTrack, playback.positionRef, playback.durationRef]);
 
   // Build the NowPlayingInfo for this post — shared between play-button and
   // thumbnail-tap so we don't duplicate field-list maintenance.
@@ -518,6 +305,33 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     }
     playback.openFullScreenPlayer();
   }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback]);
+
+  // Audio play/pause (action-row button + cover tap). Drives the GLOBAL audio
+  // player, never an inline <Video>, so playback is independent of whether this
+  // card is on screen.
+  //   - playing this post  → pause via the global handler.
+  //   - paused, but this is the loaded track → resume/restart from clipStart
+  //     through the existing handlers (re-issuing setNowPlaying wouldn't restart
+  //     GlobalAudioPlayer since postId/audioUrl are unchanged).
+  //   - otherwise → setNowPlaying (with audioUrl) + requestPlay; GlobalAudioPlayer
+  //     picks it up and becomes the source.
+  const handleAudioTogglePlay = useCallback(() => {
+    if (isThisActive) {
+      playback.handlersRef.current?.pause();
+      return;
+    }
+    const clipStart = post.clipStartSec ?? 0;
+    const isCurrent = playback.nowPlaying?.postId === post.id;
+    if (isCurrent && playback.handlersRef.current) {
+      playback.markSeekTarget(clipStart);
+      playback.handlersRef.current.seek(clipStart);
+      playback.handlersRef.current.play();
+    } else {
+      playback.setNowPlaying(buildNowPlayingForThis());
+      playback.markSeekTarget(clipStart);
+      playback.requestPlay(post.id);
+    }
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
 
   const handleToggleLike = useCallback(async () => {
     // Optimistic update — flip immediately, revert on failure.
@@ -790,21 +604,41 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
               </View>
             ) : null}
           </TouchableOpacity>
-        ) : media ? (
-          <MediaPlayer
-            ref={playerRef}
-            postId={post.id}
-            media={media}
-            paused={paused}
-            rate={rate}
-            onTogglePaused={handleTogglePaused}
-            onProgress={handleProgress}
-            onLoaded={handleLoaded}
-            onEnded={handleEnded}
-            seekTo={seekTo}
-            visible={visible}
-            pauseWhenOffScreen={pauseWhenOffScreen}
-          />
+        ) : (post.track.audioUrl || post.track.coverArtUrl) ? (
+          // Audio posts: cover art + a center play glyph, mirroring the video
+          // thumbnail. Tap toggles play/pause through the GLOBAL audio player —
+          // there is no inline <Video> here, so playback is fully decoupled
+          // from this card being on screen.
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={handleAudioTogglePlay}
+            style={styles.mediaWrap}
+            accessibilityLabel={isThisActive ? 'Pause' : 'Play'}
+          >
+            {post.track.coverArtUrl ? (
+              <Image
+                source={{ uri: post.track.coverArtUrl }}
+                style={styles.audioCover}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.audioCover, styles.audioFallback]}>
+                <View style={styles.fallbackBlobA} pointerEvents="none" />
+                <View style={styles.fallbackBlobB} pointerEvents="none" />
+              </View>
+            )}
+            {isThisActive && playback.isBuffering ? (
+              <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
+                <ActivityIndicator size="large" color={COLORS.purpleLight} />
+              </View>
+            ) : !isThisActive ? (
+              <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
+                <View style={styles.videoCenterGlyph}>
+                  <Text style={styles.videoCenterGlyphText}>▶</Text>
+                </View>
+              </View>
+            ) : null}
+          </TouchableOpacity>
         ) : (
           <View style={[styles.mediaWrap, styles.missingMedia]}>
             <Text style={styles.missingMediaText}>Media unavailable</Text>
@@ -834,11 +668,11 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         <TouchableOpacity
           style={styles.playButton}
           activeOpacity={0.85}
-          onPress={isVideo ? handleVideoTogglePlay : handleTogglePaused}
-          accessibilityLabel={(isVideo ? !isThisActive : paused) ? 'Play' : 'Pause'}
+          onPress={isVideo ? handleVideoTogglePlay : handleAudioTogglePlay}
+          accessibilityLabel={!isThisActive ? 'Play' : 'Pause'}
         >
           <Text style={styles.playButtonGlyph}>
-            {(isVideo ? !isThisActive : paused) ? '▶' : '❚❚'}
+            {!isThisActive ? '▶' : '❚❚'}
           </Text>
         </TouchableOpacity>
 
@@ -1104,6 +938,37 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 18,
     backgroundColor: COLORS.card,
+  },
+  audioCover: {
+    aspectRatio: 1,
+    width: '100%',
+    borderRadius: 18,
+    backgroundColor: COLORS.card,
+  },
+  audioFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  fallbackBlobA: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: COLORS.purple,
+    opacity: 0.45,
+    top: -60,
+    left: -40,
+  },
+  fallbackBlobB: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#EC4899',
+    opacity: 0.35,
+    bottom: -50,
+    right: -20,
   },
   videoThumbPlaceholder: {
     alignItems: 'center',
