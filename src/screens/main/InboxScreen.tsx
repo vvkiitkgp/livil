@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import { supabase } from '../../../lib/supabase';
 import {
   listConversations,
   type ConversationSummary,
@@ -113,6 +114,31 @@ export default function InboxScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [bannerKey, setBannerKey] = useState(0);
+  const [myId, setMyId] = useState<string | null>(null);
+  // The realtime handler needs to know the current user id to filter out our
+  // own outgoing messages without re-creating the channel on every render.
+  const myIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      const id = data?.user?.id ?? null;
+      setMyId(id);
+      myIdRef.current = id;
+    });
+  }, []);
+
+  // Network-only refresh — no cache read. Used by the realtime listener so
+  // a new-message event doesn't get muddied by a momentary stale-cache paint.
+  const refreshFromNetwork = useCallback(async () => {
+    try {
+      const data = await listConversations();
+      setConversations(data);
+      void messageCache.setInbox(data);
+    } catch {
+      // Network failed — leave whatever is showing. The next event or
+      // focus will retry; no value in surfacing transient blips here.
+    }
+  }, []);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -151,6 +177,58 @@ export default function InboxScreen() {
     void rel.refresh();
     setBannerKey(k => k + 1);
   }, [load, rel]));
+
+  // Live inbox: a single channel listens to two tables so the unread badge,
+  // preview text, last_message_at ordering, and "Seen by me" propagation all
+  // stay current without the user touching the screen.
+  //
+  //   1. messages INSERT → a new incoming message bumps unread / updates the
+  //      row. Own outbound messages are filtered out client-side (they're
+  //      handled by ConversationScreen's optimistic insert).
+  //   2. conversation_members UPDATE on MY row → my last_read_at advanced
+  //      (typically because I opened the conversation on another tab/device
+  //      OR returned from ConversationScreen). The unread badge should drop
+  //      to 0 immediately.
+  //
+  // Realtime refresh goes straight to network — bypassing the cache — so the
+  // badge swap doesn't get briefly painted with stale data. RLS limits
+  // delivery to conversations the user is a member of, so no server-side
+  // filter is needed on the messages stream.
+  useEffect(() => {
+    if (!myId) { return; }
+    console.log('[realtime] inbox subscribing', { myId });
+    const channel = supabase
+      .channel(`inbox:${myId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null; conversation_id?: string } }) => {
+          const row = payload.new;
+          if (!row || row.deleted_at) { return; }
+          if (row.kind === 'system') { return; }
+          if (row.sender_id && row.sender_id === myIdRef.current) { return; }
+          console.log('[realtime] inbox got messages INSERT', { conv: row.conversation_id, sender: row.sender_id });
+          void refreshFromNetwork();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `user_id=eq.${myId}` },
+        () => {
+          // My own last_read_at moved → unread badge for that row should
+          // drop. Refetch picks up the new server-computed unread count.
+          console.log('[realtime] inbox got own conversation_members UPDATE');
+          void refreshFromNetwork();
+        },
+      )
+      .subscribe(status => {
+        console.log('[realtime] inbox status', status);
+      });
+    return () => {
+      console.log('[realtime] inbox unsubscribing');
+      void supabase.removeChannel(channel);
+    };
+  }, [myId, refreshFromNetwork]);
 
   const openConversation = useCallback((item: ConversationSummary) => {
     const isDm = item.kind === 'dm';

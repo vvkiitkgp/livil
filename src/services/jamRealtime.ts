@@ -125,9 +125,11 @@ export function subscribeToConversation(
         table: 'message_reactions',
       },
       payload => {
+        console.log(`[realtime] ${key} message_reactions event`, payload.eventType, payload.new ?? payload.old);
         const messageId = (payload.new as Record<string, unknown>)?.message_id as string
           ?? (payload.old as Record<string, unknown>)?.message_id as string;
         if (messageId) {
+          console.log(`[realtime] ${key} → onReactionChange(${messageId})`);
           onReactionChange(messageId);
         }
       },

@@ -172,8 +172,12 @@ export async function createComment(
   }
   // Fan out an activity notification to the post author (self-comment is
   // filtered server-side). Fire-and-forget — never block the comment.
-  void notifyPostActivity(postId, 'comment');
-  return rowToNode(data as unknown as RawCommentRow, false);
+  const created = data as unknown as RawCommentRow;
+  void notifyPostActivity(postId, 'comment', {
+    commentText: trimmed,
+    commentId: created.id,
+  });
+  return rowToNode(created, false);
 }
 
 export async function deleteComment(commentId: string): Promise<void> {

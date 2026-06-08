@@ -41,7 +41,7 @@ type ActivityBase = {
 export type ActivityItem = ActivityBase &
   (
     | { type: 'like'; actor: ActivityActor; post: ActivityPostRef; aggCount: number }
-    | { type: 'comment'; actor: ActivityActor; post: ActivityPostRef }
+    | { type: 'comment'; actor: ActivityActor; post: ActivityPostRef; commentText: string | null; commentId: string | null }
     | { type: 'repost'; actor: ActivityActor; post: ActivityPostRef }
     | { type: 'play_milestone'; post: ActivityPostRef; threshold: number }
     | { type: 'new_fan'; actor: ActivityActor }
@@ -58,7 +58,7 @@ type RawActivityRow = {
   is_read: boolean;
   created_at: string;
   updated_at: string;
-  payload: { threshold?: number } | null;
+  payload: { threshold?: number; comment_text?: string; comment_id?: string } | null;
   actor_username: string | null;
   actor_display_name: string | null;
   actor_avatar_url: string | null;
@@ -94,7 +94,14 @@ function rowToItem(row: RawActivityRow): ActivityItem {
     case 'like':
       return { ...base, type: 'like', actor: rowToActor(row), post: rowToPost(row), aggCount: Number(row.agg_count ?? 1) };
     case 'comment':
-      return { ...base, type: 'comment', actor: rowToActor(row), post: rowToPost(row) };
+      return {
+        ...base,
+        type: 'comment',
+        actor: rowToActor(row),
+        post: rowToPost(row),
+        commentText: row.payload?.comment_text ?? null,
+        commentId: row.payload?.comment_id ?? null,
+      };
     case 'repost':
       return { ...base, type: 'repost', actor: rowToActor(row), post: rowToPost(row) };
     case 'play_milestone':
@@ -122,29 +129,55 @@ export function formatPlayThreshold(n: number): string {
   return String(n);
 }
 
-// One-line human summary for an activity item. Single source of truth, reused
-// by ActivityBubble (the message text) and the Inbox ActivityBanner (preview).
-export function activitySummary(item: ActivityItem): string {
+const COMMENT_INLINE_MAX = 80;
+
+function truncateInline(s: string, max: number): string {
+  const trimmed = s.replace(/\s+/g, ' ').trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
+
+// Split form used by ActivityBubble so the actor name can render as a bold,
+// tappable segment. `actor` is null when there is no clickable name (e.g.
+// play_milestone). `text` begins with a leading space when `actor` is set, so
+// the bubble can render `<Bold>{name}</Bold>{text}` without manual spacing.
+export type ActivityBubbleParts = {
+  actor: ActivityActor | null;
+  text: string;
+};
+
+export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
   switch (item.type) {
     case 'like': {
       const others = item.aggCount - 1;
-      return others > 0
-        ? `${actorName(item.actor)} and ${others} other${others === 1 ? '' : 's'} liked your track`
-        : `${actorName(item.actor)} liked your track`;
+      const tail = others > 0
+        ? ` and ${others} other${others === 1 ? '' : 's'} liked your post`
+        : ' liked your post';
+      return { actor: item.actor, text: tail };
     }
-    case 'comment':
-      return `${actorName(item.actor)} commented on your track`;
+    case 'comment': {
+      const snippet = item.commentText?.trim();
+      const quoted = snippet ? `: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”` : '';
+      return { actor: item.actor, text: ` commented on your post${quoted}` };
+    }
     case 'repost':
-      return `${actorName(item.actor)} reposted your track`;
+      return { actor: item.actor, text: ' reposted your track' };
     case 'play_milestone':
-      return `Your track hit ${formatPlayThreshold(item.threshold)} plays 🎉`;
+      return { actor: null, text: `Your track hit ${formatPlayThreshold(item.threshold)} plays 🎉` };
     case 'new_fan':
-      return `${actorName(item.actor)} starred you`;
+      return { actor: item.actor, text: ' starred you' };
     case 'friend_accepted':
-      return `${actorName(item.actor)} accepted your friend request`;
+      return { actor: item.actor, text: ' accepted your friend request' };
     case 'friend_rejected':
-      return `${actorName(item.actor)} declined your friend request`;
+      return { actor: item.actor, text: ' declined your friend request' };
   }
+}
+
+// One-line human summary for an activity item. Used by the Inbox ActivityBanner
+// (preview text). ActivityBubble uses activityBubbleParts() instead so it can
+// render the actor name as a tappable link.
+export function activitySummary(item: ActivityItem): string {
+  const { actor, text } = activityBubbleParts(item);
+  return actor ? `${actorName(actor)}${text}` : text;
 }
 
 // ── Reads ────────────────────────────────────────────────────────────────────
@@ -184,14 +217,23 @@ const POST_PUSH_KIND: Record<'like' | 'comment' | 'repost', PushKind> = {
   repost: 'activity_repost',
 };
 
-function postPushBody(type: 'like' | 'comment' | 'repost', name: string, aggCount: number): string {
+function postPushBody(
+  type: 'like' | 'comment' | 'repost',
+  name: string,
+  aggCount: number,
+  commentText?: string | null,
+): string {
   switch (type) {
     case 'like':
       return aggCount > 1
-        ? `${name} and ${aggCount - 1} other${aggCount - 1 === 1 ? '' : 's'} liked your track`
-        : `${name} liked your track`;
-    case 'comment':
-      return `${name} commented on your track`;
+        ? `${name} and ${aggCount - 1} other${aggCount - 1 === 1 ? '' : 's'} liked your post`
+        : `${name} liked your post`;
+    case 'comment': {
+      const snippet = commentText?.trim();
+      return snippet
+        ? `${name} commented on your post: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”`
+        : `${name} commented on your post`;
+    }
     case 'repost':
       return `${name} reposted your track`;
   }
@@ -200,11 +242,14 @@ function postPushBody(type: 'like' | 'comment' | 'repost', name: string, aggCoun
 export async function notifyPostActivity(
   postId: string,
   type: 'like' | 'comment' | 'repost',
+  opts?: { commentText?: string | null; commentId?: string | null },
 ): Promise<void> {
   try {
     const { data, error } = await db.rpc('activity_notify_post', {
       p_post_id: postId,
       p_type: type,
+      p_comment_text: opts?.commentText ?? null,
+      p_comment_id: opts?.commentId ?? null,
     });
     if (error) { throw error; }
     const row = (Array.isArray(data) ? data[0] : data) as
@@ -216,7 +261,7 @@ export async function notifyPostActivity(
       recipientUserId: row.recipient_id,
       kind: POST_PUSH_KIND[type],
       title: 'Livil',
-      body: postPushBody(type, actorName, Number(row.agg_count ?? 1)),
+      body: postPushBody(type, actorName, Number(row.agg_count ?? 1), opts?.commentText),
       data: { route: 'ActivityCenter' },
     });
   } catch (e) {

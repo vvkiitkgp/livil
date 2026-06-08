@@ -310,9 +310,16 @@ export async function addReaction(messageId: string, emoji: string): Promise<voi
   const me = userData?.user?.id;
   if (!me) { return; }
 
-  // One reaction per user — delete any existing reaction first, then insert
-  await db.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', me);
-  await db.from('message_reactions').insert({ message_id: messageId, user_id: me, emoji });
+  // One reaction per user — atomic UPSERT on the (message_id, user_id)
+  // primary key. The previous DELETE-then-INSERT could race on a fast
+  // double-tap and leave two rows behind; UPSERT can't, since the conflict
+  // resolves in a single statement.
+  await db
+    .from('message_reactions')
+    .upsert(
+      { message_id: messageId, user_id: me, emoji },
+      { onConflict: 'message_id,user_id' },
+    );
 
   // Notify the message author (skip if reacting to your own message).
   // Fire-and-forget; the reaction is already written.

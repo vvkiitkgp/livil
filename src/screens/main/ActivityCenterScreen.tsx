@@ -13,16 +13,18 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
+import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import ActivityBubble from '../../components/ActivityBubble';
+import ChatTimeSeparator from '../../components/ChatTimeSeparator';
+import SwipeRevealRow from '../../components/SwipeRevealRow';
+import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
+import { formatChatTimestamp, shouldShowTimeSeparator } from '../../utils/chatTime';
 import {
   listActivity,
   markActivityRead,
   type ActivityItem,
 } from '../../services/activity';
-import { fetchPostById } from '../../services/posts';
-import { usePlayback, type NowPlayingInfo } from '../../contexts/PlaybackContext';
-import { useToast } from '../../contexts/ToastContext';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../../assets/livil-logo.png');
@@ -35,12 +37,16 @@ export default function ActivityCenterScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const { showToast } = useToast();
-  const { setQueue, setNowPlaying, requestPlay, openFullScreenPlayer } = usePlayback();
 
   const flatListRef = useRef<FlatList<ActivityItem>>(null);
+  // Tracks whether we've performed the initial center-on-latest scroll. Without
+  // this guard, the same effect would re-fire on every realtime arrival (since
+  // it depends on orderedItems.length) and yank the user to the bottom while
+  // they're reading older notifications.
+  const didInitialScrollRef = useRef(false);
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [meId, setMeId] = useState<string | null>(null);
 
   // listActivity returns newest-first; render oldest-first so the thread reads
   // top→bottom like a conversation (oldest on top, newest at the bottom).
@@ -50,8 +56,14 @@ export default function ActivityCenterScreen() {
     let cancelled = false;
     void (async () => {
       try {
-        const data = await listActivity();
-        if (!cancelled) { setItems(data); }
+        const [activityRes, userRes] = await Promise.all([
+          listActivity(),
+          supabase.auth.getUser(),
+        ]);
+        if (!cancelled) {
+          setItems(activityRes);
+          setMeId(userRes.data.user?.id ?? null);
+        }
       } catch {
         // leave empty
       } finally {
@@ -64,67 +76,101 @@ export default function ActivityCenterScreen() {
   }, []);
 
   // On initial load, center the latest (last) notification in the viewport.
+  // Guarded so realtime arrivals (which also bump orderedItems.length) don't
+  // re-trigger the scroll and yank the user off whatever they're reading.
   useEffect(() => {
-    if (!loading && orderedItems.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: orderedItems.length - 1,
-          animated: false,
-          viewPosition: 0.5,
-        });
-      }, 100);
-    }
+    if (didInitialScrollRef.current) { return; }
+    if (loading || orderedItems.length === 0) { return; }
+    didInitialScrollRef.current = true;
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex({
+        index: orderedItems.length - 1,
+        animated: false,
+        viewPosition: 0.5,
+      });
+    }, 100);
   }, [loading, orderedItems.length]);
 
-  // Tap a track card → load the post, play it as the current song (single-item
-  // queue, not appended), and open the full-screen player to show it.
-  const handlePlayPost = useCallback(async (postId: string) => {
-    try {
-      const post = await fetchPostById(postId);
-      if (!post) {
-        showToast('That post is no longer available.', { kind: 'error' });
-        return;
+  // Live updates: any insert/update on activity_notifications for this user
+  // triggers a refetch (so we pick up the joined display fields the row alone
+  // doesn't carry) and a mark-read pass (so notifications seen while the
+  // screen is open don't linger in the unread badge).
+  useEffect(() => {
+    if (!meId) { return; }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const fresh = await listActivity();
+        if (!cancelled) { setItems(fresh); }
+        void markActivityRead();
+      } catch {
+        // silent — next event will retry
       }
-      const displayAuthor = post.kind === 'repost' && post.originalAuthor
-        ? post.originalAuthor
-        : post.author;
-      const info: NowPlayingInfo = {
-        postId: post.id,
-        trackId: post.track.id,
-        title: post.track.title,
-        artistName: displayAuthor.displayName ?? displayAuthor.username,
-        authorId: displayAuthor.id,
-        authorUsername: displayAuthor.username,
-        authorAvatarUrl: displayAuthor.avatarUrl,
-        coverArtUrl: post.track.coverArtUrl,
-        mediaKind: post.track.mediaKind,
-        audioUrl: post.track.audioUrl ?? undefined,
-        videoUrl: post.track.videoUrl ?? undefined,
-        likesCount: post.likesCount,
-        commentsCount: post.commentsCount,
-        repostsCount: post.repostsCount,
-        viewsCount: post.viewsCount,
-        viewerHasLiked: post.viewerHasLiked,
-        clipStartSec: post.clipStartSec,
-        clipEndSec: post.clipEndSec,
-        kind: post.kind,
-        originalPostId: post.originalPostId,
-        knownDurationSec: 0,
-      };
-      setQueue([info], 0, `activity:${post.id}`);
-      setNowPlaying(info);
-      requestPlay(post.id);
-      openFullScreenPlayer();
-    } catch {
-      showToast('Could not play this track.', { kind: 'error' });
+    };
+    const channel = supabase
+      .channel(`activity:${meId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activity_notifications',
+          filter: `recipient_id=eq.${meId}`,
+        },
+        () => { void refresh(); },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [meId]);
+
+  const handleActorPress = useCallback((actorId: string) => {
+    if (!actorId) { return; }
+    navigation.navigate('UserProfile', { userId: actorId });
+  }, [navigation]);
+
+  // Tap a track card → deep-link to the owner's profile scrolled to that post.
+  // For like/repost/milestone the recipient (me) owns the post, so the
+  // notification is routed to my own profile. For comments we additionally
+  // request the CommentsSheet to open and pulse the originating comment.
+  // No audio playback, no queue change, no full-screen player — that was the
+  // previous behavior and was intentionally removed.
+  const handlePostPress = useCallback((item: ActivityItem) => {
+    if (!meId) { return; }
+    const post = (item as { post?: { postId: string } }).post;
+    const postId = post?.postId;
+    if (!postId) { return; }
+    if (item.type === 'comment') {
+      navigation.navigate('UserProfile', {
+        userId: meId,
+        focusPostId: postId,
+        openComments: true,
+        ...(item.commentId ? { highlightCommentId: item.commentId } : {}),
+      });
+      return;
     }
-  }, [setQueue, setNowPlaying, requestPlay, openFullScreenPlayer, showToast]);
+    navigation.navigate('UserProfile', { userId: meId, focusPostId: postId });
+  }, [navigation, meId]);
 
   const renderItem = useCallback(
-    ({ item }: { item: ActivityItem }) => (
-      <ActivityBubble item={item} onPlayPost={handlePlayPost} />
-    ),
-    [handlePlayPost],
+    ({ item, index }: { item: ActivityItem; index: number }) => {
+      // orderedItems is oldest→newest, so the chronologically earlier
+      // neighbour sits at index - 1. Render a time label above the bubble
+      // when this row starts a new "group" (first item, or >1h gap).
+      const prev = index > 0 ? orderedItems[index - 1] : null;
+      const showSep = shouldShowTimeSeparator(item.createdAt, prev?.createdAt ?? null);
+      return (
+        <>
+          {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
+          <SwipeRevealRow timestamp={formatChatTimestamp(item.createdAt)}>
+            <ActivityBubble item={item} onActorPress={handleActorPress} onPostPress={handlePostPress} />
+          </SwipeRevealRow>
+        </>
+      );
+    },
+    [handleActorPress, handlePostPress, orderedItems],
   );
 
   return (
@@ -151,27 +197,31 @@ export default function ActivityCenterScreen() {
           <Image source={LIVIL_LOGO} style={styles.emptyLogo} />
           <Text style={styles.emptyTitle}>No activity yet</Text>
           <Text style={styles.emptyBody}>
-            Likes, comments, reposts and milestones on your tracks show up here.
+            Likes, comments, reposts and milestones on your posts show up here.
           </Text>
         </View>
       ) : (
-        <FlatList
-          ref={flatListRef}
-          style={styles.flex}
-          data={orderedItems}
-          keyExtractor={item => item.id}
-          renderItem={renderItem}
-          // paddingBottom = half the screen so the user can scroll the latest
-          // message all the way to the top. On mount we scrollToIndex with
-          // viewPosition: 0.5 so it lands centered.
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: windowHeight * 0.5 + insets.bottom },
-          ]}
-          onScrollToIndexFailed={() => {
-            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
-          }}
-        />
+        <SwipeRevealProvider>
+          <SwipeRevealGestureView>
+            <FlatList
+              ref={flatListRef}
+              style={styles.flex}
+              data={orderedItems}
+              keyExtractor={item => item.id}
+              renderItem={renderItem}
+              // paddingBottom = half the screen so the user can scroll the latest
+              // message all the way to the top. On mount we scrollToIndex with
+              // viewPosition: 0.5 so it lands centered.
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: windowHeight * 0.5 + insets.bottom },
+              ]}
+              onScrollToIndexFailed={() => {
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+              }}
+            />
+          </SwipeRevealGestureView>
+        </SwipeRevealProvider>
       )}
     </SafeAreaView>
   );

@@ -18,7 +18,15 @@ export type RootStackParamList = {
   CollaboratorPicker: {
     excludeUserIds?: string[];
   } | undefined;
-  UserProfile: { userId: string };
+  UserProfile: {
+    userId: string;
+    // Optional deep-link params used by ActivityCenter taps. focusPostId scrolls
+    // the post into view; openComments opens the CommentsSheet for it;
+    // highlightCommentId pulses that comment row briefly when the sheet opens.
+    focusPostId?: string;
+    openComments?: boolean;
+    highlightCommentId?: string;
+  };
   PlaylistDetail: { playlistId: string; playlistName: string };
   Following: undefined;
   RecentlyPlayed: undefined;
