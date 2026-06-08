@@ -24,8 +24,13 @@ export type PostCardProps = {
    *  pause and drives the dedup'd view count after a brief dwell. */
   visible: boolean;
   /**
-   * When false, playback is not auto-paused from FlatList viewability (Home feed).
-   * Profile / single-column feeds should keep the default true.
+   * Auto-pause MediaPlayer (audio posts only) when the card scrolls out of the
+   * FlatList window. **Defaults to false** because playback is queue-driven
+   * and global — the active track should keep playing across screen scrolls
+   * and screen navigations, and FloatingPlayer's tap-to-pause must work
+   * regardless of whether the source PostCard is currently in view. Set to
+   * true on a screen only when you explicitly want the legacy "pause on
+   * scroll-away" behaviour (no screen currently does).
    */
   pauseWhenOffScreen?: boolean;
   /** Tap the comments stat to open the CommentsSheet for this post. */
@@ -86,7 +91,7 @@ function pickMediaShape(track: FeedPost['track']): MediaShape | null {
   return { kind: 'audio', audioUrl: track.audioUrl, coverUrl: track.coverArtUrl };
 }
 
-export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress, onDeleted }: PostCardProps) {
+export default function PostCard({ post, visible, pauseWhenOffScreen = false, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();

@@ -178,7 +178,6 @@ export default function SearchScreen() {
       <PostCard
         post={comments.withDelta(item)}
         visible={visibleIds.has(item.id)}
-        pauseWhenOffScreen
         onCommentsPress={comments.openComments}
         onDeleted={handlePostDeleted}
       />

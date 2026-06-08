@@ -589,7 +589,6 @@ export default function HomeScreen() {
         <PostCard
           post={comments.withDelta(item.post)}
           visible={visibleIds.has(item.post.id)}
-          pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />

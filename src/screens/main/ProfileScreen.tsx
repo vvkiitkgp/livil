@@ -397,13 +397,6 @@ export default function ProfileScreen() {
         <PostCard
           post={comments.withDelta(item.post)}
           visible={visibleIds.has(item.post.id)}
-          // Don't auto-pause when scrolled off-screen. Profile is queue-driven —
-          // tapping play on one post starts queue playback, and the user
-          // expects audio to keep going as they scroll. Pausing-on-scroll also
-          // breaks FloatingPlayer play/pause when the active post isn't in the
-          // FlatList window, since MediaPlayer's effectivePaused is gated on
-          // visible too.
-          pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
