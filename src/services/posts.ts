@@ -17,6 +17,9 @@ export type TrackMedia = {
   audioUrl: string | null;
   videoUrl: string | null;
   coverArtUrl: string | null;
+  /** Video tracks only — user-uploaded thumbnail shown in feed PostCard. NULL on
+   *  audio tracks and on video tracks uploaded before the field existed. */
+  thumbnailUrl: string | null;
 };
 
 export type FeedPost = {
@@ -66,6 +69,7 @@ type RawPostRow = {
     audio_url: string | null;
     video_url: string | null;
     cover_art_url: string | null;
+    thumbnail_url: string | null;
   } | null;
   author: {
     id: string;
@@ -94,7 +98,8 @@ const POST_SELECT = `
     media_kind,
     audio_url,
     video_url,
-    cover_art_url
+    cover_art_url,
+    thumbnail_url
   ),
   author:profiles!posts_author_id_fkey (
     id,
@@ -125,6 +130,7 @@ function toTrack(row: RawPostRow['track']): TrackMedia {
       audioUrl: null,
       videoUrl: null,
       coverArtUrl: null,
+      thumbnailUrl: null,
     };
   }
   return {
@@ -134,6 +140,7 @@ function toTrack(row: RawPostRow['track']): TrackMedia {
     audioUrl: row.audio_url,
     videoUrl: row.video_url,
     coverArtUrl: row.cover_art_url,
+    thumbnailUrl: row.thumbnail_url,
   };
 }
 
@@ -222,7 +229,8 @@ async function hydratePostsByIds(
   if (error) {
     throw new Error(error.message);
   }
-  const byId = new Map((data ?? []).map(r => [(r as RawPostRow).id, r as RawPostRow]));
+  const rows = (data ?? []) as unknown as RawPostRow[];
+  const byId = new Map(rows.map(r => [r.id, r]));
   const ordered = orderedIds.map(id => byId.get(id)).filter(Boolean) as RawPostRow[];
   return hydrateRawPostRows(ordered, { viewerLikedByPostId });
 }
@@ -676,6 +684,7 @@ export function feedPostToNowPlaying(post: FeedPost): NowPlayingInfo {
     authorUsername: displayAuthor.username,
     authorAvatarUrl: displayAuthor.avatarUrl,
     coverArtUrl: post.track.coverArtUrl,
+    thumbnailUrl: post.track.thumbnailUrl,
     mediaKind: post.track.mediaKind,
     audioUrl: post.track.audioUrl ?? undefined,
     videoUrl: post.track.videoUrl ?? undefined,

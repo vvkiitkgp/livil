@@ -52,6 +52,9 @@ function toStory(row: RpcRow): Story {
       audioUrl: row.track_audio_url,
       videoUrl: row.track_video_url,
       coverArtUrl: row.track_cover_url,
+      // Stories are full-screen and use the original cover/video, not a feed
+      // thumbnail — extending the RPC just to wire this through isn't worth it.
+      thumbnailUrl: null,
     },
     originalPostId: row.original_post_id,
     comment: row.comment,

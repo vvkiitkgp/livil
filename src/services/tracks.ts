@@ -19,6 +19,10 @@ export type CreateTrackInput =
       description?: string;
       video: PickedFile;
       cover?: PickedFile;
+      /** Required for video uploads — the thumbnail shown in the feed PostCard
+       *  preview. Validated client-side; the column is nullable so legacy rows
+       *  remain readable. */
+      thumbnail: PickedFile;
       collaborators: PendingCollaborator[];
     };
 
@@ -28,6 +32,7 @@ export type CreateTrackResult = {
   audioUrl?: string;
   videoUrl?: string;
   coverArtUrl?: string;
+  thumbnailUrl?: string;
 };
 
 export type CreateTrackStage = 'preparing' | 'uploading' | 'finalizing';
@@ -51,31 +56,35 @@ type UploadPlan = {
   audio?: PickedFile;
   video?: PickedFile;
   cover?: PickedFile;
+  thumbnail?: PickedFile;
 };
 
 function planFromInput(input: CreateTrackInput): UploadPlan {
   if (input.mode === 'audio') {
     return { audio: input.audio, cover: input.cover };
   }
-  return { video: input.video, cover: input.cover };
+  return { video: input.video, cover: input.cover, thumbnail: input.thumbnail };
 }
 
 function computeWeights(plan: UploadPlan): {
   audio: number;
   video: number;
   cover: number;
+  thumbnail: number;
 } {
   const audioBytes = plan.audio ? plan.audio.size ?? 1_000_000 : 0;
   const videoBytes = plan.video ? plan.video.size ?? 1_000_000 : 0;
   const coverBytes = plan.cover ? plan.cover.size ?? 100_000 : 0;
-  const total = audioBytes + videoBytes + coverBytes;
+  const thumbBytes = plan.thumbnail ? plan.thumbnail.size ?? 100_000 : 0;
+  const total = audioBytes + videoBytes + coverBytes + thumbBytes;
   if (total <= 0) {
-    return { audio: 1, video: 0, cover: 0 };
+    return { audio: 1, video: 0, cover: 0, thumbnail: 0 };
   }
   return {
     audio: audioBytes / total,
     video: videoBytes / total,
     cover: coverBytes / total,
+    thumbnail: thumbBytes / total,
   };
 }
 
@@ -93,6 +102,7 @@ export async function createTrack(
     if (!input.cover) {throw new Error('Cover image is required for audio posts.');}
   } else {
     if (!input.video) {throw new Error('Video file is required.');}
+    if (!input.thumbnail) {throw new Error('Thumbnail image is required for video posts.');}
   }
 
   onProgress?.({ stage: 'preparing', fraction: 0 });
@@ -138,16 +148,20 @@ export async function createTrack(
   let audioFrac = 0;
   let videoFrac = 0;
   let coverFrac = 0;
+  let thumbFrac = 0;
   const reportOverall = () => {
     const fraction =
-      weights.audio * audioFrac + weights.video * videoFrac + weights.cover * coverFrac;
+      weights.audio * audioFrac
+      + weights.video * videoFrac
+      + weights.cover * coverFrac
+      + weights.thumbnail * thumbFrac;
     onProgress?.({ stage: 'uploading', fraction: Math.min(1, Math.max(0, fraction)) });
   };
 
   try {
     onProgress?.({ stage: 'uploading', fraction: 0 });
 
-    const [audioUrl, videoUrl, coverArtUrl] = await Promise.all([
+    const [audioUrl, videoUrl, coverArtUrl, thumbnailUrl] = await Promise.all([
       plan.audio
         ? uploadTrackFile(plan.audio, 'audio', trackId, user.id, accessToken, f => {
             audioFrac = f;
@@ -166,6 +180,12 @@ export async function createTrack(
             reportOverall();
           })
         : Promise.resolve<string | undefined>(undefined),
+      plan.thumbnail
+        ? uploadTrackFile(plan.thumbnail, 'thumbnail', trackId, user.id, accessToken, f => {
+            thumbFrac = f;
+            reportOverall();
+          })
+        : Promise.resolve<string | undefined>(undefined),
     ]);
 
     onProgress?.({ stage: 'finalizing', fraction: 1 });
@@ -176,6 +196,7 @@ export async function createTrack(
         audio_url: audioUrl ?? null,
         video_url: videoUrl ?? null,
         cover_art_url: coverArtUrl ?? null,
+        thumbnail_url: thumbnailUrl ?? null,
       })
       .eq('id', trackId);
 
@@ -223,6 +244,7 @@ export async function createTrack(
       audioUrl: audioUrl ?? undefined,
       videoUrl: videoUrl ?? undefined,
       coverArtUrl: coverArtUrl ?? undefined,
+      thumbnailUrl: thumbnailUrl ?? undefined,
     };
   } catch (err) {
     await safeDeleteTrack(trackId);

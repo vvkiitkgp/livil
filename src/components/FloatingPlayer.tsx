@@ -312,6 +312,12 @@ export default function FloatingPlayer() {
   const tapGesture = Gesture.Exclusive(doubleTap, singleTap);
 
   const panGesture = Gesture.Pan().runOnJS(true)
+    // Require ≥10dp of movement before pan recognizes. Without this, micro-
+    // motion during a quick tap can activate pan and fire its onEnd, which
+    // — combined with the singleTap recognizer — toggles play/pause while
+    // the user is actually trying to minimize/maximize the player.
+    .activeOffsetX([-10, 10])
+    .activeOffsetY([-10, 10])
     .onBegin(() => {
       scaleAnim.stopAnimation();
       Animated.spring(scaleAnim, { toValue: 1.22, useNativeDriver: true, bounciness: 14, speed: 28 }).start();
@@ -347,7 +353,12 @@ export default function FloatingPlayer() {
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
     });
 
-  const gesture = Gesture.Simultaneous(tapGesture, panGesture);
+  // Race, not Simultaneous: whichever recognizes first wins, the other is
+  // canceled. Pan needs ≥10dp movement (activeOffset above), so a real swipe
+  // wins over the tap; a stationary tap wins over the pan. Without this both
+  // could fire on a single touch and the user would see "minimize toggled
+  // play/pause" or "tap fired plus next/prev fired".
+  const gesture = Gesture.Race(tapGesture, panGesture);
 
   // ─── Arc interpolations ───────────────────────────────────────────────────────
   const rightRot = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '0deg', '0deg'], extrapolate: 'clamp' });

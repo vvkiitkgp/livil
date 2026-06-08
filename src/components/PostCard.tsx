@@ -176,6 +176,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
       authorUsername: displayAuthor.username,
       authorAvatarUrl: displayAuthor.avatarUrl,
       coverArtUrl: post.track.coverArtUrl,
+      thumbnailUrl: post.track.thumbnailUrl,
       mediaKind: post.track.mediaKind,
       audioUrl: post.track.audioUrl ?? undefined,
       videoUrl: post.track.videoUrl ?? undefined,
@@ -192,39 +193,44 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     };
   }, [post]);
 
-  const media = pickMediaShape(post.track);
+  const isVideo = post.track.mediaKind === 'video';
+  const isThisActive = playback.activePostId === post.id;
+  const media = isVideo ? null : pickMediaShape(post.track);
 
   // If the global active id changes to anything other than ours, pause ourselves.
+  // For video posts the local `paused` state is unused at render time (the play
+  // button glyph reads from isThisActive instead), but we still reset it to
+  // keep the audio fall-back paths consistent.
   useEffect(() => {
     if (playback.activePostId !== post.id) {
       setPaused(true);
     }
   }, [playback.activePostId, post.id]);
 
-  // Auto-start when the global queue navigation lands on this post.
-  // Skip when FullScreenPlayer is open AND the track is video — FS has its own
-  // <Video> for video tracks and PostCard registering handlers would overwrite
-  // the FS handlers. For audio tracks, PostCard must still play since FS just
-  // shows cover art and relies on PostCard's <Video> for audio output.
+  // Auto-start when the global queue navigation lands on this post (audio only).
+  // Video posts in the feed never auto-play — the user taps the play button or
+  // thumbnail to start. The pendingPlayId still gets cleared so the engine
+  // doesn't re-dispatch.
   useEffect(() => {
     if (playback.pendingPlayId === post.id) {
-      const isVideoAndFsOpen = playback.isFullScreenOpen && post.track.mediaKind === 'video';
-      if (!isVideoAndFsOpen) {
+      if (!isVideo) {
         setPaused(false);
-      } else {
-        console.log(`[LIVIL][PC] skipping auto-play: FS is open for video, postId=${post.id}`);
       }
       playback.clearPendingPlay();
     }
-  // clearPendingPlay is stable (useCallback []); safe to use instead of full playback object.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay, playback.isFullScreenOpen, post.track.mediaKind]);
+  }, [playback.pendingPlayId, post.id, playback.clearPendingPlay, isVideo]);
 
   // Register / update handlers whenever paused state changes.
   // Use stable method refs (not the full `playback` object) to prevent a render
   // loop: calling setNowPlaying changes nowPlaying → changes playback → re-runs
   // this effect → calls setNowPlaying again → ∞
+  //
+  // VIDEO POSTS: handler registration lives entirely in FullScreenPlayer (its
+  // <Video> is the sole video player; PostCard renders only a thumbnail). The
+  // effect below is for audio playback only.
   useEffect(() => {
+    if (isVideo) { return; }
     if (!paused) {
       // For reposts, show the original creator's info in the full-screen player,
       // not the reposter's.
@@ -240,6 +246,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         authorUsername: displayAuthor.username,
         authorAvatarUrl: displayAuthor.avatarUrl,
         coverArtUrl: post.track.coverArtUrl,
+        thumbnailUrl: post.track.thumbnailUrl,
         mediaKind: post.track.mediaKind,
         videoUrl: post.track.videoUrl ?? undefined,
         // Snapshot at play-start — not in deps to avoid resetting positionRef on like/unlike.
@@ -280,6 +287,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
   // fields so a new post object reference alone does not re-trigger the effect.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    isVideo, // early-returns for video posts
     paused,
     post.id,
     post.kind,
@@ -396,11 +404,120 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
 
   // Seek handle on the PostCard's read-only slider — lets users scrub the song
   // without moving the clip boundary handles.
+  // For audio posts, scrub locally via setSeekTo (MediaPlayer picks it up).
+  // For video posts, route through the global seek so FS's <Video> moves.
   const handlePostSeekEnd = useCallback((s: number) => {
+    if (isVideo) {
+      playback.markSeekTarget(s);
+      playback.handlersRef.current?.seek(s);
+      return;
+    }
     setPosition(s);
     setSeekTo(s);
     setTimeout(() => setSeekTo(null), 0);
-  }, []);
+  }, [isVideo, playback]);
+
+  // ── Video-only state + handlers ────────────────────────────────────────────
+  // For video posts the position/duration shown on PostCard's seek bar mirrors
+  // FullScreenPlayer's <Video> via positionRef/durationRef. Poll at 10 Hz only
+  // while this card is the active video — keeps N-1 PostCards in the FlatList
+  // from running idle intervals.
+  useEffect(() => {
+    if (!isVideo) { return; }
+    if (!isThisActive) {
+      // Not the active video — show "0:00 / clipEnd" until tapped.
+      setPosition(0);
+      setDuration(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setPosition(playback.positionRef.current);
+      setDuration(playback.durationRef.current);
+    }, 100);
+    return () => clearInterval(id);
+  }, [isVideo, isThisActive, playback.positionRef, playback.durationRef]);
+
+  // Build the NowPlayingInfo for this post — shared between play-button and
+  // thumbnail-tap so we don't duplicate field-list maintenance.
+  const buildNowPlayingForThis = useCallback((): NowPlayingInfo => {
+    const displayAuthor = (post.kind === 'repost' && post.originalAuthor)
+      ? post.originalAuthor
+      : post.author;
+    return {
+      postId: post.id,
+      trackId: post.track.id,
+      title: post.track.title,
+      artistName: displayAuthor.displayName ?? displayAuthor.username,
+      authorId: displayAuthor.id,
+      authorUsername: displayAuthor.username,
+      authorAvatarUrl: displayAuthor.avatarUrl,
+      coverArtUrl: post.track.coverArtUrl,
+      thumbnailUrl: post.track.thumbnailUrl,
+      mediaKind: post.track.mediaKind,
+      videoUrl: post.track.videoUrl ?? undefined,
+      audioUrl: post.track.audioUrl ?? undefined,
+      likesCount: post.likesCount,
+      commentsCount: post.commentsCount,
+      repostsCount: post.repostsCount,
+      viewsCount: post.viewsCount,
+      viewerHasLiked: post.viewerHasLiked,
+      clipStartSec: post.clipStartSec,
+      clipEndSec: post.clipEndSec,
+      kind: post.kind,
+      originalPostId: post.originalPostId,
+      knownDurationSec: 0,
+    };
+  }, [post]);
+
+  // Action-row play/pause button (bottom of the card):
+  //   - Currently playing this post → pause via the global handler.
+  //   - Otherwise → ALWAYS restart from clipStart (per UX spec, tap-play
+  //     means "play from the top"). FS does NOT open.
+  // Two start paths depending on whether FS already owns this post's video:
+  //   • Owned: handlersRef points at FS — seek + play directly.
+  //   • Not owned: set nowPlaying + requestPlay; FS handoff effect will
+  //     take ownership, mount the <Video>, set fsPaused=false, and onLoad
+  //     seeks to positionRef (which we pre-set to clipStart).
+  const handleVideoTogglePlay = useCallback(() => {
+    if (isThisActive) {
+      playback.handlersRef.current?.pause();
+      return;
+    }
+    const clipStart = post.clipStartSec ?? 0;
+    const owned = playback.fsOwnerPostIdRef.current === post.id;
+    if (owned) {
+      playback.markSeekTarget(clipStart);
+      playback.handlersRef.current?.seek(clipStart);
+      playback.handlersRef.current?.play();
+    } else {
+      playback.setNowPlaying(buildNowPlayingForThis());
+      playback.markSeekTarget(clipStart);
+      playback.requestPlay(post.id);
+    }
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+
+  // Center play button (overlay on the thumbnail) AND thumbnail tap:
+  // open FullScreenPlayer. Also restarts from clipStart per UX spec — the
+  // user pressing play on the post means "play this from the top".
+  const handleVideoOpenFs = useCallback(() => {
+    const clipStart = post.clipStartSec ?? 0;
+    const owned = playback.fsOwnerPostIdRef.current === post.id;
+    if (owned && isThisActive) {
+      // Already playing this in FS — just maximize.
+      playback.openFullScreenPlayer();
+      return;
+    }
+    if (owned) {
+      playback.markSeekTarget(clipStart);
+      playback.handlersRef.current?.seek(clipStart);
+      playback.handlersRef.current?.play();
+    } else {
+      playback.setNowPlaying(buildNowPlayingForThis());
+      playback.markSeekTarget(clipStart);
+      playback.requestPlay(post.id);
+    }
+    playback.openFullScreenPlayer();
+  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback]);
 
   const handleToggleLike = useCallback(async () => {
     // Optimistic update — flip immediately, revert on failure.
@@ -635,7 +752,45 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
 
       {/* Media */}
       <View style={styles.mediaWrap}>
-        {media ? (
+        {isVideo ? (
+          // Video posts: static thumbnail only. The real <Video> lives in
+          // FullScreenPlayer (single-player model) so feed playback and FS
+          // playback can never desync. Tap anywhere on the thumbnail (or
+          // the centered play glyph) → opens FS. The bottom action-row
+          // play button (rendered below) plays audio in place without
+          // opening FS.
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={handleVideoOpenFs}
+            style={styles.mediaWrap}
+            accessibilityLabel="Open full-screen player"
+          >
+            {post.track.thumbnailUrl ? (
+              <Image
+                source={{ uri: post.track.thumbnailUrl }}
+                style={styles.videoThumb}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.videoThumb, styles.videoThumbPlaceholder]}>
+                <Text style={styles.videoThumbGlyph}>▶</Text>
+              </View>
+            )}
+            <View style={styles.videoBadge} pointerEvents="none">
+              <Text style={styles.videoBadgeText}>VIDEO</Text>
+            </View>
+            {/* Centered play glyph — visual cue matching audio's MediaPlayer
+                overlay. Shown only when this post is not currently playing,
+                so during playback the user sees the thumbnail without it. */}
+            {!isThisActive ? (
+              <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
+                <View style={styles.videoCenterGlyph}>
+                  <Text style={styles.videoCenterGlyphText}>▶</Text>
+                </View>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        ) : media ? (
           <MediaPlayer
             ref={playerRef}
             postId={post.id}
@@ -679,10 +834,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         <TouchableOpacity
           style={styles.playButton}
           activeOpacity={0.85}
-          onPress={handleTogglePaused}
-          accessibilityLabel={paused ? 'Play' : 'Pause'}
+          onPress={isVideo ? handleVideoTogglePlay : handleTogglePaused}
+          accessibilityLabel={(isVideo ? !isThisActive : paused) ? 'Play' : 'Pause'}
         >
-          <Text style={styles.playButtonGlyph}>{paused ? '▶' : '❚❚'}</Text>
+          <Text style={styles.playButtonGlyph}>
+            {(isVideo ? !isThisActive : paused) ? '▶' : '❚❚'}
+          </Text>
         </TouchableOpacity>
 
         <View style={styles.statsGroup}>
@@ -941,6 +1098,58 @@ const styles = StyleSheet.create({
   missingMediaText: {
     color: COLORS.textMuted,
     fontSize: 13,
+  },
+  videoThumb: {
+    aspectRatio: 1,
+    width: '100%',
+    borderRadius: 18,
+    backgroundColor: COLORS.card,
+  },
+  videoThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoThumbGlyph: {
+    color: COLORS.textMuted,
+    fontSize: 56,
+    opacity: 0.6,
+  },
+  videoBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  videoBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  // Center play-glyph overlay — matches MediaPlayer's style so audio + video
+  // posts share the same visual affordance for "tap to play / open".
+  videoCenterGlyphWrap: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoCenterGlyph: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  videoCenterGlyphText: {
+    color: '#fff',
+    fontSize: 24,
+    marginLeft: 4,
   },
   seekRow: {
     flexDirection: 'row',

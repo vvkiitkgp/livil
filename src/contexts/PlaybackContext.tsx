@@ -18,6 +18,8 @@ export type NowPlayingInfo = {
   authorUsername: string;
   authorAvatarUrl: string | null;
   coverArtUrl: string | null;
+  /** Video tracks only — user-uploaded thumbnail. Null for audio or legacy video. */
+  thumbnailUrl: string | null;
   mediaKind: 'audio' | 'video';
   audioUrl?: string;
   videoUrl?: string;
@@ -78,6 +80,19 @@ type PlaybackContextValue = {
   durationRef: React.MutableRefObject<number>;
   updatePosition: (seconds: number) => void;
   updateDuration: (seconds: number) => void;
+  /**
+   * Pre-commit position to a seek target and arm a guard so stale onProgress
+   * samples don't clobber positionRef during the native seek transition.
+   * Call this before dispatching `seek()` through a handler.
+   */
+  markSeekTarget: (seconds: number) => void;
+  /**
+   * postId of the video currently owned by FullScreenPlayer's <Video>
+   * element. PostCard reads this to skip handler registration / seek for
+   * the owned post, so FS can keep audio playing seamlessly when minimized.
+   * Null when no FS-owned video is active.
+   */
+  fsOwnerPostIdRef: React.MutableRefObject<string | null>;
 
   // --- clip window (ref — no re-renders; mutated by FullScreenPlayer on drag) ---
   clipWindowRef: React.MutableRefObject<{ start: number; end: number } | null>;
@@ -166,6 +181,18 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const durationRef = useRef<number>(0);
   const clipWindowRef = useRef<{ start: number; end: number } | null>(null);
   const handlersRef = useRef<PlayerHandlers | null>(null);
+  // Seek guard — after a seek, the native player keeps reporting the *old*
+  // currentTime for several hundred ms via onProgress. Those stale updates
+  // would clobber positionRef and the seek bar would rubber-band back to the
+  // pre-seek position before finally snapping forward. While this guard is
+  // active, updatePosition discards samples that are far from `target`. Once
+  // a sample lands close to the target the guard auto-clears.
+  const seekGuardRef = useRef<{ target: number; until: number } | null>(null);
+  // postId of the video FullScreenPlayer's <Video> currently owns. When set,
+  // PostCard for that post stays out of the way — no handler registration,
+  // no seek, no play. This is what lets FS keep audio playing across the
+  // minimize→fullscreen transition without a handoff gap.
+  const fsOwnerPostIdRef = useRef<string | null>(null);
   const queueRef = useRef<NowPlayingInfo[]>([]);
   const currentIndexRef = useRef<number>(-1);
   const userQueueRef = useRef<NowPlayingInfo[]>([]);
@@ -212,15 +239,22 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- now playing ---
 
   const setNowPlaying = useCallback((info: NowPlayingInfo) => {
-    const clipStart = (info.clipStartSec !== null && info.clipEndSec !== null)
-      ? info.clipStartSec : 0;
-    console.log(`[LIVIL][CTX] setNowPlaying postId=${info.postId} title="${info.title}" kind=${info.mediaKind} startAt=${clipStart}s`);
-    positionRef.current = clipStart;
-    durationRef.current = info.knownDurationSec ?? 0;
-    clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
-      ? { start: info.clipStartSec, end: info.clipEndSec }
-      : null;
-    setNowPlayingState(info);
+    setNowPlayingState(prev => {
+      const isNewPost = prev?.postId !== info.postId;
+      if (isNewPost) {
+        const clipStart = (info.clipStartSec !== null && info.clipEndSec !== null)
+          ? info.clipStartSec : 0;
+        console.log(`[LIVIL][CTX] setNowPlaying NEW postId=${info.postId} title="${info.title}" kind=${info.mediaKind} startAt=${clipStart}s clip=[${info.clipStartSec},${info.clipEndSec}] knownDur=${info.knownDurationSec ?? 0}`);
+        positionRef.current = clipStart;
+        durationRef.current = info.knownDurationSec ?? 0;
+        clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
+          ? { start: info.clipStartSec, end: info.clipEndSec }
+          : null;
+      } else {
+        console.log(`[LIVIL][CTX] setNowPlaying SAME postId=${info.postId} (metric/state-only, refs preserved pos=${positionRef.current.toFixed(2)} dur=${durationRef.current.toFixed(2)})`);
+      }
+      return info;
+    });
   }, []);
 
   const clearNowPlaying = useCallback(() => {
@@ -244,7 +278,34 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- position / duration ---
 
   const updatePosition = useCallback((seconds: number) => {
+    const guard = seekGuardRef.current;
+    if (guard) {
+      if (Date.now() < guard.until) {
+        if (Math.abs(seconds - guard.target) > 1.5) {
+          // Stale sample from before the seek committed — ignore it.
+          console.log(`[LIVIL][CTX] seekGuard suppress p=${seconds.toFixed(2)} target=${guard.target.toFixed(2)}`);
+          return;
+        }
+        // Sample landed near the target — seek has taken effect, release guard.
+        console.log(`[LIVIL][CTX] seekGuard release p=${seconds.toFixed(2)} target=${guard.target.toFixed(2)}`);
+        seekGuardRef.current = null;
+      } else {
+        // Guard expired (native never came back close enough). Drop it.
+        seekGuardRef.current = null;
+      }
+    }
     positionRef.current = seconds;
+  }, []);
+
+  /**
+   * Pre-commit the position to a seek target and arm the guard. Call this
+   * *before* dispatching `seek()` through a handler so the bar polls the new
+   * value immediately and stale onProgress events get filtered out.
+   */
+  const markSeekTarget = useCallback((seconds: number) => {
+    positionRef.current = seconds;
+    seekGuardRef.current = { target: seconds, until: Date.now() + 1200 };
+    console.log(`[LIVIL][CTX] markSeekTarget=${seconds.toFixed(2)}`);
   }, []);
 
   const updateDuration = useCallback((seconds: number) => {
@@ -299,11 +360,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     currentIndexRef.current = idx;
     activeRef.current = track.postId;
     setActivePostId(track.postId);
-    positionRef.current = 0;
+    // Honour clipStartSec on queue-driven plays — reposts with a mid-track
+    // clip window must start audibly at the clip, and the seek thumb is
+    // clamped at clipStart so anything less makes the bar look frozen.
+    const startPos = (track.clipStartSec !== null && track.clipEndSec !== null)
+      ? track.clipStartSec : 0;
+    positionRef.current = startPos;
     durationRef.current = track.knownDurationSec ?? 0;
     clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
       ? { start: track.clipStartSec, end: track.clipEndSec }
       : null;
+    console.log(`[LIVIL][CTX] playTrackAtIndex idx=${idx} postId=${track.postId} clip=[${track.clipStartSec},${track.clipEndSec}] posRef=${startPos} dur=${track.knownDurationSec ?? 0}`);
     setNowPlayingState(track);
     setPendingPlayId(track.postId);
   }, []);
@@ -325,11 +392,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       const track = userQueueRef.current.shift()!;
       activeRef.current = track.postId;
       setActivePostId(track.postId);
-      positionRef.current = 0;
+      const startPos = (track.clipStartSec !== null && track.clipEndSec !== null)
+        ? track.clipStartSec : 0;
+      positionRef.current = startPos;
       durationRef.current = track.knownDurationSec ?? 0;
       clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
         ? { start: track.clipStartSec, end: track.clipEndSec }
         : null;
+      console.log(`[LIVIL][CTX] playNext (userQueue) postId=${track.postId} clip=[${track.clipStartSec},${track.clipEndSec}] posRef=${startPos}`);
       setNowPlayingState(track);
       setPendingPlayId(track.postId);
       return;
@@ -362,9 +432,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, [generateShuffleOrder, playTrackAtIndex]);
 
   const playPrev = useCallback(() => {
-    if (positionRef.current > 3) {
-      handlersRef.current?.seek(0);
-      positionRef.current = 0;
+    // "Restart current track" semantics — for clipped reposts the start is the
+    // clip-start, not 0. clipWindowRef tracks the active clip (or null if
+    // there's no clip).
+    const trackStart = clipWindowRef.current?.start ?? 0;
+
+    if (positionRef.current > trackStart + 3) {
+      handlersRef.current?.seek(trackStart);
+      positionRef.current = trackStart;
       return;
     }
 
@@ -377,8 +452,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
     const prevIdx = currentIndexRef.current - 1;
     if (prevIdx < 0) {
-      handlersRef.current?.seek(0);
-      positionRef.current = 0;
+      handlersRef.current?.seek(trackStart);
+      positionRef.current = trackStart;
       return;
     }
     playTrackAtIndex(prevIdx);
@@ -494,6 +569,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       durationRef,
       updatePosition,
       updateDuration,
+      markSeekTarget,
+      fsOwnerPostIdRef,
       clipWindowRef,
       handlersRef,
       registerHandlers,
@@ -547,6 +624,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       bumpCommentsCount,
       updatePosition,
       updateDuration,
+      markSeekTarget,
       registerHandlers,
       unregisterHandlers,
       isBuffering,

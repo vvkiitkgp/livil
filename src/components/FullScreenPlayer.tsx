@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import {
   type UserPlaylist,
 } from '../services/playlists';
 import { COLORS } from '../theme/colors';
+import { useToast } from '../contexts/ToastContext';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -130,11 +131,20 @@ function avatarInitials(name: string): string {
  * - A plain SeekBar for uploads with no clip window.
  */
 function FullScreenClipBar() {
-  const { positionRef, durationRef, handlersRef, nowPlaying, clipWindowRef } = usePlayback();
+  const {
+    positionRef, durationRef, handlersRef, nowPlaying, clipWindowRef, markSeekTarget,
+  } = usePlayback();
   // Lazy-init from refs so handles appear at correct positions the moment the
-  // full-screen player opens, without waiting for the first 250ms interval tick.
+  // full-screen player opens, without waiting for the first polling tick.
   const [position, setPosition] = useState(() => positionRef.current);
   const [duration, setDuration] = useState(() => durationRef.current);
+
+  // Last known good duration. durationRef briefly drops to 0 between tracks
+  // (before the new video's onLoad fires) — without this fallback the bar
+  // would collapse and the layout would jump every track change.
+  const lastDurationRef = useRef(duration);
+  if (duration > 0) { lastDurationRef.current = duration; }
+  const displayDuration = duration > 0 ? duration : lastDurationRef.current;
 
   // Local clip state — drives ClipRangeSlider during drag without touching context.
   const [localStart, setLocalStart] = useState<number | null>(() => nowPlaying?.clipStartSec ?? null);
@@ -154,16 +164,30 @@ function FullScreenClipBar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
 
+  // Poll positionRef/durationRef at 10 Hz. Tighter than 250 ms so the thumb
+  // looks smoother, but plain — no rAF interpolation (jittery onProgress
+  // samples cause the projection to snap back, visible as flicker).
+  const lastLoggedDurRef = useRef(-1);
   useEffect(() => {
     const id = setInterval(() => {
-      setPosition(positionRef.current);
-      setDuration(durationRef.current);
-    }, 250);
+      const p = positionRef.current;
+      const d = durationRef.current;
+      setPosition(p);
+      setDuration(d);
+      // Only log duration transitions (0 ↔ non-zero). The 1-Hz heartbeat is
+      // pulled — too noisy for normal playback investigation.
+      const dWentLive = d > 0 && lastLoggedDurRef.current <= 0;
+      const dWentDead = d <= 0 && lastLoggedDurRef.current > 0;
+      if (dWentLive || dWentDead) {
+        console.log(`[LIVIL][BAR] duration transition ${lastLoggedDurRef.current.toFixed(2)} -> ${d.toFixed(2)} (pos=${p.toFixed(2)})`);
+      }
+      lastLoggedDurRef.current = d;
+    }, 100);
     return () => clearInterval(id);
   }, [positionRef, durationRef]);
 
   // Stable callbacks so ClipRangeSlider's panResponder useMemo doesn't
-  // recreate on every 250ms polling tick.
+  // recreate on every polling tick.
   const handleClipChange = useCallback((s: number, e: number) => {
     setLocalStart(s);
     setLocalEnd(e);
@@ -180,38 +204,41 @@ function FullScreenClipBar() {
     // already playing keeps going from its current position.
     // In both cases we never call play() — the caller's pause state is respected.
     if (handle === 'left') {
+      markSeekTarget(s);
       handlersRef.current?.seek(s);
     }
-  }, [clipWindowRef, handlersRef]);
+  }, [clipWindowRef, handlersRef, markSeekTarget]);
 
   // Seek handle (blue circle): scrubs to the chosen position.
   // Never calls play() — if the song was paused, it stays paused after the scrub.
+  // markSeekTarget pre-commits positionRef and arms the guard so stale onProgress
+  // samples from the native player don't rubber-band the bar back to the
+  // pre-seek position before the seek lands.
   const handleSeekEnd = useCallback((s: number) => {
+    markSeekTarget(s);
     setPosition(s);
     handlersRef.current?.seek(s);
-  }, [handlersRef]);
+  }, [handlersRef, markSeekTarget]);
 
   const start = localStart ?? 0;
-  const end = localEnd ?? duration;
+  const end = localEnd ?? displayDuration;
 
   return (
     <View style={seekSt.wrap}>
       <View style={seekSt.timeRow}>
         <Text style={seekSt.time}>{formatTime(position)}</Text>
-        <Text style={seekSt.time}>{formatTime(duration)}</Text>
+        <Text style={seekSt.time}>{formatTime(displayDuration)}</Text>
       </View>
-      {duration > 0 ? (
-        <ClipRangeSlider
-          duration={duration}
-          position={position}
-          start={start}
-          end={end}
-          minClipSeconds={2}
-          onChange={handleClipChange}
-          onChangeEnd={handleClipChangeEnd}
-          onSeekEnd={handleSeekEnd}
-        />
-      ) : null}
+      <ClipRangeSlider
+        duration={displayDuration > 0 ? displayDuration : 1}
+        position={position}
+        start={start}
+        end={end}
+        minClipSeconds={2}
+        onChange={handleClipChange}
+        onChangeEnd={handleClipChangeEnd}
+        onSeekEnd={handleSeekEnd}
+      />
     </View>
   );
 }
@@ -830,6 +857,7 @@ export default function FullScreenPlayer() {
     isFullScreenOpen,
     closeFullScreenPlayer,
     positionRef,
+    durationRef,
     handlersRef,
     registerHandlers,
     unregisterHandlers,
@@ -840,6 +868,8 @@ export default function FullScreenPlayer() {
     resumePlay,
     reportPaused,
     playNext,
+    repeatMode,
+    fsOwnerPostIdRef,
   } = usePlayback();
 
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -850,6 +880,7 @@ export default function FullScreenPlayer() {
 
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { showToast } = useToast();
 
   // ── Player positioning (insets-aware) ─────────────────────────────────────
   // Computed here — not at module level — so insets.bottom (the real height of
@@ -881,6 +912,10 @@ export default function FullScreenPlayer() {
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [fsPaused, setFsPaused] = useState(true);
+  // Native playback rate. FloatingPlayer's drag-right "forward 2x" gesture
+  // routes through handlersRef.setRate; without this state the FS handler was
+  // a no-op and forward did nothing for video tracks.
+  const [fsRate, setFsRate] = useState(1.0);
   const videoRef = useRef<VideoRef>(null);
   const initialSeekDone = useRef(false);
   // Saved PostCard handlers so we can restore them when the FS video player closes
@@ -889,6 +924,9 @@ export default function FullScreenPlayer() {
   const fsOpenRef = useRef(false);
   // Guard: prevents stale onProgress updates from finishing video
   const fsVideoPostIdRef = useRef<string | null>(null);
+  // One-shot guard: prevents clip-end-detected playNext / loop from firing
+  // multiple times per play session. Reset on play start and track change.
+  const clipEndFiredRef = useRef(false);
 
   // ── Original-post metrics hydration (reposts only) ────────────────────────
   // When the currently playing item is a repost, the player surface shows the
@@ -979,49 +1017,91 @@ export default function FullScreenPlayer() {
     }
   }, [isFullScreenOpen, posYAnim, scaleAnim, opacityAnim, panelAnim]);
 
-  // ── Video handoff ─────────────────────────────────────────────────────────
+  // ── Video ownership (no handoff model) ────────────────────────────────────
+  // Once FullScreenPlayer takes over a video, it OWNS playback for the rest
+  // of that video's lifetime — even when minimized. The <Video> element
+  // stays mounted at the app root, hidden behind the feed, playing audio
+  // in the background. PostCard skips handler registration for the owned
+  // post via fsOwnerPostIdRef.
+  //
+  // Why no close-side handoff: handing back to PostCard means stopping one
+  // ExoPlayer and starting another, which creates an audible gap (this was
+  // the source of "video paused when I minimized").
+  //
+  // Ownership releases when nowPlaying becomes non-video or is cleared.
   useEffect(() => {
-    if (!nowPlaying || nowPlaying.mediaKind !== 'video') { return; }
-    if (isFullScreenOpen) {
-      console.log(`[LIVIL][FS] handoff OPEN postId=${nowPlaying.postId} fsOpenRef=${fsOpenRef.current}`);
-      // Only save PostCard handlers on the initial open, not on track changes within FS
-      if (!fsOpenRef.current) {
-        savedHandlersRef.current = handlersRef.current;
+    if (!nowPlaying || nowPlaying.mediaKind !== 'video') {
+      if (fsOwnerPostIdRef.current) {
+        console.log('[LIVIL][FS] release ownership (track is not video)');
+        fsOwnerPostIdRef.current = null;
+        savedHandlersRef.current = null;
+        fsOpenRef.current = false;
+        fsVideoPostIdRef.current = null;
+        setFsPaused(true);
       }
-      fsOpenRef.current = true;
-      fsVideoPostIdRef.current = nowPlaying.postId;
-      initialSeekDone.current = false;
+      return;
+    }
+
+    const alreadyOwns = fsOwnerPostIdRef.current !== null;
+    const trackChanged = alreadyOwns && fsOwnerPostIdRef.current !== nowPlaying.postId;
+
+    if (!alreadyOwns) {
+      // First-time take. Capture current play state, pause the outgoing
+      // PostCard handler so PostCard's silent MediaPlayer doesn't stay live,
+      // and configure fsPaused.
+      const wasPlaying = activePostId === nowPlaying.postId;
+      console.log(`[LIVIL][FS] TAKE ownership postId=${nowPlaying.postId} wasPlaying=${wasPlaying} fsOpen=${isFullScreenOpen}`);
+      savedHandlersRef.current = handlersRef.current;
       handlersRef.current?.pause();
+      setFsPaused(!wasPlaying);
+      if (wasPlaying) {
+        requestPlay(nowPlaying.postId);
+      }
+      setFsRate(1.0);
+    } else if (trackChanged) {
+      // Track change while we own (next/prev from FloatingPlayer or inside
+      // FS). Auto-play the new track regardless of minimized state.
+      console.log(`[LIVIL][FS] track change while owning postId=${nowPlaying.postId}`);
       setFsPaused(false);
       requestPlay(nowPlaying.postId);
-      registerHandlers({
-        play: () => { console.log('[LIVIL][FS] handler PLAY'); setFsPaused(false); resumePlay(nowPlaying.postId); },
-        pause: () => { console.log('[LIVIL][FS] handler PAUSE'); setFsPaused(true); reportPaused(nowPlaying.postId); },
-        seek: (s: number) => {
-          console.log(`[LIVIL][FS] handler SEEK to=${s.toFixed(1)}s`);
-          positionRef.current = s;
-          videoRef.current?.seek(s);
-        },
-        setRate: () => {},
-      });
-      console.log(`[LIVIL][FS] handlers registered for postId=${nowPlaying.postId}`);
-    } else {
-      console.log('[LIVIL][FS] handoff CLOSE');
-      fsOpenRef.current = false;
-      fsVideoPostIdRef.current = null;
-      setFsPaused(true);
-      if (savedHandlersRef.current) {
-        const handlers = savedHandlersRef.current;
-        savedHandlersRef.current = null;
-        registerHandlers(handlers);
-        handlers.play();
-      } else {
-        unregisterHandlers();
-        console.log('[LIVIL][FS] no saved handlers, unregistered');
-      }
+      // Reset rate so a stuck "2x forward" from the previous track doesn't
+      // bleed into the new one (FloatingPlayer.onEnd of the pan gesture
+      // does setRate(1.0), but if the user lifts mid-track-change that
+      // reset might never fire).
+      setFsRate(1.0);
     }
+
+    fsOwnerPostIdRef.current = nowPlaying.postId;
+    fsOpenRef.current = isFullScreenOpen;
+    fsVideoPostIdRef.current = nowPlaying.postId;
+    if (!alreadyOwns || trackChanged) {
+      initialSeekDone.current = false;
+      // New track = new play session — re-arm the clip-end one-shot so the
+      // loop / advance logic can fire for it.
+      clipEndFiredRef.current = false;
+    }
+
+    // Always re-register so the handler closure has the current postId.
+    registerHandlers({
+      play: () => {
+        console.log('[LIVIL][FS] handler PLAY');
+        clipEndFiredRef.current = false;
+        setFsPaused(false);
+        resumePlay(nowPlaying.postId);
+      },
+      pause: () => { console.log('[LIVIL][FS] handler PAUSE'); setFsPaused(true); reportPaused(nowPlaying.postId); },
+      seek: (s: number) => {
+        console.log(`[LIVIL][FS] handler SEEK to=${s.toFixed(1)}s`);
+        positionRef.current = s;
+        videoRef.current?.seek(s);
+      },
+      setRate: (r: number) => {
+        console.log(`[LIVIL][FS] handler setRate=${r}`);
+        setFsRate(r);
+      },
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullScreenOpen, nowPlaying?.postId]);
+  }, [isFullScreenOpen, nowPlaying?.postId, nowPlaying?.mediaKind]);
 
   // Track postId changes for fsVideoPostIdRef guard (needed for next/prev within FS)
   useEffect(() => {
@@ -1094,17 +1174,41 @@ export default function FullScreenPlayer() {
 
   const handleVideoProgress = useCallback(
     (data: OnProgressData) => {
-      if (fsVideoPostIdRef.current && activePostId === fsVideoPostIdRef.current) {
-        const t = data.currentTime ?? 0;
-        updatePosition(t);
-        // Drive the play tracker from the fullscreen Video as well, so plays
-        // count whether the user is in the feed or fullscreen. The handoff
-        // between PostCard and FullScreenPlayer is exclusive (only one of
-        // them is actually playing audio), so there's no double-counting.
-        trackPlayProgress(fsVideoPostIdRef.current, t);
+      if (!fsVideoPostIdRef.current || activePostId !== fsVideoPostIdRef.current) {
+        return;
+      }
+      const t = data.currentTime ?? 0;
+      updatePosition(t);
+      // Drive the play tracker from the fullscreen Video as well, so plays
+      // count whether the user is in the feed or fullscreen. The handoff
+      // between PostCard and FullScreenPlayer is exclusive (only one of
+      // them is actually playing audio), so there's no double-counting.
+      trackPlayProgress(fsVideoPostIdRef.current, t);
+
+      // Clip-end detection. When the playing track has a clip window, the
+      // user is meant to see only that range — react-native-video doesn't
+      // know about it, so we enforce the upper bound here.
+      //   repeat 'one' → seek back to clip start, keep playing.
+      //   repeat 'all' / 'off' → pause + playNext (queue handles wrap-around).
+      // clipEndFiredRef is a one-shot to avoid re-triggering across the
+      // ~3-4 onProgress events that fire in the last ~250 ms of a clip.
+      const cw = clipWindowRef.current;
+      if (cw && t >= cw.end && !clipEndFiredRef.current) {
+        clipEndFiredRef.current = true;
+        if (repeatMode === 'one') {
+          console.log(`[LIVIL][FS] clip-end repeat-one — looping to ${cw.start.toFixed(2)}s`);
+          positionRef.current = cw.start;
+          videoRef.current?.seek(cw.start);
+          // Re-arm after the seek settles so the next loop cycle is detected.
+          setTimeout(() => { clipEndFiredRef.current = false; }, 300);
+        } else {
+          console.log('[LIVIL][FS] clip-end — calling playNext');
+          setFsPaused(true);
+          playNext();
+        }
       }
     },
-    [updatePosition, activePostId],
+    [updatePosition, activePostId, clipWindowRef, repeatMode, playNext, positionRef],
   );
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -1116,10 +1220,27 @@ export default function FullScreenPlayer() {
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 44;
   const seekRowBottom = playerBottom + FLOAT_D + 24;
-  const panelTranslateY = panelAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [panelHeight, 0],
-  });
+  // Memoize the interpolation node + style array. Without this, every render
+  // (e.g. when activeTab changes from null → 'lyrics') creates a fresh
+  // interpolation and a new style array; React Native re-binds the
+  // Animated.Value to the native view, and during the re-bind the panel
+  // briefly snaps to its non-animated rest position for one frame — that's
+  // the flicker the user sees when opening Lyrics / Queue / Info.
+  const panelTranslateY = useMemo(
+    () => panelAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [panelHeight, 0],
+      extrapolate: 'clamp',
+    }),
+    [panelAnim, panelHeight],
+  );
+  const panelStyle = useMemo(
+    () => [
+      styles.contentPanel,
+      { top: panelTop, transform: [{ translateY: panelTranslateY }] },
+    ],
+    [panelTop, panelTranslateY],
+  );
 
   if (!nowPlaying) { return null; }
 
@@ -1144,20 +1265,51 @@ export default function FullScreenPlayer() {
           <Video
             ref={videoRef}
             source={{ uri: nowPlaying.videoUrl }}
+            // Poster covers the brief gap between source mount and first
+            // decoded frame so the user sees the thumbnail (same image as
+            // PostCard's feed preview) instead of a black flash.
+            poster={
+              nowPlaying.thumbnailUrl
+                ? { source: { uri: nowPlaying.thumbnailUrl }, resizeMode: 'cover' }
+                : undefined
+            }
             style={styles.video}
             resizeMode="cover"
             paused={fsPaused}
+            rate={fsRate}
             onLoad={handleVideoLoad}
             onProgress={handleVideoProgress}
             onEnd={() => {
-              console.log('[LIVIL][FS] onEnd — track finished, calling playNext');
-              setFsPaused(true);
-              playNext();
+              // For clipped tracks the clip-end detector in handleVideoProgress
+              // already fired playNext / loop, so this onEnd is a no-op redundant
+              // signal. The clipEndFiredRef guard keeps us from double-firing.
+              if (clipEndFiredRef.current) {
+                console.log('[LIVIL][FS] onEnd ignored — clip-end already handled');
+                return;
+              }
+              if (repeatMode === 'one') {
+                console.log('[LIVIL][FS] onEnd repeat-one — restarting from 0');
+                positionRef.current = 0;
+                videoRef.current?.seek(0);
+              } else {
+                console.log('[LIVIL][FS] onEnd — calling playNext');
+                setFsPaused(true);
+                playNext();
+              }
             }}
             onBuffer={({ isBuffering: buf }) => {
               console.log(`[LIVIL][FS] onBuffer isBuffering=${buf}`);
             }}
-            progressUpdateInterval={250}
+            onError={(e) => {
+              // Without this, a bad URL / decode failure leaves the player in
+              // a silent stuck state with duration=0 and no seek bar. Surface
+              // it as a toast so the user knows what happened, and advance.
+              console.warn('[LIVIL][FS] video onError', e?.error ?? e);
+              showToast('Could not play this track', { kind: 'error' });
+              setFsPaused(true);
+              playNext();
+            }}
+            progressUpdateInterval={100}
             playInBackground={false}
             playWhenInactive={false}
             ignoreSilentSwitch="ignore"
@@ -1269,7 +1421,7 @@ export default function FullScreenPlayer() {
 
       {/* ── Content panel ── */}
       <Animated.View
-        style={[styles.contentPanel, { top: panelTop, transform: [{ translateY: panelTranslateY }] }]}
+        style={panelStyle}
         pointerEvents={activeTab ? 'box-none' : 'none'}
       >
         <GestureDetector gesture={panelDismissGesture}>

@@ -4,7 +4,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
 
 export const TRACKS_MEDIA_BUCKET = 'tracks-media';
 
-export type TrackMediaKind = 'audio' | 'video' | 'cover';
+export type TrackMediaKind = 'audio' | 'video' | 'cover' | 'thumbnail';
 
 export type PickedFile = {
   uri: string;
@@ -166,7 +166,9 @@ export async function uploadTrackFile(
 
   const arrayBuffer = await readPickedFileAsArrayBuffer(file);
 
-  const contentType = file.type ?? `${kind === 'cover' ? 'image' : kind}/*`;
+  // 'cover' and 'thumbnail' are both image uploads — branch on that.
+  const isImage = kind === 'cover' || kind === 'thumbnail';
+  const contentType = file.type ?? `${isImage ? 'image' : kind}/*`;
 
   await uploadArrayBufferWithProgress(path, arrayBuffer, contentType, accessToken, onProgress);
 
