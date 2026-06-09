@@ -1,0 +1,34 @@
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
+index 4760ea5..7d3bb64 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
+@@ -56,6 +56,18 @@ class VideoPlaybackService : MediaSessionService() {
+         }
+         sourceActivity = from
+ 
++        // Livil patch: keep exactly ONE active media session / notification.
++        // Release any previously-registered session (e.g. a paused video's
++        // lingering session) before adding the new one, so Android never stacks
++        // two media notifications into a swipeable carousel.
++        if (mediaSessionsList.isNotEmpty()) {
++            mediaSessionsList.forEach { (oldPlayer, oldSession) ->
++                hidePlayerNotification(oldPlayer)
++                oldSession.release()
++            }
++            mediaSessionsList.clear()
++        }
++
+         val mediaSession = MediaSession.Builder(this, player)
+             .setId("RNVideoPlaybackService_" + player.hashCode())
+             .setCallback(VideoPlaybackCallback())
+@@ -142,6 +154,10 @@ class VideoPlaybackService : MediaSessionService() {
+                 .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
+                 .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+                 .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
++                // Livil patch: pin the media notification while playing (RNV omits
++                // this on Android 13+, which is why it was swipe-dismissible).
++                // Ongoing while playing, dismissible when paused — like Spotify.
++                .setOngoing(session.player.isPlaying)
+                 .build()
+         } else {
+             val playerId = session.player.hashCode()

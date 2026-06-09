@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { trackPlayProgress } from '../utils/playTracker';
+import { buildNowPlayingMetadata } from '../utils/nowPlayingMetadata';
 
 const AUDIO_BUFFER_CONFIG = {
   minBufferMs: 15_000,
@@ -52,6 +53,10 @@ export default function GlobalAudioPlayer() {
 
   const videoRef = useRef<VideoRef>(null);
   const [paused, setPaused] = useState(true);
+  // Mirror of `paused` readable synchronously inside native-event callbacks
+  // (no stale closure) so we can tell an in-app pause from a lock-screen pause.
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   // Which postId this component is currently responsible for
   const myPostIdRef = useRef<string | null>(null);
@@ -163,6 +168,29 @@ export default function GlobalAudioPlayer() {
     setIsBuffering(e.isBuffering);
   }, [setIsBuffering]);
 
+  // Keep the in-app UI (FloatingPlayer) in sync when the user pauses/plays from
+  // the LOCK SCREEN / notification / headset. RNV's `paused` is a controlled
+  // prop, so a notification pause stops audio but leaves our state thinking it's
+  // playing — we reconcile here. We only act on a genuine discrepancy (native
+  // state != our intended state), so our own pause/resume don't loop.
+  const handlePlaybackStateChanged = useCallback(
+    (e: { isPlaying: boolean; isSeeking: boolean }) => {
+      if (e.isSeeking) { return; }
+      const mine = myPostIdRef.current;
+      if (!mine) { return; }
+      if (e.isPlaying && pausedRef.current) {
+        console.log('[LIVIL][GAP] lock-screen PLAY → sync');
+        setPaused(false);
+        resumePlay(mine);
+      } else if (!e.isPlaying && !pausedRef.current) {
+        console.log('[LIVIL][GAP] lock-screen PAUSE → sync');
+        setPaused(true);
+        reportPaused(mine);
+      }
+    },
+    [resumePlay, reportPaused],
+  );
+
   const handleEnd = useCallback(() => {
     console.log('[LIVIL][GAP] onEnd → playNext');
     playNext();
@@ -176,16 +204,21 @@ export default function GlobalAudioPlayer() {
   return (
     <Video
       ref={videoRef}
-      source={{ uri: nowPlaying.audioUrl }}
+      source={{ uri: nowPlaying.audioUrl, metadata: buildNowPlayingMetadata(nowPlaying) }}
       paused={paused}
       onLoad={handleLoad}
       onProgress={handleProgress}
       onBuffer={handleBuffer}
       onEnd={handleEnd}
+      onPlaybackStateChanged={handlePlaybackStateChanged}
       progressUpdateInterval={250}
       playInBackground
       playWhenInactive
       ignoreSilentSwitch="ignore"
+      // Lock-screen / notification / Control Center media controls. GlobalAudioPlayer
+      // only mounts this <Video> for audio tracks and FullScreenPlayer only mounts its
+      // <Video> for video tracks, so exactly one MediaSession exists at a time.
+      showNotificationControls
       muted={false}
       volume={1.0}
       {...(Platform.OS === 'android'

@@ -14,6 +14,7 @@ import {
   Image,
   ActivityIndicator,
   InteractionManager,
+  AppState,
 } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -26,6 +27,7 @@ import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers 
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
 import { trackPlayProgress } from '../utils/playTracker';
+import { buildNowPlayingMetadata } from '../utils/nowPlayingMetadata';
 import CommentsSheet from './CommentsSheet';
 import {
   fetchUserPlaylists,
@@ -891,6 +893,26 @@ export default function FullScreenPlayer() {
   const playerBottom   = Math.max(SCREEN_H * 0.1, playerTabBarH + 56);
   const convergeY      = SCREEN_H / 2 - playerBottom - FLOAT_D / 2;
 
+  // Rule 3 — when the app is backgrounded or the screen locks while a VIDEO is
+  // open full-screen, auto-minimize the player. The audio keeps playing through
+  // the MediaSession (the video <Video> has playInBackground), and on return the
+  // user sees the floating cover; re-opening FS brings the video back (rule 2).
+  // This is YouTube Music's "video demotes to cover on background" behaviour.
+  // Only on 'background' (true lock / app-switch) — NOT 'inactive', which also
+  // fires for transient Control-Center / notification-shade pulls.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (
+        state === 'background' &&
+        isFullScreenOpen &&
+        nowPlaying?.mediaKind === 'video'
+      ) {
+        closeFullScreenPlayer();
+      }
+    });
+    return () => sub.remove();
+  }, [isFullScreenOpen, nowPlaying?.mediaKind, closeFullScreenPlayer]);
+
   const handleNavigateToUser = useCallback((userId: string) => {
     // Minimize full-screen player — floating player stays visible, music keeps playing.
     closeFullScreenPlayer();
@@ -901,6 +923,25 @@ export default function FullScreenPlayer() {
     // would be undefined there, but dispatch() is available everywhere.
     navigation.dispatch(StackActions.push('UserProfile', { userId }));
   }, [closeFullScreenPlayer, navigation]);
+
+  // Mirror lock-screen / notification / headset play-pause for VIDEO posts into
+  // context so the in-app UI stays in sync (RNV `paused` is a controlled prop).
+  // Acts only on a genuine discrepancy so our own pause/resume don't loop.
+  const handleVideoPlaybackStateChanged = useCallback(
+    (e: { isPlaying: boolean; isSeeking: boolean }) => {
+      if (e.isSeeking) { return; }
+      const mine = fsOwnerPostIdRef.current;
+      if (!mine) { return; }
+      if (e.isPlaying && fsPausedRef.current) {
+        setFsPaused(false);
+        resumePlay(mine);
+      } else if (!e.isPlaying && !fsPausedRef.current) {
+        setFsPaused(true);
+        reportPaused(mine);
+      }
+    },
+    [fsOwnerPostIdRef, resumePlay, reportPaused],
+  );
 
   // Three independent native-driver values replace the old slideAnim/bounceAnim pair.
   // Keeping them separate avoids Animated.add() on interpolated values, which can
@@ -913,6 +954,10 @@ export default function FullScreenPlayer() {
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [fsPaused, setFsPaused] = useState(true);
+  // Mirror of fsPaused readable synchronously inside native-event callbacks so
+  // lock-screen play/pause can be told apart from in-app play/pause.
+  const fsPausedRef = useRef(fsPaused);
+  fsPausedRef.current = fsPaused;
   // Buffering spinner for video. ExoPlayer/AVPlayer fire onBuffer while loading
   // and onReadyForDisplay once the first frame is decodable.
   const [fsBuffering, setFsBuffering] = useState(false);
@@ -1275,7 +1320,7 @@ export default function FullScreenPlayer() {
         {nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl ? (
           <Video
             ref={videoRef}
-            source={{ uri: nowPlaying.videoUrl }}
+            source={{ uri: nowPlaying.videoUrl, metadata: buildNowPlayingMetadata(nowPlaying) }}
             // Poster covers the brief gap between source mount and first
             // decoded frame so the user sees the thumbnail (same image as
             // PostCard's feed preview) instead of a black flash.
@@ -1290,6 +1335,7 @@ export default function FullScreenPlayer() {
             rate={fsRate}
             onLoad={handleVideoLoad}
             onProgress={handleVideoProgress}
+            onPlaybackStateChanged={handleVideoPlaybackStateChanged}
             onEnd={() => {
               // For clipped tracks the clip-end detector in handleVideoProgress
               // already fired playNext / loop, so this onEnd is a no-op redundant
@@ -1326,9 +1372,17 @@ export default function FullScreenPlayer() {
               playNext();
             }}
             progressUpdateInterval={100}
-            playInBackground={false}
-            playWhenInactive={false}
+            // Keep a video's audio alive when the app is backgrounded / the
+            // screen is locked (the frames suspend, the audio continues) so the
+            // lock-screen MediaSession keeps playing — the "demote to cover"
+            // behaviour. Was false (video paused on background) before media controls.
+            playInBackground
+            playWhenInactive
             ignoreSilentSwitch="ignore"
+            // Lock-screen / notification / Control Center controls for video posts.
+            // Mutually exclusive with GlobalAudioPlayer's <Video> (audio vs video
+            // mediaKind) so only one MediaSession is ever live.
+            showNotificationControls
             muted={false}
             volume={1.0}
             {...(Platform.OS === 'android'

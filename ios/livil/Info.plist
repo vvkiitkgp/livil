@@ -40,6 +40,12 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<!-- Keeps audio (incl. a video's audio track) playing when backgrounded/locked
+		     and powers the lock-screen / Control Center Now Playing controls + PiP. -->
+		<string>audio</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
