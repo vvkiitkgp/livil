@@ -50,6 +50,10 @@ const KICK_DECAY_MS = 230;   // ease DOWN slow — the "ring out"
 // quiet and loud songs and doesn't machine-gun.
 const FLUX_FLOOR = 0.22;
 const FLUX_RATIO = 1.4;
+// Cap the adaptive threshold below 1: flux is normalized to [0,1], so without this
+// a high fluxEma in a dense section pushes the threshold ≥1 and kicks could NEVER
+// fire (exactly when they should). Capping keeps the strongest onsets firing.
+const FLUX_THRESH_CAP = 0.9;
 const MIN_KICK_GAP_MS = 110;  // ≤ ~9 kicks/sec — avoids double-firing one beat
 
 const ENV_TICK_MS = 33;       // feature sampling cadence (~30Hz) — cheap JS poll
@@ -71,6 +75,9 @@ const SPEED_FAST = SPEED_BASE * 2.3;     // bright/high → faster, tighter scro
 // the wave by exactly one period, so the scroll loops with no visible seam.
 function buildPath(phase: number, amp: number, width: number): string {
   'worklet';
+  // Guard against a zero/negative/NaN width (e.g. a transient layout pass): the
+  // wavenumber would be Infinity → NaN coordinates → a silently-broken path.
+  if (!(width > 0)) { return ''; }
   const midY = HEIGHT / 2;
   const k = (WAVELENGTHS * 2 * Math.PI) / width;
   let d = '';
@@ -167,7 +174,7 @@ export default function WaveVisualizer({
         speed.value = withTiming(SPEED_SLOW + (SPEED_FAST - SPEED_SLOW) * f.centroid, { duration: 120 });
         // Onset → kick. Adaptive, rising-edge, rate-limited.
         fluxEma = fluxEma * 0.9 + f.flux * 0.1;
-        const threshold = Math.max(FLUX_FLOOR, fluxEma * FLUX_RATIO);
+        const threshold = Math.min(FLUX_THRESH_CAP, Math.max(FLUX_FLOOR, fluxEma * FLUX_RATIO));
         const above = f.flux > threshold;
         if (above && !prevAbove && elapsed - lastKickAt >= MIN_KICK_GAP_MS) {
           lastKickAt = elapsed;

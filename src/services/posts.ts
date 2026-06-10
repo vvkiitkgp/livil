@@ -84,6 +84,11 @@ type RawPostRow = {
   } | null;
 };
 
+// NOTE: do NOT add `waveform_peaks` to the tracks sub-select here (or in
+// SEARCH_POST_SELECT). It's a large per-row jsonb (~100 KB for a long track) and
+// these feed queries pull dozens of rows — including it would balloon every feed
+// payload into megabytes. The visualizer fetches it lazily for the ACTIVE track
+// only, via getOrAnalyzeWaveform (see src/services/tracks.ts).
 const POST_SELECT = `
   id,
   kind,

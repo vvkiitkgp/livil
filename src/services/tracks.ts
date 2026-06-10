@@ -107,14 +107,21 @@ function parseWaveformData(raw: unknown): WaveformData | null {
   if (typeof obj.hz !== 'number' || obj.hz <= 0) { return null; }
   if (!Array.isArray(obj.peaks) || obj.peaks.length === 0) { return null; }
   if (!obj.peaks.every(p => typeof p === 'number')) { return null; }
+  const peaks = obj.peaks as number[];
+  // A v2 channel must match peaks length or it's dropped — a misaligned channel
+  // would otherwise lerp into the wrong positions (or flatline past its end).
+  const aligned = (v: unknown): number[] | undefined => {
+    const a = numArray(v);
+    return a && a.length === peaks.length ? a : undefined;
+  };
   return {
     version: typeof obj.version === 'number' ? obj.version : 0,
     hz: obj.hz,
-    peaks: obj.peaks as number[],
+    peaks,
     sr: typeof obj.sr === 'number' ? obj.sr : undefined,
-    bass: numArray(obj.bass),
-    flux: numArray(obj.flux),
-    centroid: numArray(obj.centroid),
+    bass: aligned(obj.bass),
+    flux: aligned(obj.flux),
+    centroid: aligned(obj.centroid),
   };
 }
 
@@ -182,8 +189,17 @@ const waveformInFlight = new Map<string, Promise<WaveformData | null>>();
  * unanalyzed) decode the remote URL on-device, persist, and cache. Returns null
  * when nothing is usable yet (the wave then stays decorative). Never throws.
  */
-export async function getOrAnalyzeWaveform(trackId: string, url: string | undefined): Promise<WaveformData | null> {
+export async function getOrAnalyzeWaveform(
+  trackId: string,
+  url: string | undefined,
+  mediaKind: 'audio' | 'video' = 'audio',
+): Promise<WaveformData | null> {
   if (!trackId) { return null; }
+  // AUDIO-ONLY hard guard, enforced at the API boundary (not just at the
+  // FloatingPlayer call site): decoding a video URL pulls the whole (huge) file
+  // into memory → OutOfMemoryError → the process is killed. A future caller that
+  // passes a video URL gets a safe null + a decorative wave instead of a crash.
+  if (mediaKind !== 'audio') { return null; }
   const cached = waveformCache.get(trackId);
   if (cached) { return cached; }
   const inflight = waveformInFlight.get(trackId);
@@ -236,8 +252,10 @@ function kickoffWaveformAnalysisFromLocalFile(trackId: string, file: PickedFile 
         waveformCache.set(trackId, data);
         await backfillWaveformPeaks(trackId, data);
       }
-    } catch {
-      // Best-effort; lazy backfill on first play covers any failure here.
+    } catch (err) {
+      // Best-effort; lazy backfill on first play covers any failure here. Log it
+      // so an upload-time decode/URI failure isn't completely invisible.
+      console.log(`[LIVIL][WAVE] upload analyze failed trackId=${trackId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   })().catch(() => {});
 }

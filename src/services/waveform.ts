@@ -84,6 +84,15 @@ const FLUX_HI_HZ = 200;
 const NORMALIZE_PERCENTILE = 0.95;
 /** Perceptual lift (<1): brightens quiet sections so the line still moves softly. */
 const ENVELOPE_GAMMA = 0.65;
+/** Below this 95th-percentile RMS we treat the track as silence/noise and skip it
+ *  (→ decorative wave) rather than animating quantization noise. */
+const RMS_SILENCE_FLOOR = 0.004;
+/** Skip analysis for very long tracks — bounds the decode memory + work so we
+ *  never risk an OOM / multi-second stall (they fall back to the decorative wave). */
+const MAX_ANALYZE_SECONDS = 600; // 10 min — covers virtually every song
+/** Yield to the event loop every N FFT frames so the analysis pass NEVER blocks
+ *  the JS thread (UI / audio-engine callbacks) even on a 10-minute track. */
+const YIELD_EVERY_FRAMES = 128;
 
 function clamp01(n: number): number {
   return n < 0 ? 0 : n > 1 ? 1 : n;
@@ -142,6 +151,10 @@ export async function analyzeWaveformPeaks(source: string): Promise<WaveformData
     const channels = buffer.numberOfChannels;
     const rate = buffer.sampleRate || TARGET_SAMPLE_RATE;
     if (frames <= 0 || channels <= 0) { return null; }
+    if (frames / rate > MAX_ANALYZE_SECONDS) {
+      console.log(`[LIVIL][WAVE] skip analysis: ${(frames / rate).toFixed(0)}s > ${MAX_ANALYZE_SECONDS}s cap`);
+      return null;
+    }
 
     // Downmix to one mono buffer (average channels) — used by both RMS and FFT.
     const mono = new Float32Array(frames);
@@ -196,7 +209,15 @@ export async function analyzeWaveformPeaks(source: string): Promise<WaveformData
     const cnt = new Int32Array(bucketCount);
     const fluxMax = new Float32Array(bucketCount);
 
+    let sinceYield = 0;
     for (let start = 0; start + FFT_SIZE <= frames; start += FFT_HOP) {
+      // Cooperative yield: the FFT pass is the heavy part (thousands of FFTs on a
+      // long track). Yielding keeps the JS thread responsive so a cache-miss
+      // re-analysis on play never stalls the UI or the audio engine.
+      if (++sinceYield >= YIELD_EVERY_FRAMES) {
+        sinceYield = 0;
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
       for (let j = 0; j < FFT_SIZE; j++) { win[j] = mono[start + j]! * hann[j]!; }
       fft.realTransform(out, win);
 
@@ -240,9 +261,10 @@ export async function analyzeWaveformPeaks(source: string): Promise<WaveformData
       centRaw[b] = c > 0 ? centAcc[b]! / c : 0;
     }
 
-    // RMS reference doubles as the "is there any signal" gate.
+    // RMS reference doubles as the silence/noise gate — skip near-silent tracks
+    // (e.g. RMS ~0.001 everywhere) so we don't animate quantization noise.
     const rmsSorted = Array.from(rms).sort((a, b) => a - b);
-    if (percentileOfSorted(rmsSorted, NORMALIZE_PERCENTILE) <= 0) { return null; }
+    if (percentileOfSorted(rmsSorted, NORMALIZE_PERCENTILE) < RMS_SILENCE_FLOOR) { return null; }
 
     return {
       version: WAVEFORM_VERSION,
