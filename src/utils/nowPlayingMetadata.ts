@@ -31,3 +31,30 @@ export function buildNowPlayingMetadata(info: NowPlayingInfo): NowPlayingMetadat
     ...(imageUri ? { imageUri } : {}),
   };
 }
+
+/**
+ * Serialises the play queue + current index for react-native-video's
+ * `mediaQueueJson` prop (Android). The native playback service uses it to load
+ * the next/previous track DIRECTLY on the ExoPlayer when the user taps the
+ * notification while the app is backgrounded — where a React `source`-prop
+ * change would be deferred until the app returns to the foreground.
+ *
+ * The queue must be in play order and `index` must be the position of the
+ * currently-playing track within it, so the service's index stays in lock-step
+ * with the JS queue.
+ */
+export function buildMediaQueueJson(
+  queue: NowPlayingInfo[],
+  index: number,
+): string {
+  const items = queue.map(t => ({
+    id: t.postId,
+    uri: t.audioUrl ?? t.videoUrl ?? '',
+    title: t.title,
+    artist: t.artistName,
+    artwork: t.coverArtUrl ?? t.thumbnailUrl ?? undefined,
+    clipStartMs: t.clipStartSec != null ? Math.round(t.clipStartSec * 1000) : 0,
+    clipEndMs: t.clipEndSec != null ? Math.round(t.clipEndSec * 1000) : 0,
+  }));
+  return JSON.stringify({ index, items });
+}

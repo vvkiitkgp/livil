@@ -1,11 +1,254 @@
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
+index 6012932..b372c2a 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
+@@ -43,7 +43,9 @@ enum class EventTypes(val eventName: String) {
+     EVENT_TEXT_TRACK_DATA_CHANGED("onTextTrackDataChanged"),
+     EVENT_VIDEO_TRACKS("onVideoTracks"),
+     EVENT_ON_RECEIVE_AD_EVENT("onReceiveAdEvent"),
+-    EVENT_PICTURE_IN_PICTURE_STATUS_CHANGED("onPictureInPictureStatusChanged");
++    EVENT_PICTURE_IN_PICTURE_STATUS_CHANGED("onPictureInPictureStatusChanged"),
++    EVENT_NEXT_TRACK("onVideoNextTrack"),
++    EVENT_PREVIOUS_TRACK("onVideoPreviousTrack");
+ 
+     companion object {
+         fun toMap() =
+@@ -93,6 +95,13 @@ class VideoEventEmitter {
+     lateinit var onReceiveAdEvent: (adEvent: String, adData: Map<String?, String?>?) -> Unit
+     lateinit var onPictureInPictureStatusChanged: (isActive: Boolean) -> Unit
+ 
++    // Livil patch: fired from VideoPlaybackService when the lock-screen / notification
++    // next/previous button is pressed. Nullable (not lateinit) because the playback
++    // service invokes them via `?.` from a static registry and a player can be
++    // registered before addEventEmitters runs / after teardown.
++    var onVideoNextTrack: (() -> Unit)? = null
++    var onVideoPreviousTrack: (() -> Unit)? = null
++
+     fun addEventEmitters(reactContext: ThemedReactContext, view: ReactExoplayerView) {
+         val dispatcher = UIManagerHelper.getEventDispatcherForReactTag(reactContext, view.id)
+         val surfaceId = UIManagerHelper.getSurfaceId(reactContext)
+@@ -309,6 +318,13 @@ class VideoEventEmitter {
+                     putBoolean("isActive", isActive)
+                 }
+             }
++            // Livil patch: emit the lock-screen next/previous-track presses.
++            onVideoNextTrack = {
++                event.dispatch(EventTypes.EVENT_NEXT_TRACK)
++            }
++            onVideoPreviousTrack = {
++                event.dispatch(EventTypes.EVENT_PREVIOUS_TRACK)
++            }
+         }
+     }
+ 
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
+index e16ac96..c6a2aab 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
+@@ -251,6 +251,9 @@ public class ReactExoplayerView extends FrameLayout implements
+     private boolean preventsDisplaySleepDuringVideoPlayback = true;
+     private float mProgressUpdateInterval = 250.0f;
+     protected boolean playInBackground = false;
++    // Livil patch: JSON-encoded play-queue + index, forwarded to the playback
++    // service so notification next/previous can load tracks natively (background).
++    private String mediaQueueJson = null;
+     private boolean mReportBandwidth = false;
+     private boolean controls = false;
+ 
+@@ -938,8 +941,13 @@ public class ReactExoplayerView extends FrameLayout implements
+                 try {
+                     Activity currentActivity = themedReactContext.getCurrentActivity();
+                     if (currentActivity != null) {
++                        // Livil patch: pass this view's emitter so the playback service
++                        // can forward lock-screen next/previous presses to JS.
+                         playbackServiceBinder.getService().registerPlayer(player,
+-                                (Class<Activity>) currentActivity.getClass());
++                                (Class<Activity>) currentActivity.getClass(), eventEmitter);
++                        // Livil patch: hand the current JS play-queue to the service so
++                        // notification next/previous can load tracks natively in the bg.
++                        playbackServiceBinder.getService().setMediaQueue(mediaQueueJson);
+                     } else {
+                         // Handle the case where currentActivity is null
+                         DebugLog.w(TAG, "Could not register ExoPlayer: currentActivity is null");
+@@ -2061,9 +2069,23 @@ public class ReactExoplayerView extends FrameLayout implements
+             }
+ 
+             if (!isSourceEqual) {
+-                hasVideoEnded = false;
+-                playerNeedsSource = true;
+-                initializePlayer();
++                // Livil patch: if the playback service already loaded this exact URI
++                // natively (a background notification skip), the deferred source-prop
++                // update that lands on foreground must NOT re-initialize the player —
++                // that would restart the track the user already skipped to.
++                boolean alreadyLoaded = player != null
++                        && player.getCurrentMediaItem() != null
++                        && player.getCurrentMediaItem().localConfiguration != null
++                        && source.getUri() != null
++                        && source.getUri().toString().equals(
++                                player.getCurrentMediaItem().localConfiguration.uri.toString());
++                if (alreadyLoaded) {
++                    playerNeedsSource = false;
++                } else {
++                    hasVideoEnded = false;
++                    playerNeedsSource = true;
++                    initializePlayer();
++                }
+             }
+         } else {
+             clearSrc();
+@@ -2616,6 +2638,20 @@ public class ReactExoplayerView extends FrameLayout implements
+         this.playInBackground = playInBackground;
+     }
+ 
++    // Livil patch: receive the JS play-queue (JSON) and forward it to the playback
++    // service so notification next/previous can load tracks natively in the
++    // background (where a React source-prop change would otherwise be deferred).
++    public void setMediaQueueJson(String json) {
++        this.mediaQueueJson = json;
++        if (playbackServiceBinder != null) {
++            try {
++                playbackServiceBinder.getService().setMediaQueue(json);
++            } catch (Exception e) {
++                DebugLog.w(TAG, "setMediaQueueJson forward failed: " + e.getMessage());
++            }
++        }
++    }
++
+     public void setDisableFocus(boolean disableFocus) {
+         this.disableFocus = disableFocus;
+     }
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
+index b9e0656..d61fa9e 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
+@@ -43,6 +43,7 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
+         private const val PROP_RATE = "rate"
+         private const val PROP_MAXIMUM_BIT_RATE = "maxBitRate"
+         private const val PROP_PLAY_IN_BACKGROUND = "playInBackground"
++        private const val PROP_MEDIA_QUEUE_JSON = "mediaQueueJson"
+         private const val PROP_DISABLE_FOCUS = "disableFocus"
+         private const val PROP_BUFFERING_STRATEGY = "bufferingStrategy"
+         private const val PROP_DISABLE_DISCONNECT_ERROR = "disableDisconnectError"
+@@ -195,6 +196,11 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
+         videoView.setPlayInBackground(playInBackground)
+     }
+ 
++    @ReactProp(name = PROP_MEDIA_QUEUE_JSON)
++    fun setMediaQueueJson(videoView: ReactExoplayerView, json: String?) {
++        videoView.setMediaQueueJson(json)
++    }
++
+     @ReactProp(name = PROP_DISABLE_FOCUS, defaultBoolean = false)
+     fun setDisableFocus(videoView: ReactExoplayerView, disableFocus: Boolean) {
+         videoView.setDisableFocus(disableFocus)
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt
+index b10dfb5..83474f1 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt
+@@ -16,13 +16,29 @@ class VideoPlaybackCallback : MediaSession.Callback {
+             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                 .setAvailablePlayerCommands(
+                     MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+-                        .add(Player.COMMAND_SEEK_FORWARD)
+-                        .add(Player.COMMAND_SEEK_BACK)
++                        // Livil patch: a music-app lock screen shows prev / play-pause /
++                        // next only. Suppress the system's auto prev/next (a single media
++                        // item still advertises "previous" = restart) and the ±10s seek
++                        // commands, so they don't clutter or steal slots from our custom
++                        // track-skip buttons. The scrubber still seeks within a track.
++                        .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
++                        .remove(Player.COMMAND_SEEK_TO_NEXT)
++                        .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
++                        .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
++                        .remove(Player.COMMAND_SEEK_FORWARD)
++                        .remove(Player.COMMAND_SEEK_BACK)
+                         .build()
+                 ).setAvailableSessionCommands(
+                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                         .add(SessionCommand(COMMAND.SEEK_FORWARD.stringValue, Bundle.EMPTY))
+                         .add(SessionCommand(COMMAND.SEEK_BACKWARD.stringValue, Bundle.EMPTY))
++                        // Livil patch: permit the next/previous custom buttons. We do
++                        // NOT add Player.COMMAND_SEEK_TO_NEXT/PREVIOUS — those would make
++                        // the system render its own arrows wired to player.seekToNext()
++                        // (a no-op for RNV's single media item). Custom session commands
++                        // route through onCustomCommand -> handleCommand -> JS emitter.
++                        .add(SessionCommand(COMMAND.SEEK_TO_NEXT.stringValue, Bundle.EMPTY))
++                        .add(SessionCommand(COMMAND.SEEK_TO_PREVIOUS.stringValue, Bundle.EMPTY))
+                         .build()
+                 )
+                 .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..7d3bb64 100644
+index 4760ea5..77e3dc2 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-@@ -56,6 +56,18 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -12,16 +12,21 @@ import android.os.Binder
+ import android.os.Build
+ import android.os.Bundle
+ import android.os.IBinder
++import android.net.Uri
+ import androidx.core.app.NotificationCompat
++import androidx.media3.common.MediaItem
++import androidx.media3.common.MediaMetadata
+ import androidx.media3.exoplayer.ExoPlayer
+ import androidx.media3.session.CommandButton
+ import androidx.media3.session.MediaSession
+ import androidx.media3.session.MediaSessionService
+ import androidx.media3.session.MediaStyleNotificationHelper
+ import androidx.media3.session.SessionCommand
++import com.brentvatne.common.react.VideoEventEmitter
+ import com.brentvatne.common.toolbox.DebugLog
+ import com.brentvatne.react.R
+ import okhttp3.internal.immutableListOf
++import org.json.JSONObject
+ 
+ class PlaybackServiceBinder(val service: VideoPlaybackService) : Binder()
+ 
+@@ -33,6 +38,9 @@ class VideoPlaybackService : MediaSessionService() {
+     // Controls for Android 13+ - see buildNotification function
+     private val commandSeekForward = SessionCommand(COMMAND.SEEK_FORWARD.stringValue, Bundle.EMPTY)
+     private val commandSeekBackward = SessionCommand(COMMAND.SEEK_BACKWARD.stringValue, Bundle.EMPTY)
++    // Livil patch: next/previous track session commands.
++    private val commandSeekToNext = SessionCommand(COMMAND.SEEK_TO_NEXT.stringValue, Bundle.EMPTY)
++    private val commandSeekToPrevious = SessionCommand(COMMAND.SEEK_TO_PREVIOUS.stringValue, Bundle.EMPTY)
+ 
+     @SuppressLint("PrivateResource")
+     private val seekForwardBtn = CommandButton.Builder()
+@@ -48,18 +56,54 @@ class VideoPlaybackService : MediaSessionService() {
+         .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
+         .build()
+ 
++    // Livil patch: notification next/previous-track buttons. They forward to JS
++    // (onNextTrack / onPreviousTrack) rather than doing a native playlist seek,
++    // because RNV runs a single media item per player.
++    @SuppressLint("PrivateResource")
++    private val seekToNextBtn = CommandButton.Builder()
++        .setDisplayName("next")
++        .setSessionCommand(commandSeekToNext)
++        .setIconResId(androidx.media3.session.R.drawable.media3_icon_next)
++        .build()
++
++    @SuppressLint("PrivateResource")
++    private val seekToPreviousBtn = CommandButton.Builder()
++        .setDisplayName("previous")
++        .setSessionCommand(commandSeekToPrevious)
++        .setIconResId(androidx.media3.session.R.drawable.media3_icon_previous)
++        .build()
++
+     // Player Registry
+ 
+-    fun registerPlayer(player: ExoPlayer, from: Class<Activity>) {
++    fun registerPlayer(player: ExoPlayer, from: Class<Activity>, emitter: VideoEventEmitter? = null) {
+         if (mediaSessionsList.containsKey(player)) {
+             return
          }
          sourceActivity = from
- 
++        // Livil patch: this view's emitter forwards notification next/previous
++        // presses to JS, and currentPlayer is the raw ExoPlayer we drive directly
++        // for background skips. Single-session model => just track the current one.
++        currentEmitter = emitter
++        currentPlayer = player
++
 +        // Livil patch: keep exactly ONE active media session / notification.
 +        // Release any previously-registered session (e.g. a paused video's
 +        // lingering session) before adding the new one, so Android never stacks
@@ -17,11 +260,74 @@ index 4760ea5..7d3bb64 100644
 +            }
 +            mediaSessionsList.clear()
 +        }
-+
+ 
          val mediaSession = MediaSession.Builder(this, player)
              .setId("RNVideoPlaybackService_" + player.hashCode())
              .setCallback(VideoPlaybackCallback())
-@@ -142,6 +154,10 @@ class VideoPlaybackService : MediaSessionService() {
+-            .setCustomLayout(immutableListOf(seekForwardBtn, seekBackwardBtn))
++            // Livil patch: music-app layout — just previous + next track (no
++            // +/-10s seek buttons), so the lock screen reads prev | play/pause | next.
++            .setCustomLayout(immutableListOf(seekToPreviousBtn, seekToNextBtn))
+             .build()
+ 
+         mediaSessionsList[player] = mediaSession
+@@ -73,12 +117,55 @@ class VideoPlaybackService : MediaSessionService() {
+         hidePlayerNotification(player)
+         val session = mediaSessionsList.remove(player)
+         session?.release()
++        if (currentPlayer === player) {
++            currentPlayer = null
++        }
+         if (mediaSessionsList.isEmpty()) {
++            currentEmitter = null
++            currentQueue = emptyList()
+             cleanup()
+             stopSelf()
+         }
+     }
+ 
++    // Livil patch: the active <Video> pushes its JS play-queue here (as JSON) so a
++    // notification next/previous press can load the target track natively without
++    // waiting for a (background-deferred) React source-prop update.
++    fun setMediaQueue(json: String?) {
++        if (json.isNullOrEmpty()) {
++            currentQueue = emptyList()
++            return
++        }
++        try {
++            val obj = JSONObject(json)
++            val index = obj.optInt("index", 0)
++            val itemsArr = obj.optJSONArray("items")
++            val list = mutableListOf<QueueItem>()
++            if (itemsArr != null) {
++                for (i in 0 until itemsArr.length()) {
++                    val it = itemsArr.getJSONObject(i)
++                    val uri = it.optString("uri")
++                    if (uri.isEmpty()) continue
++                    list.add(
++                        QueueItem(
++                            id = it.optString("id"),
++                            uri = uri,
++                            title = it.optString("title").takeIf { s -> s.isNotEmpty() },
++                            artist = it.optString("artist").takeIf { s -> s.isNotEmpty() },
++                            artwork = it.optString("artwork").takeIf { s -> s.isNotEmpty() },
++                            clipStartMs = it.optLong("clipStartMs", 0),
++                            clipEndMs = it.optLong("clipEndMs", 0)
++                        )
++                    )
++                }
++            }
++            currentQueue = list
++            currentQueueIndex = index.coerceIn(0, (list.size - 1).coerceAtLeast(0))
++        } catch (e: Exception) {
++            DebugLog.w(TAG, "[LIVIL] setMediaQueue parse error: ${e.message}")
++        }
++    }
++
+     // Callbacks
+ 
+     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
+@@ -142,6 +229,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -32,3 +338,423 @@ index 4760ea5..7d3bb64 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
+@@ -273,6 +364,78 @@ class VideoPlaybackService : MediaSessionService() {
+     }
+ 
+     companion object {
++        // Livil patch: bridge from the (separate) MediaSessionService back to the
++        // active ReactExoplayerView's event emitter so notification next/previous
++        // presses reach JS. Our single-session model (registerPlayer evicts any
++        // prior session) guarantees exactly one active player, so a single
++        // reference is enough — and crucially avoids keying by a player instance:
++        // session.player is a media3 PlayerWrapper, NOT the ExoPlayer we registered,
++        // so a map lookup by ExoPlayer would always miss. Static so the companion
++        // handleCommand can reach it.
++        @Volatile
++        var currentEmitter: VideoEventEmitter? = null
++
++        // Livil patch: native queue so notification next/previous can load the
++        // target track DIRECTLY on the ExoPlayer — works while the app is
++        // backgrounded, where a React `source` prop change would be deferred.
++        // currentPlayer is the RAW ExoPlayer (not the media3 PlayerWrapper that
++        // session.player returns) so setMediaItem isn't blocked by command perms.
++        @Volatile
++        var currentPlayer: ExoPlayer? = null
++        @Volatile
++        var currentQueue: List<QueueItem> = emptyList()
++        @Volatile
++        var currentQueueIndex: Int = 0
++
++        data class QueueItem(
++            val id: String,
++            val uri: String,
++            val title: String?,
++            val artist: String?,
++            val artwork: String?,
++            val clipStartMs: Long,
++            val clipEndMs: Long
++        )
++
++        // Build a MediaItem for a queued track, applying a clip window if present.
++        fun buildQueueMediaItem(item: QueueItem): MediaItem {
++            val metadata = MediaMetadata.Builder()
++                .setTitle(item.title)
++                .setArtist(item.artist)
++                .apply { item.artwork?.let { setArtworkUri(Uri.parse(it)) } }
++                .build()
++            val builder = MediaItem.Builder()
++                .setUri(item.uri)
++                .setMediaMetadata(metadata)
++            if (item.clipStartMs > 0 || item.clipEndMs > 0) {
++                builder.setClippingConfiguration(
++                    MediaItem.ClippingConfiguration.Builder()
++                        .setStartPositionMs(item.clipStartMs)
++                        .apply { if (item.clipEndMs > 0) setEndPositionMs(item.clipEndMs) }
++                        .build()
++                )
++            }
++            return builder.build()
++        }
++
++        // Load the track `delta` steps away natively. Returns true if it handled
++        // the skip; false (out of range) so the caller can fall back to JS for
++        // wrap/repeat semantics.
++        fun nativeSkip(delta: Int): Boolean {
++            val player = currentPlayer ?: return false
++            val target = currentQueueIndex + delta
++            if (target < 0 || target >= currentQueue.size) {
++                return false
++            }
++            val item = currentQueue[target]
++            player.setMediaItem(buildQueueMediaItem(item))
++            player.prepare()
++            player.playWhenReady = true
++            currentQueueIndex = target
++            DebugLog.w(TAG, "[LIVIL] nativeSkip -> idx=$target id=${item.id}")
++            return true
++        }
++
+         private const val SEEK_INTERVAL_MS = 10000L
+         private const val TAG = "VideoPlaybackService"
+         private const val PLACEHOLDER_NOTIFICATION_ID = 9999
+@@ -283,6 +446,8 @@ class VideoPlaybackService : MediaSessionService() {
+             NONE("NONE"),
+             SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
+             SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
++            SEEK_TO_NEXT("COMMAND_SEEK_TO_NEXT"),
++            SEEK_TO_PREVIOUS("COMMAND_SEEK_TO_PREVIOUS"),
+             TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
+             PLAY("COMMAND_PLAY"),
+             PAUSE("COMMAND_PAUSE")
+@@ -292,6 +457,8 @@ class VideoPlaybackService : MediaSessionService() {
+             when (value) {
+                 COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
+                 COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
++                COMMAND.SEEK_TO_NEXT.stringValue -> COMMAND.SEEK_TO_NEXT
++                COMMAND.SEEK_TO_PREVIOUS.stringValue -> COMMAND.SEEK_TO_PREVIOUS
+                 COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
+                 COMMAND.PLAY.stringValue -> COMMAND.PLAY
+                 COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
+@@ -303,6 +470,29 @@ class VideoPlaybackService : MediaSessionService() {
+             when (command) {
+                 COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
+                 COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
++                // Livil patch: next/previous are NOT native playlist ops (RNV plays
++                // one media item per player). Forward the press to JS so the RN
++                // layer can swap the source / advance the app's own queue.
++                COMMAND.SEEK_TO_NEXT -> {
++                    // Load the next track natively (works backgrounded), then notify
++                    // JS so it advances its own queue state in lock-step.
++                    val handled = nativeSkip(1)
++                    DebugLog.w(TAG, "[LIVIL] SEEK_TO_NEXT nativeHandled=$handled emitter=${currentEmitter != null}")
++                    currentEmitter?.onVideoNextTrack?.invoke()
++                }
++                COMMAND.SEEK_TO_PREVIOUS -> {
++                    // Match the app's "previous" semantics: restart the current
++                    // track if >3s in, else load the previous track.
++                    val player = currentPlayer
++                    val handled = if (player != null && player.currentPosition > 3000) {
++                        player.seekTo(0)
++                        true
++                    } else {
++                        nativeSkip(-1)
++                    }
++                    DebugLog.w(TAG, "[LIVIL] SEEK_TO_PREVIOUS handled=$handled emitter=${currentEmitter != null}")
++                    currentEmitter?.onVideoPreviousTrack?.invoke()
++                }
+                 COMMAND.TOGGLE_PLAY -> handleCommand(if (session.player.isPlaying) COMMAND.PAUSE else COMMAND.PLAY, session)
+                 COMMAND.PLAY -> session.player.play()
+                 COMMAND.PAUSE -> session.player.pause()
+diff --git a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
+index 7927c37..633657e 100644
+--- a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
++++ b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
+@@ -19,6 +19,13 @@ class NowPlayingInfoCenterManager {
+     private var playbackPositionTarget: Any?
+     private var seekTarget: Any?
+     private var togglePlayPauseTarget: Any?
++    private var nextTrackTarget: Any?
++    private var previousTrackTarget: Any?
++
++    // Livil patch: per-AVPlayer callbacks so the owning RCTVideo can react to
++    // lock-screen next/previous-track commands (manager only holds AVPlayers).
++    private var nextTrackHandlers: [Int: () -> Void] = [:]
++    private var previousTrackHandlers: [Int: () -> Void] = [:]
+ 
+     private let remoteCommandCenter = MPRemoteCommandCenter.shared()
+ 
+@@ -81,9 +88,33 @@ class NowPlayingInfoCenterManager {
+         }
+     }
+ 
++    // Livil patch: RCTVideo registers these alongside registerPlayer(player:) so
++    // the active view can forward lock-screen next/previous-track presses to JS.
++    func setTrackCommandHandlers(
++        player: AVPlayer,
++        onNextTrack: @escaping () -> Void,
++        onPreviousTrack: @escaping () -> Void
++    ) {
++        nextTrackHandlers[player.hashValue] = onNextTrack
++        previousTrackHandlers[player.hashValue] = onPreviousTrack
++        if currentPlayer != nil {
++            registerCommandTargets()
++        }
++    }
++
++    func removeTrackCommandHandlers(player: AVPlayer) {
++        nextTrackHandlers.removeValue(forKey: player.hashValue)
++        previousTrackHandlers.removeValue(forKey: player.hashValue)
++        if currentPlayer != nil {
++            registerCommandTargets()
++        }
++    }
++
+     func cleanup() {
+         observers.removeAll()
+         players.removeAllObjects()
++        nextTrackHandlers.removeAll()
++        previousTrackHandlers.removeAll()
+ 
+         if let playbackObserver {
+             currentPlayer?.removeTimeObserver(playbackObserver)
+@@ -188,6 +219,37 @@ class NowPlayingInfoCenterManager {
+ 
+             return .success
+         }
++
++        // Livil patch: lock-screen next/previous-track commands. Enabled only when
++        // a handler is registered for the current player. NOTE: enabling these
++        // makes iOS show the |<< >>| track buttons on the lock screen INSTEAD of
++        // the +/-10s skip-forward/back arrows.
++        let hasNext = currentPlayer.flatMap { nextTrackHandlers[$0.hashValue] } != nil
++        let hasPrevious = currentPlayer.flatMap { previousTrackHandlers[$0.hashValue] } != nil
++
++        remoteCommandCenter.nextTrackCommand.isEnabled = hasNext
++        if hasNext {
++            nextTrackTarget = remoteCommandCenter.nextTrackCommand.addTarget { [weak self] _ in
++                guard let self, let player = self.currentPlayer,
++                      let handler = self.nextTrackHandlers[player.hashValue] else {
++                    return .commandFailed
++                }
++                handler()
++                return .success
++            }
++        }
++
++        remoteCommandCenter.previousTrackCommand.isEnabled = hasPrevious
++        if hasPrevious {
++            previousTrackTarget = remoteCommandCenter.previousTrackCommand.addTarget { [weak self] _ in
++                guard let self, let player = self.currentPlayer,
++                      let handler = self.previousTrackHandlers[player.hashValue] else {
++                    return .commandFailed
++                }
++                handler()
++                return .success
++            }
++        }
+     }
+ 
+     private func invalidateCommandTargets() {
+@@ -197,6 +259,10 @@ class NowPlayingInfoCenterManager {
+         remoteCommandCenter.skipBackwardCommand.removeTarget(skipBackwardTarget)
+         remoteCommandCenter.changePlaybackPositionCommand.removeTarget(playbackPositionTarget)
+         remoteCommandCenter.togglePlayPauseCommand.removeTarget(togglePlayPauseTarget)
++        remoteCommandCenter.nextTrackCommand.removeTarget(nextTrackTarget)
++        remoteCommandCenter.previousTrackCommand.removeTarget(previousTrackTarget)
++        nextTrackTarget = nil
++        previousTrackTarget = nil
+     }
+ 
+     func updateNowPlayingInfo() {
+diff --git a/node_modules/react-native-video/ios/Video/RCTVideo.swift b/node_modules/react-native-video/ios/Video/RCTVideo.swift
+index 5f2f5f6..a872329 100644
+--- a/node_modules/react-native-video/ios/Video/RCTVideo.swift
++++ b/node_modules/react-native-video/ios/Video/RCTVideo.swift
+@@ -132,6 +132,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+     @objc var onTextTracks: RCTDirectEventBlock?
+     @objc var onAudioTracks: RCTDirectEventBlock?
+     @objc var onTextTrackDataChanged: RCTDirectEventBlock?
++    // Livil patch: lock-screen / notification next & previous-track presses.
++    @objc var onVideoNextTrack: RCTDirectEventBlock?
++    @objc var onVideoPreviousTrack: RCTDirectEventBlock?
+ 
+     @objc
+     func _onPictureInPictureEnter() {
+@@ -584,6 +587,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+             if _showNotificationControls {
+                 // We need to register player after we set current item and only for init
+                 NowPlayingInfoCenterManager.shared.registerPlayer(player: _player!)
++                registerTrackCommandHandlers(_player!)
+             }
+         } else {
+             #if !os(tvOS) && !os(visionOS)
+@@ -1276,11 +1280,30 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+ 
+         if showNotificationControls {
+             NowPlayingInfoCenterManager.shared.registerPlayer(player: player)
++            registerTrackCommandHandlers(player)
+         } else {
++            NowPlayingInfoCenterManager.shared.removeTrackCommandHandlers(player: player)
+             NowPlayingInfoCenterManager.shared.removePlayer(player: player)
+         }
+     }
+ 
++    // Livil patch: forward lock-screen / notification |<< >>| presses to the JS
++    // onNextTrack / onPreviousTrack view events. Called at every site that
++    // registers the player for now-playing controls.
++    private func registerTrackCommandHandlers(_ player: AVPlayer) {
++        NowPlayingInfoCenterManager.shared.setTrackCommandHandlers(
++            player: player,
++            onNextTrack: { [weak self] in
++                guard let self else { return }
++                self.onVideoNextTrack?(["target": self.reactTag as Any])
++            },
++            onPreviousTrack: { [weak self] in
++                guard let self else { return }
++                self.onVideoPreviousTrack?(["target": self.reactTag as Any])
++            }
++        )
++    }
++
+     @objc
+     func setDisableAudioSessionManagement(_ disableAudioSessionManagement: Bool) {
+         _disableAudioSessionManagement = disableAudioSessionManagement
+@@ -1434,6 +1457,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+         self._player?.replaceCurrentItem(with: nil)
+         if let player = _player {
+             player.pause()
++            NowPlayingInfoCenterManager.shared.removeTrackCommandHandlers(player: player)
+             NowPlayingInfoCenterManager.shared.removePlayer(player: player)
+         }
+ 
+@@ -2033,6 +2057,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+ 
+             if _showNotificationControls {
+                 NowPlayingInfoCenterManager.shared.registerPlayer(player: _player)
++                registerTrackCommandHandlers(_player)
+             } else {
+                 NowPlayingInfoCenterManager.shared.updateNowPlayingInfo()
+             }
+diff --git a/node_modules/react-native-video/ios/Video/RCTVideoManager.m b/node_modules/react-native-video/ios/Video/RCTVideoManager.m
+index 7ec8955..4bd4a07 100644
+--- a/node_modules/react-native-video/ios/Video/RCTVideoManager.m
++++ b/node_modules/react-native-video/ios/Video/RCTVideoManager.m
+@@ -67,6 +67,8 @@ @interface RCT_EXTERN_MODULE (RCTVideoManager, RCTViewManager)
+ RCT_EXPORT_VIEW_PROPERTY(onTextTracks, RCTDirectEventBlock);
+ RCT_EXPORT_VIEW_PROPERTY(onAudioTracks, RCTDirectEventBlock);
+ RCT_EXPORT_VIEW_PROPERTY(onTextTrackDataChanged, RCTDirectEventBlock);
++RCT_EXPORT_VIEW_PROPERTY(onVideoNextTrack, RCTDirectEventBlock);
++RCT_EXPORT_VIEW_PROPERTY(onVideoPreviousTrack, RCTDirectEventBlock);
+ 
+ RCT_EXTERN_METHOD(seekCmd : (nonnull NSNumber*)reactTag time : (nonnull NSNumber*)time tolerance : (nonnull NSNumber*)tolerance)
+ RCT_EXTERN_METHOD(setLicenseResultCmd : (nonnull NSNumber*)reactTag license : (NSString*)license licenseUrl : (NSString*)licenseUrl)
+diff --git a/node_modules/react-native-video/lib/types/events.d.ts b/node_modules/react-native-video/lib/types/events.d.ts
+index c24fa11..2110030 100644
+--- a/node_modules/react-native-video/lib/types/events.d.ts
++++ b/node_modules/react-native-video/lib/types/events.d.ts
+@@ -238,4 +238,6 @@ export interface ReactVideoEvents {
+     onTextTrackDataChanged?: (e: OnTextTrackDataChangedData) => void;
+     onVideoTracks?: (e: OnVideoTracksData) => void;
+     onAspectRatio?: (e: OnVideoAspectRatioData) => void;
++    onNextTrack?: () => void;
++    onPreviousTrack?: () => void;
+ }
+diff --git a/node_modules/react-native-video/lib/types/video.d.ts b/node_modules/react-native-video/lib/types/video.d.ts
+index 67a9d63..a8cd45b 100644
+--- a/node_modules/react-native-video/lib/types/video.d.ts
++++ b/node_modules/react-native-video/lib/types/video.d.ts
+@@ -276,6 +276,7 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
+     paused?: boolean;
+     enterPictureInPictureOnLeave?: boolean;
+     playInBackground?: boolean;
++    mediaQueueJson?: string;
+     playWhenInactive?: boolean;
+     poster?: string | ReactVideoPoster;
+     /** @deprecated use **resizeMode** key in **poster** props instead */
+diff --git a/node_modules/react-native-video/src/Video.tsx b/node_modules/react-native-video/src/Video.tsx
+index 789d915..fd754a5 100644
+--- a/node_modules/react-native-video/src/Video.tsx
++++ b/node_modules/react-native-video/src/Video.tsx
+@@ -156,6 +156,8 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+       onTextTrackDataChanged,
+       onVideoTracks,
+       onAspectRatio,
++      onNextTrack,
++      onPreviousTrack,
+       localSourceEncryptionKeyScheme,
+       minLoadRetryCount,
+       bufferConfig,
+@@ -561,6 +563,15 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+       [onPlaybackStateChanged],
+     );
+ 
++    // Livil patch: lock-screen / notification "next" / "previous" track presses.
++    const onVideoNextTrack = useCallback(() => {
++      onNextTrack?.();
++    }, [onNextTrack]);
++
++    const onVideoPreviousTrack = useCallback(() => {
++      onPreviousTrack?.();
++    }, [onPreviousTrack]);
++
+     const _shutterColor = useMemo(() => {
+       const color = processColor(shutterColor);
+       return typeof color === 'number' ? color : undefined;
+@@ -902,6 +913,10 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+           onVideoPlaybackStateChanged={
+             onPlaybackStateChanged ? onVideoPlaybackStateChanged : undefined
+           }
++          onVideoNextTrack={onNextTrack ? onVideoNextTrack : undefined}
++          onVideoPreviousTrack={
++            onPreviousTrack ? onVideoPreviousTrack : undefined
++          }
+           onVideoBandwidthUpdate={
+             onBandwidthUpdate ? _onBandwidthUpdate : undefined
+           }
+diff --git a/node_modules/react-native-video/src/specs/VideoNativeComponent.ts b/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
+index 3dcbe01..0a0b76c 100644
+--- a/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
++++ b/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
+@@ -355,6 +355,7 @@ export interface VideoNativeProps extends ViewProps {
+   filterEnabled?: boolean;
+   volume?: Float; // default 1.0
+   playInBackground?: boolean;
++  mediaQueueJson?: string; // android — Livil patch: native queue for bg next/prev
+   preventsDisplaySleepDuringVideoPlayback?: boolean;
+   preferredForwardBufferDuration?: Float; //ios, 0
+   playWhenInactive?: boolean; // ios, false
+@@ -410,6 +411,8 @@ export interface VideoNativeProps extends ViewProps {
+   onTextTracks?: DirectEventHandler<OnTextTracksData>; // android
+   onTextTrackDataChanged?: DirectEventHandler<OnTextTrackDataChangedData>; // iOS
+   onVideoTracks?: DirectEventHandler<OnVideoTracksData>; // android
++  onVideoNextTrack?: DirectEventHandler<{}>; // android, ios — lock-screen "next track" (Livil patch)
++  onVideoPreviousTrack?: DirectEventHandler<{}>; // android, ios — lock-screen "previous track" (Livil patch)
+ }
+ 
+ type NativeVideoComponentType = HostComponent<VideoNativeProps>;
+diff --git a/node_modules/react-native-video/src/types/events.ts b/node_modules/react-native-video/src/types/events.ts
+index 027fd5b..b82a446 100644
+--- a/node_modules/react-native-video/src/types/events.ts
++++ b/node_modules/react-native-video/src/types/events.ts
+@@ -267,4 +267,6 @@ export interface ReactVideoEvents {
+   onTextTrackDataChanged?: (e: OnTextTrackDataChangedData) => void; // iOS
+   onVideoTracks?: (e: OnVideoTracksData) => void; //Android
+   onAspectRatio?: (e: OnVideoAspectRatioData) => void;
++  onNextTrack?: () => void; // Android, iOS — lock-screen / notification "next track" (Livil patch)
++  onPreviousTrack?: () => void; // Android, iOS — lock-screen / notification "previous track" (Livil patch)
+ }
+diff --git a/node_modules/react-native-video/src/types/video.ts b/node_modules/react-native-video/src/types/video.ts
+index 0482944..e29a21a 100644
+--- a/node_modules/react-native-video/src/types/video.ts
++++ b/node_modules/react-native-video/src/types/video.ts
+@@ -352,6 +352,10 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
+   paused?: boolean;
+   enterPictureInPictureOnLeave?: boolean;
+   playInBackground?: boolean;
++  /** Livil patch (Android): JSON `{index, items:[{id,uri,title,artist,artwork,clipStartMs,clipEndMs}]}`
++   *  pushed to the playback service so notification next/previous can load tracks
++   *  natively while the app is backgrounded. */
++  mediaQueueJson?: string;
+   playWhenInactive?: boolean; // iOS
+   poster?: string | ReactVideoPoster; // string is deprecated
+   /** @deprecated use **resizeMode** key in **poster** props instead */

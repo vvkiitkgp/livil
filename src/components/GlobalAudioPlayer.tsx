@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { trackPlayProgress } from '../utils/playTracker';
-import { buildNowPlayingMetadata } from '../utils/nowPlayingMetadata';
+import { buildNowPlayingMetadata, buildMediaQueueJson } from '../utils/nowPlayingMetadata';
 
 const AUDIO_BUFFER_CONFIG = {
   minBufferMs: 15_000,
@@ -43,12 +43,14 @@ export default function GlobalAudioPlayer() {
     queueRef,
     currentIndexRef,
     playNext,
+    playPrev,
     engineDriving,
     reportPaused,
     resumePlay,
     clipWindowRef,
     repeatMode,
     setIsBuffering,
+    queueVersion,
   } = usePlayback();
 
   const videoRef = useRef<VideoRef>(null);
@@ -57,6 +59,13 @@ export default function GlobalAudioPlayer() {
   // (no stale closure) so we can tell an in-app pause from a lock-screen pause.
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // True while the player is buffering/loading. onPlaybackStateChanged reports
+  // isPlaying=false during buffering — which must NOT be mistaken for a
+  // lock-screen pause, or switching tracks self-pauses the new track.
+  const bufferingRef = useRef(false);
+  // Timestamp until which a new track is considered "loading"; the pause-sync is
+  // suppressed in this window (covers the gap before onBuffer even fires).
+  const loadGuardUntilRef = useRef(0);
 
   // Which postId this component is currently responsible for
   const myPostIdRef = useRef<string | null>(null);
@@ -75,6 +84,10 @@ export default function GlobalAudioPlayer() {
       myPostIdRef.current = nowPlaying.postId;
       clipEndFiredRef.current = false;
       setIsBuffering(true);
+      bufferingRef.current = true;
+      // Suppress the pause-sync while the new track loads (it reports
+      // isPlaying=false until the first frame is decodable).
+      loadGuardUntilRef.current = Date.now() + 4000;
       setPaused(false);
       registerHandlers({
         play:    () => {
@@ -165,6 +178,7 @@ export default function GlobalAudioPlayer() {
   }, [updatePosition, positionRef, clipWindowRef, playNext]);
 
   const handleBuffer = useCallback((e: { isBuffering: boolean }) => {
+    bufferingRef.current = e.isBuffering;
     setIsBuffering(e.isBuffering);
   }, [setIsBuffering]);
 
@@ -183,6 +197,11 @@ export default function GlobalAudioPlayer() {
         setPaused(false);
         resumePlay(mine);
       } else if (!e.isPlaying && !pausedRef.current) {
+        // A not-playing report during buffering or a fresh track load is NOT a
+        // user pause — ignore it, or switching tracks would self-pause.
+        if (bufferingRef.current || Date.now() < loadGuardUntilRef.current) {
+          return;
+        }
         console.log('[LIVIL][GAP] lock-screen PAUSE → sync');
         setPaused(true);
         reportPaused(mine);
@@ -195,6 +214,29 @@ export default function GlobalAudioPlayer() {
     console.log('[LIVIL][GAP] onEnd → playNext');
     playNext();
   }, [playNext]);
+
+  // Lock-screen / notification / headset next & previous-track presses.
+  const handleNextTrack = useCallback(() => {
+    console.log('[LIVIL][GAP] onNextTrack → playNext');
+    playNext();
+  }, [playNext]);
+
+  const handlePrevTrack = useCallback(() => {
+    console.log('[LIVIL][GAP] onPreviousTrack → playPrev');
+    playPrev();
+  }, [playPrev]);
+
+  // Serialise the queue for the native playback service so notification next/prev
+  // can switch tracks while the app is backgrounded. Rebuilt whenever the active
+  // track changes (which is also when the queue index moves).
+  const mediaQueueJson = useMemo(
+    () => buildMediaQueueJson(queueRef.current, currentIndexRef.current),
+    // Recompute on track change (postId) AND queue change (queueVersion) — the
+    // queue is often set just AFTER the first track starts, so postId alone is
+    // not enough; without queueVersion the native side gets an empty queue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nowPlaying?.postId, queueVersion],
+  );
 
   // Don't render when PlaybackEngine is handling playback, or no audio URL.
   if (engineDriving || !nowPlaying?.audioUrl || nowPlaying.mediaKind !== 'audio') {
@@ -211,6 +253,9 @@ export default function GlobalAudioPlayer() {
       onBuffer={handleBuffer}
       onEnd={handleEnd}
       onPlaybackStateChanged={handlePlaybackStateChanged}
+      onNextTrack={handleNextTrack}
+      onPreviousTrack={handlePrevTrack}
+      mediaQueueJson={mediaQueueJson}
       progressUpdateInterval={250}
       playInBackground
       playWhenInactive

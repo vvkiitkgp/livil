@@ -870,6 +870,7 @@ export default function FullScreenPlayer() {
     resumePlay,
     reportPaused,
     playNext,
+    playPrev,
     repeatMode,
     fsOwnerPostIdRef,
     isBuffering,
@@ -924,6 +925,18 @@ export default function FullScreenPlayer() {
     navigation.dispatch(StackActions.push('UserProfile', { userId }));
   }, [closeFullScreenPlayer, navigation]);
 
+  // True while the video buffers; isPlaying=false during buffering must not be
+  // mistaken for a user pause (else a video→video skip self-pauses).
+  const fsBufferingRef = useRef(false);
+  const fsLoadGuardUntilRef = useRef(0);
+  // Arm the load guard whenever the video track changes.
+  useEffect(() => {
+    if (nowPlaying?.mediaKind === 'video') {
+      fsBufferingRef.current = true;
+      fsLoadGuardUntilRef.current = Date.now() + 4000;
+    }
+  }, [nowPlaying?.postId, nowPlaying?.mediaKind]);
+
   // Mirror lock-screen / notification / headset play-pause for VIDEO posts into
   // context so the in-app UI stays in sync (RNV `paused` is a controlled prop).
   // Acts only on a genuine discrepancy so our own pause/resume don't loop.
@@ -936,6 +949,10 @@ export default function FullScreenPlayer() {
         setFsPaused(false);
         resumePlay(mine);
       } else if (!e.isPlaying && !fsPausedRef.current) {
+        // Buffering / fresh load reports not-playing — don't treat as a pause.
+        if (fsBufferingRef.current || Date.now() < fsLoadGuardUntilRef.current) {
+          return;
+        }
         setFsPaused(true);
         reportPaused(mine);
       }
@@ -1336,6 +1353,16 @@ export default function FullScreenPlayer() {
             onLoad={handleVideoLoad}
             onProgress={handleVideoProgress}
             onPlaybackStateChanged={handleVideoPlaybackStateChanged}
+            onNextTrack={() => {
+              console.log('[LIVIL][FS] onNextTrack → playNext');
+              setFsPaused(false);
+              playNext();
+            }}
+            onPreviousTrack={() => {
+              console.log('[LIVIL][FS] onPreviousTrack → playPrev');
+              setFsPaused(false);
+              playPrev();
+            }}
             onEnd={() => {
               // For clipped tracks the clip-end detector in handleVideoProgress
               // already fired playNext / loop, so this onEnd is a no-op redundant
@@ -1356,6 +1383,7 @@ export default function FullScreenPlayer() {
             }}
             onBuffer={({ isBuffering: buf }) => {
               console.log(`[LIVIL][FS] onBuffer isBuffering=${buf}`);
+              fsBufferingRef.current = buf;
               setFsBuffering(buf);
             }}
             onReadyForDisplay={() => {
