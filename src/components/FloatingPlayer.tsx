@@ -21,6 +21,7 @@ import { useJam } from '../contexts/JamContext';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { COLORS } from '../theme/colors';
+import WaveVisualizer from './WaveVisualizer';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -303,10 +304,17 @@ export default function FloatingPlayer() {
   const barHeight  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_H,       PILL_H] });
   const barTop     = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_TOP_REST, BAR_TOP_PILL] });
   const barRadius  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [1, PILL_H / 2] });
-  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', 'rgba(10,10,15,0.9)'] });
+  // Rest color is TRANSPARENT (not white): the resting "line" is drawn by the
+  // WaveVisualizer instead, so it looks like the white line itself is waving
+  // (and flattens to that same line when paused). The bar still fades into the
+  // dark pill as it morphs open.
+  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(10,10,15,0)', 'rgba(10,10,15,0.9)'] });
   const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(124,58,237,0)', 'rgba(124,58,237,0.50)'] });
   // Content fades in only after pill is mostly open, and out before it collapses
   const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
+  // Spike visualizer lives ONLY on the resting white line — fade it out as soon
+  // as the bar starts morphing into the pill (inverse of morphAnim).
+  const visualizerOpacity = morphAnim.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
 
   // Pulsing live dot
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -532,6 +540,16 @@ export default function FloatingPlayer() {
         </Animated.View>
       </Animated.View>
 
+      {/* ── Wavy-line visualizer ──
+          The white line ripples as a scrolling sine wave while playing and
+          flattens back to a straight line on pause (Material wavy-progress look).
+          Fades out (inverse of morphAnim) as the line morphs into the pill, so it
+          only lives on the minimized line. Centered + absolute so it never shifts
+          the circle; the album circle sits on top, the wave flows out both sides. */}
+      <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
+        <WaveVisualizer playing={isPlaying} width={REST_BAR_W} />
+      </Animated.View>
+
       {/* ── Draggable circle ── */}
       <GestureDetector gesture={gesture}>
         <Animated.View
@@ -599,6 +617,19 @@ const styles = StyleSheet.create({
     right: 0,
     borderWidth: 1,
     overflow: 'hidden',
+  },
+
+  // Centered, absolute (so it never shifts the circle) overlay for the spike
+  // visualizer on the resting line. The album circle renders after this and sits
+  // on top, framing the spikes that flank it.
+  visualizerOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   pillContent: {
