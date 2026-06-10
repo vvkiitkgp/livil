@@ -27,6 +27,7 @@
     "@supabase/supabase-js": "^2.99.3",
     "react": "19.2.3",
     "react-native": "0.85.3",
+    "react-native-audio-api": "0.12.2",
     "react-native-gesture-handler": "^2.24.0",
     "react-native-image-crop-picker": "^0.51.1",
     "react-native-keyboard-controller": "^1.21.9",

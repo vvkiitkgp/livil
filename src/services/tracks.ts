@@ -1,6 +1,8 @@
 import { supabase } from '../../lib/supabase';
+import type { Json } from '../../lib/database.types';
 import type { PendingCollaborator } from '../constants/roles';
-import { uploadTrackFile, type PickedFile } from './uploads';
+import { uploadTrackFile, resolveReadableUri, type PickedFile } from './uploads';
+import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
 
 export type PostMode = 'audio' | 'video';
 
@@ -81,6 +83,121 @@ export async function backfillTrackDuration(trackId: string, seconds: number): P
     // Best-effort; backfills on a later play if this attempt fails.
   }
 }
+
+// ─── Waveform peaks (beat-synced visualizer, Tier B) ─────────────────────────
+//
+// The loudness envelope is computed on-device (react-native-audio-api decode →
+// RMS buckets, see ./waveform) and stored once on tracks.waveform_peaks. The DB
+// read/write + an in-memory cache live HERE so ./waveform stays a pure analyzer
+// with no Supabase import (tracks → waveform only, no cycle).
+
+/** Validate the jsonb blob coming back from the DB into a WaveformData (or null). */
+function parseWaveformData(raw: unknown): WaveformData | null {
+  if (!raw || typeof raw !== 'object') { return null; }
+  const obj = raw as { version?: unknown; hz?: unknown; peaks?: unknown };
+  if (typeof obj.hz !== 'number' || obj.hz <= 0) { return null; }
+  if (!Array.isArray(obj.peaks) || obj.peaks.length === 0) { return null; }
+  if (!obj.peaks.every(p => typeof p === 'number')) { return null; }
+  const version = typeof obj.version === 'number' ? obj.version : 0;
+  return { version, hz: obj.hz, peaks: obj.peaks as number[] };
+}
+
+/** Read a track's stored envelope. Returns null when absent/unanalyzed/malformed. */
+export async function getWaveformPeaks(trackId: string): Promise<WaveformData | null> {
+  if (!trackId) { return null; }
+  try {
+    const { data, error } = await supabase
+      .from('tracks')
+      .select('waveform_peaks')
+      .eq('id', trackId)
+      .maybeSingle();
+    if (error || !data) { return null; }
+    return parseWaveformData(data.waveform_peaks);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist a computed envelope the first time it's known. Mirrors
+ * `backfillTrackDuration`: fire-and-forget, never throws, idempotent via
+ * `.is('waveform_peaks', null)` so only the first writer sets it (safe to call on
+ * every play). Owner-only via RLS; a non-owner's attempt simply no-ops.
+ */
+export async function backfillWaveformPeaks(trackId: string, data: WaveformData): Promise<void> {
+  if (!trackId || !data || !Array.isArray(data.peaks) || data.peaks.length === 0) { return; }
+  try {
+    await supabase
+      .from('tracks')
+      .update({ waveform_peaks: data as unknown as Json })
+      .eq('id', trackId)
+      .is('waveform_peaks', null);
+  } catch {
+    // Best-effort; backfills on a later play if this attempt fails.
+  }
+}
+
+// Session caches: successful envelopes by trackId, plus in-flight de-dup so the
+// active track is never analyzed twice concurrently. Failures aren't cached, so a
+// transient miss retries on the next play.
+const waveformCache = new Map<string, WaveformData>();
+const waveformInFlight = new Map<string, Promise<WaveformData | null>>();
+
+/**
+ * Resolve the envelope for the currently-active track: cache → DB → (if still
+ * unanalyzed) decode the remote URL on-device, persist, and cache. Returns null
+ * when nothing is usable yet (the wave then stays decorative). Never throws.
+ */
+export async function getOrAnalyzeWaveform(trackId: string, url: string | undefined): Promise<WaveformData | null> {
+  if (!trackId) { return null; }
+  const cached = waveformCache.get(trackId);
+  if (cached) { return cached; }
+  const inflight = waveformInFlight.get(trackId);
+  if (inflight) { return inflight; }
+
+  const task = (async (): Promise<WaveformData | null> => {
+    const stored = await getWaveformPeaks(trackId);
+    if (stored) { waveformCache.set(trackId, stored); return stored; }
+    if (!url) { return null; }
+    const computed = await analyzeWaveformPeaks(url);
+    if (!computed) { return null; }
+    waveformCache.set(trackId, computed);
+    backfillWaveformPeaks(trackId, computed).catch(() => {});
+    return computed;
+  })();
+
+  waveformInFlight.set(trackId, task);
+  try {
+    return await task;
+  } finally {
+    waveformInFlight.delete(trackId);
+  }
+}
+
+/**
+ * Analyze a freshly-uploaded track from its LOCAL file (no re-download) and
+ * persist the envelope. Fire-and-forget from createTrack's finalizing stage —
+ * never blocks or fails the upload; if it can't decode (e.g. some video
+ * containers) the column stays null and the wave backfills lazily on first play.
+ */
+function kickoffWaveformAnalysisFromLocalFile(trackId: string, file: PickedFile | undefined): void {
+  if (!file) { return; }
+  (async () => {
+    try {
+      const readable = await resolveReadableUri(file);
+      const data = await analyzeWaveformPeaks(readable);
+      if (data) {
+        waveformCache.set(trackId, data);
+        await backfillWaveformPeaks(trackId, data);
+      }
+    } catch {
+      // Best-effort; lazy backfill on first play covers any failure here.
+    }
+  })().catch(() => {});
+}
+
+// Re-export so callers (e.g. a future re-analysis flow) can compare versions.
+export { WAVEFORM_VERSION };
 
 type UploadPlan = {
   audio?: PickedFile;
@@ -241,6 +358,16 @@ export async function createTrack(
 
     if (updateError) {
       throw new Error(`Failed to finalize track: ${updateError.message}`);
+    }
+
+    // Compute the beat-synced loudness envelope from the LOCAL file (no
+    // re-download) and persist it. Fire-and-forget: a slow/failed decode must
+    // never delay or break the post — old/unanalyzed audio tracks backfill lazily
+    // on first play instead. AUDIO ONLY: decoding a (large) video file risks OOM,
+    // and the lazy remote path can't safely re-fetch a video either, so video
+    // posts intentionally have no envelope (the wave stays decorative).
+    if (input.mode === 'audio') {
+      kickoffWaveformAnalysisFromLocalFile(trackId, input.audio);
     }
 
     if (input.collaborators.length > 0) {

@@ -1060,6 +1060,7 @@ export type Database = {
           title: string
           uploader_id: string
           video_url: string | null
+          waveform_peaks: Json | null
         }
         Insert: {
           audio_url?: string | null
@@ -1072,6 +1073,7 @@ export type Database = {
           title: string
           uploader_id: string
           video_url?: string | null
+          waveform_peaks?: Json | null
         }
         Update: {
           audio_url?: string | null
@@ -1084,6 +1086,7 @@ export type Database = {
           title?: string
           uploader_id?: string
           video_url?: string | null
+          waveform_peaks?: Json | null
         }
         Relationships: [
           {

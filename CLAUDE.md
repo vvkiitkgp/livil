@@ -17,6 +17,7 @@ Users can upload music (audio + video), listen together in real time (Jam rooms)
 - **Never use `Alert.alert`.** For confirmations ("Are you sure?", destructive actions, decisions) use `ConfirmActionModal` (`src/components/ConfirmActionModal.tsx`) or a bespoke modal matching the `NotificationPermissionModal` / `JamExitModal` template. For errors, warnings, and short status messages use the toast — `useToast()` from `src/contexts/ToastContext.tsx` — with `kind: 'error' | 'success' | 'info'`. **Why**: `Alert.alert` renders the OS dialog which clashes with the dark theme and looks unprofessional. **How to apply**: when adding a feature that needs user feedback, reach for `ConfirmActionModal` or `useToast` first; only if neither fits, build a new modal in the same visual style.
 - **Playback is a SINGLE engine.** `GlobalAudioPlayer` (`src/components/GlobalAudioPlayer.tsx`) is the ONLY `<Video>` with `showNotificationControls` — the sole MediaSession / lock-screen owner — and it plays the audio of **every** post (audio via `audioUrl`, video via `videoUrl` on a hidden 0×0 surface). `FullScreenPlayer` is a **muted, foreground-only** video frame that slaves its picture to the engine's position. **Never add a second `<Video>` with `showNotificationControls` (or a second audio engine)** — it resurrects the notification "carousel" + audio↔video desync. See **Playback & Lock-Screen Media Controls** below.
 - **`react-native-video` is PATCHED** (`patches/react-native-video+6.19.2.patch`, pinned to exact `6.19.2` — do not float the `^`). After ANY edit under `node_modules/react-native-video/`, re-capture with `npx patch-package react-native-video --include '^(ios/|android/src/|src/|lib/)'` (the `--include` keeps build artifacts out of the diff) **and do a full native rebuild** (`cd android && ./gradlew …`) — a Metro reload does NOT pick up native changes.
+- **Beat-synced visualizer is AUDIO-ONLY, and its decode must never touch the engine.** The floating-player wave (`src/components/WaveVisualizer.tsx`) rides a pre-computed loudness envelope stored in `tracks.waveform_peaks` (jsonb), decoded **on-device** by `react-native-audio-api`'s standalone `decodeAudioData` — a one-shot decode util (NO `AudioContext`, no playback, no MediaSession), so it never interacts with the single engine. **NEVER analyze video posts.** `decodeAudioData(videoUrl)` pulls the WHOLE file into memory through RN networking → `OutOfMemoryError` → the OS kills the process (no JS log, debugger drops). Analysis is gated to `mediaKind === 'audio'` at both call sites; video keeps the decorative wave. See **Beat-Synced Visualizer** below.
 
 ---
 
@@ -40,8 +41,10 @@ Users can upload music (audio + video), listen together in real time (Jam rooms)
 "react-native": "0.85.3",
 "react": "19.2.3",
 "react-native-video": "6.19.2",
-"react-native-reanimated": "4.0.3",
-"react-native-worklets": "0.4.2",
+"react-native-reanimated": "4.4.0",
+"react-native-worklets": "0.9.1",
+"react-native-svg": "15.15.5",
+"react-native-audio-api": "0.12.2",
 "react-native-gesture-handler": "2.22.0",
 "react-native-safe-area-context": "5.7.0",
 "react-native-screens": "4.10.0",
@@ -51,6 +54,14 @@ Users can upload music (audio + video), listen together in real time (Jam rooms)
 "@react-native-async-storage/async-storage": "1.23.1",
 "@supabase/supabase-js": "^2.x"
 ```
+
+> `react-native-audio-api` (Software Mansion) is used **only** for its standalone
+> `decodeAudioData` (beat-synced visualizer, audio-only) — NOT as a playback/audio
+> engine. It peers on `react-native-worklets >= 0.6.0` (satisfied by `0.9.1`). It
+> compiles + boots on RN 0.85.3 + New Arch as-is (the RN-0.85 JNI issue #1012 did
+> NOT bite on `0.12.2`; no patch needed). `react-native-svg` renders the wave
+> `<Path>`. (The `reanimated`/`worklets` rows were corrected here to the actually
+> installed versions — the old `4.0.3`/`0.4.2` values were stale.)
 
 > New Architecture (Fabric) is **ON** (`newArchEnabled=true`). This matters for
 > playback: Fabric **defers view commands (`videoRef.seek()`) and prop changes
@@ -243,6 +254,72 @@ locked-in; if you must change one, re-read the **Do-not-break** table first.
 
 ---
 
+## Beat-Synced Visualizer (Tier B)
+
+The floating-player wave (`src/components/WaveVisualizer.tsx`) rides the song's **actual loudness**
+at the live position — swelling in loud sections, calming in quiet ones — instead of a constant
+decorative ripple (Tier A). Every decision below was made deliberately; treat them as locked-in.
+
+### The data — ONE source of truth
+- Peaks are **pre-computed once** and stored in **`tracks.waveform_peaks`** (jsonb):
+  `{ version, hz, peaks: number[] }` — `peaks` normalized `0..1`, **~10 buckets/sec**, spanning the
+  **FULL track** in absolute seconds (so clipped reposts index correctly by `positionRef`).
+- The renderer maps position→bucket: `idx = floor(positionSec * hz)`, lerp between `peaks[idx]` and
+  `peaks[idx+1]`. A JS interval (~25 Hz) reads `positionRef` and eases the Reanimated `amp` shared
+  value; the `<Path>` / phase-scroll / paused-flatten are otherwise **unchanged from Tier A**.
+
+### Decode is PRE-COMPUTED, ON-DEVICE, and a one-shot util
+- **Decoder:** `react-native-audio-api`'s standalone `decodeAudioData(source, sampleRate)` — the
+  phone's **hardware** decoder, resampled to 8 kHz mono; RMS → normalized buckets in
+  `src/services/waveform.ts` (pure DSP, **no Supabase import** → no cycle).
+- **Why on-device + pre-computed (not real-time, not server):**
+  - **Real-time native (ExoPlayer/AVPlayer audio taps) — RULED OUT ("Tier C").** Would touch the
+    fragile patched single engine and diverge per platform.
+  - **Supabase edge function — RULED OUT.** Edge has a hard **2 s CPU limit** and **no ffmpeg**, so
+    full-song WASM decode routinely fails (a 4-min decode is ~2.5–8 s CPU). Don't revisit unless those
+    limits change. The hardware decoder has no such cap and covers every format the engine plays.
+  - `decodeAudioData` is a **one-shot decode** (NO `AudioContext`, no playback, no MediaSession), so it
+    **never touches `GlobalAudioPlayer` / the patched `react-native-video`**. Keep it that way.
+
+### AUDIO-ONLY — never analyze video
+- `decodeAudioData(videoUrl)` pulls the **whole file** into memory via RN networking
+  (`ResponseBody.bytes()`; the dev net-inspector also base64s it) → **`OutOfMemoryError`** → the OS
+  kills the process (signal 9; **no JS log, debugger drops**). An mp3 is a few MB; a video is tens-to-
+  hundreds of MB. Analysis is gated to `mediaKind === 'audio'` at **both** call sites
+  (`FloatingPlayer` lazy fetch + `createTrack` upload kickoff). Video keeps the decorative wave.
+
+### Plumbing — fetch by trackId, never thread through NowPlayingInfo
+- Only the **active** track needs peaks, so `FloatingPlayer` resolves them **by `nowPlaying.trackId`**
+  via `getOrAnalyzeWaveform` (in-memory cache → DB → analyze-on-device + persist). Do **not** add
+  `waveform_peaks` to `NowPlayingInfo` / `feedPostToNowPlaying` / the feed `.select(...)` queries — a
+  per-post array would bloat every feed payload for data only the playing track uses.
+- `getWaveformPeaks` / `backfillWaveformPeaks` (`src/services/tracks.ts`) **mirror
+  `backfillTrackDuration`**: fire-and-forget, never throw, idempotent via `.is('waveform_peaks', null)`,
+  owner-RLS (`tracks_update_own`). At upload, analyze the **LOCAL** file (no re-download); old audio
+  tracks lazy-backfill on first play.
+
+### Do-not-break
+
+| Trap | Rule / Why |
+|---|---|
+| Analyzing video | NEVER. `decodeAudioData(videoUrl)` → whole-file download → `OutOfMemoryError` → process killed. Gate to `mediaKind === 'audio'`. |
+| Second audio engine | `decodeAudioData` is decode-only (no `AudioContext`/playback). Never wire `react-native-audio-api` as a player — that would be a second engine (see single-engine rule). |
+| Edge function for decode | Ruled out — 2 s edge CPU cap + no ffmpeg. Decode stays on-device. |
+| Threading peaks through the feed | Fetch by `trackId` only. Don't add the array to `NowPlayingInfo`/feed selects. |
+| Hard-failing the wave | All DB/decode calls are fail-safe → fall back to the **decorative** wave (column missing, decode fails, video). Never throw to the UI. |
+| Persistence skipped silently | `backfillWaveformPeaks` must keep the `.is(..., null)` idempotency + owner-RLS, like `backfillTrackDuration`. |
+
+### Status / follow-ups
+- **Video has no synced wave** (decorative only). Re-enabling it needs **server-side or streaming-demux**
+  audio extraction — NOT a full client download.
+- **iOS audio-session non-interference is UNVERIFIED** (Android-first). Before shipping iOS, confirm
+  `decodeAudioData` doesn't claim `AVAudioSession` (it shouldn't — it's a pure decode) and so can't
+  silence the engine / break background audio.
+- Migration `supabase/migrations/20260611000000_tracks_waveform_peaks.sql` is **applied** (column +
+  owner-RLS verified).
+
+---
+
 ## Release Build
 
 ```bash
@@ -279,6 +356,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 | Native (`react-native-video`) change not taking effect | Re-capture the patch (`npx patch-package react-native-video --include '^(ios/\|android/src/\|src/\|lib/)'`) + full `./gradlew` rebuild — Metro reload won't pick up native code |
 | Duplicate "carousel" media notifications | Keep ONE `showNotificationControls` `<Video>` (GAP); post/cancel the notification with the **raw** player `hashCode` (`notifIdFor`), see Playback section |
 | Lock-screen scrubber shows full track, not the clip | `currentClipJson` prop must reach native (mirror in spec + `lib/types`); clip is presented by `ClipForwardingPlayer` (Android only) |
+| App crashes (silently, no JS log) when a VIDEO plays | The visualizer tried to `decodeAudioData(videoUrl)` → whole-file download → `OutOfMemoryError` → process killed. Waveform analysis must stay gated to `mediaKind === 'audio'`; see Beat-Synced Visualizer section |
 
 ---
 

@@ -22,6 +22,8 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
+import { getOrAnalyzeWaveform } from '../services/tracks';
+import type { WaveformData } from '../services/waveform';
 import { COLORS } from '../theme/colors';
 import WaveVisualizer from './WaveVisualizer';
 
@@ -154,6 +156,29 @@ export default function FloatingPlayer() {
   } = usePlayback();
 
   const { activeJam } = useJam();
+
+  // ─── Beat-synced visualizer envelope ───────────────────────────────────────────
+  // Resolve the ACTIVE track's loudness envelope (cache → DB → analyze-on-device)
+  // and hand it to WaveVisualizer. Fetched by trackId only (not threaded through
+  // every NowPlayingInfo / feed query), since only the playing track needs it.
+  //
+  // AUDIO ONLY. Lazy analysis decodes the source URL, which pulls the WHOLE remote
+  // file into memory via RN networking — fine for an mp3 (a few MB) but a video is
+  // tens-to-hundreds of MB and OOM-crashes the app mid-playback. Downloading a full
+  // video client-side just to read its audio envelope is the wrong approach, so
+  // video posts keep the decorative wave. (audioUrl is null for video anyway.)
+  const [waveform, setWaveform] = useState<WaveformData | null>(null);
+  const activeTrackId = nowPlaying?.trackId ?? null;
+  const analyzableUrl = nowPlaying?.mediaKind === 'audio' ? nowPlaying?.audioUrl : undefined;
+  useEffect(() => {
+    if (!activeTrackId || !analyzableUrl) { setWaveform(null); return; }
+    let cancelled = false;
+    setWaveform(null); // clear while the new track's envelope resolves
+    getOrAnalyzeWaveform(activeTrackId, analyzableUrl)
+      .then(data => { if (!cancelled) { setWaveform(data); } })
+      .catch(() => { if (!cancelled) { setWaveform(null); } });
+    return () => { cancelled = true; };
+  }, [activeTrackId, analyzableUrl]);
 
   // ─── Keyboard hide ────────────────────────────────────────────────────────────
   const keyboardAnim = useRef(new Animated.Value(0)).current;
@@ -685,7 +710,7 @@ export default function FloatingPlayer() {
         {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
             before the pill expands, and only re-ripples once it collapses back —
             during a jam the pill is always expanded, so the wave simply stays off. */}
-        <WaveVisualizer playing={isPlaying} suppressed={isExpanded} width={REST_BAR_W} />
+        <WaveVisualizer playing={isPlaying} suppressed={isExpanded} width={REST_BAR_W} waveform={waveform} />
       </Animated.View>
 
       {/* ── Draggable circle ── */}

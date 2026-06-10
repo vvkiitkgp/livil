@@ -102,7 +102,7 @@ function describeReadFailure(originalUri: string, underlying: unknown): Error {
  * file into memory, which RN surfaced as "Network request failed" for large videos. The upload
  * streams from this URI instead (see `uploadFileUriWithProgress`).
  */
-async function resolveReadableUri(file: PickedFile): Promise<string> {
+export async function resolveReadableUri(file: PickedFile): Promise<string> {
   if (Platform.OS === 'android' && file.uri.startsWith('content://')) {
     try {
       const [result] = await keepLocalCopy({
