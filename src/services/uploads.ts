@@ -15,6 +15,26 @@ export type PickedFile = {
 
 export type UploadProgressCallback = (fraction: number) => void;
 
+/**
+ * Hard ceiling on a single uploaded file. Supabase's free plan caps storage uploads at 50 MB
+ * project-wide — the `tracks-media` bucket's own 500 MB `file_size_limit` is moot because the
+ * effective limit is the smaller of (global, bucket). Raising this needs a paid plan with a higher
+ * project upload limit, client-side compression, or moving large media to external storage (R2).
+ */
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+/** User-facing "this file is too big" copy, tailored to the media kind. */
+export function tooLargeMessage(kind: TrackMediaKind): string {
+  const limitMb = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
+  if (kind === 'video') {
+    return `This video is over the ${limitMb} MB upload limit. Try a shorter clip or a lower resolution.`;
+  }
+  if (kind === 'audio') {
+    return `This audio file is over the ${limitMb} MB upload limit. Try a shorter or more compressed file.`;
+  }
+  return `This image is over the ${limitMb} MB upload limit. Try a smaller image.`;
+}
+
 function extensionFromName(name: string | null, fallback: string): string {
   if (!name) {return fallback;}
   const dot = name.lastIndexOf('.');
@@ -108,6 +128,7 @@ async function resolveReadableUri(file: PickedFile): Promise<string> {
  */
 function uploadFileUriWithProgress(
   path: string,
+  kind: TrackMediaKind,
   fileUri: string,
   fileName: string,
   contentType: string,
@@ -131,18 +152,28 @@ function uploadFileUriWithProgress(
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress(1);
         resolve();
-      } else {
-        let message = `Upload failed (HTTP ${xhr.status})`;
-        try {
-          const parsed = JSON.parse(xhr.responseText);
-          if (parsed && typeof parsed.message === 'string') {
-            message = parsed.message;
-          }
-        } catch {
-          // Non-JSON body; keep the default message.
-        }
-        reject(new Error(message));
+        return;
       }
+      // Supabase rejects oversized files with "The object exceeded the maximum allowed size"
+      // (HTTP 400 or 413). Surface friendly, kind-aware copy instead of that raw server text —
+      // "object" is Supabase's word for a stored file and means nothing to a user.
+      if (
+        xhr.status === 413 ||
+        /exceeded the maximum allowed|payload too large|entity too large/i.test(xhr.responseText)
+      ) {
+        reject(new Error(tooLargeMessage(kind)));
+        return;
+      }
+      let message = `Upload failed (HTTP ${xhr.status})`;
+      try {
+        const parsed = JSON.parse(xhr.responseText);
+        if (parsed && typeof parsed.message === 'string') {
+          message = parsed.message;
+        }
+      } catch {
+        // Non-JSON body; keep the default message.
+      }
+      reject(new Error(message));
     };
     xhr.onerror = () => reject(new Error('Network error during upload.'));
     xhr.onabort = () => reject(new Error('Upload aborted.'));
@@ -174,7 +205,7 @@ export async function uploadTrackFile(
   const contentType = file.type ?? `${isImage ? 'image' : kind}/*`;
   const fileName = file.name ?? `${kind}.${ext}`;
 
-  await uploadFileUriWithProgress(path, readableUri, fileName, contentType, accessToken, onProgress);
+  await uploadFileUriWithProgress(path, kind, readableUri, fileName, contentType, accessToken, onProgress);
 
   const { data } = supabase.storage.from(TRACKS_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;

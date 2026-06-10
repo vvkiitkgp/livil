@@ -20,6 +20,7 @@ import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
 import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
+import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
 
@@ -166,6 +167,12 @@ export default function UploadScreen() {
           type: result.type,
           size: result.size,
         };
+        // Catch oversized files up front — the free-plan storage limit would reject them anyway,
+        // and telling the user now beats letting them wait through a doomed upload.
+        if (file.size != null && file.size > MAX_UPLOAD_BYTES) {
+          setError(tooLargeMessage(slot.kind));
+          return;
+        }
         if (slot.kind === 'audio') {setAudio(file);}
         else if (slot.kind === 'video') {setVideo(file);}
         else if (slot.kind === 'thumbnail') {setThumbnail(file);}
