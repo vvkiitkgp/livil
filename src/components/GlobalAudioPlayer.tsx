@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { usePlayback } from '../contexts/PlaybackContext';
+import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
 import { buildNowPlayingMetadata, buildMediaQueueJson } from '../utils/nowPlayingMetadata';
 
@@ -15,14 +16,22 @@ const AUDIO_BUFFER_CONFIG = {
 };
 
 /**
- * The single, always-on audio engine. Whenever `nowPlaying` is an audio track
- * (mediaKind === 'audio' with an audioUrl) this hidden <Video> is the sole
- * source of audio — for feed taps, queue advances, playlists and jams alike.
+ * The single, always-on audio engine for EVERY post — audio and video alike.
+ * Whenever `nowPlaying` has a playable URL (audioUrl ?? videoUrl) this hidden
+ * <Video> is the sole source of audio AND the sole owner of the lock-screen
+ * MediaSession (notification / Control Center / Dynamic Island). For a video
+ * post we decode its `videoUrl` here for the audio only — the frames are never
+ * composited on this 0x0 surface; FullScreenPlayer renders a separate, MUTED
+ * <Video> for the picture and seeks it to follow this engine's position.
+ *
+ * Because one engine plays every track's audio, audio↔video queue advances no
+ * longer churn the MediaSession (no carousel, no lost next/prev events) and the
+ * native background-skip queue stays valid across both media kinds.
  *
  * PostCard NO LONGER plays audio inline; it just shows cover art + a play
- * button that sets nowPlaying (with audioUrl) and requests play. That keeps
- * playback completely decoupled from which card is on screen — so audio
- * survives scrolling, off-screen play/pause, and video→audio queue advances.
+ * button that sets nowPlaying and requests play. That keeps playback completely
+ * decoupled from which card is on screen — so audio survives scrolling,
+ * off-screen play/pause, and video→audio queue advances.
  *
  * Responsibilities mirrored from the old PostCard MediaPlayer:
  *   - register play/pause/seek handlers so FloatingPlayer + FullScreenPlayer work
@@ -52,9 +61,14 @@ export default function GlobalAudioPlayer() {
     setIsBuffering,
     queueVersion,
   } = usePlayback();
+  const { showToast } = useToast();
 
   const videoRef = useRef<VideoRef>(null);
   const [paused, setPaused] = useState(true);
+  // Playback rate (FloatingPlayer drag-right "2x"). GAP is now the sole audio
+  // engine for audio AND video posts, so it owns rate too (was a no-op before,
+  // when FullScreenPlayer owned video playback).
+  const [rate, setPlaybackRate] = useState(1.0);
   // Mirror of `paused` readable synchronously inside native-event callbacks
   // (no stale closure) so we can tell an in-app pause from a lock-screen pause.
   const pausedRef = useRef(paused);
@@ -76,12 +90,13 @@ export default function GlobalAudioPlayer() {
   const repeatModeRef = useRef(repeatMode);
   repeatModeRef.current = repeatMode;
 
-  // Activate/deactivate based on whether nowPlaying carries an audioUrl
+  // Activate for ANY playable track — GAP is the single audio engine for both
+  // audio posts and the audio track of video posts (source = audioUrl ?? videoUrl).
   useEffect(() => {
-    const url = nowPlaying?.audioUrl;
-    if (url && nowPlaying?.mediaKind === 'audio') {
-      console.log(`[LIVIL][GAP] activating for postId=${nowPlaying.postId} pos=${positionRef.current.toFixed(1)}`);
-      myPostIdRef.current = nowPlaying.postId;
+    const url = nowPlaying?.audioUrl ?? nowPlaying?.videoUrl;
+    if (url) {
+      console.log(`[LIVIL][GAP] activating for postId=${nowPlaying!.postId} kind=${nowPlaying!.mediaKind} pos=${positionRef.current.toFixed(1)}`);
+      myPostIdRef.current = nowPlaying!.postId;
       clipEndFiredRef.current = false;
       setIsBuffering(true);
       bufferingRef.current = true;
@@ -89,33 +104,32 @@ export default function GlobalAudioPlayer() {
       // isPlaying=false until the first frame is decodable).
       loadGuardUntilRef.current = Date.now() + 4000;
       setPaused(false);
+      setPlaybackRate(1.0); // a held 2x must not bleed into the next track
       registerHandlers({
         play:    () => {
           console.log('[LIVIL][GAP] handler PLAY');
           clipEndFiredRef.current = false;
           setPaused(false);
-          resumePlay(nowPlaying.postId);
+          resumePlay(nowPlaying!.postId);
         },
-        pause:   () => { console.log('[LIVIL][GAP] handler PAUSE'); setPaused(true); reportPaused(nowPlaying.postId); },
+        pause:   () => { console.log('[LIVIL][GAP] handler PAUSE'); setPaused(true); reportPaused(nowPlaying!.postId); },
         seek:    (s: number) => {
           console.log(`[LIVIL][GAP] handler SEEK to=${s.toFixed(1)}s`);
           positionRef.current = s;
           clipEndFiredRef.current = false;
           videoRef.current?.seek(s);
         },
-        setRate: () => {},
+        setRate: (r: number) => { console.log(`[LIVIL][GAP] setRate=${r}`); setPlaybackRate(r); },
       });
     } else {
-      // No audio URL (video track, or nothing playing) — go silent.
-      console.log('[LIVIL][GAP] deactivating (no audio track)');
+      // Nothing playing — go silent.
+      console.log('[LIVIL][GAP] deactivating (nothing playing)');
       myPostIdRef.current = null;
       setPaused(true);
       setIsBuffering(false);
-      // Do NOT call unregisterHandlers — whoever takes over (FS for video) will
-      // registerHandlers, overwriting ours. Nulling handlersRef here would race.
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowPlaying?.postId, nowPlaying?.audioUrl]);
+  }, [nowPlaying?.postId, nowPlaying?.audioUrl, nowPlaying?.videoUrl]);
 
   // React to activePostId changes while we're the active player:
   //   - null  → paused externally (FloatingPlayer pause / pauseAll) → stop audio
@@ -136,14 +150,12 @@ export default function GlobalAudioPlayer() {
     if (activePostId === mine) { return; }
 
     const next = queueRef.current[currentIndexRef.current];
-    if (next?.audioUrl) {
-      console.log(`[LIVIL][GAP] activePostId→${activePostId}, loading queue track`);
+    if (next?.audioUrl ?? next?.videoUrl) {
+      console.log(`[LIVIL][GAP] activePostId→${activePostId}, loading queue track kind=${next.mediaKind}`);
       setNowPlaying(next);
-    } else {
-      // Next track is a video (or has no audio) — release; FS takes over.
-      myPostIdRef.current = null;
-      setPaused(true);
     }
+    // No else: GAP is the sole engine now, so it never releases to anyone. A
+    // queue item with neither url is a data error — leave the current paused.
   }, [activePostId, queueRef, currentIndexRef, setNowPlaying]);
 
   const handleLoad = useCallback((data: OnLoadData) => {
@@ -211,9 +223,31 @@ export default function GlobalAudioPlayer() {
   );
 
   const handleEnd = useCallback(() => {
+    // repeat-one: loop the current track at its natural end instead of advancing.
+    // (Clipped tracks already loop via the clip-end branch in handleProgress; this
+    // covers UNclipped tracks reaching real end-of-stream — for audio AND video,
+    // now that GAP owns every post's onEnd.)
+    if (repeatModeRef.current === 'one') {
+      const start = clipWindowRef.current?.start ?? 0;
+      console.log(`[LIVIL][GAP] onEnd repeat-one → loop to ${start.toFixed(1)}s`);
+      positionRef.current = start;
+      clipEndFiredRef.current = false;
+      videoRef.current?.seek(start);
+      return;
+    }
     console.log('[LIVIL][GAP] onEnd → playNext');
     playNext();
-  }, [playNext]);
+  }, [playNext, positionRef, clipWindowRef]);
+
+  // GAP is the single engine, so a decode/URL failure here means the audio for
+  // this post (audio OR video) won't play. Surface it and skip to the next
+  // track so the queue doesn't dead-end on one broken file.
+  const handleError = useCallback((e: { error?: unknown }) => {
+    console.warn('[LIVIL][GAP] onError → skip', e?.error ?? e);
+    showToast('Could not play this track', { kind: 'error' });
+    setIsBuffering(false);
+    playNext();
+  }, [showToast, setIsBuffering, playNext]);
 
   // Lock-screen / notification / headset next & previous-track presses.
   const handleNextTrack = useCallback(() => {
@@ -238,20 +272,28 @@ export default function GlobalAudioPlayer() {
     [nowPlaying?.postId, queueVersion],
   );
 
-  // Don't render when PlaybackEngine is handling playback, or no audio URL.
-  if (engineDriving || !nowPlaying?.audioUrl || nowPlaying.mediaKind !== 'audio') {
+  // Don't render when the jam PlaybackEngine drives audio, or nothing is playing.
+  if (engineDriving || !nowPlaying) {
+    return null;
+  }
+  // The single audio engine: for a video post we play its audio track (videoUrl)
+  // through this hidden surface — the frames are never composited here.
+  const audioSrc = nowPlaying.audioUrl ?? nowPlaying.videoUrl;
+  if (!audioSrc) {
     return null;
   }
 
   return (
     <Video
       ref={videoRef}
-      source={{ uri: nowPlaying.audioUrl, metadata: buildNowPlayingMetadata(nowPlaying) }}
+      source={{ uri: audioSrc, metadata: buildNowPlayingMetadata(nowPlaying) }}
       paused={paused}
+      rate={rate}
       onLoad={handleLoad}
       onProgress={handleProgress}
       onBuffer={handleBuffer}
       onEnd={handleEnd}
+      onError={handleError}
       onPlaybackStateChanged={handlePlaybackStateChanged}
       onNextTrack={handleNextTrack}
       onPreviousTrack={handlePrevTrack}
@@ -260,9 +302,9 @@ export default function GlobalAudioPlayer() {
       playInBackground
       playWhenInactive
       ignoreSilentSwitch="ignore"
-      // Lock-screen / notification / Control Center media controls. GlobalAudioPlayer
-      // only mounts this <Video> for audio tracks and FullScreenPlayer only mounts its
-      // <Video> for video tracks, so exactly one MediaSession exists at a time.
+      // The ONE MediaSession for every post (audio + video). FullScreenPlayer's
+      // <Video> is muted with no notification controls, so it never creates a
+      // second session.
       showNotificationControls
       muted={false}
       volume={1.0}

@@ -86,14 +86,8 @@ type PlaybackContextValue = {
    * Call this before dispatching `seek()` through a handler.
    */
   markSeekTarget: (seconds: number) => void;
-  /**
-   * postId of the video currently owned by FullScreenPlayer's <Video>
-   * element. PostCard reads this to skip handler registration / seek for
-   * the owned post, so FS can keep audio playing seamlessly when minimized.
-   * Null when no FS-owned video is active.
-   */
-  fsOwnerPostIdRef: React.MutableRefObject<string | null>;
-
+  /** Increments on every markSeekTarget — lets a paused slave surface re-seek. */
+  seekNonce: number;
   // --- clip window (ref — no re-renders; mutated by FullScreenPlayer on drag) ---
   clipWindowRef: React.MutableRefObject<{ start: number; end: number } | null>;
 
@@ -176,6 +170,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [engineDriving, setEngineDrivingState] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
   const bumpQueue = useCallback(() => setQueueVersion(v => v + 1), []);
+  // Bumped on every markSeekTarget so a slave surface (FullScreenPlayer's muted
+  // video frame) can seek itself to the new position even while paused — its
+  // onProgress doesn't fire when paused, so it can't drift-correct on its own.
+  const [seekNonce, setSeekNonce] = useState(0);
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
@@ -188,11 +186,6 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // active, updatePosition discards samples that are far from `target`. Once
   // a sample lands close to the target the guard auto-clears.
   const seekGuardRef = useRef<{ target: number; until: number } | null>(null);
-  // postId of the video FullScreenPlayer's <Video> currently owns. When set,
-  // PostCard for that post stays out of the way — no handler registration,
-  // no seek, no play. This is what lets FS keep audio playing across the
-  // minimize→fullscreen transition without a handoff gap.
-  const fsOwnerPostIdRef = useRef<string | null>(null);
   const queueRef = useRef<NowPlayingInfo[]>([]);
   const currentIndexRef = useRef<number>(-1);
   const userQueueRef = useRef<NowPlayingInfo[]>([]);
@@ -305,6 +298,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const markSeekTarget = useCallback((seconds: number) => {
     positionRef.current = seconds;
     seekGuardRef.current = { target: seconds, until: Date.now() + 1200 };
+    setSeekNonce(n => n + 1);
     console.log(`[LIVIL][CTX] markSeekTarget=${seconds.toFixed(2)}`);
   }, []);
 
@@ -576,7 +570,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       updatePosition,
       updateDuration,
       markSeekTarget,
-      fsOwnerPostIdRef,
+      seekNonce,
       clipWindowRef,
       handlersRef,
       registerHandlers,
@@ -631,6 +625,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       updatePosition,
       updateDuration,
       markSeekTarget,
+      seekNonce,
       registerHandlers,
       unregisterHandlers,
       isBuffering,

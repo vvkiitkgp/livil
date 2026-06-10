@@ -23,11 +23,9 @@ import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ClipRangeSlider from './ClipRangeSlider';
 import QueueList from './QueueList';
-import { usePlayback, type NowPlayingInfo, type RepeatMode, type PlayerHandlers } from '../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
-import { trackPlayProgress } from '../utils/playTracker';
-import { buildNowPlayingMetadata } from '../utils/nowPlayingMetadata';
 import CommentsSheet from './CommentsSheet';
 import {
   fetchUserPlaylists,
@@ -36,7 +34,6 @@ import {
   type UserPlaylist,
 } from '../services/playlists';
 import { COLORS } from '../theme/colors';
-import { useToast } from '../contexts/ToastContext';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -851,6 +848,12 @@ const modalSt = StyleSheet.create({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FullScreenPlayer() {
+  // FullScreenPlayer no longer drives playback — GlobalAudioPlayer is the single
+  // audio engine + MediaSession owner for every post (audio AND video). This
+  // component now renders a MUTED, foreground-only <Video> that mirrors the
+  // engine's picture and seeks itself to follow GAP's position. So it needs only
+  // read-side context: nowPlaying, the position ref to chase, the FS-open /
+  // foreground / engine flags that gate the frame, and the buffering spinner.
   const {
     nowPlaying,
     setNowPlaying,
@@ -859,21 +862,10 @@ export default function FullScreenPlayer() {
     isFullScreenOpen,
     closeFullScreenPlayer,
     positionRef,
-    durationRef,
-    handlersRef,
-    registerHandlers,
-    unregisterHandlers,
-    updatePosition,
-    updateDuration,
     clipWindowRef,
-    requestPlay,
-    resumePlay,
-    reportPaused,
-    playNext,
-    playPrev,
-    repeatMode,
-    fsOwnerPostIdRef,
+    engineDriving,
     isBuffering,
+    seekNonce,
   } = usePlayback();
 
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -884,7 +876,6 @@ export default function FullScreenPlayer() {
 
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { showToast } = useToast();
 
   // ── Player positioning (insets-aware) ─────────────────────────────────────
   // Computed here — not at module level — so insets.bottom (the real height of
@@ -894,21 +885,29 @@ export default function FullScreenPlayer() {
   const playerBottom   = Math.max(SCREEN_H * 0.1, playerTabBarH + 56);
   const convergeY      = SCREEN_H / 2 - playerBottom - FLOAT_D / 2;
 
+  // True only while the app is in the foreground. Gates the muted video frame:
+  // the frame must never be mounted while backgrounded (GlobalAudioPlayer owns
+  // background audio + the lock-screen MediaSession; a second hidden decoder
+  // here would just waste battery and risk fighting it for the surface).
+  const [appForeground, setAppForeground] = useState(true);
+
   // Rule 3 — when the app is backgrounded or the screen locks while a VIDEO is
   // open full-screen, auto-minimize the player. The audio keeps playing through
-  // the MediaSession (the video <Video> has playInBackground), and on return the
-  // user sees the floating cover; re-opening FS brings the video back (rule 2).
-  // This is YouTube Music's "video demotes to cover on background" behaviour.
-  // Only on 'background' (true lock / app-switch) — NOT 'inactive', which also
-  // fires for transient Control-Center / notification-shade pulls.
+  // GlobalAudioPlayer + the MediaSession, and on return the user sees the
+  // floating cover; re-opening FS brings the video back (rule 2). This is
+  // YouTube Music's "video demotes to cover on background" behaviour.
+  // We flip appForeground only on 'active' / 'background' — NOT 'inactive',
+  // which also fires for transient Control-Center / notification-shade pulls and
+  // would otherwise tear the frame down and back up with a black flash.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (
-        state === 'background' &&
-        isFullScreenOpen &&
-        nowPlaying?.mediaKind === 'video'
-      ) {
-        closeFullScreenPlayer();
+      if (state === 'active') {
+        setAppForeground(true);
+      } else if (state === 'background') {
+        setAppForeground(false);
+        if (isFullScreenOpen && nowPlaying?.mediaKind === 'video') {
+          closeFullScreenPlayer();
+        }
       }
     });
     return () => sub.remove();
@@ -925,40 +924,11 @@ export default function FullScreenPlayer() {
     navigation.dispatch(StackActions.push('UserProfile', { userId }));
   }, [closeFullScreenPlayer, navigation]);
 
-  // True while the video buffers; isPlaying=false during buffering must not be
-  // mistaken for a user pause (else a video→video skip self-pauses).
-  const fsBufferingRef = useRef(false);
-  const fsLoadGuardUntilRef = useRef(0);
-  // Arm the load guard whenever the video track changes.
-  useEffect(() => {
-    if (nowPlaying?.mediaKind === 'video') {
-      fsBufferingRef.current = true;
-      fsLoadGuardUntilRef.current = Date.now() + 4000;
-    }
-  }, [nowPlaying?.postId, nowPlaying?.mediaKind]);
-
-  // Mirror lock-screen / notification / headset play-pause for VIDEO posts into
-  // context so the in-app UI stays in sync (RNV `paused` is a controlled prop).
-  // Acts only on a genuine discrepancy so our own pause/resume don't loop.
-  const handleVideoPlaybackStateChanged = useCallback(
-    (e: { isPlaying: boolean; isSeeking: boolean }) => {
-      if (e.isSeeking) { return; }
-      const mine = fsOwnerPostIdRef.current;
-      if (!mine) { return; }
-      if (e.isPlaying && fsPausedRef.current) {
-        setFsPaused(false);
-        resumePlay(mine);
-      } else if (!e.isPlaying && !fsPausedRef.current) {
-        // Buffering / fresh load reports not-playing — don't treat as a pause.
-        if (fsBufferingRef.current || Date.now() < fsLoadGuardUntilRef.current) {
-          return;
-        }
-        setFsPaused(true);
-        reportPaused(mine);
-      }
-    },
-    [fsOwnerPostIdRef, resumePlay, reportPaused],
-  );
+  // NOTE: lock-screen / notification / headset play-pause sync used to live here.
+  // It now belongs to GlobalAudioPlayer (the single MediaSession owner) — its
+  // onPlaybackStateChanged drives reportPaused/resumePlay for every post. The
+  // muted frame below carries no notification controls, so it never receives
+  // those events and must not try to mirror them.
 
   // Three independent native-driver values replace the old slideAnim/bounceAnim pair.
   // Keeping them separate avoids Animated.add() on interpolated values, which can
@@ -970,29 +940,14 @@ export default function FullScreenPlayer() {
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
-  const [fsPaused, setFsPaused] = useState(true);
-  // Mirror of fsPaused readable synchronously inside native-event callbacks so
-  // lock-screen play/pause can be told apart from in-app play/pause.
-  const fsPausedRef = useRef(fsPaused);
-  fsPausedRef.current = fsPaused;
-  // Buffering spinner for video. ExoPlayer/AVPlayer fire onBuffer while loading
-  // and onReadyForDisplay once the first frame is decodable.
+  // Buffering spinner for the video frame. ExoPlayer/AVPlayer fire onBuffer
+  // while loading and onReadyForDisplay once the first frame is decodable.
   const [fsBuffering, setFsBuffering] = useState(false);
-  // Native playback rate. FloatingPlayer's drag-right "forward 2x" gesture
-  // routes through handlersRef.setRate; without this state the FS handler was
-  // a no-op and forward did nothing for video tracks.
-  const [fsRate, setFsRate] = useState(1.0);
   const videoRef = useRef<VideoRef>(null);
-  const initialSeekDone = useRef(false);
-  // Saved PostCard handlers so we can restore them when the FS video player closes
-  const savedHandlersRef = useRef<PlayerHandlers | null>(null);
-  // Guard: prevents re-saving PostCard handlers on track changes within FS
-  const fsOpenRef = useRef(false);
-  // Guard: prevents stale onProgress updates from finishing video
-  const fsVideoPostIdRef = useRef<string | null>(null);
-  // One-shot guard: prevents clip-end-detected playNext / loop from firing
-  // multiple times per play session. Reset on play start and track change.
-  const clipEndFiredRef = useRef(false);
+  // Throttle drift-correcting frame seeks. The frame chases GlobalAudioPlayer's
+  // positionRef; we re-seek only when it drifts past a threshold and only once
+  // every ~600 ms so a seek doesn't fire on every onProgress tick.
+  const frameSeekCooldownRef = useRef(0);
 
   // ── Original-post metrics hydration (reposts only) ────────────────────────
   // When the currently playing item is a repost, the player surface shows the
@@ -1083,113 +1038,22 @@ export default function FullScreenPlayer() {
     }
   }, [isFullScreenOpen, posYAnim, scaleAnim, opacityAnim, panelAnim]);
 
-  // ── Video ownership (no handoff model) ────────────────────────────────────
-  // Once FullScreenPlayer takes over a video, it OWNS playback for the rest
-  // of that video's lifetime — even when minimized. The <Video> element
-  // stays mounted at the app root, hidden behind the feed, playing audio
-  // in the background. PostCard skips handler registration for the owned
-  // post via fsOwnerPostIdRef.
+  // ── No ownership / handler registration ───────────────────────────────────
+  // The old two-engine model registered PlayerHandlers here and "took ownership"
+  // of a video so FS could keep its audio alive when minimized. That whole dance
+  // is gone: GlobalAudioPlayer is the single engine and registers the handlers
+  // for every post (audio AND video). FS just shows muted frames that chase the
+  // engine's position — nothing to own, pause, or hand back. When the frame
+  // unmounts (minimize / background / track→audio) the engine never even
+  // notices, so audio is gap-free by construction.
   //
-  // Why no close-side handoff: handing back to PostCard means stopping one
-  // ExoPlayer and starting another, which creates an audible gap (this was
-  // the source of "video paused when I minimized").
-  //
-  // Ownership releases when nowPlaying becomes non-video or is cleared.
+  // Show the spinner whenever the video track changes — the new source has to
+  // load before the first frame is decodable.
   useEffect(() => {
-    if (!nowPlaying || nowPlaying.mediaKind !== 'video') {
-      if (fsOwnerPostIdRef.current) {
-        console.log('[LIVIL][FS] release ownership (track is not video)');
-        fsOwnerPostIdRef.current = null;
-        savedHandlersRef.current = null;
-        fsOpenRef.current = false;
-        fsVideoPostIdRef.current = null;
-        setFsPaused(true);
-        setFsBuffering(false);
-      }
-      return;
-    }
-
-    const alreadyOwns = fsOwnerPostIdRef.current !== null;
-    const trackChanged = alreadyOwns && fsOwnerPostIdRef.current !== nowPlaying.postId;
-
-    if (!alreadyOwns) {
-      // First-time take. Capture current play state, pause the outgoing
-      // PostCard handler so PostCard's silent MediaPlayer doesn't stay live,
-      // and configure fsPaused.
-      const wasPlaying = activePostId === nowPlaying.postId;
-      console.log(`[LIVIL][FS] TAKE ownership postId=${nowPlaying.postId} wasPlaying=${wasPlaying} fsOpen=${isFullScreenOpen}`);
-      savedHandlersRef.current = handlersRef.current;
-      handlersRef.current?.pause();
-      setFsPaused(!wasPlaying);
-      if (wasPlaying) {
-        requestPlay(nowPlaying.postId);
-      }
-      setFsRate(1.0);
-    } else if (trackChanged) {
-      // Track change while we own (next/prev from FloatingPlayer or inside
-      // FS). Auto-play the new track regardless of minimized state.
-      console.log(`[LIVIL][FS] track change while owning postId=${nowPlaying.postId}`);
-      setFsPaused(false);
-      requestPlay(nowPlaying.postId);
-      // Reset rate so a stuck "2x forward" from the previous track doesn't
-      // bleed into the new one (FloatingPlayer.onEnd of the pan gesture
-      // does setRate(1.0), but if the user lifts mid-track-change that
-      // reset might never fire).
-      setFsRate(1.0);
-    }
-
-    fsOwnerPostIdRef.current = nowPlaying.postId;
-    fsOpenRef.current = isFullScreenOpen;
-    fsVideoPostIdRef.current = nowPlaying.postId;
-    if (!alreadyOwns || trackChanged) {
-      initialSeekDone.current = false;
-      // New track = new play session — re-arm the clip-end one-shot so the
-      // loop / advance logic can fire for it.
-      clipEndFiredRef.current = false;
-      // New video source will load → show the spinner until the first frame.
+    if (nowPlaying?.mediaKind === 'video') {
       setFsBuffering(true);
     }
-
-    // Always re-register so the handler closure has the current postId.
-    registerHandlers({
-      play: () => {
-        console.log('[LIVIL][FS] handler PLAY');
-        clipEndFiredRef.current = false;
-        setFsPaused(false);
-        resumePlay(nowPlaying.postId);
-      },
-      pause: () => { console.log('[LIVIL][FS] handler PAUSE'); setFsPaused(true); reportPaused(nowPlaying.postId); },
-      seek: (s: number) => {
-        console.log(`[LIVIL][FS] handler SEEK to=${s.toFixed(1)}s`);
-        positionRef.current = s;
-        videoRef.current?.seek(s);
-      },
-      setRate: (r: number) => {
-        console.log(`[LIVIL][FS] handler setRate=${r}`);
-        setFsRate(r);
-      },
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullScreenOpen, nowPlaying?.postId, nowPlaying?.mediaKind]);
-
-  // Track postId changes for fsVideoPostIdRef guard (needed for next/prev within FS)
-  useEffect(() => {
-    if (nowPlaying?.mediaKind === 'video' && isFullScreenOpen) {
-      fsVideoPostIdRef.current = nowPlaying.postId;
-    }
-  }, [nowPlaying?.postId, nowPlaying?.mediaKind, isFullScreenOpen]);
-
-  // Handle next/prev track changes within FS — detect when nowPlaying changes
-  // to a different track while FS is open and advance the FS video.
-  useEffect(() => {
-    if (!isFullScreenOpen || !nowPlaying) { return; }
-    if (nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl) {
-      // FS will re-render with the new source; the handoff effect above handles
-      // handler registration. Log for debugging.
-      console.log(`[LIVIL][FS] next/prev advancing to postId=${nowPlaying.postId} title="${nowPlaying.title}"`);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowPlaying?.postId]);
+  }, [nowPlaying?.postId, nowPlaying?.mediaKind]);
 
   // ── Panel helpers ─────────────────────────────────────────────────────────
   const openTab = useCallback((tab: TabId) => {
@@ -1223,62 +1087,61 @@ export default function FullScreenPlayer() {
       if (e.translationY > 60 || e.velocityY > 400) { closePanel(); }
     });
 
-  // ── Video callbacks ───────────────────────────────────────────────────────
-  const handleVideoLoad = useCallback((data: OnLoadData) => {
-    const dur = data.duration ?? 0;
-    console.log(`[LIVIL][FS] onLoad duration=${dur.toFixed(1)}s`);
-    updateDuration(dur);
-    if (!initialSeekDone.current) {
-      initialSeekDone.current = true;
-      const pos = positionRef.current;
-      if (pos > 0 && pos < dur) {
-        console.log(`[LIVIL][FS] seeking to saved position ${pos.toFixed(1)}s`);
-        videoRef.current?.seek(pos);
-      } else if (pos >= dur) {
-        // Stale position from a previous play — reset to start
-        positionRef.current = 0;
-      }
-    }
-  }, [updateDuration, positionRef]);
+  // ── Muted-frame sync callbacks ────────────────────────────────────────────
+  // The frame is a SLAVE to GlobalAudioPlayer. It never drives positionRef,
+  // duration, the play tracker, the queue, or clip-end — GAP owns all of that.
+  // It only seeks ITSELF to match the engine's position so the picture lines up.
 
-  const handleVideoProgress = useCallback(
+  // On load, jump the frame to wherever the engine currently is.
+  const handleFrameLoad = useCallback((_data: OnLoadData) => {
+    const pos = positionRef.current;
+    console.log(`[LIVIL][FS] frame onLoad → seek to engine pos ${pos.toFixed(1)}s`);
+    if (pos > 0) { videoRef.current?.seek(pos); }
+  }, [positionRef]);
+
+  // On each frame tick, correct drift against the engine's position. We do NOT
+  // call updatePosition — GAP's hidden <Video> is the source of truth; this just
+  // nudges the silent picture back into alignment when it slips (e.g. after a
+  // clip loop, a lock-screen seek, or a 2x burst that the frame plays at 1x).
+  const handleFrameProgress = useCallback(
     (data: OnProgressData) => {
-      if (!fsVideoPostIdRef.current || activePostId !== fsVideoPostIdRef.current) {
+      const t = data.currentTime ?? 0;
+      const target = positionRef.current;
+      // Eager clip-end snap. GAP loops/advances at clipEnd by resetting
+      // positionRef to clipStart; the free-running frame would otherwise keep
+      // showing frames PAST clipEnd until the drift threshold + 600ms cooldown
+      // let it resync. Snap immediately the moment the picture crosses clipEnd so
+      // the visible frame doesn't overrun the clip window on every loop.
+      const cw = clipWindowRef.current;
+      if (cw && t >= cw.end) {
+        frameSeekCooldownRef.current = Date.now() + 600;
+        videoRef.current?.seek(target);
         return;
       }
-      const t = data.currentTime ?? 0;
-      updatePosition(t);
-      // Drive the play tracker from the fullscreen Video as well, so plays
-      // count whether the user is in the feed or fullscreen. The handoff
-      // between PostCard and FullScreenPlayer is exclusive (only one of
-      // them is actually playing audio), so there's no double-counting.
-      trackPlayProgress(fsVideoPostIdRef.current, t);
-
-      // Clip-end detection. When the playing track has a clip window, the
-      // user is meant to see only that range — react-native-video doesn't
-      // know about it, so we enforce the upper bound here.
-      //   repeat 'one' → seek back to clip start, keep playing.
-      //   repeat 'all' / 'off' → pause + playNext (queue handles wrap-around).
-      // clipEndFiredRef is a one-shot to avoid re-triggering across the
-      // ~3-4 onProgress events that fire in the last ~250 ms of a clip.
-      const cw = clipWindowRef.current;
-      if (cw && t >= cw.end && !clipEndFiredRef.current) {
-        clipEndFiredRef.current = true;
-        if (repeatMode === 'one') {
-          console.log(`[LIVIL][FS] clip-end repeat-one — looping to ${cw.start.toFixed(2)}s`);
-          positionRef.current = cw.start;
-          videoRef.current?.seek(cw.start);
-          // Re-arm after the seek settles so the next loop cycle is detected.
-          setTimeout(() => { clipEndFiredRef.current = false; }, 300);
-        } else {
-          console.log('[LIVIL][FS] clip-end — calling playNext');
-          setFsPaused(true);
-          playNext();
+      const drift = Math.abs(t - target);
+      if (drift > 0.4) {
+        const now = Date.now();
+        if (now >= frameSeekCooldownRef.current) {
+          frameSeekCooldownRef.current = now + 600;
+          console.log(`[LIVIL][FS] frame drift ${drift.toFixed(2)}s → resync to ${target.toFixed(1)}s`);
+          videoRef.current?.seek(target);
         }
       }
     },
-    [updatePosition, activePostId, clipWindowRef, repeatMode, playNext, positionRef],
+    [positionRef, clipWindowRef],
   );
+
+  // When the engine is seeked, markSeekTarget bumps seekNonce — eagerly move the
+  // muted frame to the new position. Critical while PAUSED: the frame's
+  // onProgress (and thus drift correction) doesn't fire when paused, so without
+  // this a scrub on a paused video wouldn't move the picture until playback
+  // resumed. videoRef is null unless the frame is mounted, so this no-ops then.
+  useEffect(() => {
+    if (nowPlaying?.mediaKind === 'video') {
+      videoRef.current?.seek(positionRef.current);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekNonce]);
 
   // ── Layout ────────────────────────────────────────────────────────────────
   const safeTop = insets.top;
@@ -1334,13 +1197,25 @@ export default function FullScreenPlayer() {
     >
       {/* ── Full-bleed media ── */}
       <View style={StyleSheet.absoluteFill}>
-        {nowPlaying.mediaKind === 'video' && nowPlaying.videoUrl ? (
+        {nowPlaying.mediaKind === 'video' &&
+        nowPlaying.videoUrl &&
+        isFullScreenOpen &&
+        appForeground &&
+        !engineDriving ? (
+          // MUTED, foreground-only video frame. This is NOT the audio engine and
+          // NOT the MediaSession owner — GlobalAudioPlayer is. It plays the same
+          // video silently and seeks itself to chase GAP's position so the user
+          // sees the picture in sync with the audio they hear. It mounts only
+          // while FS is open AND the app is foregrounded (minimize / lock / a
+          // switch to an audio track all unmount it → cover art), so a second
+          // background decoder never exists.
           <Video
             ref={videoRef}
-            source={{ uri: nowPlaying.videoUrl, metadata: buildNowPlayingMetadata(nowPlaying) }}
-            // Poster covers the brief gap between source mount and first
-            // decoded frame so the user sees the thumbnail (same image as
-            // PostCard's feed preview) instead of a black flash.
+            // No `metadata` — GAP owns the lock-screen now-playing info. A second
+            // source.metadata here could try to claim the MediaSession.
+            source={{ uri: nowPlaying.videoUrl }}
+            // Poster covers the brief gap between source mount and first decoded
+            // frame so the user sees the thumbnail instead of a black flash.
             poster={
               nowPlaying.thumbnailUrl
                 ? { source: { uri: nowPlaying.thumbnailUrl }, resizeMode: 'cover' }
@@ -1348,74 +1223,45 @@ export default function FullScreenPlayer() {
             }
             style={styles.video}
             resizeMode="cover"
-            paused={fsPaused}
-            rate={fsRate}
-            onLoad={handleVideoLoad}
-            onProgress={handleVideoProgress}
-            onPlaybackStateChanged={handleVideoPlaybackStateChanged}
-            onNextTrack={() => {
-              console.log('[LIVIL][FS] onNextTrack → playNext');
-              setFsPaused(false);
-              playNext();
-            }}
-            onPreviousTrack={() => {
-              console.log('[LIVIL][FS] onPreviousTrack → playPrev');
-              setFsPaused(false);
-              playPrev();
-            }}
-            onEnd={() => {
-              // For clipped tracks the clip-end detector in handleVideoProgress
-              // already fired playNext / loop, so this onEnd is a no-op redundant
-              // signal. The clipEndFiredRef guard keeps us from double-firing.
-              if (clipEndFiredRef.current) {
-                console.log('[LIVIL][FS] onEnd ignored — clip-end already handled');
-                return;
-              }
-              if (repeatMode === 'one') {
-                console.log('[LIVIL][FS] onEnd repeat-one — restarting from 0');
-                positionRef.current = 0;
-                videoRef.current?.seek(0);
-              } else {
-                console.log('[LIVIL][FS] onEnd — calling playNext');
-                setFsPaused(true);
-                playNext();
-              }
-            }}
+            // Follow the engine's play/pause: activePostId is the post GAP is
+            // actively playing (null when paused). No local fsPaused state.
+            paused={activePostId !== nowPlaying.postId}
+            onLoad={handleFrameLoad}
+            onProgress={handleFrameProgress}
             onBuffer={({ isBuffering: buf }) => {
-              console.log(`[LIVIL][FS] onBuffer isBuffering=${buf}`);
-              fsBufferingRef.current = buf;
               setFsBuffering(buf);
             }}
             onReadyForDisplay={() => {
-              console.log('[LIVIL][FS] onReadyForDisplay');
+              console.log('[LIVIL][FS] frame ready → seek to engine pos');
+              const pos = positionRef.current;
+              if (pos > 0) { videoRef.current?.seek(pos); }
               setFsBuffering(false);
             }}
             onError={(e) => {
-              // Without this, a bad URL / decode failure leaves the player in
-              // a silent stuck state with duration=0 and no seek bar. Surface
-              // it as a toast so the user knows what happened, and advance.
-              console.warn('[LIVIL][FS] video onError', e?.error ?? e);
-              showToast('Could not play this track', { kind: 'error' });
-              setFsPaused(true);
-              playNext();
+              // The frame failed to decode, but GAP is still playing the audio
+              // fine on its own surface — so DON'T advance the queue here (that
+              // would skip a perfectly audible track). Just drop the spinner and
+              // let the cover art / poster stand in for the missing picture.
+              console.warn('[LIVIL][FS] frame onError (audio unaffected)', e?.error ?? e);
+              setFsBuffering(false);
             }}
-            progressUpdateInterval={100}
-            // Keep a video's audio alive when the app is backgrounded / the
-            // screen is locked (the frames suspend, the audio continues) so the
-            // lock-screen MediaSession keeps playing — the "demote to cover"
-            // behaviour. Was false (video paused on background) before media controls.
-            playInBackground
-            playWhenInactive
-            ignoreSilentSwitch="ignore"
-            // Lock-screen / notification / Control Center controls for video posts.
-            // Mutually exclusive with GlobalAudioPlayer's <Video> (audio vs video
-            // mediaKind) so only one MediaSession is ever live.
-            showNotificationControls
-            muted={false}
-            volume={1.0}
-            {...(Platform.OS === 'android'
-              ? {
-                  disableFocus: fsPaused,
+            progressUpdateInterval={250}
+            // Silent slave surface: muted + volume 0 + disableFocus, and never
+            // plays in background. Because it is muted it contributes nothing to
+            // the audio-session category, so GAP stays the sole session driver.
+            // IMPORTANT (iOS): do NOT set disableAudioSessionManagement here —
+            // RNV's AudioSessionManager is a process-wide singleton and that flag
+            // on ANY mounted <Video> globally disables management, which would
+            // stop GAP from forcing the .playback category (audio would then be
+            // silenced by the ring switch and lose background/lock-screen audio).
+            muted
+            volume={0}
+            disableFocus
+            playInBackground={false}
+            playWhenInactive={false}
+            {...(Platform.OS === 'ios'
+              ? { preferredForwardBufferDuration: 20 }
+              : {
                   bufferConfig: {
                     minBufferMs: 15_000,
                     maxBufferMs: 50_000,
@@ -1424,11 +1270,18 @@ export default function FullScreenPlayer() {
                     backBufferDurationMs: 10_000,
                     cacheSizeMB: 200,
                   },
-                }
-              : { preferredForwardBufferDuration: 20 })}
+                })}
           />
-        ) : nowPlaying.coverArtUrl ? (
-          <Image source={{ uri: nowPlaying.coverArtUrl }} style={styles.albumArt} resizeMode="cover" />
+        ) : (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl) ? (
+          // Cover-art mode: audio posts use coverArtUrl; a video that has demoted
+          // to cover (FS minimized / backgrounded) falls back to its thumbnail so
+          // the picture-to-cover transition matches the floating player instead of
+          // flashing the gradient placeholder.
+          <Image
+            source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+            style={styles.albumArt}
+            resizeMode="cover"
+          />
         ) : (
           <View style={styles.albumArtFallback}>
             <View style={styles.fallbackBlobA} />
