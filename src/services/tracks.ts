@@ -91,15 +91,38 @@ export async function backfillTrackDuration(trackId: string, seconds: number): P
 // read/write + an in-memory cache live HERE so ./waveform stays a pure analyzer
 // with no Supabase import (tracks → waveform only, no cycle).
 
-/** Validate the jsonb blob coming back from the DB into a WaveformData (or null). */
+/** A non-empty array of finite numbers, or undefined (for optional v2 channels). */
+function numArray(v: unknown): number[] | undefined {
+  return Array.isArray(v) && v.length > 0 && v.every(n => typeof n === 'number')
+    ? (v as number[])
+    : undefined;
+}
+
+/** Validate the jsonb blob coming back from the DB into a WaveformData (or null).
+ *  Carries the optional v2 channels (bass/flux/centroid/sr) through; a v1 row
+ *  (peaks only) parses fine and is treated as stale by getOrAnalyzeWaveform. */
 function parseWaveformData(raw: unknown): WaveformData | null {
   if (!raw || typeof raw !== 'object') { return null; }
-  const obj = raw as { version?: unknown; hz?: unknown; peaks?: unknown };
+  const obj = raw as Record<string, unknown>;
   if (typeof obj.hz !== 'number' || obj.hz <= 0) { return null; }
   if (!Array.isArray(obj.peaks) || obj.peaks.length === 0) { return null; }
   if (!obj.peaks.every(p => typeof p === 'number')) { return null; }
-  const version = typeof obj.version === 'number' ? obj.version : 0;
-  return { version, hz: obj.hz, peaks: obj.peaks as number[] };
+  const peaks = obj.peaks as number[];
+  // A v2 channel must match peaks length or it's dropped — a misaligned channel
+  // would otherwise lerp into the wrong positions (or flatline past its end).
+  const aligned = (v: unknown): number[] | undefined => {
+    const a = numArray(v);
+    return a && a.length === peaks.length ? a : undefined;
+  };
+  return {
+    version: typeof obj.version === 'number' ? obj.version : 0,
+    hz: obj.hz,
+    peaks,
+    sr: typeof obj.sr === 'number' ? obj.sr : undefined,
+    bass: aligned(obj.bass),
+    flux: aligned(obj.flux),
+    centroid: aligned(obj.centroid),
+  };
 }
 
 /** Read a track's stored envelope. Returns null when absent/unanalyzed/malformed. */
@@ -137,6 +160,24 @@ export async function backfillWaveformPeaks(trackId: string, data: WaveformData)
   }
 }
 
+/**
+ * OVERWRITING persist — used when re-analysis produced a NEWER version than what's
+ * stored (the null-guarded `backfillWaveformPeaks` can't upgrade an existing row).
+ * Owner-only via RLS (a non-owner's attempt no-ops, so they just re-analyze in
+ * memory each session until the owner replays). Fire-and-forget, never throws.
+ */
+async function writeWaveformPeaks(trackId: string, data: WaveformData): Promise<void> {
+  if (!trackId || !data || !Array.isArray(data.peaks) || data.peaks.length === 0) { return; }
+  try {
+    await supabase
+      .from('tracks')
+      .update({ waveform_peaks: data as unknown as Json })
+      .eq('id', trackId);
+  } catch {
+    // Best-effort; re-analyzes again on a later play if this fails.
+  }
+}
+
 // Session caches: successful envelopes by trackId, plus in-flight de-dup so the
 // active track is never analyzed twice concurrently. Failures aren't cached, so a
 // transient miss retries on the next play.
@@ -148,8 +189,17 @@ const waveformInFlight = new Map<string, Promise<WaveformData | null>>();
  * unanalyzed) decode the remote URL on-device, persist, and cache. Returns null
  * when nothing is usable yet (the wave then stays decorative). Never throws.
  */
-export async function getOrAnalyzeWaveform(trackId: string, url: string | undefined): Promise<WaveformData | null> {
+export async function getOrAnalyzeWaveform(
+  trackId: string,
+  url: string | undefined,
+  mediaKind: 'audio' | 'video' = 'audio',
+): Promise<WaveformData | null> {
   if (!trackId) { return null; }
+  // AUDIO-ONLY hard guard, enforced at the API boundary (not just at the
+  // FloatingPlayer call site): decoding a video URL pulls the whole (huge) file
+  // into memory → OutOfMemoryError → the process is killed. A future caller that
+  // passes a video URL gets a safe null + a decorative wave instead of a crash.
+  if (mediaKind !== 'audio') { return null; }
   const cached = waveformCache.get(trackId);
   if (cached) { return cached; }
   const inflight = waveformInFlight.get(trackId);
@@ -157,12 +207,24 @@ export async function getOrAnalyzeWaveform(trackId: string, url: string | undefi
 
   const task = (async (): Promise<WaveformData | null> => {
     const stored = await getWaveformPeaks(trackId);
-    if (stored) { waveformCache.set(trackId, stored); return stored; }
-    if (!url) { return null; }
+    // Current-version row → use as-is. A STALE row (older analyzer version) or a
+    // null row falls through to re-analysis below so old tracks upgrade on play.
+    if (stored && stored.version >= WAVEFORM_VERSION) { waveformCache.set(trackId, stored); return stored; }
+    if (!url) {
+      // Nothing to re-analyze from — fall back to a stale row if we have one
+      // (the old wave) rather than nothing.
+      if (stored) { waveformCache.set(trackId, stored); return stored; }
+      return null;
+    }
     const computed = await analyzeWaveformPeaks(url);
-    if (!computed) { return null; }
+    if (!computed) {
+      // Re-analysis failed — keep showing the stale row if present.
+      if (stored) { waveformCache.set(trackId, stored); return stored; }
+      return null;
+    }
     waveformCache.set(trackId, computed);
-    backfillWaveformPeaks(trackId, computed).catch(() => {});
+    // OVERWRITE: upgrades a stale row (and writes a first-time null row too).
+    writeWaveformPeaks(trackId, computed).catch(() => {});
     return computed;
   })();
 
@@ -190,8 +252,10 @@ function kickoffWaveformAnalysisFromLocalFile(trackId: string, file: PickedFile 
         waveformCache.set(trackId, data);
         await backfillWaveformPeaks(trackId, data);
       }
-    } catch {
-      // Best-effort; lazy backfill on first play covers any failure here.
+    } catch (err) {
+      // Best-effort; lazy backfill on first play covers any failure here. Log it
+      // so an upload-time decode/URI failure isn't completely invisible.
+      console.log(`[LIVIL][WAVE] upload analyze failed trackId=${trackId}: ${err instanceof Error ? err.message : String(err)}`);
     }
   })().catch(() => {});
 }
