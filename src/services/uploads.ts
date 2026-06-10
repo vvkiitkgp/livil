@@ -68,14 +68,16 @@ function describeReadFailure(originalUri: string, underlying: unknown): Error {
 }
 
 /**
- * `content://` URIs from the Android document picker can't be read with `fetch()` reliably —
- * cloud-backed providers (Drive) return HTTP status 0, which crashes whatwg-fetch's Response
- * constructor. We materialize a real `file://` copy via the picker's `keepLocalCopy`, then read
- * it through RN's native fetch which handles `file://` cleanly.
+ * Returns a URI we can stream straight off disk. `content://` URIs from the Android document
+ * picker aren't reliably readable by every provider (cloud-backed ones like Drive can fail), so we
+ * materialize a real `file://` copy via the picker's `keepLocalCopy` first. On iOS the picker
+ * already hands back a `file://` URI, so we stream it directly.
+ *
+ * We deliberately do NOT read the file into a JS `ArrayBuffer` here — doing that loaded the entire
+ * file into memory, which RN surfaced as "Network request failed" for large videos. The upload
+ * streams from this URI instead (see `uploadFileUriWithProgress`).
  */
-async function readPickedFileAsArrayBuffer(file: PickedFile): Promise<ArrayBuffer> {
-  let readableUri = file.uri;
-
+async function resolveReadableUri(file: PickedFile): Promise<string> {
   if (Platform.OS === 'android' && file.uri.startsWith('content://')) {
     try {
       const [result] = await keepLocalCopy({
@@ -85,32 +87,29 @@ async function readPickedFileAsArrayBuffer(file: PickedFile): Promise<ArrayBuffe
       if (result.status !== 'success') {
         throw new Error(result.copyError);
       }
-      readableUri = result.localUri;
+      return result.localUri;
     } catch (err) {
       throw describeReadFailure(file.uri, err);
     }
   }
-
-  try {
-    const response = await fetch(readableUri);
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength === 0) {
-      throw new Error('File was empty.');
-    }
-    return buffer;
-  } catch (err) {
-    throw describeReadFailure(file.uri, err);
-  }
+  return file.uri;
 }
 
 /**
- * Direct XHR upload against Supabase Storage REST. Bypasses supabase-js so we can observe
- * `xhr.upload.onprogress` byte events for the progress bar — supabase-js's storage client
- * uses fetch internally and doesn't expose progress.
+ * Direct XHR upload against Supabase Storage REST. The file is streamed straight from its on-disk
+ * URI via `multipart/form-data` — RN reads it off disk in chunks rather than us pulling the whole
+ * thing into a JS `ArrayBuffer` first (which threw "Network request failed" on large videos).
+ *
+ * The multipart shape mirrors what supabase-js sends so storage-api parses it identically: a
+ * `cacheControl` field first, then an (empty-named) file part whose `Content-Type` becomes the
+ * stored object's content type. We do NOT set a request `Content-Type` header — RN fills in
+ * `multipart/form-data; boundary=…`. XHR (not fetch) is used so `xhr.upload.onprogress` can drive
+ * the progress bar — supabase-js's storage client doesn't expose progress.
  */
-function uploadArrayBufferWithProgress(
+function uploadFileUriWithProgress(
   path: string,
-  arrayBuffer: ArrayBuffer,
+  fileUri: string,
+  fileName: string,
   contentType: string,
   accessToken: string,
   onProgress: UploadProgressCallback,
@@ -120,7 +119,6 @@ function uploadArrayBufferWithProgress(
     xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${TRACKS_MEDIA_BUCKET}/${path}`, true);
     xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
     xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-    xhr.setRequestHeader('Content-Type', contentType);
     xhr.setRequestHeader('x-upsert', 'false');
 
     xhr.upload.onprogress = event => {
@@ -149,7 +147,12 @@ function uploadArrayBufferWithProgress(
     xhr.onerror = () => reject(new Error('Network error during upload.'));
     xhr.onabort = () => reject(new Error('Upload aborted.'));
 
-    xhr.send(arrayBuffer);
+    // Field order matters: cacheControl before the file part, mirroring supabase-js — storage-api's
+    // streaming multipart parser reads the leading fields, then the trailing file stream.
+    const formData = new FormData();
+    formData.append('cacheControl', '3600');
+    formData.append('', { uri: fileUri, name: fileName, type: contentType } as any);
+    xhr.send(formData);
   });
 }
 
@@ -164,13 +167,14 @@ export async function uploadTrackFile(
   const ext = extensionFromName(file.name, defaultExtensionFor(kind, file.type));
   const path = `${userId}/${trackId}/${kind}.${ext}`;
 
-  const arrayBuffer = await readPickedFileAsArrayBuffer(file);
+  const readableUri = await resolveReadableUri(file);
 
   // 'cover' and 'thumbnail' are both image uploads — branch on that.
   const isImage = kind === 'cover' || kind === 'thumbnail';
   const contentType = file.type ?? `${isImage ? 'image' : kind}/*`;
+  const fileName = file.name ?? `${kind}.${ext}`;
 
-  await uploadArrayBufferWithProgress(path, arrayBuffer, contentType, accessToken, onProgress);
+  await uploadFileUriWithProgress(path, readableUri, fileName, contentType, accessToken, onProgress);
 
   const { data } = supabase.storage.from(TRACKS_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;
