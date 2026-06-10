@@ -16,12 +16,17 @@ export type PickedFile = {
 export type UploadProgressCallback = (fraction: number) => void;
 
 /**
- * Hard ceiling on a single uploaded file. Supabase's free plan caps storage uploads at 50 MB
- * project-wide — the `tracks-media` bucket's own 500 MB `file_size_limit` is moot because the
- * effective limit is the smaller of (global, bucket). Raising this needs a paid plan with a higher
- * project upload limit, client-side compression, or moving large media to external storage (R2).
+ * Hard ceiling on a single uploaded file from the mobile app — sized for phone-recorded video.
+ * The mobile upload is a single streamed request with no resume-on-drop (resumable uploads have no
+ * clean React Native solution — tus-js-client buffers the whole file into memory and OOM-crashes),
+ * so this is kept reasonable for cellular. Large pro 4K masters are intentionally out of scope on
+ * mobile; they're meant for a future web uploader that can do resumable uploads.
+ *
+ * NOTE: the project-wide "Global file size limit" in Supabase Storage Settings must be >= this
+ * value (a bucket's own limit is itself capped by that global), or the server keeps rejecting files
+ * between the global limit and this one.
  */
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 /** User-facing "this file is too big" copy, tailored to the media kind. */
 export function tooLargeMessage(kind: TrackMediaKind): string {
