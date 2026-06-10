@@ -2021,11 +2021,12 @@ const styles = StyleSheet.create({
   actionRow: {
     position: 'absolute', left: 0, right: 0,
     flexDirection: 'row', justifyContent: 'center',
-    alignItems: 'center', gap: 12, paddingHorizontal: 24,
+    alignItems: 'center', gap: 10, paddingHorizontal: 24,
   },
   actionBtn: {
-    flex: 1, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+    flex: 1, height: 36, borderRadius: 18,
+    // Translucent dark to match the floating pill / handle-bar background.
+    backgroundColor: 'rgba(10,10,15,0.9)', borderWidth: 1, borderColor: COLORS.border,
     alignItems: 'center', justifyContent: 'center',
   },
   actionBtnActive: {
@@ -2033,6 +2034,6 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 4,
   },
-  actionBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '600', letterSpacing: 0.3 },
+  actionBtnText: { color: COLORS.white, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
   actionBtnTextActive: { color: COLORS.purpleLight },
 });

@@ -52,6 +52,9 @@ const OPEN_FS_VEL   = 500;
 const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
 const RATE_FORWARD  = 2.0;
+// Delay (ms) before the pill morphs open, so the FS player opens first and the
+// pill then pops up. Close stays instant (matches the FS collapse).
+const OPEN_MORPH_DELAY = 220;
 
 // Avatar
 const AV = 28;  // avatar diameter
@@ -87,6 +90,32 @@ const icon = StyleSheet.create({
   glyph: { fontSize: 18, fontWeight: '400' },
   badge: { position: 'absolute', top: 3, right: 3, fontSize: 7, fontWeight: '700', color: COLORS.white },
   dot:   { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2 },
+});
+
+// ─── Play / pause flash glyphs (translucent, View-based for reliable rendering) ─
+function PlayGlyph() {
+  return <View style={flash.playTri} />;
+}
+function PauseGlyph() {
+  return (
+    <View style={flash.pauseRow}>
+      <View style={flash.pauseBar} />
+      <View style={flash.pauseBar} />
+    </View>
+  );
+}
+
+const FLASH_COLOR = 'rgba(255,255,255,0.92)';
+const flash = StyleSheet.create({
+  wrap: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  playTri: {
+    width: 0, height: 0,
+    borderTopWidth: 9, borderBottomWidth: 9, borderLeftWidth: 15,
+    borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: FLASH_COLOR,
+    marginLeft: 3, // optical centring of the triangle
+  },
+  pauseRow: { flexDirection: 'row', gap: 5 },
+  pauseBar: { width: 5, height: 18, borderRadius: 1.5, backgroundColor: FLASH_COLOR },
 });
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -190,6 +219,23 @@ export default function FloatingPlayer() {
     return () => clearInterval(id);
   }, [nowPlaying, positionRef, durationRef, progressAnim]);
 
+  // ─── Play/pause indicator ─────────────────────────────────────────────────────
+  // A translucent glyph PERSISTENTLY shown in the circle centre, reflecting the
+  // GLOBAL play state (activePostId) — so it stays in sync no matter where
+  // play/pause is triggered (home, playlist, lock screen, the circle tap). Button
+  // convention — shows what a tap does: ❚❚ while playing, ▶ while paused. A small
+  // pop animates it on each toggle.
+  const isPlaying = activePostId !== null;
+  const iconScale = useRef(new Animated.Value(1)).current;
+  const prevPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    if (isPlaying === prevPlayingRef.current) { return; }
+    prevPlayingRef.current = isPlaying;
+    iconScale.stopAnimation();
+    iconScale.setValue(0.7);
+    Animated.spring(iconScale, { toValue: 1, useNativeDriver: true, bounciness: 12, speed: 18 }).start();
+  }, [isPlaying, iconScale]);
+
   // ─── Circle anims ─────────────────────────────────────────────────────────────
   const circleX   = useRef(new Animated.Value(0)).current;
   const circleY   = useRef(new Animated.Value(0)).current;
@@ -222,6 +268,9 @@ export default function FloatingPlayer() {
   useEffect(() => {
     Animated.spring(morphAnim, {
       toValue: isExpanded ? 1 : 0,
+      // Open: let the FS player visibly burst open first, THEN the pill pops up to
+      // reveal shuffle/repeat. Close: instant (no delay) so it collapses with FS.
+      delay: isExpanded ? OPEN_MORPH_DELAY : 0,
       useNativeDriver: false,
       bounciness: isExpanded ? 10 : 4,
       speed: 14,
@@ -254,7 +303,7 @@ export default function FloatingPlayer() {
   const barHeight  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_H,       PILL_H] });
   const barTop     = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_TOP_REST, BAR_TOP_PILL] });
   const barRadius  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [1, PILL_H / 2] });
-  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', 'rgba(10,10,15,0.82)'] });
+  const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', 'rgba(10,10,15,0.9)'] });
   const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(124,58,237,0)', 'rgba(124,58,237,0.50)'] });
   // Content fades in only after pill is mostly open, and out before it collapses
   const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
@@ -364,11 +413,31 @@ export default function FloatingPlayer() {
     })
     .onEnd((e) => {
       stopRewind(); handlersRef.current?.setRate(1.0); springBack();
-      if (isFullScreenOpen && (e.translationY > CLOSE_FS_DIST || e.velocityY > CLOSE_FS_VEL)) { closeFullScreenPlayer(); return; }
-      if (!isFullScreenOpen && (e.translationY < -OPEN_FS_DIST || (e.velocityY < -OPEN_FS_VEL && e.translationY < -20))) { openFullScreenPlayer(); return; }
-      if (Math.abs(e.velocityX) > SNAP_VELOCITY) {
-        if (e.velocityX > 0) { console.log('[LIVIL][FP] swipe → playNext'); playNext(); }
-        else { console.log('[LIVIL][FP] swipe ← playPrev'); playPrev(); }
+      // ── X-grid ── The swipe belongs to exactly ONE quadrant by its dominant
+      // axis, so a left/right swipe can never also trigger open/close (the old
+      // bug where a leftward "previous" swipe with a little downward drift would
+      // minimise the FS player too). Prefer the axis with the larger flick
+      // velocity; fall back to translation when the release is slow.
+      const ax = Math.abs(e.translationX), ay = Math.abs(e.translationY);
+      const avx = Math.abs(e.velocityX), avy = Math.abs(e.velocityY);
+      const horizontalDominant = avx > avy ? true : avx < avy ? false : ax >= ay;
+      if (horizontalDominant) {
+        // Quick horizontal SNAP → prev/next. A slow drag-and-hold (low velocity)
+        // was a fast-forward/rewind scrub (done live in onUpdate) → no track change.
+        if (avx > SNAP_VELOCITY) {
+          if (e.velocityX > 0) { console.log('[LIVIL][FP] snap → playNext'); playNext(); }
+          else { console.log('[LIVIL][FP] snap ← playPrev'); playPrev(); }
+        }
+      } else if (e.translationY < 0 || e.velocityY < 0) {
+        // Up → open FS.
+        if (!isFullScreenOpen && (e.translationY < -OPEN_FS_DIST || e.velocityY < -OPEN_FS_VEL)) {
+          console.log('[LIVIL][FP] swipe ↑ openFS'); openFullScreenPlayer();
+        }
+      } else {
+        // Down → close FS.
+        if (isFullScreenOpen && (e.translationY > CLOSE_FS_DIST || e.velocityY > CLOSE_FS_VEL)) {
+          console.log('[LIVIL][FP] swipe ↓ closeFS'); closeFullScreenPlayer();
+        }
       }
     })
     .onFinalize(() => {
@@ -482,14 +551,30 @@ export default function FloatingPlayer() {
             </Animated.View>
           </View>
 
-          <View style={styles.innerDisc}>
-            {nowPlaying?.coverArtUrl ? (
-              <Image source={{ uri: nowPlaying.coverArtUrl }} style={styles.albumArt} resizeMode="cover" />
-            ) : (
-              <View style={styles.fallbackArt}>
-                <View style={styles.fallbackBlobA} />
-                <View style={styles.fallbackBlobB} />
-              </View>
+          <View style={[styles.innerDisc, isFullScreenOpen && styles.innerDiscOpen]}>
+            {/* Minimised → cover (audio) or thumbnail (video). FS open → transparent
+                centre (the stroked ring lets the FS video show through). */}
+            {!isFullScreenOpen && (
+              (nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
+                <Image
+                  source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+                  style={styles.albumArt}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.fallbackArt}>
+                  <View style={styles.fallbackBlobA} />
+                  <View style={styles.fallbackBlobB} />
+                </View>
+              )
+            )}
+            {/* Persistent play/pause indicator (driven by global play state).
+                Button convention: shows the action a tap would take — ❚❚ while
+                playing (tap to pause), ▶ while paused (tap to play). */}
+            {nowPlaying && (
+              <Animated.View style={[flash.wrap, { transform: [{ scale: iconScale }] }]} pointerEvents="none">
+                {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
+              </Animated.View>
             )}
           </View>
         </Animated.View>
@@ -602,15 +687,26 @@ const styles = StyleSheet.create({
   },
 
   // ─── Circle ──────────────────────────────────────────────────────────────────
+  // The track + progress are STROKED rings (borderWidth B, transparent centre)
+  // rather than filled half-discs masked by an opaque inner disc. Same rotation
+  // mechanism, identical look — but the hollow centre lets the inner disc be made
+  // transparent when FS is open (so the FS video shows through). The half-rings
+  // are full-height semicircle arcs: the curved (outer) edge is stroked, the flat
+  // edge (towards the centre, at the vertical centre-line) is open (no border).
   circleContainer: { width: D, height: D },
-  grayDisc: { position: 'absolute', width: D, height: D, borderRadius: R, backgroundColor: COLORS.textMuted },
+  grayDisc: { position: 'absolute', width: D, height: D, borderRadius: R, borderWidth: B, borderColor: COLORS.textMuted, backgroundColor: 'transparent' },
   rightClip: { position: 'absolute', left: R, top: 0, width: R, height: D, overflow: 'hidden' },
   halfWrapper: { position: 'absolute', left: -R, top: 0, width: D, height: D },
-  rightHalfDisc: { position: 'absolute', right: 0, top: 0, width: R, height: D, borderTopRightRadius: R, borderBottomRightRadius: R, backgroundColor: COLORS.purple },
+  rightHalfDisc: { position: 'absolute', right: 0, top: 0, width: R, height: D, borderTopRightRadius: R, borderBottomRightRadius: R, borderTopWidth: B, borderRightWidth: B, borderBottomWidth: B, borderLeftWidth: 0, borderColor: COLORS.purple, backgroundColor: 'transparent' },
   leftClip: { position: 'absolute', left: 0, top: 0, width: R, height: D, overflow: 'hidden' },
   halfWrapperLeft: { position: 'absolute', left: 0, top: 0, width: D, height: D },
-  leftHalfDisc: { position: 'absolute', left: 0, top: 0, width: R, height: D, borderTopLeftRadius: R, borderBottomLeftRadius: R, backgroundColor: COLORS.purple },
+  leftHalfDisc: { position: 'absolute', left: 0, top: 0, width: R, height: D, borderTopLeftRadius: R, borderBottomLeftRadius: R, borderTopWidth: B, borderLeftWidth: B, borderBottomWidth: B, borderRightWidth: 0, borderColor: COLORS.purple, backgroundColor: 'transparent' },
   innerDisc: { position: 'absolute', left: B, top: B, right: B, bottom: B, borderRadius: R - B, backgroundColor: COLORS.bg, overflow: 'hidden' },
+  // FS open: translucent dark centre that EXACTLY matches the expanded pill/handle
+  // background (barBg = 'rgba(10,10,15,0.9)') — a softly tinted centre, not a
+  // clear hole. The stroked rings keep it clean (no filled-disc colour bleeds
+  // through the translucency).
+  innerDiscOpen: { backgroundColor: 'rgba(10,10,15,0.9)' },
   albumArt: { width: '100%', height: '100%' },
   fallbackArt: { flex: 1, backgroundColor: COLORS.card, overflow: 'hidden' },
   fallbackBlobA: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.purple, opacity: 0.5, top: -15, left: -10 },
