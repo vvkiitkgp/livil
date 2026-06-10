@@ -256,26 +256,26 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     };
   }, [post]);
 
-  // Action-row play/pause button (bottom of the card):
-  //   - Currently playing this post → pause via the global handler.
-  //   - Otherwise → ALWAYS restart from clipStart (per UX spec, tap-play
-  //     means "play from the top"). FS does NOT open.
-  // Two start paths depending on whether FS already owns this post's video:
-  //   • Owned: handlersRef points at FS — seek + play directly.
-  //   • Not owned: set nowPlaying + requestPlay; FS handoff effect will
-  //     take ownership, mount the <Video>, set fsPaused=false, and onLoad
-  //     seeks to positionRef (which we pre-set to clipStart).
+  // Action-row play/pause button (bottom of the card). Video posts now route
+  // through GlobalAudioPlayer exactly like audio — it is the single engine for
+  // every post's audio (it decodes a video's audioless picture-track for sound;
+  // FullScreenPlayer just shows muted frames). So there is no FS "ownership" to
+  // branch on; this is identical to handleAudioTogglePlay.
+  //   - playing this post → pause via the global handler.
+  //   - loaded but paused → seek to clipStart + play (re-issuing setNowPlaying
+  //     wouldn't restart GAP since postId is unchanged).
+  //   - otherwise → setNowPlaying + requestPlay; GAP picks it up.
   const handleVideoTogglePlay = useCallback(() => {
     if (isThisActive) {
       playback.handlersRef.current?.pause();
       return;
     }
     const clipStart = post.clipStartSec ?? 0;
-    const owned = playback.fsOwnerPostIdRef.current === post.id;
-    if (owned) {
+    const isCurrent = playback.nowPlaying?.postId === post.id;
+    if (isCurrent && playback.handlersRef.current) {
       playback.markSeekTarget(clipStart);
-      playback.handlersRef.current?.seek(clipStart);
-      playback.handlersRef.current?.play();
+      playback.handlersRef.current.seek(clipStart);
+      playback.handlersRef.current.play();
     } else {
       playback.setNowPlaying(buildNowPlayingForThis());
       playback.markSeekTarget(clipStart);
@@ -283,21 +283,21 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     }
   }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
 
-  // Center play button (overlay on the thumbnail) AND thumbnail tap:
-  // open FullScreenPlayer. Also restarts from clipStart per UX spec — the
-  // user pressing play on the post means "play this from the top".
+  // Center play button (overlay on the thumbnail) AND thumbnail tap: start (or
+  // resume) playback and open FullScreenPlayer, which mounts the muted video
+  // frame for this track (rule 2: opening FS shows the picture).
   const handleVideoOpenFs = useCallback(() => {
-    const clipStart = post.clipStartSec ?? 0;
-    const owned = playback.fsOwnerPostIdRef.current === post.id;
-    if (owned && isThisActive) {
-      // Already playing this in FS — just maximize.
+    if (isThisActive) {
+      // Already playing this track — just maximize.
       playback.openFullScreenPlayer();
       return;
     }
-    if (owned) {
+    const clipStart = post.clipStartSec ?? 0;
+    const isCurrent = playback.nowPlaying?.postId === post.id;
+    if (isCurrent && playback.handlersRef.current) {
       playback.markSeekTarget(clipStart);
-      playback.handlersRef.current?.seek(clipStart);
-      playback.handlersRef.current?.play();
+      playback.handlersRef.current.seek(clipStart);
+      playback.handlersRef.current.play();
     } else {
       playback.setNowPlaying(buildNowPlayingForThis());
       playback.markSeekTarget(clipStart);
