@@ -83,8 +83,8 @@ android {
         applicationId "com.livil"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 34
-        versionName "1.0.29"
+        versionCode 36
+        versionName "1.0.31"
         ndk {
             abiFilters "arm64-v8a"
         }
