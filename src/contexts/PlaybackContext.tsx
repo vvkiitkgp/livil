@@ -289,6 +289,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     durationRef.current = 0;
     clipWindowRef.current = null;
     setNowPlayingState(null);
+    // A full-screen / immersive player is meaningless with no track, so reset
+    // those flags here too — otherwise they go stale. Concretely: a jam ends
+    // while the co-host has FS open → nowPlaying clears (FullScreenPlayer then
+    // renders nothing) but a stale isFullScreenOpen=true would keep the floating
+    // pill stuck EXPANDED instead of collapsing to the thin white bar (and a
+    // late jam heartbeat re-setting nowPlaying made the pill reappear expanded).
+    setIsFullScreenOpen(false);
+    setIsImmersiveState(false);
   }, []);
 
   const bumpCommentsCount = useCallback((delta: number, isOriginal: boolean) => {
