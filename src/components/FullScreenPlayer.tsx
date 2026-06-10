@@ -871,6 +871,7 @@ export default function FullScreenPlayer() {
     clipWindowRef,
     engineDriving,
     isBuffering,
+    setVideoFrameBuffering,
     seekNonce,
   } = usePlayback();
 
@@ -954,6 +955,11 @@ export default function FullScreenPlayer() {
   // positionRef; we re-seek only when it drifts past a threshold and only once
   // every ~600 ms so a seek doesn't fire on every onProgress tick.
   const frameSeekCooldownRef = useRef(0);
+  // True while we're holding the audio for this buffering frame. Read inside
+  // handleFrameProgress (a stable callback) to suppress drift-correction seeks
+  // while gated: the audio clock is frozen, so chasing it would only yank the
+  // picture back into an unbuffered region and trigger another stall.
+  const videoGateRef = useRef(false);
 
   // ── Original-post metrics hydration (reposts only) ────────────────────────
   // When the currently playing item is a repost, the player surface shows the
@@ -1052,14 +1058,49 @@ export default function FullScreenPlayer() {
   // engine's position — nothing to own, pause, or hand back. When the frame
   // unmounts (minimize / background / track→audio) the engine never even
   // notices, so audio is gap-free by construction.
-  //
-  // Show the spinner whenever the video track changes — the new source has to
-  // load before the first frame is decodable.
+
+  // ── Audio↔video buffer gate ────────────────────────────────────────────────
+  // The muted frame and GlobalAudioPlayer decode the SAME file (a video post has
+  // no separate audio-only rendition), so they compete for bandwidth and the
+  // heavy video stream loses: it stalls while the lighter audio plays on, and the
+  // drift-seek chase then thrashes the picture — the spinner-flicker / frozen-
+  // video bug. Fix: while the frame is mounted, gate the audio on the frame's
+  // readiness. Raise it on mount / each new video (audio waits for the first
+  // frames); onBuffer / onReadyForDisplay below lower and re-raise it on stalls.
+  // When the frame is NOT mounted (audio post, minimized, backgrounded, jam) the
+  // gate is released so audio plays freely — GAP owns background audio alone.
+  const frameMounted =
+    nowPlaying?.mediaKind === 'video' &&
+    !!nowPlaying?.videoUrl &&
+    isFullScreenOpen &&
+    appForeground &&
+    !engineDriving;
   useEffect(() => {
-    if (nowPlaying?.mediaKind === 'video') {
+    if (frameMounted) {
       setFsBuffering(true);
+      setVideoFrameBuffering(true);
+      videoGateRef.current = true;
+    } else {
+      setVideoFrameBuffering(false);
+      videoGateRef.current = false;
     }
-  }, [nowPlaying?.postId, nowPlaying?.mediaKind]);
+  }, [frameMounted, nowPlaying?.postId, setVideoFrameBuffering]);
+
+  // Safety watchdog — the gate is only raised at track start (to sync the first
+  // frame); if that first frame doesn't arrive within a few seconds (slow decode
+  // / poor connection) release it so the audio starts rather than waiting on a
+  // picture that may never come. Short cap because the gate no longer re-raises
+  // mid-song, so this only ever governs the opening moment.
+  useEffect(() => {
+    if (!fsBuffering || !frameMounted) { return; }
+    const id = setTimeout(() => {
+      if (!videoGateRef.current) { return; }
+      console.log('[LIVIL][FS] buffer-gate watchdog → releasing audio (first frame slow)');
+      setVideoFrameBuffering(false);
+      videoGateRef.current = false;
+    }, 6000);
+    return () => clearTimeout(id);
+  }, [fsBuffering, frameMounted, setVideoFrameBuffering]);
 
   // ── Panel helpers ─────────────────────────────────────────────────────────
   const openTab = useCallback((tab: TabId) => {
@@ -1126,6 +1167,11 @@ export default function FullScreenPlayer() {
       }
       const drift = Math.abs(t - target);
       if (drift > 0.4) {
+        // While gated, the audio clock (target) is frozen and the frame is busy
+        // buffering — chasing the frozen target would only seek the picture back
+        // into an unbuffered region and re-trigger the stall. Let the frame play
+        // through; normal drift correction resumes the moment the gate lifts.
+        if (videoGateRef.current) { return; }
         const now = Date.now();
         if (now >= frameSeekCooldownRef.current) {
           frameSeekCooldownRef.current = now + 600;
@@ -1145,6 +1191,13 @@ export default function FullScreenPlayer() {
   useEffect(() => {
     if (nowPlaying?.mediaKind === 'video') {
       videoRef.current?.seek(positionRef.current);
+      // Hold off drift correction for a beat. After this eager seek the frame is
+      // already at the target, but the native player keeps emitting onProgress
+      // samples at the PRE-seek position for a few hundred ms — those would make
+      // handleFrameProgress fire a SECOND, redundant resync seek, and the extra
+      // seek shows up as a second spinner flash (the spinner→video→spinner→video
+      // blink right after a scrub). One seek, one settle.
+      frameSeekCooldownRef.current = Date.now() + 900;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seekNonce]);
@@ -1236,12 +1289,31 @@ export default function FullScreenPlayer() {
             onProgress={handleFrameProgress}
             onBuffer={({ isBuffering: buf }) => {
               setFsBuffering(buf);
+              // Only ever RELEASE the audio gate here — never re-raise it on a
+              // mid-song re-buffer. Re-gating would hold the audio hostage every
+              // time the picture stalls (e.g. after a seek the decoder can't
+              // satisfy quickly → dead air until the watchdog). The gate is
+              // raised ONCE at track start (the frameMounted effect); after the
+              // first frame shows, audio is king and the picture follows via
+              // drift correction.
+              if (!buf) {
+                setVideoFrameBuffering(false);
+                videoGateRef.current = false;
+              }
             }}
             onReadyForDisplay={() => {
-              console.log('[LIVIL][FS] frame ready → seek to engine pos');
-              const pos = positionRef.current;
-              if (pos > 0) { videoRef.current?.seek(pos); }
+              // DO NOT seek() here. On Android a seek renders a fresh first
+              // frame, which makes ExoPlayer fire onReadyForDisplay AGAIN →
+              // seek → ready → seek … a ~40 Hz loop that pegs JS and leaves the
+              // picture stuck re-seeking forever (the black-screen / frozen-video
+              // / endless-spinner bug). Initial alignment is already handled by
+              // handleFrameLoad (onLoad) and ongoing alignment by the drift
+              // correction + seekNonce effect. Here we only drop the spinner and
+              // release the audio gate.
+              console.log('[LIVIL][FS] frame ready → release audio');
               setFsBuffering(false);
+              setVideoFrameBuffering(false);
+              videoGateRef.current = false;
             }}
             onError={(e) => {
               // The frame failed to decode, but GAP is still playing the audio
@@ -1250,6 +1322,10 @@ export default function FullScreenPlayer() {
               // let the cover art / poster stand in for the missing picture.
               console.warn('[LIVIL][FS] frame onError (audio unaffected)', e?.error ?? e);
               setFsBuffering(false);
+              // Release the audio gate — the picture is gone, but the audio plays
+              // fine on GAP's own surface, so it must not stay held.
+              setVideoFrameBuffering(false);
+              videoGateRef.current = false;
             }}
             progressUpdateInterval={250}
             // Silent slave surface: muted + volume 0 + disableFocus, and never
