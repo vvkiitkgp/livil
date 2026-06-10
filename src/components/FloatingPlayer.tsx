@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Easing,
   Dimensions,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -56,6 +58,16 @@ const RATE_FORWARD  = 2.0;
 // Delay (ms) before the pill morphs open, so the FS player opens first and the
 // pill then pops up. Close stays instant (matches the FS collapse).
 const OPEN_MORPH_DELAY = 220;
+
+// ─── "It's draggable" wiggle (onboarding discovery) ─────────────────────────────
+// A gentle shimmy of the floating circle that teaches a NEW user the center is
+// movable. Shown only to users who haven't dragged it yet, a few times, then it
+// stops forever once they drag (persisted). It's a pure visual transform — it
+// dispatches NO gesture, so it can never trigger play/pause/seek/next.
+const WIGGLE_LEARNED_KEY  = 'fmp_drag_learned';
+const WIGGLE_MAX_PER_SESS = 3;     // cap so it never nags
+const WIGGLE_FIRST_MS     = 2600;  // after the player settles in
+const WIGGLE_INTERVAL_MS  = 14000; // spacing between hints if still not dragged
 
 // Avatar
 const AV = 28;  // avatar diameter
@@ -133,6 +145,7 @@ export default function FloatingPlayer() {
     playNext, playPrev,
     openFullScreenPlayer, closeFullScreenPlayer, isFullScreenOpen,
     isImmersive,
+    videoFrameBuffering,
     jamLocked,
     shuffleEnabled, toggleShuffle,
     repeatMode, cycleRepeatMode,
@@ -259,24 +272,72 @@ export default function FloatingPlayer() {
   };
 
   // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
-  const isExpanded = isFullScreenOpen || !!activeJam;
+  const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
   // Jam active but fullscreen NOT open → narrow pill (no shuffle/repeat)
   const isJamOnly  = !!activeJam && !isFullScreenOpen;
+  const isVideo    = nowPlaying?.mediaKind === 'video';
+
+  // For a VIDEO opening full-screen, keep the handle as a straight line until the
+  // FS video frame is actually showing (mounted/ready), THEN expand the pill — so
+  // it doesn't expand over a still-loading (cover-only) video. Audio and jam
+  // expand right away. We only READ the FS frame's buffering flag; the engine is
+  // untouched.
+  const [videoFrameReady, setVideoFrameReady] = useState(false);
+  const sawFrameBufferingRef = useRef(false);
+
+  // Reset readiness whenever FS (re)opens for a video or the video track changes.
+  useEffect(() => {
+    if (isFullScreenOpen && isVideo) {
+      setVideoFrameReady(false);
+      sawFrameBufferingRef.current = false;
+    }
+  }, [isFullScreenOpen, isVideo, nowPlaying?.postId]);
+
+  // The FS frame raises videoFrameBuffering on mount and clears it once the first
+  // picture is decodable → "buffered then cleared" means ready/showing.
+  useEffect(() => {
+    if (!isFullScreenOpen || !isVideo) { return; }
+    if (videoFrameBuffering) { sawFrameBufferingRef.current = true; }
+    else if (sawFrameBufferingRef.current) { setVideoFrameReady(true); }
+  }, [videoFrameBuffering, isFullScreenOpen, isVideo]);
+
+  // Safety net: never leave the handle stuck as a line if the frame never reports
+  // ready (instant cached load, a stall, or a decode error).
+  useEffect(() => {
+    if (!isFullScreenOpen || !isVideo || videoFrameReady) { return; }
+    const id = setTimeout(() => setVideoFrameReady(true), 4000);
+    return () => clearTimeout(id);
+  }, [isFullScreenOpen, isVideo, videoFrameReady]);
+
+  // Pill expands immediately for a jam or audio; for a video opening FS it waits
+  // for the frame to be ready (until then it stays the straight line).
+  const morphExpanded = !!activeJam || (isFullScreenOpen && (!isVideo || videoFrameReady));
 
   const morphAnim  = useRef(new Animated.Value(0)).current;
   const narrowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.spring(morphAnim, {
-      toValue: isExpanded ? 1 : 0,
-      // Open: let the FS player visibly burst open first, THEN the pill pops up to
-      // reveal shuffle/repeat. Close: instant (no delay) so it collapses with FS.
-      delay: isExpanded ? OPEN_MORPH_DELAY : 0,
-      useNativeDriver: false,
-      bounciness: isExpanded ? 10 : 4,
-      speed: 14,
-    }).start();
-  }, [isExpanded, morphAnim]);
+    if (morphExpanded) {
+      // Springs up with a clear, graceful bounce. Audio FS-open keeps the fixed
+      // pre-expand delay (feels right); video has already waited for its frame, so
+      // it expands immediately on ready; jam too.
+      Animated.spring(morphAnim, {
+        toValue: 1,
+        delay: (isFullScreenOpen && !isVideo) ? OPEN_MORPH_DELAY : 0,
+        speed: 10,
+        bounciness: 12,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      // Close: quick, clean ease (no delay, no bounce) so it collapses with the FS.
+      Animated.timing(morphAnim, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [morphExpanded, isFullScreenOpen, isVideo, morphAnim]);
 
   useEffect(() => {
     Animated.spring(narrowAnim, {
@@ -286,6 +347,77 @@ export default function FloatingPlayer() {
       speed: 14,
     }).start();
   }, [isJamOnly, narrowAnim]);
+
+  // ─── "It's draggable" wiggle ──────────────────────────────────────────────────
+  const learnedRef     = useRef(false);  // user has dragged → never wiggle again
+  const wiggleCountRef = useRef(0);      // per-session cap
+  const wiggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [wiggleEligible, setWiggleEligible] = useState(false); // only for not-yet-learned users
+
+  // Load the persisted "has dragged" flag once.
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(WIGGLE_LEARNED_KEY)
+      .then(v => {
+        if (cancelled) { return; }
+        if (v === 'true') { learnedRef.current = true; }
+        else { setWiggleEligible(true); }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Pure-visual shimmy: a quick damped horizontal sway + a tiny scale breath. It
+  // animates the SAME values a drag uses (circleX / scaleAnim), so an incoming
+  // touch (pan onStart stops circleX) cleanly interrupts it — and because it
+  // dispatches NO gesture, it can never fire play/pause/seek/next.
+  const doWiggle = useCallback(() => {
+    circleX.stopAnimation();
+    Animated.sequence([
+      Animated.timing(circleX, { toValue: -7, duration: 110, easing: Easing.out(Easing.quad),   useNativeDriver: true }),
+      Animated.timing(circleX, { toValue:  7, duration: 150, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(circleX, { toValue: -4, duration: 130, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(circleX, { toValue:  0, duration: 120, easing: Easing.out(Easing.quad),   useNativeDriver: true }),
+    ]).start();
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1,   duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [circleX, scaleAnim]);
+
+  // First real drag → mark discovered, stop wiggling now and forever (persisted).
+  const markDragLearned = useCallback(() => {
+    if (learnedRef.current) { return; }
+    learnedRef.current = true;
+    setWiggleEligible(false);
+    if (wiggleTimerRef.current) { clearTimeout(wiggleTimerRef.current); wiggleTimerRef.current = null; }
+    AsyncStorage.setItem(WIGGLE_LEARNED_KEY, 'true').catch(() => {});
+  }, []);
+
+  // Schedule the hint only while the circle is the resting floating dot (not
+  // expanded / jam), visible, unlocked, with a track loaded — for not-yet-learned
+  // users, capped per session and spaced out so it never nags.
+  useEffect(() => {
+    const eligible =
+      wiggleEligible && !learnedRef.current &&
+      shouldShow && !isExpanded && !jamLocked && !!nowPlaying;
+    if (!eligible) { return; }
+    let cancelled = false;
+    const schedule = (ms: number) => {
+      wiggleTimerRef.current = setTimeout(() => {
+        if (cancelled || learnedRef.current || wiggleCountRef.current >= WIGGLE_MAX_PER_SESS) { return; }
+        doWiggle();
+        wiggleCountRef.current += 1;
+        if (wiggleCountRef.current < WIGGLE_MAX_PER_SESS) { schedule(WIGGLE_INTERVAL_MS); }
+      }, ms);
+    };
+    schedule(wiggleCountRef.current === 0 ? WIGGLE_FIRST_MS : WIGGLE_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (wiggleTimerRef.current) { clearTimeout(wiggleTimerRef.current); wiggleTimerRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wiggleEligible, shouldShow, isExpanded, jamLocked, nowPlaying?.postId, doWiggle]);
 
   // Resting bar: narrow white line centred in the container
   const REST_BAR_W   = SCREEN_W * 0.30;
@@ -404,6 +536,9 @@ export default function FloatingPlayer() {
       Animated.spring(scaleAnim, { toValue: 1.22, useNativeDriver: true, bounciness: 14, speed: 28 }).start();
     })
     .onStart(() => {
+      // Any real drag = the user discovered the circle is movable → stop the
+      // wiggle hint forever (also interrupts an in-flight wiggle via stopAnimation).
+      markDragLearned();
       if (jamLocked) { return; }
       circleX.stopAnimation(); circleY.stopAnimation(); stopRewind();
     })
@@ -547,7 +682,10 @@ export default function FloatingPlayer() {
           only lives on the minimized line. Centered + absolute so it never shifts
           the circle; the album circle sits on top, the wave flows out both sides. */}
       <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
-        <WaveVisualizer playing={isPlaying} width={REST_BAR_W} />
+        {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
+            before the pill expands, and only re-ripples once it collapses back —
+            during a jam the pill is always expanded, so the wave simply stays off. */}
+        <WaveVisualizer playing={isPlaying} suppressed={isExpanded} width={REST_BAR_W} />
       </Animated.View>
 
       {/* ── Draggable circle ── */}

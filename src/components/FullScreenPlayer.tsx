@@ -1087,15 +1087,16 @@ export default function FullScreenPlayer() {
   // ── Open / close ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (isFullScreenOpen) {
-      // Snap to the invisible starting dot at the floating player circle, then
-      // spring outward to full screen — looks like it's bursting from the circle.
+      // Start at the invisible dot at the floating-player circle, then spring
+      // outward to full screen with a clear, graceful bounce (slower speed than
+      // before so the overshoot reads as a pop bursting from the circle, not a snap).
       posYAnim.setValue(convergeY);
       scaleAnim.setValue(0.02);
       opacityAnim.setValue(0);
       Animated.parallel([
-        Animated.spring(posYAnim,  { toValue: 0, bounciness: 8, speed: 12, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, bounciness: 8, speed: 12, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+        Animated.spring(posYAnim,  { toValue: 0, speed: 10, bounciness: 12, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, speed: 10, bounciness: 12, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
       ]).start();
     } else {
       panelAnim.setValue(0);

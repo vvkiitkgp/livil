@@ -6,6 +6,7 @@ import Reanimated, {
   useAnimatedProps,
   withRepeat,
   withTiming,
+  withDelay,
   Easing,
 } from 'react-native-reanimated';
 
@@ -56,10 +57,14 @@ function buildPath(phase: number, amp: number, width: number): string {
 
 export default function WaveVisualizer({
   playing,
+  suppressed,
   width,
   color = '#FFFFFF',
 }: {
   playing: boolean;
+  /** True while the pill is expanded (FS open / jam) — flatten FAST so the line
+   *  is ready before the pill expands, and don't re-ripple until it collapses. */
+  suppressed: boolean;
   width: number;
   color?: string;
 }) {
@@ -75,13 +80,21 @@ export default function WaveVisualizer({
     );
   }, [phase]);
 
-  // Grow on play; flatten to a straight line on pause (crisp, constant stroke).
+  // Amplitude, by cause — this is what coordinates the wave with the FS morph:
+  //  • suppressed (FS opening / jam): flatten FAST to a straight line so it's a
+  //    clean line BEFORE the pill expands (beats the morph's open delay).
+  //  • paused (and resting): gentle calm-down into the line.
+  //  • playing + resting: ripple, but DELAYED so the straight line shows FIRST —
+  //    on FS close the pill collapses to the line, then the waves start.
   useEffect(() => {
-    amp.value = withTiming(playing ? AMP : 0, {
-      duration: playing ? 360 : 520,
-      easing: Easing.inOut(Easing.quad),
-    });
-  }, [playing, amp]);
+    if (suppressed) {
+      amp.value = withTiming(0, { duration: 130, easing: Easing.out(Easing.quad) });
+    } else if (!playing) {
+      amp.value = withTiming(0, { duration: 520, easing: Easing.inOut(Easing.quad) });
+    } else {
+      amp.value = withDelay(260, withTiming(AMP, { duration: 360, easing: Easing.inOut(Easing.quad) }));
+    }
+  }, [playing, suppressed, amp]);
 
   const animatedProps = useAnimatedProps(() => ({
     d: buildPath(phase.value, amp.value, width),
