@@ -15,6 +15,31 @@ export type PickedFile = {
 
 export type UploadProgressCallback = (fraction: number) => void;
 
+/**
+ * Hard ceiling on a single uploaded file from the mobile app — sized for phone-recorded video.
+ * The mobile upload is a single streamed request with no resume-on-drop (resumable uploads have no
+ * clean React Native solution — tus-js-client buffers the whole file into memory and OOM-crashes),
+ * so this is kept reasonable for cellular. Large pro 4K masters are intentionally out of scope on
+ * mobile; they're meant for a future web uploader that can do resumable uploads.
+ *
+ * NOTE: the project-wide "Global file size limit" in Supabase Storage Settings must be >= this
+ * value (a bucket's own limit is itself capped by that global), or the server keeps rejecting files
+ * between the global limit and this one.
+ */
+export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+
+/** User-facing "this file is too big" copy, tailored to the media kind. */
+export function tooLargeMessage(kind: TrackMediaKind): string {
+  const limitMb = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
+  if (kind === 'video') {
+    return `This video is over the ${limitMb} MB upload limit. Try a shorter clip or a lower resolution.`;
+  }
+  if (kind === 'audio') {
+    return `This audio file is over the ${limitMb} MB upload limit. Try a shorter or more compressed file.`;
+  }
+  return `This image is over the ${limitMb} MB upload limit. Try a smaller image.`;
+}
+
 function extensionFromName(name: string | null, fallback: string): string {
   if (!name) {return fallback;}
   const dot = name.lastIndexOf('.');
@@ -68,14 +93,16 @@ function describeReadFailure(originalUri: string, underlying: unknown): Error {
 }
 
 /**
- * `content://` URIs from the Android document picker can't be read with `fetch()` reliably —
- * cloud-backed providers (Drive) return HTTP status 0, which crashes whatwg-fetch's Response
- * constructor. We materialize a real `file://` copy via the picker's `keepLocalCopy`, then read
- * it through RN's native fetch which handles `file://` cleanly.
+ * Returns a URI we can stream straight off disk. `content://` URIs from the Android document
+ * picker aren't reliably readable by every provider (cloud-backed ones like Drive can fail), so we
+ * materialize a real `file://` copy via the picker's `keepLocalCopy` first. On iOS the picker
+ * already hands back a `file://` URI, so we stream it directly.
+ *
+ * We deliberately do NOT read the file into a JS `ArrayBuffer` here — doing that loaded the entire
+ * file into memory, which RN surfaced as "Network request failed" for large videos. The upload
+ * streams from this URI instead (see `uploadFileUriWithProgress`).
  */
-async function readPickedFileAsArrayBuffer(file: PickedFile): Promise<ArrayBuffer> {
-  let readableUri = file.uri;
-
+async function resolveReadableUri(file: PickedFile): Promise<string> {
   if (Platform.OS === 'android' && file.uri.startsWith('content://')) {
     try {
       const [result] = await keepLocalCopy({
@@ -85,32 +112,30 @@ async function readPickedFileAsArrayBuffer(file: PickedFile): Promise<ArrayBuffe
       if (result.status !== 'success') {
         throw new Error(result.copyError);
       }
-      readableUri = result.localUri;
+      return result.localUri;
     } catch (err) {
       throw describeReadFailure(file.uri, err);
     }
   }
-
-  try {
-    const response = await fetch(readableUri);
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength === 0) {
-      throw new Error('File was empty.');
-    }
-    return buffer;
-  } catch (err) {
-    throw describeReadFailure(file.uri, err);
-  }
+  return file.uri;
 }
 
 /**
- * Direct XHR upload against Supabase Storage REST. Bypasses supabase-js so we can observe
- * `xhr.upload.onprogress` byte events for the progress bar — supabase-js's storage client
- * uses fetch internally and doesn't expose progress.
+ * Direct XHR upload against Supabase Storage REST. The file is streamed straight from its on-disk
+ * URI via `multipart/form-data` — RN reads it off disk in chunks rather than us pulling the whole
+ * thing into a JS `ArrayBuffer` first (which threw "Network request failed" on large videos).
+ *
+ * The multipart shape mirrors what supabase-js sends so storage-api parses it identically: a
+ * `cacheControl` field first, then an (empty-named) file part whose `Content-Type` becomes the
+ * stored object's content type. We do NOT set a request `Content-Type` header — RN fills in
+ * `multipart/form-data; boundary=…`. XHR (not fetch) is used so `xhr.upload.onprogress` can drive
+ * the progress bar — supabase-js's storage client doesn't expose progress.
  */
-function uploadArrayBufferWithProgress(
+function uploadFileUriWithProgress(
   path: string,
-  arrayBuffer: ArrayBuffer,
+  kind: TrackMediaKind,
+  fileUri: string,
+  fileName: string,
   contentType: string,
   accessToken: string,
   onProgress: UploadProgressCallback,
@@ -120,7 +145,6 @@ function uploadArrayBufferWithProgress(
     xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${TRACKS_MEDIA_BUCKET}/${path}`, true);
     xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
     xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-    xhr.setRequestHeader('Content-Type', contentType);
     xhr.setRequestHeader('x-upsert', 'false');
 
     xhr.upload.onprogress = event => {
@@ -133,23 +157,38 @@ function uploadArrayBufferWithProgress(
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress(1);
         resolve();
-      } else {
-        let message = `Upload failed (HTTP ${xhr.status})`;
-        try {
-          const parsed = JSON.parse(xhr.responseText);
-          if (parsed && typeof parsed.message === 'string') {
-            message = parsed.message;
-          }
-        } catch {
-          // Non-JSON body; keep the default message.
-        }
-        reject(new Error(message));
+        return;
       }
+      // Supabase rejects oversized files with "The object exceeded the maximum allowed size"
+      // (HTTP 400 or 413). Surface friendly, kind-aware copy instead of that raw server text —
+      // "object" is Supabase's word for a stored file and means nothing to a user.
+      if (
+        xhr.status === 413 ||
+        /exceeded the maximum allowed|payload too large|entity too large/i.test(xhr.responseText)
+      ) {
+        reject(new Error(tooLargeMessage(kind)));
+        return;
+      }
+      let message = `Upload failed (HTTP ${xhr.status})`;
+      try {
+        const parsed = JSON.parse(xhr.responseText);
+        if (parsed && typeof parsed.message === 'string') {
+          message = parsed.message;
+        }
+      } catch {
+        // Non-JSON body; keep the default message.
+      }
+      reject(new Error(message));
     };
     xhr.onerror = () => reject(new Error('Network error during upload.'));
     xhr.onabort = () => reject(new Error('Upload aborted.'));
 
-    xhr.send(arrayBuffer);
+    // Field order matters: cacheControl before the file part, mirroring supabase-js — storage-api's
+    // streaming multipart parser reads the leading fields, then the trailing file stream.
+    const formData = new FormData();
+    formData.append('cacheControl', '3600');
+    formData.append('', { uri: fileUri, name: fileName, type: contentType } as any);
+    xhr.send(formData);
   });
 }
 
@@ -164,13 +203,14 @@ export async function uploadTrackFile(
   const ext = extensionFromName(file.name, defaultExtensionFor(kind, file.type));
   const path = `${userId}/${trackId}/${kind}.${ext}`;
 
-  const arrayBuffer = await readPickedFileAsArrayBuffer(file);
+  const readableUri = await resolveReadableUri(file);
 
   // 'cover' and 'thumbnail' are both image uploads — branch on that.
   const isImage = kind === 'cover' || kind === 'thumbnail';
   const contentType = file.type ?? `${isImage ? 'image' : kind}/*`;
+  const fileName = file.name ?? `${kind}.${ext}`;
 
-  await uploadArrayBufferWithProgress(path, arrayBuffer, contentType, accessToken, onProgress);
+  await uploadFileUriWithProgress(path, kind, readableUri, fileName, contentType, accessToken, onProgress);
 
   const { data } = supabase.storage.from(TRACKS_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;

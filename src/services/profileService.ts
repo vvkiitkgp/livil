@@ -137,13 +137,6 @@ export async function pickAvatarFromCamera(): Promise<PickedAvatar | null> {
   }
 }
 
-async function readAvatarAsArrayBuffer(avatar: PickedAvatar): Promise<ArrayBuffer> {
-  const response = await fetch(avatar.uri);
-  const buffer = await response.arrayBuffer();
-  if (buffer.byteLength === 0) {throw new Error('Picked image was empty.');}
-  return buffer;
-}
-
 function extensionForMime(mime: string): string {
   if (mime.includes('png')) {return 'png';}
   if (mime.includes('webp')) {return 'webp';}
@@ -163,8 +156,15 @@ export async function uploadAvatar(
 ): Promise<string> {
   const ext = extensionForMime(avatar.mime);
   const path = `${userId}/avatar_${Date.now()}.${ext}`;
-  const buffer = await readAvatarAsArrayBuffer(avatar);
-  const contentType = avatar.mime;
+
+  // Stream the cropped image straight from disk via multipart/form-data rather than reading it into
+  // a JS ArrayBuffer first (same fragility the track upload hit on large files). The shape mirrors
+  // supabase-js so storage-api parses it identically: cacheControl field, then the empty-named file
+  // part whose Content-Type becomes the stored object's content type. No request Content-Type
+  // header — fetch fills in `multipart/form-data; boundary=…`.
+  const formData = new FormData();
+  formData.append('cacheControl', '3600');
+  formData.append('', { uri: avatar.uri, name: `avatar.${ext}`, type: avatar.mime } as any);
 
   const res = await fetch(
     `${SUPABASE_URL}/storage/v1/object/${AVATARS_BUCKET}/${path}`,
@@ -173,10 +173,9 @@ export async function uploadAvatar(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         apikey: SUPABASE_ANON_KEY,
-        'Content-Type': contentType,
         'x-upsert': 'false',
       },
-      body: buffer,
+      body: formData,
     },
   );
 
