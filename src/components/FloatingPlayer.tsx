@@ -102,6 +102,7 @@ export default function FloatingPlayer() {
     activePostId, positionRef, durationRef, handlersRef,
     playNext, playPrev,
     openFullScreenPlayer, closeFullScreenPlayer, isFullScreenOpen,
+    isImmersive,
     jamLocked,
     shuffleEnabled, toggleShuffle,
     repeatMode, cycleRepeatMode,
@@ -151,11 +152,31 @@ export default function FloatingPlayer() {
     }
   }, [shouldShow, slideAnim]);
 
+  // ─── Immersive (clean-view) hide ──────────────────────────────────────────────
+  // When FullScreenPlayer enters clean view, the floating pill must get out of the
+  // way: it sits ON TOP of FS in the z-stack (RootNavigator) and its draggable
+  // circle lives in the lower-centre — exactly where a pinch / pan-zoom drag lands.
+  // We slide it fully off-screen + fade it out (native driver), and — critically —
+  // flip pointerEvents to 'none' SYNCHRONOUSLY with isImmersive below (not gated on
+  // this animation) so a touch can never be intercepted mid-transition.
+  const immersiveAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(immersiveAnim, {
+      toValue: isImmersive ? 1 : 0,
+      duration: 240,
+      useNativeDriver: true,
+    }).start();
+  }, [isImmersive, immersiveAnim]);
+
   // Combined vertical translate — native driver only
   const translateY = Animated.add(
-    slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
-    keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
+    Animated.add(
+      slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
+      keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
+    ),
+    immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 240] }),
   );
+  const immersiveOpacity = immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
   // ─── Progress arc ─────────────────────────────────────────────────────────────
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -312,6 +333,9 @@ export default function FloatingPlayer() {
   const tapGesture = Gesture.Exclusive(doubleTap, singleTap);
 
   const panGesture = Gesture.Pan().runOnJS(true)
+    // Inert in clean view (the container pointerEvents flip is the authoritative
+    // block; this makes even a stray hit on the circle do nothing).
+    .enabled(!isImmersive)
     // Require ≥10dp of movement before pan recognizes. Without this, micro-
     // motion during a quick tap can activate pan and fire its onEnd, which
     // — combined with the singleTap recognizer — toggles play/pause while
@@ -371,8 +395,8 @@ export default function FloatingPlayer() {
 
   return (
     <Animated.View
-      style={[styles.container, { bottom: playerBottom, transform: [{ translateY }] }]}
-      pointerEvents={shouldShow ? 'box-none' : 'none'}
+      style={[styles.container, { bottom: playerBottom, opacity: immersiveOpacity, transform: [{ translateY }] }]}
+      pointerEvents={(shouldShow && !isImmersive) ? 'box-none' : 'none'}
     >
       {/* ── Bar → Pill ── */}
       <Animated.View

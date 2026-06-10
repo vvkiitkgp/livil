@@ -147,6 +147,16 @@ type PlaybackContextValue = {
   isFullScreenOpen: boolean;
   openFullScreenPlayer: () => void;
   closeFullScreenPlayer: () => void;
+  /**
+   * Clean / immersive view — the FS video with EVERY control + the floating
+   * player hidden so the user can pinch-zoom / pan the picture. Tap the video to
+   * toggle. Only meaningful for a video post while FS is open; it is force-reset
+   * to false on FS close and on every track change (so advancing to an audio
+   * track can never strand the user in a controls-hidden view).
+   */
+  isImmersive: boolean;
+  setImmersive: (v: boolean) => void;
+  toggleImmersive: () => void;
 
   // --- story viewer (hides FloatingPlayer while stories are fullscreen) ---
   isStoryViewerOpen: boolean;
@@ -176,6 +186,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+  const [isImmersive, setIsImmersiveState] = useState(false);
   const [isStoryViewerOpen, setIsStoryViewerOpenState] = useState(false);
   const [isRepostOpen, setIsRepostOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
@@ -556,6 +567,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const closeFullScreenPlayer = useCallback(() => {
     setIsFullScreenOpen(false);
+    // Leaving full-screen always exits clean view — reopening starts with
+    // controls visible. Both setters are stable, so deps stay [].
+    setIsImmersiveState(false);
+  }, []);
+
+  const setImmersive = useCallback((v: boolean) => {
+    setIsImmersiveState(v);
+  }, []);
+
+  const toggleImmersive = useCallback(() => {
+    setIsImmersiveState(v => !v);
   }, []);
 
   const setStoryViewerOpen = useCallback((open: boolean) => {
@@ -643,6 +665,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      isImmersive,
+      setImmersive,
+      toggleImmersive,
       isStoryViewerOpen,
       setStoryViewerOpen,
       isRepostOpen,
@@ -695,6 +720,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       isFullScreenOpen,
       openFullScreenPlayer,
       closeFullScreenPlayer,
+      isImmersive,
+      setImmersive,
+      toggleImmersive,
       isStoryViewerOpen,
       setStoryViewerOpen,
       isRepostOpen,

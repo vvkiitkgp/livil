@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -867,6 +868,9 @@ export default function FullScreenPlayer() {
     activePostId,
     isFullScreenOpen,
     closeFullScreenPlayer,
+    isImmersive,
+    setImmersive,
+    toggleImmersive,
     positionRef,
     clipWindowRef,
     engineDriving,
@@ -961,6 +965,76 @@ export default function FullScreenPlayer() {
   // picture back into an unbuffered region and trigger another stall.
   const videoGateRef = useRef(false);
 
+  // ── Clean-view / pinch-zoom (video only) ──────────────────────────────────
+  // The muted frame loads the full track and renders resizeMode="cover" by
+  // default (the beautiful full-height look). To let the user pinch OUT to full
+  // width we switch the base to resizeMode="contain" once the aspect ratio is
+  // known (from onLoad) and apply a Reanimated scale transform: contain+scale
+  // (coverScale) is pixel-identical to cover, so the default look is unchanged.
+  // In clean view the user pinches scale ∈ [1 (contain/full-width), coverScale
+  // (cover/full-height)] and pans within the cropped bounds. ALL of this is
+  // compositing-only — it never touches positionRef, seek, drift, or the buffer
+  // gate (those stay JS-thread, see handleFrameLoad/handleFrameProgress).
+  const zoomScale  = useSharedValue(1);     // current render scale (contain base)
+  const panX       = useSharedValue(0);
+  const panY       = useSharedValue(0);
+  const savedScale = useSharedValue(1);     // scale at gesture start
+  const savedPanX  = useSharedValue(0);
+  const savedPanY  = useSharedValue(0);
+  const coverScaleSV = useSharedValue(1);   // cover-equivalent scale (zoom-in max)
+  const dispWSV    = useSharedValue(SCREEN_W); // contain-fitted width  @ scale 1
+  const dispHSV    = useSharedValue(SCREEN_H); // contain-fitted height @ scale 1
+  // UI-thread mirrors of React state so the (stable, built-once) gesture tree
+  // reads the latest value inside its worklets WITHOUT being rebuilt on toggle
+  // (rebuilding mid-pinch would drop the active gesture).
+  const immersiveSV = useSharedValue(false);
+  const panelOpenSV = useSharedValue(false);
+  const isVideoSV   = useSharedValue(false);
+  // resizeMode stays "cover" until the aspect ratio is known, then flips to
+  // "contain" the same instant zoomScale becomes coverScale — no letterbox flash.
+  const [aspectKnown, setAspectKnown] = useState(false);
+
+  useEffect(() => { immersiveSV.value = isImmersive; }, [isImmersive, immersiveSV]);
+  useEffect(() => { panelOpenSV.value = activeTab !== null; }, [activeTab, panelOpenSV]);
+  useEffect(() => {
+    isVideoSV.value = nowPlaying?.mediaKind === 'video';
+  }, [nowPlaying?.mediaKind, isVideoSV]);
+
+  // Reset all zoom/clean-view state on every track change. Force-exits clean view
+  // (so a video→audio advance can't strand the user in a controls-hidden view)
+  // and clears the stale aspect ratio so the new track re-derives coverScale on
+  // its onLoad — back to cover until then, never a wrong-aspect pop.
+  useEffect(() => {
+    setImmersive(false);
+    setAspectKnown(false);
+    zoomScale.value = 1; panX.value = 0; panY.value = 0;
+    savedScale.value = 1; savedPanX.value = 0; savedPanY.value = 0;
+    coverScaleSV.value = 1; dispWSV.value = SCREEN_W; dispHSV.value = SCREEN_H;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlaying?.postId]);
+
+  // Controls hide/show (RN Animated, native driver — consistent with panelAnim).
+  // 1 = controls shown, 0 = clean view. Header + credits slide up, the bottom
+  // info / seek / action rows slide down, all fade out.
+  const controlsAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(controlsAnim, {
+      toValue: isImmersive ? 0 : 1,
+      duration: 240,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [isImmersive, controlsAnim]);
+
+  // Animated style for the muted video wrapper (Reanimated, UI thread).
+  const videoZoomStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: panX.value },
+      { translateY: panY.value },
+      { scale: zoomScale.value },
+    ],
+  }));
+
   // ── Original-post metrics hydration (reposts only) ────────────────────────
   // When the currently playing item is a repost, the player surface shows the
   // original post's likes + comments + reposts — fetch those once per
@@ -1026,6 +1100,12 @@ export default function FullScreenPlayer() {
     } else {
       panelAnim.setValue(0);
       setActiveTab(null);
+      // Reset zoom/pan to the default full-height framing (masked by the converge
+      // animation) so re-opening the same track never starts mid-zoom.
+      zoomScale.value = coverScaleSV.value;
+      panX.value = 0; panY.value = 0;
+      savedScale.value = coverScaleSV.value;
+      savedPanX.value = 0; savedPanY.value = 0;
       // Phase 1 (80 ms): quick bounce up.
       // Phase 2 (350 ms): converge — Y moves toward the floating player, scale shrinks to dot.
       Animated.sequence([
@@ -1048,6 +1128,9 @@ export default function FullScreenPlayer() {
         ]),
       ]).start();
     }
+  // Animated values + zoom shared values are stable refs; convergeY only matters
+  // at the open/close edge, which is keyed by isFullScreenOpen.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullScreenOpen, posYAnim, scaleAnim, opacityAnim, panelAnim]);
 
   // ── No ownership / handler registration ───────────────────────────────────
@@ -1117,14 +1200,93 @@ export default function FullScreenPlayer() {
     if (activeTab === tab) { closePanel(); } else { openTab(tab); }
   }, [activeTab, openTab, closePanel]);
 
-  // ── Swipe-down-to-close (disabled while panel is open so only the panel closes) ─
-  const panGesture = Gesture.Pan()
-    .runOnJS(true)
-    .enabled(activeTab === null)
-    .activeOffsetY([8, Infinity])
-    .onEnd((e) => {
-      if (e.translationY > 120 || e.velocityY > 500) { closeFullScreenPlayer(); }
-    });
+  // ── Media-background gesture tree (built ONCE — stable identity) ───────────
+  // Race( tap , Simultaneous(pinch, pan) ):
+  //  • tap  — toggles clean view (video only, no panel open). A WORKLET (never
+  //           runOnJS) so it doesn't poison the worklet pinch/pan in the same
+  //           composition; hops to JS via runOnJS only in the callback.
+  //  • pinch— zoom ∈ [1 (full width), coverScale (full height)] (clean view only).
+  //  • pan  — ONE Pan does double duty, branching on immersiveSV: in clean view it
+  //           pans the zoomed picture (clamped to the cropped bounds); otherwise it
+  //           is the legacy swipe-down-to-close (disabled while a panel is open).
+  // Gating is read from shared values INSIDE the worklets so toggling clean view
+  // never rebuilds the tree (a rebuild mid-pinch would cancel the active gesture).
+  const mediaGesture = useMemo(() => {
+    const tap = Gesture.Tap()
+      .maxDistance(10)
+      .onEnd(() => {
+        'worklet';
+        if (isVideoSV.value && !panelOpenSV.value) {
+          runOnJS(toggleImmersive)();
+        }
+      });
+
+    const pinch = Gesture.Pinch()
+      .onStart(() => {
+        'worklet';
+        if (!immersiveSV.value) { return; }
+        savedScale.value = zoomScale.value;
+      })
+      .onUpdate((e) => {
+        'worklet';
+        if (!immersiveSV.value) { return; }
+        let s = savedScale.value * e.scale;
+        if (s < 1) { s = 1; }
+        if (s > coverScaleSV.value) { s = coverScaleSV.value; }
+        zoomScale.value = s;
+        // Pull pan back inside the bounds for the new (possibly smaller) scale.
+        const maxX = Math.max(0, (dispWSV.value * s - SCREEN_W) / 2);
+        const maxY = Math.max(0, (dispHSV.value * s - SCREEN_H) / 2);
+        if (panX.value >  maxX) { panX.value =  maxX; }
+        if (panX.value < -maxX) { panX.value = -maxX; }
+        if (panY.value >  maxY) { panY.value =  maxY; }
+        if (panY.value < -maxY) { panY.value = -maxY; }
+      })
+      .onEnd(() => {
+        'worklet';
+        if (!immersiveSV.value) { return; }
+        savedScale.value = zoomScale.value;
+        savedPanX.value = panX.value;
+        savedPanY.value = panY.value;
+      });
+
+    const pan = Gesture.Pan()
+      .minDistance(10)
+      .onStart(() => {
+        'worklet';
+        savedPanX.value = panX.value;
+        savedPanY.value = panY.value;
+      })
+      .onUpdate((e) => {
+        'worklet';
+        if (!immersiveSV.value) { return; } // non-clean: close is decided onEnd
+        const s = zoomScale.value;
+        const maxX = Math.max(0, (dispWSV.value * s - SCREEN_W) / 2);
+        const maxY = Math.max(0, (dispHSV.value * s - SCREEN_H) / 2);
+        let nx = savedPanX.value + e.translationX;
+        let ny = savedPanY.value + e.translationY;
+        if (nx >  maxX) { nx =  maxX; }
+        if (nx < -maxX) { nx = -maxX; }
+        if (ny >  maxY) { ny =  maxY; }
+        if (ny < -maxY) { ny = -maxY; }
+        panX.value = nx;
+        panY.value = ny;
+      })
+      .onEnd((e) => {
+        'worklet';
+        if (immersiveSV.value) {
+          savedPanX.value = panX.value;
+          savedPanY.value = panY.value;
+        } else if (!panelOpenSV.value && (e.translationY > 120 || e.velocityY > 500)) {
+          // Legacy swipe-down-to-close (only when no panel is open).
+          runOnJS(closeFullScreenPlayer)();
+        }
+      });
+
+    return Gesture.Race(tap, Gesture.Simultaneous(pinch, pan));
+  // Shared values + these callbacks are all stable, so the tree is built once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toggleImmersive, closeFullScreenPlayer]);
 
   // ── Swipe-down the panel handle to dismiss the panel ─────────────────────
   const panelDismissGesture = Gesture.Pan()
@@ -1139,12 +1301,40 @@ export default function FullScreenPlayer() {
   // duration, the play tracker, the queue, or clip-end — GAP owns all of that.
   // It only seeks ITSELF to match the engine's position so the picture lines up.
 
-  // On load, jump the frame to wherever the engine currently is.
-  const handleFrameLoad = useCallback((_data: OnLoadData) => {
+  // On load, jump the frame to wherever the engine currently is. STAYS a JS
+  // callback (videoRef.seek is JS-thread only); shared-value writes from JS are
+  // legal and used here to drive the zoom transform.
+  const handleFrameLoad = useCallback((data: OnLoadData) => {
     const pos = positionRef.current;
     console.log(`[LIVIL][FS] frame onLoad → seek to engine pos ${pos.toFixed(1)}s`);
     if (pos > 0) { videoRef.current?.seek(pos); }
-  }, [positionRef]);
+
+    // Derive the cover-equivalent scale + contain-fitted size from the video's
+    // natural (already display-oriented on both platforms — DO NOT swap by
+    // orientation) dimensions. Until this runs, resizeMode stays "cover".
+    const nw = data.naturalSize?.width ?? 0;
+    const nh = data.naturalSize?.height ?? 0;
+    if (nw > 0 && nh > 0) {
+      const vAR = nw / nh;
+      const screenAR = SCREEN_W / SCREEN_H;
+      // contain-fitted dimensions within the screen @ scale 1
+      const dispW = vAR > screenAR ? SCREEN_W : SCREEN_H * vAR;
+      const dispH = vAR > screenAR ? SCREEN_W / vAR : SCREEN_H;
+      // scale that takes the contain fit up to a full cover (clamped for safety)
+      const cover = Math.min(Math.max(vAR > screenAR ? vAR / screenAR : screenAR / vAR, 1), 4);
+      dispWSV.value = dispW;
+      dispHSV.value = dispH;
+      coverScaleSV.value = cover;
+      // Default look = full height (cover-equivalent). Setting this the same tick
+      // we flip aspectKnown→contain keeps the switch pixel-identical to cover.
+      zoomScale.value = cover;
+      savedScale.value = cover;
+      panX.value = 0; panY.value = 0;
+      savedPanX.value = 0; savedPanY.value = 0;
+      setAspectKnown(true);
+      console.log(`[LIVIL][FS] aspect ${nw}x${nh} vAR=${vAR.toFixed(3)} coverScale=${cover.toFixed(3)} disp=${dispW.toFixed(0)}x${dispH.toFixed(0)}`);
+    }
+  }, [positionRef, dispWSV, dispHSV, coverScaleSV, zoomScale, savedScale, panX, panY, savedPanX, savedPanY]);
 
   // On each frame tick, correct drift against the engine's position. We do NOT
   // call updatePosition — GAP's hidden <Video> is the source of truth; this just
@@ -1211,6 +1401,16 @@ export default function FullScreenPlayer() {
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 44;
   const seekRowBottom = playerBottom + FLOAT_D + 24;
+  // Clean-view control hide: top group (header/credits) slides fully above the
+  // status bar, bottom group (info/seek/actions) slides down off-screen; both
+  // fade via controlsAnim (opacity). pointerEvents is flipped to 'none' on each
+  // group while immersive so a hidden control can never be tapped.
+  const controlsTopHide = controlsAnim.interpolate({
+    inputRange: [0, 1], outputRange: [-(safeTop + HEADER_H + 48), 0],
+  });
+  const controlsBottomHide = controlsAnim.interpolate({
+    inputRange: [0, 1], outputRange: [seekRowBottom + 160, 0],
+  });
   // Memoize the interpolation node + style array. Without this, every render
   // (e.g. when activeTab changes from null → 'lyrics') creates a fresh
   // interpolation and a new style array; React Native re-binds the
@@ -1254,8 +1454,8 @@ export default function FullScreenPlayer() {
       ]}
       pointerEvents={isFullScreenOpen ? 'box-none' : 'none'}
     >
-      {/* ── Full-bleed media ── */}
-      <View style={StyleSheet.absoluteFill}>
+      {/* ── Full-bleed media (clips the over-scaled zoomed video to the screen) ── */}
+      <View style={[StyleSheet.absoluteFill, styles.mediaClip]}>
         {nowPlaying.mediaKind === 'video' &&
         nowPlaying.videoUrl &&
         isFullScreenOpen &&
@@ -1268,6 +1468,13 @@ export default function FullScreenPlayer() {
           // while FS is open AND the app is foregrounded (minimize / lock / a
           // switch to an audio track all unmount it → cover art), so a second
           // background decoder never exists.
+          //
+          // Wrapped in a Reanimated view that applies the clean-view zoom/pan
+          // (pan + scale, UI-thread). The wrapper owns ITS transform; the outer
+          // container owns its open/close burst transform — different nodes, no
+          // conflict. resizeMode is "cover" until the aspect ratio is known, then
+          // "contain" (+ scale=coverScale, pixel-identical to cover → no flash).
+          <Reanimated.View style={[StyleSheet.absoluteFill, videoZoomStyle]}>
           <Video
             ref={videoRef}
             // No `metadata` — GAP owns the lock-screen now-playing info. A second
@@ -1281,7 +1488,7 @@ export default function FullScreenPlayer() {
                 : undefined
             }
             style={styles.video}
-            resizeMode="cover"
+            resizeMode={aspectKnown ? 'contain' : 'cover'}
             // Follow the engine's play/pause: activePostId is the post GAP is
             // actively playing (null when paused). No local fsPaused state.
             paused={activePostId !== nowPlaying.postId}
@@ -1354,6 +1561,7 @@ export default function FullScreenPlayer() {
                   },
                 })}
           />
+          </Reanimated.View>
         ) : (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl) ? (
           // Cover-art mode: audio posts use coverArtUrl; a video that has demoted
           // to cover (FS minimized / backgrounded) falls back to its thumbnail so
@@ -1385,12 +1593,15 @@ export default function FullScreenPlayer() {
       {/* Interactive elements (header, credits, stats) are siblings rendered AFTER
           this so they sit on top and receive taps before the gesture view does.
           box-only ensures the gesture fires on empty areas but never blocks buttons. */}
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={mediaGesture}>
         <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
       </GestureDetector>
 
       {/* ── Header (outside GestureDetector — reliable taps on all Android devices) ── */}
-      <View style={[styles.header, { top: safeTop, height: HEADER_H }]} pointerEvents="box-none">
+      <Animated.View
+        style={[styles.header, { top: safeTop, height: HEADER_H, opacity: controlsAnim, transform: [{ translateY: controlsTopHide }] }]}
+        pointerEvents={isImmersive ? 'none' : 'box-none'}
+      >
         <TouchableOpacity
           style={styles.closeBtn}
           onPress={closeFullScreenPlayer}
@@ -1434,15 +1645,21 @@ export default function FullScreenPlayer() {
         >
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       {/* ── Credits widget (outside GestureDetector) ── */}
-      <View style={[styles.creditsPos, { top: safeTop + HEADER_H }]} pointerEvents="box-none">
+      <Animated.View
+        style={[styles.creditsPos, { top: safeTop + HEADER_H, opacity: controlsAnim, transform: [{ translateY: controlsTopHide }] }]}
+        pointerEvents={isImmersive ? 'none' : 'box-none'}
+      >
         <CreditsWidget nowPlaying={nowPlaying} onNavigateToUser={handleNavigateToUser} />
-      </View>
+      </Animated.View>
 
       {/* ── Track title + artist + engagement stats ── */}
-      <View style={[styles.bottomInfo, { bottom: seekRowBottom + 56 }]} pointerEvents="box-none">
+      <Animated.View
+        style={[styles.bottomInfo, { bottom: seekRowBottom + 56, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
+        pointerEvents={isImmersive ? 'none' : 'box-none'}
+      >
         <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
         <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
         <CompactStats
@@ -1450,12 +1667,15 @@ export default function FullScreenPlayer() {
           onCommentsPress={() => setCommentsOpen(true)}
           trackPlaysTotal={trackPlaysTotal}
         />
-      </View>
+      </Animated.View>
 
       {/* ── Seek bar + time labels ── */}
-      <View style={[styles.seekRow, { bottom: seekRowBottom }]} pointerEvents="box-none">
+      <Animated.View
+        style={[styles.seekRow, { bottom: seekRowBottom, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
+        pointerEvents={isImmersive ? 'none' : 'box-none'}
+      >
         <FullScreenClipBar />
-      </View>
+      </Animated.View>
 
       {/* Shuffle + Repeat live in the FloatingPlayer pill when fullscreen is open */}
 
@@ -1510,7 +1730,10 @@ export default function FullScreenPlayer() {
       </Animated.View>
 
       {/* ── Action buttons ── */}
-      <View style={[styles.actionRow, { bottom: actionRowBottom }]} pointerEvents="box-none">
+      <Animated.View
+        style={[styles.actionRow, { bottom: actionRowBottom, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
+        pointerEvents={isImmersive ? 'none' : 'box-none'}
+      >
         {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
           <TouchableOpacity
             key={tab}
@@ -1523,7 +1746,7 @@ export default function FullScreenPlayer() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </Animated.View>
 
       {/* ── Add to playlist modal ── */}
       {showPlaylistModal && (
@@ -1698,6 +1921,8 @@ const styles = StyleSheet.create({
     bottom: -SCREEN_W * 0.15, right: -SCREEN_W * 0.1,
   },
   video: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
+  // Clips the over-scaled (zoomed) video wrapper to the screen so it never bleeds.
+  mediaClip: { overflow: 'hidden' },
   bufferOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
 
   // Gradient scrims — dark top and bottom bands so text is readable over media
