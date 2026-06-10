@@ -42,20 +42,23 @@ index 6012932..b372c2a 100644
      }
  
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
-index e16ac96..c6a2aab 100644
+index e16ac96..efef05a 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
-@@ -251,6 +251,9 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -251,6 +251,12 @@ public class ReactExoplayerView extends FrameLayout implements
      private boolean preventsDisplaySleepDuringVideoPlayback = true;
      private float mProgressUpdateInterval = 250.0f;
      protected boolean playInBackground = false;
 +    // Livil patch: JSON-encoded play-queue + index, forwarded to the playback
 +    // service so notification next/previous can load tracks natively (background).
 +    private String mediaQueueJson = null;
++    // Livil patch: JSON-encoded CURRENT clip window {startMs,endMs,active,repeatOne},
++    // forwarded to the playback service for the clip-relative lock-screen view.
++    private String currentClipJson = null;
      private boolean mReportBandwidth = false;
      private boolean controls = false;
  
-@@ -938,8 +941,13 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -938,8 +944,16 @@ public class ReactExoplayerView extends FrameLayout implements
                  try {
                      Activity currentActivity = themedReactContext.getCurrentActivity();
                      if (currentActivity != null) {
@@ -67,10 +70,13 @@ index e16ac96..c6a2aab 100644
 +                        // Livil patch: hand the current JS play-queue to the service so
 +                        // notification next/previous can load tracks natively in the bg.
 +                        playbackServiceBinder.getService().setMediaQueue(mediaQueueJson);
++                        // Livil patch: hand the current clip window so the lock screen
++                        // shows the clip-relative timeline from the first frame.
++                        playbackServiceBinder.getService().setCurrentClip(currentClipJson);
                      } else {
                          // Handle the case where currentActivity is null
                          DebugLog.w(TAG, "Could not register ExoPlayer: currentActivity is null");
-@@ -2061,9 +2069,23 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -2061,9 +2075,23 @@ public class ReactExoplayerView extends FrameLayout implements
              }
  
              if (!isSourceEqual) {
@@ -97,7 +103,7 @@ index e16ac96..c6a2aab 100644
              }
          } else {
              clearSrc();
-@@ -2616,6 +2638,20 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -2616,6 +2644,35 @@ public class ReactExoplayerView extends FrameLayout implements
          this.playInBackground = playInBackground;
      }
  
@@ -115,28 +121,49 @@ index e16ac96..c6a2aab 100644
 +        }
 +    }
 +
++    // Livil patch: push the CURRENT track's clip window to the playback service so
++    // the lock-screen notification shows the clip as a self-contained song
++    // (clip-relative position/duration) and the native clip-end watcher can loop /
++    // advance even while the app is backgrounded.
++    public void setCurrentClipJson(String json) {
++        this.currentClipJson = json;
++        if (playbackServiceBinder != null) {
++            try {
++                playbackServiceBinder.getService().setCurrentClip(json);
++            } catch (Exception e) {
++                DebugLog.w(TAG, "setCurrentClipJson forward failed: " + e.getMessage());
++            }
++        }
++    }
++
      public void setDisableFocus(boolean disableFocus) {
          this.disableFocus = disableFocus;
      }
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
-index b9e0656..d61fa9e 100644
+index b9e0656..4cdcdeb 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
-@@ -43,6 +43,7 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
+@@ -43,6 +43,8 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
          private const val PROP_RATE = "rate"
          private const val PROP_MAXIMUM_BIT_RATE = "maxBitRate"
          private const val PROP_PLAY_IN_BACKGROUND = "playInBackground"
 +        private const val PROP_MEDIA_QUEUE_JSON = "mediaQueueJson"
++        private const val PROP_CURRENT_CLIP_JSON = "currentClipJson"
          private const val PROP_DISABLE_FOCUS = "disableFocus"
          private const val PROP_BUFFERING_STRATEGY = "bufferingStrategy"
          private const val PROP_DISABLE_DISCONNECT_ERROR = "disableDisconnectError"
-@@ -195,6 +196,11 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
+@@ -195,6 +197,16 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
          videoView.setPlayInBackground(playInBackground)
      }
  
 +    @ReactProp(name = PROP_MEDIA_QUEUE_JSON)
 +    fun setMediaQueueJson(videoView: ReactExoplayerView, json: String?) {
 +        videoView.setMediaQueueJson(json)
++    }
++
++    @ReactProp(name = PROP_CURRENT_CLIP_JSON)
++    fun setCurrentClipJson(videoView: ReactExoplayerView, json: String?) {
++        videoView.setCurrentClipJson(json)
 +    }
 +
      @ReactProp(name = PROP_DISABLE_FOCUS, defaultBoolean = false)
@@ -179,17 +206,22 @@ index b10dfb5..83474f1 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..77e3dc2 100644
+index 4760ea5..be54926 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-@@ -12,16 +12,21 @@ import android.os.Binder
+@@ -11,28 +11,97 @@ import android.content.Intent
+ import android.os.Binder
  import android.os.Build
  import android.os.Bundle
++import android.os.Handler
  import android.os.IBinder
++import android.os.Looper
 +import android.net.Uri
  import androidx.core.app.NotificationCompat
++import androidx.media3.common.ForwardingPlayer
 +import androidx.media3.common.MediaItem
 +import androidx.media3.common.MediaMetadata
++import androidx.media3.common.Player
  import androidx.media3.exoplayer.ExoPlayer
  import androidx.media3.session.CommandButton
  import androidx.media3.session.MediaSession
@@ -204,7 +236,68 @@ index 4760ea5..77e3dc2 100644
  
  class PlaybackServiceBinder(val service: VideoPlaybackService) : Binder()
  
-@@ -33,6 +38,9 @@ class VideoPlaybackService : MediaSessionService() {
++// Livil patch: presents the CURRENT track's clip window as a self-contained
++// "song" to the MediaSession (lock-screen / notification) WITHOUT clipping the
++// real player. The raw player always holds the full track in ABSOLUTE time (so
++// the in-app clip-editing slider keeps working); this wrapper only re-maps what
++// the session publishes: position = absolute - clipStart, duration = clipEnd -
++// clipStart, and a notification scrubber seek to `p` becomes a real seek to
++// `clipStart + p`. When no clip is active it is a pure pass-through.
++class ClipForwardingPlayer(player: Player) : ForwardingPlayer(player) {
++    private val active: Boolean get() = VideoPlaybackService.currentClipActive
++    private val clipStart: Long get() = VideoPlaybackService.currentClipStartMs
++    private val clipDur: Long get() = (VideoPlaybackService.currentClipEndMs - VideoPlaybackService.currentClipStartMs).coerceAtLeast(0)
++
++    private fun toClip(absolute: Long): Long = (absolute - clipStart).coerceIn(0, clipDur)
++
++    override fun getCurrentPosition(): Long = if (active) toClip(super.getCurrentPosition()) else super.getCurrentPosition()
++    override fun getContentPosition(): Long = if (active) toClip(super.getContentPosition()) else super.getContentPosition()
++    override fun getBufferedPosition(): Long = if (active) toClip(super.getBufferedPosition()) else super.getBufferedPosition()
++    override fun getContentBufferedPosition(): Long = if (active) toClip(super.getContentBufferedPosition()) else super.getContentBufferedPosition()
++    override fun getDuration(): Long = if (active) clipDur else super.getDuration()
++    override fun getContentDuration(): Long = if (active) clipDur else super.getContentDuration()
++
++    override fun seekTo(positionMs: Long) = if (active) super.seekTo(positionMs + clipStart) else super.seekTo(positionMs)
++    override fun seekTo(mediaItemIndex: Int, positionMs: Long) =
++        if (active) super.seekTo(mediaItemIndex, positionMs + clipStart) else super.seekTo(mediaItemIndex, positionMs)
++    override fun seekToDefaultPosition() = if (active) super.seekTo(clipStart) else super.seekToDefaultPosition()
++    override fun seekToDefaultPosition(mediaItemIndex: Int) =
++        if (active) super.seekTo(mediaItemIndex, clipStart) else super.seekToDefaultPosition(mediaItemIndex)
++}
++
+ class VideoPlaybackService : MediaSessionService() {
+     private var mediaSessionsList = mutableMapOf<ExoPlayer, MediaSession>()
+     private var binder = PlaybackServiceBinder(this)
+     private var sourceActivity: Class<Activity>? = null
+ 
++    // Livil patch: clip-end watcher. New-Arch defers videoRef.seek() and source-prop
++    // changes while backgrounded, so JS can't enforce a clip's end-of-window on the
++    // lock screen. This 250ms poll over the RAW player's absolute position is the
++    // single clip-end authority (foreground + background): at clipEnd it loops
++    // (repeat-one) or advances (nativeSkip + notify JS).
++    private val clipWatcherHandler = Handler(Looper.getMainLooper())
++    private val clipWatcherRunnable = object : Runnable {
++        override fun run() {
++            checkClipEnd()
++            clipWatcherHandler.postDelayed(this, 250)
++        }
++    }
++
++    // Livil patch: natural end-of-track auto-advance. The clip-end watcher only
++    // covers MID-track clip windows; a track that plays to its real end (a
++    // non-clipped track, or a clip ending at ~the track end) reaches STATE_ENDED.
++    // JS handles this via onVideoEnd → playNext, but that source swap is DEFERRED
++    // while backgrounded, so on the lock screen it never advances. Drive it
++    // natively instead (loop on repeat-one, else nativeSkip + notify JS). Added to
++    // the RAW currentPlayer (GAP) in registerPlayer.
++    private val naturalEndListener = object : Player.Listener {
++        override fun onPlaybackStateChanged(playbackState: Int) {
++            if (playbackState == Player.STATE_ENDED) {
++                onNaturalEnd()
++            }
++        }
++    }
++
      // Controls for Android 13+ - see buildNotification function
      private val commandSeekForward = SessionCommand(COMMAND.SEEK_FORWARD.stringValue, Bundle.EMPTY)
      private val commandSeekBackward = SessionCommand(COMMAND.SEEK_BACKWARD.stringValue, Bundle.EMPTY)
@@ -214,7 +307,7 @@ index 4760ea5..77e3dc2 100644
  
      @SuppressLint("PrivateResource")
      private val seekForwardBtn = CommandButton.Builder()
-@@ -48,18 +56,54 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -48,37 +117,218 @@ class VideoPlaybackService : MediaSessionService() {
          .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
          .build()
  
@@ -247,7 +340,10 @@ index 4760ea5..77e3dc2 100644
 +        // presses to JS, and currentPlayer is the raw ExoPlayer we drive directly
 +        // for background skips. Single-session model => just track the current one.
 +        currentEmitter = emitter
++        // Livil patch: move the natural-end listener to the new engine.
++        currentPlayer?.removeListener(naturalEndListener)
 +        currentPlayer = player
++        player.addListener(naturalEndListener)
 +
 +        // Livil patch: keep exactly ONE active media session / notification.
 +        // Release any previously-registered session (e.g. a paused video's
@@ -261,7 +357,11 @@ index 4760ea5..77e3dc2 100644
 +            mediaSessionsList.clear()
 +        }
  
-         val mediaSession = MediaSession.Builder(this, player)
+-        val mediaSession = MediaSession.Builder(this, player)
++        // Livil patch: the SESSION sees a ClipForwardingPlayer (clip-relative
++        // lock-screen view); the raw `player` stays the source of truth (full track,
++        // absolute) and remains the map key + `currentPlayer` for nativeSkip/watcher.
++        val mediaSession = MediaSession.Builder(this, ClipForwardingPlayer(player))
              .setId("RNVideoPlaybackService_" + player.hashCode())
              .setCallback(VideoPlaybackCallback())
 -            .setCustomLayout(immutableListOf(seekForwardBtn, seekBackwardBtn))
@@ -271,7 +371,18 @@ index 4760ea5..77e3dc2 100644
              .build()
  
          mediaSessionsList[player] = mediaSession
-@@ -73,12 +117,55 @@ class VideoPlaybackService : MediaSessionService() {
+         addSession(mediaSession)
+ 
++        // Livil patch: (re)start the clip-end watcher for this player.
++        clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
++        clipWatcherHandler.postDelayed(clipWatcherRunnable, 250)
++
+         val notificationId = player.hashCode()
+         startForeground(notificationId, buildNotification(mediaSession))
+     }
+ 
+     fun unregisterPlayer(player: ExoPlayer) {
++        player.removeListener(naturalEndListener)
          hidePlayerNotification(player)
          val session = mediaSessionsList.remove(player)
          session?.release()
@@ -281,6 +392,8 @@ index 4760ea5..77e3dc2 100644
          if (mediaSessionsList.isEmpty()) {
 +            currentEmitter = null
 +            currentQueue = emptyList()
++            currentClipActive = false
++            clipEndFired = false
              cleanup()
              stopSelf()
          }
@@ -312,7 +425,8 @@ index 4760ea5..77e3dc2 100644
 +                            artist = it.optString("artist").takeIf { s -> s.isNotEmpty() },
 +                            artwork = it.optString("artwork").takeIf { s -> s.isNotEmpty() },
 +                            clipStartMs = it.optLong("clipStartMs", 0),
-+                            clipEndMs = it.optLong("clipEndMs", 0)
++                            clipEndMs = it.optLong("clipEndMs", 0),
++                            clipActive = it.optBoolean("clipActive", false)
 +                        )
 +                    )
 +                }
@@ -324,10 +438,133 @@ index 4760ea5..77e3dc2 100644
 +        }
 +    }
 +
++    // Livil patch: the active <Video> pushes the CURRENT track's clip window here
++    // as JSON `{startMs,endMs,active,repeatOne}`. Drives the clip-relative
++    // lock-screen display (ClipForwardingPlayer reads these) and the clip-end
++    // watcher. Called on track change, clip-handle drag-release, and repeat toggle.
++    fun setCurrentClip(json: String?) {
++        if (json.isNullOrEmpty()) {
++            currentClipActive = false
++            return
++        }
++        try {
++            val obj = JSONObject(json)
++            val newStart = obj.optLong("startMs", 0)
++            val newEnd = obj.optLong("endMs", 0)
++            // Did the WINDOW actually change? (vs a repeat-toggle, or a track advance
++            // where nativeSkip already pre-set the new window — both republish on
++            // their own and must NOT get a spurious seek.)
++            val windowChanged = newStart != currentClipStartMs || newEnd != currentClipEndMs
++            currentClipStartMs = newStart
++            currentClipEndMs = newEnd
++            currentClipActive = obj.optBoolean("active", false)
++            currentRepeatOne = obj.optBoolean("repeatOne", false)
++            clipEndFired = false
++            // Force the MediaSession to republish PlaybackState so the notification
++            // duration/scrubber reflect the new clip window. media3 only re-reads the
++            // player on a player event, so nudge an in-place seek — but ONLY for a
++            // live clip-handle edit (windowChanged). This covers the clip-END handle
++            // drag, which changes duration without moving the playhead (the clip-START
++            // handle already seeks audibly from JS).
++            if (windowChanged) {
++                val p = currentPlayer
++                if (p != null && p.playbackState == Player.STATE_READY) {
++                    p.seekTo(p.currentPosition)
++                }
++            }
++        } catch (e: Exception) {
++            DebugLog.w(TAG, "[LIVIL] setCurrentClip parse error: ${e.message}")
++        }
++    }
++
++    // Livil patch: clip-end enforcement (single authority, foreground + background).
++    private fun checkClipEnd() {
++        val p = currentPlayer ?: return
++        if (!currentClipActive || currentClipEndMs <= 0L) return
++        val pos = p.currentPosition
++        // Re-arm the one-shot once we're safely back inside the clip (after a
++        // loop-seek or an advance to a new track).
++        if (pos < currentClipEndMs - 500) {
++            clipEndFired = false
++            return
++        }
++        if (!p.isPlaying) return
++        // If the clip ends at (≈) the real track end, let the natural STATE_ENDED
++        // path (naturalEndListener → onNaturalEnd) handle it — avoids a double-fire
++        // with the watcher right at end-of-stream.
++        val dur = p.duration
++        if (dur > 0 && currentClipEndMs >= dur - 300) return
++        if (pos >= currentClipEndMs && !clipEndFired) {
++            clipEndFired = true
++            if (currentRepeatOne) {
++                DebugLog.w(TAG, "[LIVIL] clip-end repeat-one → seek to ${currentClipStartMs}ms")
++                p.seekTo(currentClipStartMs)
++            } else {
++                DebugLog.w(TAG, "[LIVIL] clip-end → nativeSkip(1) + notify JS")
++                nativeSkip(1)
++                currentEmitter?.onVideoNextTrack?.invoke()
++            }
++        }
++    }
++
++    // Livil patch: natural end-of-track (STATE_ENDED) auto-advance, native so it
++    // works while backgrounded (the JS onVideoEnd → playNext source swap is
++    // deferred on the lock screen). repeat-one loops to the clip/track start; else
++    // advance + notify JS so its queue index stays in lock-step.
++    private fun onNaturalEnd() {
++        val p = currentPlayer ?: return
++        if (currentRepeatOne) {
++            val start = if (currentClipActive) currentClipStartMs else 0L
++            DebugLog.w(TAG, "[LIVIL] natural-end repeat-one → seek to ${start}ms")
++            p.seekTo(start)
++            p.play()
++            clipEndFired = false
++        } else {
++            val handled = nativeSkip(1)
++            DebugLog.w(TAG, "[LIVIL] natural-end → nativeSkip(1) handled=$handled + notify JS")
++            currentEmitter?.onVideoNextTrack?.invoke()
++        }
++    }
++
      // Callbacks
  
      override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
-@@ -142,6 +229,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -106,6 +356,16 @@ class VideoPlaybackService : MediaSessionService() {
+         super.onDestroy()
+     }
+ 
++    // Livil patch: the notification id MUST match what registerPlayer's
++    // startForeground() and hidePlayerNotification() use — the RAW player's
++    // hashCode (the map key). `session.player` is a media3 wrapper around our
++    // ClipForwardingPlayer, so `session.player.hashCode()` is a DIFFERENT value:
++    // posting at it would create a SECOND, uncancellable notification card for the
++    // same session (the "carousel" / exact-duplicate-in-sync bug).
++    private fun notifIdFor(session: MediaSession): Int =
++        mediaSessionsList.entries.firstOrNull { it.value === session }?.key?.hashCode()
++            ?: session.player.hashCode()
++
+     private fun createSessionNotification(session: MediaSession) {
+         val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+@@ -118,14 +378,15 @@ class VideoPlaybackService : MediaSessionService() {
+             )
+         }
+ 
++        val notifId = notifIdFor(session)
+         if (session.player.currentMediaItem == null) {
+-            notificationManager.cancel(session.player.hashCode())
++            notificationManager.cancel(notifId)
+             return
+         }
+ 
+         val notification = buildNotification(session)
+ 
+-        notificationManager.notify(session.player.hashCode(), notification)
++        notificationManager.notify(notifId, notification)
+     }
+ 
+     private fun buildNotification(session: MediaSession): Notification {
+@@ -142,6 +403,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -338,7 +575,15 @@ index 4760ea5..77e3dc2 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -273,6 +364,78 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -220,6 +485,7 @@ class VideoPlaybackService : MediaSessionService() {
+     }
+ 
+     private fun cleanup() {
++        clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
+         hideAllNotifications()
+         mediaSessionsList.forEach { (_, session) ->
+             session.release()
+@@ -273,6 +539,97 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -365,6 +610,20 @@ index 4760ea5..77e3dc2 100644
 +        @Volatile
 +        var currentQueueIndex: Int = 0
 +
++        // Livil patch: the CURRENT track's clip window (absolute ms) + flags, read by
++        // ClipForwardingPlayer (lock-screen display) and the clip-end watcher. Set by
++        // setCurrentClip (JS, foreground) and nativeSkip (background skip).
++        @Volatile
++        var currentClipStartMs: Long = 0
++        @Volatile
++        var currentClipEndMs: Long = 0
++        @Volatile
++        var currentClipActive: Boolean = false
++        @Volatile
++        var currentRepeatOne: Boolean = false
++        @Volatile
++        var clipEndFired: Boolean = false
++
 +        data class QueueItem(
 +            val id: String,
 +            val uri: String,
@@ -372,28 +631,25 @@ index 4760ea5..77e3dc2 100644
 +            val artist: String?,
 +            val artwork: String?,
 +            val clipStartMs: Long,
-+            val clipEndMs: Long
++            val clipEndMs: Long,
++            val clipActive: Boolean
 +        )
 +
-+        // Build a MediaItem for a queued track, applying a clip window if present.
++        // Build a MediaItem for a queued track. Livil patch: we DON'T clip natively
++        // anymore (no ClippingConfiguration) — the full track is loaded in absolute
++        // time and the clip is presented via ClipForwardingPlayer + enforced by the
++        // clip-end watcher. This keeps native/JS coordinates consistent (one truth)
++        // and lets the in-app slider scrub the whole track.
 +        fun buildQueueMediaItem(item: QueueItem): MediaItem {
 +            val metadata = MediaMetadata.Builder()
 +                .setTitle(item.title)
 +                .setArtist(item.artist)
 +                .apply { item.artwork?.let { setArtworkUri(Uri.parse(it)) } }
 +                .build()
-+            val builder = MediaItem.Builder()
++            return MediaItem.Builder()
 +                .setUri(item.uri)
 +                .setMediaMetadata(metadata)
-+            if (item.clipStartMs > 0 || item.clipEndMs > 0) {
-+                builder.setClippingConfiguration(
-+                    MediaItem.ClippingConfiguration.Builder()
-+                        .setStartPositionMs(item.clipStartMs)
-+                        .apply { if (item.clipEndMs > 0) setEndPositionMs(item.clipEndMs) }
-+                        .build()
-+                )
-+            }
-+            return builder.build()
++                .build()
 +        }
 +
 +        // Load the track `delta` steps away natively. Returns true if it handled
@@ -406,18 +662,26 @@ index 4760ea5..77e3dc2 100644
 +                return false
 +            }
 +            val item = currentQueue[target]
-+            player.setMediaItem(buildQueueMediaItem(item))
++            // Full track, started at the clip's start (absolute). NOT clipped — the
++            // clip window below drives the lock-screen view + the clip-end watcher.
++            player.setMediaItem(buildQueueMediaItem(item), item.clipStartMs)
 +            player.prepare()
 +            player.playWhenReady = true
 +            currentQueueIndex = target
-+            DebugLog.w(TAG, "[LIVIL] nativeSkip -> idx=$target id=${item.id}")
++            // Switch the native clip window to the new track (the JS currentClipJson
++            // prop is deferred while backgrounded, so we can't wait for it).
++            currentClipStartMs = item.clipStartMs
++            currentClipEndMs = item.clipEndMs
++            currentClipActive = item.clipActive
++            clipEndFired = false
++            DebugLog.w(TAG, "[LIVIL] nativeSkip -> idx=$target id=${item.id} clip=[${item.clipStartMs},${item.clipEndMs}] active=${item.clipActive}")
 +            return true
 +        }
 +
          private const val SEEK_INTERVAL_MS = 10000L
          private const val TAG = "VideoPlaybackService"
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
-@@ -283,6 +446,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +640,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -426,7 +690,7 @@ index 4760ea5..77e3dc2 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +457,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +651,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -435,7 +699,7 @@ index 4760ea5..77e3dc2 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +470,29 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +664,31 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
@@ -451,10 +715,12 @@ index 4760ea5..77e3dc2 100644
 +                }
 +                COMMAND.SEEK_TO_PREVIOUS -> {
 +                    // Match the app's "previous" semantics: restart the current
-+                    // track if >3s in, else load the previous track.
++                    // track if >3s into the CLIP (clip-aware: restart point is the
++                    // clip start, not 0), else load the previous track.
 +                    val player = currentPlayer
-+                    val handled = if (player != null && player.currentPosition > 3000) {
-+                        player.seekTo(0)
++                    val clipStart = if (currentClipActive) currentClipStartMs else 0L
++                    val handled = if (player != null && player.currentPosition > clipStart + 3000) {
++                        player.seekTo(clipStart)
 +                        true
 +                    } else {
 +                        nativeSkip(-1)
@@ -660,14 +926,15 @@ index c24fa11..2110030 100644
 +    onPreviousTrack?: () => void;
  }
 diff --git a/node_modules/react-native-video/lib/types/video.d.ts b/node_modules/react-native-video/lib/types/video.d.ts
-index 67a9d63..a8cd45b 100644
+index 67a9d63..eb83f9b 100644
 --- a/node_modules/react-native-video/lib/types/video.d.ts
 +++ b/node_modules/react-native-video/lib/types/video.d.ts
-@@ -276,6 +276,7 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
+@@ -276,6 +276,8 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
      paused?: boolean;
      enterPictureInPictureOnLeave?: boolean;
      playInBackground?: boolean;
 +    mediaQueueJson?: string;
++    currentClipJson?: string;
      playWhenInactive?: boolean;
      poster?: string | ReactVideoPoster;
      /** @deprecated use **resizeMode** key in **poster** props instead */
@@ -712,18 +979,19 @@ index 789d915..fd754a5 100644
              onBandwidthUpdate ? _onBandwidthUpdate : undefined
            }
 diff --git a/node_modules/react-native-video/src/specs/VideoNativeComponent.ts b/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
-index 3dcbe01..0a0b76c 100644
+index 3dcbe01..9fd9b65 100644
 --- a/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
 +++ b/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
-@@ -355,6 +355,7 @@ export interface VideoNativeProps extends ViewProps {
+@@ -355,6 +355,8 @@ export interface VideoNativeProps extends ViewProps {
    filterEnabled?: boolean;
    volume?: Float; // default 1.0
    playInBackground?: boolean;
 +  mediaQueueJson?: string; // android — Livil patch: native queue for bg next/prev
++  currentClipJson?: string; // android — Livil patch: clip-relative lock-screen window
    preventsDisplaySleepDuringVideoPlayback?: boolean;
    preferredForwardBufferDuration?: Float; //ios, 0
    playWhenInactive?: boolean; // ios, false
-@@ -410,6 +411,8 @@ export interface VideoNativeProps extends ViewProps {
+@@ -410,6 +412,8 @@ export interface VideoNativeProps extends ViewProps {
    onTextTracks?: DirectEventHandler<OnTextTracksData>; // android
    onTextTrackDataChanged?: DirectEventHandler<OnTextTrackDataChangedData>; // iOS
    onVideoTracks?: DirectEventHandler<OnVideoTracksData>; // android
@@ -744,10 +1012,10 @@ index 027fd5b..b82a446 100644
 +  onPreviousTrack?: () => void; // Android, iOS — lock-screen / notification "previous track" (Livil patch)
  }
 diff --git a/node_modules/react-native-video/src/types/video.ts b/node_modules/react-native-video/src/types/video.ts
-index 0482944..e29a21a 100644
+index 0482944..eae46e2 100644
 --- a/node_modules/react-native-video/src/types/video.ts
 +++ b/node_modules/react-native-video/src/types/video.ts
-@@ -352,6 +352,10 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
+@@ -352,6 +352,16 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
    paused?: boolean;
    enterPictureInPictureOnLeave?: boolean;
    playInBackground?: boolean;
@@ -755,6 +1023,12 @@ index 0482944..e29a21a 100644
 +   *  pushed to the playback service so notification next/previous can load tracks
 +   *  natively while the app is backgrounded. */
 +  mediaQueueJson?: string;
++  /** Livil patch (Android): JSON `{startMs,endMs,active,repeatOne}` for the
++   *  CURRENT track's clip window. The playback service presents this as a
++   *  clip-relative "song" on the lock screen (duration = endMs-startMs, position
++   *  = absolute-startMs) via a ForwardingPlayer, and enforces clip-end natively
++   *  (loop when repeatOne, else advance) so it works while backgrounded. */
++  currentClipJson?: string;
    playWhenInactive?: boolean; // iOS
    poster?: string | ReactVideoPoster; // string is deprecated
    /** @deprecated use **resizeMode** key in **poster** props instead */

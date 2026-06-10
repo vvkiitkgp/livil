@@ -55,6 +55,9 @@ function toStory(row: RpcRow): Story {
       // Stories are full-screen and use the original cover/video, not a feed
       // thumbnail — extending the RPC just to wire this through isn't worth it.
       thumbnailUrl: null,
+      // Story playback uses its own clip window + player; the feed seek bar's
+      // at-rest duration fallback doesn't apply here.
+      durationSeconds: null,
     },
     originalPostId: row.original_post_id,
     comment: row.comment,

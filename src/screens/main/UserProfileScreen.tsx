@@ -159,7 +159,7 @@ export default function UserProfileScreen() {
           clipEndSec: p.clipEndSec,
           kind: p.kind,
           originalPostId: p.originalPostId,
-          knownDurationSec: 0,
+          knownDurationSec: p.track.durationSeconds ?? 0,
         };
       }),
       startIdx,

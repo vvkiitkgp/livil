@@ -4,7 +4,7 @@ import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'reac
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
-import { buildNowPlayingMetadata, buildMediaQueueJson } from '../utils/nowPlayingMetadata';
+import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson } from '../utils/nowPlayingMetadata';
 
 const AUDIO_BUFFER_CONFIG = {
   minBufferMs: 15_000,
@@ -60,6 +60,7 @@ export default function GlobalAudioPlayer() {
     repeatMode,
     setIsBuffering,
     queueVersion,
+    clipVersion,
   } = usePlayback();
   const { showToast } = useToast();
 
@@ -172,19 +173,24 @@ export default function GlobalAudioPlayer() {
     const mine = myPostIdRef.current;
     if (mine) { trackPlayProgress(mine, t); }
 
-    // Clip-end enforcement for clipped reposts (react-native-video doesn't know
-    // about the clip window, so we enforce the upper bound here).
-    const cw = clipWindowRef.current;
-    if (cw && t >= cw.end && !clipEndFiredRef.current) {
-      clipEndFiredRef.current = true;
-      if (repeatModeRef.current === 'one') {
-        console.log(`[LIVIL][GAP] clip-end repeat-one → loop to ${cw.start.toFixed(1)}s`);
-        positionRef.current = cw.start;
-        videoRef.current?.seek(cw.start);
-        setTimeout(() => { clipEndFiredRef.current = false; }, 300);
-      } else {
-        console.log('[LIVIL][GAP] clip-end → playNext');
-        playNext();
+    // Clip-end enforcement. On ANDROID this is owned by the native
+    // VideoPlaybackService clip-end watcher (so it works while backgrounded, and
+    // the lock-screen clip-relative scrubber stays the single authority). iOS has
+    // no native watcher yet (follow-up PR), so JS still enforces it there —
+    // foreground only, which is the pre-existing iOS behaviour.
+    if (Platform.OS === 'ios') {
+      const cw = clipWindowRef.current;
+      if (cw && t >= cw.end && !clipEndFiredRef.current) {
+        clipEndFiredRef.current = true;
+        if (repeatModeRef.current === 'one') {
+          console.log(`[LIVIL][GAP] (iOS) clip-end repeat-one → loop to ${cw.start.toFixed(1)}s`);
+          positionRef.current = cw.start;
+          videoRef.current?.seek(cw.start);
+          setTimeout(() => { clipEndFiredRef.current = false; }, 300);
+        } else {
+          console.log('[LIVIL][GAP] (iOS) clip-end → playNext');
+          playNext();
+        }
       }
     }
   }, [updatePosition, positionRef, clipWindowRef, playNext]);
@@ -223,19 +229,25 @@ export default function GlobalAudioPlayer() {
   );
 
   const handleEnd = useCallback(() => {
+    // On ANDROID, natural end-of-track auto-advance is owned NATIVELY
+    // (VideoPlaybackService.naturalEndListener → nativeSkip / loop) so it works
+    // while the app is backgrounded — the JS source swap below is deferred on the
+    // lock screen and would never fire. Doing it here too would double-advance, so
+    // bail on Android. iOS has no native handler yet (follow-up), so JS drives it.
+    if (Platform.OS !== 'ios') {
+      console.log('[LIVIL][GAP] onEnd (Android — native naturalEndListener advances)');
+      return;
+    }
     // repeat-one: loop the current track at its natural end instead of advancing.
-    // (Clipped tracks already loop via the clip-end branch in handleProgress; this
-    // covers UNclipped tracks reaching real end-of-stream — for audio AND video,
-    // now that GAP owns every post's onEnd.)
     if (repeatModeRef.current === 'one') {
       const start = clipWindowRef.current?.start ?? 0;
-      console.log(`[LIVIL][GAP] onEnd repeat-one → loop to ${start.toFixed(1)}s`);
+      console.log(`[LIVIL][GAP] (iOS) onEnd repeat-one → loop to ${start.toFixed(1)}s`);
       positionRef.current = start;
       clipEndFiredRef.current = false;
       videoRef.current?.seek(start);
       return;
     }
-    console.log('[LIVIL][GAP] onEnd → playNext');
+    console.log('[LIVIL][GAP] (iOS) onEnd → playNext');
     playNext();
   }, [playNext, positionRef, clipWindowRef]);
 
@@ -272,6 +284,16 @@ export default function GlobalAudioPlayer() {
     [nowPlaying?.postId, queueVersion],
   );
 
+  // Serialise the CURRENT track's clip window for the lock-screen clip-relative
+  // timeline. Recompute on track change (postId), repeat toggle (repeatMode), and
+  // in-place clip-handle edits (clipVersion). Reads the live clipWindowRef so a
+  // just-dragged window is reflected.
+  const currentClipJson = useMemo(
+    () => buildCurrentClipJson(clipWindowRef.current, repeatMode),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nowPlaying?.postId, clipVersion, repeatMode],
+  );
+
   // Don't render when the jam PlaybackEngine drives audio, or nothing is playing.
   if (engineDriving || !nowPlaying) {
     return null;
@@ -298,6 +320,7 @@ export default function GlobalAudioPlayer() {
       onNextTrack={handleNextTrack}
       onPreviousTrack={handlePrevTrack}
       mediaQueueJson={mediaQueueJson}
+      currentClipJson={currentClipJson}
       progressUpdateInterval={250}
       playInBackground
       playWhenInactive

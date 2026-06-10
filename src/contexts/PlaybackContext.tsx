@@ -88,6 +88,11 @@ type PlaybackContextValue = {
   markSeekTarget: (seconds: number) => void;
   /** Increments on every markSeekTarget — lets a paused slave surface re-seek. */
   seekNonce: number;
+  /** Bumped when the clip window is edited in-place (handle drag) so the
+   *  lock-screen clip-relative timeline refreshes for the current track. */
+  clipVersion: number;
+  /** Call after mutating clipWindowRef on a drag-commit to push the new window. */
+  bumpClipVersion: () => void;
   // --- clip window (ref — no re-renders; mutated by FullScreenPlayer on drag) ---
   clipWindowRef: React.MutableRefObject<{ start: number; end: number } | null>;
 
@@ -174,6 +179,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // video frame) can seek itself to the new position even while paused — its
   // onProgress doesn't fire when paused, so it can't drift-correct on its own.
   const [seekNonce, setSeekNonce] = useState(0);
+  // Bumped when the user drags the clip handles on the SAME track, so
+  // GlobalAudioPlayer recomputes currentClipJson and pushes the new window to the
+  // lock screen. (Track changes are already covered by nowPlaying.postId, and
+  // repeat-mode toggles by repeatMode — clipVersion is only for in-place edits.)
+  const [clipVersion, setClipVersion] = useState(0);
+  const bumpClipVersion = useCallback(() => setClipVersion(v => v + 1), []);
 
   const positionRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
@@ -375,13 +386,25 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setQueue = useCallback((posts: NowPlayingInfo[], startIndex: number, source: string) => {
-    console.log(`[LIVIL][CTX] setQueue len=${posts.length} startIdx=${startIndex} source="${source}"`);
-    queueRef.current = posts;
-    currentIndexRef.current = startIndex;
+    // Orphaned reposts (original upload deleted → originalPostId null) keep a
+    // valid track_id, so they'd play fine from the queue even though their feed
+    // card is a non-playable tombstone. Strip them here — the single chokepoint
+    // every surface (Home / Profile / UserProfile) routes through — so next/prev
+    // can never land on a deleted post. The start post is never an orphan (you
+    // can't initiate playback from a tombstone), so we re-find its index in the
+    // filtered list to keep currentIndex aligned.
+    const activeId = posts[startIndex]?.postId;
+    const filtered = posts.filter(t => !(t.kind === 'repost' && t.originalPostId === null));
+    const newIndex = activeId != null
+      ? Math.max(0, filtered.findIndex(t => t.postId === activeId))
+      : Math.min(startIndex, Math.max(0, filtered.length - 1));
+    console.log(`[LIVIL][CTX] setQueue len=${filtered.length} (raw ${posts.length}) startIdx=${newIndex} source="${source}"`);
+    queueRef.current = filtered;
+    currentIndexRef.current = newIndex;
     userQueueRef.current = [];
     queueSourceRef.current = source;
     if (shuffleRef.current) {
-      generateShuffleOrder(startIndex, posts.length);
+      generateShuffleOrder(newIndex, filtered.length);
     }
     bumpQueue();
   }, [generateShuffleOrder, bumpQueue]);
@@ -571,6 +594,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       updateDuration,
       markSeekTarget,
       seekNonce,
+      clipVersion,
+      bumpClipVersion,
       clipWindowRef,
       handlersRef,
       registerHandlers,
@@ -626,6 +651,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       updateDuration,
       markSeekTarget,
       seekNonce,
+      clipVersion,
+      bumpClipVersion,
       registerHandlers,
       unregisterHandlers,
       isBuffering,

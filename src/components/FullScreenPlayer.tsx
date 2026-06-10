@@ -132,6 +132,7 @@ function avatarInitials(name: string): string {
 function FullScreenClipBar() {
   const {
     positionRef, durationRef, handlersRef, nowPlaying, clipWindowRef, markSeekTarget,
+    bumpClipVersion,
   } = usePlayback();
   // Lazy-init from refs so handles appear at correct positions the moment the
   // full-screen player opens, without waiting for the first polling tick.
@@ -206,7 +207,12 @@ function FullScreenClipBar() {
       markSeekTarget(s);
       handlersRef.current?.seek(s);
     }
-  }, [clipWindowRef, handlersRef, markSeekTarget]);
+    // Push the new clip window to native so the lock-screen clip-relative timeline
+    // (duration / scrubber) updates for the current track. Bump on RELEASE only —
+    // the in-app slider already tracks the drag live; the notification isn't
+    // visible while editing in-app, and per-tick pushes would thrash the session.
+    bumpClipVersion();
+  }, [clipWindowRef, handlersRef, markSeekTarget, bumpClipVersion]);
 
   // Seek handle (blue circle): scrubs to the chosen position.
   // Never calls play() — if the song was paused, it stays paused after the scrub.

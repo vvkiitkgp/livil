@@ -20,6 +20,10 @@ export type TrackMedia = {
   /** Video tracks only — user-uploaded thumbnail shown in feed PostCard. NULL on
    *  audio tracks and on video tracks uploaded before the field existed. */
   thumbnailUrl: string | null;
+  /** Track length in whole seconds (from DB). NULL until captured/backfilled.
+   *  Lets the feed seek bar place clip markers and park the progress handle at
+   *  clip-start *before* playback loads the real duration. */
+  durationSeconds: number | null;
 };
 
 export type FeedPost = {
@@ -70,6 +74,7 @@ type RawPostRow = {
     video_url: string | null;
     cover_art_url: string | null;
     thumbnail_url: string | null;
+    duration_seconds: number | null;
   } | null;
   author: {
     id: string;
@@ -99,7 +104,8 @@ const POST_SELECT = `
     audio_url,
     video_url,
     cover_art_url,
-    thumbnail_url
+    thumbnail_url,
+    duration_seconds
   ),
   author:profiles!posts_author_id_fkey (
     id,
@@ -131,6 +137,7 @@ function toTrack(row: RawPostRow['track']): TrackMedia {
       videoUrl: null,
       coverArtUrl: null,
       thumbnailUrl: null,
+      durationSeconds: null,
     };
   }
   return {
@@ -141,6 +148,7 @@ function toTrack(row: RawPostRow['track']): TrackMedia {
     videoUrl: row.video_url,
     coverArtUrl: row.cover_art_url,
     thumbnailUrl: row.thumbnail_url,
+    durationSeconds: row.duration_seconds,
   };
 }
 
@@ -348,7 +356,8 @@ const SEARCH_POST_SELECT = `
     media_kind,
     audio_url,
     video_url,
-    cover_art_url
+    cover_art_url,
+    duration_seconds
   ),
   author:profiles!posts_author_id_fkey (
     id,
@@ -642,19 +651,23 @@ export async function reportPost(
 /**
  * Delete a post. RLS enforces ownership (only the author can delete).
  *
- * FK cascades (all ON DELETE CASCADE):
- *   - post_comments (and their likes/reports via comment cascade)
- *   - post_likes
- *   - post_views
- *   - playlist_posts (removed from all playlists that contained this post)
- *   - posts.original_post_id → reposts of this post are also deleted
- *   - stories.original_post_id → stories sharing this post are also deleted
- *   - post_reports (this table)
+ * FK behavior on delete:
+ *   - post_comments (and their likes/reports via comment cascade) — CASCADE
+ *   - post_likes — CASCADE
+ *   - post_views — CASCADE
+ *   - playlist_posts (removed from all playlists that contained this post) — CASCADE
+ *   - post_reports — CASCADE
+ *   - activity_notifications — CASCADE
+ *   - stories.original_post_id → stories sharing this post are also deleted — CASCADE
+ *   - posts.original_post_id → reposts are NOT deleted. The FK is ON DELETE
+ *     SET NULL, so reposts survive as orphans (original_post_id → null) with
+ *     their own engagement intact and track_id still pointing at the track.
  *
- * The repost cascade is intentionally aggressive: deleting an upload removes
- * every repost of it across the platform. If we want to keep reposts as
- * orphans (still playable since `track_id` still points at the tracks table),
- * switch posts_original_post_id_fkey to ON DELETE SET NULL in a follow-up.
+ * Orphaned reposts are kept deliberately: the reposter sees a tombstone on
+ * their profile and can remove it. They are excluded from the home feed
+ * (`fetch_home_feed`) and stripped from play queues
+ * (`PlaybackContext.setQueue`), so a deleted upload can never resurface in the
+ * feed or play via next/prev.
  */
 export async function deletePost(postId: string): Promise<void> {
   const { error } = await supabase
@@ -697,6 +710,6 @@ export function feedPostToNowPlaying(post: FeedPost): NowPlayingInfo {
     clipEndSec: post.clipEndSec,
     kind: post.kind,
     originalPostId: post.originalPostId,
-    knownDurationSec: 0,
+    knownDurationSec: post.track.durationSeconds ?? 0,
   };
 }

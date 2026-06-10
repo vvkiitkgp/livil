@@ -170,7 +170,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
       clipEndSec: post.clipEndSec,
       kind: post.kind,
       originalPostId: post.originalPostId,
-      knownDurationSec: 0,
+      knownDurationSec: post.track.durationSeconds ?? 0,
     };
   }, [post]);
 
@@ -210,9 +210,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
   // the other cards in the FlatList run no idle intervals.
   useEffect(() => {
     if (!isCurrentTrack) {
-      // Not the current track — show "0:00 / clipEnd" until tapped.
+      // Not the current track — fall back to the track's known duration (from
+      // DB) so the read-only seek bar can place the clip markers and park the
+      // progress handle at clip-start. Without a duration the slider math
+      // collapses every fraction to 1.0 and the handle pins to the far right.
       setPosition(0);
-      setDuration(0);
+      setDuration(post.track.durationSeconds ?? 0);
       return;
     }
     setPosition(playback.positionRef.current);
@@ -222,7 +225,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
       setDuration(playback.durationRef.current);
     }, 250);
     return () => clearInterval(id);
-  }, [isCurrentTrack, playback.positionRef, playback.durationRef]);
+  }, [isCurrentTrack, post.track.durationSeconds, playback.positionRef, playback.durationRef]);
 
   // Build the NowPlayingInfo for this post — shared between play-button and
   // thumbnail-tap so we don't duplicate field-list maintenance.
@@ -252,7 +255,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
       clipEndSec: post.clipEndSec,
       kind: post.kind,
       originalPostId: post.originalPostId,
-      knownDurationSec: 0,
+      knownDurationSec: post.track.durationSeconds ?? 0,
     };
   }, [post]);
 
