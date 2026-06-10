@@ -4,6 +4,7 @@ import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'reac
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
+import { backfillTrackDuration } from '../services/tracks';
 import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson } from '../utils/nowPlayingMetadata';
 
 const AUDIO_BUFFER_CONFIG = {
@@ -59,6 +60,7 @@ export default function GlobalAudioPlayer() {
     clipWindowRef,
     repeatMode,
     setIsBuffering,
+    videoFrameBuffering,
     queueVersion,
     clipVersion,
   } = usePlayback();
@@ -81,6 +83,11 @@ export default function GlobalAudioPlayer() {
   // Timestamp until which a new track is considered "loading"; the pause-sync is
   // suppressed in this window (covers the gap before onBuffer even fires).
   const loadGuardUntilRef = useRef(0);
+  // True while the foreground video FRAME (FullScreenPlayer) is buffering, so we
+  // hold the audio in lock-step with the picture. Mirrored into a ref so the
+  // native pause-sync callback can tell this self-imposed pause from a real
+  // lock-screen pause (otherwise it would reportPaused and stop the queue).
+  const videoGateRef = useRef(false);
 
   // Which postId this component is currently responsible for
   const myPostIdRef = useRef<string | null>(null);
@@ -160,12 +167,18 @@ export default function GlobalAudioPlayer() {
   }, [activePostId, queueRef, currentIndexRef, setNowPlaying]);
 
   const handleLoad = useCallback((data: OnLoadData) => {
-    console.log(`[LIVIL][GAP] onLoad duration=${(data.duration ?? 0).toFixed(1)}s seekTo=${positionRef.current.toFixed(1)}s`);
-    updateDuration(data.duration ?? 0);
+    const dur = data.duration ?? 0;
+    console.log(`[LIVIL][GAP] onLoad duration=${dur.toFixed(1)}s seekTo=${positionRef.current.toFixed(1)}s`);
+    updateDuration(dur);
     setIsBuffering(false);
     const pos = positionRef.current;
     if (pos > 0) { videoRef.current?.seek(pos); }
-  }, [updateDuration, positionRef, setIsBuffering]);
+    // Backfill the track's duration_seconds (null for older rows / uploads where
+    // the preview length wasn't captured) so feed + profile cards show the
+    // length even when the post isn't the active track. Idempotent + owner-only.
+    const tId = nowPlaying?.trackId;
+    if (tId && dur > 0) { backfillTrackDuration(tId, dur).catch(() => {}); }
+  }, [updateDuration, positionRef, setIsBuffering, nowPlaying?.trackId]);
 
   const handleProgress = useCallback((data: OnProgressData) => {
     const t = data.currentTime ?? 0;
@@ -215,9 +228,11 @@ export default function GlobalAudioPlayer() {
         setPaused(false);
         resumePlay(mine);
       } else if (!e.isPlaying && !pausedRef.current) {
-        // A not-playing report during buffering or a fresh track load is NOT a
-        // user pause — ignore it, or switching tracks would self-pause.
-        if (bufferingRef.current || Date.now() < loadGuardUntilRef.current) {
+        // A not-playing report during buffering, a fresh track load, or while we
+        // are deliberately holding audio for the buffering video frame is NOT a
+        // user pause — ignore it, or switching tracks / a video stall would
+        // self-pause and stop the queue.
+        if (bufferingRef.current || Date.now() < loadGuardUntilRef.current || videoGateRef.current) {
           return;
         }
         console.log('[LIVIL][GAP] lock-screen PAUSE → sync');
@@ -305,11 +320,19 @@ export default function GlobalAudioPlayer() {
     return null;
   }
 
+  // Hold the audio while the foreground video FRAME is still buffering, so the
+  // sound never plays ahead of a frozen picture. Only video posts have a frame;
+  // when it's minimized / backgrounded the gate is cleared (videoFrameBuffering
+  // false) and audio plays normally. videoGateRef mirrors this for the native
+  // pause-sync callback above.
+  const videoBufferGate = nowPlaying.mediaKind === 'video' && videoFrameBuffering;
+  videoGateRef.current = videoBufferGate;
+
   return (
     <Video
       ref={videoRef}
       source={{ uri: audioSrc, metadata: buildNowPlayingMetadata(nowPlaying) }}
-      paused={paused}
+      paused={paused || videoBufferGate}
       rate={rate}
       onLoad={handleLoad}
       onProgress={handleProgress}

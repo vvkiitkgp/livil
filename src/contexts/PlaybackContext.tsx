@@ -106,6 +106,17 @@ type PlaybackContextValue = {
   setIsBuffering: (v: boolean) => void;
   isReadyForDisplay: boolean;
   setIsReadyForDisplay: (v: boolean) => void;
+  /**
+   * True while FullScreenPlayer's MUTED video frame is buffering / not yet
+   * ready. GlobalAudioPlayer reads this to pause the audio in lock-step with the
+   * picture, so a stalling video never plays on while the frame is frozen (the
+   * audio waits for the video, and a paused audio stream stops pulling data —
+   * freeing bandwidth for the video to buffer, since both decode the SAME file).
+   * Only meaningful while the frame is mounted (video post + FS open +
+   * foreground); cleared otherwise so audio posts / minimized video play freely.
+   */
+  videoFrameBuffering: boolean;
+  setVideoFrameBuffering: (v: boolean) => void;
 
   // --- engine driving flag (true when PlaybackEngine owns audio output) ---
   engineDriving: boolean;
@@ -172,6 +183,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
   const [isBuffering, setIsBufferingState] = useState(false);
   const [isReadyForDisplay, setIsReadyForDisplayState] = useState(false);
+  const [videoFrameBuffering, setVideoFrameBufferingState] = useState(false);
   const [engineDriving, setEngineDrivingState] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
   const bumpQueue = useCallback(() => setQueueVersion(v => v + 1), []);
@@ -337,6 +349,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const setIsReadyForDisplay = useCallback((v: boolean) => {
     setIsReadyForDisplayState(v);
+  }, []);
+
+  const setVideoFrameBuffering = useCallback((v: boolean) => {
+    setVideoFrameBufferingState(v);
   }, []);
 
   const setEngineDriving = useCallback((v: boolean) => {
@@ -604,6 +620,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setIsBuffering,
       isReadyForDisplay,
       setIsReadyForDisplay,
+      videoFrameBuffering,
+      setVideoFrameBuffering,
       engineDriving,
       setEngineDriving,
       setQueue,
@@ -659,6 +677,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setIsBuffering,
       isReadyForDisplay,
       setIsReadyForDisplay,
+      videoFrameBuffering,
+      setVideoFrameBuffering,
       engineDriving,
       setEngineDriving,
       setQueue,

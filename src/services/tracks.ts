@@ -12,6 +12,10 @@ export type CreateTrackInput =
       audio: PickedFile;
       cover: PickedFile;
       collaborators: PendingCollaborator[];
+      /** Track length in seconds, captured from the upload preview's onLoad.
+       *  Saved to duration_seconds so feed/profile cards show the length before
+       *  the post is ever played. Omit/null if not yet known (backfills on play). */
+      durationSeconds?: number | null;
     }
   | {
       mode: 'video';
@@ -24,6 +28,10 @@ export type CreateTrackInput =
        *  remain readable. */
       thumbnail: PickedFile;
       collaborators: PendingCollaborator[];
+      /** Track length in seconds, captured from the upload preview's onLoad.
+       *  Saved to duration_seconds so feed/profile cards show the length before
+       *  the post is ever played. Omit/null if not yet known (backfills on play). */
+      durationSeconds?: number | null;
     };
 
 export type CreateTrackResult = {
@@ -49,6 +57,28 @@ async function safeDeleteTrack(trackId: string): Promise<void> {
     await supabase.from('tracks').delete().eq('id', trackId);
   } catch {
     // Best-effort cleanup; the orphan row will fail RLS for everyone but the uploader anyway.
+  }
+}
+
+/**
+ * Backfill duration_seconds the first time a track's real length is known — from
+ * the player's onLoad. Older rows (and any upload where the preview duration
+ * wasn't captured) have a null duration_seconds, which makes feed/profile cards
+ * show "0:00" until the post is the active track. The `.is(..., null)` guard
+ * makes this idempotent (only the first writer sets it) so it's safe to call on
+ * every play. Owner-only via RLS; a non-owner's attempt simply no-ops.
+ * Fire-and-forget — never throws.
+ */
+export async function backfillTrackDuration(trackId: string, seconds: number): Promise<void> {
+  if (!trackId || !Number.isFinite(seconds) || seconds <= 0) { return; }
+  try {
+    await supabase
+      .from('tracks')
+      .update({ duration_seconds: Math.round(seconds) })
+      .eq('id', trackId)
+      .is('duration_seconds', null);
+  } catch {
+    // Best-effort; backfills on a later play if this attempt fails.
   }
 }
 
@@ -190,6 +220,14 @@ export async function createTrack(
 
     onProgress?.({ stage: 'finalizing', fraction: 1 });
 
+    // Persist the captured length when we have it. Conditional so an unknown
+    // duration leaves the column null (it backfills on first play) rather than
+    // overwriting it with 0.
+    const durationSeconds =
+      typeof input.durationSeconds === 'number' && Number.isFinite(input.durationSeconds) && input.durationSeconds > 0
+        ? Math.round(input.durationSeconds)
+        : null;
+
     const { error: updateError } = await supabase
       .from('tracks')
       .update({
@@ -197,6 +235,7 @@ export async function createTrack(
         video_url: videoUrl ?? null,
         cover_art_url: coverArtUrl ?? null,
         thumbnail_url: thumbnailUrl ?? null,
+        ...(durationSeconds !== null ? { duration_seconds: durationSeconds } : {}),
       })
       .eq('id', trackId);
 

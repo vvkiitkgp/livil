@@ -95,6 +95,10 @@ export default function UploadScreen() {
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
   const [previewPaused, setPreviewPaused] = useState(true);
+  // Captured from the preview player's onLoad — the picked file's length in
+  // seconds — so we can persist duration_seconds at upload (feed/profile cards
+  // read it to show the track length before the post is ever played).
+  const [previewDurationSec, setPreviewDurationSec] = useState<number | null>(null);
   const previewRef = useRef<MediaPlayerHandle>(null);
 
   const handlePreviewEnded = useCallback(() => {
@@ -150,7 +154,7 @@ export default function UploadScreen() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => { setPreviewPaused(true); }, [previewMedia]);
+  useEffect(() => { setPreviewPaused(true); setPreviewDurationSec(null); }, [previewMedia]);
 
   useFocusEffect(
     useCallback(() => () => { setPreviewPaused(true); }, []),
@@ -258,6 +262,7 @@ export default function UploadScreen() {
               audio: audio!,
               cover: cover!,
               collaborators,
+              durationSeconds: previewDurationSec,
             }
           : {
               mode: 'video',
@@ -267,6 +272,7 @@ export default function UploadScreen() {
               cover: cover ?? undefined,
               thumbnail: thumbnail!,
               collaborators,
+              durationSeconds: previewDurationSec,
             },
         ({ stage, fraction }) => {
           setProgressStage(stage);
@@ -280,7 +286,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, collaborators]);
+  }, [mode, audio, title, description, video, cover, thumbnail, collaborators, previewDurationSec]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -431,6 +437,7 @@ export default function UploadScreen() {
                   media={previewMedia}
                   paused={previewPaused}
                   onTogglePaused={() => setPreviewPaused(p => !p)}
+                  onLoaded={setPreviewDurationSec}
                   onEnded={handlePreviewEnded}
                   visible
                   pauseWhenOffScreen={false}
