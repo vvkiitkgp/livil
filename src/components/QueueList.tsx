@@ -13,6 +13,7 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const ROW_H = 64;
@@ -170,10 +171,10 @@ const QueueRow = React.memo(function QueueRow({
       {canSwipe && (
         <>
           <Animated.View style={[st.deleteBg, st.deleteBgLeft, deleteStyleLeft]}>
-            <Text style={st.deleteIcon}>🗑</Text>
+            <Icon name="trash" size={22} color={COLORS.white} />
           </Animated.View>
           <Animated.View style={[st.deleteBg, st.deleteBgRight, deleteStyleRight]}>
-            <Text style={st.deleteIcon}>🗑</Text>
+            <Icon name="trash" size={22} color={COLORS.white} />
           </Animated.View>
         </>
       )}
@@ -384,9 +385,6 @@ const st = StyleSheet.create({
   },
   deleteBgLeft: { alignItems: 'flex-start' },
   deleteBgRight: { alignItems: 'flex-end' },
-  deleteIcon: {
-    fontSize: 22,
-  },
   row: {
     height: ROW_H,
     flexDirection: 'row',

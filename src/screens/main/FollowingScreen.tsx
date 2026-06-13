@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { fetchStarredUsers, type StarredUser } from '../../services/playlists';
+import { Icon } from '../../components/Icon';
 
 function formatCount(n: number): string {
   if (n < 1000) { return String(n); }
@@ -60,7 +61,7 @@ function UserRow({
           @{item.username} · {subtitle}
         </Text>
       </View>
-      <Text style={styles.chev}>›</Text>
+      <Icon name="forward" size={22} color={COLORS.textMuted} />
     </Pressable>
   );
 }
@@ -107,7 +108,7 @@ export default function FollowingScreen() {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.backText}>‹</Text>
+          <Icon name="back" size={32} color={COLORS.white} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Following</Text>
@@ -164,7 +165,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { color: COLORS.white, fontSize: 32, fontWeight: '300', lineHeight: 36 },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
   headerSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
@@ -202,7 +202,6 @@ const styles = StyleSheet.create({
   name: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
   sub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
 
-  chev: { color: COLORS.textMuted, fontSize: 22, fontWeight: '300', flexShrink: 0 },
 
   empty: { paddingHorizontal: 24, paddingTop: 60, alignItems: 'center', gap: 10 },
   emptyTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', textAlign: 'center' },

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, Vibration, View } from 'react-native';
+import { StyleSheet, Vibration, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 
 // Per-row bidirectional swipe-to-reply, modelled on Instagram / iMessage.
 //
@@ -132,13 +133,13 @@ export default function SwipeReplyRow({
       <Animated.View style={[styles.row, rowStyle]}>
         <Animated.View style={[styles.iconWrapLeft, leftIconStyle]} pointerEvents="none">
           <View style={styles.iconCircle}>
-            <Text style={styles.iconGlyph}>↩</Text>
+            <Icon name="reply" size={16} color={COLORS.purpleLight} />
           </View>
         </Animated.View>
         {children}
         <Animated.View style={[styles.iconWrapRight, rightIconStyle]} pointerEvents="none">
           <View style={styles.iconCircle}>
-            <Text style={styles.iconGlyph}>↩</Text>
+            <Icon name="reply" size={16} color={COLORS.purpleLight} />
           </View>
         </Animated.View>
       </Animated.View>
@@ -173,11 +174,5 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purple,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconGlyph: {
-    color: COLORS.purpleLight,
-    fontSize: 16,
-    fontWeight: '700',
-    lineHeight: 18,
   },
 });

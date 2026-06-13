@@ -2,14 +2,16 @@ import React, { createContext, useCallback, useContext, useMemo, useRef } from '
 import { Animated } from 'react-native';
 
 /**
- * Drives the bottom nav bar (tab bar) + floating music player (FMP) hide/show on
- * feed scroll. Both live OUTSIDE the screens (tab bar in AppNavigator, FMP in
- * RootNavigator), so a screen can't move them directly — they subscribe to this
- * shared anim instead.
+ * Drives the bottom nav bar (tab bar) hide/show on feed scroll. The tab bar lives
+ * OUTSIDE the screens (in AppNavigator), so a screen can't move it directly — it
+ * subscribes to this shared anim instead.
  *
- * `hiddenAnim`: 0 = fully visible, 1 = slid off the bottom edge. The tab bar and
- * FMP each interpolate it into their own translateY. Scroll DOWN hides; scroll UP
- * (or reaching the top) shows again, near-instantly.
+ * `hiddenAnim`: 0 = fully visible, 1 = slid off the bottom edge. The tab bar
+ * interpolates it into a translateY. Behaviour: hide on scroll DOWN, show again
+ * instantly on scroll UP (or when near the top).
+ *
+ * NOTE: the floating music player does NOT subscribe to this — it stays visible at
+ * all times so playback state + controls are always reachable.
  */
 type ChromeVisibility = {
   /** 0 visible → 1 hidden. Consume with `.interpolate` for a translateY. */
@@ -37,10 +39,10 @@ export function ChromeVisibilityProvider({ children }: { children: React.ReactNo
   const showChrome = useCallback(() => {
     if (!isHidden.current) { return; }
     isHidden.current = false;
-    // Fast, no-bounce return so it pops back the instant the user scrolls up.
+    // Snappy, no-bounce return so it pops back the instant the user scrolls up.
     Animated.timing(hiddenAnim, {
       toValue: 0,
-      duration: 130,
+      duration: 110,
       useNativeDriver: true,
     }).start();
   }, [hiddenAnim]);

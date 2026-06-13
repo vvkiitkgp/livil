@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 import { supabase } from '../../lib/supabase';
 import { useRelationships } from '../contexts/RelationshipContext';
 import {
@@ -103,7 +104,9 @@ export function FriendRequestsBanner({ refreshKey }: { refreshKey: number }) {
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>{namesPreview}</Text>
       </View>
-      <Text style={styles.chevron}>›</Text>
+      <View style={{ marginLeft: 4 }}>
+        <Icon name="forward" size={24} color={COLORS.purpleLight} />
+      </View>
     </TouchableOpacity>
   );
 }
@@ -200,7 +203,9 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
           <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
         </View>
       ) : (
-        <Text style={styles.chevron}>›</Text>
+        <View style={{ marginLeft: 4 }}>
+          <Icon name="forward" size={24} color={COLORS.purpleLight} />
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -245,5 +250,4 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 2 },
   title: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   subtitle: { color: COLORS.textSecondary, fontSize: 12 },
-  chevron: { color: COLORS.purpleLight, fontSize: 24, marginLeft: 4 },
 });

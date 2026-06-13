@@ -25,6 +25,7 @@ import { usePlayback } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
 import { markStorySeen } from '../../services/stories';
 import type { RootStackParamList } from '../../navigation/types';
+import { Icon } from '../../components/Icon';
 
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
@@ -301,7 +302,7 @@ export default function StoryViewerScreen() {
                 style={styles.closeBtn}
                 hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
               >
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Icon name="close" size={18} color={COLORS.white} />
               </TouchableOpacity>
             </View>
           </SafeAreaView>
@@ -339,14 +340,6 @@ const styles = StyleSheet.create({
     // Emulate a top-to-transparent gradient with a semi-opaque overlay
     opacity: 0.45,
     // backgroundColor: 'black' would block content; use a solid-to-transparent feel with the overlay approach
-  },
-  bottomGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 160,
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   // Progress bar row
   progressRow: {
@@ -426,11 +419,6 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  closeBtnText: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: '700',
   },
   // Bottom comment
   commentArea: {

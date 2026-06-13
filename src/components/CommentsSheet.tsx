@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 import FormInput from './FormInput';
 import CommentItem from './CommentItem';
 import CommentReportModal from './CommentReportModal';
@@ -598,7 +599,7 @@ export default function CommentsSheet({
           <View style={styles.header}>
             <Text style={styles.title}>Comments</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.closeIcon}>✕</Text>
+              <Icon name="close" size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -705,11 +706,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 17,
     fontWeight: '700',
-  },
-  closeIcon: {
-    color: COLORS.textSecondary,
-    fontSize: 20,
-    fontWeight: '600',
   },
   center: {
     flex: 1,

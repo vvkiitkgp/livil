@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import { Icon, type IconName } from './Icon';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 
 export type TrackContextMenuProps = {
@@ -41,15 +42,15 @@ export type TrackContextMenuProps = {
 type MenuItem = {
   id: string;
   label: string;
-  icon: string;
+  icon: IconName;
   destructive?: boolean;
 };
 
 const BASE_MENU_ITEMS: readonly MenuItem[] = [
-  { id: 'play-next', label: 'Play Next', icon: '⏭' },
-  { id: 'add-to-queue', label: 'Add to Queue', icon: '☰' },
-  { id: 'add-to-playlist', label: 'Add to Playlist...', icon: '+' },
-  { id: 'go-to-artist', label: 'Go to Artist', icon: '→' },
+  { id: 'play-next', label: 'Play Next', icon: 'skipForward' },
+  { id: 'add-to-queue', label: 'Add to Queue', icon: 'queue' },
+  { id: 'add-to-playlist', label: 'Add to Playlist...', icon: 'add' },
+  { id: 'go-to-artist', label: 'Go to Artist', icon: 'arrowRight' },
 ] as const;
 
 export default function TrackContextMenu({
@@ -77,10 +78,10 @@ export default function TrackContextMenu({
     ? BASE_MENU_ITEMS.filter(i => i.id === 'go-to-artist')
     : [...BASE_MENU_ITEMS];
   if (postId && onReportPost && !isOwner) {
-    items.push({ id: 'report-post', label: 'Report post', icon: '⚐' });
+    items.push({ id: 'report-post', label: 'Report post', icon: 'flag' });
   }
   if (postId && onDeletePost && isOwner) {
-    items.push({ id: 'delete-post', label: 'Delete post', icon: '✕', destructive: true });
+    items.push({ id: 'delete-post', label: 'Delete post', icon: 'close', destructive: true });
   }
 
   const handlePress = useCallback((id: string) => {
@@ -151,9 +152,13 @@ export default function TrackContextMenu({
                     onPress={() => handlePress(item.id)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.menuIcon, item.destructive && styles.menuIconDestructive]}>
-                      {item.icon}
-                    </Text>
+                    <View style={styles.menuIcon}>
+                      <Icon
+                        name={item.icon}
+                        size={18}
+                        color={item.destructive ? COLORS.error : COLORS.white}
+                      />
+                    </View>
                     <Text style={[styles.menuLabel, item.destructive && styles.menuLabelDestructive]}>
                       {item.label}
                     </Text>
@@ -237,9 +242,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     width: 24,
     textAlign: 'center',
-  },
-  menuIconDestructive: {
-    color: COLORS.error,
+    alignItems: 'center',
   },
   menuLabel: {
     color: COLORS.white,

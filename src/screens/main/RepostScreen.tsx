@@ -13,6 +13,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
 import ClipRangeSlider from '../../components/ClipRangeSlider';
@@ -386,22 +387,31 @@ export default function RepostScreen() {
                 </TouchableOpacity>
               </View>
               <View style={styles.clipTimestamps}>
-                <Text style={styles.clipTime}>{formatTime(clipStart)}</Text>
-                <Text style={styles.clipTime}>{formatTime(clipEnd)}</Text>
+                <Text style={styles.clipTime}>{duration > 0 ? formatTime(clipStart) : '–:–'}</Text>
+                <Text style={styles.clipTime}>{duration > 0 ? formatTime(clipEnd) : '–:–'}</Text>
               </View>
               <View style={styles.sliderWrap}>
-                <ClipRangeSlider
-                  duration={duration}
-                  position={position}
-                  start={clipStart}
-                  end={clipEnd}
-                  minClipSeconds={1}
-                  maxClipSeconds={mode === 'story' ? MAX_STORY_CLIP : undefined}
-                  slideWindowOnLeftDrag={mode === 'story'}
-                  onChange={handleRangeChange}
-                  onChangeEnd={handleRangeChangeEnd}
-                  onSeekEnd={handleSeekEnd}
-                />
+                {duration > 0 ? (
+                  <ClipRangeSlider
+                    duration={duration}
+                    position={position}
+                    start={clipStart}
+                    end={clipEnd}
+                    minClipSeconds={1}
+                    maxClipSeconds={mode === 'story' ? MAX_STORY_CLIP : undefined}
+                    slideWindowOnLeftDrag={mode === 'story'}
+                    edgeInset={20}
+                    onChange={handleRangeChange}
+                    onChangeEnd={handleRangeChangeEnd}
+                    onSeekEnd={handleSeekEnd}
+                  />
+                ) : (
+                  // Track metadata (duration) loads after the post; until then the
+                  // slider would collapse both handles onto 0. Show a skeleton bar.
+                  <View style={styles.sliderSkeleton}>
+                    <View style={styles.sliderSkeletonBar} />
+                  </View>
+                )}
               </View>
 
               {/* ── Description / Comment ── */}
@@ -453,7 +463,9 @@ export default function RepostScreen() {
             <View style={styles.successGlow} />
             <View style={styles.successIconOuter}>
               <View style={styles.successIconInner}>
-                <Text style={styles.successCheck}>✓</Text>
+                <View style={{ marginTop: -2 }}>
+                  <Icon name="check" size={30} color={COLORS.white} />
+                </View>
               </View>
             </View>
             <Text style={styles.successTitle}>{successTitle}</Text>
@@ -632,6 +644,18 @@ const styles = StyleSheet.create({
   sliderWrap: {
     marginBottom: 24,
   },
+  // Placeholder shown while the track duration is still loading — same footprint
+  // as ClipRangeSlider's hit area (paddingVertical 14 + 6px track) and edgeInset.
+  sliderSkeleton: {
+    height: 34,
+    justifyContent: 'center',
+    marginHorizontal: 20,
+  },
+  sliderSkeletonBar: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
   // Text input
   textAreaWrapper: {
     alignItems: 'flex-start',
@@ -722,13 +746,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowRadius: 14,
     elevation: 10,
-  },
-  successCheck: {
-    color: COLORS.white,
-    fontSize: 30,
-    fontWeight: '800',
-    lineHeight: 32,
-    marginTop: -2,
   },
   successTitle: {
     color: COLORS.white,

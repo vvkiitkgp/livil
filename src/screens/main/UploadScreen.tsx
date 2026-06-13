@@ -23,6 +23,7 @@ import { createTrack, type CreateTrackStage, type PostMode } from '../../service
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
+import { Icon } from '../../components/Icon';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
 
@@ -534,7 +535,7 @@ export default function UploadScreen() {
                       style={styles.chipRemove}
                       accessibilityLabel={`Remove ${c.name}`}
                     >
-                      <Text style={[styles.chipRemoveText, { color: palette.text }]}>×</Text>
+                      <Icon name="close" size={18} color={palette.text} />
                     </TouchableOpacity>
                   </View>
                 );
@@ -635,7 +636,7 @@ export default function UploadScreen() {
             <View style={styles.successGlow} />
             <View style={styles.successIconOuter}>
               <View style={styles.successIconInner}>
-                <Text style={styles.successCheck}>✓</Text>
+                <Icon name="check" size={30} color={COLORS.white} />
               </View>
             </View>
             <Text style={styles.successTitle}>Track posted</Text>
@@ -930,11 +931,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  chipRemoveText: {
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
   chipLegend: {
     marginTop: 4,
     gap: 6,
@@ -1073,13 +1069,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowRadius: 14,
     elevation: 10,
-  },
-  successCheck: {
-    color: COLORS.white,
-    fontSize: 30,
-    fontWeight: '800',
-    lineHeight: 32,
-    marginTop: -2,
   },
   successTitle: {
     color: COLORS.white,

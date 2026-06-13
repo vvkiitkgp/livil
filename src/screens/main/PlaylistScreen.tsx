@@ -19,6 +19,7 @@ import { COLORS } from '../../theme/colors';
 import { fetchLikedPosts, fetchPlaylistPosts, type PlaylistItem } from '../../services/playlists';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import type { NowPlayingInfo } from '../../contexts/PlaybackContext';
+import { Icon } from '../../components/Icon';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PlaylistDetail'>;
 
@@ -151,7 +152,7 @@ export default function PlaylistScreen({ route }: Props) {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.backText}>‹</Text>
+          <Icon name="back" size={32} color={COLORS.white} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle} numberOfLines={1}>{playlistName}</Text>
@@ -212,7 +213,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { color: COLORS.white, fontSize: 32, fontWeight: '300', lineHeight: 36 },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
   headerSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },

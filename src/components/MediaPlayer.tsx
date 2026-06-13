@@ -10,6 +10,7 @@ import React, {
 import { View, StyleSheet, Image, Pressable, Text, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import Video, { type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 import { usePlayback } from '../contexts/PlaybackContext';
 
 export type MediaShape =
@@ -304,7 +305,9 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       {effectivePaused ? (
         <View pointerEvents="none" style={styles.playGlyphWrap}>
           <View style={styles.playGlyph}>
-            <Text style={styles.playGlyphText}>▶</Text>
+            <View style={{ marginLeft: 4 }}>
+              <Icon name="play" size={24} color={COLORS.white} />
+            </View>
           </View>
         </View>
       ) : null}

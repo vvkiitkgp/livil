@@ -28,6 +28,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import {
   fetchMessages,
@@ -116,7 +117,7 @@ function JamInviteBubble({
   };
   return (
     <View style={[styles.jamInviteCard, ended && styles.jamInviteCardEnded]}>
-      <Text style={styles.jamInviteIcon}>🎵</Text>
+      <Icon name="musicNote" size={22} color={COLORS.purpleLight} />
       <View style={styles.jamInviteInfo}>
         <Text style={styles.jamInviteTitle}>
           {ended ? 'Jam Room ended' : 'Jam Room started'}
@@ -272,7 +273,7 @@ function MessageBubble({
                   />
                 ) : (
                   <View style={styles.trackCardArtPlaceholder}>
-                    <Text style={styles.trackCardNote}>🎵</Text>
+                    <Icon name="musicNote" size={20} color={COLORS.textSecondary} />
                   </View>
                 )}
                 <View style={styles.trackCardInfo}>
@@ -884,7 +885,7 @@ export default function ConversationScreen() {
           activeOpacity={0.7}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.headerInfo}
@@ -935,7 +936,7 @@ export default function ConversationScreen() {
           {startingJam
             ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
             : <>
-                <Text style={styles.jamBtnIcon}>🎵</Text>
+                <Icon name="musicNote" size={14} color={COLORS.purpleLight} />
                 <Text style={styles.jamBtnLabel}>Jam</Text>
               </>
           }
@@ -946,7 +947,7 @@ export default function ConversationScreen() {
             activeOpacity={0.7}
             onPress={() => navigation.navigate('GroupInfo', { conversationId })}
           >
-            <Text style={styles.infoBtnText}>ⓘ</Text>
+            <Icon name="info" size={20} color={COLORS.purpleLight} />
           </TouchableOpacity>
         )}
       </View>
@@ -1013,7 +1014,7 @@ export default function ConversationScreen() {
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={() => setReplyingTo(null)}
                 >
-                  <Text style={styles.replyPreviewCloseIcon}>×</Text>
+                  <Icon name="close" size={22} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -1041,7 +1042,7 @@ export default function ConversationScreen() {
                 onPress={handleSend}
                 disabled={!text.trim() || sending}
               >
-                <Text style={styles.sendBtnIcon}>›</Text>
+                <Icon name="send" size={28} color={COLORS.white} />
               </TouchableOpacity>
             </View>
           </KeyboardStickyView>
@@ -1070,10 +1071,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   backButton: { padding: 4 },
-  backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerInfo: { flex: 1, justifyContent: 'center' },
   infoBtn: { padding: 6 },
-  infoBtnText: { color: COLORS.purpleLight, fontSize: 20 },
   jamBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1086,7 +1085,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(124, 58, 237, 0.55)',
     marginLeft: 4,
   },
-  jamBtnIcon: { fontSize: 14, lineHeight: 18 },
   jamBtnLabel: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700', lineHeight: 18 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerAvatar: { width: 32, height: 32, borderRadius: 16 },
@@ -1218,7 +1216,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trackCardNote: { fontSize: 20 },
   trackCardInfo: { flex: 1 },
   trackCardTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   trackCardArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
@@ -1235,7 +1232,6 @@ const styles = StyleSheet.create({
     gap: 10,
     maxWidth: '85%',
   },
-  jamInviteIcon: { fontSize: 22 },
   jamInviteInfo: { flex: 1 },
   jamInviteTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   jamInviteSub: { color: COLORS.purpleLight, fontSize: 11, marginTop: 2 },
@@ -1387,7 +1383,6 @@ const styles = StyleSheet.create({
   replyPreviewTitle: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '700' },
   replyPreviewBodyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   replyPreviewClose: { padding: 4 },
-  replyPreviewCloseIcon: { color: COLORS.textSecondary, fontSize: 22, lineHeight: 22 },
   sendBar: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -1418,11 +1413,4 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   sendBtnDisabled: { backgroundColor: COLORS.border, shadowOpacity: 0 },
-  sendBtnText: { display: 'none' },
-  sendBtnIcon: {
-    fontSize: 28,
-    lineHeight: 32,
-    color: COLORS.white,
-    includeFontPadding: false,
-  },
 });

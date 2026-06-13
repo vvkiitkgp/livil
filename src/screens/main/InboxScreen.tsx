@@ -22,6 +22,7 @@ import { messageCache } from '../../services/messageCache';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import AddBadge from '../../components/AddBadge';
+import { Icon } from '../../components/Icon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -254,7 +255,7 @@ export default function InboxScreen() {
           activeOpacity={0.7}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity
@@ -263,7 +264,7 @@ export default function InboxScreen() {
           onPress={() => navigation.navigate('NewConversation')}
           accessibilityLabel="New message"
         >
-          <Text style={styles.composeIcon}>＋</Text>
+          <Icon name="compose" size={22} color={COLORS.purple} />
         </TouchableOpacity>
       </View>
 
@@ -322,7 +323,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backButton: { padding: 4, marginRight: 4 },
-  backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerTitle: {
     flex: 1,
     color: COLORS.white,
@@ -331,7 +331,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   composeButton: { padding: 4 },
-  composeIcon: { color: COLORS.purple, fontSize: 22, fontWeight: '300' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 24 },
   emptyContent: { flex: 1 },

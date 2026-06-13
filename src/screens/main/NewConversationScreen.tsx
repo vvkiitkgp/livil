@@ -17,6 +17,7 @@ import FormInput from '../../components/FormInput';
 import { getOrCreateDm, createGroup } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
+import { Icon } from '../../components/Icon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Tab = 'dm' | 'group';
@@ -219,7 +220,7 @@ export default function NewConversationScreen() {
           <Text style={styles.username}>@{item.username}</Text>
         </View>
         <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-          {isSelected && <Text style={styles.checkmark}>✓</Text>}
+          {isSelected && <Icon name="check" size={14} color={COLORS.white} />}
         </View>
       </TouchableOpacity>
     );
@@ -236,7 +237,7 @@ export default function NewConversationScreen() {
           activeOpacity={0.7}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Message</Text>
       </View>
@@ -290,7 +291,7 @@ export default function NewConversationScreen() {
               <Text style={styles.selectedChipName} numberOfLines={1}>
                 {f.displayName || f.username}
               </Text>
-              <Text style={styles.selectedChipX}>×</Text>
+              <Icon name="close" size={16} color={COLORS.purpleLight} />
             </TouchableOpacity>
           ))}
         </View>
@@ -366,7 +367,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backButton: { padding: 4, marginRight: 4 },
-  backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
   tabRow: {
     flexDirection: 'row',
@@ -406,7 +406,6 @@ const styles = StyleSheet.create({
     maxWidth: 150,
   },
   selectedChipName: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '600', flex: 1 },
-  selectedChipX: { color: COLORS.purpleLight, fontSize: 16, lineHeight: 20 },
   searchWrap: { paddingHorizontal: 16, paddingVertical: 10 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 24 },
@@ -439,7 +438,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxSelected: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
-  checkmark: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: COLORS.textSecondary, fontSize: 14 },
   createBtnWrap: {

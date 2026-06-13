@@ -13,6 +13,7 @@ import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
+import { Icon } from '../../components/Icon';
 import { useToast } from '../../contexts/ToastContext';
 
 type Props = {
@@ -87,7 +88,7 @@ export default function SignInScreen({ navigation }: Props) {
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
-            <Text style={styles.backIcon}>←</Text>
+            <Icon name="backArrow" size={20} color={COLORS.white} />
           </TouchableOpacity>
 
           <View style={styles.titleSection}>
@@ -133,7 +134,7 @@ export default function SignInScreen({ navigation }: Props) {
                     onPress={() => setPasswordVisible(v => !v)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.eyeText}>{passwordVisible ? '🙈' : '👁'}</Text>
+                    <Icon name={passwordVisible ? 'eyeOff' : 'eye'} size={16} color={COLORS.textSecondary} />
                   </TouchableOpacity>
                 }
               />
