@@ -29,6 +29,14 @@ function formatTimeOfDay(d: Date): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+// Time-of-day only, e.g. "12:34 PM". Used by the swipe-to-reveal row, where the
+// date would be redundant — the centered ChatTimeSeparator already labels each
+// group's date. Matches Instagram, whose swipe gesture reveals only the time
+// (and keeps it from truncating in the narrow reveal slot).
+export function formatChatTimeOnly(iso: string): string {
+  return formatTimeOfDay(new Date(iso));
+}
+
 function isSameCalendarDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&

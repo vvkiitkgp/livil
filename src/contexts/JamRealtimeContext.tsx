@@ -223,7 +223,7 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
             // GlobalAudioPlayer. setNowPlaying with audioUrl set causes
             // GlobalAudioPlayer to mount, stream, and autoplay.
             if (
-              bc.audio_url &&
+              (bc.audio_url || bc.video_url) &&
               bc.track_id &&
               (!currentNp || currentNp.trackId !== bc.track_id)
             ) {

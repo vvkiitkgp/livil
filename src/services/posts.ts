@@ -625,6 +625,72 @@ export async function recordPlay(postId: string): Promise<void> {
   }
 }
 
+export type PostLiker = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  /** When this user liked the post (ISO). Doubles as the pagination cursor. */
+  likedAt: string;
+};
+
+type RawPostLikerRow = {
+  user_id: string;
+  created_at: string;
+  user: {
+    id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null;
+};
+
+/**
+ * List the users who liked a post, newest first. Paginated by liked_at — pass
+ * the previous page's last `likedAt` as `before` to fetch the next page.
+ */
+export async function listPostLikers(
+  postId: string,
+  options: { limit?: number; before?: string } = {},
+): Promise<PostLiker[]> {
+  const limit = options.limit ?? 30;
+  let query = supabase
+    .from('post_likes')
+    .select(
+      `
+        user_id,
+        created_at,
+        user:profiles!post_likes_user_id_fkey (
+          id,
+          username,
+          display_name,
+          avatar_url
+        )
+      `,
+    )
+    .eq('post_id', postId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (options.before) {
+    query = query.lt('created_at', options.before);
+  }
+
+  const { data, error } = await query;
+  if (error) { throw new Error(error.message); }
+
+  const rows = (data ?? []) as unknown as RawPostLikerRow[];
+  return rows
+    .filter(r => r.user)
+    .map<PostLiker>(r => ({
+      userId: r.user!.id,
+      username: r.user!.username,
+      displayName: r.user!.display_name,
+      avatarUrl: r.user!.avatar_url,
+      likedAt: r.created_at,
+    }));
+}
+
 export type PostReportReason = 'spam' | 'harassment' | 'hate' | 'misinformation' | 'other';
 
 /**

@@ -59,7 +59,7 @@ import ChatTimeSeparator from '../../components/ChatTimeSeparator';
 import SwipeRevealRow from '../../components/SwipeRevealRow';
 import SwipeReplyRow from '../../components/SwipeReplyRow';
 import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
-import { formatChatTimestamp, shouldShowTimeSeparator } from '../../utils/chatTime';
+import { formatChatTimestamp, formatChatTimeOnly, shouldShowTimeSeparator } from '../../utils/chatTime';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
@@ -158,18 +158,8 @@ function MessageBubble({
   isMe: boolean;
   conversationId: string;
   conversationTitle: string;
-  // Pre-resolved original message when this row is a reply. Null when the
-  // row is a top-level message OR when the original isn't in the loaded set
-  // (pagination not yet reached it) — in which case the preview shows a
-  // generic caption instead.
   repliedTo: ChatMessage | null;
-  // Brief pulse applied when the user tapped a reply quote pointing at this
-  // bubble. ConversationScreen owns the timer that clears it after ~1.5s.
   isHighlighted: boolean;
-  // Fired when the user swipes the bubble past the reply threshold. The
-  // SwipeReplyRow wrapping lives INSIDE this component so the gesture only
-  // covers the bubble itself — empty space in the row falls through to the
-  // screen-level timestamp-reveal gesture.
   onReply: () => void;
   onReplyQuotePress: (originalId: string) => void;
   onLongPress: (msg: ChatMessage) => void;
@@ -400,6 +390,8 @@ export default function ConversationScreen() {
   const [myProfile, setMyProfile] = useState<{ username: string | null; displayName: string | null; avatarUrl: string | null }>({ username: null, displayName: null, avatarUrl: null });
   const [friendActivity, setFriendActivity] = useState<FriendActivity | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [otherUserId, setOtherUserId] = useState<string | null>(null);
+  const [otherUserAvatarUrl, setOtherUserAvatarUrl] = useState<string | null>(null);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   // When the user taps a reply quote we scroll to the original and pulse it
@@ -658,8 +650,14 @@ export default function ConversationScreen() {
         .then(async ({ data }: { data: { user_id: string } | null }) => {
           if (!data?.user_id) { return; }
           friendActivityLoadedRef.current = true;
-          const activity = await getFriendActivity(data.user_id);
+          setOtherUserId(data.user_id);
+          const [activity, profileRes] = await Promise.all([
+            getFriendActivity(data.user_id),
+            db.from('profiles').select('avatar_url').eq('id', data.user_id).maybeSingle(),
+          ]);
           setFriendActivity(activity);
+          const avatarUrl = (profileRes.data as { avatar_url: string | null } | null)?.avatar_url ?? null;
+          if (avatarUrl) { setOtherUserAvatarUrl(avatarUrl); }
         });
     }
   }, [conversationId, myId, isGroup]);
@@ -839,7 +837,7 @@ export default function ConversationScreen() {
       return (
         <>
           {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
-          <SwipeRevealRow timestamp={formatChatTimestamp(item.createdAt)}>
+          <SwipeRevealRow timestamp={formatChatTimeOnly(item.createdAt)}>
             <MessageBubble
               msg={item}
               isMe={item.senderId === myId}
@@ -890,10 +888,27 @@ export default function ConversationScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.headerInfo}
-          activeOpacity={isGroup ? 0.7 : 1}
-          onPress={isGroup ? () => navigation.navigate('GroupInfo', { conversationId }) : undefined}
+          activeOpacity={0.7}
+          onPress={
+            isGroup
+              ? () => navigation.navigate('GroupInfo', { conversationId })
+              : otherUserId
+                ? () => navigation.navigate('UserProfile', { userId: otherUserId })
+                : undefined
+          }
         >
-          <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+          <View style={styles.headerTitleRow}>
+            {!isGroup && (
+              otherUserAvatarUrl ? (
+                <Image source={{ uri: otherUserAvatarUrl }} style={styles.headerAvatar} />
+              ) : (
+                <View style={styles.headerAvatarPlaceholder}>
+                  <Text style={styles.headerAvatarText}>{title.slice(0, 1).toUpperCase()}</Text>
+                </View>
+              )
+            )}
+            <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+          </View>
           {isGroup ? (
             memberCount !== null ? (
               <Text style={styles.headerSubtitle} numberOfLines={1}>
@@ -1073,6 +1088,17 @@ const styles = StyleSheet.create({
   },
   jamBtnIcon: { fontSize: 14, lineHeight: 18 },
   jamBtnLabel: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerAvatar: { width: 32, height: 32, borderRadius: 16 },
+  headerAvatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.purpleDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerAvatarText: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700' },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   headerSubtitle: { color: COLORS.purple, fontSize: 12, marginTop: 1 },
   onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },

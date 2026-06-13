@@ -26,6 +26,7 @@ import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
 import { StoriesProvider } from '../contexts/StoriesContext';
+import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
@@ -221,6 +222,7 @@ export default function RootNavigator() {
     <JamRealtimeProvider>
     <RelationshipProvider>
     <StoriesProvider>
+    <ChromeVisibilityProvider>
     <View style={styles.root}>
       <Stack.Navigator
         screenOptions={{
@@ -370,6 +372,7 @@ export default function RootNavigator() {
         onMaybeLater={handleDeferNotifications}
       />
     </View>
+    </ChromeVisibilityProvider>
     </StoriesProvider>
     </RelationshipProvider>
     </JamRealtimeProvider>

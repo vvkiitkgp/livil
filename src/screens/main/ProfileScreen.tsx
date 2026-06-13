@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  Share,
   type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,11 +18,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
+import PostCardSkeleton from '../../components/PostCardSkeleton';
+import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   listPostsForUser,
   getProfileStats,
@@ -97,6 +101,26 @@ export default function ProfileScreen() {
       return next;
     });
   }, []);
+
+  // Hide the bottom nav bar + floating music player on scroll down, restore on
+  // scroll up (and at the top). Shared anim → both move together.
+  const { hideChrome, showChrome } = useChromeVisibility();
+  const lastScrollY = useRef(0);
+  const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const diff = y - lastScrollY.current;
+    lastScrollY.current = y;
+    if (y < 10) { showChrome(); return; }
+    if (diff > 4) { hideChrome(); }
+    else if (diff < -4) { showChrome(); }
+  }, [hideChrome, showChrome]);
+
+  // Restore the chrome when leaving Profile so it's never stuck off-screen.
+  useFocusEffect(
+    useCallback(() => {
+      return () => { showChrome(); };
+    }, [showChrome]),
+  );
 
   const openLink = useCallback((url: string) => {
     const normalized = normalizeUrl(url);
@@ -349,7 +373,7 @@ export default function ProfileScreen() {
               activeOpacity={0.7}
               onPress={() => handleTabChange('posts')}
             >
-              <Text style={[styles.tabLabel, tab === 'posts' && styles.tabLabelActive]}>Posts</Text>
+              <Text style={[styles.tabLabel, tab === 'posts' && styles.tabLabelActive]}>All</Text>
               <View
                 style={[styles.tabIndicator, tab === 'posts' && styles.tabIndicatorActive]}
               />
@@ -360,7 +384,7 @@ export default function ProfileScreen() {
               onPress={() => handleTabChange('creator')}
             >
               <Text style={[styles.tabLabel, tab === 'creator' && styles.tabLabelActive]}>
-                Creator
+                Uploads
               </Text>
               <View
                 style={[styles.tabIndicator, tab === 'creator' && styles.tabIndicatorActive]}
@@ -408,7 +432,8 @@ export default function ProfileScreen() {
   const renderHeader = useCallback(() => {
     const initials = avatarInitials(profile);
     const display = profile?.display_name ?? profile?.username ?? 'Your profile';
-    const handle = profile?.username ?? '...';
+    const handle = profile?.username ?? '';
+    const isProfileLoading = loading && !profile;
     return (
       <View style={styles.headerWrap}>
         <View style={styles.topBar}>
@@ -429,17 +454,22 @@ export default function ProfileScreen() {
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
-              ) : (
+              ) : profile ? (
                 <Text style={styles.avatarText}>{initials}</Text>
-              )}
+              ) : null}
             </View>
           </View>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {display}
-          </Text>
-          <Text style={styles.handle} numberOfLines={1}>
-            @{handle}
-          </Text>
+          {isProfileLoading ? (
+            <>
+              <View style={styles.skeletonLine} />
+              <View style={styles.skeletonLineSm} />
+            </>
+          ) : (
+            <>
+              <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
+              <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+            </>
+          )}
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={3}>
               {profile.bio}
@@ -516,8 +546,13 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.actionButtonGhost]}
             activeOpacity={0.85}
+            onPress={() => {
+              Share.share({
+                message: `Join me on Livil — the social music app 🎵\nhttps://livil.app`,
+              });
+            }}
           >
-            <Text style={styles.actionButtonGhostText}>Share</Text>
+            <Text style={styles.actionButtonGhostText}>Invite friends</Text>
           </TouchableOpacity>
         </View>
 
@@ -528,16 +563,27 @@ export default function ProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, handleSignOut, navigation]);
+  }, [profile, stats, followCounts, error, loading, handleSignOut, navigation]);
 
   const renderFooter = useCallback(() => {
-    if (!loadingMore) {return <View style={styles.listFooter} />;}
-    return (
-      <View style={styles.footerLoading}>
-        <ActivityIndicator color={COLORS.purpleLight} />
-      </View>
-    );
-  }, [loadingMore]);
+    if (loadingMore) {
+      return (
+        <>
+          <PostCardSkeleton />
+          <PostCardSkeleton />
+        </>
+      );
+    }
+    if (endReached && posts.length > 0) {
+      return (
+        <FeedEndMessage
+          title="That's your whole set"
+          subtitle="Every track you've dropped lives right here. Time for an encore?"
+        />
+      );
+    }
+    return <View style={styles.listFooter} />;
+  }, [loadingMore, endReached, posts.length]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -562,6 +608,8 @@ export default function ProfileScreen() {
         onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 48 }]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
 
       <ConfirmActionModal
@@ -846,6 +894,7 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
+    marginBottom: 12,
   },
   tabButton: {
     flex: 1,
@@ -909,11 +958,23 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  footerLoading: {
-    paddingVertical: 22,
-    alignItems: 'center',
-  },
   listFooter: {
     height: 12,
+  },
+  skeletonLine: {
+    height: 20,
+    width: 140,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    marginTop: 10,
+    opacity: 0.7,
+  },
+  skeletonLineSm: {
+    height: 13,
+    width: 90,
+    borderRadius: 6,
+    backgroundColor: COLORS.surface,
+    marginTop: 6,
+    opacity: 0.7,
   },
 });

@@ -16,6 +16,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import PostCard from '../../components/PostCard';
+import PostCardSkeleton from '../../components/PostCardSkeleton';
+import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
@@ -27,7 +29,9 @@ import {
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { useRelationships } from '../../contexts/RelationshipContext';
+import { useToast } from '../../contexts/ToastContext';
 import AddUserSheet from '../../components/AddUserSheet';
+import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
 
 type UserProfileRouteProp = RouteProp<RootStackParamList, 'UserProfile'>;
@@ -98,7 +102,9 @@ export default function UserProfileScreen() {
   const { userId, focusPostId, openComments, highlightCommentId } = route.params;
   const playback = usePlayback();
   const rel = useRelationships();
+  const { showToast } = useToast();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [messagingBusy, setMessagingBusy] = useState(false);
   const comments = useCommentsCountDeltas();
   const listRef = useRef<FlatList<ListItem>>(null);
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
@@ -291,6 +297,20 @@ export default function UserProfileScreen() {
     }
   }, [endReached, fetchPosts, loadingMore, posts, tab, userId]);
 
+  const handleMessage = useCallback(async () => {
+    if (messagingBusy) { return; }
+    setMessagingBusy(true);
+    try {
+      const convId = await getOrCreateDm(userId);
+      const title = profile?.display_name ?? profile?.username ?? 'Chat';
+      navigation.navigate('Conversation', { conversationId: convId, title, kind: 'dm' });
+    } catch {
+      showToast('Could not open conversation.', { kind: 'error' });
+    } finally {
+      setMessagingBusy(false);
+    }
+  }, [messagingBusy, userId, profile, navigation, showToast]);
+
   const listData = useMemo<ListItem[]>(() => {
     const head: ListItem = { kind: 'tabs', key: '__tabs__' };
     const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
@@ -314,7 +334,7 @@ export default function UserProfileScreen() {
                 onPress={() => handleTabChange(t)}
               >
                 <Text style={[styles.tabLabel, tab === t && styles.tabLabelActive]}>
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {t === 'posts' ? 'All' : 'Uploads'}
                 </Text>
                 <View style={[styles.tabIndicator, tab === t && styles.tabIndicatorActive]} />
               </TouchableOpacity>
@@ -349,8 +369,10 @@ export default function UserProfileScreen() {
 
   const renderHeader = useCallback(() => {
     const initials = avatarInitials(profile);
-    const display = profile?.display_name ?? profile?.username ?? '...';
-    const handle = profile?.username ?? '...';
+    const display = profile?.display_name ?? profile?.username ?? '';
+    const handle = profile?.username ?? '';
+    const isProfileLoading = loading && !profile;
+    const relStatus = rel.status(userId);
     return (
       <View style={styles.headerWrap}>
         {/* Top bar with back button */}
@@ -372,17 +394,42 @@ export default function UserProfileScreen() {
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
-              ) : (
+              ) : profile ? (
                 <Text style={styles.avatarText}>{initials}</Text>
-              )}
+              ) : null}
             </View>
           </View>
-          <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
-          <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+          {isProfileLoading ? (
+            <>
+              <View style={styles.skeletonLine} />
+              <View style={styles.skeletonLineSm} />
+            </>
+          ) : (
+            <>
+              <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
+              <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+            </>
+          )}
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={3}>{profile.bio}</Text>
           ) : null}
-          {renderCta(rel.status(userId), () => setSheetOpen(true))}
+          {relStatus !== 'me' && (
+            <View style={styles.heroActions}>
+              {renderCta(relStatus, () => setSheetOpen(true))}
+              <TouchableOpacity
+                style={styles.msgBtn}
+                activeOpacity={0.8}
+                onPress={handleMessage}
+                disabled={messagingBusy}
+              >
+                {messagingBusy ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.msgBtnText}>Message</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={styles.socialPills}>
@@ -419,12 +466,27 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, navigation, rel, userId]);
+  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy]);
 
   const renderFooter = useCallback(() => {
-    if (!loadingMore) { return <View style={styles.listFooter} />; }
-    return <View style={styles.footerLoading}><ActivityIndicator color={COLORS.purpleLight} /></View>;
-  }, [loadingMore]);
+    if (loadingMore) {
+      return (
+        <>
+          <PostCardSkeleton />
+          <PostCardSkeleton />
+        </>
+      );
+    }
+    if (endReached && posts.length > 0) {
+      return (
+        <FeedEndMessage
+          title="That's their whole set"
+          subtitle="Every track they've dropped lives right here."
+        />
+      );
+    }
+    return <View style={styles.listFooter} />;
+  }, [loadingMore, endReached, posts.length]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -526,13 +588,12 @@ const styles = StyleSheet.create({
   bio: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center' },
 
   ctaBtn: {
-    marginTop: 14,
-    paddingHorizontal: 28,
+    flex: 1,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 160,
   },
   ctaBtnPrimary: {
     backgroundColor: COLORS.purple,
@@ -575,6 +636,7 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row', backgroundColor: COLORS.bg,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
+    marginBottom: 12,
   },
   tabButton: { flex: 1, alignItems: 'center', paddingVertical: 12 },
   tabLabel: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
@@ -592,5 +654,43 @@ const styles = StyleSheet.create({
   emptyTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', textAlign: 'center' },
 
   listFooter: { height: 40 },
-  footerLoading: { padding: 20, alignItems: 'center' },
+
+  heroActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    alignSelf: 'stretch',
+    paddingHorizontal: 16,
+  },
+  msgBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  msgBtnText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  skeletonLine: {
+    height: 20,
+    width: 130,
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+    marginTop: 10,
+    opacity: 0.7,
+  },
+  skeletonLineSm: {
+    height: 13,
+    width: 85,
+    borderRadius: 6,
+    backgroundColor: COLORS.surface,
+    marginTop: 6,
+    opacity: 0.7,
+  },
 });

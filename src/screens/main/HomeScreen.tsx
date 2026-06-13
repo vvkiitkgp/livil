@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   Pressable,
   RefreshControl,
-  ActivityIndicator,
   Image,
   ScrollView,
   type ViewToken,
@@ -23,10 +22,13 @@ import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
 import PostCard from '../../components/PostCard';
+import PostCardSkeleton from '../../components/PostCardSkeleton';
+import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRelationships } from '../../contexts/RelationshipContext';
+import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   fetchHomeFeedPage,
   type FeedPost,
@@ -179,28 +181,6 @@ function FriendStoriesRow({
   );
 }
 
-function PostCardSkeleton() {
-  return (
-    <View style={styles.skelCard}>
-      <View style={styles.skelHeader}>
-        <View style={styles.skelAvatar} />
-        <View style={styles.skelHeaderText}>
-          <View style={[styles.skelLine, { width: '46%' }]} />
-          <View style={[styles.skelLine, { width: '30%', marginTop: 8 }]} />
-        </View>
-      </View>
-      <View style={styles.skelMedia} />
-      <View style={styles.skelActions}>
-        <View style={[styles.skelPill, { width: 52 }]} />
-        <View style={[styles.skelPill, { width: 52 }]} />
-        <View style={[styles.skelPill, { width: 52 }]} />
-      </View>
-      <View style={[styles.skelLine, { width: '72%', marginTop: 14 }]} />
-      <View style={[styles.skelLine, { width: '54%', marginTop: 10 }]} />
-    </View>
-  );
-}
-
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const playback = usePlayback();
@@ -240,14 +220,25 @@ export default function HomeScreen() {
     }
   }, [topBarAnim, insets.top]);
 
+  // Bottom nav bar + floating music player hide/show on the same scroll direction.
+  const { hideChrome, showChrome } = useChromeVisibility();
+
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
-    if (y < 10) { showTopBar(); return; }
-    if (diff > 4) { hideTopBar(); }
-    else if (diff < -4) { showTopBar(); }
-  }, [showTopBar, hideTopBar]);
+    if (y < 10) { showTopBar(); showChrome(); return; }
+    if (diff > 4) { hideTopBar(); hideChrome(); }
+    else if (diff < -4) { showTopBar(); showChrome(); }
+  }, [showTopBar, hideTopBar, showChrome, hideChrome]);
+
+  // Always restore the chrome when leaving Home (e.g. switching tabs while the
+  // bar is hidden) so it isn't stuck off-screen on the next screen.
+  useFocusEffect(
+    useCallback(() => {
+      return () => { showChrome(); };
+    }, [showChrome]),
+  );
 
   const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
   const [totalUnread, setTotalUnread] = useState(0);
@@ -261,6 +252,9 @@ export default function HomeScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [feedError, setFeedError] = useState('');
+  // Mirrors `nextCursorRef.current === null` as state so the footer re-renders
+  // when pagination is exhausted (refs alone don't trigger re-renders).
+  const [endOfFeed, setEndOfFeed] = useState(false);
 
   const nextCursorRef = useRef<HomeFeedCursor | null>(null);
   const loadingMoreRef = useRef(false);
@@ -457,7 +451,9 @@ export default function HomeScreen() {
     }
 
     loadingMoreRef.current = true;
-    const showSpinner = mode === 'end';
+    // Surface the skeleton footer for any pagination fetch (prefetch + end).
+    // Initial/refresh are handled by their own indicators, not this footer.
+    const showSpinner = mode === 'end' || mode === 'prefetch';
     if (showSpinner) {
       setLoadingMore(true);
     }
@@ -466,10 +462,12 @@ export default function HomeScreen() {
       setFeedError('');
       nextCursorRef.current = null;
       setPosts([]);
+      setEndOfFeed(false);
     }
     if (mode === 'refresh') {
       setFeedError('');
       nextCursorRef.current = null;
+      setEndOfFeed(false);
     }
 
     try {
@@ -493,6 +491,7 @@ export default function HomeScreen() {
       });
 
       nextCursorRef.current = nextCursor;
+      setEndOfFeed(nextCursor === null);
     } catch (err) {
       const message =
         err instanceof Error
@@ -646,15 +645,22 @@ export default function HomeScreen() {
   );
 
   const footer = useMemo(() => {
-    if (!loadingMore || posts.length === 0 || loadingInitial) {
+    if (loadingInitial || posts.length === 0) {
       return <View style={styles.footerSpace} />;
     }
-    return (
-      <View style={styles.footerSpinner}>
-        <ActivityIndicator color={COLORS.purpleLight} />
-      </View>
-    );
-  }, [loadingMore, posts.length, loadingInitial]);
+    if (loadingMore) {
+      return (
+        <>
+          <PostCardSkeleton />
+          <PostCardSkeleton />
+        </>
+      );
+    }
+    if (endOfFeed) {
+      return <FeedEndMessage />;
+    }
+    return <View style={styles.footerSpace} />;
+  }, [loadingMore, posts.length, loadingInitial, endOfFeed]);
 
   const tabBarHeight = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
   const listContentStyle = useMemo(
@@ -1045,54 +1051,5 @@ const styles = StyleSheet.create({
   footerSpace: {
     height: 16,
   },
-  footerSpinner: {
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
 
-  skelCard: {
-    marginHorizontal: 16,
-    marginBottom: 18,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  skelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  skelAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.border,
-  },
-  skelHeaderText: {
-    flex: 1,
-    gap: 8,
-  },
-  skelLine: {
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.border,
-  },
-  skelMedia: {
-    height: 220,
-    borderRadius: 14,
-    backgroundColor: COLORS.border,
-  },
-  skelActions: {
-    flexDirection: 'row',
-    gap: 14,
-    marginTop: 14,
-  },
-  skelPill: {
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: COLORS.border,
-  },
 });
