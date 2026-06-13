@@ -11,6 +11,8 @@ import type { FeedPost } from '../services/posts';
 import { toggleLike, deletePost } from '../services/posts';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import PostReportModal from './PostReportModal';
+import PostLikersSheet from './PostLikersSheet';
+import LikedByLine from './LikedByLine';
 import ConfirmActionModal from './ConfirmActionModal';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
@@ -145,6 +147,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
   const [likesCount, setLikesCount] = useState(post.likesCount);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [likersOpen, setLikersOpen] = useState(false);
 
   const trackInfoForMenu = useMemo((): NowPlayingInfo => {
     const displayAuthor = (post.kind === 'repost' && post.originalAuthor) ? post.originalAuthor : post.author;
@@ -414,12 +417,21 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         </View>
 
         <View style={styles.tombstoneStatsRow}>
-          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={handleToggleLike}>
-            <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
-            <Text style={[styles.statValue, liked && styles.statValueLiked]}>
-              {formatCount(likesCount)}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.statBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+              <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setLikersOpen(true)}
+              disabled={likesCount === 0}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            >
+              <Text style={[styles.statValue, liked && styles.statValueLiked]}>
+                {formatCount(likesCount)}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={styles.statBtn}
             activeOpacity={0.7}
@@ -430,6 +442,13 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
         </View>
+
+        <LikedByLine
+          postId={post.id}
+          likesCount={likesCount}
+          viewerHasLiked={liked}
+          onPress={() => setLikersOpen(true)}
+        />
 
         <TrackContextMenu
           visible={contextMenuVisible}
@@ -450,6 +469,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           visible={reportOpen}
           postId={reportOpen ? post.id : null}
           onClose={() => setReportOpen(false)}
+        />
+
+        <PostLikersSheet
+          visible={likersOpen}
+          postId={likersOpen ? post.id : null}
+          onClose={() => setLikersOpen(false)}
         />
 
         <ConfirmActionModal
@@ -680,12 +705,21 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         </TouchableOpacity>
 
         <View style={styles.statsGroup}>
-          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={handleToggleLike}>
-            <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
-            <Text style={[styles.statValue, liked && styles.statValueLiked]}>
-              {formatCount(likesCount)}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.statBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+              <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setLikersOpen(true)}
+              disabled={likesCount === 0}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            >
+              <Text style={[styles.statValue, liked && styles.statValueLiked]}>
+                {formatCount(likesCount)}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={styles.statBtn}
             activeOpacity={0.7}
@@ -709,6 +743,13 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         </View>
       </View>
 
+      <LikedByLine
+        postId={post.id}
+        likesCount={likesCount}
+        viewerHasLiked={liked}
+        onPress={() => setLikersOpen(true)}
+      />
+
       <TrackContextMenu
         visible={contextMenuVisible}
         track={trackInfoForMenu}
@@ -729,6 +770,12 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         visible={reportOpen}
         postId={reportOpen ? post.id : null}
         onClose={() => setReportOpen(false)}
+      />
+
+      <PostLikersSheet
+        visible={likersOpen}
+        postId={likersOpen ? post.id : null}
+        onClose={() => setLikersOpen(false)}
       />
 
       <ConfirmActionModal

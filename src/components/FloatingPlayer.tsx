@@ -20,6 +20,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
+import { useChromeVisibility } from '../contexts/ChromeVisibilityContext';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { getOrAnalyzeWaveform } from '../services/tracks';
@@ -156,6 +157,10 @@ export default function FloatingPlayer() {
   } = usePlayback();
 
   const { activeJam } = useJam();
+  // Feed scroll hide: slide the pill off the bottom edge when the user scrolls
+  // down through Home / Profile, back instantly on scroll up. Shared with the
+  // bottom tab bar so the two move together.
+  const { hiddenAnim: chromeHiddenAnim } = useChromeVisibility();
 
   // ─── Beat-synced visualizer envelope ───────────────────────────────────────────
   // Resolve the ACTIVE track's loudness envelope (cache → DB → analyze-on-device)
@@ -239,10 +244,15 @@ export default function FloatingPlayer() {
   // Combined vertical translate — native driver only
   const translateY = Animated.add(
     Animated.add(
-      slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
-      keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
+      Animated.add(
+        slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
+        keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
+      ),
+      immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 240] }),
     ),
-    immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 240] }),
+    // Feed-scroll hide: slide fully past the bottom edge (clears the pill + its
+    // distance above the tab bar).
+    chromeHiddenAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 80] }),
   );
   const immersiveOpacity = immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 

@@ -28,6 +28,7 @@ import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/P
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
 import CommentsSheet from './CommentsSheet';
+import PostLikersSheet from './PostLikersSheet';
 import {
   fetchUserPlaylists,
   isPostInPlaylist,
@@ -435,10 +436,12 @@ const avSt = StyleSheet.create({
 function InfoContent({
   nowPlaying,
   onCommentsPress,
+  onLikesPress,
   trackPlaysTotal,
 }: {
   nowPlaying: NowPlayingInfo;
   onCommentsPress: () => void;
+  onLikesPress: (postId: string) => void;
   trackPlaysTotal: number;
 }) {
   const { setNowPlaying } = usePlayback();
@@ -556,14 +559,23 @@ function InfoContent({
           pill makes their non-interactive nature obvious. */}
       <View style={infoSt.statsRow}>
         <View style={infoSt.activeGroup}>
-          <TouchableOpacity style={infoSt.statBtn} onPress={handleToggleLike} activeOpacity={0.7}>
-            <Text style={[infoSt.statIcon, liked && infoSt.statIconLiked]}>
-              {liked ? '♥' : '♡'}
-            </Text>
-            <Text style={[infoSt.statValue, liked && infoSt.statValueLiked]}>
-              {formatCount(likesCount)}
-            </Text>
-          </TouchableOpacity>
+          <View style={infoSt.statBtn}>
+            <TouchableOpacity onPress={handleToggleLike} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+              <Text style={[infoSt.statIcon, liked && infoSt.statIconLiked]}>
+                {liked ? '♥' : '♡'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onLikesPress(effective.postId)}
+              activeOpacity={0.7}
+              disabled={likesCount === 0}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            >
+              <Text style={[infoSt.statValue, liked && infoSt.statValueLiked]}>
+                {formatCount(likesCount)}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity style={infoSt.statBtn} onPress={onCommentsPress} activeOpacity={0.7}>
             <Text style={infoSt.statIcon}>💬</Text>
@@ -880,6 +892,7 @@ export default function FullScreenPlayer() {
   } = usePlayback();
 
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [likersPostId, setLikersPostId] = useState<string | null>(null);
   // Cumulative track plays — sum of views_count across every post (uploads +
   // reposts) using this track. PostCard no longer displays the per-post views,
   // so this is the only surface that shows plays at all.
@@ -1666,6 +1679,7 @@ export default function FullScreenPlayer() {
         <CompactStats
           nowPlaying={nowPlaying}
           onCommentsPress={() => setCommentsOpen(true)}
+          onLikesPress={(postId) => setLikersPostId(postId)}
           trackPlaysTotal={trackPlaysTotal}
         />
       </Animated.View>
@@ -1724,6 +1738,7 @@ export default function FullScreenPlayer() {
             <InfoContent
               nowPlaying={nowPlaying}
               onCommentsPress={() => setCommentsOpen(true)}
+              onLikesPress={(postId) => setLikersPostId(postId)}
               trackPlaysTotal={trackPlaysTotal}
             />
           </View>
@@ -1784,6 +1799,12 @@ export default function FullScreenPlayer() {
           bumpCommentsCount(delta, getEffectivePost(nowPlaying).isOriginal);
         }}
       />
+
+      <PostLikersSheet
+        visible={likersPostId !== null}
+        postId={likersPostId}
+        onClose={() => setLikersPostId(null)}
+      />
     </Animated.View>
   );
 }
@@ -1793,10 +1814,12 @@ export default function FullScreenPlayer() {
 function CompactStats({
   nowPlaying,
   onCommentsPress,
+  onLikesPress,
   trackPlaysTotal,
 }: {
   nowPlaying: NowPlayingInfo;
   onCommentsPress: () => void;
+  onLikesPress: (postId: string) => void;
   trackPlaysTotal: number;
 }) {
   const { setNowPlaying } = usePlayback();
@@ -1844,10 +1867,19 @@ function CompactStats({
       {/* Interactive group (like + comments) — bare buttons so they read as
           actionable against the album art. */}
       <View style={csSt.activeGroup}>
-        <TouchableOpacity style={csSt.item} onPress={handleLike} activeOpacity={0.7}>
-          <Text style={[csSt.icon, liked && csSt.iconLiked]}>{liked ? '♥' : '♡'}</Text>
-          <Text style={[csSt.val, liked && csSt.valLiked]}>{formatCount(count)}</Text>
-        </TouchableOpacity>
+        <View style={csSt.item}>
+          <TouchableOpacity onPress={handleLike} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <Text style={[csSt.icon, liked && csSt.iconLiked]}>{liked ? '♥' : '♡'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onLikesPress(effective.postId)}
+            activeOpacity={0.7}
+            disabled={count === 0}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          >
+            <Text style={[csSt.val, liked && csSt.valLiked]}>{formatCount(count)}</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity style={csSt.item} onPress={onCommentsPress} activeOpacity={0.7}>
           <Text style={csSt.icon}>💬</Text>
           <Text style={csSt.val}>{formatCount(effective.commentsCount)}</Text>
