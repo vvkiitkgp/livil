@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import { AuthStackParamList } from '../../navigation/types';
 
 const { width } = Dimensions.get('window');
@@ -33,8 +34,8 @@ export default function OnboardingScreen({ navigation }: Props) {
       {/* Hero */}
       <View style={styles.heroSection}>
         <View style={styles.notesRow}>
-          <Text style={styles.noteLeft}>♪</Text>
-          <Text style={styles.noteRight}>♫</Text>
+          <Icon name="musicNote" size={30} color="rgba(167, 139, 250, 0.55)" />
+          <Icon name="musicNotes" size={24} color="rgba(167, 139, 250, 0.35)" />
         </View>
         <Text style={styles.logoText}>Livil</Text>
         <View style={styles.logoDivider} />
@@ -114,14 +115,6 @@ const styles = StyleSheet.create({
     width: 160,
     justifyContent: 'space-between',
     marginBottom: 20,
-  },
-  noteLeft: {
-    fontSize: 30,
-    color: 'rgba(167, 139, 250, 0.55)',
-  },
-  noteRight: {
-    fontSize: 24,
-    color: 'rgba(167, 139, 250, 0.35)',
   },
   logoText: {
     fontSize: 88,

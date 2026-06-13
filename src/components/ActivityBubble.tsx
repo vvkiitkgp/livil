@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { Icon, type IconName } from './Icon';
 import {
   activityBubbleParts,
   type ActivityItem,
@@ -19,7 +20,7 @@ const LIVIL_LOGO = require('../assets/livil-logo.png');
 // from activityBubbleParts(), which also surfaces the actor as a tappable name.
 
 type RenderFormat =
-  | { format: 'text'; icon: string }            // new_fan, friend outcomes
+  | { format: 'text'; icon: IconName }           // new_fan, friend outcomes
   | { format: 'post'; post: ActivityPostRef }   // like, comment, repost, milestone
   | { format: 'track'; post: ActivityPostRef }; // reserved for a future music card
 
@@ -31,11 +32,11 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
     case 'play_milestone':
       return { format: 'post', post: item.post };
     case 'new_fan':
-      return { format: 'text', icon: '⭐' };
+      return { format: 'text', icon: 'star' };
     case 'friend_accepted':
-      return { format: 'text', icon: '🤝' };
+      return { format: 'text', icon: 'handshake' };
     case 'friend_rejected':
-      return { format: 'text', icon: '👋' };
+      return { format: 'text', icon: 'wave' };
   }
 }
 
@@ -62,19 +63,25 @@ export default function ActivityBubble({
 
       <View style={styles.bubbleColumn}>
         <View style={[styles.bubble, styles.bubbleThem]}>
-          <Text style={styles.bubbleText}>
-            {body.format === 'text' ? `${body.icon} ` : ''}
-            {actor && name ? (
-              <Text
-                style={styles.actorName}
-                suppressHighlighting
-                onPress={actor.id ? () => onActorPress?.(actor.id) : undefined}
-              >
-                {name}
-              </Text>
+          <View style={styles.bubbleTextRow}>
+            {body.format === 'text' ? (
+              <View style={styles.bubbleIcon}>
+                <Icon name={body.icon} size={15} color={COLORS.textSecondary} />
+              </View>
             ) : null}
-            {parts.text}
-          </Text>
+            <Text style={[styles.bubbleText, styles.bubbleTextFlex]}>
+              {actor && name ? (
+                <Text
+                  style={styles.actorName}
+                  suppressHighlighting
+                  onPress={actor.id ? () => onActorPress?.(actor.id) : undefined}
+                >
+                  {name}
+                </Text>
+              ) : null}
+              {parts.text}
+            </Text>
+          </View>
 
           {post && (
             <TouchableOpacity
@@ -87,7 +94,7 @@ export default function ActivityBubble({
                 <Image source={{ uri: post.coverArtUrl }} style={styles.trackCardArt} />
               ) : (
                 <View style={[styles.trackCardArt, styles.trackCardArtPlaceholder]}>
-                  <Text style={styles.trackCardNote}>🎵</Text>
+                  <Icon name="musicNote" size={20} color={COLORS.textSecondary} />
                 </View>
               )}
               <View style={styles.trackCardInfo}>
@@ -129,6 +136,9 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
+  bubbleTextRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  bubbleIcon: { marginRight: 5, marginTop: 3 },
+  bubbleTextFlex: { flex: 1 },
   actorName: { color: COLORS.white, fontWeight: '700' },
   trackCard: {
     flexDirection: 'row',
@@ -145,7 +155,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  trackCardNote: { fontSize: 20 },
   trackCardInfo: { flex: 1 },
   trackCardTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   trackCardArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },

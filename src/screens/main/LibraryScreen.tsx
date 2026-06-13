@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
 import {
   getLikedPostCount,
@@ -237,7 +238,7 @@ export default function LibraryScreen() {
             {/* Liked Songs — virtual */}
             <TouchableOpacity style={styles.row} onPress={goToLiked} activeOpacity={0.75}>
               <View style={[styles.thumb, { backgroundColor: '#7C3AED' }]}>
-                <Text style={styles.thumbEmoji}>♥</Text>
+                <Icon name="heart" size={22} color={COLORS.white} weight="fill" />
               </View>
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle}>Liked Songs</Text>
@@ -245,13 +246,15 @@ export default function LibraryScreen() {
                   {likedCount !== null ? `${likedCount} posts` : '—'}
                 </Text>
               </View>
-              <Text style={styles.chev}>›</Text>
+              <View style={{ marginRight: 6 }}>
+                <Icon name="forward" size={24} color={COLORS.textMuted} />
+              </View>
             </TouchableOpacity>
 
             {/* Following — virtual (user directory) */}
             <TouchableOpacity style={styles.row} onPress={goToFollowing} activeOpacity={0.75}>
               <View style={[styles.thumb, { backgroundColor: '#F59E0B' }]}>
-                <Text style={styles.thumbEmoji}>🎵</Text>
+                <Icon name="musicNote" size={22} color={COLORS.white} />
               </View>
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle}>Following</Text>
@@ -259,7 +262,9 @@ export default function LibraryScreen() {
                   {starsCount !== null ? `${starsCount} artists` : '—'}
                 </Text>
               </View>
-              <Text style={styles.chev}>›</Text>
+              <View style={{ marginRight: 6 }}>
+                <Icon name="forward" size={24} color={COLORS.textMuted} />
+              </View>
             </TouchableOpacity>
 
             {/* User custom playlists */}
@@ -286,7 +291,9 @@ export default function LibraryScreen() {
                       {playlist.postCount} {playlist.postCount === 1 ? 'post' : 'posts'}
                     </Text>
                   </View>
-                  <Text style={styles.chev}>›</Text>
+                  <View style={{ marginRight: 6 }}>
+                    <Icon name="forward" size={24} color={COLORS.textMuted} />
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -450,9 +457,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
   },
-  thumbEmoji: {
-    fontSize: 22,
-  },
   rowText: {
     flex: 1,
   },
@@ -465,12 +469,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     marginTop: 2,
-  },
-  chev: {
-    color: COLORS.textMuted,
-    fontSize: 24,
-    fontWeight: '300',
-    marginRight: 6,
   },
   emptyPlaylists: {
     paddingVertical: 8,

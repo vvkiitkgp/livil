@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 import { renderCommentBody } from '../utils/mentions';
 import type { CommentNode } from '../services/comments';
 
@@ -92,7 +93,9 @@ export default function CommentItem(props: Props) {
             onPress={() => setMenuOpen(true)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.overflowIcon}>⋯</Text>
+            <View style={{ paddingHorizontal: 4 }}>
+              <Icon name="overflow" size={18} color={COLORS.textSecondary} />
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -106,9 +109,12 @@ export default function CommentItem(props: Props) {
             style={styles.actionBtn}
             activeOpacity={0.7}
           >
-            <Text style={[styles.likeIcon, node.likedByMe && styles.likeIconActive]}>
-              {node.likedByMe ? '♥' : '♡'}
-            </Text>
+            <Icon
+              name="heart"
+              size={16}
+              color={node.likedByMe ? '#FF4D6D' : COLORS.textSecondary}
+              weight={node.likedByMe ? 'fill' : 'regular'}
+            />
             {node.likeCount > 0 ? (
               <Text style={[styles.actionText, node.likedByMe && styles.actionTextActive]}>
                 {formatCount(node.likeCount)}
@@ -214,12 +220,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
   },
-  overflowIcon: {
-    color: COLORS.textSecondary,
-    fontSize: 18,
-    fontWeight: '700',
-    paddingHorizontal: 4,
-  },
   bodyText: {
     color: COLORS.white,
     fontSize: 14,
@@ -236,13 +236,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-  },
-  likeIcon: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-  },
-  likeIconActive: {
-    color: COLORS.error,
   },
   actionText: {
     fontSize: 12,

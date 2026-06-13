@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 
 type Props = {
   visible: boolean;
@@ -50,7 +51,7 @@ export default function JamExitModal({
               {isHost ? (
                 <View style={[styles.stopSquare, { backgroundColor: accent.glyph }]} />
               ) : (
-                <Text style={[styles.iconGlyph, { color: accent.glyph }]}>→</Text>
+                <Icon name="arrowRight" size={26} color={accent.glyph} />
               )}
             </View>
           </View>
@@ -143,10 +144,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconGlyph: {
-    fontSize: 26,
-    fontWeight: '700',
   },
   stopSquare: {
     width: 18,

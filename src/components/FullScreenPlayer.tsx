@@ -36,6 +36,7 @@ import {
   type UserPlaylist,
 } from '../services/playlists';
 import { COLORS } from '../theme/colors';
+import { Icon, type IconName } from './Icon';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -101,17 +102,17 @@ function formatCount(n: number): string {
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 }
 
-function roleEmoji(role: string): string {
-  const map: Record<string, string> = {
-    'Vocals': '🎤', 'Lead Vocals': '🎤', 'Backing Vocals': '🎤',
-    'Drums': '🥁',
-    'Piano': '🎹', 'Keys': '🎹',
-    'Guitar': '🎸', 'Bass': '🎸',
-    'Production': '🎛️', 'Mixing': '🎚️', 'Mastering': '🎚️',
-    'Songwriting': '✍️', 'Lyrics': '📝',
-    'Featured': '⭐',
+function roleIcon(role: string): IconName {
+  const map: Record<string, IconName> = {
+    'Vocals': 'mic', 'Lead Vocals': 'mic', 'Backing Vocals': 'mic',
+    'Drums': 'drum',
+    'Piano': 'piano', 'Keys': 'piano',
+    'Guitar': 'guitar', 'Bass': 'guitar',
+    'Production': 'faders', 'Mixing': 'faders', 'Mastering': 'faders',
+    'Songwriting': 'pencilLine', 'Lyrics': 'note',
+    'Featured': 'star',
   };
-  return map[role] ?? '🎵';
+  return map[role] ?? 'musicNote';
 }
 
 function avatarInitials(name: string): string {
@@ -242,6 +243,7 @@ function FullScreenClipBar() {
         start={start}
         end={end}
         minClipSeconds={2}
+        edgeInset={20}
         onChange={handleClipChange}
         onChangeEnd={handleClipChangeEnd}
         onSeekEnd={handleSeekEnd}
@@ -277,7 +279,7 @@ function RepeatIcon({ mode }: { mode: RepeatMode }) {
   const c = active ? COLORS.purpleLight : COLORS.textMuted;
   return (
     <View style={iconSt.repeatWrap}>
-      <Text style={[iconSt.repeatGlyph, { color: c }]}>↻</Text>
+      <Icon name="repeat" size={22} color={c} />
       {mode === 'one' && (
         <View style={iconSt.badge}>
           <Text style={iconSt.badgeText}>1</Text>
@@ -306,7 +308,6 @@ const iconSt = StyleSheet.create({
   cross: { position: 'absolute', width: 20, height: 2, borderRadius: 1, transform: [{ rotate: '-35deg' }] },
   dot: { position: 'absolute', bottom: 6, width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.purple },
   repeatWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  repeatGlyph: { fontSize: 22, fontWeight: '300' },
   badge: {
     position: 'absolute', top: 7, right: 5,
     width: 13, height: 13, borderRadius: 6.5,
@@ -361,7 +362,9 @@ function CreditsWidget({
       {/* One row per role */}
       {groups.map(g => (
         <View key={g.role} style={cwSt.roleRow}>
-          <Text style={cwSt.emoji}>{roleEmoji(g.role)}</Text>
+          <View style={cwSt.emoji}>
+            <Icon name={roleIcon(g.role)} size={16} color={COLORS.textSecondary} />
+          </View>
           <View style={cwSt.avRow}>
             {g.members.slice(0, 3).map((m, i) =>
               m.userId ? (
@@ -399,7 +402,7 @@ function CreditsWidget({
 const cwSt = StyleSheet.create({
   col: { width: 88, gap: 10, paddingTop: 2, alignItems: 'flex-start' },
   roleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  emoji: { fontSize: 16, width: 22, textAlign: 'center' },
+  emoji: { width: 22, alignItems: 'center' },
   avRow: { flexDirection: 'row', alignItems: 'center' },
   overlap: { marginLeft: -8 },
 });
@@ -530,7 +533,9 @@ function InfoContent({
           <Text style={infoSt.creditsLabel}>CREDITS</Text>
           {groups.map(g => (
             <View key={g.role} style={infoSt.roleRow}>
-              <Text style={infoSt.roleEmoji}>{roleEmoji(g.role)}</Text>
+              <View style={infoSt.roleEmoji}>
+                <Icon name={roleIcon(g.role)} size={24} color={COLORS.textSecondary} />
+              </View>
               <View style={infoSt.avatarStack}>
                 {g.members.map((m, i) => (
                   <View
@@ -561,9 +566,7 @@ function InfoContent({
         <View style={infoSt.activeGroup}>
           <View style={infoSt.statBtn}>
             <TouchableOpacity onPress={handleToggleLike} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-              <Text style={[infoSt.statIcon, liked && infoSt.statIconLiked]}>
-                {liked ? '♥' : '♡'}
-              </Text>
+              <Icon name="heart" size={18} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onLikesPress(effective.postId)}
@@ -578,20 +581,20 @@ function InfoContent({
           </View>
 
           <TouchableOpacity style={infoSt.statBtn} onPress={onCommentsPress} activeOpacity={0.7}>
-            <Text style={infoSt.statIcon}>💬</Text>
+            <Icon name="comment" size={18} color={COLORS.textSecondary} />
             <Text style={infoSt.statValue}>{formatCount(effective.commentsCount)}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={infoSt.passivePill}>
           <View style={infoSt.passiveItem}>
-            <Text style={infoSt.passiveIcon}>▶</Text>
+            <Icon name="play" size={13} color={COLORS.textMuted} />
             <Text style={infoSt.passiveValue}>{formatCount(trackPlaysTotal)}</Text>
           </View>
           <View style={infoSt.passiveDivider} />
           <View style={infoSt.passiveItem}>
             {/* Matches the Repost button glyph in PostCard for consistency. */}
-            <Text style={infoSt.passiveIcon}>▤</Text>
+            <Icon name="repost" size={13} color={COLORS.textMuted} />
             <Text style={infoSt.passiveValue}>{formatCount(effective.repostsCount)}</Text>
           </View>
         </View>
@@ -618,7 +621,7 @@ const infoSt = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     gap: 12, marginBottom: 12,
   },
-  roleEmoji: { fontSize: 24, width: 32, textAlign: 'center' },
+  roleEmoji: { width: 32, alignItems: 'center' },
   avatarStack: { flexDirection: 'row', alignItems: 'center' },
   stackedAvatar: { zIndex: 1 },
   roleName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', flex: 1 },
@@ -636,8 +639,6 @@ const infoSt = StyleSheet.create({
     gap: 22,
   },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statIcon: { color: COLORS.textSecondary, fontSize: 18 },
-  statIconLiked: { color: '#FF4D6D' },
   statValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   statValueLiked: { color: '#FF4D6D' },
   passivePill: {
@@ -652,7 +653,6 @@ const infoSt = StyleSheet.create({
   },
   passiveItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   passiveDivider: { width: 1, height: 14, backgroundColor: COLORS.border, marginHorizontal: 10 },
-  passiveIcon: { color: COLORS.textMuted, fontSize: 13 },
   passiveValue: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });
 
@@ -748,12 +748,12 @@ function AddToPlaylistModal({
             {/* Liked Songs — always first */}
             <TouchableOpacity style={modalSt.row} onPress={handleToggleLiked} activeOpacity={0.7}>
               <View style={[modalSt.rowThumb, { backgroundColor: '#7C3AED' }]}>
-                <Text style={modalSt.rowThumbEmoji}>♥</Text>
+                <Icon name="heart" size={20} color={COLORS.white} weight="fill" />
               </View>
               <View style={modalSt.rowMeta}>
                 <Text style={modalSt.rowName}>Liked Songs</Text>
               </View>
-              {liked && <Text style={modalSt.check}>✓</Text>}
+              {liked && <Icon name="check" size={18} color={COLORS.purpleLight} />}
             </TouchableOpacity>
 
             {/* Custom playlists */}
@@ -779,7 +779,7 @@ function AddToPlaylistModal({
                     <Text style={modalSt.rowName}>{p.name}</Text>
                     <Text style={modalSt.rowSub}>{p.postCount} {p.postCount === 1 ? 'post' : 'posts'}</Text>
                   </View>
-                  {added && <Text style={modalSt.check}>✓</Text>}
+                  {added && <Icon name="check" size={18} color={COLORS.purpleLight} />}
                 </TouchableOpacity>
               );
             })}
@@ -787,7 +787,7 @@ function AddToPlaylistModal({
             {/* New playlist */}
             <TouchableOpacity style={modalSt.row} onPress={onNavigateToCreate} activeOpacity={0.7}>
               <View style={[modalSt.rowThumb, { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border }]}>
-                <Text style={modalSt.newIcon}>+</Text>
+                <Icon name="add" size={22} color={COLORS.purpleLight} />
               </View>
               <View style={modalSt.rowMeta}>
                 <Text style={[modalSt.rowName, { color: COLORS.purpleLight }]}>New playlist</Text>
@@ -853,14 +853,11 @@ const modalSt = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  rowThumbEmoji: { fontSize: 20 },
   rowThumbText: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
   rowMeta: { flex: 1, minWidth: 0 },
   rowName: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   rowSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
-  check: { color: COLORS.purpleLight, fontSize: 18, fontWeight: '700', flexShrink: 0 },
 
-  newIcon: { color: COLORS.purpleLight, fontSize: 22, fontWeight: '300' },
 });
 
 
@@ -1621,7 +1618,7 @@ export default function FullScreenPlayer() {
           onPress={closeFullScreenPlayer}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.closeBtnText}>⌄</Text>
+          <Icon name="collapse" size={28} color={COLORS.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
         <TouchableOpacity
@@ -1649,7 +1646,7 @@ export default function FullScreenPlayer() {
           }}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Text style={styles.repostBtnIcon}>▤</Text>
+          <Icon name="repost" size={12} color={COLORS.white} />
           <Text style={styles.repostBtnLabel}>Repost</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1657,7 +1654,7 @@ export default function FullScreenPlayer() {
           onPress={() => setShowPlaylistModal(true)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.addBtnText}>+</Text>
+          <Icon name="add" size={28} color={COLORS.white} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -1869,7 +1866,7 @@ function CompactStats({
       <View style={csSt.activeGroup}>
         <View style={csSt.item}>
           <TouchableOpacity onPress={handleLike} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-            <Text style={[csSt.icon, liked && csSt.iconLiked]}>{liked ? '♥' : '♡'}</Text>
+            <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onLikesPress(effective.postId)}
@@ -1881,7 +1878,7 @@ function CompactStats({
           </TouchableOpacity>
         </View>
         <TouchableOpacity style={csSt.item} onPress={onCommentsPress} activeOpacity={0.7}>
-          <Text style={csSt.icon}>💬</Text>
+          <Icon name="comment" size={16} color={COLORS.white} />
           <Text style={csSt.val}>{formatCount(effective.commentsCount)}</Text>
         </TouchableOpacity>
       </View>
@@ -1889,13 +1886,13 @@ function CompactStats({
           and reposts (always the original post's count). Read-only. */}
       <View style={csSt.pill}>
         <View style={csSt.pillItem}>
-          <Text style={csSt.pillIcon}>▶</Text>
+          <Icon name="play" size={12} color="rgba(255,255,255,0.85)" />
           <Text style={csSt.pillVal}>{formatCount(trackPlaysTotal)}</Text>
         </View>
         <View style={csSt.pillDivider} />
         <View style={csSt.pillItem}>
           {/* Matches the Repost button glyph in PostCard for consistency. */}
-          <Text style={csSt.pillIcon}>▤</Text>
+          <Icon name="repost" size={12} color="rgba(255,255,255,0.85)" />
           <Text style={csSt.pillVal}>{formatCount(effective.repostsCount)}</Text>
         </View>
       </View>
@@ -1915,8 +1912,6 @@ const csSt = StyleSheet.create({
   },
   activeGroup: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  icon: { color: COLORS.white, fontSize: 16, textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
-  iconLiked: { color: '#FF4D6D' },
   val: { color: COLORS.white, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   valLiked: { color: '#FF4D6D' },
   pill: {
@@ -1931,7 +1926,6 @@ const csSt = StyleSheet.create({
   },
   pillItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pillDivider: { width: 1, height: 12, backgroundColor: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
-  pillIcon: { color: 'rgba(255,255,255,0.85)', fontSize: 12 },
   pillVal: { color: COLORS.white, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });
 
@@ -1959,14 +1953,6 @@ const styles = StyleSheet.create({
   bufferOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
 
   // Gradient scrims — dark top and bottom bands so text is readable over media
-  scrimTop: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 260,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-  },
-  scrimBottom: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: 340,
-    backgroundColor: 'rgba(0,0,0,0.60)',
-  },
 
   // Header overlay — absolutely positioned at top
   header: {
@@ -1974,20 +1960,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
   },
   closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  closeBtnText: {
-    color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
-    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
   headerTitle: {
     flex: 1, color: COLORS.white, fontSize: 13, fontWeight: '600',
     letterSpacing: 0.3, textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
   addBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  addBtnText: {
-    color: COLORS.white, fontSize: 28, fontWeight: '300', lineHeight: 32,
-    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
   repostBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2001,11 +1979,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
     elevation: 3,
-  },
-  repostBtnIcon: {
-    color: COLORS.white,
-    fontSize: 12,
-    lineHeight: 14,
   },
   repostBtnLabel: {
     color: COLORS.white,

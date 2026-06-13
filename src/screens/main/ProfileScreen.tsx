@@ -17,6 +17,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -102,8 +103,8 @@ export default function ProfileScreen() {
     });
   }, []);
 
-  // Hide the bottom nav bar + floating music player on scroll down, restore on
-  // scroll up (and at the top). Shared anim → both move together.
+  // Hide the bottom nav bar on scroll down, show instantly on scroll up (and at
+  // the top).
   const { hideChrome, showChrome } = useChromeVisibility();
   const lastScrollY = useRef(0);
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
@@ -404,7 +405,7 @@ export default function ProfileScreen() {
         return (
           <View style={styles.emptyWrap}>
             <View style={styles.emptyArt}>
-              <Text style={styles.emptyArtGlyph}>♪</Text>
+              <Icon name="musicNote" size={40} color={COLORS.purpleLight} />
             </View>
             <Text style={styles.emptyTitle}>
               {tab === 'creator' ? 'No uploads yet' : 'Nothing here yet'}
@@ -484,7 +485,9 @@ export default function ProfileScreen() {
                   activeOpacity={0.7}
                   onPress={() => openLink(url)}
                 >
-                  <Text style={styles.linkChipIcon}>↗</Text>
+                  <View style={{ marginRight: 5 }}>
+                    <Icon name="externalLink" size={12} color={COLORS.purpleLight} />
+                  </View>
                   <Text style={styles.linkChipText} numberOfLines={1}>
                     {linkHost(url)}
                   </Text>
@@ -780,11 +783,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     maxWidth: 180,
   },
-  linkChipIcon: {
-    color: COLORS.purpleLight,
-    fontSize: 12,
-    marginRight: 5,
-  },
   linkChipText: {
     color: COLORS.textSecondary,
     fontSize: 12,
@@ -941,10 +939,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.purple,
     marginBottom: 16,
-  },
-  emptyArtGlyph: {
-    color: COLORS.purpleLight,
-    fontSize: 40,
   },
   emptyTitle: {
     color: COLORS.white,

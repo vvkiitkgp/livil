@@ -25,6 +25,7 @@ import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
+import { Icon } from '../../components/Icon';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRelationships } from '../../contexts/RelationshipContext';
@@ -220,7 +221,8 @@ export default function HomeScreen() {
     }
   }, [topBarAnim, insets.top]);
 
-  // Bottom nav bar + floating music player hide/show on the same scroll direction.
+  // Bottom nav bar: hide on scroll down, show instantly on scroll up — in lock-step
+  // with the top bar's direction-based behaviour below.
   const { hideChrome, showChrome } = useChromeVisibility();
 
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
@@ -751,7 +753,7 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('Inbox')}
               accessibilityLabel="Open messages"
             >
-              <Text style={styles.inboxIcon}>💬</Text>
+              <Icon name="send" size={18} color={COLORS.white} />
               {notificationCount > 0 && (
                 <View style={styles.inboxBadge}>
                   <Text style={styles.inboxBadgeText}>

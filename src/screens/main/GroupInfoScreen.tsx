@@ -25,6 +25,7 @@ import {
 } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
+import { Icon } from '../../components/Icon';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { useToast } from '../../contexts/ToastContext';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -319,7 +320,7 @@ export default function GroupInfoScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={() => { setShowPicker(false); setFriendQuery(''); }}>
-            <Text style={styles.backIcon}>‹</Text>
+            <Icon name="back" size={28} color={COLORS.purple} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add Member</Text>
         </View>
@@ -360,7 +361,7 @@ export default function GroupInfoScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Group Info</Text>
         {myRole === 'admin' && (
@@ -475,7 +476,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   backButton: { padding: 4, marginRight: 4 },
-  backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', flex: 1 },
   saveBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.purpleDim, borderWidth: 1, borderColor: COLORS.purple },
   saveBtnDisabled: { opacity: 0.4 },

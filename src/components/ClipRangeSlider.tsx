@@ -8,6 +8,7 @@ import {
   type PanResponderGestureState,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 
 export type ClipRangeSliderProps = {
   duration: number;
@@ -26,6 +27,19 @@ export type ClipRangeSliderProps = {
   slideWindowOnLeftDrag?: boolean;
   /** When true, clip handles are shown in gray and are not draggable. */
   readOnly?: boolean;
+  /**
+   * When true, the purple progress fill and the seek thumb are not rendered —
+   * only the clip start/end markers (and the disabled zones outside them)
+   * remain. Implies the seek pan-responder is disabled.
+   */
+  hideProgress?: boolean;
+  /**
+   * Horizontal inset (px) applied to BOTH ends of the track, shrinking the bar
+   * inward from its container. Use on editable sliders so the clip handles at
+   * 0:00 / full-end don't sit in Android's left/right edge back-gesture zone
+   * (which would steal the drag). Default 0 (e.g. read-only seek bars).
+   */
+  edgeInset?: number;
   onChange?: (start: number, end: number) => void;
   /** `handle` tells the caller which grip was released ('left' = clip-start, 'right' = clip-end). */
   onChangeEnd?: (start: number, end: number, handle: 'left' | 'right') => void;
@@ -45,6 +59,12 @@ const HIT_SLOP  = 14;
 // => thumb top = HIT_SLOP + TRACK_H/2 - THUMB_SIZE/2
 const THUMB_TOP = HIT_SLOP + (TRACK_H - THUMB_SIZE) / 2; // 14 + (6-18)/2 = 8
 
+const CLIP_ICON_SIZE = 22;
+// The CaretLine icons have ~60/256 of transparent padding before the vertical
+// line. Shift each clip handle outward by that inset so the LINE (the boundary
+// marker) lands exactly on the clip point instead of the icon's box edge.
+const CARET_INSET = Math.round((60 / 256) * CLIP_ICON_SIZE); // ≈ 5px
+
 type ActiveHandle = 'left' | 'right' | 'seek';
 
 export default function ClipRangeSlider({
@@ -56,6 +76,8 @@ export default function ClipRangeSlider({
   maxClipSeconds,
   slideWindowOnLeftDrag = false,
   readOnly = false,
+  hideProgress = false,
+  edgeInset = 0,
   onChange,
   onChangeEnd,
   onSeekEnd,
@@ -237,26 +259,34 @@ export default function ClipRangeSlider({
   const rightPx = trackWidth * rightFrac;
   const posPx   = trackWidth * posFrac;
 
-  // Purple fill: clip_start → min(position, clip_end)
-  const fillRight  = Math.max(leftPx, Math.min(posPx, rightPx));
+  // Purple fill: clip_start → min(position, clip_end). When hideProgress is
+  // set, collapse the fill so the entire clip window renders as remainingZone
+  // and the seek thumb is not drawn.
+  const fillRight  = hideProgress ? leftPx : Math.max(leftPx, Math.min(posPx, rightPx));
   const progressW  = Math.max(0, fillRight - leftPx);
   const remainingW = Math.max(0, rightPx   - fillRight);
 
-  // Clip handle pixel positions (clamped to stay within track bounds).
-  const leftThumbLeft  = Math.max(0, Math.min(trackWidth - THUMB_SIZE, leftPx  - THUMB_SIZE / 2));
-  const rightThumbLeft = Math.max(0, Math.min(trackWidth - THUMB_SIZE, rightPx - THUMB_SIZE / 2));
+  // Clip handle pixel positions. The indication point is the icon's INNER edge,
+  // not its centre: clip-start sits to the LEFT of the start line (its right edge
+  // on the line); clip-end sits to the RIGHT of the end line (its left edge on
+  // the line) — so the carets frame the clip window without covering it.
+  const leftThumbLeft  = Math.max(-THUMB_SIZE, Math.min(trackWidth, leftPx  - THUMB_SIZE + CARET_INSET));
+  const rightThumbLeft = Math.max(0, Math.min(trackWidth, rightPx - CARET_INSET));
 
   // Seek handle sits at the right edge of the purple fill.
   const seekThumbLeft  = Math.max(0, Math.min(trackWidth - THUMB_SIZE, fillRight - THUMB_SIZE / 2));
 
-  const clipThumbStyle  = readOnly ? styles.thumbReadOnly : styles.thumbActive;
+  // Clip handles are bare grip icons (no circle): white when editable, gray
+  // when read-only/decorative.
+  const clipGripColor   = readOnly ? 'rgba(150,150,175,0.95)' : COLORS.white;
   // Attach gesture when: clip handles are interactive OR seek handle is.
-  const isInteractive   = !readOnly || onSeekEnd != null;
+  // hideProgress callers want a static view, so disable seek too.
+  const isInteractive   = !readOnly || (onSeekEnd != null && !hideProgress);
 
   return (
     <View
       ref={containerRef}
-      style={styles.hitArea}
+      style={[styles.hitArea, edgeInset ? { marginHorizontal: edgeInset } : null]}
       onLayout={handleLayout}
       {...(isInteractive ? panResponder.panHandlers : {})}
     >
@@ -276,12 +306,19 @@ export default function ClipRangeSlider({
         )}
       </View>
 
-      {/* Clip handles — rendered below seek handle in z-order */}
-      <View style={[styles.thumb, clipThumbStyle, { left: leftThumbLeft  }]} />
-      <View style={[styles.thumb, clipThumbStyle, { left: rightThumbLeft }]} />
+      {/* Clip handles — bare boundary carets (no circle). Each is anchored by its
+          inner edge: start hugs its right edge, end hugs its left edge. */}
+      <View style={[styles.thumb, styles.thumbAlignEnd, { left: leftThumbLeft  }]}>
+        <Icon name="clipStart" size={CLIP_ICON_SIZE} color={clipGripColor} />
+      </View>
+      <View style={[styles.thumb, styles.thumbAlignStart, { left: rightThumbLeft }]}>
+        <Icon name="clipEnd" size={CLIP_ICON_SIZE} color={clipGripColor} />
+      </View>
 
       {/* Seek handle — rendered last so it sits on top of clip handles */}
-      <View style={[styles.thumb, styles.thumbSeek, { left: seekThumbLeft }]} />
+      {hideProgress ? null : (
+        <View style={[styles.thumb, styles.thumbSeek, { left: seekThumbLeft }]} />
+      )}
     </View>
   );
 }
@@ -322,18 +359,13 @@ const styles = StyleSheet.create({
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  thumbActive: {
-    backgroundColor: COLORS.white,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.65,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  thumbReadOnly: {
-    backgroundColor: 'rgba(130,130,155,0.75)',
-  },
+  // Clip carets are anchored by their inner edge (icon overflows the container):
+  // start hugs the right edge, end hugs the left edge.
+  thumbAlignEnd:   { alignItems: 'flex-end' },
+  thumbAlignStart: { alignItems: 'flex-start' },
   // Seek handle: same primary colour as the progress fill, white ring for
   // visibility, higher elevation so it renders on top of clip handles.
   thumbSeek: {

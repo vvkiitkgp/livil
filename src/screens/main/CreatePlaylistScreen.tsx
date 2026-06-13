@@ -16,6 +16,7 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { fetchLikedPosts, createPlaylist, addPostToPlaylist, type PlaylistItem } from '../../services/playlists';
+import { Icon } from '../../components/Icon';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreatePlaylist'>;
 
@@ -64,9 +65,11 @@ function SuggestionRow({
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={0.7}
       >
-        <Text style={[styles.addBtnText, selected && styles.addBtnTextSelected]}>
-          {selected ? '✓' : '+'}
-        </Text>
+        <Icon
+          name={selected ? 'check' : 'add'}
+          size={16}
+          color={selected ? COLORS.white : COLORS.textMuted}
+        />
       </TouchableOpacity>
     </View>
   );
@@ -206,7 +209,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
             onPress={() => navigation.goBack()}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={styles.backText}>‹</Text>
+            <Icon name="back" size={32} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>New Playlist</Text>
           <TouchableOpacity

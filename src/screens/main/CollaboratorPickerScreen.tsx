@@ -19,6 +19,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { ROLES, type PendingCollaborator } from '../../constants/roles';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
 import { emitCollaboratorPicked } from '../../services/uploadEvents';
+import { Icon } from '../../components/Icon';
 
 type PickerRoute = RouteProp<RootStackParamList, 'CollaboratorPicker'>;
 type PickerNavigation = NativeStackNavigationProp<RootStackParamList, 'CollaboratorPicker'>;
@@ -205,7 +206,7 @@ export default function CollaboratorPickerScreen() {
                       </View>
                       {selected ? (
                         <View style={styles.resultCheck}>
-                          <Text style={styles.resultCheckText}>✓</Text>
+                          <Icon name="check" size={13} color={COLORS.white} />
                         </View>
                       ) : null}
                     </TouchableOpacity>
@@ -412,11 +413,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purple,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  resultCheckText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '800',
   },
   customSection: {
     paddingHorizontal: 20,

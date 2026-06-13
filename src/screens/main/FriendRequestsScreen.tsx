@@ -16,6 +16,7 @@ import {
   listIncomingFriendRequests,
   type IncomingFriendRequest,
 } from '../../services/relationships';
+import { Icon } from '../../components/Icon';
 
 export default function FriendRequestsScreen() {
   const navigation = useNavigation();
@@ -115,7 +116,7 @@ export default function FriendRequestsScreen() {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Friend Requests</Text>
         <View style={styles.headerSpacer} />

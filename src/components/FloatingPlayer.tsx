@@ -20,12 +20,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
-import { useChromeVisibility } from '../contexts/ChromeVisibilityContext';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { getOrAnalyzeWaveform } from '../services/tracks';
 import type { WaveformData } from '../services/waveform';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 import WaveVisualizer from './WaveVisualizer';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -83,7 +83,7 @@ function RepeatGlyph({ mode }: { mode: string }) {
   const color  = COLORS.white;
   return (
     <View style={icon.wrap}>
-      <Text style={[icon.glyph, { color }]}>↻</Text>
+      <Icon name="repeat" size={18} color={color} />
       {mode === 'one' && <Text style={icon.badge}>1</Text>}
       {active && <View style={[icon.dot, { backgroundColor: color }]} />}
     </View>
@@ -95,7 +95,7 @@ function ShuffleGlyph({ active }: { active: boolean }) {
   const color = COLORS.white;
   return (
     <View style={icon.wrap}>
-      <Text style={[icon.glyph, { color }]}>⇄</Text>
+      <Icon name="shuffle" size={18} color={color} />
       {active && <View style={[icon.dot, { backgroundColor: color }]} />}
     </View>
   );
@@ -103,7 +103,6 @@ function ShuffleGlyph({ active }: { active: boolean }) {
 
 const icon = StyleSheet.create({
   wrap:  { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  glyph: { fontSize: 18, fontWeight: '400' },
   badge: { position: 'absolute', top: 3, right: 3, fontSize: 7, fontWeight: '700', color: COLORS.white },
   dot:   { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2 },
 });
@@ -157,10 +156,6 @@ export default function FloatingPlayer() {
   } = usePlayback();
 
   const { activeJam } = useJam();
-  // Feed scroll hide: slide the pill off the bottom edge when the user scrolls
-  // down through Home / Profile, back instantly on scroll up. Shared with the
-  // bottom tab bar so the two move together.
-  const { hiddenAnim: chromeHiddenAnim } = useChromeVisibility();
 
   // ─── Beat-synced visualizer envelope ───────────────────────────────────────────
   // Resolve the ACTIVE track's loudness envelope (cache → DB → analyze-on-device)
@@ -241,18 +236,16 @@ export default function FloatingPlayer() {
     }).start();
   }, [isImmersive, immersiveAnim]);
 
-  // Combined vertical translate — native driver only
+  // Combined vertical translate — native driver only.
+  // NOTE: the FMP intentionally does NOT hide on feed scroll — it stays visible so
+  // playback state + controls are always reachable. Only the bottom nav bar hides
+  // on scroll (see AppNavigator).
   const translateY = Animated.add(
     Animated.add(
-      Animated.add(
-        slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
-        keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
-      ),
-      immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 240] }),
+      slideAnim.interpolate({ inputRange: [0, 1], outputRange: [D + 24, 0] }),
+      keyboardAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + 24] }),
     ),
-    // Feed-scroll hide: slide fully past the bottom edge (clears the pill + its
-    // distance above the tab bar).
-    chromeHiddenAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 80] }),
+    immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, D + playerBottom + 240] }),
   );
   const immersiveOpacity = immersiveAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
@@ -373,6 +366,17 @@ export default function FloatingPlayer() {
       }).start();
     }
   }, [morphExpanded, isFullScreenOpen, isVideo, morphAnim]);
+
+  // Belt-and-suspenders: while the player is hidden behind a covering screen
+  // (Repost / Story viewer) it renders null, so an in-flight collapse animation
+  // started right before it hid may not settle. Snap the morph straight to its
+  // resting value so it reappears as the thin white line, not a stale expanded
+  // pill. (Mirrors clearNowPlaying's isFullScreenOpen reset in PlaybackContext.)
+  useEffect(() => {
+    if ((isRepostOpen || isStoryViewerOpen) && !morphExpanded) {
+      morphAnim.setValue(0);
+    }
+  }, [isRepostOpen, isStoryViewerOpen, morphExpanded, morphAnim]);
 
   useEffect(() => {
     Animated.spring(narrowAnim, {
@@ -668,7 +672,7 @@ export default function FloatingPlayer() {
               </TouchableOpacity>
             )}
             {/* Music icon + Avatar — jam only (state 1 & 3) */}
-            {activeJam && <Text style={styles.jamIcon}>🎵</Text>}
+            {activeJam && <Icon name="musicNote" size={13} color={COLORS.white} />}
             {activeJam && (
               <View style={styles.avatarWrap}>
                 <View style={styles.avatar}>
@@ -822,9 +826,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  jamIcon: {
-    fontSize: 13,
-  },
 
   avatarWrap: {
     position: 'relative',

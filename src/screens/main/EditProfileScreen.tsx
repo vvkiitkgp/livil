@@ -15,6 +15,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FormInput from '../../components/FormInput';
+import { Icon } from '../../components/Icon';
 import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
@@ -301,7 +302,9 @@ export default function EditProfileScreen() {
           style={styles.headerSide}
           accessibilityLabel="Back"
         >
-          <Text style={styles.headerBack}>‹</Text>
+          <View style={{ marginTop: Platform.OS === 'android' ? -4 : 0 }}>
+            <Icon name="back" size={32} color={COLORS.white} />
+          </View>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit profile</Text>
         <TouchableOpacity
@@ -347,7 +350,7 @@ export default function EditProfileScreen() {
               )}
             </View>
             <View style={styles.avatarEditBadge}>
-              <Text style={styles.avatarEditBadgeIcon}>✎</Text>
+              <Icon name="edit" size={14} color={COLORS.white} />
             </View>
           </TouchableOpacity>
           <TouchableOpacity onPress={openAvatarSheet} activeOpacity={0.7}>
@@ -456,7 +459,7 @@ export default function EditProfileScreen() {
                     style={styles.linkRemove}
                     accessibilityLabel="Remove link"
                   >
-                    <Text style={styles.linkRemoveIcon}>×</Text>
+                    <Icon name="close" size={22} color={COLORS.textSecondary} />
                   </TouchableOpacity>
                 }
               />
@@ -556,12 +559,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerSaveWrap: { alignItems: 'flex-end' },
-  headerBack: {
-    color: COLORS.white,
-    fontSize: 32,
-    lineHeight: 32,
-    marginTop: Platform.OS === 'android' ? -4 : 0,
-  },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -610,7 +607,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.bg,
   },
-  avatarEditBadgeIcon: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   avatarHint: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '500' },
 
   field: { marginBottom: 18 },
@@ -660,7 +656,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 4,
   },
-  linkRemoveIcon: { color: COLORS.textSecondary, fontSize: 22, fontWeight: '600' },
   addLinkButton: {
     paddingVertical: 12,
     borderRadius: 12,

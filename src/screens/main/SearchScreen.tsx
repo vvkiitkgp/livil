@@ -23,6 +23,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
 import { searchPosts, type FeedPost } from '../../services/posts';
 import { supabase } from '../../../lib/supabase';
+import { Icon } from '../../components/Icon';
 
 type Tab = 'users' | 'tracks';
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -167,7 +168,7 @@ export default function SearchScreen() {
             @{item.username}
           </Text>
         </View>
-        <Text style={styles.chevron}>›</Text>
+        <Icon name="forward" size={22} color={COLORS.textMuted} />
       </TouchableOpacity>
     ),
     [goToProfile],
@@ -211,7 +212,7 @@ export default function SearchScreen() {
           trailing={
             query.length > 0 ? (
               <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={styles.clearBtn}>✕</Text>
+                <Icon name="clear" size={14} color={COLORS.textMuted} />
               </TouchableOpacity>
             ) : null
           }
@@ -327,11 +328,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
-  clearBtn: {
-    color: COLORS.textMuted,
-    fontSize: 14,
-    paddingHorizontal: 4,
-  },
   tabRow: {
     flexDirection: 'row',
     marginHorizontal: 20,
@@ -437,10 +433,5 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     marginTop: 2,
-  },
-  chevron: {
-    color: COLORS.textMuted,
-    fontSize: 22,
-    fontWeight: '300',
   },
 });

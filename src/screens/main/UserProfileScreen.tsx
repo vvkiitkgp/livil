@@ -15,6 +15,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -348,7 +349,7 @@ export default function UserProfileScreen() {
       if (item.kind === 'empty') {
         return (
           <View style={styles.emptyWrap}>
-            <View style={styles.emptyArt}><Text style={styles.emptyArtGlyph}>♪</Text></View>
+            <View style={styles.emptyArt}><Icon name="musicNote" size={28} color={COLORS.purpleLight} /></View>
             <Text style={styles.emptyTitle}>
               {tab === 'creator' ? 'No uploads yet' : 'Nothing here yet'}
             </Text>
@@ -382,7 +383,7 @@ export default function UserProfileScreen() {
             onPress={() => navigation.goBack()}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.backBtnText}>←</Text>
+            <Icon name="backArrow" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={styles.screenTitle} numberOfLines={1}>{handle}</Text>
           <View style={styles.backBtnSpacer} />
@@ -558,7 +559,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between', marginBottom: 12,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backBtnText: { color: COLORS.white, fontSize: 22, fontWeight: '400' },
   backBtnSpacer: { width: 40 },
   screenTitle: {
     flex: 1, color: COLORS.white, fontSize: 16, fontWeight: '700',
@@ -650,7 +650,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purpleDim, alignItems: 'center', justifyContent: 'center',
     marginBottom: 16,
   },
-  emptyArtGlyph: { color: COLORS.purpleLight, fontSize: 28 },
   emptyTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', textAlign: 'center' },
 
   listFooter: { height: 40 },

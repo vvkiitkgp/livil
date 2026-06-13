@@ -10,6 +10,7 @@ import React, {
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import { Icon, type IconName } from '../components/Icon';
 
 export type ToastKind = 'error' | 'success' | 'info';
 
@@ -110,7 +111,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             ]}
           >
             <Pressable onPress={hide} style={styles.pressable}>
-              <Text style={[styles.glyph, { color: palette.glyph }]}>{palette.icon}</Text>
+              <View style={styles.glyph}>
+                <Icon name={palette.icon} size={15} color={palette.glyph} />
+              </View>
               <Text style={styles.message} numberOfLines={1}>
                 {toast.message}
               </Text>
@@ -130,10 +133,10 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
-const KIND_STYLES: Record<ToastKind, { border: string; glyph: string; icon: string }> = {
-  error: { border: 'rgba(239, 68, 68, 0.55)', glyph: COLORS.error, icon: '!' },
-  success: { border: 'rgba(34, 197, 94, 0.55)', glyph: '#22C55E', icon: '✓' },
-  info: { border: COLORS.infoBorder, glyph: COLORS.info, icon: 'i' },
+const KIND_STYLES: Record<ToastKind, { border: string; glyph: string; icon: IconName }> = {
+  error: { border: 'rgba(239, 68, 68, 0.55)', glyph: COLORS.error, icon: 'error' },
+  success: { border: 'rgba(34, 197, 94, 0.55)', glyph: '#22C55E', icon: 'check' },
+  info: { border: COLORS.infoBorder, glyph: COLORS.info, icon: 'info' },
 };
 
 const styles = StyleSheet.create({

@@ -22,6 +22,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import SeekBar from '../../components/SeekBar';
 import AddBadge from '../../components/AddBadge';
@@ -470,7 +471,7 @@ export default function JamRoomScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={() => navigation.goBack()}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Jam Room</Text>
@@ -494,7 +495,7 @@ export default function JamRoomScreen() {
             <Image source={{ uri: displayTrack.coverArt }} style={styles.art} />
           ) : (
             <View style={styles.artPlaceholder}>
-              <Text style={styles.artPlaceholderText}>🎵</Text>
+              <Icon name="musicNote" size={40} color={COLORS.textSecondary} />
             </View>
           )}
         </View>
@@ -536,7 +537,7 @@ export default function JamRoomScreen() {
               activeOpacity={0.7}
               onPress={handlePlayPause}
             >
-              <Text style={styles.controlBtnText}>{activePostId ? '⏸' : '▶'}</Text>
+              <Icon name={activePostId ? 'pause' : 'play'} size={20} color={COLORS.white} />
             </TouchableOpacity>
           </View>
         )}
@@ -623,7 +624,7 @@ export default function JamRoomScreen() {
                 onPress={() => void handleSend()}
                 disabled={!chatText.trim() || sending}
               >
-                <Text style={styles.sendBtnText}>→</Text>
+                <Icon name="send" size={18} color={COLORS.white} />
               </TouchableOpacity>
             </View>
           </KeyboardStickyView>
@@ -682,7 +683,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   backButton: { padding: 4 },
-  backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerCenter: { flex: 1 },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   headerSub: { color: COLORS.textSecondary, fontSize: 11, marginTop: 1 },
@@ -710,7 +710,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  artPlaceholderText: { fontSize: 40 },
   trackInfo: { alignItems: 'center', marginBottom: 8, width: '100%' },
   trackTitle: { color: COLORS.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   trackArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, textAlign: 'center' },
@@ -724,7 +723,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purple,
     alignItems: 'center', justifyContent: 'center',
   },
-  controlBtnText: { fontSize: 20, color: COLORS.white },
   presenceRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   presenceItem: { position: 'relative' },
   presenceAddBadge: { position: 'absolute', top: -4, right: -4 },
@@ -815,7 +813,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.4 },
-  sendBtnText: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
 
   // Queue styles now handled by QueueList component
 });

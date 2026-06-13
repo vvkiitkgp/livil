@@ -17,6 +17,7 @@ import ConfirmActionModal from './ConfirmActionModal';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
+import { Icon } from './Icon';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -195,17 +196,6 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
   // Play counting is driven by actual audio/video playback in the global
   // players (GlobalAudioPlayer.handleProgress / FullScreenPlayer) via
   // trackPlayProgress — not from the feed card.
-
-  // Seek handle on the PostCard's read-only slider. Routes through the global
-  // seek handler (GlobalAudioPlayer for audio, FullScreenPlayer for video) so
-  // the real player moves. Guarded to the current track so a scrub on a
-  // non-playing card can't seek whatever is actually playing.
-  const handlePostSeekEnd = useCallback((s: number) => {
-    if (!isCurrentTrack) { return; }
-    playback.markSeekTarget(s);
-    setPosition(s);
-    playback.handlersRef.current?.seek(s);
-  }, [isCurrentTrack, playback]);
 
   // The position/duration on PostCard's seek bar mirror the global playback
   // refs (driven by GlobalAudioPlayer for audio, FullScreenPlayer for video).
@@ -404,12 +394,14 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             onPress={() => setContextMenuVisible(true)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.moreBtnText}>⋯</Text>
+            <Icon name="overflow" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.tombstoneBody}>
-          <Text style={styles.tombstoneGlyph}>𝍃</Text>
+          <View style={styles.tombstoneIconWrap}>
+            <Icon name="tombstone" size={36} color={COLORS.textMuted} />
+          </View>
           <Text style={styles.tombstoneTitle}>Original post no longer available</Text>
           <Text style={styles.tombstoneBodyText}>
             The author removed this post. Your repost stays, but the track isn't playable from here.
@@ -419,7 +411,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         <View style={styles.tombstoneStatsRow}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-              <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+              <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -438,7 +430,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             onPress={() => onCommentsPress?.(post.id)}
             disabled={!onCommentsPress}
           >
-            <Text style={styles.statIcon}>💬</Text>
+            <Icon name="comment" size={16} color={COLORS.textSecondary} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
         </View>
@@ -496,7 +488,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
       {/* Repost banner sits above everything when this post is a repost. */}
       {isRepost ? (
         <View style={styles.repostBanner}>
-          <Text style={styles.repostBannerIcon}>↻</Text>
+          <Icon name="repost" size={13} color={COLORS.purpleLight} />
           <Text style={styles.repostBannerText} numberOfLines={1}>
             <Text
               style={styles.repostBannerName}
@@ -559,7 +551,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             }
           }}
         >
-          <Text style={styles.repostBtnIcon}>▤</Text>
+          <Icon name="repost" size={14} color={COLORS.white} />
           <Text style={styles.repostBtnLabel}>Repost</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -568,7 +560,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityLabel="More options"
         >
-          <Text style={styles.moreBtnText}>⋯</Text>
+          <Icon name="overflow" size={18} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -615,7 +607,9 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
               />
             ) : (
               <View style={[styles.videoThumb, styles.videoThumbPlaceholder]}>
-                <Text style={styles.videoThumbGlyph}>▶</Text>
+                <View style={styles.videoThumbIconWrap}>
+                  <Icon name="play" size={56} color={COLORS.textMuted} />
+                </View>
               </View>
             )}
             <View style={styles.videoBadge} pointerEvents="none">
@@ -627,7 +621,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             {!isThisActive ? (
               <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
                 <View style={styles.videoCenterGlyph}>
-                  <Text style={styles.videoCenterGlyphText}>▶</Text>
+                  <Icon name="play" size={24} color="#fff" />
                 </View>
               </View>
             ) : null}
@@ -662,7 +656,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             ) : !isThisActive ? (
               <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
                 <View style={styles.videoCenterGlyph}>
-                  <Text style={styles.videoCenterGlyphText}>▶</Text>
+                  <Icon name="play" size={24} color="#fff" />
                 </View>
               </View>
             ) : null}
@@ -674,21 +668,23 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         )}
       </View>
 
-      {/* Seek bar + time labels */}
+      {/* Clip-window indicator — shows only the clip start/end markers (no
+          progress fill, no seek thumb). Labels are the clip boundaries, not
+          the live playback position. */}
       <View style={styles.seekRow}>
-        <Text style={styles.seekTime}>{formatTime(position)}</Text>
+        <Text style={styles.seekTime}>{formatTime(post.clipStartSec ?? 0)}</Text>
         <View style={styles.seekBarWrap}>
           <ClipRangeSlider
             readOnly
+            hideProgress
             duration={duration}
             position={position}
             start={post.clipStartSec ?? 0}
             end={post.clipEndSec ?? duration}
             minClipSeconds={1}
-            onSeekEnd={handlePostSeekEnd}
           />
         </View>
-        <Text style={styles.seekTime}>{formatTime(duration)}</Text>
+        <Text style={styles.seekTime}>{formatTime(post.clipEndSec ?? duration)}</Text>
       </View>
 
       {/* Action row: play/pause + stats */}
@@ -699,15 +695,13 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           onPress={isVideo ? handleVideoTogglePlay : handleAudioTogglePlay}
           accessibilityLabel={!isThisActive ? 'Play' : 'Pause'}
         >
-          <Text style={styles.playButtonGlyph}>
-            {!isThisActive ? '▶' : '❚❚'}
-          </Text>
+          <Icon name={!isThisActive ? 'play' : 'pause'} size={16} color={COLORS.white} />
         </TouchableOpacity>
 
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-              <Text style={[styles.statIcon, liked && styles.statIconLiked]}>{liked ? '♥' : '♡'}</Text>
+              <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -726,7 +720,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             onPress={() => onCommentsPress?.(post.id)}
             disabled={!onCommentsPress}
           >
-            <Text style={styles.statIcon}>💬</Text>
+            <Icon name="comment" size={16} color={COLORS.textSecondary} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
           {/* Reposts: only meaningful on upload posts. Reposts of reposts aren't
@@ -736,7 +730,7 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           {post.kind === 'upload' ? (
             <View style={styles.statBtn}>
               {/* Same glyph as the Repost button (line 436) for visual consistency. */}
-              <Text style={styles.statIcon}>▤</Text>
+              <Icon name="repost" size={16} color={COLORS.textSecondary} />
               <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
             </View>
           ) : null}
@@ -811,10 +805,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginBottom: 10,
-  },
-  repostBannerIcon: {
-    color: COLORS.purpleLight,
-    fontSize: 13,
   },
   repostBannerText: {
     color: COLORS.textMuted,
@@ -901,11 +891,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  repostBtnIcon: {
-    color: COLORS.white,
-    fontSize: 14,
-    lineHeight: 16,
-  },
   repostBtnLabel: {
     color: COLORS.white,
     fontSize: 13,
@@ -919,12 +904,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  moreBtnText: {
-    color: COLORS.textSecondary,
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 20,
   },
   titleBlock: {
     marginTop: 12,
@@ -1024,11 +1003,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoThumbGlyph: {
-    color: COLORS.textMuted,
-    fontSize: 56,
-    opacity: 0.6,
-  },
   videoBadge: {
     position: 'absolute',
     top: 10,
@@ -1060,11 +1034,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
-  },
-  videoCenterGlyphText: {
-    color: '#fff',
-    fontSize: 24,
-    marginLeft: 4,
   },
   seekRow: {
     flexDirection: 'row',
@@ -1101,12 +1070,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6,
   },
-  playButtonGlyph: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-    marginLeft: 2,
-  },
   statsGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1132,10 +1095,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     alignItems: 'center',
   },
-  tombstoneGlyph: {
-    color: COLORS.textMuted,
-    fontSize: 36,
+  tombstoneIconWrap: {
     marginBottom: 10,
+  },
+  videoThumbIconWrap: {
+    opacity: 0.6,
   },
   tombstoneTitle: {
     color: COLORS.white,
@@ -1156,13 +1120,6 @@ const styles = StyleSheet.create({
     gap: 18,
     paddingHorizontal: 18,
     paddingBottom: 14,
-  },
-  statIcon: {
-    color: COLORS.textSecondary,
-    fontSize: 16,
-  },
-  statIconLiked: {
-    color: '#FF4D6D',
   },
   statValue: {
     color: COLORS.textSecondary,

@@ -13,97 +13,26 @@ import LibraryScreen from '../screens/main/LibraryScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import { COLORS } from '../theme/colors';
 import { AppTabParamList } from './types';
+import { Icon } from '../components/Icon';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
-type IconProps = { color: string; focused: boolean };
+type TabIconProps = { color: string; focused: boolean };
 
-function HomeIcon({ color, focused }: IconProps) {
-  return (
-    <View style={iconStyles.wrap}>
-      <View
-        style={[
-          iconStyles.homeRoof,
-          { borderBottomColor: color },
-        ]}
-      />
-      <View
-        style={[
-          iconStyles.homeBody,
-          { borderColor: color, backgroundColor: focused ? color : 'transparent' },
-        ]}
-      />
-    </View>
-  );
+function HomeIcon({ color, focused }: TabIconProps) {
+  return <Icon name="home" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
 }
 
-function SearchIcon({ color, focused }: IconProps) {
-  return (
-    <View style={iconStyles.wrap}>
-      <View
-        style={[
-          iconStyles.searchCircle,
-          {
-            borderColor: color,
-            backgroundColor: focused ? color : 'transparent',
-          },
-        ]}
-      />
-      <View style={[iconStyles.searchHandle, { backgroundColor: color }]} />
-    </View>
-  );
+function SearchIcon({ color, focused }: TabIconProps) {
+  return <Icon name="search" size={26} color={color} weight={focused ? 'bold' : 'regular'} />;
 }
 
-function LibraryIcon({ color, focused }: IconProps) {
-  return (
-    <View style={iconStyles.wrap}>
-      <View style={iconStyles.libraryRows}>
-        <View
-          style={[
-            iconStyles.libraryBar,
-            { backgroundColor: focused ? color : 'transparent', borderColor: color },
-          ]}
-        />
-        <View
-          style={[
-            iconStyles.libraryBar,
-            { backgroundColor: focused ? color : 'transparent', borderColor: color },
-          ]}
-        />
-        <View
-          style={[
-            iconStyles.libraryBar,
-            { backgroundColor: focused ? color : 'transparent', borderColor: color },
-          ]}
-        />
-      </View>
-    </View>
-  );
+function LibraryIcon({ color, focused }: TabIconProps) {
+  return <Icon name="library" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
 }
 
-function ProfileIcon({ color, focused }: IconProps) {
-  return (
-    <View style={iconStyles.wrap}>
-      <View
-        style={[
-          iconStyles.profileHead,
-          {
-            borderColor: color,
-            backgroundColor: focused ? color : 'transparent',
-          },
-        ]}
-      />
-      <View
-        style={[
-          iconStyles.profileBody,
-          {
-            borderColor: color,
-            backgroundColor: focused ? color : 'transparent',
-          },
-        ]}
-      />
-    </View>
-  );
+function ProfileIcon({ color, focused }: TabIconProps) {
+  return <Icon name="profile" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
 }
 
 // Bottom tab bar wrapped in an Animated.View so it can slide off the bottom edge
@@ -214,74 +143,3 @@ const styles = StyleSheet.create({
   },
 });
 
-const iconStyles = StyleSheet.create({
-  wrap: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  homeRoof: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 11,
-    borderRightWidth: 11,
-    borderBottomWidth: 9,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    marginBottom: -1,
-  },
-  homeBody: {
-    width: 16,
-    height: 10,
-    borderWidth: 2,
-    borderTopWidth: 0,
-    borderRadius: 1,
-  },
-
-  searchCircle: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    marginTop: -2,
-    marginLeft: -2,
-  },
-  searchHandle: {
-    position: 'absolute',
-    width: 7,
-    height: 2,
-    borderRadius: 1,
-    bottom: 5,
-    right: 4,
-    transform: [{ rotate: '45deg' }],
-  },
-
-  libraryRows: {
-    width: 18,
-    height: 16,
-    justifyContent: 'space-between',
-  },
-  libraryBar: {
-    height: 3,
-    borderRadius: 1.5,
-    borderWidth: 1.5,
-  },
-
-  profileHead: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    borderWidth: 2,
-  },
-  profileBody: {
-    width: 16,
-    height: 9,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderWidth: 2,
-    borderBottomWidth: 0,
-    marginTop: 2,
-  },
-});

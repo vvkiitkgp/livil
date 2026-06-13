@@ -25,6 +25,7 @@ import {
   markActivityRead,
   type ActivityItem,
 } from '../../services/activity';
+import { Icon } from '../../components/Icon';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../../assets/livil-logo.png');
@@ -181,7 +182,7 @@ export default function ActivityCenterScreen() {
           activeOpacity={0.7}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backIcon}>‹</Text>
+          <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
         <Image source={LIVIL_LOGO} style={styles.headerAvatar} />
         <Text style={styles.headerTitle}>livil Bot</Text>
@@ -240,7 +241,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backButton: { padding: 4 },
-  backIcon: { color: COLORS.purple, fontSize: 28, lineHeight: 32 },
   headerAvatar: { width: 34, height: 34, borderRadius: 17 },
   headerTitle: {
     flex: 1,
