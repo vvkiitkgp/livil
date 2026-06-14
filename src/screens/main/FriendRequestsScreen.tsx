@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
 import { useRelationships } from '../../contexts/RelationshipContext';
@@ -17,9 +17,12 @@ import {
   type IncomingFriendRequest,
 } from '../../services/relationships';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 
 export default function FriendRequestsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const rel = useRelationships();
   const [items, setItems] = useState<IncomingFriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +135,9 @@ export default function FriendRequestsScreen() {
           keyExtractor={item => item.otherUserId}
           renderItem={renderItem}
           contentContainerStyle={
-            items.length === 0 ? styles.emptyContent : styles.listContent
+            items.length === 0
+              ? styles.emptyContent
+              : [styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]
           }
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -141,6 +146,14 @@ export default function FriendRequestsScreen() {
                 When someone adds you as a friend, you'll see them here.
               </Text>
             </View>
+          }
+          ListFooterComponent={
+            items.length > 0 ? (
+              <FeedEndMessage
+                title="Last call for new friends"
+                subtitle="That’s every pending request. New ones land here the moment they hit."
+              />
+            ) : null
           }
         />
       )}

@@ -10,13 +10,15 @@ import {
   ActivityIndicator,
   ListRenderItemInfo,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { fetchLikedPosts, createPlaylist, addPostToPlaylist, type PlaylistItem } from '../../services/playlists';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreatePlaylist'>;
 
@@ -77,6 +79,7 @@ function SuggestionRow({
 
 export default function CreatePlaylistScreen({ route }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
   const initialPost = route.params?.initialPost;
 
   const [name, setName] = useState('');
@@ -231,7 +234,15 @@ export default function CreatePlaylistScreen({ route }: Props) {
           keyExtractor={item => item.postId}
           renderItem={renderItem}
           ListHeaderComponent={ListHeader}
-          contentContainerStyle={styles.list}
+          ListFooterComponent={
+            !loadingSuggestions && suggestions.length > 0 ? (
+              <FeedEndMessage
+                title="That's the full crate"
+                subtitle="Every track you’ve liked, ready to pick. Like more posts to grow the stash."
+              />
+            ) : null
+          }
+          contentContainerStyle={[styles.list, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />

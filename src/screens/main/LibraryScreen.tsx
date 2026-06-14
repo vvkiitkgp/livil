@@ -15,6 +15,8 @@ import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
 import {
   getLikedPostCount,
@@ -160,7 +162,7 @@ export default function LibraryScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: 64 + insets.bottom + 48 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -306,6 +308,13 @@ export default function LibraryScreen() {
               </View>
             )}
           </View>
+        )}
+
+        {!playlistsLoading && (
+          <FeedEndMessage
+            title="Your record crate, sorted"
+            subtitle="Every track, playlist, and artist you've saved — all on one shelf."
+          />
         )}
       </ScrollView>
     </SafeAreaView>

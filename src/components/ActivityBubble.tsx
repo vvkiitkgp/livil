@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
   bubbleTextRow: { flexDirection: 'row', alignItems: 'flex-start' },
   bubbleIcon: { marginRight: 5, marginTop: 3 },
-  bubbleTextFlex: { flex: 1 },
+  bubbleTextFlex: { flexShrink: 1 },
   actorName: { color: COLORS.white, fontWeight: '700' },
   trackCard: {
     flexDirection: 'row',

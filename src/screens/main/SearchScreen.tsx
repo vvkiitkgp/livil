@@ -24,6 +24,7 @@ import { searchProfiles, type ProfileSearchResult } from '../../services/tracks'
 import { searchPosts, type FeedPost } from '../../services/posts';
 import { supabase } from '../../../lib/supabase';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 
 type Tab = 'users' | 'tracks';
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -272,7 +273,7 @@ export default function SearchScreen() {
           data={userResults}
           keyExtractor={item => item.id}
           renderItem={renderUserRow}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 48 }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />
@@ -281,7 +282,7 @@ export default function SearchScreen() {
           data={trackResults.filter(p => !deletedIds.has(p.id))}
           keyExtractor={item => item.id}
           renderItem={renderTrackRow}
-          contentContainerStyle={[styles.trackListContent, { paddingBottom: 64 + insets.bottom + 48 }]}
+          contentContainerStyle={[styles.trackListContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           viewabilityConfig={viewabilityConfig}

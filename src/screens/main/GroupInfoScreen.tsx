@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -26,6 +26,8 @@ import {
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { useToast } from '../../contexts/ToastContext';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,6 +68,7 @@ function MemberAvatar({ member, size = 44 }: { member: GroupMember | Friend; siz
 export default function GroupInfoScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { conversationId } = route.params;
   const { showToast } = useToast();
 
@@ -342,13 +345,25 @@ export default function GroupInfoScreen() {
             data={filteredFriends}
             keyExtractor={item => item.id}
             renderItem={renderFriendPickerItem}
-            contentContainerStyle={filteredFriends.length === 0 ? styles.emptyContent : styles.listContent}
+            contentContainerStyle={
+              filteredFriends.length === 0
+                ? styles.emptyContent
+                : [styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]
+            }
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyText}>
                   {friendQuery ? 'No matches.' : 'All friends are already in the group.'}
                 </Text>
               </View>
+            }
+            ListFooterComponent={
+              filteredFriends.length > 0 ? (
+                <FeedEndMessage
+                  title="End of the guest list"
+                  subtitle="Every friend who isn’t already in the group. Invite away."
+                />
+              ) : null
             }
           />
         )}
@@ -411,8 +426,16 @@ export default function GroupInfoScreen() {
         data={members}
         keyExtractor={item => item.userId}
         renderItem={renderMember}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         style={styles.memberList}
+        ListFooterComponent={
+          members.length > 0 ? (
+            <FeedEndMessage
+              title="Full ensemble"
+              subtitle="Everyone in this group. Keep the convo going."
+            />
+          ) : null
+        }
       />
 
       {/* Leave group */}
