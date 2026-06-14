@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -610,7 +611,7 @@ export default function ProfileScreen() {
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 48 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
       />

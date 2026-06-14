@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   ListRenderItemInfo,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -20,6 +20,8 @@ import { fetchLikedPosts, fetchPlaylistPosts, type PlaylistItem } from '../../se
 import { usePlayback } from '../../contexts/PlaybackContext';
 import type { NowPlayingInfo } from '../../contexts/PlaybackContext';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PlaylistDetail'>;
 
@@ -72,6 +74,7 @@ function TrackRow({
 export default function PlaylistScreen({ route }: Props) {
   const { playlistId, playlistName } = route.params;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
   const { nowPlaying, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer } = usePlayback();
 
   const [items, setItems] = useState<PlaylistItem[]>([]);
@@ -174,7 +177,7 @@ export default function PlaylistScreen({ route }: Props) {
           data={items}
           keyExtractor={item => item.postId}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -194,6 +197,18 @@ export default function PlaylistScreen({ route }: Props) {
                   : 'Add posts from the full-screen player using the + button.'}
               </Text>
             </View>
+          }
+          ListFooterComponent={
+            items.length > 0 ? (
+              <FeedEndMessage
+                title={playlistId === 'liked' ? 'Every track you’ve loved' : 'End of the set'}
+                subtitle={
+                  playlistId === 'liked'
+                    ? 'These are the tracks that hit. Run them back anytime.'
+                    : 'That’s every track in this playlist. Hit shuffle and let it ride.'
+                }
+              />
+            ) : null
           }
         />
       )}

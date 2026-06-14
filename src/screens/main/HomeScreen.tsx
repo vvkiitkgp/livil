@@ -26,6 +26,7 @@ import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRelationships } from '../../contexts/RelationshipContext';
@@ -668,7 +669,7 @@ export default function HomeScreen() {
   const listContentStyle = useMemo(
     () => [
       styles.listContent,
-      { paddingBottom: tabBarHeight + 48 },
+      { paddingBottom: tabBarHeight + 56 + FLOATING_PLAYER_HEIGHT + 16 },
       !loadingInitial && feedRows.length === 0 ? styles.listContentFlex : null,
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps

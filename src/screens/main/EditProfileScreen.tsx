@@ -10,12 +10,13 @@ import {
   Pressable,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
@@ -104,6 +105,7 @@ function isFormEqual(a: FormState, b: FormState): boolean {
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -325,7 +327,7 @@ export default function EditProfileScreen() {
 
       <KeyboardAwareScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         bottomOffset={24}
         keyboardShouldPersistTaps="handled"
       >

@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -18,6 +18,8 @@ import { getOrCreateDm, createGroup } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Tab = 'dm' | 'group';
@@ -51,6 +53,7 @@ function Avatar({ friend, size = 48 }: { friend: Friend; size?: number }) {
 export default function NewConversationScreen() {
   const { showToast } = useToast();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('dm');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [filtered, setFiltered] = useState<Friend[]>([]);
@@ -318,7 +321,9 @@ export default function NewConversationScreen() {
           keyExtractor={item => item.id}
           renderItem={tab === 'dm' ? renderDmItem : renderGroupItem}
           contentContainerStyle={
-            filtered.length === 0 ? styles.emptyContent : styles.listContent
+            filtered.length === 0
+              ? styles.emptyContent
+              : [styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]
           }
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -326,6 +331,18 @@ export default function NewConversationScreen() {
                 {query ? 'No friends match that search.' : 'No friends yet.'}
               </Text>
             </View>
+          }
+          ListFooterComponent={
+            filtered.length > 0 ? (
+              <FeedEndMessage
+                title={tab === 'group' ? 'That’s the whole band' : 'Your whole crew'}
+                subtitle={
+                  tab === 'group'
+                    ? 'Every friend you can invite. Add more pals to grow the lineup.'
+                    : 'Every friend you can DM. Make more friends to keep the rotation fresh.'
+                }
+              />
+            ) : null
           }
         />
       )}

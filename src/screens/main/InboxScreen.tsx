@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -23,6 +23,8 @@ import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import AddBadge from '../../components/AddBadge';
 import { Icon } from '../../components/Icon';
+import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import FeedEndMessage from '../../components/FeedEndMessage';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -110,6 +112,7 @@ function ConversationRow({
 
 export default function InboxScreen() {
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const rel = useRelationships();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -289,7 +292,9 @@ export default function InboxScreen() {
             </>
           }
           contentContainerStyle={
-            conversations.length === 0 ? styles.emptyContent : styles.listContent
+            conversations.length === 0
+              ? styles.emptyContent
+              : [styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]
           }
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -305,6 +310,14 @@ export default function InboxScreen() {
                 <Text style={styles.emptyButtonText}>New Message</Text>
               </TouchableOpacity>
             </View>
+          }
+          ListFooterComponent={
+            conversations.length > 0 ? (
+              <FeedEndMessage
+                title="All your chats, on the same record"
+                subtitle="Every conversation lives here. New messages will tune in at the top."
+              />
+            ) : null
           }
         />
       )}
