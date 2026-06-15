@@ -5,7 +5,8 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
 import { backfillTrackDuration } from '../services/tracks';
-import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson } from '../utils/nowPlayingMetadata';
+import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson, buildMediaSessionStateJson } from '../utils/nowPlayingMetadata';
+import type { RepeatMode } from '../contexts/PlaybackContext';
 
 const AUDIO_BUFFER_CONFIG = {
   minBufferMs: 15_000,
@@ -59,6 +60,9 @@ export default function GlobalAudioPlayer() {
     resumePlay,
     clipWindowRef,
     repeatMode,
+    shuffleEnabled,
+    setRepeatMode,
+    setShuffleEnabled,
     setIsBuffering,
     videoFrameBuffering,
     queueVersion,
@@ -287,6 +291,25 @@ export default function GlobalAudioPlayer() {
     playPrev();
   }, [playPrev]);
 
+  // Lock-screen / Bluetooth car HU / Wear OS / Assistant shuffle/repeat toggles.
+  // PlaybackContext's setters are idempotent — they no-op when the value already
+  // matches state — so the controller→JS→prop→controller-echo loop ends here.
+  const handleRepeatModeChange = useCallback(
+    (e: { mode: RepeatMode }) => {
+      console.log(`[LIVIL][GAP] onRepeatModeChange mode=${e.mode}`);
+      setRepeatMode(e.mode);
+    },
+    [setRepeatMode],
+  );
+
+  const handleShuffleModeChange = useCallback(
+    (e: { enabled: boolean }) => {
+      console.log(`[LIVIL][GAP] onShuffleModeChange enabled=${e.enabled}`);
+      setShuffleEnabled(e.enabled);
+    },
+    [setShuffleEnabled],
+  );
+
   // Serialise the queue for the native playback service so notification next/prev
   // can switch tracks while the app is backgrounded. Rebuilt whenever the active
   // track changes (which is also when the queue index moves).
@@ -307,6 +330,15 @@ export default function GlobalAudioPlayer() {
     () => buildCurrentClipJson(clipWindowRef.current, repeatMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nowPlaying?.postId, clipVersion, repeatMode],
+  );
+
+  // Push the in-app shuffle/repeat state into the MediaSession so a Bluetooth
+  // car HU / Wear OS / Assistant reflect the right icons. The reverse direction
+  // (controller toggles → JS state) flows through onRepeatModeChange /
+  // onShuffleModeChange. Recomputes only when one of the values actually flips.
+  const mediaSessionStateJson = useMemo(
+    () => buildMediaSessionStateJson(repeatMode, shuffleEnabled),
+    [repeatMode, shuffleEnabled],
   );
 
   // Don't render when the jam PlaybackEngine drives audio, or nothing is playing.
@@ -342,8 +374,11 @@ export default function GlobalAudioPlayer() {
       onPlaybackStateChanged={handlePlaybackStateChanged}
       onNextTrack={handleNextTrack}
       onPreviousTrack={handlePrevTrack}
+      onRepeatModeChange={handleRepeatModeChange}
+      onShuffleModeChange={handleShuffleModeChange}
       mediaQueueJson={mediaQueueJson}
       currentClipJson={currentClipJson}
+      mediaSessionStateJson={mediaSessionStateJson}
       progressUpdateInterval={250}
       playInBackground
       playWhenInactive

@@ -175,6 +175,12 @@ type PlaybackContextValue = {
   toggleShuffle: () => void;
   repeatMode: RepeatMode;
   cycleRepeatMode: () => void;
+  // Idempotent setters — no-op when the incoming value already matches state,
+  // so the controller↔JS feedback loop (car HU toggle → onVideoRepeatModeChange
+  // → setRepeatMode → mediaSessionStateJson re-render → controller echo) ends
+  // at the first matching value instead of oscillating.
+  setRepeatMode: (mode: RepeatMode) => void;
+  setShuffleEnabled: (enabled: boolean) => void;
 };
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -190,8 +196,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [isStoryViewerOpen, setIsStoryViewerOpenState] = useState(false);
   const [isRepostOpen, setIsRepostOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
-  const [shuffleEnabled, setShuffleEnabled] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<RepeatMode>('off');
+  const [shuffleEnabled, setShuffleEnabledState] = useState(false);
+  const [repeatMode, setRepeatModeState] = useState<RepeatMode>('off');
   const [isBuffering, setIsBufferingState] = useState(false);
   const [isReadyForDisplay, setIsReadyForDisplayState] = useState(false);
   const [videoFrameBuffering, setVideoFrameBufferingState] = useState(false);
@@ -600,27 +606,37 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setJamLockedState(locked);
   }, []);
 
-  const toggleShuffle = useCallback(() => {
-    setShuffleEnabled(v => {
-      const next = !v;
-      shuffleRef.current = next;
-      if (next) {
-        generateShuffleOrder(currentIndexRef.current, queueRef.current.length);
-      } else {
-        shuffleOrderRef.current = [];
-        shuffleIndexRef.current = -1;
-      }
-      return next;
-    });
+  // Idempotent: the controller→JS event path (car HU shuffle toggle → native
+  // event → setShuffleEnabled → mediaSessionStateJson prop re-emits the new
+  // value → native may echo the change back) ends here. Without this guard
+  // the chain would flip-flop forever.
+  const setShuffleEnabled = useCallback((enabled: boolean) => {
+    if (shuffleRef.current === enabled) { return; }
+    shuffleRef.current = enabled;
+    if (enabled) {
+      generateShuffleOrder(currentIndexRef.current, queueRef.current.length);
+    } else {
+      shuffleOrderRef.current = [];
+      shuffleIndexRef.current = -1;
+    }
+    setShuffleEnabledState(enabled);
   }, [generateShuffleOrder]);
 
-  const cycleRepeatMode = useCallback(() => {
-    setRepeatMode(prev => {
-      const next: RepeatMode = prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off';
-      repeatModeRef.current = next;
-      return next;
-    });
+  const setRepeatMode = useCallback((mode: RepeatMode) => {
+    if (repeatModeRef.current === mode) { return; }
+    repeatModeRef.current = mode;
+    setRepeatModeState(mode);
   }, []);
+
+  const toggleShuffle = useCallback(() => {
+    setShuffleEnabled(!shuffleRef.current);
+  }, [setShuffleEnabled]);
+
+  const cycleRepeatMode = useCallback(() => {
+    const prev = repeatModeRef.current;
+    const next: RepeatMode = prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off';
+    setRepeatMode(next);
+  }, [setRepeatMode]);
 
   const value = useMemo<PlaybackContextValue>(
     () => ({
@@ -686,6 +702,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       toggleShuffle,
       repeatMode,
       cycleRepeatMode,
+      setRepeatMode,
+      setShuffleEnabled,
     }),
     [
       activePostId,
@@ -741,6 +759,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       toggleShuffle,
       repeatMode,
       cycleRepeatMode,
+      setRepeatMode,
+      setShuffleEnabled,
     ],
   );
 
