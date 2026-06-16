@@ -1,10 +1,18 @@
 import { supabase } from '../../lib/supabase';
 
+export type PlaylistVisibility = 'public' | 'friends' | 'private';
+
 export type UserPlaylist = {
   id: string;
   name: string;
   postCount: number;
   coverArtUrl: string | null;
+  visibility: PlaylistVisibility;
+  /** Owner-set stylized cover (single emoji on a solid color). When either
+   *  field is null, UI should fall back to coverArtUrl (first post's art). */
+  coverEmoji: string | null;
+  coverColor: string | null;
+  coverColor2: string | null;
 };
 
 export type PlaylistItem = {
@@ -126,11 +134,22 @@ export async function fetchLikedPosts(limit = 200): Promise<PlaylistItem[]> {
 
 export async function fetchUserPlaylists(): Promise<UserPlaylist[]> {
   const me = await getCurrentUserId();
+  return fetchPlaylistsForUser(me);
+}
+
+// Used by Profile / UserProfile to list playlists that the viewer is allowed
+// to see. RLS does the visibility filtering — friends-only playlists are
+// invisible to non-friends and private ones to non-owners.
+export async function fetchPlaylistsForUser(userId: string): Promise<UserPlaylist[]> {
   const { data, error } = await supabase
     .from('playlists')
     .select(`
       id,
       name,
+      visibility,
+      cover_emoji,
+      cover_color,
+      cover_color_2,
       created_at,
       playlist_posts (
         post_id,
@@ -139,7 +158,7 @@ export async function fetchUserPlaylists(): Promise<UserPlaylist[]> {
         )
       )
     `)
-    .eq('user_id', me)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) { throw new Error(error.message); }
@@ -147,6 +166,10 @@ export async function fetchUserPlaylists(): Promise<UserPlaylist[]> {
   return ((data ?? []) as unknown as Array<{
     id: string;
     name: string;
+    visibility: PlaylistVisibility;
+    cover_emoji: string | null;
+    cover_color: string | null;
+    cover_color_2: string | null;
     playlist_posts: Array<{
       post_id: string;
       post: { track: { cover_art_url: string | null } | null } | null;
@@ -158,6 +181,10 @@ export async function fetchUserPlaylists(): Promise<UserPlaylist[]> {
       name: p.name,
       postCount: p.playlist_posts.length,
       coverArtUrl: firstCover,
+      visibility: p.visibility,
+      coverEmoji: p.cover_emoji,
+      coverColor: p.cover_color,
+      coverColor2: p.cover_color_2,
     };
   });
 }
@@ -226,15 +253,45 @@ export async function fetchPlaylistPosts(playlistId: string, limit = 200): Promi
     }));
 }
 
-export async function createPlaylist(name: string): Promise<UserPlaylist> {
+export async function createPlaylist(name: string, visibility: PlaylistVisibility = 'public'): Promise<UserPlaylist> {
   const me = await getCurrentUserId();
   const { data, error } = await supabase
     .from('playlists')
-    .insert({ user_id: me, name: name.trim() })
-    .select('id, name, created_at')
+    .insert({ user_id: me, name: name.trim(), visibility })
+    .select('id, name, visibility, created_at, cover_emoji, cover_color, cover_color_2')
     .single();
   if (error || !data) { throw new Error(error?.message ?? 'Failed to create playlist.'); }
-  return { id: data.id, name: data.name, postCount: 0, coverArtUrl: null };
+  return {
+    id: data.id, name: data.name, postCount: 0, coverArtUrl: null,
+    visibility: data.visibility,
+    coverEmoji: data.cover_emoji, coverColor: data.cover_color, coverColor2: data.cover_color_2,
+  };
+}
+
+export async function updatePlaylist(
+  playlistId: string,
+  patch: {
+    name?: string;
+    visibility?: PlaylistVisibility;
+    coverEmoji?: string | null;
+    coverColor?: string | null;
+    coverColor2?: string | null;
+  },
+): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (patch.name !== undefined) { update.name = patch.name.trim(); }
+  if (patch.visibility !== undefined) { update.visibility = patch.visibility; }
+  if (patch.coverEmoji !== undefined) { update.cover_emoji = patch.coverEmoji; }
+  if (patch.coverColor !== undefined) { update.cover_color = patch.coverColor; }
+  if (patch.coverColor2 !== undefined) { update.cover_color_2 = patch.coverColor2; }
+  if (Object.keys(update).length === 0) { return; }
+  const { error } = await supabase.from('playlists').update(update).eq('id', playlistId);
+  if (error) { throw new Error(error.message); }
+}
+
+export async function deletePlaylist(playlistId: string): Promise<void> {
+  const { error } = await supabase.from('playlists').delete().eq('id', playlistId);
+  if (error) { throw new Error(error.message); }
 }
 
 export async function addPostToPlaylist(playlistId: string, postId: string): Promise<void> {

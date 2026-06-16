@@ -7,8 +7,10 @@ import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import ClipRangeSlider from './ClipRangeSlider';
 import TrackContextMenu from './TrackContextMenu';
+import AddToAlbumSheet from './AddToAlbumSheet';
 import type { FeedPost } from '../services/posts';
 import { toggleLike, deletePost } from '../services/posts';
+import { fetchAlbumForTrack, removeTrackFromAlbum, addTrackToAlbum, type AlbumForTrack } from '../services/albums';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import PostReportModal from './PostReportModal';
 import PostLikersSheet from './PostLikersSheet';
@@ -148,6 +150,37 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
   const [likesCount, setLikesCount] = useState(post.likesCount);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [currentAlbum, setCurrentAlbum] = useState<AlbumForTrack | null>(null);
+  const [albumSheetOpen, setAlbumSheetOpen] = useState(false);
+  const [confirmRemoveAlbum, setConfirmRemoveAlbum] = useState(false);
+  const isOwnerOfPost = !!viewerId && viewerId === post.author.id;
+
+  // Fetch current album membership when the context menu is about to open, so
+  // the menu can choose between "Add to album" and "Move/Remove" deterministically.
+  useEffect(() => {
+    if (!contextMenuVisible || !isOwnerOfPost) { return; }
+    let cancelled = false;
+    fetchAlbumForTrack(post.track.id)
+      .then(a => { if (!cancelled) { setCurrentAlbum(a); } })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [contextMenuVisible, isOwnerOfPost, post.track.id]);
+
+  const handleAddOrMoveAlbum = useCallback(() => {
+    setAlbumSheetOpen(true);
+  }, []);
+  const handleRemoveAlbum = useCallback(() => {
+    setConfirmRemoveAlbum(true);
+  }, []);
+  const confirmRemoveAlbumNow = useCallback(async () => {
+    setConfirmRemoveAlbum(false);
+    try {
+      await removeTrackFromAlbum(post.track.id);
+      setCurrentAlbum(null);
+    } catch {
+      // TODO: surface toast
+    }
+  }, [post.track.id]);
   const [likersOpen, setLikersOpen] = useState(false);
 
   const trackInfoForMenu = useMemo((): NowPlayingInfo => {
@@ -454,6 +487,10 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           postAuthorId={post.author.id}
           onReportPost={() => setReportOpen(true)}
           onDeletePost={() => setConfirmDelete(true)}
+          currentAlbumTitle={currentAlbum?.title ?? null}
+          onAddToAlbum={isOwnerOfPost ? handleAddOrMoveAlbum : undefined}
+          onMoveToAlbum={isOwnerOfPost ? handleAddOrMoveAlbum : undefined}
+          onRemoveFromAlbum={isOwnerOfPost ? handleRemoveAlbum : undefined}
           disablePlaybackActions
         />
 
@@ -758,6 +795,42 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
         postAuthorId={post.author.id}
         onReportPost={() => setReportOpen(true)}
         onDeletePost={() => setConfirmDelete(true)}
+        currentAlbumTitle={currentAlbum?.title ?? null}
+        onAddToAlbum={isOwnerOfPost ? handleAddOrMoveAlbum : undefined}
+        onMoveToAlbum={isOwnerOfPost ? handleAddOrMoveAlbum : undefined}
+        onRemoveFromAlbum={isOwnerOfPost ? handleRemoveAlbum : undefined}
+      />
+
+      {/* Album-management sheets owned by PostCard so they outlive the
+          TrackContextMenu modal closing. The sheet handles Add and Move with
+          the same UX — picking from the list moves the track regardless of
+          where it was, because `move = remove + add` and we do it in two
+          steps via addTrackToAlbum (which rejects on uniqueness collision —
+          so we always remove first when moving). */}
+      <AddToAlbumSheet
+        visible={albumSheetOpen}
+        mode="pick"
+        onClose={() => setAlbumSheetOpen(false)}
+        onPicked={async album => {
+          try {
+            if (currentAlbum) { await removeTrackFromAlbum(post.track.id); }
+            await addTrackToAlbum(album.id, post.track.id);
+            setCurrentAlbum({ albumId: album.id, title: album.title, coverArtUrl: album.coverArtUrl });
+          } catch {
+            // TODO: surface toast
+          }
+        }}
+      />
+
+      <ConfirmActionModal
+        visible={confirmRemoveAlbum}
+        title="Remove from album?"
+        message={`This track will leave "${currentAlbum?.title ?? 'the album'}". It stays on your profile.`}
+        confirmLabel="Remove from album"
+        tone="destructive"
+        glyph="⊖"
+        onCancel={() => setConfirmRemoveAlbum(false)}
+        onConfirm={confirmRemoveAlbumNow}
       />
 
       <PostReportModal

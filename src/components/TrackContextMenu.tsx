@@ -37,6 +37,17 @@ export type TrackContextMenuProps = {
    * queueing it would be misleading.
    */
   disablePlaybackActions?: boolean;
+  /**
+   * Creator-only album actions. The parent fetches the current album membership
+   * (typically via `fetchAlbumForTrack`) and passes it in; the menu decides
+   * which action to show. All three callbacks open the appropriate UI in the
+   * parent (album picker sheet for Add/Move, confirm modal for Remove) since
+   * those need to outlive this Modal closing.
+   */
+  currentAlbumTitle?: string | null;
+  onAddToAlbum?: (track: NowPlayingInfo) => void;
+  onMoveToAlbum?: (track: NowPlayingInfo) => void;
+  onRemoveFromAlbum?: (track: NowPlayingInfo) => void;
 };
 
 type MenuItem = {
@@ -67,6 +78,10 @@ export default function TrackContextMenu({
   postId,
   postAuthorId,
   disablePlaybackActions = false,
+  currentAlbumTitle,
+  onAddToAlbum,
+  onMoveToAlbum,
+  onRemoveFromAlbum,
 }: TrackContextMenuProps) {
   const insets = useSafeAreaInsets();
 
@@ -77,6 +92,19 @@ export default function TrackContextMenu({
   const items: MenuItem[] = disablePlaybackActions
     ? BASE_MENU_ITEMS.filter(i => i.id === 'go-to-artist')
     : [...BASE_MENU_ITEMS];
+  // Creator-only album actions. The DB invariant (one album per track) is
+  // enforced by `album_tracks_one_album_per_track` — so the UI shows EITHER
+  // Add OR Move + Remove, never all three.
+  if (isOwner) {
+    if (currentAlbumTitle && onMoveToAlbum) {
+      items.push({ id: 'move-to-album', label: 'Move to another album', icon: 'disc' });
+    } else if (!currentAlbumTitle && onAddToAlbum) {
+      items.push({ id: 'add-to-album', label: 'Add to album', icon: 'disc' });
+    }
+    if (currentAlbumTitle && onRemoveFromAlbum) {
+      items.push({ id: 'remove-from-album', label: 'Remove from album', icon: 'minusCircle' });
+    }
+  }
   if (postId && onReportPost && !isOwner) {
     items.push({ id: 'report-post', label: 'Report post', icon: 'flag' });
   }
@@ -103,6 +131,15 @@ export default function TrackContextMenu({
       case 'go-to-artist':
         onGoToArtist?.(track.authorId);
         break;
+      case 'add-to-album':
+        onAddToAlbum?.(track);
+        break;
+      case 'move-to-album':
+        onMoveToAlbum?.(track);
+        break;
+      case 'remove-from-album':
+        onRemoveFromAlbum?.(track);
+        break;
       case 'report-post':
         if (postId) { onReportPost?.(postId); }
         break;
@@ -110,7 +147,7 @@ export default function TrackContextMenu({
         if (postId) { onDeletePost?.(postId); }
         break;
     }
-  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onReportPost, onDeletePost, postId]);
+  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
 
   if (!track) { return null; }
 

@@ -26,6 +26,7 @@ import ClipRangeSlider from './ClipRangeSlider';
 import QueueList from './QueueList';
 import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
+import { fetchAlbumForTrack, type AlbumForTrack } from '../services/albums';
 import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
 import CommentsSheet from './CommentsSheet';
 import PostLikersSheet from './PostLikersSheet';
@@ -447,10 +448,12 @@ function InfoContent({
   onLikesPress: (postId: string) => void;
   trackPlaysTotal: number;
 }) {
-  const { setNowPlaying } = usePlayback();
+  const { setNowPlaying, closeFullScreenPlayer } = usePlayback();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const effective = getEffectivePost(nowPlaying);
   const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [album, setAlbum] = useState<AlbumForTrack | null>(null);
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(nowPlaying.likesCount);
 
@@ -462,6 +465,17 @@ function InfoContent({
       .then(data => { if (!cancelled) { setCollabs(data); } })
       .catch(() => {})
       .finally(() => { if (!cancelled) { setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [nowPlaying.trackId]);
+
+  // Fetch album membership for the "Go to album" row in the Info card. Falls
+  // back to null (row hidden) when the track is not in any album, or on error.
+  useEffect(() => {
+    let cancelled = false;
+    setAlbum(null);
+    fetchAlbumForTrack(nowPlaying.trackId)
+      .then(data => { if (!cancelled) { setAlbum(data); } })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [nowPlaying.trackId]);
 
@@ -516,14 +530,45 @@ function InfoContent({
       contentContainerStyle={infoSt.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Artist row ── */}
-      <View style={infoSt.artistRow}>
+      {/* ── Artist row — tap minimizes the player then pushes UserProfile. ── */}
+      <TouchableOpacity
+        style={infoSt.artistRow}
+        activeOpacity={0.75}
+        onPress={() => {
+          closeFullScreenPlayer();
+          navigation.dispatch(StackActions.push('UserProfile', { userId: nowPlaying.authorId }));
+        }}
+      >
         <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
         <View style={infoSt.artistMeta}>
           <Text style={infoSt.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
           <Text style={infoSt.artistHandle} numberOfLines={1}>@{nowPlaying.authorUsername}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
+
+      {/* ── Album row (hidden when track is not in any album) ── */}
+      {album ? (
+        <TouchableOpacity
+          style={infoSt.albumRow}
+          activeOpacity={0.75}
+          onPress={() => {
+            // Minimize the full-screen player back to the floating pill before
+            // pushing so the destination screen is what the user sees and
+            // playback continues uninterrupted. Matches handleNavigateToUser.
+            closeFullScreenPlayer();
+            navigation.dispatch(StackActions.push('AlbumDetail', { albumId: album.albumId, albumTitle: album.title }));
+          }}
+        >
+          <View style={infoSt.albumDisc}>
+            <Icon name="disc" size={16} color={COLORS.white} />
+          </View>
+          <View style={infoSt.albumMeta}>
+            <Text style={infoSt.albumLabel}>ALBUM</Text>
+            <Text style={infoSt.albumTitle} numberOfLines={1}>{album.title}</Text>
+          </View>
+          <Icon name="forward" size={18} color={COLORS.purpleLight} />
+        </TouchableOpacity>
+      ) : null}
 
       {/* ── Collaborators ── */}
       {loading ? (
@@ -608,6 +653,22 @@ const infoSt = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
 
   artistRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
+  albumRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
+    borderRadius: 14, marginBottom: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: 'rgba(167,139,250,0.4)',
+  },
+  albumDisc: {
+    width: 36, height: 36, borderRadius: 8,
+    backgroundColor: COLORS.purple,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: COLORS.purple, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
+  },
+  albumMeta: { flex: 1, minWidth: 0 },
+  albumLabel: { color: COLORS.purpleLight, fontSize: 10, fontWeight: '700', letterSpacing: 1.4 },
+  albumTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700', marginTop: 1 },
   artistMeta: { flex: 1, minWidth: 0 },
   artistName: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
   artistHandle: { color: COLORS.textMuted, fontSize: 13, marginTop: 2 },

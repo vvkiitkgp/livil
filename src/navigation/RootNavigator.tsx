@@ -11,6 +11,10 @@ import StoryViewerScreen from '../screens/main/StoryViewerScreen';
 import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
 import UserProfileScreen from '../screens/main/UserProfileScreen';
 import PlaylistScreen from '../screens/main/PlaylistScreen';
+import AlbumDetailScreen from '../screens/main/AlbumDetailScreen';
+import CreateAlbumScreen from '../screens/main/CreateAlbumScreen';
+import EditAlbumScreen from '../screens/main/EditAlbumScreen';
+import EditPlaylistScreen from '../screens/main/EditPlaylistScreen';
 import FollowingScreen from '../screens/main/FollowingScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
@@ -289,6 +293,40 @@ export default function RootNavigator() {
               component={PlaylistScreen}
               options={{
                 animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="AlbumDetail"
+              component={AlbumDetailScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="CreateAlbum"
+              component={CreateAlbumScreen}
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+              }}
+            />
+            <Stack.Screen
+              name="EditAlbum"
+              component={EditAlbumScreen}
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+                gestureEnabled: true,
+              }}
+            />
+            <Stack.Screen
+              name="EditPlaylist"
+              component={EditPlaylistScreen}
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+                gestureEnabled: true,
               }}
             />
             <Stack.Screen

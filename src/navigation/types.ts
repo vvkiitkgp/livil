@@ -28,6 +28,7 @@ export type RootStackParamList = {
     highlightCommentId?: string;
   };
   PlaylistDetail: { playlistId: string; playlistName: string };
+  EditPlaylist: { playlistId: string };
   Following: undefined;
   RecentlyPlayed: undefined;
   EditProfile: undefined;
@@ -39,6 +40,14 @@ export type RootStackParamList = {
       coverArtUrl: string | null;
     };
   } | undefined;
+  // ── Albums
+  AlbumDetail: { albumId: string; albumTitle: string };
+  CreateAlbum: {
+    // When upload flow kicks off album creation, the new track id is passed in
+    // so it can be auto-tagged into the freshly-created album.
+    initialTrackId?: string;
+  } | undefined;
+  EditAlbum: { albumId: string };
   // ── Chat
   Inbox: undefined;
   Conversation: { conversationId: string; title: string; kind?: 'dm' | 'group' };

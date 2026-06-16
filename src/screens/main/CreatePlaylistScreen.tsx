@@ -15,10 +15,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
-import { fetchLikedPosts, createPlaylist, addPostToPlaylist, type PlaylistItem } from '../../services/playlists';
+import { fetchLikedPosts, createPlaylist, addPostToPlaylist, type PlaylistItem, type PlaylistVisibility } from '../../services/playlists';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
+import VisibilitySelector from '../../components/VisibilitySelector';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreatePlaylist'>;
 
@@ -83,6 +84,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
   const initialPost = route.params?.initialPost;
 
   const [name, setName] = useState('');
+  const [visibility, setVisibility] = useState<PlaylistVisibility>('public');
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     initialPost ? new Set([initialPost.postId]) : new Set(),
@@ -137,7 +139,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
     if (!trimmed || creating) { return; }
     setCreating(true);
     try {
-      const playlist = await createPlaylist(trimmed);
+      const playlist = await createPlaylist(trimmed, visibility);
       const toAdd = [...selectedIds];
       await Promise.all(toAdd.map(postId => addPostToPlaylist(playlist.id, postId)));
       navigation.goBack();
@@ -146,7 +148,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
     } finally {
       setCreating(false);
     }
-  }, [name, selectedIds, creating, navigation]);
+  }, [name, visibility, selectedIds, creating, navigation]);
 
   const canCreate = name.trim().length > 0;
 
@@ -174,6 +176,12 @@ export default function CreatePlaylistScreen({ route }: Props) {
           returnKeyType="done"
           maxLength={80}
         />
+      </View>
+
+      {/* Visibility */}
+      <View style={styles.visSection}>
+        <Text style={styles.nameLabel}>Visibility</Text>
+        <VisibilitySelector value={visibility} onChange={setVisibility} />
       </View>
 
       {/* Suggestions header */}
@@ -294,6 +302,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 8,
+  },
+  visSection: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 4,
   },
   nameLabel: {
     color: COLORS.textSecondary,

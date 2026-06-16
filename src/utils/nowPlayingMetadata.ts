@@ -10,8 +10,20 @@ export type NowPlayingMetadata = {
   title: string;
   artist: string;
   subtitle: string;
+  /**
+   * Album name surfaced ONLY in the OS / car MediaSession (Android media3
+   * MediaMetadata.albumTitle, iOS MPMediaItemPropertyAlbumTitle). Never read
+   * by in-app UI — the Info card already hides itself when there is no
+   * album. We default to `"Single"` when the track has no album so car HUs
+   * never show a blank field.
+   */
+  album: string;
   imageUri?: string;
 };
+
+/** What we display in the car when a track has no album. Music-industry
+ *  convention for an unaffiliated release. */
+export const ALBUM_DEFAULT_FOR_METADATA = 'Single';
 
 /**
  * Builds the lock-screen / notification metadata for the currently-playing track.
@@ -28,6 +40,9 @@ export function buildNowPlayingMetadata(info: NowPlayingInfo): NowPlayingMetadat
     title: info.title,
     artist: info.artistName,
     subtitle: info.artistName,
+    // null AND undefined both fall back — see the NowPlayingInfo.albumTitle
+    // tri-state comment.
+    album: info.albumTitle && info.albumTitle.length > 0 ? info.albumTitle : ALBUM_DEFAULT_FOR_METADATA,
     ...(imageUri ? { imageUri } : {}),
   };
 }

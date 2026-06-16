@@ -1,3 +1,37 @@
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/api/Source.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/api/Source.kt
+index e9cf5ab..a37f084 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/api/Source.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/api/Source.kt
+@@ -129,6 +129,13 @@ class Source {
+         /** Metadata artist */
+         var artist: String? = null
+ 
++        /**
++         * Metadata album — surfaced via MediaMetadata.albumTitle so Bluetooth
++         * car HUs (AVRCP), Wear OS, Assistant, and the lock screen show the
++         * album the current track belongs to. Livil-specific addition.
++         */
++        var album: String? = null
++
+         /** image uri to display */
+         var imageUri: Uri? = null
+ 
+@@ -137,6 +144,7 @@ class Source {
+             private const val PROP_SRC_METADATA_SUBTITLE = "subtitle"
+             private const val PROP_SRC_METADATA_DESCRIPTION = "description"
+             private const val PROP_SRC_METADATA_ARTIST = "artist"
++            private const val PROP_SRC_METADATA_ALBUM = "album"
+             private const val PROP_SRC_METADATA_IMAGE_URI = "imageUri"
+ 
+             /** parse metadata object */
+@@ -148,6 +156,7 @@ class Source {
+                     metadata.subtitle = safeGetString(src, PROP_SRC_METADATA_SUBTITLE)
+                     metadata.description = safeGetString(src, PROP_SRC_METADATA_DESCRIPTION)
+                     metadata.artist = safeGetString(src, PROP_SRC_METADATA_ARTIST)
++                    metadata.album = safeGetString(src, PROP_SRC_METADATA_ALBUM)
+                     val imageUriString = safeGetString(src, PROP_SRC_METADATA_IMAGE_URI)
+                     try {
+                         metadata.imageUri = Uri.parse(imageUriString)
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
 index 6012932..47c23c1 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
@@ -65,6 +99,20 @@ index 6012932..47c23c1 100644
          }
      }
  
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ConfigurationUtils.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ConfigurationUtils.kt
+index 440e8fc..83303ec 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ConfigurationUtils.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ConfigurationUtils.kt
+@@ -48,6 +48,9 @@ object ConfigurationUtils {
+                 .setSubtitle(metadata.subtitle)
+                 .setDescription(metadata.description)
+                 .setArtist(metadata.artist)
++                // Livil-specific: surface the album title on lock screen / car
++                // (AVRCP), Wear OS, etc. via MediaMetadata.albumTitle.
++                .setAlbumTitle(metadata.album)
+                 .setArtworkUri(metadata.imageUri)
+                 .build()
+         }
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 index e16ac96..23c498a 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
