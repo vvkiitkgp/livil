@@ -5,6 +5,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
 import { backfillTrackDuration } from '../services/tracks';
+import { fetchAlbumForTrack } from '../services/albums';
 import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson, buildMediaSessionStateJson } from '../utils/nowPlayingMetadata';
 import type { RepeatMode } from '../contexts/PlaybackContext';
 
@@ -169,6 +170,29 @@ export default function GlobalAudioPlayer() {
     // No else: GAP is the sole engine now, so it never releases to anyone. A
     // queue item with neither url is a data error — leave the current paused.
   }, [activePostId, queueRef, currentIndexRef, setNowPlaying]);
+
+  // Lazily resolve the album the active track belongs to, then patch it into
+  // `nowPlaying.albumTitle` so the car / lock-screen MediaSession shows the
+  // album name. AlbumDetailScreen pre-fills the field when it builds the
+  // queue — we skip the fetch in that case. For Home / Search / Playlist
+  // queues the field arrives as `undefined`, we fetch once, and store the
+  // result (string or null) so we don't re-query for the same track.
+  useEffect(() => {
+    if (!nowPlaying) { return; }
+    if (nowPlaying.albumTitle !== undefined) { return; }
+    const tId = nowPlaying.trackId;
+    let cancelled = false;
+    fetchAlbumForTrack(tId)
+      .then(album => {
+        if (cancelled) { return; }
+        // Re-read latest nowPlaying via setNowPlaying's value form to avoid a
+        // stale-closure clobber if the user switched tracks mid-fetch.
+        setNowPlaying({ ...nowPlaying, albumTitle: album?.title ?? null });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlaying?.trackId, nowPlaying?.albumTitle]);
 
   const handleLoad = useCallback((data: OnLoadData) => {
     const dur = data.duration ?? 0;

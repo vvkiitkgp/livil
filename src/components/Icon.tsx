@@ -28,6 +28,7 @@ import {
   Check,
   CheckCircle,
   Crown,
+  Disc,
   DotsSixVertical,
   DotsThree,
   Envelope,
@@ -35,6 +36,7 @@ import {
   EyeSlash,
   Faders,
   Flag,
+  Globe,
   Guitar,
   Handshake,
   HandWaving,
@@ -43,7 +45,9 @@ import {
   IconProps as PhProps,
   IconWeight,
   Info,
+  Lock,
   MagnifyingGlass,
+  MinusCircle,
   Microphone,
   MusicNote,
   MusicNotes,
@@ -55,7 +59,7 @@ import {
   PencilSimpleLine,
   PianoKeys,
   Play,
-  Playlist,
+  Playlist as PhPlaylist,
   Plus,
   Prohibit,
   Queue,
@@ -63,10 +67,12 @@ import {
   RepeatOnce,
   ShareNetwork,
   Shuffle,
+  SkipBack,
   SkipForward,
   Star,
   Trash,
   User,
+  UsersThree,
   WarningCircle,
   X,
   XCircle,
@@ -76,20 +82,22 @@ import { COLORS } from '../theme/colors';
 
 export type IconName =
   // playback & transport
-  | 'play' | 'pause' | 'skipForward' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
+  | 'play' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
   | 'share' | 'externalLink' | 'tombstone' | 'crown'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
-  | 'clipStart' | 'clipEnd'
+  | 'clipStart' | 'clipEnd' | 'minusCircle'
   // status & feedback
   | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email'
   // tab bar
   | 'home' | 'search' | 'library' | 'profile'
-  // music notes
-  | 'musicNote' | 'musicNotes'
+  // music notes & albums
+  | 'musicNote' | 'musicNotes' | 'disc' | 'playlist'
+  // visibility
+  | 'public' | 'friends' | 'lock'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
   | 'star' | 'handshake' | 'wave';
@@ -102,6 +110,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   play: [Play, 'fill'],
   pause: [Pause, 'fill'],
   skipForward: [SkipForward, 'fill'],
+  skipBack: [SkipBack, 'fill'],
   repeat: [Repeat, 'bold'],
   repeatOnce: [RepeatOnce, 'bold'],
   shuffle: [Shuffle, 'bold'],
@@ -134,6 +143,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   dragHandle: [DotsSixVertical, 'fill'],
   clipStart: [CaretLineRight, 'bold'],
   clipEnd: [CaretLineLeft, 'bold'],
+  minusCircle: [MinusCircle, 'regular'],
   // status
   check: [Check, 'bold'],
   checkCircle: [CheckCircle, 'fill'],
@@ -145,11 +155,17 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   // tab bar
   home: [House, 'regular'],
   search: [MagnifyingGlass, 'regular'],
-  library: [Playlist, 'regular'],
+  library: [PhPlaylist, 'regular'],
   profile: [User, 'regular'],
-  // music notes
+  // music notes & albums
   musicNote: [MusicNote, 'fill'],
   musicNotes: [MusicNotes, 'fill'],
+  disc: [Disc, 'fill'],
+  playlist: [PhPlaylist, 'regular'],
+  // visibility
+  public: [Globe, 'bold'],
+  friends: [UsersThree, 'fill'],
+  lock: [Lock, 'fill'],
   // roles
   mic: [Microphone, 'fill'],
   piano: [PianoKeys, 'fill'],

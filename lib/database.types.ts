@@ -14,6 +14,144 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_notifications: {
+        Row: {
+          actor_id: string | null
+          agg_count: number
+          agg_key: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          payload: Json
+          post_id: string | null
+          recipient_id: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          actor_id?: string | null
+          agg_count?: number
+          agg_key?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          payload?: Json
+          post_id?: string | null
+          recipient_id: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          actor_id?: string | null
+          agg_count?: number
+          agg_key?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          payload?: Json
+          post_id?: string | null
+          recipient_id?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_notifications_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_notifications_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      album_tracks: {
+        Row: {
+          added_at: string
+          album_id: string
+          position: number
+          track_id: string
+        }
+        Insert: {
+          added_at?: string
+          album_id: string
+          position: number
+          track_id: string
+        }
+        Update: {
+          added_at?: string
+          album_id?: string
+          position?: number
+          track_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "album_tracks_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "album_tracks_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      albums: {
+        Row: {
+          cover_art_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          release_date: string | null
+          title: string
+          uploader_id: string
+        }
+        Insert: {
+          cover_art_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          release_date?: string | null
+          title: string
+          uploader_id: string
+        }
+        Update: {
+          cover_art_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          release_date?: string | null
+          title?: string
+          uploader_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "albums_uploader_id_fkey"
+            columns: ["uploader_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_members: {
         Row: {
           conversation_id: string
@@ -519,24 +657,44 @@ export type Database = {
       }
       playlists: {
         Row: {
+          cover_color: string | null
+          cover_color_2: string | null
+          cover_emoji: string | null
           created_at: string
           id: string
           name: string
           user_id: string
+          visibility: Database["public"]["Enums"]["playlist_visibility"]
         }
         Insert: {
+          cover_color?: string | null
+          cover_color_2?: string | null
+          cover_emoji?: string | null
           created_at?: string
           id?: string
           name: string
           user_id: string
+          visibility?: Database["public"]["Enums"]["playlist_visibility"]
         }
         Update: {
+          cover_color?: string | null
+          cover_color_2?: string | null
+          cover_emoji?: string | null
           created_at?: string
           id?: string
           name?: string
           user_id?: string
+          visibility?: Database["public"]["Enums"]["playlist_visibility"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "playlists_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       post_comment_likes: {
         Row: {
@@ -1057,6 +1215,7 @@ export type Database = {
           duration_seconds: number | null
           id: string
           media_kind: string
+          thumbnail_url: string | null
           title: string
           uploader_id: string
           video_url: string | null
@@ -1070,6 +1229,7 @@ export type Database = {
           duration_seconds?: number | null
           id?: string
           media_kind: string
+          thumbnail_url?: string | null
           title: string
           uploader_id: string
           video_url?: string | null
@@ -1083,6 +1243,7 @@ export type Database = {
           duration_seconds?: number | null
           id?: string
           media_kind?: string
+          thumbnail_url?: string | null
           title?: string
           uploader_id?: string
           video_url?: string | null
@@ -1147,6 +1308,67 @@ export type Database = {
         Args: { other_user_id: string }
         Returns: undefined
       }
+      activity_list: {
+        Args: { p_before?: string; p_limit?: number }
+        Returns: {
+          actor_avatar_url: string
+          actor_display_name: string
+          actor_id: string
+          actor_username: string
+          agg_count: number
+          created_at: string
+          id: string
+          is_read: boolean
+          payload: Json
+          post_cover_art_url: string
+          post_id: string
+          post_title: string
+          type: string
+          updated_at: string
+        }[]
+      }
+      activity_mark_all_read: { Args: never; Returns: undefined }
+      activity_mark_read: { Args: { p_id: string }; Returns: undefined }
+      activity_notify_friend_outcome: {
+        Args: { p_accepted: boolean; p_other_user: string }
+        Returns: string
+      }
+      activity_notify_new_fan: { Args: { p_target: string }; Returns: string }
+      activity_notify_post:
+        | {
+            Args: { p_post_id: string; p_type: string }
+            Returns: {
+              actor_display_name: string
+              agg_count: number
+              notification_id: string
+              recipient_id: string
+              recipient_should_push: boolean
+            }[]
+          }
+        | {
+            Args: {
+              p_comment_id?: string
+              p_comment_text?: string
+              p_post_id: string
+              p_type: string
+            }
+            Returns: {
+              actor_display_name: string
+              agg_count: number
+              notification_id: string
+              recipient_id: string
+              recipient_should_push: boolean
+            }[]
+          }
+      activity_record_play: {
+        Args: { p_post_id: string }
+        Returns: {
+          milestone_recipient: string
+          milestone_threshold: number
+          views_count: number
+        }[]
+      }
+      activity_unread_count: { Args: never; Returns: number }
       add_star: { Args: { target_user_id: string }; Returns: undefined }
       assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
       broadcast_jam_state: {
@@ -1270,7 +1492,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      playlist_visibility: "public" | "friends" | "private"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1397,6 +1619,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      playlist_visibility: ["public", "friends", "private"],
+    },
   },
 } as const

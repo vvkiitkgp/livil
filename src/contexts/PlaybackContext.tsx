@@ -45,6 +45,20 @@ export type NowPlayingInfo = {
   originalViewerHasLiked?: boolean;
   // Known duration at play-start (from prior onLoad); 0 if not yet loaded.
   knownDurationSec: number;
+  /**
+   * Album this track belongs to, when known. AlbumDetailScreen pre-fills this
+   * when building the queue (instant correctness); for other queues
+   * GlobalAudioPlayer lazily fetches it via `fetchAlbumForTrack` whenever the
+   * trackId changes and patches it back here. Surfaced in the lock-screen /
+   * Bluetooth / car MediaSession metadata (with a "Single" fallback when null
+   * — the fallback never leaks into in-app UI; see `buildNowPlayingMetadata`).
+   *
+   * Tri-state semantics:
+   *   undefined — not yet looked up (treat as null in UI; metadata falls back to "Single")
+   *   null      — looked up, track is not in any album
+   *   string    — the album's display title
+   */
+  albumTitle?: string | null;
 };
 
 export type PlayerHandlers = {

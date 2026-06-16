@@ -35,6 +35,10 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
+import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
+import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
+import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileGridCard from '../../components/ProfileGridCard';
 import type { RootStackParamList } from '../../navigation/types';
 
 type ProfileRow = {
@@ -61,8 +65,6 @@ function normalizeUrl(url: string): string {
 
 const VISIBLE_LINK_CHIPS = 5;
 
-type Tab = 'posts' | 'creator';
-
 const PAGE_SIZE = 10;
 
 // Sentinel item type so we can render the tab bar as the first sticky row of
@@ -71,7 +73,20 @@ type ListItem =
   | { kind: 'tabs'; key: string }
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
-  | { kind: 'post'; post: FeedPost; key: string };
+  | { kind: 'post'; post: FeedPost; key: string }
+  | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
+  | { kind: 'playlist-row'; a: UserPlaylist; b: UserPlaylist | null; key: string };
+
+// Group an array into pairs for 2-column grid rendering inside a FlatList
+// that's otherwise single-column (so it can sit alongside post rows and the
+// sticky tab-bar sentinel).
+function pairs<T>(arr: T[]): Array<[T, T | null]> {
+  const out: Array<[T, T | null]> = [];
+  for (let i = 0; i < arr.length; i += 2) {
+    out.push([arr[i]!, arr[i + 1] ?? null]);
+  }
+  return out;
+}
 
 function avatarInitials(profile: ProfileRow | null): string {
   if (!profile) {return '?';}
@@ -135,8 +150,11 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
-  const [tab, setTab] = useState<Tab>('posts');
+  const [tab, setTab] = useState<ProfileTab>('reposts');
+  const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [albums, setAlbums] = useState<AlbumSummary[]>([]);
+  const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -224,9 +242,12 @@ export default function ProfileScreen() {
   }, []);
 
   const fetchPosts = useCallback(
-    async (userId: string, currentTab: Tab, before?: string) => {
+    async (userId: string, currentTab: ProfileTab, before?: string) => {
+      const kind: 'upload' | 'repost' | undefined = currentTab === 'reposts' ? 'repost'
+        : currentTab === 'uploads' ? 'upload'
+        : undefined;
       return listPostsForUser(userId, {
-        kind: currentTab === 'creator' ? 'upload' : undefined,
+        kind,
         limit: PAGE_SIZE,
         before,
       });
@@ -234,8 +255,25 @@ export default function ProfileScreen() {
     [],
   );
 
+  // Cheap count queries so the tab bar can decide which tabs to render
+  // (Uploads + Albums auto-hide at 0).
+  const fetchTabCounts = useCallback(async (userId: string): Promise<TabCounts> => {
+    const [reposts, uploads, albumsRes, playlistsRes] = await Promise.all([
+      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).eq('kind', 'repost'),
+      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).eq('kind', 'upload'),
+      supabase.from('albums').select('id', { count: 'exact', head: true }).eq('uploader_id', userId),
+      supabase.from('playlists').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+    ]);
+    return {
+      reposts: reposts.count ?? 0,
+      uploads: uploads.count ?? 0,
+      albums: albumsRes.count ?? 0,
+      playlists: playlistsRes.count ?? 0,
+    };
+  }, []);
+
   const refresh = useCallback(
-    async (currentTab: Tab) => {
+    async (currentTab: ProfileTab) => {
       setError('');
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -244,15 +282,26 @@ export default function ProfileScreen() {
         }
         const me = userData.user.id;
         await fetchProfileAndStats(me);
-        const fresh = await fetchPosts(me, currentTab);
-        setPosts(fresh);
-        setEndReached(fresh.length < PAGE_SIZE);
+        const counts = await fetchTabCounts(me);
+        setTabCounts(counts);
+
+        if (currentTab === 'reposts' || currentTab === 'uploads') {
+          const fresh = await fetchPosts(me, currentTab);
+          setPosts(fresh);
+          setEndReached(fresh.length < PAGE_SIZE);
+        } else if (currentTab === 'albums') {
+          setAlbums(await fetchAlbumsByUser(me));
+          setEndReached(true);
+        } else {
+          setPlaylists(await fetchPlaylistsForUser(me));
+          setEndReached(true);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load profile.';
         setError(message);
       }
     },
-    [fetchPosts, fetchProfileAndStats],
+    [fetchPosts, fetchProfileAndStats, fetchTabCounts],
   );
 
   // Initial load.
@@ -294,11 +343,13 @@ export default function ProfileScreen() {
 
   // Tab change → reload first page.
   const handleTabChange = useCallback(
-    async (next: Tab) => {
+    async (next: ProfileTab) => {
       if (next === tab) {return;}
       playback.pauseAll();
       setTab(next);
       setPosts([]);
+      setAlbums([]);
+      setPlaylists([]);
       setEndReached(false);
       setLoading(true);
       await refresh(next);
@@ -316,6 +367,7 @@ export default function ProfileScreen() {
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) {return;}
+    if (tab !== 'reposts' && tab !== 'uploads') { return; }
     setLoadingMore(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -350,49 +402,48 @@ export default function ProfileScreen() {
     setSignOutOpen(false);
   }, [playback, signOutBusy]);
 
-  // Build the list data: a sentinel item for the sticky tab bar, then either
-  // posts or an empty/loading placeholder. We can't lean on ListEmptyComponent
-  // because the tab-bar sentinel always keeps the list non-empty.
+  // Build the list data: a sentinel item for the sticky tab bar, then content
+  // for the active tab (posts list / album grid / playlist grid) or an
+  // empty/loading placeholder. We can't lean on ListEmptyComponent because the
+  // tab-bar sentinel always keeps the list non-empty.
   const listData = useMemo<ListItem[]>(() => {
     const head: ListItem = { kind: 'tabs', key: '__tabs__' };
-    const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
-    if (visiblePosts.length > 0) {
-      return [head, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
-    }
     if (loading) {
       return [head, { kind: 'loading', key: '__loading__' }];
     }
-    return [head, { kind: 'empty', key: '__empty__' }];
-  }, [posts, loading, deletedIds]);
+    if (tab === 'reposts' || tab === 'uploads') {
+      const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
+      if (visiblePosts.length > 0) {
+        return [head, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
+      }
+      return [head, { kind: 'empty', key: '__empty__' }];
+    }
+    if (tab === 'albums') {
+      if (albums.length === 0) { return [head, { kind: 'empty', key: '__empty__' }]; }
+      return [head, ...pairs(albums).map<ListItem>(([a, b], i) => ({
+        kind: 'album-row', a, b, key: `album-row-${i}`,
+      }))];
+    }
+    // playlists
+    if (playlists.length === 0) { return [head, { kind: 'empty', key: '__empty__' }]; }
+    return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
+      kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
+    }))];
+  }, [tab, posts, albums, playlists, loading, deletedIds]);
+
+  const goToAlbum = useCallback((a: AlbumSummary) => {
+    navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
+  }, [navigation]);
+
+  const goToPlaylist = useCallback((p: UserPlaylist) => {
+    navigation.navigate('PlaylistDetail', { playlistId: p.id, playlistName: p.name });
+  }, [navigation]);
 
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
         return (
-          <View style={styles.tabBar}>
-            <TouchableOpacity
-              style={styles.tabButton}
-              activeOpacity={0.7}
-              onPress={() => handleTabChange('posts')}
-            >
-              <Text style={[styles.tabLabel, tab === 'posts' && styles.tabLabelActive]}>All</Text>
-              <View
-                style={[styles.tabIndicator, tab === 'posts' && styles.tabIndicatorActive]}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.tabButton}
-              activeOpacity={0.7}
-              onPress={() => handleTabChange('creator')}
-            >
-              <Text style={[styles.tabLabel, tab === 'creator' && styles.tabLabelActive]}>
-                Uploads
-              </Text>
-              <View
-                style={[styles.tabIndicator, tab === 'creator' && styles.tabIndicatorActive]}
-              />
-            </TouchableOpacity>
-          </View>
+          <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />
         );
       }
       if (item.kind === 'loading') {
@@ -403,19 +454,73 @@ export default function ProfileScreen() {
         );
       }
       if (item.kind === 'empty') {
+        const tabEmpty = {
+          reposts: { title: 'No reposts yet', body: 'Repost a track from the player and it lands here.' },
+          uploads: { title: 'No uploads yet', body: 'Upload a track and it will land here as a Creator post.' },
+          albums: { title: 'No albums yet', body: 'Group your tracks into an album to ship a release.' },
+          playlists: { title: 'No playlists yet', body: 'Add posts from the player using the + button to start your first.' },
+        }[tab];
         return (
           <View style={styles.emptyWrap}>
             <View style={styles.emptyArt}>
               <Icon name="musicNote" size={40} color={COLORS.purpleLight} />
             </View>
-            <Text style={styles.emptyTitle}>
-              {tab === 'creator' ? 'No uploads yet' : 'Nothing here yet'}
-            </Text>
-            <Text style={styles.emptyBody}>
-              {tab === 'creator'
-                ? 'Upload a track and it will land here as a Creator post.'
-                : 'Upload your first track or repost something you love.'}
-            </Text>
+            <Text style={styles.emptyTitle}>{tabEmpty.title}</Text>
+            <Text style={styles.emptyBody}>{tabEmpty.body}</Text>
+          </View>
+        );
+      }
+      if (item.kind === 'album-row') {
+        return (
+          <View style={styles.gridRow}>
+            <ProfileGridCard
+              title={item.a.title}
+              subtitle={`${item.a.trackCount} ${item.a.trackCount === 1 ? 'track' : 'tracks'}${item.a.releaseYear ? ` · ${item.a.releaseYear}` : ''}`}
+              coverArtUrl={item.a.coverArtUrl}
+              index={0}
+              onPress={() => goToAlbum(item.a)}
+            />
+            {item.b ? (
+              <ProfileGridCard
+                title={item.b.title}
+                subtitle={`${item.b.trackCount} ${item.b.trackCount === 1 ? 'track' : 'tracks'}${item.b.releaseYear ? ` · ${item.b.releaseYear}` : ''}`}
+                coverArtUrl={item.b.coverArtUrl}
+                index={1}
+                onPress={() => goToAlbum(item.b!)}
+              />
+            ) : <View style={{ flex: 1 }} />}
+          </View>
+        );
+      }
+      if (item.kind === 'playlist-row') {
+        return (
+          <View style={styles.gridRow}>
+            <ProfileGridCard
+              title={item.a.name}
+              subtitle={`${item.a.postCount} ${item.a.postCount === 1 ? 'post' : 'posts'}`}
+              coverArtUrl={item.a.coverArtUrl}
+              coverEmoji={item.a.coverEmoji}
+              coverColor={item.a.coverColor}
+              coverColor2={item.a.coverColor2}
+              visibility={item.a.visibility}
+              showVisibilityChip
+              index={0}
+              onPress={() => goToPlaylist(item.a)}
+            />
+            {item.b ? (
+              <ProfileGridCard
+                title={item.b.name}
+                subtitle={`${item.b.postCount} ${item.b.postCount === 1 ? 'post' : 'posts'}`}
+                coverArtUrl={item.b.coverArtUrl}
+                coverEmoji={item.b.coverEmoji}
+                coverColor={item.b.coverColor}
+                coverColor2={item.b.coverColor2}
+                visibility={item.b.visibility}
+                showVisibilityChip
+                index={1}
+                onPress={() => goToPlaylist(item.b!)}
+              />
+            ) : <View style={{ flex: 1 }} />}
           </View>
         );
       }
@@ -428,7 +533,7 @@ export default function ProfileScreen() {
         />
       );
     },
-    [handleTabChange, tab, visibleIds, comments, handlePostDeleted],
+    [tab, tabCounts, handleTabChange, visibleIds, comments, handlePostDeleted, goToAlbum, goToPlaylist],
   );
 
   const renderHeader = useCallback(() => {
@@ -923,6 +1028,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 8,
     elevation: 4,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   emptyWrap: {
     paddingHorizontal: 32,

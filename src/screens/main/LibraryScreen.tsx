@@ -17,6 +17,7 @@ import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
+import EmojiCoverArt from '../../components/EmojiCoverArt';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
 import {
   getLikedPostCount,
@@ -24,6 +25,8 @@ import {
   fetchUserPlaylists,
   type UserPlaylist,
 } from '../../services/playlists';
+import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
+import { supabase } from '../../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 
 const FALLBACK_COVER_ACCENTS: [string, string][] = [
@@ -81,6 +84,9 @@ export default function LibraryScreen() {
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [playlistsLoading, setPlaylistsLoading] = useState(true);
 
+  const [albums, setAlbums] = useState<AlbumSummary[]>([]);
+  const [albumsLoading, setAlbumsLoading] = useState(true);
+
   const [refreshing, setRefreshing] = useState(false);
 
   const loadRecent = useCallback(async () => {
@@ -113,11 +119,28 @@ export default function LibraryScreen() {
     }
   }, []);
 
+  // Albums section appears for creators only — we silently fetch whatever the
+  // viewer has; listeners with zero albums will see no section at all.
+  const loadAlbums = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getUser();
+      const me = data?.user?.id;
+      if (!me) { setAlbums([]); return; }
+      const list = await fetchAlbumsByUser(me);
+      setAlbums(list);
+    } catch {
+      // non-critical — fall back to no albums (section just hides)
+    } finally {
+      setAlbumsLoading(false);
+    }
+  }, []);
+
   // Initial load
   useEffect(() => {
     void loadRecent();
     void loadPlaylists();
-  }, [loadRecent, loadPlaylists]);
+    void loadAlbums();
+  }, [loadRecent, loadPlaylists, loadAlbums]);
 
   // Refresh playlists whenever the tab comes back into focus (e.g. after creating one)
   const isMounted = useRef(false);
@@ -128,16 +151,18 @@ export default function LibraryScreen() {
         return;
       }
       void loadPlaylists();
-    }, [loadPlaylists]),
+      void loadAlbums();
+    }, [loadPlaylists, loadAlbums]),
   );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     setRecentLoading(true);
     setPlaylistsLoading(true);
-    await Promise.all([loadRecent(), loadPlaylists()]);
+    setAlbumsLoading(true);
+    await Promise.all([loadRecent(), loadPlaylists(), loadAlbums()]);
     setRefreshing(false);
-  }, [loadRecent, loadPlaylists]);
+  }, [loadRecent, loadPlaylists, loadAlbums]);
 
   const goToLiked = useCallback(() => {
     navigation.dispatch(StackActions.push('PlaylistDetail', { playlistId: 'liked', playlistName: 'Liked Songs' }));
@@ -157,6 +182,14 @@ export default function LibraryScreen() {
 
   const goToCreatePlaylist = useCallback(() => {
     navigation.dispatch(StackActions.push('CreatePlaylist'));
+  }, [navigation]);
+
+  const goToAlbum = useCallback((album: AlbumSummary) => {
+    navigation.dispatch(StackActions.push('AlbumDetail', { albumId: album.id, albumTitle: album.title }));
+  }, [navigation]);
+
+  const goToCreateAlbum = useCallback(() => {
+    navigation.dispatch(StackActions.push('CreateAlbum'));
   }, [navigation]);
 
   return (
@@ -225,6 +258,63 @@ export default function LibraryScreen() {
           </ScrollView>
         )}
 
+        {/* Albums — always render the section header + a "+ New" affordance so
+            creators can start their first album. Once Phase 4 (Upload row +
+            creator-only gating) lands, this falls back to "only show when
+            viewer is a creator" — but for now anyone can spin one up to test
+            the flow. */}
+        {!albumsLoading ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Albums</Text>
+              <TouchableOpacity onPress={goToCreateAlbum} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.sectionLink}>+ New</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentRow}
+            >
+              {albums.map((album, index) => {
+                const accents = FALLBACK_COVER_ACCENTS[index % FALLBACK_COVER_ACCENTS.length]!;
+                const initials = album.title.trim().charAt(0).toUpperCase() || '♪';
+                return (
+                  <Pressable
+                    key={album.id}
+                    style={styles.recentCard}
+                    onPress={() => goToAlbum(album)}
+                  >
+                    <View style={[styles.recentCover, { backgroundColor: accents[0] }]}>
+                      <View style={[styles.recentCoverAccent, { backgroundColor: accents[1] }]} />
+                      {album.coverArtUrl ? (
+                        <Image source={{ uri: album.coverArtUrl }} style={styles.recentCoverImg} />
+                      ) : (
+                        <Text style={styles.recentCoverInitial}>{initials}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.recentTitle} numberOfLines={1}>{album.title}</Text>
+                    <Text style={styles.recentArtist} numberOfLines={1}>
+                      {album.trackCount} {album.trackCount === 1 ? 'track' : 'tracks'}
+                      {album.releaseYear ? ` · ${album.releaseYear}` : ''}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {/* "New album" tile — always the last card in the strip */}
+              <Pressable style={styles.recentCard} onPress={goToCreateAlbum}>
+                <View style={[styles.recentCover, styles.newAlbumCover]}>
+                  <Icon name="add" size={32} color={COLORS.purpleLight} />
+                </View>
+                <Text style={styles.recentTitle} numberOfLines={1}>New album</Text>
+                <Text style={styles.recentArtist} numberOfLines={1}>
+                  {albums.length === 0 ? 'Start with your tracks' : 'Tag more of yours'}
+                </Text>
+              </Pressable>
+            </ScrollView>
+          </>
+        ) : null}
+
         {/* Playlists */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Playlists</Text>
@@ -273,6 +363,7 @@ export default function LibraryScreen() {
             {playlists.map((playlist, index) => {
               const accents = FALLBACK_COVER_ACCENTS[(index + 2) % FALLBACK_COVER_ACCENTS.length]!;
               const initials = playlist.name.trim().charAt(0).toUpperCase() || '♪';
+              const hasEmojiCover = !!playlist.coverEmoji && !!playlist.coverColor;
               return (
                 <TouchableOpacity
                   key={playlist.id}
@@ -280,13 +371,24 @@ export default function LibraryScreen() {
                   onPress={() => goToPlaylist(playlist)}
                   activeOpacity={0.75}
                 >
-                  <View style={[styles.thumb, { backgroundColor: accents[0], overflow: 'hidden' }]}>
-                    {playlist.coverArtUrl ? (
-                      <Image source={{ uri: playlist.coverArtUrl }} style={StyleSheet.absoluteFill} />
-                    ) : (
-                      <Text style={styles.thumbText}>{initials}</Text>
-                    )}
-                  </View>
+                  {hasEmojiCover ? (
+                    <EmojiCoverArt
+                      emoji={playlist.coverEmoji}
+                      color={playlist.coverColor}
+                      color2={playlist.coverColor2}
+                      size={52}
+                      borderRadius={12}
+                      gradientId={`lib_${playlist.id}`}
+                    />
+                  ) : (
+                    <View style={[styles.thumb, { backgroundColor: accents[0], overflow: 'hidden' }]}>
+                      {playlist.coverArtUrl ? (
+                        <Image source={{ uri: playlist.coverArtUrl }} style={StyleSheet.absoluteFill} />
+                      ) : (
+                        <Text style={styles.thumbText}>{initials}</Text>
+                      )}
+                    </View>
+                  )}
                   <View style={styles.rowText}>
                     <Text style={styles.rowTitle}>{playlist.name}</Text>
                     <Text style={styles.rowSubtitle}>
@@ -390,6 +492,12 @@ const styles = StyleSheet.create({
   recentCoverSkeleton: {
     backgroundColor: COLORS.border,
   },
+  newAlbumCover: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
   recentCoverAccent: {
     position: 'absolute',
     width: 120,
@@ -465,6 +573,10 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 22,
     fontWeight: '800',
+  },
+  thumbEmoji: {
+    fontSize: 28,
+    lineHeight: 34,
   },
   rowText: {
     flex: 1,

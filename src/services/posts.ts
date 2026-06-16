@@ -302,16 +302,17 @@ export async function fetchHomeFeedPage(options: {
 }
 
 export type ListPostsOptions = {
-  kind?: 'upload';
+  kind?: 'upload' | 'repost';
   before?: string; // ISO date for pagination cursor
   limit?: number;
 };
 
 /**
- * Fetch posts authored by a user, newest first. When `kind: 'upload'` is set we
- * only return their original uploads (the Creator tab). Otherwise we return all
- * posts (uploads + reposts). For reposts we also resolve the original
- * uploader's profile so the UI can show a "Creator" tag.
+ * Fetch posts authored by a user, newest first. When `kind` is set we
+ * filter to that kind only (e.g. `upload` for the Uploads tab, `repost` for
+ * the Reposts tab). Otherwise we return all posts (uploads + reposts).
+ * For reposts we also resolve the original uploader's profile so the UI can
+ * show a "Creator" tag.
  */
 export async function listPostsForUser(
   userId: string,
@@ -326,8 +327,8 @@ export async function listPostsForUser(
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (options.kind === 'upload') {
-    query = query.eq('kind', 'upload');
+  if (options.kind) {
+    query = query.eq('kind', options.kind);
   }
   if (options.before) {
     query = query.lt('created_at', options.before);

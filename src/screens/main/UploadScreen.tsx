@@ -20,10 +20,12 @@ import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
 import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
+import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
 import { Icon } from '../../components/Icon';
+import AddToAlbumSheet from '../../components/AddToAlbumSheet';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
 
@@ -91,6 +93,8 @@ export default function UploadScreen() {
   const [collaborators, setCollaborators] = useState<PendingCollaborator[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
+  const [selectedAlbum, setSelectedAlbum] = useState<{ id: string; title: string } | null>(null);
+  const [albumSheetOpen, setAlbumSheetOpen] = useState(false);
   const [error, setError] = useState('');
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
@@ -254,7 +258,7 @@ export default function UploadScreen() {
     setProgressStage('preparing');
     setProgressFraction(0);
     try {
-      await createTrack(
+      const result = await createTrack(
         mode === 'audio'
           ? {
               mode: 'audio',
@@ -280,6 +284,11 @@ export default function UploadScreen() {
           setProgressFraction(fraction);
         },
       );
+      // Tag into the selected album if the user picked one. Fire-and-forget —
+      // a failed album tag shouldn't block the success state of the upload.
+      if (selectedAlbum && result?.trackId) {
+        addTrackToAlbum(selectedAlbum.id, result.trackId).catch(() => {});
+      }
       setShowSuccess(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
@@ -287,7 +296,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, collaborators, previewDurationSec]);
+  }, [mode, audio, title, description, video, cover, thumbnail, collaborators, previewDurationSec, selectedAlbum]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -492,6 +501,41 @@ export default function UploadScreen() {
             />
           </View>
 
+          {/* Add to album · optional — creators can group this upload with
+              their other tracks. Picker lists their existing albums. */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Add to album · optional</Text>
+            <TouchableOpacity
+              style={styles.albumRow}
+              onPress={() => setAlbumSheetOpen(true)}
+              disabled={submitting}
+              activeOpacity={0.75}
+            >
+              <Icon name="disc" size={18} color={selectedAlbum ? COLORS.purpleLight : COLORS.textSecondary} />
+              <View style={styles.albumRowMeta}>
+                {selectedAlbum ? (
+                  <>
+                    <Text style={styles.albumRowMini}>SELECTED</Text>
+                    <Text style={styles.albumRowTitle} numberOfLines={1}>{selectedAlbum.title}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.albumRowPlaceholder}>Pick album or create new</Text>
+                )}
+              </View>
+              {selectedAlbum ? (
+                <TouchableOpacity
+                  onPress={() => setSelectedAlbum(null)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  disabled={submitting}
+                >
+                  <Icon name="close" size={16} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              ) : (
+                <Icon name="forward" size={16} color={COLORS.textSecondary} />
+              )}
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.collabHeader}>
             <Text style={styles.sectionLabel}>Collaborators</Text>
             <TouchableOpacity
@@ -657,6 +701,13 @@ export default function UploadScreen() {
           </View>
         </View>
       </Modal>
+
+      <AddToAlbumSheet
+        visible={albumSheetOpen}
+        mode="pick"
+        onClose={() => setAlbumSheetOpen(false)}
+        onPicked={album => setSelectedAlbum({ id: album.id, title: album.title })}
+      />
     </SafeAreaView>
   );
 }
@@ -874,6 +925,16 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     textAlignVertical: 'top',
   },
+  albumRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  albumRowMeta: { flex: 1, minWidth: 0 },
+  albumRowMini: { color: COLORS.purpleLight, fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
+  albumRowTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700', marginTop: 1 },
+  albumRowPlaceholder: { color: COLORS.textSecondary, fontSize: 14 },
   collabHeader: {
     flexDirection: 'row',
     alignItems: 'center',

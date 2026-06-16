@@ -22,11 +22,19 @@ import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
 import { searchPosts, type FeedPost } from '../../services/posts';
+import { searchAlbums, type AlbumSearchResult } from '../../services/albums';
 import { supabase } from '../../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 
-type Tab = 'users' | 'tracks';
+type Tab = 'users' | 'tracks' | 'albums';
+
+const FALLBACK_ACCENTS: [string, string][] = [
+  ['#7C3AED', '#3B1E6E'],
+  ['#EC4899', '#7C3AED'],
+  ['#22D3EE', '#3B82F6'],
+  ['#F59E0B', '#EF4444'],
+];
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 function initialsFor(name: string): string {
@@ -54,10 +62,13 @@ export default function SearchScreen() {
   const [tab, setTab] = useState<Tab>('users');
   const [userResults, setUserResults] = useState<ProfileSearchResult[]>([]);
   const [trackResults, setTrackResults] = useState<FeedPost[]>([]);
+  const [albumResults, setAlbumResults] = useState<AlbumSearchResult[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingTracks, setLoadingTracks] = useState(false);
+  const [loadingAlbums, setLoadingAlbums] = useState(false);
   const [errorUsers, setErrorUsers] = useState('');
   const [errorTracks, setErrorTracks] = useState('');
+  const [errorAlbums, setErrorAlbums] = useState('');
   const [meId, setMeId] = useState<string | null>(null);
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
 
@@ -116,6 +127,27 @@ export default function SearchScreen() {
       cancelled = true;
       clearTimeout(t);
     };
+  }, [query, tab]);
+
+  // Debounced album search
+  useEffect(() => {
+    if (tab !== 'albums') { return; }
+    let cancelled = false;
+    setLoadingAlbums(true);
+    setErrorAlbums('');
+    const t = setTimeout(async () => {
+      try {
+        const data = await searchAlbums(query, 20);
+        if (!cancelled) { setAlbumResults(data); }
+      } catch (err) {
+        if (!cancelled) {
+          setErrorAlbums(err instanceof Error ? err.message : 'Search failed.');
+        }
+      } finally {
+        if (!cancelled) { setLoadingAlbums(false); }
+      }
+    }, 200);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [query, tab]);
 
   const viewabilityConfig = useRef({
@@ -188,11 +220,45 @@ export default function SearchScreen() {
     [visibleIds, comments, handlePostDeleted],
   );
 
+  const renderAlbumRow = useCallback(
+    ({ item, index }: { item: AlbumSearchResult; index: number }) => {
+      const accents = FALLBACK_ACCENTS[index % FALLBACK_ACCENTS.length]!;
+      const initial = item.title.trim().charAt(0).toUpperCase() || '♪';
+      return (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.albumRow}
+          onPress={() => navigation.navigate('AlbumDetail', { albumId: item.id, albumTitle: item.title })}
+        >
+          <View style={[styles.albumCover, { backgroundColor: accents[0] }]}>
+            <View style={[styles.albumCoverAccent, { backgroundColor: accents[1] }]} />
+            {item.coverArtUrl ? (
+              <Image source={{ uri: item.coverArtUrl }} style={StyleSheet.absoluteFill} />
+            ) : (
+              <Text style={styles.albumInitial}>{initial}</Text>
+            )}
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.displayName} numberOfLines={1}>{item.title}</Text>
+            <Text style={styles.username} numberOfLines={1}>
+              @{item.uploaderUsername} · {item.trackCount} {item.trackCount === 1 ? 'track' : 'tracks'}
+              {item.releaseYear ? ` · ${item.releaseYear}` : ''}
+            </Text>
+          </View>
+          <Icon name="play" size={20} color={COLORS.purpleLight} />
+        </TouchableOpacity>
+      );
+    },
+    [navigation],
+  );
+
   const trimmedQuery = query.trim();
-  const loading = tab === 'users' ? loadingUsers : loadingTracks;
-  const error = tab === 'users' ? errorUsers : errorTracks;
+  const loading = tab === 'users' ? loadingUsers : tab === 'tracks' ? loadingTracks : loadingAlbums;
+  const error = tab === 'users' ? errorUsers : tab === 'tracks' ? errorTracks : errorAlbums;
   const hasResults =
-    tab === 'users' ? userResults.length > 0 : trackResults.length > 0;
+    tab === 'users' ? userResults.length > 0
+    : tab === 'tracks' ? trackResults.length > 0
+    : albumResults.length > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -240,6 +306,15 @@ export default function SearchScreen() {
             Tracks
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setTab('albums')}
+          style={[styles.tabPill, tab === 'albums' && styles.tabPillActive]}
+        >
+          <Text style={[styles.tabPillText, tab === 'albums' && styles.tabPillTextActive]}>
+            Albums
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Body */}
@@ -257,14 +332,14 @@ export default function SearchScreen() {
             <>
               <Text style={styles.emptyTitle}>Discover something new</Text>
               <Text style={styles.emptyText}>
-                {tab === 'users'
-                  ? 'Search by username or display name to find people.'
-                  : 'Search by track title to find music.'}
+                {tab === 'users' ? 'Search by username or display name to find people.'
+                : tab === 'tracks' ? 'Search by track title to find music.'
+                : 'Search by album title to find releases.'}
               </Text>
             </>
           ) : (
             <Text style={styles.emptyText}>
-              No {tab === 'users' ? 'users' : 'tracks'} match "{trimmedQuery}".
+              No {tab} match "{trimmedQuery}".
             </Text>
           )}
         </View>
@@ -277,7 +352,7 @@ export default function SearchScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />
-      ) : (
+      ) : tab === 'tracks' ? (
         <FlatList
           data={trackResults.filter(p => !deletedIds.has(p.id))}
           keyExtractor={item => item.id}
@@ -287,6 +362,15 @@ export default function SearchScreen() {
           showsVerticalScrollIndicator={false}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={handleViewableItemsChanged}
+        />
+      ) : (
+        <FlatList
+          data={albumResults}
+          keyExtractor={item => item.id}
+          renderItem={renderAlbumRow}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         />
       )}
 
@@ -331,27 +415,30 @@ const styles = StyleSheet.create({
   },
   tabRow: {
     flexDirection: 'row',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 4,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 999,
-    gap: 4,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    gap: 8,
   },
   tabPill: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: 'transparent',
   },
   tabPillActive: {
     backgroundColor: COLORS.purple,
+    borderColor: COLORS.purple,
+    shadowColor: COLORS.purple,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
   },
   tabPillText: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   tabPillTextActive: {
@@ -435,4 +522,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  albumRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 10,
+  },
+  albumCover: {
+    width: 56, height: 56, borderRadius: 10, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  albumCoverAccent: {
+    position: 'absolute', width: 36, height: 36, borderRadius: 18,
+    bottom: -10, right: -10, opacity: 0.6,
+  },
+  albumInitial: { color: COLORS.white, fontSize: 22, fontWeight: '900' },
 });
