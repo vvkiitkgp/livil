@@ -1,19 +1,21 @@
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
-index 6012932..b372c2a 100644
+index 6012932..47c23c1 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
-@@ -43,7 +43,9 @@ enum class EventTypes(val eventName: String) {
+@@ -43,7 +43,11 @@ enum class EventTypes(val eventName: String) {
      EVENT_TEXT_TRACK_DATA_CHANGED("onTextTrackDataChanged"),
      EVENT_VIDEO_TRACKS("onVideoTracks"),
      EVENT_ON_RECEIVE_AD_EVENT("onReceiveAdEvent"),
 -    EVENT_PICTURE_IN_PICTURE_STATUS_CHANGED("onPictureInPictureStatusChanged");
 +    EVENT_PICTURE_IN_PICTURE_STATUS_CHANGED("onPictureInPictureStatusChanged"),
 +    EVENT_NEXT_TRACK("onVideoNextTrack"),
-+    EVENT_PREVIOUS_TRACK("onVideoPreviousTrack");
++    EVENT_PREVIOUS_TRACK("onVideoPreviousTrack"),
++    EVENT_REPEAT_MODE_CHANGE("onVideoRepeatModeChange"),
++    EVENT_SHUFFLE_MODE_CHANGE("onVideoShuffleModeChange");
  
      companion object {
          fun toMap() =
-@@ -93,6 +95,13 @@ class VideoEventEmitter {
+@@ -93,6 +97,20 @@ class VideoEventEmitter {
      lateinit var onReceiveAdEvent: (adEvent: String, adData: Map<String?, String?>?) -> Unit
      lateinit var onPictureInPictureStatusChanged: (isActive: Boolean) -> Unit
  
@@ -24,10 +26,17 @@ index 6012932..b372c2a 100644
 +    var onVideoNextTrack: (() -> Unit)? = null
 +    var onVideoPreviousTrack: (() -> Unit)? = null
 +
++    // Livil patch: fired from ClipForwardingPlayer.setRepeatMode /
++    // setShuffleModeEnabled when a MediaSession controller (car HU, Wear OS,
++    // Assistant) — OR JS itself via the mediaSessionStateJson prop seam —
++    // updates shuffle/repeat. Same nullable pattern as the next/prev events.
++    var onVideoRepeatModeChange: ((mode: String) -> Unit)? = null
++    var onVideoShuffleModeChange: ((enabled: Boolean) -> Unit)? = null
++
      fun addEventEmitters(reactContext: ThemedReactContext, view: ReactExoplayerView) {
          val dispatcher = UIManagerHelper.getEventDispatcherForReactTag(reactContext, view.id)
          val surfaceId = UIManagerHelper.getSurfaceId(reactContext)
-@@ -309,6 +318,13 @@ class VideoEventEmitter {
+@@ -309,6 +327,28 @@ class VideoEventEmitter {
                      putBoolean("isActive", isActive)
                  }
              }
@@ -38,14 +47,38 @@ index 6012932..b372c2a 100644
 +            onVideoPreviousTrack = {
 +                event.dispatch(EventTypes.EVENT_PREVIOUS_TRACK)
 +            }
++            // Livil patch: emit repeat/shuffle changes from the MediaSession
++            // controller pipeline (car / Wear OS / Assistant), plus echoes
++            // from JS-driven pushes through mediaSessionStateJson — both go
++            // through ClipForwardingPlayer's setters. JS guards against the
++            // echo by no-op'ing when the incoming value already matches state.
++            onVideoRepeatModeChange = { mode ->
++                event.dispatch(EventTypes.EVENT_REPEAT_MODE_CHANGE) {
++                    putString("mode", mode)
++                }
++            }
++            onVideoShuffleModeChange = { enabled ->
++                event.dispatch(EventTypes.EVENT_SHUFFLE_MODE_CHANGE) {
++                    putBoolean("enabled", enabled)
++                }
++            }
          }
      }
  
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
-index e16ac96..efef05a 100644
+index e16ac96..23c498a 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
-@@ -251,6 +251,12 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -141,6 +141,8 @@ import com.google.ads.interactivemedia.v3.api.ImaSdkFactory;
+ import com.google.ads.interactivemedia.v3.api.ImaSdkSettings;
+ import com.google.common.collect.ImmutableList;
+ 
++import org.json.JSONObject;
++
+ import java.net.CookieHandler;
+ import java.net.CookieManager;
+ import java.net.CookiePolicy;
+@@ -251,6 +253,16 @@ public class ReactExoplayerView extends FrameLayout implements
      private boolean preventsDisplaySleepDuringVideoPlayback = true;
      private float mProgressUpdateInterval = 250.0f;
      protected boolean playInBackground = false;
@@ -55,10 +88,14 @@ index e16ac96..efef05a 100644
 +    // Livil patch: JSON-encoded CURRENT clip window {startMs,endMs,active,repeatOne},
 +    // forwarded to the playback service for the clip-relative lock-screen view.
 +    private String currentClipJson = null;
++    // Livil patch: JSON-encoded {repeatMode: 'off'|'one'|'all', shuffleEnabled},
++    // pushed into the session's ClipForwardingPlayer so the car HU / Wear OS /
++    // Assistant icons reflect the in-app shuffle/loop toggle.
++    private String mediaSessionStateJson = null;
      private boolean mReportBandwidth = false;
      private boolean controls = false;
  
-@@ -938,8 +944,16 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -938,8 +950,19 @@ public class ReactExoplayerView extends FrameLayout implements
                  try {
                      Activity currentActivity = themedReactContext.getCurrentActivity();
                      if (currentActivity != null) {
@@ -73,10 +110,13 @@ index e16ac96..efef05a 100644
 +                        // Livil patch: hand the current clip window so the lock screen
 +                        // shows the clip-relative timeline from the first frame.
 +                        playbackServiceBinder.getService().setCurrentClip(currentClipJson);
++                        // Livil patch: push the current shuffle/repeat state so the
++                        // car HU shows the right icons immediately on first connect.
++                        applyMediaSessionStateToService();
                      } else {
                          // Handle the case where currentActivity is null
                          DebugLog.w(TAG, "Could not register ExoPlayer: currentActivity is null");
-@@ -2061,9 +2075,23 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -2061,9 +2084,23 @@ public class ReactExoplayerView extends FrameLayout implements
              }
  
              if (!isSourceEqual) {
@@ -103,7 +143,7 @@ index e16ac96..efef05a 100644
              }
          } else {
              clearSrc();
-@@ -2616,6 +2644,35 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -2616,6 +2653,66 @@ public class ReactExoplayerView extends FrameLayout implements
          this.playInBackground = playInBackground;
      }
  
@@ -136,23 +176,55 @@ index e16ac96..efef05a 100644
 +        }
 +    }
 +
++    // Livil patch: push the in-app shuffle/repeat state into the MediaSession via
++    // the playback service. ClipForwardingPlayer's setRepeatMode /
++    // setShuffleModeEnabled apply it + force a PlaybackState republish, so the
++    // car HU / Wear OS / Assistant icons follow the in-app toggle. JSON shape:
++    // `{repeatMode: 'off'|'one'|'all', shuffleEnabled: boolean}`.
++    public void setMediaSessionStateJson(String json) {
++        this.mediaSessionStateJson = json;
++        applyMediaSessionStateToService();
++    }
++
++    private void applyMediaSessionStateToService() {
++        if (playbackServiceBinder == null || player == null || mediaSessionStateJson == null) {
++            return;
++        }
++        try {
++            JSONObject obj = new JSONObject(mediaSessionStateJson);
++            String modeStr = obj.optString("repeatMode", "off");
++            int mode;
++            switch (modeStr) {
++                case "one": mode = Player.REPEAT_MODE_ONE; break;
++                case "all": mode = Player.REPEAT_MODE_ALL; break;
++                default:    mode = Player.REPEAT_MODE_OFF; break;
++            }
++            boolean shuffle = obj.optBoolean("shuffleEnabled", false);
++            playbackServiceBinder.getService();
++            VideoPlaybackService.setMediaSessionState(player, mode, shuffle);
++        } catch (Exception e) {
++            DebugLog.w(TAG, "setMediaSessionStateJson apply failed: " + e.getMessage());
++        }
++    }
++
      public void setDisableFocus(boolean disableFocus) {
          this.disableFocus = disableFocus;
      }
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
-index b9e0656..4cdcdeb 100644
+index b9e0656..c2506b3 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerViewManager.kt
-@@ -43,6 +43,8 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
+@@ -43,6 +43,9 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
          private const val PROP_RATE = "rate"
          private const val PROP_MAXIMUM_BIT_RATE = "maxBitRate"
          private const val PROP_PLAY_IN_BACKGROUND = "playInBackground"
 +        private const val PROP_MEDIA_QUEUE_JSON = "mediaQueueJson"
 +        private const val PROP_CURRENT_CLIP_JSON = "currentClipJson"
++        private const val PROP_MEDIA_SESSION_STATE_JSON = "mediaSessionStateJson"
          private const val PROP_DISABLE_FOCUS = "disableFocus"
          private const val PROP_BUFFERING_STRATEGY = "bufferingStrategy"
          private const val PROP_DISABLE_DISCONNECT_ERROR = "disableDisconnectError"
-@@ -195,6 +197,16 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
+@@ -195,6 +198,21 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
          videoView.setPlayInBackground(playInBackground)
      }
  
@@ -166,30 +238,46 @@ index b9e0656..4cdcdeb 100644
 +        videoView.setCurrentClipJson(json)
 +    }
 +
++    @ReactProp(name = PROP_MEDIA_SESSION_STATE_JSON)
++    fun setMediaSessionStateJson(videoView: ReactExoplayerView, json: String?) {
++        videoView.setMediaSessionStateJson(json)
++    }
++
      @ReactProp(name = PROP_DISABLE_FOCUS, defaultBoolean = false)
      fun setDisableFocus(videoView: ReactExoplayerView, disableFocus: Boolean) {
          videoView.setDisableFocus(disableFocus)
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt
-index b10dfb5..83474f1 100644
+index b10dfb5..4a2d164 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackCallback.kt
-@@ -16,13 +16,29 @@ class VideoPlaybackCallback : MediaSession.Callback {
+@@ -16,13 +16,40 @@ class VideoPlaybackCallback : MediaSession.Callback {
              return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                  .setAvailablePlayerCommands(
                      MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
 -                        .add(Player.COMMAND_SEEK_FORWARD)
 -                        .add(Player.COMMAND_SEEK_BACK)
 +                        // Livil patch: a music-app lock screen shows prev / play-pause /
-+                        // next only. Suppress the system's auto prev/next (a single media
-+                        // item still advertises "previous" = restart) and the ±10s seek
-+                        // commands, so they don't clutter or steal slots from our custom
-+                        // track-skip buttons. The scrubber still seeks within a track.
++                        // next only. Suppress the by-time prev/next (which means "restart
++                        // at >3s in" — Media3's default that would collide with our
++                        // track-skip semantics) and the ±10s seek commands so they don't
++                        // clutter the notification. The scrubber still seeks within a
++                        // track. The MEDIA_ITEM next/prev commands are KEPT so AVRCP
++                        // controllers (car Bluetooth, Wear OS, Assistant) and the system
++                        // lock-screen see them as available — ClipForwardingPlayer's
++                        // seekToNextMediaItem/seekToPreviousMediaItem overrides fan them
++                        // out to the same nativeSkip + JS emit path the notification's
++                        // custom buttons use. COMMAND_SET_REPEAT_MODE / SHUFFLE_MODE are
++                        // also kept so the car HU renders the repeat/shuffle icons and
++                        // can toggle them — ClipForwardingPlayer's setRepeatMode /
++                        // setShuffleModeEnabled overrides emit JS events on change.
 +                        .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
 +                        .remove(Player.COMMAND_SEEK_TO_NEXT)
-+                        .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-+                        .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
 +                        .remove(Player.COMMAND_SEEK_FORWARD)
 +                        .remove(Player.COMMAND_SEEK_BACK)
++                        .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
++                        .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
++                        .add(Player.COMMAND_SET_REPEAT_MODE)
++                        .add(Player.COMMAND_SET_SHUFFLE_MODE)
                          .build()
                  ).setAvailableSessionCommands(
                      MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
@@ -206,10 +294,10 @@ index b10dfb5..83474f1 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..be54926 100644
+index 4760ea5..2ee29e9 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-@@ -11,28 +11,97 @@ import android.content.Intent
+@@ -11,28 +11,194 @@ import android.content.Intent
  import android.os.Binder
  import android.os.Build
  import android.os.Bundle
@@ -263,6 +351,103 @@ index 4760ea5..be54926 100644
 +    override fun seekToDefaultPosition() = if (active) super.seekTo(clipStart) else super.seekToDefaultPosition()
 +    override fun seekToDefaultPosition(mediaItemIndex: Int) =
 +        if (active) super.seekTo(mediaItemIndex, clipStart) else super.seekToDefaultPosition(mediaItemIndex)
++
++    // Livil patch: track-skip overrides. The inner ExoPlayer holds ONE media
++    // item per RNV instance, so its native seekToNext/Previous is a silent
++    // no-op — that's exactly why AVRCP next/prev from a Bluetooth car did
++    // nothing before this patch. Fan out to the SAME nativeSkip + JS-emit
++    // pipeline the notification's custom next/prev buttons use, so the car,
++    // Wear OS, Assistant, etc. all behave like the lock-screen notification.
++    override fun seekToNextMediaItem() {
++        VideoPlaybackService.handleSkipFromController(1)
++    }
++    override fun seekToPreviousMediaItem() {
++        VideoPlaybackService.handleSkipFromController(-1)
++    }
++    override fun seekToNext() {
++        seekToNextMediaItem()
++    }
++    override fun seekToPrevious() {
++        seekToPreviousMediaItem()
++    }
++    override fun hasNextMediaItem(): Boolean = true
++    override fun hasPreviousMediaItem(): Boolean = true
++
++    // Livil patch: shuffle / repeat state lives at the wrapper, NOT the inner
++    // ExoPlayer. Why: the inner player has one media item — setting
++    // REPEAT_MODE_ALL there would make it auto-loop the single item, suppress
++    // STATE_ENDED, and break the naturalEndListener-driven JS queue advance
++    // (so REPEAT_MODE_ALL would behave like REPEAT_MODE_ONE on the wire). So:
++    //   • localRepeatMode is the user-visible LOGICAL mode (what the car icon
++    //     shows + what JS uses to decide queue-advance behavior).
++    //   • Inner gets ONE when logical=ONE (ExoPlayer's auto-loop is what we
++    //     want — same behavior as the watcher would produce, but glitchless).
++    //   • Inner stays OFF for logical OFF and ALL (STATE_ENDED can fire →
++    //     naturalEndListener → nativeSkip + JS wraps on ALL).
++    // For the same reason we emit our own onRepeatModeChanged events: when
++    // logical flips OFF↔ALL the inner doesn't transition (both → inner OFF),
++    // so Media3 wouldn't republish PlaybackState and the car icon wouldn't
++    // update. The wrapper-owned customListeners let us fire the logical
++    // change manually.
++    private var localRepeatMode: Int = Player.REPEAT_MODE_OFF
++    private var localShuffleEnabled: Boolean = false
++    private val customListeners = mutableListOf<Player.Listener>()
++    private val customMainHandler = Handler(Looper.getMainLooper())
++
++    override fun addListener(listener: Player.Listener) {
++        super.addListener(listener)
++        customListeners.add(listener)
++    }
++    override fun removeListener(listener: Player.Listener) {
++        super.removeListener(listener)
++        customListeners.remove(listener)
++    }
++    private fun emitRepeatModeChanged(mode: Int) {
++        val snapshot = customListeners.toList()
++        customMainHandler.post { snapshot.forEach { it.onRepeatModeChanged(mode) } }
++    }
++    private fun emitShuffleModeChanged(enabled: Boolean) {
++        val snapshot = customListeners.toList()
++        customMainHandler.post { snapshot.forEach { it.onShuffleModeEnabledChanged(enabled) } }
++    }
++
++    override fun getRepeatMode(): Int = localRepeatMode
++    override fun setRepeatMode(repeatMode: Int) {
++        if (localRepeatMode == repeatMode) return
++        localRepeatMode = repeatMode
++        val innerTarget = if (repeatMode == Player.REPEAT_MODE_ONE)
++            Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
++        // Inner transition (if any) fires Media3's own onRepeatModeChanged
++        // with innerTarget — harmless brief flash on the car HU since our
++        // emitRepeatModeChanged immediately follows with the LOGICAL value.
++        super.setRepeatMode(innerTarget)
++        emitRepeatModeChanged(repeatMode)
++        VideoPlaybackService.onRepeatModeChangedFromPlayer(repeatMode)
++    }
++
++    override fun getShuffleModeEnabled(): Boolean = localShuffleEnabled
++    override fun setShuffleModeEnabled(shuffleModeEnabled: Boolean) {
++        if (localShuffleEnabled == shuffleModeEnabled) return
++        localShuffleEnabled = shuffleModeEnabled
++        super.setShuffleModeEnabled(shuffleModeEnabled)
++        emitShuffleModeChanged(shuffleModeEnabled)
++        VideoPlaybackService.onShuffleModeChangedFromPlayer(shuffleModeEnabled)
++    }
++
++    // Livil patch: controllers (Bluetooth car / Wear OS / Assistant) read the
++    // INTERSECTION of the session-callback's availablePlayerCommands and the
++    // PLAYER's own getAvailableCommands. The inner ExoPlayer reports
++    // SEEK_TO_NEXT_MEDIA_ITEM / SEEK_TO_PREVIOUS_MEDIA_ITEM as UNAVAILABLE
++    // when the timeline has one window (RNV's normal case), so without this
++    // override the car would never see those commands — and AVRCP next/prev
++    // would silently drop, same as before this patch. Force them on.
++    override fun getAvailableCommands(): Player.Commands =
++        super.getAvailableCommands().buildUpon()
++            .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
++            .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
++            .add(Player.COMMAND_SET_REPEAT_MODE)
++            .add(Player.COMMAND_SET_SHUFFLE_MODE)
++            .build()
 +}
 +
  class VideoPlaybackService : MediaSessionService() {
@@ -307,7 +492,7 @@ index 4760ea5..be54926 100644
  
      @SuppressLint("PrivateResource")
      private val seekForwardBtn = CommandButton.Builder()
-@@ -48,37 +117,218 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -48,37 +214,225 @@ class VideoPlaybackService : MediaSessionService() {
          .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
          .build()
  
@@ -372,11 +557,14 @@ index 4760ea5..be54926 100644
  
          mediaSessionsList[player] = mediaSession
          addSession(mediaSession)
- 
++        // Livil patch: track the active session so JS-driven shuffle/repeat
++        // pushes (setMediaSessionState) can reach this session's wrapper.
++        activeSession = mediaSession
++
 +        // Livil patch: (re)start the clip-end watcher for this player.
 +        clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
 +        clipWatcherHandler.postDelayed(clipWatcherRunnable, 250)
-+
+ 
          val notificationId = player.hashCode()
          startForeground(notificationId, buildNotification(mediaSession))
      }
@@ -385,6 +573,10 @@ index 4760ea5..be54926 100644
 +        player.removeListener(naturalEndListener)
          hidePlayerNotification(player)
          val session = mediaSessionsList.remove(player)
++        // Livil patch: clear the active-session pointer if we just dropped it.
++        if (activeSession === session) {
++            activeSession = null
++        }
          session?.release()
 +        if (currentPlayer === player) {
 +            currentPlayer = null
@@ -529,7 +721,7 @@ index 4760ea5..be54926 100644
      // Callbacks
  
      override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
-@@ -106,6 +356,16 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -106,6 +460,16 @@ class VideoPlaybackService : MediaSessionService() {
          super.onDestroy()
      }
  
@@ -546,7 +738,7 @@ index 4760ea5..be54926 100644
      private fun createSessionNotification(session: MediaSession) {
          val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-@@ -118,14 +378,15 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -118,14 +482,15 @@ class VideoPlaybackService : MediaSessionService() {
              )
          }
  
@@ -564,7 +756,7 @@ index 4760ea5..be54926 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +403,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,6 +507,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -575,7 +767,7 @@ index 4760ea5..be54926 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -220,6 +485,7 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -220,6 +589,7 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      private fun cleanup() {
@@ -583,7 +775,7 @@ index 4760ea5..be54926 100644
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -273,6 +539,97 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -273,6 +643,167 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -652,6 +844,76 @@ index 4760ea5..be54926 100644
 +                .build()
 +        }
 +
++        // Livil patch: shared "skip from a MediaSession controller" pipeline.
++        // Called from BOTH the custom-SessionCommand handler (notification
++        // next/prev buttons) AND ClipForwardingPlayer.seekToNextMediaItem /
++        // seekToPreviousMediaItem (standard player commands → AVRCP / car /
++        // Wear OS / Assistant). Same semantics either way: load the target
++        // track natively (works while backgrounded), then notify JS so its
++        // queue index stays in lock-step. For "previous" with >3s into the
++        // current clip, restart the current track instead.
++        fun handleSkipFromController(delta: Int) {
++            if (delta > 0) {
++                val handled = nativeSkip(1)
++                DebugLog.w(TAG, "[LIVIL] handleSkipFromController(+1) handled=$handled emitter=${currentEmitter != null}")
++                currentEmitter?.onVideoNextTrack?.invoke()
++            } else {
++                val player = currentPlayer
++                val clipStart = if (currentClipActive) currentClipStartMs else 0L
++                val handled = if (player != null && player.currentPosition > clipStart + 3000) {
++                    player.seekTo(clipStart)
++                    true
++                } else {
++                    nativeSkip(-1)
++                }
++                DebugLog.w(TAG, "[LIVIL] handleSkipFromController(-1) handled=$handled emitter=${currentEmitter != null}")
++                currentEmitter?.onVideoPreviousTrack?.invoke()
++            }
++        }
++
++        // Livil patch: ClipForwardingPlayer.setRepeatMode / setShuffleModeEnabled
++        // call these after updating local state, so the change reaches JS
++        // regardless of whether it originated from a controller (car HU) or
++        // from JS (the JS handler is idempotent — setRepeatMode(currentValue)
++        // is a no-op, so this doesn't loop).
++        fun onRepeatModeChangedFromPlayer(mode: Int) {
++            val modeStr = when (mode) {
++                Player.REPEAT_MODE_ONE -> "one"
++                Player.REPEAT_MODE_ALL -> "all"
++                else -> "off"
++            }
++            DebugLog.w(TAG, "[LIVIL] onRepeatModeChangedFromPlayer mode=$modeStr emitter=${currentEmitter != null}")
++            currentEmitter?.onVideoRepeatModeChange?.invoke(modeStr)
++        }
++
++        fun onShuffleModeChangedFromPlayer(enabled: Boolean) {
++            DebugLog.w(TAG, "[LIVIL] onShuffleModeChangedFromPlayer enabled=$enabled emitter=${currentEmitter != null}")
++            currentEmitter?.onVideoShuffleModeChange?.invoke(enabled)
++        }
++
++        // Livil patch: JS-driven push of shuffle/repeat state INTO the session.
++        // ReactExoplayerView.setMediaSessionStateJson parses the prop JSON and
++        // calls this, which forwards into the ClipForwardingPlayer wrapper so
++        // MediaSession republishes PlaybackState — the car HU's repeat/shuffle
++        // icons follow the in-app toggle. The wrapper's setters early-return
++        // on no-change, so an emitted JS event landing back here as a prop
++        // re-render does NOT loop. @JvmStatic because the caller
++        // (ReactExoplayerView) is Java.
++        @JvmStatic
++        fun setMediaSessionState(rawPlayer: ExoPlayer, repeatMode: Int, shuffleEnabled: Boolean) {
++            val session = activeSession ?: return
++            val wrapper = session.player as? ClipForwardingPlayer ?: return
++            // Only act if THIS view's player owns the active session.
++            if (currentPlayer !== rawPlayer) return
++            wrapper.setRepeatMode(repeatMode)
++            wrapper.setShuffleModeEnabled(shuffleEnabled)
++        }
++
++        // Livil patch: the single active session (single-session model in
++        // registerPlayer). Set in registerPlayer, cleared in unregisterPlayer.
++        @Volatile
++        var activeSession: MediaSession? = null
++
 +        // Load the track `delta` steps away natively. Returns true if it handled
 +        // the skip; false (out of range) so the caller can fall back to JS for
 +        // wrap/repeat semantics.
@@ -681,7 +943,7 @@ index 4760ea5..be54926 100644
          private const val SEEK_INTERVAL_MS = 10000L
          private const val TAG = "VideoPlaybackService"
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
-@@ -283,6 +640,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +814,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -690,7 +952,7 @@ index 4760ea5..be54926 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +651,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +825,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -699,35 +961,17 @@ index 4760ea5..be54926 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +664,31 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +838,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
 +                // Livil patch: next/previous are NOT native playlist ops (RNV plays
 +                // one media item per player). Forward the press to JS so the RN
-+                // layer can swap the source / advance the app's own queue.
-+                COMMAND.SEEK_TO_NEXT -> {
-+                    // Load the next track natively (works backgrounded), then notify
-+                    // JS so it advances its own queue state in lock-step.
-+                    val handled = nativeSkip(1)
-+                    DebugLog.w(TAG, "[LIVIL] SEEK_TO_NEXT nativeHandled=$handled emitter=${currentEmitter != null}")
-+                    currentEmitter?.onVideoNextTrack?.invoke()
-+                }
-+                COMMAND.SEEK_TO_PREVIOUS -> {
-+                    // Match the app's "previous" semantics: restart the current
-+                    // track if >3s into the CLIP (clip-aware: restart point is the
-+                    // clip start, not 0), else load the previous track.
-+                    val player = currentPlayer
-+                    val clipStart = if (currentClipActive) currentClipStartMs else 0L
-+                    val handled = if (player != null && player.currentPosition > clipStart + 3000) {
-+                        player.seekTo(clipStart)
-+                        true
-+                    } else {
-+                        nativeSkip(-1)
-+                    }
-+                    DebugLog.w(TAG, "[LIVIL] SEEK_TO_PREVIOUS handled=$handled emitter=${currentEmitter != null}")
-+                    currentEmitter?.onVideoPreviousTrack?.invoke()
-+                }
++                // layer can swap the source / advance the app's own queue. Shared
++                // with ClipForwardingPlayer.seekToNextMediaItem (AVRCP / car / Wear
++                // OS / Assistant) — single pipeline, identical semantics.
++                COMMAND.SEEK_TO_NEXT -> handleSkipFromController(1)
++                COMMAND.SEEK_TO_PREVIOUS -> handleSkipFromController(-1)
                  COMMAND.TOGGLE_PLAY -> handleCommand(if (session.player.isPlaying) COMMAND.PAUSE else COMMAND.PLAY, session)
                  COMMAND.PLAY -> session.player.play()
                  COMMAND.PAUSE -> session.player.pause()
@@ -915,43 +1159,52 @@ index 7ec8955..4bd4a07 100644
  RCT_EXTERN_METHOD(seekCmd : (nonnull NSNumber*)reactTag time : (nonnull NSNumber*)time tolerance : (nonnull NSNumber*)tolerance)
  RCT_EXTERN_METHOD(setLicenseResultCmd : (nonnull NSNumber*)reactTag license : (NSString*)license licenseUrl : (NSString*)licenseUrl)
 diff --git a/node_modules/react-native-video/lib/types/events.d.ts b/node_modules/react-native-video/lib/types/events.d.ts
-index c24fa11..2110030 100644
+index c24fa11..2f13a3b 100644
 --- a/node_modules/react-native-video/lib/types/events.d.ts
 +++ b/node_modules/react-native-video/lib/types/events.d.ts
-@@ -238,4 +238,6 @@ export interface ReactVideoEvents {
+@@ -238,4 +238,12 @@ export interface ReactVideoEvents {
      onTextTrackDataChanged?: (e: OnTextTrackDataChangedData) => void;
      onVideoTracks?: (e: OnVideoTracksData) => void;
      onAspectRatio?: (e: OnVideoAspectRatioData) => void;
 +    onNextTrack?: () => void;
 +    onPreviousTrack?: () => void;
++    onRepeatModeChange?: (e: {
++        mode: 'off' | 'one' | 'all';
++    }) => void;
++    onShuffleModeChange?: (e: {
++        enabled: boolean;
++    }) => void;
  }
 diff --git a/node_modules/react-native-video/lib/types/video.d.ts b/node_modules/react-native-video/lib/types/video.d.ts
-index 67a9d63..eb83f9b 100644
+index 67a9d63..bfe83f3 100644
 --- a/node_modules/react-native-video/lib/types/video.d.ts
 +++ b/node_modules/react-native-video/lib/types/video.d.ts
-@@ -276,6 +276,8 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
+@@ -276,6 +276,9 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
      paused?: boolean;
      enterPictureInPictureOnLeave?: boolean;
      playInBackground?: boolean;
 +    mediaQueueJson?: string;
 +    currentClipJson?: string;
++    mediaSessionStateJson?: string;
      playWhenInactive?: boolean;
      poster?: string | ReactVideoPoster;
      /** @deprecated use **resizeMode** key in **poster** props instead */
 diff --git a/node_modules/react-native-video/src/Video.tsx b/node_modules/react-native-video/src/Video.tsx
-index 789d915..fd754a5 100644
+index 789d915..44e96f3 100644
 --- a/node_modules/react-native-video/src/Video.tsx
 +++ b/node_modules/react-native-video/src/Video.tsx
-@@ -156,6 +156,8 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+@@ -156,6 +156,10 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
        onTextTrackDataChanged,
        onVideoTracks,
        onAspectRatio,
 +      onNextTrack,
 +      onPreviousTrack,
++      onRepeatModeChange,
++      onShuffleModeChange,
        localSourceEncryptionKeyScheme,
        minLoadRetryCount,
        bufferConfig,
-@@ -561,6 +563,15 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+@@ -561,6 +565,36 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
        [onPlaybackStateChanged],
      );
  
@@ -964,10 +1217,31 @@ index 789d915..fd754a5 100644
 +      onPreviousTrack?.();
 +    }, [onPreviousTrack]);
 +
++    // Livil patch: controller-driven (Bluetooth car / Wear OS / Assistant)
++    // shuffle / repeat mode changes — and echoes from JS-driven pushes via
++    // mediaSessionStateJson. The receiving JS handler must no-op when the
++    // incoming value already matches its state, so the echo doesn't loop.
++    const onVideoRepeatModeChange = useCallback(
++      (e: NativeSyntheticEvent<Readonly<{mode: string}>>) => {
++        const m = e.nativeEvent.mode;
++        if (m === 'off' || m === 'one' || m === 'all') {
++          onRepeatModeChange?.({mode: m});
++        }
++      },
++      [onRepeatModeChange],
++    );
++
++    const onVideoShuffleModeChange = useCallback(
++      (e: NativeSyntheticEvent<Readonly<{enabled: boolean}>>) => {
++        onShuffleModeChange?.({enabled: e.nativeEvent.enabled});
++      },
++      [onShuffleModeChange],
++    );
++
      const _shutterColor = useMemo(() => {
        const color = processColor(shutterColor);
        return typeof color === 'number' ? color : undefined;
-@@ -902,6 +913,10 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+@@ -902,6 +936,16 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
            onVideoPlaybackStateChanged={
              onPlaybackStateChanged ? onVideoPlaybackStateChanged : undefined
            }
@@ -975,47 +1249,58 @@ index 789d915..fd754a5 100644
 +          onVideoPreviousTrack={
 +            onPreviousTrack ? onVideoPreviousTrack : undefined
 +          }
++          onVideoRepeatModeChange={
++            onRepeatModeChange ? onVideoRepeatModeChange : undefined
++          }
++          onVideoShuffleModeChange={
++            onShuffleModeChange ? onVideoShuffleModeChange : undefined
++          }
            onVideoBandwidthUpdate={
              onBandwidthUpdate ? _onBandwidthUpdate : undefined
            }
 diff --git a/node_modules/react-native-video/src/specs/VideoNativeComponent.ts b/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
-index 3dcbe01..9fd9b65 100644
+index 3dcbe01..cffd05b 100644
 --- a/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
 +++ b/node_modules/react-native-video/src/specs/VideoNativeComponent.ts
-@@ -355,6 +355,8 @@ export interface VideoNativeProps extends ViewProps {
+@@ -355,6 +355,9 @@ export interface VideoNativeProps extends ViewProps {
    filterEnabled?: boolean;
    volume?: Float; // default 1.0
    playInBackground?: boolean;
 +  mediaQueueJson?: string; // android — Livil patch: native queue for bg next/prev
 +  currentClipJson?: string; // android — Livil patch: clip-relative lock-screen window
++  mediaSessionStateJson?: string; // android — Livil patch: in-app shuffle/repeat → MediaSession
    preventsDisplaySleepDuringVideoPlayback?: boolean;
    preferredForwardBufferDuration?: Float; //ios, 0
    playWhenInactive?: boolean; // ios, false
-@@ -410,6 +412,8 @@ export interface VideoNativeProps extends ViewProps {
+@@ -410,6 +413,10 @@ export interface VideoNativeProps extends ViewProps {
    onTextTracks?: DirectEventHandler<OnTextTracksData>; // android
    onTextTrackDataChanged?: DirectEventHandler<OnTextTrackDataChangedData>; // iOS
    onVideoTracks?: DirectEventHandler<OnVideoTracksData>; // android
 +  onVideoNextTrack?: DirectEventHandler<{}>; // android, ios — lock-screen "next track" (Livil patch)
 +  onVideoPreviousTrack?: DirectEventHandler<{}>; // android, ios — lock-screen "previous track" (Livil patch)
++  onVideoRepeatModeChange?: DirectEventHandler<Readonly<{mode: string}>>; // android — controller-driven repeat mode change (Livil patch)
++  onVideoShuffleModeChange?: DirectEventHandler<Readonly<{enabled: boolean}>>; // android — controller-driven shuffle change (Livil patch)
  }
  
  type NativeVideoComponentType = HostComponent<VideoNativeProps>;
 diff --git a/node_modules/react-native-video/src/types/events.ts b/node_modules/react-native-video/src/types/events.ts
-index 027fd5b..b82a446 100644
+index 027fd5b..af0ea6b 100644
 --- a/node_modules/react-native-video/src/types/events.ts
 +++ b/node_modules/react-native-video/src/types/events.ts
-@@ -267,4 +267,6 @@ export interface ReactVideoEvents {
+@@ -267,4 +267,8 @@ export interface ReactVideoEvents {
    onTextTrackDataChanged?: (e: OnTextTrackDataChangedData) => void; // iOS
    onVideoTracks?: (e: OnVideoTracksData) => void; //Android
    onAspectRatio?: (e: OnVideoAspectRatioData) => void;
 +  onNextTrack?: () => void; // Android, iOS — lock-screen / notification "next track" (Livil patch)
 +  onPreviousTrack?: () => void; // Android, iOS — lock-screen / notification "previous track" (Livil patch)
++  onRepeatModeChange?: (e: {mode: 'off' | 'one' | 'all'}) => void; // Android — controller-driven repeat mode change (Livil patch)
++  onShuffleModeChange?: (e: {enabled: boolean}) => void; // Android — controller-driven shuffle change (Livil patch)
  }
 diff --git a/node_modules/react-native-video/src/types/video.ts b/node_modules/react-native-video/src/types/video.ts
-index 0482944..eae46e2 100644
+index 0482944..e0fcd15 100644
 --- a/node_modules/react-native-video/src/types/video.ts
 +++ b/node_modules/react-native-video/src/types/video.ts
-@@ -352,6 +352,16 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
+@@ -352,6 +352,22 @@ export interface ReactVideoProps extends ReactVideoEvents, ViewProps {
    paused?: boolean;
    enterPictureInPictureOnLeave?: boolean;
    playInBackground?: boolean;
@@ -1029,6 +1314,12 @@ index 0482944..eae46e2 100644
 +   *  = absolute-startMs) via a ForwardingPlayer, and enforces clip-end natively
 +   *  (loop when repeatOne, else advance) so it works while backgrounded. */
 +  currentClipJson?: string;
++  /** Livil patch (Android): JSON `{repeatMode: 'off'|'one'|'all', shuffleEnabled}`
++   *  pushed into the session's ClipForwardingPlayer so the car HU / Wear OS /
++   *  Assistant shuffle/repeat icons follow the in-app toggle. The reverse
++   *  direction (a controller toggling shuffle/repeat) arrives as
++   *  onRepeatModeChange / onShuffleModeChange. */
++  mediaSessionStateJson?: string;
    playWhenInactive?: boolean; // iOS
    poster?: string | ReactVideoPoster; // string is deprecated
    /** @deprecated use **resizeMode** key in **poster** props instead */

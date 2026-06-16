@@ -88,3 +88,20 @@ export function buildCurrentClipJson(
     repeatOne: repeatMode === 'one',
   });
 }
+
+/**
+ * Serialises the in-app shuffle/repeat state for react-native-video's
+ * `mediaSessionStateJson` prop (Android). The playback service pushes this into
+ * ClipForwardingPlayer's setRepeatMode / setShuffleModeEnabled, which forces
+ * the MediaSession to republish PlaybackState — so a Bluetooth car HU, Wear OS,
+ * Assistant, etc. show the correct shuffle/repeat icons.
+ *
+ * The reverse direction (a controller toggling shuffle/repeat on the car) comes
+ * back through the onVideoRepeatModeChange / onVideoShuffleModeChange events.
+ */
+export function buildMediaSessionStateJson(
+  repeatMode: 'off' | 'all' | 'one',
+  shuffleEnabled: boolean,
+): string {
+  return JSON.stringify({ repeatMode, shuffleEnabled });
+}
