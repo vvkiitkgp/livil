@@ -12,7 +12,7 @@
 [![React Native](https://img.shields.io/badge/React%20Native-0.85.3-00BFFF)](https://reactnative.dev)
 [![Architecture](https://img.shields.io/badge/New%20Architecture-Fabric-7C3AED)](https://reactnative.dev/architecture/landing-page)
 [![Backend](https://img.shields.io/badge/backend-Supabase-3ECF8E)](https://supabase.com)
-[![Status](https://img.shields.io/badge/Play%20Store-Internal%20Testing%20v1.1.3-00C853)](https://github.com/vvkiitkgp/livil)
+[![Status](https://img.shields.io/badge/Play%20Store-Closed%20Testing-00C853)](https://github.com/vvkiitkgp/livil)
 
 </div>
 
@@ -182,7 +182,7 @@ cd android && ./gradlew bundleRelease
 
 ## 📦 Status
 
-Livil is in **active development** and live on **Google Play (Internal Testing)** — package `com.livil`, currently `v1.1.3`.
+Livil is in **active development** and live on **Google Play (Closed Testing)** — package `com.livil`, with **40+ releases** shipped to testers.
 
 <div align="center">
 
