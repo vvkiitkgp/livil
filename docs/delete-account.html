@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <meta name="robots" content="index,follow" />
+    <title>Delete Your Account · Livil</title>
+    <meta
+      name="description"
+      content="How to delete your Livil account and what data is removed. Livil is a social music platform."
+    />
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: #14141c;
+        --surface-2: #1b1b26;
+        --border: #232330;
+        --text: #f5f5fa;
+        --text-secondary: #b8b8c8;
+        --text-muted: #7a7a8c;
+        --purple: #7c3aed;
+        --purple-light: #a78bfa;
+        --purple-glow: rgba(124, 58, 237, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        height: 800px;
+        background: radial-gradient(
+          circle at center,
+          var(--purple-glow) 0%,
+          transparent 60%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 22px 96px;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 18px 8px 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        margin-bottom: 28px;
+      }
+
+      .logo-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--purple);
+        box-shadow: 0 0 12px var(--purple-glow);
+      }
+
+      .logo-name {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--text);
+      }
+
+      h1 {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        margin: 0 0 10px;
+        background: linear-gradient(135deg, #fff 0%, #c4b5fd 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .tagline {
+        color: var(--text-secondary);
+        font-size: 15px;
+        margin: 0;
+      }
+
+      .updated {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 4px 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text-muted);
+        font-size: 12px;
+        letter-spacing: 0.3px;
+      }
+
+      .intro {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 22px 24px;
+        margin-bottom: 8px;
+      }
+
+      .intro p {
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 44px 0 14px;
+        letter-spacing: -0.3px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      h2::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 22px;
+        background: var(--purple);
+        border-radius: 2px;
+        box-shadow: 0 0 12px var(--purple-glow);
+      }
+
+      h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 22px 0 8px;
+        color: var(--text);
+      }
+
+      p,
+      li {
+        color: var(--text-secondary);
+      }
+
+      ul,
+      ol {
+        padding-left: 20px;
+        margin: 8px 0 12px;
+      }
+
+      li {
+        margin-bottom: 7px;
+      }
+
+      a {
+        color: var(--purple-light);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.15s ease;
+      }
+
+      a:hover {
+        border-bottom-color: var(--purple-light);
+      }
+
+      strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin: 14px 0;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+      }
+
+      .card:hover {
+        border-color: #2e2e42;
+      }
+
+      .card p {
+        margin: 0;
+      }
+
+      .card .name {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .contact-card {
+        background: linear-gradient(
+          135deg,
+          rgba(124, 58, 237, 0.12) 0%,
+          var(--surface) 100%
+        );
+        border: 1px solid rgba(124, 58, 237, 0.35);
+        border-radius: 16px;
+        padding: 24px;
+        margin-top: 14px;
+        text-align: center;
+      }
+
+      .contact-card .name {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--purple-light);
+        margin-bottom: 8px;
+      }
+
+      .contact-card .email {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      footer {
+        margin-top: 60px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      footer .heart {
+        color: var(--purple-light);
+      }
+
+      @media (max-width: 520px) {
+        .wrap {
+          padding: 36px 18px 72px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        h2 {
+          font-size: 19px;
+        }
+        .card,
+        .intro {
+          padding: 16px 18px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="logo">
+          <span class="logo-dot"></span>
+          <span class="logo-name">Livil</span>
+        </div>
+        <h1>Delete Your Account</h1>
+        <p class="tagline">A social music platform built around what you listen to.</p>
+        <span class="updated">Last updated: June 28, 2026</span>
+      </header>
+
+      <div class="intro">
+        <p>
+          This page explains how to delete your <strong>Livil</strong> account
+          and the personal data associated with it. You can request deletion at
+          any time, for any reason — no explanation required.
+        </p>
+      </div>
+
+      <h2>1. Delete From Inside the App</h2>
+      <p>The fastest way to delete your account:</p>
+      <ol>
+        <li>Open <strong>Livil</strong> and go to the <strong>Profile</strong> tab.</li>
+        <li>Tap <strong>Settings</strong>.</li>
+        <li>Select <strong>Delete Account</strong>.</li>
+        <li>Confirm the action when prompted.</li>
+      </ol>
+      <p>
+        Your account is deactivated immediately and queued for permanent
+        deletion. This action is <strong>permanent and cannot be undone</strong>.
+      </p>
+
+      <h2>2. Request Deletion by Email</h2>
+      <p>
+        If you can no longer access the app, you can request deletion by email.
+        Send a message from the email address associated with your Livil account
+        to the address below with the subject line
+        <strong>“Delete my account”</strong>, including your username so we can
+        locate your account.
+      </p>
+      <div class="contact-card">
+        <span class="name">Livil Support</span>
+        <a class="email" href="mailto:vvk.iitkgp@gmail.com"
+          >vvk.iitkgp@gmail.com</a
+        >
+      </div>
+      <p>
+        We will verify your identity and process the request within
+        <strong>30 days</strong>.
+      </p>
+
+      <h2>3. What Data Is Deleted</h2>
+      <p>When your account is deleted, we permanently remove:</p>
+      <ul>
+        <li><strong>Your profile</strong> — username, display name, bio, and avatar.</li>
+        <li><strong>Your email address</strong> and authentication credentials.</li>
+        <li><strong>Your posts and uploaded media</strong> (audio and video).</li>
+        <li>
+          <strong>Your social activity</strong> — likes, follows, comments, and
+          playlists.
+        </li>
+        <li><strong>Your listening history and preferences.</strong></li>
+      </ul>
+
+      <h2>4. What May Be Retained</h2>
+      <p>
+        A limited amount of data may be retained for a short period after
+        deletion where required for legal, security, or fraud-prevention
+        purposes — for example, transaction or abuse-prevention records. Such
+        data is kept only as long as necessary and is then permanently deleted.
+      </p>
+      <p>
+        Content you shared that has been saved or re-shared by other users
+        (where applicable) may persist outside of your account.
+      </p>
+
+      <h2>5. Retention Period</h2>
+      <p>
+        Account and personal data scheduled for deletion is permanently removed
+        within <strong>30 days</strong> of your request, except for the limited
+        categories described in Section 4.
+      </p>
+
+      <h2>6. Contact Us</h2>
+      <p>
+        If you have any questions about deleting your account or your data,
+        reach out to us:
+      </p>
+      <div class="contact-card">
+        <span class="name">Livil Support</span>
+        <a class="email" href="mailto:vvk.iitkgp@gmail.com"
+          >vvk.iitkgp@gmail.com</a
+        >
+      </div>
+
+      <footer>
+        © 2026 Livil — Made with <span class="heart">♪</span> for music lovers.
+      </footer>
+    </div>
+  </body>
+</html>
