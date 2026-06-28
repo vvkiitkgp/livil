@@ -10,21 +10,20 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
+import { signInWithGoogle } from '../../services/googleAuth';
 import { COLORS } from '../../theme/colors';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
-import { useToast } from '../../contexts/ToastContext';
-
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 };
 
 export default function SignInScreen({ navigation }: Props) {
-  const { showToast } = useToast();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
 
@@ -68,11 +67,21 @@ export default function SignInScreen({ navigation }: Props) {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: Implement Google OAuth for React Native
-    // Requires react-native-app-auth + Google Cloud credentials
-    // Docs: https://supabase.com/docs/guides/auth/social-login/auth-google?platform=react-native
-    showToast('Google sign-in is coming soon.', { kind: 'info' });
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setError('');
+    try {
+      await signInWithGoogle();
+      // RootNavigator detects the session change automatically
+    } catch (e: unknown) {
+      // Silently ignore user cancellation
+      const msg = e instanceof Error ? e.message : '';
+      if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('dismiss')) {
+        setError(msg || 'Google sign-in failed. Please try again.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   return (
@@ -160,12 +169,19 @@ export default function SignInScreen({ navigation }: Props) {
             </View>
 
             <TouchableOpacity
-              style={styles.googleButton}
+              style={[styles.googleButton, googleLoading && styles.buttonDisabled]}
               onPress={handleGoogleSignIn}
+              disabled={googleLoading || loading}
               activeOpacity={0.85}
             >
-              <Text style={styles.googleIcon}>G</Text>
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
+              {googleLoading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <>
+                  <Text style={styles.googleIcon}>G</Text>
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 
