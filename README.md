@@ -32,11 +32,22 @@ It’s a creator network, a listening party, and a chat app fused into a single 
 
 ## 📱 Screenshots
 
-> _Drop product screenshots / screen-recording GIFs here — feed, Jam Room, full-screen player, chat, profile. This is the first thing a recruiter or investor looks at._
+<div align="center">
 
-| Home Feed | Jam Room | Player | Chat |
+| Home Feed | Full-Screen Player | Jam Room | Profile |
 |:--:|:--:|:--:|:--:|
-| _coming soon_ | _coming soon_ | _coming soon_ | _coming soon_ |
+| <img src="docs/screenshots/home-feed.png" width="200" alt="Home feed" /> | <img src="docs/screenshots/player.png" width="200" alt="Full-screen player" /> | <img src="docs/screenshots/jam-room.png" width="200" alt="Jam Room" /> | <img src="docs/screenshots/profile.png" width="200" alt="Profile" /> |
+| Personalized feed with friends’ stories & reposts | Video + audio playback, shuffle / loop, lyrics & queue | Listen together in real time — synced + in-room chat | Creator profile: reposts, uploads, albums & playlists |
+
+### 🔒 Background & Lock-Screen Media Controls
+
+A single audio engine drives full OS media-session controls — they keep working with the app **backgrounded** or the phone **locked**.
+
+| In-App Info & Credits | Notification Shade | Lock Screen |
+|:--:|:--:|:--:|
+| <img src="docs/screenshots/player-info.png" width="200" alt="Player info and credits" /> | <img src="docs/screenshots/notification-controls.png" width="200" alt="Notification media controls" /> | <img src="docs/screenshots/lock-screen.png" width="200" alt="Lock-screen media controls" /> |
+
+</div>
 
 ---
 
