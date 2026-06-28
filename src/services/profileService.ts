@@ -60,6 +60,43 @@ export type PrivateProfilePatch = {
   phone_number: string | null;
 };
 
+/**
+ * Whether the user has deliberately chosen a username. OAuth (Google) signups
+ * start as `false` and are prompted to pick one on first launch. Fails open
+ * (returns true) so a transient network error never traps a returning user on
+ * the username screen.
+ */
+export async function getUsernameSet(userId: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data, error } = await db
+    .from('profiles')
+    .select('username_set')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return data?.username_set ?? true;
+}
+
+/**
+ * One-time username claim. Atomically validates + claims a username
+ * (case-insensitive uniqueness), optionally sets the display name, and marks
+ * username_set = true. The username is permanent afterwards — a second call
+ * throws. Throws with a user-facing message on conflict / bad format.
+ */
+export async function claimUsername(
+  username: string,
+  displayName?: string | null,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { error } = await db.rpc('claim_username', {
+    p_username: username.trim().toLowerCase(),
+    p_display_name: displayName?.trim() || null,
+  });
+  if (error) {throw new Error(error.message);}
+}
+
 export async function getMyProfile(userId: string): Promise<MyProfile> {
   const { data, error } = await supabase
     .from('profiles')

@@ -9,6 +9,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
 import {ToastProvider} from './src/contexts/ToastContext';
 import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
+import {hideNativeSplash} from './src/native/splashScreen';
 
 const AppTheme = {
   ...DarkTheme,
@@ -45,6 +46,14 @@ function useInitReanimatedMappers() {
 
 export default function App(): React.JSX.Element {
   useInitReanimatedMappers();
+
+  // Hand off from the native cold-start splash to our React splash. rAF waits
+  // until after the first frame has been committed/painted, so dismissing the
+  // native splash reveals the React SplashScreen underneath with no blank gap.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => hideNativeSplash());
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   return (
     <GestureHandlerRootView style={styles.root}>

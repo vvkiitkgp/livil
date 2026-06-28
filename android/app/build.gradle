@@ -83,11 +83,12 @@ android {
         applicationId "com.livil"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 40
-        versionName "1.0.35"
+        versionCode 44
+        versionName "1.1.3"
         ndk {
             abiFilters "arm64-v8a"
         }
+        manifestPlaceholders = [appAuthRedirectScheme: "com.googleusercontent.apps.1094759669858-i7equ096hesl3c3vbf6a7lju2rvlt2ie"]
     }
     signingConfigs {
         debug {
@@ -120,6 +121,7 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("androidx.core:core-splashscreen:1.0.1")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

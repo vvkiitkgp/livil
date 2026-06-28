@@ -37,9 +37,10 @@ export default function OnboardingScreen({ navigation }: Props) {
           <Icon name="musicNote" size={30} color="rgba(167, 139, 250, 0.55)" />
           <Icon name="musicNotes" size={24} color="rgba(167, 139, 250, 0.35)" />
         </View>
-        <Text style={styles.logoText}>Livil</Text>
+        <Text style={styles.logoText}>livil</Text>
         <View style={styles.logoDivider} />
         <Text style={styles.tagline}>Your music, your world.</Text>
+        <Text style={styles.caption}>Live . Vibe . Link</Text>
       </View>
 
       {/* Bottom CTA */}
@@ -134,6 +135,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: COLORS.textSecondary,
     letterSpacing: 0.4,
+  },
+  caption: {
+    fontSize: 12,
+    color: COLORS.purple,
+    letterSpacing: 3,
+    fontWeight: '600',
+    marginTop: 10,
+    textTransform: 'uppercase',
   },
   bottomSection: {
     paddingHorizontal: 28,
