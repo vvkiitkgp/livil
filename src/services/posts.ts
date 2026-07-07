@@ -231,21 +231,37 @@ async function hydrateRawPostRows(
   }));
 }
 
-async function hydratePostsByIds(
-  orderedIds: string[],
-  viewerLikedByPostId: Map<string, boolean>,
-): Promise<FeedPost[]> {
-  if (orderedIds.length === 0) {
-    return [];
-  }
-  const { data, error } = await supabase.from('posts').select(POST_SELECT).in('id', orderedIds);
-  if (error) {
-    throw new Error(error.message);
-  }
-  const rows = (data ?? []) as unknown as RawPostRow[];
-  const byId = new Map(rows.map(r => [r.id, r]));
-  const ordered = orderedIds.map(id => byId.get(id)).filter(Boolean) as RawPostRow[];
-  return hydrateRawPostRows(ordered, { viewerLikedByPostId });
+/**
+ * Shape of the `post` jsonb returned by the consolidated `fetch_home_feed` RPC:
+ * exactly RawPostRow plus the resolved original author and the viewer's liked
+ * flag. The RPC hydrates track + author + original author server-side so the
+ * feed needs a SINGLE round-trip (no separate posts / originals / post_likes
+ * fetches).
+ */
+type RpcFeedPostJson = RawPostRow & {
+  original_author: RawPostRow['author'];
+  viewer_has_liked: boolean | null;
+};
+
+function mapRpcFeedPost(raw: RpcFeedPostJson): FeedPost {
+  return {
+    id: raw.id,
+    kind: raw.kind,
+    caption: raw.caption,
+    createdAt: raw.created_at,
+    viewsCount: raw.views_count,
+    likesCount: raw.likes_count,
+    repostsCount: raw.reposts_count,
+    commentsCount: raw.comments_count,
+    author: toAuthor(raw.author),
+    track: toTrack(raw.track),
+    originalAuthor:
+      raw.original_post_id && raw.original_author ? toAuthor(raw.original_author) : null,
+    originalPostId: raw.original_post_id,
+    viewerHasLiked: Boolean(raw.viewer_has_liked),
+    clipStartSec: raw.clip_start_sec ?? null,
+    clipEndSec: raw.clip_end_sec ?? null,
+  };
 }
 
 export type HomeFeedCursor = {
@@ -255,10 +271,11 @@ export type HomeFeedCursor = {
 };
 
 type RpcHomeFeedRow = {
-  post_id: string;
   feed_bucket: number;
   sort_key: number;
-  viewer_has_liked: boolean;
+  post_id: string;
+  /** Fully-hydrated post (track + author + original author + liked flag). */
+  post: RpcFeedPostJson;
 };
 
 /**
@@ -283,18 +300,19 @@ export async function fetchHomeFeedPage(options: {
     throw new Error(error.message);
   }
 
-  const rpcRows = (data ?? []) as RpcHomeFeedRow[];
-  if (rpcRows.length === 0) {
+  // Cast via unknown: the generated Supabase types still describe the pre-
+  // consolidation RPC signature. Regenerate types after the migration lands.
+  const rows = (data ?? []) as unknown as RpcHomeFeedRow[];
+
+  if (rows.length === 0) {
     return { posts: [], nextCursor: null };
   }
 
-  const ids = rpcRows.map(r => r.post_id);
-  const liked = new Map(rpcRows.map(r => [r.post_id, r.viewer_has_liked]));
-  const posts = await hydratePostsByIds(ids, liked);
+  const posts = rows.map(r => mapRpcFeedPost(r.post));
 
-  const last = rpcRows[rpcRows.length - 1]!;
+  const last = rows[rows.length - 1]!;
   const nextCursor: HomeFeedCursor | null =
-    rpcRows.length >= limit
+    rows.length >= limit
       ? { bucket: last.feed_bucket, sortKey: last.sort_key, id: last.post_id }
       : null;
 
