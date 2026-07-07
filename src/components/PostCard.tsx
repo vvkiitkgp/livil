@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
@@ -20,6 +20,7 @@ import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 import { Icon } from './Icon';
+import ProgressiveImage from './ProgressiveImage';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -403,11 +404,11 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             onPress={() => openAuthor(headerAuthor.id)}
           >
             <View style={styles.avatar}>
-              {headerAuthor.avatarUrl ? (
-                <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
-              ) : (
-                <Text style={styles.avatarText}>{initials}</Text>
-              )}
+              <ProgressiveImage
+                source={{ uri: headerAuthor.avatarUrl }}
+                style={styles.avatarImg}
+                placeholder={<Text style={styles.avatarText}>{initials}</Text>}
+              />
             </View>
             <View style={styles.headerText}>
               <View style={styles.nameRow}>
@@ -553,11 +554,11 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           accessibilityLabel={`Open @${headerAuthor.username}`}
         >
           <View style={styles.avatar}>
-            {headerAuthor.avatarUrl ? (
-              <Image source={{ uri: headerAuthor.avatarUrl }} style={styles.avatarImg} />
-            ) : (
-              <Text style={styles.avatarText}>{initials}</Text>
-            )}
+            <ProgressiveImage
+              source={{ uri: headerAuthor.avatarUrl }}
+              style={styles.avatarImg}
+              placeholder={<Text style={styles.avatarText}>{initials}</Text>}
+            />
           </View>
           <View style={styles.headerText}>
             <View style={styles.nameRow}>
@@ -636,19 +637,16 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             style={styles.mediaWrap}
             accessibilityLabel="Open full-screen player"
           >
-            {post.track.thumbnailUrl ? (
-              <Image
-                source={{ uri: post.track.thumbnailUrl }}
-                style={styles.videoThumb}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.videoThumb, styles.videoThumbPlaceholder]}>
+            <ProgressiveImage
+              source={{ uri: post.track.thumbnailUrl }}
+              style={styles.videoThumb}
+              resizeMode="cover"
+              placeholder={
                 <View style={styles.videoThumbIconWrap}>
                   <Icon name="play" size={56} color={COLORS.textMuted} />
                 </View>
-              </View>
-            )}
+              }
+            />
             <View style={styles.videoBadge} pointerEvents="none">
               <Text style={styles.videoBadgeText}>VIDEO</Text>
             </View>
@@ -674,18 +672,17 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             style={styles.mediaWrap}
             accessibilityLabel={isThisActive ? 'Pause' : 'Play'}
           >
-            {post.track.coverArtUrl ? (
-              <Image
-                source={{ uri: post.track.coverArtUrl }}
-                style={styles.audioCover}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.audioCover, styles.audioFallback]}>
-                <View style={styles.fallbackBlobA} pointerEvents="none" />
-                <View style={styles.fallbackBlobB} pointerEvents="none" />
-              </View>
-            )}
+            <ProgressiveImage
+              source={{ uri: post.track.coverArtUrl }}
+              style={styles.audioCover}
+              resizeMode="cover"
+              placeholder={
+                <>
+                  <View style={styles.fallbackBlobA} pointerEvents="none" />
+                  <View style={styles.fallbackBlobB} pointerEvents="none" />
+                </>
+              }
+            />
             {isThisActive && playback.isBuffering ? (
               <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
                 <ActivityIndicator size="large" color={COLORS.purpleLight} />
@@ -1047,11 +1044,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: COLORS.card,
   },
-  audioFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
   fallbackBlobA: {
     position: 'absolute',
     width: 240,
@@ -1071,10 +1063,6 @@ const styles = StyleSheet.create({
     opacity: 0.35,
     bottom: -50,
     right: -20,
-  },
-  videoThumbPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   videoBadge: {
     position: 'absolute',

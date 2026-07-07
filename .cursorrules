@@ -89,7 +89,7 @@ livil/
 
 ## Supabase
 
-- **Project URL**: `https://itmtmeobsclhyczidjct.supabase.co`
+- **Project URL**: `https://fqzrmqnlgjeuxzinbqvs.supabase.co` (Mumbai/`ap-south-1`, migrated 2026-07-07 from old Sydney project `itmtmeobsclhyczidjct`)
 - **Anon key**: stored in `lib/supabase.ts`
 - **Auth methods**: Email/Password + Google OAuth
 
