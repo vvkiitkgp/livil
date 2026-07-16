@@ -39,6 +39,7 @@ import {
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
 import { listConversations } from '../../services/conversations';
+import { getActivityUnreadCount } from '../../services/activity';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -59,6 +60,32 @@ type FeedListItem =
 const FEED_PAGE_SIZE = 12;
 /** Fetch the next page while the viewer is still a few cards away from the bottom. */
 const PREFETCH_FROM_END = 5;
+
+/**
+ * Warm RN's image cache for a freshly-fetched page so cover art / thumbnails /
+ * avatars have already downloaded by the time their card scrolls into view — the
+ * ProgressiveImage fade-in is then effectively instant. Fire-and-forget: a
+ * prefetch failure is ignored (the <Image> just loads normally when rendered).
+ */
+function prefetchFeedMedia(posts: FeedPost[]): void {
+  const urls = new Set<string>();
+  for (const post of posts) {
+    const candidates = [
+      post.track.coverArtUrl,
+      post.track.thumbnailUrl,
+      post.author.avatarUrl,
+      post.originalAuthor?.avatarUrl ?? null,
+    ];
+    for (const url of candidates) {
+      if (url) {
+        urls.add(url);
+      }
+    }
+  }
+  for (const url of urls) {
+    Image.prefetch(url).catch(() => {});
+  }
+}
 
 function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) {
@@ -245,8 +272,13 @@ export default function HomeScreen() {
 
   const [meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
   const [totalUnread, setTotalUnread] = useState(0);
-  // Total badge count shown on the 💬 button = unread messages + incoming friend requests.
-  const notificationCount = totalUnread + pendingIncomingCount;
+  // Unread livil Bot activity (likes/comments/reposts/milestones/friend outcomes).
+  // These live in `activity_notifications` (services/activity), NOT the messages
+  // table — so they must be counted separately from `totalUnread`.
+  const [activityUnread, setActivityUnread] = useState(0);
+  // Total badge count shown on the 💬 button = unread messages + incoming friend
+  // requests + unread livil Bot activity.
+  const notificationCount = totalUnread + pendingIncomingCount + activityUnread;
 
   const [storiesLoading, setStoriesLoading] = useState(true);
 
@@ -401,6 +433,15 @@ export default function HomeScreen() {
         } catch {
           // ignore
         }
+        // livil Bot activity is a separate table — refetch its unread count too.
+        // Covers: user opens Activity Center → markActivityRead() → returns to Home
+        // and expects the bot's contribution to the badge cleared.
+        try {
+          const n = await getActivityUnreadCount();
+          if (!cancelled) { setActivityUnread(n); }
+        } catch {
+          // ignore
+        }
       })();
       return () => { cancelled = true; };
     }, []),
@@ -445,6 +486,42 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // Live: keep the livil Bot activity contribution to the badge current. Any
+  // insert/update/delete on activity_notifications for me → refetch the count.
+  // Refetch (not increment) because likes aggregate into an existing row (an
+  // arriving like is an UPDATE, not always an INSERT), and mark-read is an
+  // UPDATE too — a naive +1 would drift. `recipient_id` filter mirrors the
+  // ActivityCenterScreen subscription; the channel is gated on the resolved id.
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    void supabase.auth.getUser().then(({ data }) => {
+      const myId = data?.user?.id;
+      if (!myId || cancelled) { return; }
+      channel = supabase
+        .channel(`home:activity:${myId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'activity_notifications',
+            filter: `recipient_id=eq.${myId}`,
+          },
+          () => {
+            void getActivityUnreadCount()
+              .then(n => { if (!cancelled) { setActivityUnread(n); } })
+              .catch(() => { /* ignore */ });
+          },
+        )
+        .subscribe();
+    });
+    return () => {
+      cancelled = true;
+      if (channel) { void supabase.removeChannel(channel); }
+    };
+  }, []);
+
   const appendFeedPage = useCallback(async (mode: 'initial' | 'refresh' | 'prefetch' | 'end') => {
     if (loadingMoreRef.current) {
       return;
@@ -483,6 +560,10 @@ export default function HomeScreen() {
         limit: FEED_PAGE_SIZE,
         cursor,
       });
+
+      // Warm the cache for this page's media so cards below the fold (and the
+      // next page's cards) fade in instantly instead of popping when scrolled to.
+      prefetchFeedMedia(chunk);
 
       setPosts(prev => {
         if (mode === 'initial' || mode === 'refresh') {
