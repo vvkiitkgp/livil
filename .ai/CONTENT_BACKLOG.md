@@ -8,7 +8,8 @@
 **Version 1.0** · Companion to [`CREATIVE_DIRECTOR.md`](./CREATIVE_DIRECTOR.md),
 [`CONTENT_PILLARS.md`](./CONTENT_PILLARS.md), [`FEATURE_STORYTELLING.md`](./FEATURE_STORYTELLING.md),
 [`POST_FRAMEWORKS.md`](./POST_FRAMEWORKS.md), [`CAROUSEL_TECHNIQUES.md`](./CAROUSEL_TECHNIQUES.md),
-[`INSTAGRAM_STYLE.md`](./INSTAGRAM_STYLE.md), [`BRAND_GUIDE.md`](./BRAND_GUIDE.md)
+[`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md), [`INSTAGRAM_STYLE.md`](./INSTAGRAM_STYLE.md),
+[`BRAND_GUIDE.md`](./BRAND_GUIDE.md)
 
 ---
 
@@ -56,18 +57,20 @@ The current recommended running order. Balances impact with pillar rotation.
 
 | # | Item | Pillar | Priority | Status |
 |---|---|---|---|---|
-| 1 | [The waveform that listens](#11-the-waveform-that-listens) | Engineering / Music | ★★★★★ | Needs Assets |
-| 2 | [The full-screen player](#41-the-full-screen-player) | Design | ★★★★★ | Needs Assets |
-| 3 | [One engine plays everything](#21-one-engine-plays-every-song) | Engineering | ★★★★★ | Needs Assets |
-| 4 | [Music is better together (Jam Rooms)](#31-jam-rooms--listen-together) | Product / Music | ★★★★★ | Needs Assets |
-| 5 | [The clip is the song](#22-the-clip-is-the-song) | Engineering / Product | ★★★★★ | Needs Assets |
-| 6 | [The app died with no logs (OOM bug)](#12-the-app-that-died-with-no-logs) | Engineering | ★★★★ | Ready |
-| 7 | [Building this alone](#81-building-this-alone) | Founder | ★★★★ | Ready |
-| 8 | [The keyboard that wouldn't stay](#71-the-keyboard-that-wouldnt-stay) | Engineering | ★★★★ | Ready |
-| 9 | [Discovery through people, not algorithms](#91-discovery-through-people) | Music / Product | ★★★★ | Ready |
-| 10 | [Emoji cover art](#43-emoji-cover-art) | Design | ★★★★ | Needs Assets |
+| 1 | [The floating player, in your hand (gestures)](#102-the-floating-player-in-your-hand) | Engineering / Design | ★★★★ | Idea *(template proven, zero new assets)* |
+| 2 | [The waveform that listens](#11-the-waveform-that-listens) | Engineering / Music | ★★★★★ | Needs Assets |
+| 3 | [The full-screen player](#41-the-full-screen-player) | Design | ★★★★★ | Needs Assets |
+| 4 | [One engine plays everything](#21-one-engine-plays-every-song) | Engineering | ★★★★★ | Needs Assets |
+| 5 | [Music is better together (Jam Rooms)](#31-jam-rooms--listen-together) | Product / Music | ★★★★★ | Needs Assets |
+| 6 | [The clip is the song](#22-the-clip-is-the-song) | Engineering / Product | ★★★★★ | Needs Assets |
+| 7 | [The app died with no logs (OOM bug)](#12-the-app-that-died-with-no-logs) | Engineering | ★★★★ | Ready |
+| 8 | [Building this alone](#81-building-this-alone) | Founder | ★★★★ | Ready |
+| 9 | [The keyboard that wouldn't stay](#71-the-keyboard-that-wouldnt-stay) | Engineering | ★★★★ | Ready |
+| 10 | [Discovery through people, not algorithms](#91-discovery-through-people) | Music / Product | ★★★★ | Ready |
+| 11 | [Emoji cover art](#43-emoji-cover-art) | Design | ★★★★ | Needs Assets |
 
 > Rotate pillars: after an Engineering post, prefer a Design / Music / Founder item next.
+> #1 jumps the queue on execution-readiness — it reuses the proven [10.1](#101-the-floating-player-alive) template with zero new assets required.
 
 ---
 
@@ -624,25 +627,65 @@ The current recommended running order. Balances impact with pillar rotation.
 
 ---
 
+# Group 10 — Motion Showcases
+*Component-in-motion Reels — the real UI, code-animated and screen-recorded. Never generative/AI
+video (it distorts real UI — see [`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md)). Source: this session.*
+
+### 10.1 The floating player, alive
+- **Summary:** The floating player's full behavior — pop-in, the beat-reactive wave, shuffle/repeat, and Jam — shown as one continuous 3D motion piece built from the real component, not a screen capture or generative video.
+- **Pillar:** Design + Engineering
+- **Angle:** Show, don't tell — let the actual UI perform instead of describing it in a carousel.
+- **Format:** Motion / Reel, 9:16, ~12s loop
+- **Motion technique:** 5-Phase Component Reveal + 3D-depth per-phase camera tilt (see [`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md))
+- **Required screenshots:** None — built as a faithful code recreation, not a screen capture.
+- **Required assets:** None — the reference build IS the asset ([flat 2D](https://claude.ai/code/artifact/e4dde0a3-5c83-4c00-a46d-186b839c6841), [3D depth](https://claude.ai/code/artifact/831980cf-02bb-41ab-8005-90c015f3a792)).
+- **Difficulty:** Hard (first of its kind; now a reusable template)
+- **Priority:** ★★★★★
+- **Status:** Published — first LiViL Instagram post
+- **Related features:** `FloatingPlayer.tsx`, `WaveVisualizer.tsx`, [`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md)
+- **Why someone would care:** It's the account's debut — sets the bar that LiViL content shows the real product in motion, never fakes it.
+- **Caption used:** "Livil — music, made social again. / The first detail: the floating player. / Always there. Never in the way. One tap to play. / The wave rides the song's real loudness — not a loop, the real thing. / Open it for shuffle, repeat, or a Jam to listen with a friend. / Built solo. Building in public. Coming soon to the Play Store."
+- **Follow-up spin-off:** [10.2](#102-the-floating-player-in-your-hand) — the gesture layer is rich enough for its own showcase.
+
+### 10.2 The floating player, in your hand
+- **Summary:** The gesture layer a screenshot can't show — drag left to rewind, drag right for 2× seek, swipe up/down to open/close full-screen, double-tap, and the first-time "it's draggable" wiggle hint.
+- **Pillar:** Engineering + Design
+- **Angle:** The invisible interaction layer — motion is the only way to tell this story.
+- **Format:** Motion / Reel, 9:16
+- **Motion technique:** 5-Phase Component Reveal, adapted for gesture demonstration — fork the [10.1](#101-the-floating-player-alive) template and swap the phase content for drag/swipe beats (see [`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md))
+- **Required screenshots:** None — code-driven recreation, like 10.1.
+- **Required assets:** None yet — build from the 10.1 template.
+- **Difficulty:** Medium (choreography is new; the production method is proven)
+- **Priority:** ★★★★
+- **Status:** Idea
+- **Related features:** `FloatingPlayer.tsx` gesture handlers (`Gesture.Race` pan/tap), the "it's draggable" wiggle hint
+- **Why someone would care:** Direct follow-up to the debut post — rewards anyone who noticed the player was static in 10.1 and wondered "wait, can you drag this?"
+
+---
+
 # Changelog
 
 *Log every published post here: date · item · pillar · link. This is the build-in-public record.*
 
 | Date | Item | Pillar | Link |
 |---|---|---|---|
-| _(none yet)_ | | | |
+| 2026-07-17 | [10.1 The floating player, alive](#101-the-floating-player-alive) | Design / Engineering | _(add IG permalink)_ |
 
 ---
 
 # Backlog Health
 
-- **Items:** 34 across 9 groups.
+- **Items:** 36 across 10 groups (1 Published).
 - **Pillar coverage:** Engineering-heavy (the repo's strength) — deliberately balance published output toward Design / Music / Founder so the *feed* stays mixed even though the *backlog* skews technical.
 - **Immediate `Ready` items** (can ship without new captures): [1.2](#12-the-app-that-died-with-no-logs),
   [7.1](#71-the-keyboard-that-wouldnt-stay), [8.1](#81-building-this-alone), [9.1](#91-discovery-through-people).
+- **Motion Showcases are now a proven format** ([`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md)) — the
+  5-Phase Reveal + 3D-depth technique is reusable for any top-priority item above, not just the floating player.
 - **Biggest asset gaps:** high-quality device screenshots of the Full-Screen Player, Jam Room, and the
   waveform pill; architecture/code cards for the playback deep dives.
 - **Next maintenance trigger:** on the next feature PR, add its item here before writing any post about it.
+  Also: whenever a Motion Showcase publishes, log it in Group 10 and capture any spin-off idea immediately
+  (see 10.1 → 10.2).
 
 ---
 

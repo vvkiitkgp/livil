@@ -492,6 +492,9 @@ Presentation-grade, like a Linear or Apple product film — not social jump-cuts
 - **Sound:** LiViL is a music app — use music intentionally, on-beat cuts where it fits. The wave
   visualizer reacting to the track is peak on-brand.
 - Total: teasers 5–10s, deep dives up to 30–45s. End on the wordmark + one CTA.
+- **Component Showcases** (a UI element brought to life) are built as **code-driven
+  recreations**, never generative AI video — see [`MOTION_TECHNIQUES.md`](./MOTION_TECHNIQUES.md)
+  for the production method, the 5-Phase Reveal, and the 3D-depth technique.
 
 ---
 

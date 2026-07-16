@@ -144,6 +144,36 @@ Examples
 
 ---
 
+# The Solo Story
+
+LiViL is a product first.
+
+The solo story is real, and it's an asset. Don't hide it.
+
+But it is a value-add, not a hedge.
+
+Bad
+
+> Solo founder. Building in public. Follow along.
+
+Good
+
+> Built solo. Building in public.
+
+The difference: the subject stays the product, not the journey.
+
+Use it as a strength, not an apology.
+
+Dose it.
+
+The debut post. A founder update. The bio.
+
+Not the sign-off on every caption.
+
+Repeat it everywhere and it stops meaning anything.
+
+---
+
 # Headlines
 
 Headlines should create curiosity.
