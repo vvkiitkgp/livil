@@ -41,6 +41,9 @@ export default function SignUpScreen({ navigation }: Props) {
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [checkEmailOpen, setCheckEmailOpen] = useState(false);
   const [checkEmailTarget, setCheckEmailTarget] = useState('');
+  // 'emailExists' shows an inline "Sign In instead" hint next to the error;
+  // 'generic' covers validation / rate-limit / network failures.
+  const [errorKind, setErrorKind] = useState<'generic' | 'emailExists'>('generic');
 
   const cleanedUsername = useMemo(
     () => username.trim().toLowerCase().replace(/^@/, ''),
@@ -79,6 +82,7 @@ export default function SignUpScreen({ navigation }: Props) {
   }, [cleanedUsername]);
 
   const handleSignUp = async () => {
+    setErrorKind('generic');
     if (!displayName.trim() || !cleanedUsername || !email.trim() || !password) {
       setError('Please fill in all fields.');
       return;
@@ -97,23 +101,42 @@ export default function SignUpScreen({ navigation }: Props) {
     }
     setLoading(true);
     setError('');
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: 'livil://auth',
-        data: {
-          display_name: displayName.trim(),
-          username: cleanedUsername,
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: 'livil://auth',
+          data: {
+            display_name: displayName.trim(),
+            username: cleanedUsername,
+          },
         },
-      },
-    });
-    setLoading(false);
-    if (signUpError) {
-      setError(signUpError.message);
-    } else {
-      setCheckEmailTarget(email.trim());
-      setCheckEmailOpen(true);
+      });
+      if (signUpError) {
+        const msg = signUpError.message.toLowerCase();
+        if (msg.includes('already registered') || msg.includes('already exists')) {
+          setErrorKind('emailExists');
+          setError('An account with this email already exists.');
+        } else if (msg.includes('rate limit')) {
+          setError('Too many attempts. Please wait a bit and try again.');
+        } else {
+          setError(signUpError.message);
+        }
+      } else if (data.user && data.user.identities && data.user.identities.length === 0) {
+        // Supabase's anti-enumeration behavior: a 200 with an empty identities
+        // array means this email is already registered and confirmed — no
+        // confirmation email is sent in that case.
+        setErrorKind('emailExists');
+        setError('An account with this email already exists.');
+      } else {
+        setCheckEmailTarget(email.trim());
+        setCheckEmailOpen(true);
+      }
+    } catch {
+      setError('Network error. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,6 +165,15 @@ export default function SignUpScreen({ navigation }: Props) {
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
+              {errorKind === 'emailExists' ? (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('SignIn')}
+                  activeOpacity={0.7}
+                  style={styles.errorHintRow}
+                >
+                  <Text style={styles.errorHintText}>Sign in instead →</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
 
@@ -358,6 +390,14 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     fontSize: 14,
     lineHeight: 20,
+  },
+  errorHintRow: {
+    marginTop: 8,
+  },
+  errorHintText: {
+    color: COLORS.purpleLight,
+    fontSize: 13,
+    fontWeight: '700',
   },
   form: {
     gap: 16,

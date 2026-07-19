@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import { getUsernameSet } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
 import RepostScreen from '../screens/main/RepostScreen';
@@ -40,6 +41,7 @@ import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
 import { COLORS } from '../theme/colors';
+import { useToast } from '../contexts/ToastContext';
 import { updatePresenceHeartbeat } from '../services/conversations';
 import { messageCache } from '../services/messageCache';
 import {
@@ -145,6 +147,10 @@ export default function RootNavigator() {
   // null = unknown (checking), true = must choose a username (new OAuth user),
   // false = onboarded. Gates the app behind ChooseUsernameScreen.
   const [needsUsername, setNeedsUsername] = useState<boolean | null>(null);
+  // Set when a livil://auth deep link carries type=recovery (password reset
+  // link) — gates the app behind ResetPasswordScreen until a new password is set.
+  const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
+  const { showToast } = useToast();
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pushUserIdRef = useRef<string | null>(null);
   const [pushPromptVisible, setPushPromptVisible] = useState(false);
@@ -245,15 +251,23 @@ export default function RootNavigator() {
       console.log('[deeplink] received:', url);
       if (!url.startsWith('livil://auth')) { return; }
 
+      // type=recovery marks a password-reset link (present alongside the
+      // tokens/code, regardless of flow) — gate behind ResetPasswordScreen.
+      const queryString = url.split('?')[1]?.split('#')[0] ?? '';
+      const fragment = url.split('#')[1] ?? '';
+      const isRecovery =
+        new URLSearchParams(queryString).get('type') === 'recovery' ||
+        new URLSearchParams(fragment).get('type') === 'recovery';
+
       // PKCE flow: code arrives as a query param (?code=…)
       if (url.includes('code=')) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
         if (error) { console.error('[deeplink] exchangeCodeForSession error:', error.message, error.status); }
+        else if (isRecovery) { setPasswordRecoveryPending(true); }
         return;
       }
 
       // Implicit / fragment flow: tokens in #access_token=…&refresh_token=…
-      const fragment = url.split('#')[1] ?? '';
       if (fragment) {
         const params = new URLSearchParams(fragment);
         const accessToken = params.get('access_token');
@@ -261,6 +275,7 @@ export default function RootNavigator() {
         if (accessToken && refreshToken) {
           const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
           if (error) { console.error('[deeplink] setSession error:', error.message); }
+          else if (isRecovery) { setPasswordRecoveryPending(true); }
           return;
         }
       }
@@ -332,6 +347,7 @@ export default function RootNavigator() {
           const prevUserId = pushUserIdRef.current;
           pushUserIdRef.current = null;
           setNeedsUsername(null);
+          setPasswordRecoveryPending(false);
           if (prevUserId) void unregisterDevice(prevUserId);
         } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
           // Fresh sign-in (new user id) — register push + resolve onboarding.
@@ -372,7 +388,15 @@ export default function RootNavigator() {
   return (
     <View style={styles.root}>
       {!onSplash &&
-        (session && needsUsername ? (
+        (session && passwordRecoveryPending ? (
+          <ResetPasswordScreen
+            onComplete={() => {
+              setPasswordRecoveryPending(false);
+              showToast('Password updated.', { kind: 'success' });
+            }}
+            onCancel={() => setPasswordRecoveryPending(false)}
+          />
+        ) : session && needsUsername ? (
           <ChooseUsernameScreen
             email={session.user?.email ?? null}
             displayName={
