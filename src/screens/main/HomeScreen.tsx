@@ -822,12 +822,15 @@ export default function HomeScreen() {
         pointerEvents="box-none"
       >
         <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            {/* Black-and-white treatment, matching the app icon. The header is
-                already near-black, so the icon's dark plate is the background
-                itself — no tile, just the white pulse mark. */}
-            <Logo size={40} color={COLORS.white} />
-            <Text style={styles.wordmark}>livil</Text>
+          {/* The mark carries the brand on its own now, so the row needs an
+              explicit label — without the "livil" text there is nothing for a
+              screen reader to announce. */}
+          <View style={styles.brandRow} accessibilityRole="header" accessibilityLabel="Livil">
+            {/* Mark only — the pulse glyph is itself a stylized wordmark, so the
+                "livil" text alongside it was redundant. Black-and-white to match
+                the app icon; the header is already near-black, so the icon's dark
+                plate is the background itself and the mark needs no tile. */}
+            <Logo size={96} color={COLORS.white} />
           </View>
           <View style={styles.topBarActions}>
             <TouchableOpacity
@@ -926,12 +929,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 26,
     marginTop: -2,
-  },
-  wordmark: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
   },
   inboxButton: {
     width: 38,
