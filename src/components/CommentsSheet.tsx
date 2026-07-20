@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
+import { Button } from './Button';
 import { Icon } from './Icon';
 import FormInput from './FormInput';
 import CommentItem from './CommentItem';
@@ -533,21 +534,14 @@ export default function CommentsSheet({
               wrapperStyle={styles.composerInputWrap}
               style={styles.composerInput}
             />
-            <TouchableOpacity
-              style={[
-                styles.sendBtn,
-                (composer.trim().length === 0 || sending) && styles.sendBtnDisabled,
-              ]}
+            <Button
+              label="Send"
               onPress={onSendPressed}
-              disabled={composer.trim().length === 0 || sending}
-              activeOpacity={0.85}
-            >
-              {sending ? (
-                <ActivityIndicator color={COLORS.white} size="small" />
-              ) : (
-                <Text style={styles.sendBtnText}>Send</Text>
-              )}
-            </TouchableOpacity>
+              variant="primary"
+              size="md"
+              busy={sending}
+              disabled={composer.trim().length === 0}
+            />
           </View>
           {/* Mention suggestions render directly under the composer so they
               always appear next to the active input — not at a fixed sheet
@@ -772,22 +766,6 @@ const styles = StyleSheet.create({
   composerInput: {
     maxHeight: 120,
     paddingVertical: 10,
-  },
-  sendBtn: {
-    backgroundColor: COLORS.purple,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  sendBtnDisabled: {
-    opacity: 0.45,
   },
   sendBtnText: {
     color: COLORS.white,

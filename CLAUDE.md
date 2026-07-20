@@ -173,9 +173,45 @@ profiles (
 
 Signature gradients: hero `#6D28D9 → #A855F7`; deep background `#0A0A0F → #4C1D95 → #8B3DFF`.
 
-- Purple CTAs with glow shadow (`shadowColor: COLORS.purple`)
 - Animated purple border on input focus
 - Bottom tab bar: Home, Search, Library, Profile
+
+### Buttons — NEVER fill a button with solid purple
+
+**Always use `Button` (`src/components/Button.tsx`).** Do not hand-roll a
+`TouchableOpacity` + local `StyleSheet` — that is how the app accumulated ~40
+divergent button styles before this was centralized.
+
+| Variant | Background | Border | Label |
+|---|---|---|---|
+| `primary` | transparent (black page/card) | purple **gradient glow** (`GradientBorder`) | `purpleNeon` |
+| `selected` | transparent | purple gradient glow | `purpleNeon` |
+| `secondary` | transparent | `COLORS.border` | `white` |
+| `ghost` | none | none | `textSecondary` |
+| `destructive` | **solid `COLORS.error`** | none | `white` |
+
+Sizes `sm | md | lg`. Pass `onMedia` when the button floats over video/artwork
+(swaps in an opaque scrim so the border keeps contrast). `disabled`/`busy` are
+handled internally — never layer your own opacity or `*Disabled` style.
+
+**Why:** at `#8B3DFF` a solid fill dominates the dark UI, and the Repost button
+appears on every feed card. Purple now outlines and letters; it never fills.
+`destructive` is the one exception — dangerous actions must stay visually heavy.
+
+**Rules that are easy to get wrong:**
+- **Label color is `purpleNeon` (`#A855F7`), never `purple`.** `#8B3DFF` on a dark
+  background measures 3.4–4.0:1 and **fails WCAG AA**; `purpleNeon` is 4.3–5.0:1
+  and clears the 3:1 large-text bar that bold 15px+ labels fall under.
+- **Never set `elevation` on a button.** Android ignores `shadowColor` and paints
+  `elevation` as a grey shadow — it reads as a smudge under a dark outlined button.
+  Glow comes from `GradientBorder`, not shadows.
+- **`GradientBorder`'s bloom is drawn INWARD.** Android `ViewGroup`s clip children
+  by default, so an outward halo is silently cut off. Its parent needs
+  `overflow: 'hidden'` and a matching `borderRadius`.
+- **Exempt from the no-fill rule** (these stay solid): small indicators — badges,
+  dots, checkboxes, progress fills, slider thumbs, story rings; chat sent bubbles
+  (`bubbleMe`); and decorative cover art / avatar fallbacks / `fallbackBlob*`.
+  An outlined 6px dot is invisible and a hollow checkbox reads as unchecked.
 
 ---
 
