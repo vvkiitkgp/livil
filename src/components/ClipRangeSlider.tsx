@@ -8,6 +8,7 @@ import {
   type PanResponderGestureState,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { GradientFill } from './GradientFill';
 import { Icon } from './Icon';
 
 export type ClipRangeSliderProps = {
@@ -296,7 +297,11 @@ export default function ClipRangeSlider({
           <View style={[styles.disabledZone, { left: 0, width: leftPx }]} />
         )}
         {progressW > 0 && (
-          <View style={[styles.progressFill, { left: leftPx, width: progressW }]} />
+          <View style={[styles.progressFill, { left: leftPx, width: progressW }]}>
+            {/* offsetX keeps the gradient pinned to the track — this fill starts
+                at the clip start, not at zero. */}
+            <GradientFill width={trackWidth} height={TRACK_H} offsetX={leftPx} />
+          </View>
         )}
         {remainingW > 0 && (
           <View style={[styles.remainingZone, { left: fillRight, width: remainingW }]} />
@@ -344,7 +349,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    backgroundColor: COLORS.purple,
+    overflow: 'hidden',
   },
   remainingZone: {
     position: 'absolute',
@@ -369,7 +374,7 @@ const styles = StyleSheet.create({
   // Seek handle: same primary colour as the progress fill, white ring for
   // visibility, higher elevation so it renders on top of clip handles.
   thumbSeek: {
-    backgroundColor: COLORS.purple,
+    backgroundColor: COLORS.purpleNeon,
     borderWidth: 2.5,
     borderColor: 'rgba(255,255,255,0.95)',
     shadowColor: COLORS.purple,

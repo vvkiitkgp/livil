@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
     borderRadius: AV / 2,
     backgroundColor: COLORS.purpleDim,
     borderWidth: 1.5,
-    borderColor: COLORS.purple,
+    borderColor: COLORS.purpleNeon,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -902,10 +902,10 @@ const styles = StyleSheet.create({
   grayDisc: { position: 'absolute', width: D, height: D, borderRadius: R, borderWidth: B, borderColor: COLORS.textMuted, backgroundColor: 'transparent' },
   rightClip: { position: 'absolute', left: R, top: 0, width: R, height: D, overflow: 'hidden' },
   halfWrapper: { position: 'absolute', left: -R, top: 0, width: D, height: D },
-  rightHalfDisc: { position: 'absolute', right: 0, top: 0, width: R, height: D, borderTopRightRadius: R, borderBottomRightRadius: R, borderTopWidth: B, borderRightWidth: B, borderBottomWidth: B, borderLeftWidth: 0, borderColor: COLORS.purple, backgroundColor: 'transparent' },
+  rightHalfDisc: { position: 'absolute', right: 0, top: 0, width: R, height: D, borderTopRightRadius: R, borderBottomRightRadius: R, borderTopWidth: B, borderRightWidth: B, borderBottomWidth: B, borderLeftWidth: 0, borderColor: COLORS.purpleNeon, backgroundColor: 'transparent' },
   leftClip: { position: 'absolute', left: 0, top: 0, width: R, height: D, overflow: 'hidden' },
   halfWrapperLeft: { position: 'absolute', left: 0, top: 0, width: D, height: D },
-  leftHalfDisc: { position: 'absolute', left: 0, top: 0, width: R, height: D, borderTopLeftRadius: R, borderBottomLeftRadius: R, borderTopWidth: B, borderLeftWidth: B, borderBottomWidth: B, borderRightWidth: 0, borderColor: COLORS.purple, backgroundColor: 'transparent' },
+  leftHalfDisc: { position: 'absolute', left: 0, top: 0, width: R, height: D, borderTopLeftRadius: R, borderBottomLeftRadius: R, borderTopWidth: B, borderLeftWidth: B, borderBottomWidth: B, borderRightWidth: 0, borderColor: COLORS.purpleNeon, backgroundColor: 'transparent' },
   innerDisc: { position: 'absolute', left: B, top: B, right: B, bottom: B, borderRadius: R - B, backgroundColor: COLORS.bg, overflow: 'hidden' },
   // FS open: translucent dark centre that EXACTLY matches the expanded pill/handle
   // background (barBg = 'rgba(10,10,15,0.9)') — a softly tinted centre, not a

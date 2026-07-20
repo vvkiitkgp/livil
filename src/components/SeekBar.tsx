@@ -8,6 +8,7 @@ import {
   type PanResponderGestureState,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { GradientFill } from './GradientFill';
 
 export type SeekBarProps = {
   /** Current playback position in seconds. Ignored while the user is actively dragging. */
@@ -125,7 +126,11 @@ export default function SeekBar({
   return (
     <View ref={containerRef} style={styles.hitArea} onLayout={handleLayout} {...panResponder.panHandlers}>
       <View style={styles.track}>
-        <View style={[styles.fill, { width: fillWidth }]} />
+        <View style={[styles.fill, { width: fillWidth }]}>
+          {/* Full track width, revealed by the fill's animated width — keeps the
+              gradient pinned to the track instead of stretching as it plays. */}
+          <GradientFill width={trackWidth} height={4} borderRadius={2} />
+        </View>
         <View style={[styles.thumb, { left: thumbLeft }]} />
       </View>
     </View>
@@ -149,8 +154,8 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: COLORS.purpleLight,
     borderRadius: 2,
+    overflow: 'hidden',
   },
   thumb: {
     position: 'absolute',
