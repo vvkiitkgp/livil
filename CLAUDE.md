@@ -206,12 +206,68 @@ appears on every feed card. Purple now outlines and letters; it never fills.
   `elevation` as a grey shadow — it reads as a smudge under a dark outlined button.
   Glow comes from `GradientBorder`, not shadows.
 - **`GradientBorder`'s bloom is drawn INWARD.** Android `ViewGroup`s clip children
-  by default, so an outward halo is silently cut off. Its parent needs
-  `overflow: 'hidden'` and a matching `borderRadius`.
+  by default, so an outward halo is silently cut off.
+- **NEVER put `overflow: 'hidden'` on a `GradientBorder` host.** It is not needed —
+  the component already draws a correctly-rounded outline inside the bounds — and
+  it actively breaks the look: `overflow` clips to the *padding box* (inside
+  `borderWidth`), shaving the outer edge of the glow so the border appears cut off
+  along curves. Keep it only where a child genuinely needs clipping (e.g. an
+  avatar image).
 - **Exempt from the no-fill rule** (these stay solid): small indicators — badges,
   dots, checkboxes, progress fills, slider thumbs, story rings; chat sent bubbles
-  (`bubbleMe`); and decorative cover art / avatar fallbacks / `fallbackBlob*`.
-  An outlined 6px dot is invisible and a hollow checkbox reads as unchecked.
+  (`bubbleMe`); destructive confirms; and decorative cover art / avatar fallbacks /
+  `fallbackBlob*`. An outlined 6px dot is invisible and a hollow checkbox reads as
+  unchecked. `DetailView.rowActive` also keeps its `purpleDim` wash — it is a
+  now-playing row highlight, not a control.
+
+### Progress bars — `GradientFill`, never a flat purple slab
+
+A progress bar IS its fill, so the no-fill rule can't apply. Use
+**`GradientFill`** (`src/components/GradientFill.tsx`) so it uses the same
+deep→neon ramp as the borders instead of reading as a leftover flat slab.
+Applied in `SeekBar` and `ClipRangeSlider`.
+
+- **Pass the FULL track width, not the filled width**, and let the parent's
+  animated width clip it (parent needs `overflow: 'hidden'` — this is the one
+  place it's correct). Sizing the gradient to the fill makes the colours visibly
+  stretch and shift as playback advances.
+- Pass `offsetX` when the fill doesn't start at zero (e.g. `ClipRangeSlider`,
+  whose fill begins at the clip start) so the gradient stays pinned to the track.
+- `FloatingPlayer`'s progress ring is built from rotated View borders, not SVG, so
+  it can't take a gradient without rewriting the rotation mask. It uses
+  `purpleNeon` instead. Don't "fix" this casually — the hollow centre is
+  deliberate so the fullscreen video shows through.
+
+### SVG-overlay traps (hard-won — all of these shipped as bugs first)
+
+These apply to `GradientBorder`/`GradientFill` and any future SVG overlay sized
+from `onLayout`:
+
+- **Floor the measured size to whole dp before drawing.** `onLayout` reports
+  fractional dp (46dp at pixelRatio 2.75 is 126.5px) and Android rounds the SVG's
+  backing view DOWN. Geometry computed against the unfloored size puts the outer
+  stroke past the real edge, where it is clipped — height rounding down clips the
+  BOTTOM, width rounding down clips the RIGHT. Symptom: intermittent, one-sided
+  "cut off" borders that vary by content.
+- **Clamp `rx` to half the SHORTER side, and set `ry` explicitly.** A pill passes
+  `borderRadius: 999`; unclamped, SVG caps `rx` at width/2 but `ry` at height/2
+  *independently*, rendering an ellipse instead of a stadium.
+- **Keep a small inset (`EDGE_GUARD`) between the outermost stroke and the canvas
+  edge** so nothing lands exactly on the viewport boundary.
+
+### Other UI rules learned here
+
+- **Never use `android_ripple` on a rounded control.** The ripple is drawn as a
+  RECTANGLE that ignores `borderRadius`, flashing a square box over the rounded
+  outline. Use `Pressable`'s `({ pressed })` style callback for opacity feedback.
+- **`ListHeaderComponent` must be given an ELEMENT, not a function.** As a
+  function it is treated as a component *type*, so every new `useCallback`
+  identity remounts the whole header — which resets `onLayout`-measured children
+  (flickering outlines) and throws away the header's subviews on every tab switch.
+  Use `ListHeaderComponent={renderHeader()}`.
+- **Brand mark:** use `Logo` (`src/components/Logo.tsx`) — the pulse glyph as SVG,
+  same vector as the app icon (`docs/favicon.svg`). Don't add new bitmap copies of
+  the mark; regenerate from that SVG so every surface stays in sync.
 
 ---
 

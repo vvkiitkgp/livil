@@ -8,9 +8,9 @@
 
 **Spotify’s player · Discord’s presence · SoundCloud’s creator feed** — in one app.
 
-[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-7C3AED)](https://github.com/vvkiitkgp/livil)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-8B3DFF)](https://github.com/vvkiitkgp/livil)
 [![React Native](https://img.shields.io/badge/React%20Native-0.85.3-00BFFF)](https://reactnative.dev)
-[![Architecture](https://img.shields.io/badge/New%20Architecture-Fabric-7C3AED)](https://reactnative.dev/architecture/landing-page)
+[![Architecture](https://img.shields.io/badge/New%20Architecture-Fabric-8B3DFF)](https://reactnative.dev/architecture/landing-page)
 [![Backend](https://img.shields.io/badge/backend-Supabase-3ECF8E)](https://supabase.com)
 [![Status](https://img.shields.io/badge/Play%20Store-Closed%20Testing-00C853)](https://github.com/vvkiitkgp/livil)
 
@@ -134,11 +134,11 @@ A single, consistent dark aesthetic — no light mode.
 |---|---|
 | Background | `#0A0A0F` |
 | Surface | `#12121A` |
-| Primary accent | `#7C3AED` (purple) |
+| Primary accent | `#8B3DFF` (purple) |
 | Secondary accent | `#00BFFF` (neon blue) |
 | Success / Danger | `#00C853` / `#FF4444` |
 
-Purple CTAs with glow shadows, animated focus borders, and a floating bottom tab bar.
+Outlined CTAs with a purple gradient glow border (never a solid fill), animated focus borders, and a floating bottom tab bar.
 
 ---
 

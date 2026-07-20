@@ -37,7 +37,7 @@ a cinematic brand intro — never the product UI itself.
    `FloatingPlayer.tsx` + `WaveVisualizer.tsx`) — colors, sizes, ratios, and state machine
    come from the code, not memory.
 2. **Recreate at 1:1 fidelity** in a self-contained HTML page — real SVG icons, exact color
-   tokens (`COLORS.purple` = `#7C3AED`, etc.), exact proportions (e.g. pill height = 0.6× the
+   tokens (`COLORS.purple` = `#8B3DFF`, etc.), exact proportions (e.g. pill height = 0.6× the
    circle diameter, matching `PILL_H` / `D` in the source).
 3. **Choreograph the 5-Phase Reveal** (below).
 4. **Screen-record the framed stage** (⇧⌘5 on Mac) at the largest comfortable zoom —

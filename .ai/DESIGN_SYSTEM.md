@@ -81,7 +81,7 @@ The 90% you'll reach for daily. Full detail in the linked sections.
 
 ```
 COLOR          bg #0A0A0F · surface #12121C · card #1A1A2E · inputBg #1C1C30
-               accent purple #7C3AED · accentLight #A78BFA
+               accent purple #8B3DFF · accentNeon #A855F7
                text: white #FFFFFF · secondary #8B90A7 · muted #4B5268
                border #252545 · error #EF4444 · like #FF4D6D · online #22C55E
 
@@ -111,7 +111,7 @@ RULES          dark only · no Alert.alert (use ConfirmActionModal / useToast) �
 
 LiViL feels like a **late-night listening room**. The interface disappears into a
 near-black canvas (`#0A0A0F`) so that album art, waveforms, and people's music are
-the only things that glow. A single electric-purple accent (`#7C3AED`) threads
+the only things that glow. A single electric-purple accent (`#8B3DFF`) threads
 through the entire app — it's the color of "play", "send", "you", and "live".
 
 The mood is **premium, calm, and music-first**. Chrome is quiet and translucent;
@@ -159,10 +159,12 @@ Source of truth: [`src/theme/colors.ts`](../src/theme/colors.ts). **Import `COLO
 | `surface` | `#12121C` | Cards, received chat bubbles, sheets, tab bar fill | First elevation |
 | `card` | `#1A1A2E` | Nested cards (track cards, header action buttons, media fallback) | Second elevation |
 | `inputBg` | `#1C1C30` | `FormInput` fill, tombstone posts | Interactive field surface |
-| `purple` | `#7C3AED` | **Primary accent** — CTAs, active states, sent bubbles, play button, links | "Play / You / Live" |
-| `purpleLight` | `#A78BFA` | Active tab icon, highlights, avatar initials, seek-bar fill, focused accents | Bright accent / emphasis |
-| `purpleDim` | `rgba(124,58,237,0.15)` | Avatar backgrounds, chips, subtle tints, Android ripple | Muted accent wash |
-| `purpleGlow` | `rgba(124,58,237,0.30)` | Stronger purple overlays | Glow / hover wash |
+| `purple` | `#8B3DFF` | **Primary accent** — gradient borders, sent bubbles, indicators. NEVER a button fill | "Play / You / Live" |
+| `purpleNeon` | `#A855F7` | Button + selected-tab labels, progress, glow end-stop | Emitting light |
+| `purpleRoyal` | `#6D28D9` | Gradient start (borders, progress) | Deep end of the ramp |
+| `purpleLight` | `#C9B6FF` | Highlights, avatar initials, focused accents, gradient hotspot | Bright accent / emphasis |
+| `purpleDim` | `rgba(139,61,255,0.15)` | Avatar backgrounds, chips, subtle tints, Android ripple | Muted accent wash |
+| `purpleGlow` | `rgba(139,61,255,0.30)` | Stronger purple overlays | Glow / hover wash |
 | `white` | `#FFFFFF` | Primary text, titles, icons on purple | Foreground |
 | `textSecondary` | `#8B90A7` | Handles, captions, secondary body | Secondary foreground |
 | `textMuted` | `#4B5268` | Timestamps, placeholders, inactive tab icons | Tertiary / disabled |
@@ -222,8 +224,9 @@ Ratios vs their real backgrounds (WCAG AA body = 4.5:1, large/UI = 3:1):
 | `textSecondary #8B90A7` on `bg` | ~6.8:1 | ✅ AA |
 | `textMuted #4B5268` on `bg` | ~3.1:1 | ⚠️ Fails AA for body. Large/decorative only. |
 | `textSecondary` on `surface` (received bubble) | ~4.7:1 | ⚠️ Borderline. 🔵 Move to white. |
-| `purple #7C3AED` on `bg` | ~4.4:1 | ✅ UI/large only. Never small body text. |
-| `purpleLight #A78BFA` on `bg` | ~7.5:1 | ✅ Use for small accent text. |
+| `purple #8B3DFF` on `bg` | ~4.0:1 | ⚠️ Borders/UI only. **Never a text colour** — fails AA. |
+| `purpleNeon #A855F7` on `bg` | ~5.0:1 | ✅ Button/tab labels (bold 15px+ = large text). |
+| `purpleLight #C9B6FF` on `bg` | ~10.9:1 | ✅ Use for small accent text. |
 | `white` on `purple` fill | ~5.0:1 | ✅ AA |
 
 **✅ Go-forward rules:**
@@ -433,18 +436,18 @@ Always **top-left → bottom-right** (`x1=0 y1=0 x2=1 y2=1`):
 | Name | Stops | | Name | Stops |
 |---|---|---|---|---|
 | Sunset | `#F59E0B → #FF4D6D` | | Mint | `#22D3EE → #00C853` |
-| Ocean | `#00BFFF → #7C3AED` | | Royal | `#7C3AED → #A78BFA` |
-| Forest | `#00C853 → #22D3EE` | | Twilight | `#1A1A2E → #7C3AED` |
-| Berry | `#EC4899 → #7C3AED` | | Dusk | `#F59E0B → #7C3AED` |
+| Ocean | `#00BFFF → #8B3DFF` | | Royal | `#8B3DFF → #C9B6FF` |
+| Forest | `#00C853 → #22D3EE` | | Twilight | `#1A1A2E → #8B3DFF` |
+| Berry | `#EC4899 → #8B3DFF` | | Dusk | `#F59E0B → #8B3DFF` |
 | Lava | `#FF4D6D → #3B1E6E` | | | |
 
-Solid cover options: `#7C3AED, #A78BFA, #EC4899, #00BFFF, #22D3EE, #00C853, #F59E0B, #FF4D6D, #1A1A2E`.
+Solid cover options: `#8B3DFF, #C9B6FF, #EC4899, #00BFFF, #22D3EE, #00C853, #F59E0B, #FF4D6D, #1A1A2E`.
 
 **B. Profile grid fallback accents** — `ProfileGridCard` `FALLBACK_ACCENTS`:
-`[#7C3AED,#3B1E6E]`, `[#EC4899,#7C3AED]`, `[#22D3EE,#3B82F6]`, `[#F59E0B,#EF4444]`.
+`[#8B3DFF,#3B1E6E]`, `[#EC4899,#8B3DFF]`, `[#22D3EE,#3B82F6]`, `[#F59E0B,#EF4444]`.
 
 **C. "Blob" fallback art (missing cover)** — the universal art-missing texture in
-`PostCard`/`FloatingPlayer`/`FullScreenPlayer`: a **purple** blob (`#7C3AED`, ~0.45, 240px,
+`PostCard`/`FloatingPlayer`/`FullScreenPlayer`: a **purple** blob (`#8B3DFF`, ~0.45, 240px,
 top-left) + a **pink** blob (`#EC4899`, ~0.35, 200px, bottom-right).
 
 **D. Player scrims** — `FullScreenPlayer` lays dark top+bottom gradient bands (black →
@@ -454,10 +457,10 @@ transparent) so white text reads over any art.
 
 | Purpose | Gradient |
 |---|---|
-| Brand / hero | `#7C3AED → #A78BFA` ("Royal") |
+| Brand / hero | `#8B3DFF → #C9B6FF` ("Royal") |
 | Deep hero background | `#0A0A0F → #1A1A2E → #3B1E6E` (obsidian → purple) |
-| Background glow (radial) | `radial(#7C3AED @0.30 → transparent)` behind key art |
-| Energetic accent | `#EC4899 → #7C3AED` ("Berry") |
+| Background glow (radial) | `radial(#8B3DFF @0.30 → transparent)` behind key art |
+| Energetic accent | `#EC4899 → #8B3DFF` ("Berry") |
 | Warm / celebratory | `#F59E0B → #FF4D6D` ("Sunset") |
 
 **Rule:** gradients belong on **art, heroes, and glows** — never on tab bars, cards, or inputs.
@@ -475,7 +478,7 @@ contract for every interactive element** — a designer/agent should never have 
 |---|---|---|
 | **Default** | Resting. | Per-component fill/border. |
 | **Pressed** | Dim the whole element. | `activeOpacity` — **0.85** filled buttons/cards, **0.7** icon/ghost/rows. Android adds ripple `purpleDim`. |
-| **Focused** (input) | Border → accent, instant (no animation). | `FormInput` border `#252545 → #7C3AED (purple)`, width 1.5. |
+| **Focused** (input) | Border → accent, instant (no animation). | `FormInput` border `#252545 → #8B3DFF (purple)`, width 1.5. |
 | **Selected / active** (toggle, tab) | Purple fill + white text + **glowM**. | Visibility pill, profile tab, jam tab. Inactive = transparent/bordered. |
 | **Disabled** | Reduce opacity; do not change layout. | **0.6** (primary buttons) / **0.45** (send/comment). Send also swaps fill → `border`. |
 | **Loading** | Replace content with skeleton (lists) or spinner (actions); keep footprint. | `PostCardSkeleton` shimmer = `border` color shapes. See [§14](#14-empty-loading--error-states). |
@@ -834,7 +837,7 @@ defines the house style for all screenshot presentation.)
 | **Device** | Modern bezel-less phone, dark/graphite frame (never white — it fights the dark UI). |
 | **Angle** | ~15–20° Y-axis rotation, ~2–4° Z-tilt for life. |
 | **Perspective** | Subtle 3D (vanishing point off-frame); no fisheye. |
-| **Shadow** | Soft **purple glow** (`#7C3AED` @ ~30%, blur ~60–80px) pooled behind & below — the device emits the app's light. |
+| **Shadow** | Soft **purple glow** (`#8B3DFF` @ ~30%, blur ~60–80px) pooled behind & below — the device emits the app's light. |
 | **Layering** | Device floats above the bg with a clear gap; optional second phone (angled, behind, ~60% opacity/blurred) for depth. |
 | **Background** | Obsidian→purple gradient (`#0A0A0F → #1A1A2E → #3B1E6E`) or flat `#0A0A0F` with one off-center radial purple glow. |
 | **Screen content** | Real screens — **feed**, **full-screen player**, or **Jam Room** are the heroes. Clean dark status bar. |
@@ -860,7 +863,7 @@ All share the **obsidian + purple-glow + floating-angled-device** language.
 
 **Brand constants (every asset):**
 - Background **always dark** (`#0A0A0F`). Never LiViL UI on white.
-- Accent **always** `#7C3AED` (glow) / `#A78BFA` (highlight).
+- Accent **always** `#8B3DFF` (glow) / `#C9B6FF` (highlight).
 - Wordmark lowercase **"livil"**, weight 800, tracking −0.5 to −3 at display size.
 - Tagline **"Your music, your world."** · micro-tag **"Live · Vibe · Link"**.
 - Real screenshots, real cover art/gradients — never grey placeholder boxes.
@@ -968,8 +971,8 @@ export const Z = { base:0, sticky:10, chrome:20, overlayScrim:100, overlayConten
 export const BRAND = { pink:'#EC4899', like:'#FF4D6D', blue:'#00BFFF', success:'#00C853', online:'#22C55E', live:'#FF4444' } as const;
 
 export const GRADIENTS = {
-  brand:['#7C3AED','#A78BFA'], hero:['#0A0A0F','#1A1A2E','#3B1E6E'],
-  energetic:['#EC4899','#7C3AED'], sunset:['#F59E0B','#FF4D6D'],
+  brand:['#8B3DFF','#C9B6FF'], hero:['#0A0A0F','#1A1A2E','#3B1E6E'],
+  energetic:['#EC4899','#8B3DFF'], sunset:['#F59E0B','#FF4D6D'],
 } as const;
 ```
 

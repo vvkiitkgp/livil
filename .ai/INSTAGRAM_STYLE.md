@@ -177,7 +177,7 @@ Follow [DS §24 Phone Mockups](./DESIGN_SYSTEM.md#24-phone-mockups). Summary for
 | **Rotation** | Alternate left/right lean across a carousel so consecutive device slides don't feel stamped. |
 | **Layering** | Device floats above the background with a clear gap. Optional **second phone** behind (angled, ~60% opacity or slightly blurred) for depth. |
 | **Cropping** | Show the **whole device** on hero/showcase frames. Crop into a **bleeding edge** (device runs off one side) only for detail/zoom frames — see [§9](#9-screenshot-placement). |
-| **Shadow** | Soft **purple glow** ([DS §7](./DESIGN_SYSTEM.md#7-shadows--elevation)): `#7C3AED` @ ~30%, large blur (~60–80px), pooled behind & below. The device should look like it's _emitting_ the app's light. Never a hard black drop shadow. |
+| **Shadow** | Soft **purple glow** ([DS §7](./DESIGN_SYSTEM.md#7-shadows--elevation)): `#8B3DFF` @ ~30%, large blur (~60–80px), pooled behind & below. The device should look like it's _emitting_ the app's light. Never a hard black drop shadow. |
 | **Device spacing** | On dual/duo layouts, overlap phones by ~20–30% or keep a clear 64–96px gap — never let them touch edge-to-edge or crowd. |
 | **Status bar** | Clean and dark. Hide carrier clutter; a simple time + full battery reads best. |
 
@@ -207,10 +207,10 @@ premium grotesk — e.g. Inter / SF Pro Display / General Sans — for headlines
 |---|---|---|---|---|---|
 | **Hero statement** | 96–120 | 800–900 | −2 to −3 | white | The one big line on a statement slide |
 | **Headline** | 64–80 | 800 | −1.5 | white | Frame titles, feature names |
-| **Subhead** | 40–48 | 700 | −0.5 | white / `#A78BFA` | Secondary line under a headline |
+| **Subhead** | 40–48 | 700 | −0.5 | white / `#C9B6FF` | Secondary line under a headline |
 | **Body** | 28–32 | 400–500 | 0 | `#8B90A7` | Supporting copy (lh ≈ 1.4) |
-| **Eyebrow / label** | 22–26 | 700 | **+2 (uppercase)** | `#A78BFA` or `#8B90A7` | Category tag above a headline ("ENGINEERING") |
-| **Feature badge** | 20–24 | 700 | +0.5 | `#7C3AED` on `purpleDim` | Pill chip ("NEW", "SHIPPED") |
+| **Eyebrow / label** | 22–26 | 700 | **+2 (uppercase)** | `#C9B6FF` or `#8B90A7` | Category tag above a headline ("ENGINEERING") |
+| **Feature badge** | 20–24 | 700 | +0.5 | `#8B3DFF` on `purpleDim` | Pill chip ("NEW", "SHIPPED") |
 | **Statistic (number)** | 140–200 | 800–900 | −2 | white or gradient | The hero number on a metric frame |
 | **Stat label** | 24–28 | 600 | +0.5 | `#8B90A7` | The word under a stat |
 | **Quote** | 44–56 | 600 | −0.5 | white | Pull-quote / testimonial (italic optional) |
@@ -237,7 +237,7 @@ type sizes max. A fourth size means the frame is trying to say too much.
 ### Code snippets (Engineering posts)
 - Monospace (JetBrains Mono / SF Mono / Fira Code), 22–28px, in a `surface` (`#12121C`) card
   with 20-radius and 40–48px internal padding.
-- Syntax coloring restrained and on-brand: keywords `#A78BFA`, strings `#22D3EE`, comments
+- Syntax coloring restrained and on-brand: keywords `#C9B6FF`, strings `#22D3EE`, comments
   `#4B5268`, plain `#8B90A7`, foreground `white`. Never a bright rainbow theme.
 - Show **5–12 lines max** — a focused excerpt, not a file. Highlight the one line that matters
   with a faint `purpleDim` row background.
@@ -259,9 +259,9 @@ Pulls exclusively from [DS §3](./DESIGN_SYSTEM.md#3-color-system) and
 - Never a light, white, or high-saturation background. Ever.
 
 ### Accent colors
-- **Purple `#7C3AED`** is _the_ accent — one hero accent per frame. Play buttons, badges,
+- **Purple `#8B3DFF`** is _the_ accent — one hero accent per frame. Play buttons, badges,
   the glow, key underlines, the one word you emphasize.
-- **`#A78BFA` (`purpleLight`)** for accent _text_ and highlights (better contrast than `#7C3AED` on dark).
+- **`#C9B6FF` (`purpleLight`)** for accent _text_ and highlights (better contrast than `#8B3DFF` on dark).
 - **Secondary hues** (`#22D3EE` cyan, `#EC4899` pink, `#00C853` green, `#F59E0B` amber) appear
   **only** as they naturally occur in cover-art gradients ([DS §9.1](./DESIGN_SYSTEM.md#91-as-built-gradient-systems--shipped)),
   or a single deliberate category tint. Never rainbow a frame.
@@ -273,8 +273,8 @@ Pulls exclusively from [DS §3](./DESIGN_SYSTEM.md#3-color-system) and
 - Keep body text high-contrast; if a screenshot sits behind text, add a dark scrim like the player does.
 
 ### Gradients
-- **Brand / hero:** `#7C3AED → #A78BFA` ("Royal") — the primary LiViL gradient, for hero text fills and glows.
-- **Energetic accent:** `#EC4899 → #7C3AED` ("Berry") for release/celebration moments.
+- **Brand / hero:** `#8B3DFF → #C9B6FF` ("Royal") — the primary LiViL gradient, for hero text fills and glows.
+- **Energetic accent:** `#EC4899 → #8B3DFF` ("Berry") for release/celebration moments.
 - **Warm:** `#F59E0B → #FF4D6D` ("Sunset") sparingly, for milestones.
 - **Rule:** gradients go on **type fills, glows, and hero backgrounds** — never on body panels,
   never as a busy full-bleed texture. One gradient element per frame ([DS §9.2](./DESIGN_SYSTEM.md#92--reusable-brand-gradients-marketing--heroes)).
@@ -506,7 +506,7 @@ abstract hero art, device renders, textures). **Default is still: use a real scr
 ### Prompt principles
 Write prompts that enforce LiViL's identity. Always specify:
 - **Aesthetic:** "premium, minimal, product-launch presentation, portfolio-quality, dark-first."
-- **Palette:** "near-black `#0A0A0F` background, electric purple `#7C3AED` / `#A78BFA` accents,
+- **Palette:** "near-black `#0A0A0F` background, electric purple `#8B3DFF` / `#C9B6FF` accents,
   soft purple glow, subtle obsidian-to-purple gradient." Name the hexes.
 - **Lighting:** "soft, cinematic, low-key studio lighting; a single soft purple light source; deep shadows."
 - **Composition:** "lots of negative space, one focal subject, centered or rule-of-thirds, calm."
@@ -516,7 +516,7 @@ Write prompts that enforce LiViL's identity. Always specify:
 ### Prompt template
 ```
 A [subject] on a near-black #0A0A0F background, premium product-launch aesthetic,
-minimal composition with generous negative space, soft purple (#7C3AED → #A78BFA) glow
+minimal composition with generous negative space, soft purple (#8B3DFF → #C9B6FF) glow
 as the only light source, subtle obsidian-to-purple gradient, cinematic low-key studio
 lighting, deep shadows, high detail, sharp, no text, no logos, in the style of Linear
 and Apple product marketing. Portrait 4:5.
