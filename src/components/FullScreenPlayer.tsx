@@ -37,6 +37,7 @@ import {
   type UserPlaylist,
 } from '../services/playlists';
 import { COLORS } from '../theme/colors';
+import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -1815,6 +1816,7 @@ export default function FullScreenPlayer() {
             onPress={() => handleTabPress(tab)}
             activeOpacity={0.75}
           >
+            {activeTab === tab ? <GradientBorder borderRadius={18} /> : null}
             <Text style={[styles.actionBtnText, activeTab === tab && styles.actionBtnTextActive]}>
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </Text>
@@ -2075,9 +2077,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, gap: 4,
   },
   panelTab: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  panelTabActive: { borderBottomColor: COLORS.purple },
+  panelTabActive: { borderBottomColor: COLORS.purpleNeon },
   panelTabText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
-  panelTabTextActive: { color: COLORS.purpleLight },
+  panelTabTextActive: { color: COLORS.purpleNeon },
   panelScroll: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
 
   placeholderText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 22 },
@@ -2093,11 +2095,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10,10,15,0.9)', borderWidth: 1, borderColor: COLORS.border,
     alignItems: 'center', justifyContent: 'center',
   },
+  // Selected state comes from <GradientBorder>, so no purple fill and no
+  // elevation (Android paints elevation as a grey smudge). The dark scrim from
+  // actionBtn stays — these float over video and need it for contrast.
   actionBtnActive: {
-    backgroundColor: COLORS.purpleDim, borderColor: COLORS.purple,
-    shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 4,
+    borderColor: 'transparent',
   },
   actionBtnText: { color: COLORS.white, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
-  actionBtnTextActive: { color: COLORS.purpleLight },
+  actionBtnTextActive: { color: COLORS.purpleNeon },
 });
