@@ -73,6 +73,14 @@ const MAX_BLOOM_FRACTION = 0.22;
  */
 const COMPACT_THRESHOLD = 44;
 
+/**
+ * Half a dp of breathing room between the outermost stroke and the SVG viewport
+ * edge, so sub-pixel layout sizes can never round the stroke outside the canvas
+ * and clip it. Visually imperceptible; prevents the intermittent "cut off"
+ * border on whichever edge happened to round down.
+ */
+const EDGE_GUARD = 0.5;
+
 export function GradientBorder({
   borderRadius,
   strokeWidth = 1.5,
@@ -98,9 +106,15 @@ export function GradientBorder({
 
   const strokeFor = React.useCallback(
     (width: number, opacity: number, key?: string) => {
-      const inset = width / 2;
-      const innerW = Math.max(0, size.w - width);
-      const innerH = Math.max(0, size.h - width);
+      // EDGE_GUARD pulls the outline a hair inside the canvas. Without it the
+      // stroke's outer edge lands exactly on the viewport boundary, and any
+      // fractional layout size (common at pixelRatio 2.75/3) rounds that last
+      // row of pixels outside the SVG, which clips it away. That showed up as a
+      // border "cut off" on one edge — intermittently, since it depends on the
+      // exact sub-pixel size the row happened to lay out at.
+      const inset = width / 2 + EDGE_GUARD;
+      const innerW = Math.max(0, size.w - width - EDGE_GUARD * 2);
+      const innerH = Math.max(0, size.h - width - EDGE_GUARD * 2);
       // Clamp to half the SHORTER side. A pill passes borderRadius: 999, and an
       // unclamped rx makes SVG cap rx at width/2 but ry at height/2 — which
       // renders an ellipse instead of a stadium. Clamping both to the same value
