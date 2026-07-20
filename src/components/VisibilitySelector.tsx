@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
+import { GradientBorder } from './GradientBorder';
 import type { PlaylistVisibility } from '../services/playlists';
 
 type Option = {
@@ -37,7 +38,8 @@ export default function VisibilitySelector({
               onPress={() => onChange(opt.value)}
               activeOpacity={0.8}
             >
-              <Icon name={opt.icon} size={14} color={selected ? COLORS.white : COLORS.textSecondary} />
+              {selected ? <GradientBorder borderRadius={999} /> : null}
+              <Icon name={opt.icon} size={14} color={selected ? COLORS.purpleNeon : COLORS.textSecondary} />
               <Text style={[styles.pillText, selected && styles.pillTextActive]}>{opt.label}</Text>
             </TouchableOpacity>
           );
@@ -55,17 +57,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 6,
     borderRadius: 999, borderWidth: 1, borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
+    overflow: 'hidden',
   },
   pillActive: {
-    backgroundColor: COLORS.purple,
-    borderColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    borderColor: 'transparent',
   },
   pillText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  pillTextActive: { color: COLORS.white },
+  pillTextActive: { color: COLORS.purpleNeon },
   helper: { color: COLORS.textMuted, fontSize: 12, lineHeight: 18, marginTop: 10 },
 });

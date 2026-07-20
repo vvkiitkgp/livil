@@ -21,8 +21,8 @@ export type CoverColorOption =
 // give playlists a personality (Sunset, Ocean, Berry, etc.) without a
 // color-picker UI.
 export const COVER_COLOR_OPTIONS: CoverColorOption[] = [
-  { kind: 'solid', color: '#7C3AED' },                       // purple
-  { kind: 'solid', color: '#A78BFA' },                       // purple light
+  { kind: 'solid', color: '#8B3DFF' },                       // purple
+  { kind: 'solid', color: '#C9B6FF' },                       // purple light
   { kind: 'solid', color: '#EC4899' },                       // pink
   { kind: 'solid', color: '#00BFFF' },                       // blue
   { kind: 'solid', color: '#22D3EE' },                       // teal
@@ -32,14 +32,14 @@ export const COVER_COLOR_OPTIONS: CoverColorOption[] = [
   { kind: 'solid', color: '#1A1A2E' },                       // dark
   // Gradients (top-left → bottom-right).
   { kind: 'gradient', color: '#F59E0B', color2: '#FF4D6D' }, // Sunset
-  { kind: 'gradient', color: '#00BFFF', color2: '#7C3AED' }, // Ocean
+  { kind: 'gradient', color: '#00BFFF', color2: '#8B3DFF' }, // Ocean
   { kind: 'gradient', color: '#00C853', color2: '#22D3EE' }, // Forest
-  { kind: 'gradient', color: '#EC4899', color2: '#7C3AED' }, // Berry
+  { kind: 'gradient', color: '#EC4899', color2: '#8B3DFF' }, // Berry
   { kind: 'gradient', color: '#FF4D6D', color2: '#3B1E6E' }, // Lava
   { kind: 'gradient', color: '#22D3EE', color2: '#00C853' }, // Mint
-  { kind: 'gradient', color: '#7C3AED', color2: '#A78BFA' }, // Royal
-  { kind: 'gradient', color: '#1A1A2E', color2: '#7C3AED' }, // Twilight
-  { kind: 'gradient', color: '#F59E0B', color2: '#7C3AED' }, // Dusk
+  { kind: 'gradient', color: '#8B3DFF', color2: '#C9B6FF' }, // Royal
+  { kind: 'gradient', color: '#1A1A2E', color2: '#8B3DFF' }, // Twilight
+  { kind: 'gradient', color: '#F59E0B', color2: '#8B3DFF' }, // Dusk
 ];
 
 type Value = { emoji: string | null; color: string | null; color2: string | null };

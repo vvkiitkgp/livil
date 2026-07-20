@@ -480,7 +480,7 @@ export default function FloatingPlayer() {
   // (and flattens to that same line when paused). The bar still fades into the
   // dark pill as it morphs open.
   const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(10,10,15,0)', 'rgba(10,10,15,0.9)'] });
-  const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(124,58,237,0)', 'rgba(124,58,237,0.50)'] });
+  const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(139, 61, 255,0)', 'rgba(139, 61, 255,0.50)'] });
   // Content fades in only after pill is mostly open, and out before it collapses
   const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
   // Spike visualizer lives ONLY on the resting white line — fade it out as soon
@@ -879,7 +879,7 @@ const styles = StyleSheet.create({
   },
 
   returnChip: {
-    backgroundColor: 'rgba(124,58,237,0.40)',
+    backgroundColor: 'rgba(139, 61, 255,0.40)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,

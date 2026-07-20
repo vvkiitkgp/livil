@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { GradientBorder } from './GradientBorder';
 
 export type ProfileTab = 'reposts' | 'uploads' | 'albums' | 'playlists';
 
@@ -64,6 +65,7 @@ export default function ProfileTabBar({
               style={[styles.pill, isActive && styles.pillActive]}
               android_ripple={{ color: COLORS.purpleDim }}
             >
+              {isActive ? <GradientBorder borderRadius={999} /> : null}
               <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
               <Text style={[styles.count, isActive && styles.countActive]}>{c}</Text>
             </Pressable>
@@ -96,18 +98,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   pillActive: {
-    backgroundColor: COLORS.purple,
-    borderColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
+    borderColor: 'transparent',
   },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  labelActive: { color: COLORS.white },
+  labelActive: { color: COLORS.purpleNeon },
   count: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
-  countActive: { color: 'rgba(255,255,255,0.75)' },
+  countActive: { color: COLORS.purpleNeon },
 });

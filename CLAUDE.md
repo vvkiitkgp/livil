@@ -9,7 +9,7 @@ Users can upload music (audio + video), listen together in real time (Jam rooms)
 - Always use `FormInput` (`src/components/FormInput.tsx`) for text inputs — never create raw `TextInput` with focus state lifted to parent. **Why**: on Android 15 + Fabric, lifting focus state causes re-renders that remount the `TextInput` and immediately dismiss the keyboard.
 - Always use `createNativeStackNavigator` — never `createStackNavigator`.
 - **Always use `Icon` (`src/components/Icon.tsx`) for UI icons — never hard-code a unicode glyph/emoji in a `<Text>` as an icon.** `Icon` is the single import surface, backed by **Phosphor** (`phosphor-react-native`, pinned `3.0.6`) plus **Lucide** (`lucide-react-native`, pinned `1.18.0`) for the one `drum` icon Phosphor lacks. Props: `<Icon name={IconName} size={number} color={string} weight={'regular'|'fill'|'bold'|…} />`. Both libs are pure-JS SVG riding the existing `react-native-svg@15.15.5` — **no native rebuild**. Add a new icon by mapping a Livil-semantic name in the `REGISTRY` in `Icon.tsx`. **Never nest `<Icon>` inside `<Text>`** (it's an SVG, not inline text — wrap it in a `<View>` row instead). **Exceptions (stay as text/emoji):** chat reaction emoji + the emoji picker, emoji inside copy strings (e.g. `🎵 ${title}`, share/push messages), single-char initials fallbacks (`name.charAt(0) || '♪'`), and `ConfirmActionModal`'s decorative `glyph` prop.
-- Always keep dark theme (`#0A0A0F` background, `#7C3AED` purple accent). No light mode.
+- Always keep dark theme (`#0A0A0F` background, `#8B3DFF` purple accent). No light mode.
 - New screens go under `src/screens/` following the existing structure.
 - When adding navigation routes, update `src/navigation/types.ts` with the new route params.
 - Never install new packages without checking compatibility with RN 0.85.3 + New Architecture (Fabric) first.
@@ -154,18 +154,26 @@ profiles (
 
 ## Design System
 
+`src/theme/colors.ts` is the single source of truth — import `COLORS`, never hard-code a hex.
+
 | Token | Value |
 |---|---|
 | Background | `#0A0A0F` |
 | Surface | `#12121A` |
-| Primary accent | `#7C3AED` (purple) |
+| **Primary accent (`purple`)** | **`#8B3DFF`** — CTAs, play button, active states, links, sent bubbles |
+| Neon accent (`purpleNeon`) | `#A855F7` — glows, highlights |
+| Royal / gradient mid (`purpleRoyal`) | `#6D28D9` |
+| Deep violet (`purpleDeep` / `purpleDeepest`) | `#4C1D95` / `#3A1180` — gradient floor |
+| Light highlight (`purpleLight`) | `#C9B6FF` — accent text on dark |
 | Secondary accent | `#00BFFF` (neon blue) |
 | Text primary | `#FFFFFF` |
 | Text secondary | `#888888` |
 | Danger | `#FF4444` |
 | Success | `#00C853` |
 
-- Purple CTAs with glow shadow (`shadowColor: '#7C3AED'`)
+Signature gradients: hero `#6D28D9 → #A855F7`; deep background `#0A0A0F → #4C1D95 → #8B3DFF`.
+
+- Purple CTAs with glow shadow (`shadowColor: COLORS.purple`)
 - Animated purple border on input focus
 - Bottom tab bar: Home, Search, Library, Profile
 

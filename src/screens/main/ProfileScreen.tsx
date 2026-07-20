@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
@@ -645,24 +646,24 @@ export default function ProfileScreen() {
 
         {/* Action buttons */}
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionButtonPrimary]}
-            activeOpacity={0.85}
+          <Button
+            label="Edit profile"
+            variant="primary"
+            size="md"
+            style={styles.actionButton}
             onPress={() => navigation.navigate('EditProfile')}
-          >
-            <Text style={styles.actionButtonPrimaryText}>Edit profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionButtonGhost]}
-            activeOpacity={0.85}
+          />
+          <Button
+            label="Invite friends"
+            variant="secondary"
+            size="md"
+            style={styles.actionButton}
             onPress={() => {
               Share.share({
                 message: `Join me on Livil — the social music app 🎵\nhttps://livil.app`,
               });
             }}
-          >
-            <Text style={styles.actionButtonGhostText}>Invite friends</Text>
-          </TouchableOpacity>
+          />
         </View>
 
         {error ? (
@@ -950,34 +951,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionButtonPrimary: {
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  actionButtonPrimaryText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  actionButtonGhost: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  actionButtonGhostText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '700',
   },
   errorBox: {
     marginTop: 14,

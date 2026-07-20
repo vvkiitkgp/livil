@@ -19,6 +19,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
+import { Button } from '../../components/Button';
 
 export default function FriendRequestsScreen() {
   const navigation = useNavigation();
@@ -90,15 +91,14 @@ export default function FriendRequestsScreen() {
           </Text>
         </View>
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnAccept]}
+          <Button
+            label="Accept"
+            size="sm"
+            variant="primary"
+            style={styles.btnAcceptLayout}
             onPress={() => handleAccept(item.otherUserId)}
-            disabled={busy}
-          >
-            {busy
-              ? <ActivityIndicator size="small" color={COLORS.white} />
-              : <Text style={styles.btnAcceptText}>Accept</Text>}
-          </TouchableOpacity>
+            busy={busy}
+          />
           <TouchableOpacity
             style={[styles.btn, styles.btnDecline]}
             onPress={() => handleDecline(item.otherUserId)}
@@ -207,8 +207,7 @@ const styles = StyleSheet.create({
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
     minWidth: 70,
   },
-  btnAccept: { backgroundColor: COLORS.purple },
-  btnAcceptText: { color: COLORS.white, fontWeight: '700', fontSize: 13 },
+  btnAcceptLayout: { minWidth: 70 },
   btnDecline: { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: COLORS.card },
   btnDeclineText: { color: COLORS.textSecondary, fontWeight: '600', fontSize: 13 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },

@@ -16,6 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
@@ -98,15 +99,13 @@ function renderCta(
   };
   const conf = map[status] ?? map.none;
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
+    <Button
+      label={conf.label}
       onPress={onPress}
-      style={[styles.ctaBtn, conf.primary ? styles.ctaBtnPrimary : styles.ctaBtnSecondary]}
-    >
-      <Text style={conf.primary ? styles.ctaBtnPrimaryText : styles.ctaBtnSecondaryText}>
-        {conf.label}
-      </Text>
-    </TouchableOpacity>
+      variant={conf.primary ? 'primary' : 'secondary'}
+      size="md"
+      style={styles.ctaBtn}
+    />
   );
 }
 
@@ -698,27 +697,7 @@ const styles = StyleSheet.create({
 
   ctaBtn: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  ctaBtnPrimary: {
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  ctaBtnPrimaryText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
-  ctaBtnSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  ctaBtnSecondaryText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
 
   socialPills: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

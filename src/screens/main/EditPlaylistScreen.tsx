@@ -16,6 +16,7 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
 import { supabase } from '../../../lib/supabase';
 import {
   deletePlaylist,
@@ -32,8 +33,8 @@ import ConfirmActionModal from '../../components/ConfirmActionModal';
 type Props = NativeStackScreenProps<RootStackParamList, 'EditPlaylist'>;
 
 const FALLBACK_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];
@@ -149,16 +150,15 @@ export default function EditPlaylistScreen({ route }: Props) {
           <Icon name="back" size={32} color={COLORS.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit playlist</Text>
-        <TouchableOpacity
-          style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
+        <Button
+          label="Save"
           onPress={handleSave}
-          disabled={!canSave || saving}
-          activeOpacity={0.75}
-        >
-          {saving
-            ? <ActivityIndicator size="small" color={COLORS.white} />
-            : <Text style={styles.saveBtnText}>Save</Text>}
-        </TouchableOpacity>
+          variant="primary"
+          size="sm"
+          disabled={!canSave}
+          busy={saving}
+          style={styles.saveBtn}
+        />
       </View>
 
       {loading ? (
@@ -290,13 +290,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  saveBtn: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: COLORS.purple, minWidth: 68, alignItems: 'center', justifyContent: 'center',
-    shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.45, shadowRadius: 6, elevation: 4,
-  },
-  saveBtnDisabled: { opacity: 0.35, shadowOpacity: 0 },
-  saveBtnText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  saveBtn: { minWidth: 68 },
 
   body: { paddingHorizontal: 20, paddingTop: 20 },
   label: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 },

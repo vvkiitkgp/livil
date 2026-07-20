@@ -20,6 +20,8 @@ import { ROLES, type PendingCollaborator } from '../../constants/roles';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
 import { emitCollaboratorPicked } from '../../services/uploadEvents';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
+import { GradientBorder } from '../../components/GradientBorder';
 
 type PickerRoute = RouteProp<RootStackParamList, 'CollaboratorPicker'>;
 type PickerNavigation = NativeStackNavigationProp<RootStackParamList, 'CollaboratorPicker'>;
@@ -133,19 +135,21 @@ export default function CollaboratorPickerScreen() {
       <View style={styles.flex}>
         <View style={styles.modeToggle}>
           <TouchableOpacity
-            style={[styles.modePill, mode === 'user' && styles.modePillActive]}
+            style={styles.modePill}
             activeOpacity={0.85}
             onPress={() => switchMode('user')}
           >
+            {mode === 'user' ? <GradientBorder borderRadius={999} /> : null}
             <Text style={[styles.modePillText, mode === 'user' && styles.modePillTextActive]}>
               Find on Livil
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modePill, mode === 'custom' && styles.modePillActive]}
+            style={styles.modePill}
             activeOpacity={0.85}
             onPress={() => switchMode('custom')}
           >
+            {mode === 'custom' ? <GradientBorder borderRadius={999} /> : null}
             <Text style={[styles.modePillText, mode === 'custom' && styles.modePillTextActive]}>
               Custom name
             </Text>
@@ -264,14 +268,14 @@ export default function CollaboratorPickerScreen() {
         </View>
 
         <View style={styles.footer}>
-          <TouchableOpacity
+          <Button
+            label="Add to track"
             onPress={handleConfirm}
-            activeOpacity={0.85}
+            variant="primary"
+            size="lg"
+            fullWidth
             disabled={!canConfirm}
-            style={[styles.confirmButton, !canConfirm && styles.confirmButtonDisabled]}
-          >
-            <Text style={styles.confirmButtonText}>Add to track</Text>
-          </TouchableOpacity>
+          />
         </View>
       </View>
     </SafeAreaView>
@@ -322,11 +326,10 @@ const styles = StyleSheet.create({
   modePill: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 999,
-  },
-  modePillActive: {
-    backgroundColor: COLORS.purple,
+    overflow: 'hidden',
   },
   modePillText: {
     color: COLORS.textSecondary,
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   modePillTextActive: {
-    color: COLORS.white,
+    color: COLORS.purpleNeon,
   },
   searchSection: {
     paddingHorizontal: 20,
@@ -476,25 +479,5 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.bg,
-  },
-  confirmButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  confirmButtonDisabled: {
-    opacity: 0.5,
-  },
-  confirmButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
 });

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Modal,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
+import { Button } from './Button';
 import { useRelationships } from '../contexts/RelationshipContext';
 
 type ProfilePreview = {
@@ -155,20 +155,22 @@ export default function AddUserSheet({
           <View style={styles.confirmWrap}>
             <Text style={styles.confirmMsg}>{confirm.message}</Text>
             <View style={styles.confirmRow}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnSecondary]}
+              <Button
+                label="Cancel"
                 onPress={() => setConfirm(null)}
+                variant="secondary"
+                size="md"
                 disabled={busy}
-              >
-                <Text style={styles.btnSecondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary]}
+                style={styles.confirmBtn}
+              />
+              <Button
+                label={confirm.confirmLabel}
                 onPress={() => run(confirm.onConfirm)}
+                variant="primary"
+                size="md"
                 disabled={busy}
-              >
-                <Text style={styles.btnPrimaryText}>{confirm.confirmLabel}</Text>
-              </TouchableOpacity>
+                style={styles.confirmBtn}
+              />
             </View>
           </View>
         ) : (
@@ -227,22 +229,22 @@ function renderActions(p: ActionsProps) {
     return (
       <View style={styles.actionsCol}>
         <Text style={styles.muted}>Wants to be friends.</Text>
-        <TouchableOpacity
-          style={[styles.btn, styles.btnPrimary]}
+        <Button
+          label="Accept Friend Request"
           onPress={p.onAddFriend}
-          disabled={p.busy}
-        >
-          {p.busy
-            ? <ActivityIndicator color={COLORS.white} />
-            : <Text style={styles.btnPrimaryText}>Accept Friend Request</Text>}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.btn, styles.btnSecondary]}
+          variant="primary"
+          size="md"
+          busy={p.busy}
+          fullWidth
+        />
+        <Button
+          label="Decline"
           onPress={p.onRejectRequest}
+          variant="secondary"
+          size="md"
           disabled={p.busy}
-        >
-          <Text style={styles.btnSecondaryText}>Decline</Text>
-        </TouchableOpacity>
+          fullWidth
+        />
       </View>
     );
   }
@@ -266,13 +268,14 @@ function renderActions(p: ActionsProps) {
     return (
       <View style={styles.actionsCol}>
         <Text style={styles.muted}>You star this user.</Text>
-        <TouchableOpacity
-          style={[styles.btn, styles.btnPrimary]}
+        <Button
+          label="Add as Friend"
           onPress={p.onAddFriend}
+          variant="primary"
+          size="md"
           disabled={p.busy}
-        >
-          <Text style={styles.btnPrimaryText}>Add as Friend</Text>
-        </TouchableOpacity>
+          fullWidth
+        />
         <TouchableOpacity
           style={[styles.btn, styles.btnDanger]}
           onPress={p.onRemoveStar}
@@ -287,22 +290,22 @@ function renderActions(p: ActionsProps) {
   // status === 'none'
   return (
     <View style={styles.actionsCol}>
-      <TouchableOpacity
-        style={[styles.btn, styles.btnPrimary]}
+      <Button
+        label="Add as Friend"
         onPress={p.onAddFriend}
-        disabled={p.busy}
-      >
-        {p.busy
-          ? <ActivityIndicator color={COLORS.white} />
-          : <Text style={styles.btnPrimaryText}>Add as Friend</Text>}
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.btn, styles.btnSecondary]}
+        variant="primary"
+        size="md"
+        busy={p.busy}
+        fullWidth
+      />
+      <Button
+        label="Add as Star"
         onPress={p.onAddStar}
+        variant="secondary"
+        size="md"
         disabled={p.busy}
-      >
-        <Text style={styles.btnSecondaryText}>Add as Star</Text>
-      </TouchableOpacity>
+        fullWidth
+      />
     </View>
   );
 }
@@ -358,20 +361,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimary: {
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  btnPrimaryText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
-  btnSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  btnSecondaryText: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   btnDanger: {
     backgroundColor: 'transparent',
     borderWidth: 1, borderColor: COLORS.errorBorder,
@@ -380,6 +369,7 @@ const styles = StyleSheet.create({
   confirmWrap: { gap: 12 },
   confirmMsg: { color: COLORS.white, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   confirmRow: { flexDirection: 'row', gap: 10 },
+  confirmBtn: { flex: 1 },
   closeBtn: { marginTop: 14, alignItems: 'center', paddingVertical: 8 },
   closeBtnText: { color: COLORS.textSecondary, fontSize: 14 },
 });

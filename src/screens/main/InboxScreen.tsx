@@ -25,6 +25,7 @@ import AddBadge from '../../components/AddBadge';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
+import { Button } from '../../components/Button';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -302,13 +303,13 @@ export default function InboxScreen() {
               <Text style={styles.emptyBody}>
                 Start a conversation with a friend.
               </Text>
-              <TouchableOpacity
+              <Button
+                label="New Message"
+                size="md"
+                variant="primary"
                 style={styles.emptyButton}
-                activeOpacity={0.8}
                 onPress={() => navigation.navigate('NewConversation')}
-              >
-                <Text style={styles.emptyButtonText}>New Message</Text>
-              </TouchableOpacity>
+              />
             </View>
           }
           ListFooterComponent={
@@ -402,12 +403,5 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
   emptyBody: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center' },
-  emptyButton: {
-    marginTop: 8,
-    backgroundColor: COLORS.purple,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  emptyButtonText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+  emptyButton: { marginTop: 8 },
 });

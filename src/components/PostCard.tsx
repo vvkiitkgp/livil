@@ -20,6 +20,7 @@ import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 import { Icon } from './Icon';
+import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
 
 export type PostCardProps = {
@@ -589,7 +590,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
             }
           }}
         >
-          <Icon name="repost" size={14} color={COLORS.white} />
+          <GradientBorder borderRadius={999} />
+          <Icon name="repost" size={14} color={COLORS.purpleNeon} />
           <Text style={styles.repostBtnLabel}>Repost</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -729,7 +731,8 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
           onPress={isVideo ? handleVideoTogglePlay : handleAudioTogglePlay}
           accessibilityLabel={!isThisActive ? 'Play' : 'Pause'}
         >
-          <Icon name={!isThisActive ? 'play' : 'pause'} size={16} color={COLORS.white} />
+          <GradientBorder borderRadius={23} />
+          <Icon name={!isThisActive ? 'play' : 'pause'} size={16} color={COLORS.purpleNeon} />
         </TouchableOpacity>
 
         <View style={styles.statsGroup}>
@@ -954,15 +957,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 3,
+    overflow: 'hidden',
   },
   repostBtnLabel: {
-    color: COLORS.white,
+    color: COLORS.purpleNeon,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.2,
@@ -1122,14 +1120,9 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: COLORS.purple,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.55,
-    shadowRadius: 10,
-    elevation: 6,
+    overflow: 'hidden',
   },
   statsGroup: {
     flexDirection: 'row',

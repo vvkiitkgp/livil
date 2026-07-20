@@ -13,6 +13,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
+import { Button } from './Button';
 import { FLOATING_PLAYER_HEIGHT } from './FloatingPlayer';
 import EmojiCoverArt from './EmojiCoverArt';
 import type { PlaylistVisibility } from '../services/playlists';
@@ -70,8 +71,8 @@ export type DetailViewProps = {
 };
 
 const FALLBACK_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];
@@ -274,14 +275,8 @@ export default function DetailView(props: DetailViewProps) {
 
             {tracks.length > 0 ? (
               <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.pill, styles.pillPrimary]} onPress={onPlay} activeOpacity={0.85}>
-                  <Icon name="play" size={16} color={COLORS.white} />
-                  <Text style={styles.pillPrimaryText}>Play</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.pill, styles.pillGhost]} onPress={onShuffle} activeOpacity={0.85}>
-                  <Icon name="shuffle" size={16} color={COLORS.white} />
-                  <Text style={styles.pillGhostText}>Shuffle</Text>
-                </TouchableOpacity>
+                <Button label="Play" icon="play" variant="primary" size="md" onPress={onPlay} style={styles.pill} />
+                <Button label="Shuffle" icon="shuffle" variant="secondary" size="md" onPress={onShuffle} style={styles.pill} />
               </View>
             ) : null}
 
@@ -359,11 +354,7 @@ const styles = StyleSheet.create({
   metaLine: { color: COLORS.textSecondary, fontSize: 12, marginTop: 8 },
 
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 10, borderRadius: 999 },
-  pillPrimary: { backgroundColor: COLORS.purple, shadowColor: COLORS.purple, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6 },
-  pillPrimaryText: { color: COLORS.white, fontSize: 14, fontWeight: '800' },
-  pillGhost: { borderWidth: 1, borderColor: COLORS.border, backgroundColor: 'transparent' },
-  pillGhostText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  pill: { paddingHorizontal: 22 },
 
   tracksLabel: { color: COLORS.textSecondary, fontSize: 10, letterSpacing: 1.5, fontWeight: '700', alignSelf: 'flex-start', marginTop: 22 },
 

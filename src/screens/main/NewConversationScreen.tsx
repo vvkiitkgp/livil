@@ -18,6 +18,8 @@ import { getOrCreateDm, createGroup } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
+import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
 
@@ -248,19 +250,21 @@ export default function NewConversationScreen() {
       {/* Tab toggle */}
       <View style={styles.tabRow}>
         <TouchableOpacity
-          style={[styles.tabBtn, tab === 'dm' && styles.tabBtnActive]}
+          style={styles.tabBtn}
           onPress={() => handleTabChange('dm')}
           activeOpacity={0.8}
         >
+          {tab === 'dm' ? <GradientBorder borderRadius={8} /> : null}
           <Text style={[styles.tabLabel, tab === 'dm' && styles.tabLabelActive]}>
             Direct Message
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tabBtn, tab === 'group' && styles.tabBtnActive]}
+          style={styles.tabBtn}
           onPress={() => handleTabChange('group')}
           activeOpacity={0.8}
         >
+          {tab === 'group' ? <GradientBorder borderRadius={8} /> : null}
           <Text style={[styles.tabLabel, tab === 'group' && styles.tabLabelActive]}>
             New Group
           </Text>
@@ -350,23 +354,15 @@ export default function NewConversationScreen() {
       {/* Create group button */}
       {tab === 'group' && (
         <View style={styles.createBtnWrap}>
-          <TouchableOpacity
-            style={[
-              styles.createBtn,
-              (selected.size === 0 || !groupName.trim() || creating) && styles.createBtnDisabled,
-            ]}
-            activeOpacity={0.8}
+          <Button
+            label={`Create Group${selected.size > 0 ? ` · ${selected.size} member${selected.size > 1 ? 's' : ''}` : ''}`}
             onPress={() => void handleCreateGroup()}
-            disabled={selected.size === 0 || !groupName.trim() || creating}
-          >
-            {creating ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <Text style={styles.createBtnText}>
-                Create Group{selected.size > 0 ? ` · ${selected.size} member${selected.size > 1 ? 's' : ''}` : ''}
-              </Text>
-            )}
-          </TouchableOpacity>
+            variant="primary"
+            size="md"
+            fullWidth
+            disabled={selected.size === 0 || !groupName.trim()}
+            busy={creating}
+          />
         </View>
       )}
     </SafeAreaView>
@@ -397,11 +393,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 8,
+    overflow: 'hidden',
   },
-  tabBtnActive: { backgroundColor: COLORS.purple },
   tabLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
-  tabLabelActive: { color: COLORS.white },
+  tabLabelActive: { color: COLORS.purpleNeon },
   groupNameWrap: { paddingHorizontal: 16, paddingTop: 10 },
   selectedStrip: {
     flexDirection: 'row',
@@ -462,12 +459,4 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingTop: 8,
   },
-  createBtn: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  createBtnDisabled: { opacity: 0.4 },
-  createBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
 });

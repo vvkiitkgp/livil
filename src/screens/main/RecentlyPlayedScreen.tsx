@@ -20,8 +20,8 @@ import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../servi
 import { Icon } from '../../components/Icon';
 
 const FALLBACK_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];

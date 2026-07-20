@@ -808,7 +808,7 @@ function AddToPlaylistModal({
           >
             {/* Liked Songs — always first */}
             <TouchableOpacity style={modalSt.row} onPress={handleToggleLiked} activeOpacity={0.7}>
-              <View style={[modalSt.rowThumb, { backgroundColor: '#7C3AED' }]}>
+              <View style={[modalSt.rowThumb, { backgroundColor: COLORS.purple }]}>
                 <Icon name="heart" size={20} color={COLORS.white} weight="fill" />
               </View>
               <View style={modalSt.rowMeta}>
@@ -1707,7 +1707,7 @@ export default function FullScreenPlayer() {
           }}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Icon name="repost" size={12} color={COLORS.white} />
+          <Icon name="repost" size={12} color={COLORS.purpleLight} />
           <Text style={styles.repostBtnLabel}>Repost</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -2034,15 +2034,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 3,
+    backgroundColor: COLORS.purpleDim,
+    borderWidth: 1,
+    borderColor: COLORS.purpleGlow,
   },
   repostBtnLabel: {
-    color: COLORS.white,
+    color: COLORS.purpleLight,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,

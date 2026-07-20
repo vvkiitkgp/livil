@@ -16,14 +16,16 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
+import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { createAlbum, addTrackToAlbum, fetchUploaderAvailableTracks, type UploaderTrackOption } from '../../services/albums';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateAlbum'>;
 
 const FALLBACK_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];
@@ -57,7 +59,8 @@ function TrackPickRow({
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={0.7}
       >
-        <Icon name={selected ? 'check' : 'add'} size={16} color={selected ? COLORS.white : COLORS.textMuted} />
+        {selected ? <GradientBorder borderRadius={16} /> : null}
+        <Icon name={selected ? 'check' : 'add'} size={16} color={selected ? COLORS.purpleNeon : COLORS.textMuted} />
       </TouchableOpacity>
     </View>
   );
@@ -161,16 +164,15 @@ export default function CreateAlbumScreen({ route }: Props) {
           <Icon name="back" size={32} color={COLORS.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New album</Text>
-        <TouchableOpacity
-          style={[styles.createBtn, !canCreate && styles.createBtnDisabled]}
+        <Button
+          label="Create"
           onPress={handleCreate}
-          disabled={!canCreate || creating}
-          activeOpacity={0.75}
-        >
-          {creating
-            ? <ActivityIndicator size="small" color={COLORS.white} />
-            : <Text style={styles.createBtnText}>Create</Text>}
-        </TouchableOpacity>
+          variant="primary"
+          size="sm"
+          disabled={!canCreate}
+          busy={creating}
+          style={styles.createBtn}
+        />
       </View>
 
       <FlatList
@@ -198,13 +200,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  createBtn: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: COLORS.purple, minWidth: 68, alignItems: 'center', justifyContent: 'center',
-    shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.45, shadowRadius: 6, elevation: 4,
-  },
-  createBtnDisabled: { opacity: 0.35, shadowOpacity: 0 },
-  createBtnText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  createBtn: { minWidth: 68 },
 
   nameSection: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
   label: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 },
@@ -229,9 +225,9 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 32, height: 32, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.border,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: COLORS.surface,
+    overflow: 'hidden',
   },
   addBtnSelected: {
-    backgroundColor: COLORS.purple, borderColor: COLORS.purple,
-    shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 3,
+    borderColor: 'transparent',
   },
 });
