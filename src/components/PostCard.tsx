@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -82,7 +82,13 @@ function avatarInitials(author: { displayName: string | null; username: string }
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-export default function PostCard({ post, visible, pauseWhenOffScreen = true, onCommentsPress, onDeleted }: PostCardProps) {
+// `visible` and `pauseWhenOffScreen` are still accepted for source compatibility —
+// several screens pass them — but PostCard deliberately ignores them. Since the
+// single-engine consolidation (ADR-0001) this component produces no audio: it renders
+// cover art and a play button that hands off to GlobalAudioPlayer. There is nothing
+// here to pause when it scrolls off screen. The props are vestigial and should be
+// removed from PostCardProps and its call sites in a separate change.
+export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
@@ -226,6 +232,11 @@ export default function PostCard({ post, visible, pauseWhenOffScreen = true, onC
     if (playback.pendingPlayId === post.id) {
       playback.clearPendingPlay();
     }
+    // Depends on two specific context fields, not the whole playback object.
+    // PlaybackContext's value memo has a 55-entry dependency array, so adding
+    // `playback` would re-run this effect whenever any unrelated playback state
+    // changes — for every card in the feed. See kb/architecture/client.md.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.pendingPlayId, post.id, playback.clearPendingPlay]);
 
   // Play counting is driven by actual audio/video playback in the global

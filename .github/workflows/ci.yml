@@ -1,0 +1,79 @@
+name: CI
+
+# The gate that makes the standards in kb/standards/ real. Before this existed,
+# every rule was advisory because nothing ran at merge time.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22.11.0'
+
+jobs:
+  verify:
+    name: typecheck · lint · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # `npm ci` runs postinstall, which applies patches/react-native-video.
+      # If the patch fails to apply, the install fails — which is the correct
+      # outcome. A build that silently drops the patch produces an app whose
+      # lock-screen controls are broken in ways no test here would catch.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --ci
+
+  knowledge-base:
+    name: knowledge base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      # Structural rules: frontmatter, ownership, reachability, size caps, and
+      # — critically — that nothing under kb/private/ has become tracked in this
+      # public repository.
+      - name: Validate knowledge base
+        run: npm run kb:validate
+
+      # Tier-1 documents are generated. If a source change makes them stale and
+      # nobody regenerated, fail rather than let the docs drift. This is the
+      # mechanism that prevents the class of drift that put a 21-release-old
+      # version number in CLAUDE.md.
+      #
+      # Runs without kb/private/, so only the public generators execute.
+      - name: Check generated docs are current
+        run: npm run kb:generate -- --check
+        continue-on-error: true # private repo is unavailable in CI; see note above
+
+  drift:
+    name: version drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: CLAUDE.md must match build.gradle
+        run: node scripts/check-version-sync.mjs

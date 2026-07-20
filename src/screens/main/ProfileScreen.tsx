@@ -673,6 +673,9 @@ export default function ProfileScreen() {
         ) : null}
       </View>
     );
+    // `openLink` is omitted deliberately; adding it rebuilds the header on every
+    // render. Unverified without tests — see debt register.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, stats, followCounts, error, loading, handleSignOut, navigation]);
 
   const renderFooter = useCallback(() => {

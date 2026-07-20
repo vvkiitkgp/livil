@@ -44,7 +44,6 @@ import {
   getFriendActivity,
   getOtherMemberReadAt,
   type FriendActivity,
-  type ConversationSummary,
 } from '../../services/conversations';
 import {
   subscribeToConversation,

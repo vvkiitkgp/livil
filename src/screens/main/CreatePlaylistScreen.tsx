@@ -127,6 +127,9 @@ export default function CreatePlaylistScreen({ route }: Props) {
       .catch(() => {})
       .finally(() => { if (!cancelled) { setLoadingSuggestions(false); } });
     return () => { cancelled = true; };
+    // Deliberately keyed on the id, not the object: `initialPost` arrives via route
+    // params and gets a new identity on every render, which would refetch endlessly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPost?.postId]);
 
   const toggle = useCallback((postId: string) => {

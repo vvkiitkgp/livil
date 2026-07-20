@@ -534,6 +534,10 @@ export default function FloatingPlayer() {
     } finally {
       autoPlayingRef.current = false;
     }
+    // `playSourceRef` is a ref — its identity never changes, so listing it would be
+    // noise. `resumePlay` is intentionally omitted: including it would rebuild this
+    // callback mid-playback, and its behaviour here is unverified without tests.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setQueue, setNowPlaying, requestPlay]);
 
   const singleTap = Gesture.Tap().numberOfTaps(1).runOnJS(true)

@@ -188,6 +188,11 @@ export default function UserProfileScreen() {
       startIdx,
       `profile:@${profile?.username ?? ''}`,
     );
+    // Same reasoning as PostCard: depend on the specific context fields used, not
+    // the whole `playback` object, whose identity changes on any of 55 entries.
+    // `profile?.username` is only read to label the queue source and must not
+    // retrigger a queue rebuild.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, posts, playback.setQueue]);
 
   const handleViewableItemsChanged = useRef(

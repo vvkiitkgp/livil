@@ -24,7 +24,7 @@ import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ClipRangeSlider from './ClipRangeSlider';
 import QueueList from './QueueList';
-import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { fetchAlbumForTrack, type AlbumForTrack } from '../services/albums';
 import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
@@ -258,66 +258,6 @@ const seekSt = StyleSheet.create({
   wrap: { paddingHorizontal: 24, paddingBottom: 4 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
   time: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
-});
-
-/** Shuffle icon — two crossing arrows. */
-function ShuffleIcon({ active }: { active: boolean }) {
-  const c = active ? COLORS.purpleLight : COLORS.textMuted;
-  return (
-    <View style={iconSt.wrap}>
-      <View style={[iconSt.line, { backgroundColor: c }]} />
-      <View style={[iconSt.line, { backgroundColor: c, marginTop: 7 }]} />
-      <View style={[iconSt.arrowR, { borderLeftColor: c }]} />
-      <View style={[iconSt.arrowL, { borderRightColor: c }]} />
-      <View style={[iconSt.cross, { backgroundColor: c }]} />
-      {active && <View style={iconSt.dot} />}
-    </View>
-  );
-}
-
-/** Repeat icon — ↻ with optional "1" badge. */
-function RepeatIcon({ mode }: { mode: RepeatMode }) {
-  const active = mode !== 'off';
-  const c = active ? COLORS.purpleLight : COLORS.textMuted;
-  return (
-    <View style={iconSt.repeatWrap}>
-      <Icon name="repeat" size={22} color={c} />
-      {mode === 'one' && (
-        <View style={iconSt.badge}>
-          <Text style={iconSt.badgeText}>1</Text>
-        </View>
-      )}
-      {active && <View style={[iconSt.dot, iconSt.repeatDot]} />}
-    </View>
-  );
-}
-
-const iconSt = StyleSheet.create({
-  wrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  line: { width: 18, height: 2, borderRadius: 1 },
-  arrowR: {
-    position: 'absolute', right: 8,
-    borderTopWidth: 4, borderBottomWidth: 4, borderLeftWidth: 6,
-    borderTopColor: 'transparent', borderBottomColor: 'transparent',
-    top: 9,
-  },
-  arrowL: {
-    position: 'absolute', left: 8,
-    borderTopWidth: 4, borderBottomWidth: 4, borderRightWidth: 6,
-    borderTopColor: 'transparent', borderBottomColor: 'transparent',
-    bottom: 9,
-  },
-  cross: { position: 'absolute', width: 20, height: 2, borderRadius: 1, transform: [{ rotate: '-35deg' }] },
-  dot: { position: 'absolute', bottom: 6, width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.purple },
-  repeatWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  badge: {
-    position: 'absolute', top: 7, right: 5,
-    width: 13, height: 13, borderRadius: 6.5,
-    backgroundColor: COLORS.purple,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  badgeText: { color: COLORS.white, fontSize: 8, fontWeight: '800', lineHeight: 10 },
-  repeatDot: { bottom: 5 },
 });
 
 /**

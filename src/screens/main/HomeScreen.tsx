@@ -102,20 +102,6 @@ function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
   return true;
 }
 
-function avatarInitials(profile: ProfileSnippet | null): string {
-  if (!profile) {
-    return '?';
-  }
-  const name = profile.displayName?.trim() || profile.username;
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return '?';
-  }
-  if (parts.length === 1) {
-    return parts[0]!.slice(0, 2).toUpperCase();
-  }
-  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
-}
 
 function storyInitials(story: Story): string {
   const name = story.author.displayName?.trim() || story.author.username;
@@ -628,7 +614,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [appendFeedPage]);
+  }, [appendFeedPage, setStories]);
 
   const handleRefresh = useCallback(async () => {
     playback.pauseAll();
@@ -653,7 +639,7 @@ export default function HomeScreen() {
       setRefreshing(false);
       showTopBar();
     }
-  }, [appendFeedPage, playback, hideTopBar, showTopBar]);
+  }, [appendFeedPage, playback, hideTopBar, showTopBar, setStories]);
 
   const handleEndReached = useCallback(() => {
     void appendFeedPage('end');
@@ -733,6 +719,10 @@ export default function HomeScreen() {
         ) : null}
       </>
     ),
+    // Lint reports meProfile/navigation/notificationCount as unnecessary here.
+    // Removing them would change when this header recomputes; with no tests over
+    // the feed that is an unverifiable change. Left as-is pending coverage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount],
   );
 
