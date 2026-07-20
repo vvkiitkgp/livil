@@ -248,6 +248,7 @@ export default function CollaboratorPickerScreen() {
                   onPress={() => setRole(r)}
                   style={[styles.roleChip, active && styles.roleChipActive]}
                 >
+                  {active ? <GradientBorder borderRadius={999} /> : null}
                   <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
                     {r}
                   </Text>
@@ -455,9 +456,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
+  // Selected state is the gradient outline; no fill.
   roleChipActive: {
-    borderColor: COLORS.purple,
-    backgroundColor: COLORS.purpleDim,
+    borderColor: 'transparent',
   },
   roleChipText: {
     color: COLORS.textSecondary,
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   roleChipTextActive: {
-    color: COLORS.purpleLight,
+    color: COLORS.purpleNeon,
     fontWeight: '700',
   },
   customRoleRow: {

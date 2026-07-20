@@ -931,10 +931,11 @@ export default function ConversationScreen() {
           onPress={() => void handleStartJam()}
           disabled={startingJam}
         >
+          <GradientBorder borderRadius={20} />
           {startingJam
-            ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
+            ? <ActivityIndicator size="small" color={COLORS.purpleNeon} />
             : <>
-                <Icon name="musicNote" size={14} color={COLORS.purpleLight} />
+                <Icon name="musicNote" size={14} color={COLORS.purpleNeon} />
                 <Text style={styles.jamBtnLabel}>Jam</Text>
               </>
           }
@@ -1084,12 +1085,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: 'rgba(139, 61, 255, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 61, 255, 0.55)',
     marginLeft: 4,
   },
-  jamBtnLabel: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  jamBtnLabel: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '700', lineHeight: 18 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerAvatar: { width: 32, height: 32, borderRadius: 16 },
   headerAvatarPlaceholder: {
