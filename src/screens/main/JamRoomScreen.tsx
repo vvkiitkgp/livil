@@ -814,7 +814,6 @@ const styles = StyleSheet.create({
   sendBtn: {
     width: 38, height: 38, borderRadius: 19,
     alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
   },
   sendBtnDisabled: { opacity: 0.4 },
 

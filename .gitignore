@@ -87,3 +87,13 @@ android/app/livil-release.keystore
 *-firebase-adminsdk-*.json
 firebase-service-account*.json
 serviceAccountKey.json
+
+# Knowledge base — private content. NEVER commit.
+# This repository is PUBLIC and docs/ is the published GitHub Pages root, so
+# security-sensitive knowledge (threat model, RLS policy inventory, privileged
+# function audit, incident history, debt register) cannot live here. It is
+# backed by a separate PRIVATE repository cloned into this path — not stored
+# only on one machine, which would be an unrecoverable single point of failure.
+# The public kb/ holds stubs that name these documents without their content.
+# See kb/ai-org/knowledge-base-spec.md §4.
+kb/private/

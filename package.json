@@ -6,6 +6,7 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "kb:validate": "node scripts/kb/validate-docs.mjs",
     "start": "react-native start",
     "start:android": "npx react-native run-android",
     "test": "jest",

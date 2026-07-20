@@ -1045,7 +1045,7 @@ export default function ConversationScreen() {
                 {sendDisabled ? null : <GradientBorder borderRadius={19} />}
                 <Icon
                   name="send"
-                  size={28}
+                  size={18}
                   color={sendDisabled ? COLORS.textMuted : COLORS.purpleNeon}
                 />
               </TouchableOpacity>
@@ -1399,7 +1399,6 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   // No fill to swap out any more — disabled reads as a flat grey ring with a
   // muted icon, replacing the old backgroundColor swap.
