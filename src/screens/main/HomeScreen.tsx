@@ -26,7 +26,6 @@ import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { Icon } from '../../components/Icon';
-import { Logo } from '../../components/Logo';
 import { Button } from '../../components/Button';
 import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
@@ -823,9 +822,6 @@ export default function HomeScreen() {
       >
         <View style={styles.topBar}>
           <View style={styles.brandRow}>
-            <View style={styles.logoMark}>
-              <Logo size={20} color={COLORS.white} />
-            </View>
             <Text style={styles.wordmark}>livil</Text>
           </View>
           <View style={styles.topBarActions}>
@@ -925,19 +921,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 26,
     marginTop: -2,
-  },
-  logoMark: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: COLORS.purple,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
   },
   wordmark: {
     color: COLORS.white,
