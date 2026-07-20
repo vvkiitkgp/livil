@@ -99,14 +99,22 @@ export function GradientBorder({
   const strokeFor = React.useCallback(
     (width: number, opacity: number, key?: string) => {
       const inset = width / 2;
+      const innerW = Math.max(0, size.w - width);
+      const innerH = Math.max(0, size.h - width);
+      // Clamp to half the SHORTER side. A pill passes borderRadius: 999, and an
+      // unclamped rx makes SVG cap rx at width/2 but ry at height/2 — which
+      // renders an ellipse instead of a stadium. Clamping both to the same value
+      // keeps the outline the exact shape of the View it traces.
+      const rx = Math.max(0, Math.min(borderRadius - inset, innerW / 2, innerH / 2));
       return (
         <Rect
           key={key}
           x={inset}
           y={inset}
-          width={Math.max(0, size.w - width)}
-          height={Math.max(0, size.h - width)}
-          rx={Math.max(0, borderRadius - inset)}
+          width={innerW}
+          height={innerH}
+          rx={rx}
+          ry={rx}
           fill="none"
           stroke={`url(#${gId})`}
           strokeWidth={width}
