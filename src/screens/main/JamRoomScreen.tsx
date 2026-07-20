@@ -693,7 +693,6 @@ const styles = StyleSheet.create({
   headerSub: { color: COLORS.textSecondary, fontSize: 11, marginTop: 1 },
   endBtn: {
     paddingHorizontal: 12, paddingVertical: 5,
-    backgroundColor: 'rgba(239,68,68,0.12)',
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.35)',
     borderRadius: 8,
   },

@@ -13,6 +13,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { COLORS } from '../../theme/colors';
+import { GradientBorder } from '../../components/GradientBorder';
 import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
@@ -313,6 +314,7 @@ export default function RepostScreen() {
                   disabled={submitting}
                   style={[styles.modeBtn, mode === 'post' && styles.modeBtnActive]}
                 >
+                  {mode === 'post' ? <GradientBorder borderRadius={14} /> : null}
                   <Text style={[styles.modeBtnLabel, mode === 'post' && styles.modeBtnLabelActive]}>
                     Post
                   </Text>
@@ -326,6 +328,7 @@ export default function RepostScreen() {
                   disabled={submitting}
                   style={[styles.modeBtn, mode === 'story' && styles.modeBtnActive]}
                 >
+                  {mode === 'story' ? <GradientBorder borderRadius={14} /> : null}
                   <Text style={[styles.modeBtnLabel, mode === 'story' && styles.modeBtnLabelActive]}>
                     Story (10s)
                   </Text>
@@ -555,9 +558,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: COLORS.card,
   },
+  // Selected state is the gradient outline; no fill.
   modeBtnActive: {
-    borderColor: COLORS.purpleLight,
-    backgroundColor: COLORS.purpleDim,
+    borderColor: 'transparent',
   },
   modeBtnLabel: {
     color: COLORS.white,
@@ -565,7 +568,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.2,
   },
-  modeBtnLabelActive: { color: COLORS.purpleLight },
+  modeBtnLabelActive: { color: COLORS.purpleNeon },
   modeBtnSub: {
     color: COLORS.textSecondary,
     fontSize: 11,
@@ -573,7 +576,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   modeBtnSubActive: {
-    color: COLORS.purpleLight,
+    color: COLORS.purpleNeon,
     opacity: 0.85,
   },
   // Track preview

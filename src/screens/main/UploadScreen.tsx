@@ -18,6 +18,7 @@ import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../comp
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
 import { COLORS } from '../../theme/colors';
+import { GradientBorder } from '../../components/GradientBorder';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
 import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
@@ -337,6 +338,7 @@ export default function UploadScreen() {
                 mode === 'audio' && styles.modeSegmentButtonActive,
               ]}
             >
+              {mode === 'audio' ? <GradientBorder borderRadius={14} /> : null}
               <Text
                 style={[
                   styles.modeSegmentLabel,
@@ -363,6 +365,7 @@ export default function UploadScreen() {
                 mode === 'video' && styles.modeSegmentButtonActive,
               ]}
             >
+              {mode === 'video' ? <GradientBorder borderRadius={14} /> : null}
               <Text
                 style={[
                   styles.modeSegmentLabel,
@@ -542,6 +545,7 @@ export default function UploadScreen() {
               disabled={submitting}
               style={styles.addCollabButton}
             >
+              <GradientBorder borderRadius={999} />
               <Text style={styles.addCollabButtonText}>+ Add</Text>
             </TouchableOpacity>
           </View>
@@ -782,9 +786,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: COLORS.card,
   },
+  // Selected state is the gradient outline; no fill.
   modeSegmentButtonActive: {
-    borderColor: COLORS.purpleLight,
-    backgroundColor: COLORS.purpleDim,
+    borderColor: 'transparent',
   },
   modeSegmentLabel: {
     color: COLORS.white,
@@ -908,15 +912,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   addCollabButton: {
-    backgroundColor: COLORS.purpleDim,
-    borderWidth: 1,
-    borderColor: COLORS.purple,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 6,
   },
   addCollabButtonText: {
-    color: COLORS.purpleLight,
+    color: COLORS.purpleNeon,
     fontSize: 13,
     fontWeight: '700',
   },
