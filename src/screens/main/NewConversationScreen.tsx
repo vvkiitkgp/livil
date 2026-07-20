@@ -395,7 +395,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
-    overflow: 'hidden',
   },
   tabLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
   tabLabelActive: { color: COLORS.purpleNeon },

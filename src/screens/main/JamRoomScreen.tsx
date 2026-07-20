@@ -725,7 +725,6 @@ const styles = StyleSheet.create({
   controlBtn: {
     width: 52, height: 52, borderRadius: 26,
     alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
   },
   presenceRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   presenceItem: { position: 'relative' },

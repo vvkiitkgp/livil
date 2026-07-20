@@ -430,7 +430,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: 'transparent',
-    overflow: 'hidden',
   },
   tabPillActive: {
     borderColor: 'transparent',

@@ -919,7 +919,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

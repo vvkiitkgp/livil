@@ -57,7 +57,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 6,
     borderRadius: 999, borderWidth: 1, borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
-    overflow: 'hidden',
   },
   pillActive: {
     borderColor: 'transparent',

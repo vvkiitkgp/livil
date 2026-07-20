@@ -330,7 +330,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 999,
-    overflow: 'hidden',
   },
   modePillText: {
     color: COLORS.textSecondary,

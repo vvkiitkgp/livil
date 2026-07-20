@@ -225,7 +225,6 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 32, height: 32, borderRadius: 16, borderWidth: 1.5, borderColor: COLORS.border,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: COLORS.surface,
-    overflow: 'hidden',
   },
   addBtnSelected: {
     borderColor: 'transparent',

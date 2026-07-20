@@ -392,7 +392,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
     backgroundColor: COLORS.surface,
-    overflow: 'hidden',
   },
   addBtnSelected: {
     borderColor: 'transparent',
