@@ -56,6 +56,8 @@ import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
+import { Button } from '../../components/Button';
+import { GradientBorder } from '../../components/GradientBorder';
 import ChatTimeSeparator from '../../components/ChatTimeSeparator';
 import SwipeRevealRow from '../../components/SwipeRevealRow';
 import SwipeReplyRow from '../../components/SwipeReplyRow';
@@ -131,13 +133,7 @@ function JamInviteBubble({
           <Text style={styles.jamInviteBtnEndedText}>Ended</Text>
         </View>
       ) : (
-        <TouchableOpacity
-          style={styles.jamInviteBtn}
-          activeOpacity={0.8}
-          onPress={handleJoin}
-        >
-          <Text style={styles.jamInviteBtnText}>Join</Text>
-        </TouchableOpacity>
+        <Button label="Join" onPress={handleJoin} variant="primary" size="sm" />
       )}
     </View>
   );
@@ -678,6 +674,8 @@ export default function ConversationScreen() {
     }
   }, [conversationId, nextCursor, loadingMore]);
 
+  const sendDisabled = !text.trim() || sending;
+
   const handleSend = useCallback(async () => {
     const body = text.trim();
     if (!body || sending) { return; }
@@ -1037,12 +1035,18 @@ export default function ConversationScreen() {
                 )}
               </View>
               <TouchableOpacity
-                style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+                style={[styles.sendBtn, sendDisabled && styles.sendBtnDisabled]}
                 activeOpacity={0.7}
                 onPress={handleSend}
-                disabled={!text.trim() || sending}
+                disabled={sendDisabled}
               >
-                <Icon name="send" size={28} color={COLORS.white} />
+                {/* Glow only while actionable — disabled falls back to a flat grey ring. */}
+                {sendDisabled ? null : <GradientBorder borderRadius={19} />}
+                <Icon
+                  name="send"
+                  size={28}
+                  color={sendDisabled ? COLORS.textMuted : COLORS.purpleNeon}
+                />
               </TouchableOpacity>
             </View>
           </KeyboardStickyView>
@@ -1080,9 +1084,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: 'rgba(124, 58, 237, 0.18)',
+    backgroundColor: 'rgba(139, 61, 255, 0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.55)',
+    borderColor: 'rgba(139, 61, 255, 0.55)',
     marginLeft: 4,
   },
   jamBtnLabel: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700', lineHeight: 18 },
@@ -1235,13 +1239,6 @@ const styles = StyleSheet.create({
   jamInviteInfo: { flex: 1 },
   jamInviteTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   jamInviteSub: { color: COLORS.purpleLight, fontSize: 11, marginTop: 2 },
-  jamInviteBtn: {
-    backgroundColor: COLORS.purple,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  jamInviteBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
   jamInviteCardEnded: {
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
@@ -1296,7 +1293,7 @@ const styles = StyleSheet.create({
   reactionChipActive: {
     // Own reaction picks up a saturated purple tint — Instagram uses a
     // similar accent-coloured fill, no extra border.
-    backgroundColor: 'rgba(124,58,237,0.35)',
+    backgroundColor: 'rgba(139, 61, 255,0.35)',
   },
   reactionEmoji: { fontSize: 14, lineHeight: 16 },
   reactionCount: { color: COLORS.white, fontSize: 11, fontWeight: '600' },
@@ -1369,9 +1366,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 8,
-    backgroundColor: 'rgba(124, 58, 237, 0.10)',
+    backgroundColor: 'rgba(139, 61, 255, 0.10)',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(124, 58, 237, 0.25)',
+    borderTopColor: 'rgba(139, 61, 255, 0.25)',
   },
   replyPreviewBar: {
     width: 3,
@@ -1390,7 +1387,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(124, 58, 237, 0.25)',
+    borderTopColor: 'rgba(139, 61, 255, 0.25)',
     gap: 8,
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
   },
@@ -1402,15 +1399,11 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: COLORS.purple,
     alignItems: 'center',
     justifyContent: 'center',
-    // iOS shadow only — elevation removed to prevent Android blue-grey shadow artifact
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    elevation: 0,
+    overflow: 'hidden',
   },
-  sendBtnDisabled: { backgroundColor: COLORS.border, shadowOpacity: 0 },
+  // No fill to swap out any more — disabled reads as a flat grey ring with a
+  // muted icon, replacing the old backgroundColor swap.
+  sendBtnDisabled: { borderWidth: 1, borderColor: COLORS.border },
 });

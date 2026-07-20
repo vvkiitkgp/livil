@@ -1,13 +1,12 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   Modal,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { Button } from './Button';
 import { Icon } from './Icon';
 
 type Props = {
@@ -32,9 +31,10 @@ export default function JamExitModal({
   const confirmLabel = isHost ? 'End for everyone' : 'Leave room';
   const cancelLabel = isHost ? 'Keep jamming' : 'Stay in room';
 
+  // Paint for the icon circle only — the buttons carry their own variant styling.
   const accent = isHost
-    ? { ring: COLORS.errorBorder, bg: COLORS.errorBg, glyph: COLORS.error, primary: COLORS.error }
-    : { ring: COLORS.purple, bg: COLORS.purpleDim, glyph: COLORS.purpleLight, primary: COLORS.purple };
+    ? { ring: COLORS.errorBorder, bg: COLORS.errorBg, glyph: COLORS.error }
+    : { ring: COLORS.purple, bg: COLORS.purpleDim, glyph: COLORS.purpleLight };
 
   return (
     <Modal
@@ -75,30 +75,24 @@ export default function JamExitModal({
             )}
           </View>
 
-          <TouchableOpacity
-            style={[
-              styles.btn,
-              styles.btnPrimary,
-              { backgroundColor: accent.primary, shadowColor: accent.primary },
-            ]}
+          <Button
+            label={confirmLabel}
             onPress={onConfirm}
-            disabled={busy}
-            activeOpacity={0.85}
-          >
-            {busy ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.btnPrimaryText}>{confirmLabel}</Text>
-            )}
-          </TouchableOpacity>
+            variant={isHost ? 'destructive' : 'primary'}
+            size="md"
+            busy={busy}
+            fullWidth
+          />
 
-          <TouchableOpacity
-            style={styles.dismiss}
+          <Button
+            label={cancelLabel}
             onPress={onCancel}
+            variant="ghost"
+            size="md"
             disabled={busy}
-          >
-            <Text style={styles.dismissText}>{cancelLabel}</Text>
-          </TouchableOpacity>
+            fullWidth
+            style={styles.dismiss}
+          />
         </View>
       </View>
     </Modal>
@@ -187,30 +181,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flex: 1,
   },
-  btn: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnPrimary: {
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  btnPrimaryText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-  },
   dismiss: {
     marginTop: 10,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  dismissText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
   },
 });

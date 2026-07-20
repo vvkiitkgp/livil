@@ -9,7 +9,7 @@ Users can upload music (audio + video), listen together in real time (Jam rooms)
 - Always use `FormInput` (`src/components/FormInput.tsx`) for text inputs — never create raw `TextInput` with focus state lifted to parent. **Why**: on Android 15 + Fabric, lifting focus state causes re-renders that remount the `TextInput` and immediately dismiss the keyboard.
 - Always use `createNativeStackNavigator` — never `createStackNavigator`.
 - **Always use `Icon` (`src/components/Icon.tsx`) for UI icons — never hard-code a unicode glyph/emoji in a `<Text>` as an icon.** `Icon` is the single import surface, backed by **Phosphor** (`phosphor-react-native`, pinned `3.0.6`) plus **Lucide** (`lucide-react-native`, pinned `1.18.0`) for the one `drum` icon Phosphor lacks. Props: `<Icon name={IconName} size={number} color={string} weight={'regular'|'fill'|'bold'|…} />`. Both libs are pure-JS SVG riding the existing `react-native-svg@15.15.5` — **no native rebuild**. Add a new icon by mapping a Livil-semantic name in the `REGISTRY` in `Icon.tsx`. **Never nest `<Icon>` inside `<Text>`** (it's an SVG, not inline text — wrap it in a `<View>` row instead). **Exceptions (stay as text/emoji):** chat reaction emoji + the emoji picker, emoji inside copy strings (e.g. `🎵 ${title}`, share/push messages), single-char initials fallbacks (`name.charAt(0) || '♪'`), and `ConfirmActionModal`'s decorative `glyph` prop.
-- Always keep dark theme (`#0A0A0F` background, `#7C3AED` purple accent). No light mode.
+- Always keep dark theme (`#0A0A0F` background, `#8B3DFF` purple accent). No light mode.
 - New screens go under `src/screens/` following the existing structure.
 - When adding navigation routes, update `src/navigation/types.ts` with the new route params.
 - Never install new packages without checking compatibility with RN 0.85.3 + New Architecture (Fabric) first.
@@ -154,20 +154,64 @@ profiles (
 
 ## Design System
 
+`src/theme/colors.ts` is the single source of truth — import `COLORS`, never hard-code a hex.
+
 | Token | Value |
 |---|---|
 | Background | `#0A0A0F` |
 | Surface | `#12121A` |
-| Primary accent | `#7C3AED` (purple) |
+| **Primary accent (`purple`)** | **`#8B3DFF`** — CTAs, play button, active states, links, sent bubbles |
+| Neon accent (`purpleNeon`) | `#A855F7` — glows, highlights |
+| Royal / gradient mid (`purpleRoyal`) | `#6D28D9` |
+| Deep violet (`purpleDeep` / `purpleDeepest`) | `#4C1D95` / `#3A1180` — gradient floor |
+| Light highlight (`purpleLight`) | `#C9B6FF` — accent text on dark |
 | Secondary accent | `#00BFFF` (neon blue) |
 | Text primary | `#FFFFFF` |
 | Text secondary | `#888888` |
 | Danger | `#FF4444` |
 | Success | `#00C853` |
 
-- Purple CTAs with glow shadow (`shadowColor: '#7C3AED'`)
+Signature gradients: hero `#6D28D9 → #A855F7`; deep background `#0A0A0F → #4C1D95 → #8B3DFF`.
+
 - Animated purple border on input focus
 - Bottom tab bar: Home, Search, Library, Profile
+
+### Buttons — NEVER fill a button with solid purple
+
+**Always use `Button` (`src/components/Button.tsx`).** Do not hand-roll a
+`TouchableOpacity` + local `StyleSheet` — that is how the app accumulated ~40
+divergent button styles before this was centralized.
+
+| Variant | Background | Border | Label |
+|---|---|---|---|
+| `primary` | transparent (black page/card) | purple **gradient glow** (`GradientBorder`) | `purpleNeon` |
+| `selected` | transparent | purple gradient glow | `purpleNeon` |
+| `secondary` | transparent | `COLORS.border` | `white` |
+| `ghost` | none | none | `textSecondary` |
+| `destructive` | **solid `COLORS.error`** | none | `white` |
+
+Sizes `sm | md | lg`. Pass `onMedia` when the button floats over video/artwork
+(swaps in an opaque scrim so the border keeps contrast). `disabled`/`busy` are
+handled internally — never layer your own opacity or `*Disabled` style.
+
+**Why:** at `#8B3DFF` a solid fill dominates the dark UI, and the Repost button
+appears on every feed card. Purple now outlines and letters; it never fills.
+`destructive` is the one exception — dangerous actions must stay visually heavy.
+
+**Rules that are easy to get wrong:**
+- **Label color is `purpleNeon` (`#A855F7`), never `purple`.** `#8B3DFF` on a dark
+  background measures 3.4–4.0:1 and **fails WCAG AA**; `purpleNeon` is 4.3–5.0:1
+  and clears the 3:1 large-text bar that bold 15px+ labels fall under.
+- **Never set `elevation` on a button.** Android ignores `shadowColor` and paints
+  `elevation` as a grey shadow — it reads as a smudge under a dark outlined button.
+  Glow comes from `GradientBorder`, not shadows.
+- **`GradientBorder`'s bloom is drawn INWARD.** Android `ViewGroup`s clip children
+  by default, so an outward halo is silently cut off. Its parent needs
+  `overflow: 'hidden'` and a matching `borderRadius`.
+- **Exempt from the no-fill rule** (these stay solid): small indicators — badges,
+  dots, checkboxes, progress fills, slider thumbs, story rings; chat sent bubbles
+  (`bubbleMe`); and decorative cover art / avatar fallbacks / `fallbackBlob*`.
+  An outlined 6px dot is invisible and a hollow checkbox reads as unchecked.
 
 ---
 
@@ -339,7 +383,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 
 - **Developer**: Livil Labs (`vvk.iitkgp@gmail.com`)
 - **Package**: `com.livil`
-- **Status**: Internal testing (versionName `1.0.27`, versionCode `32` — bump both before each release)
+- **Status**: Internal testing (versionName `1.1.8`, versionCode `54` — bump both before each release)
 - **GitHub**: https://github.com/vvkiitkgp/livil
 
 ---

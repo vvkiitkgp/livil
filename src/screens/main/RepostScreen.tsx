@@ -15,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
+import { Button } from '../../components/Button';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
 import ClipRangeSlider from '../../components/ClipRangeSlider';
 import { usePlayback } from '../../contexts/PlaybackContext';
@@ -435,18 +436,15 @@ export default function RepostScreen() {
         {/* Footer submit button */}
         {originalPost ? (
           <View style={styles.footer}>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              activeOpacity={0.85}
-              disabled={!canSubmit}
-              style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-            >
-              {submitting ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.submitBtnText}>{submitLabel}</Text>
-              )}
-            </TouchableOpacity>
+            <Button
+              label={submitLabel}
+              onPress={() => void handleSubmit()}
+              variant="primary"
+              size="lg"
+              fullWidth
+              busy={submitting}
+              disabled={!canSubmit && !submitting}
+            />
           </View>
         ) : null}
 
@@ -470,13 +468,13 @@ export default function RepostScreen() {
             </View>
             <Text style={styles.successTitle}>{successTitle}</Text>
             <Text style={styles.successBody}>{successBody}</Text>
-            <TouchableOpacity
+            <Button
+              label="Done"
               onPress={handleDismissSuccess}
-              activeOpacity={0.85}
-              style={styles.successButton}
-            >
-              <Text style={styles.successButtonText}>Done</Text>
-            </TouchableOpacity>
+              variant="primary"
+              size="lg"
+              fullWidth
+            />
           </View>
         </View>
       </Modal>
@@ -675,24 +673,6 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.bg,
   },
-  submitBtn: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  submitBtnDisabled: { opacity: 0.5 },
-  submitBtnText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   // Success modal
   successBackdrop: {
     flex: 1,
@@ -761,23 +741,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 22,
     paddingHorizontal: 4,
-  },
-  successButton: {
-    alignSelf: 'stretch',
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  successButtonText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
 });

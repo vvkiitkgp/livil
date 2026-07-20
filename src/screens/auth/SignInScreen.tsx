@@ -12,6 +12,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { signInWithGoogle } from '../../services/googleAuth';
 import { COLORS } from '../../theme/colors';
+import { Button } from '../../components/Button';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
@@ -152,18 +153,14 @@ export default function SignInScreen({ navigation }: Props) {
               />
             </View>
 
-            <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+            <Button
+              label="Sign In"
               onPress={handleSignIn}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
+              variant="primary"
+              size="lg"
+              busy={loading}
+              fullWidth
+            />
 
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
@@ -292,27 +289,6 @@ const styles = StyleSheet.create({
   eyeText: {
     fontSize: 16,
   },
-  primaryButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 6,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -338,6 +314,9 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
     gap: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   googleIcon: {
     fontSize: 17,

@@ -30,8 +30,8 @@ import { supabase } from '../../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 
 const FALLBACK_COVER_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];
@@ -329,7 +329,7 @@ export default function LibraryScreen() {
           <View style={styles.list}>
             {/* Liked Songs — virtual */}
             <TouchableOpacity style={styles.row} onPress={goToLiked} activeOpacity={0.75}>
-              <View style={[styles.thumb, { backgroundColor: '#7C3AED' }]}>
+              <View style={[styles.thumb, { backgroundColor: COLORS.purple }]}>
                 <Icon name="heart" size={22} color={COLORS.white} weight="fill" />
               </View>
               <View style={styles.rowText}>

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -10,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { Button } from './Button';
 import FormInput from './FormInput';
 import { reportPost, type PostReportReason } from '../services/posts';
 import { useToast } from '../contexts/ToastContext';
@@ -116,26 +116,25 @@ export default function PostReportModal({ visible, postId, onClose }: Props) {
             wrapperStyle={styles.detailsWrapper}
           />
 
-          <TouchableOpacity
-            style={[
-              styles.btn,
-              styles.btnPrimary,
-              (!reason || busy) && styles.btnDisabled,
-            ]}
+          <Button
+            label="Submit report"
             onPress={handleSubmit}
-            disabled={!reason || busy}
-            activeOpacity={0.85}
-          >
-            {busy ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.btnPrimaryText}>Submit report</Text>
-            )}
-          </TouchableOpacity>
+            variant="primary"
+            size="md"
+            busy={busy}
+            disabled={!reason}
+            fullWidth
+          />
 
-          <TouchableOpacity style={styles.dismiss} onPress={handleClose} disabled={busy}>
-            <Text style={styles.dismissText}>Cancel</Text>
-          </TouchableOpacity>
+          <Button
+            label="Cancel"
+            onPress={handleClose}
+            variant="ghost"
+            size="md"
+            disabled={busy}
+            fullWidth
+            style={styles.dismiss}
+          />
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -207,35 +206,7 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  btn: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnPrimary: {
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  btnPrimaryText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
   dismiss: {
     marginTop: 10,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  dismissText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
   },
 });

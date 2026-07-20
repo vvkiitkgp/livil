@@ -1,13 +1,12 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   Modal,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { Button } from './Button';
 
 type Props = {
   visible: boolean;
@@ -55,26 +54,24 @@ export default function NotificationPermissionModal({
             <BulletRow text="Jam invites and when friends start listening" />
           </View>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary]}
+          <Button
+            label="Enable notifications"
             onPress={onEnable}
-            disabled={busy}
-            activeOpacity={0.85}
-          >
-            {busy ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.btnPrimaryText}>Enable notifications</Text>
-            )}
-          </TouchableOpacity>
+            variant="primary"
+            size="md"
+            busy={busy}
+            fullWidth
+          />
 
-          <TouchableOpacity
-            style={styles.dismiss}
+          <Button
+            label="Maybe later"
             onPress={onMaybeLater}
+            variant="ghost"
+            size="md"
             disabled={busy}
-          >
-            <Text style={styles.dismissText}>Maybe later</Text>
-          </TouchableOpacity>
+            fullWidth
+            style={styles.dismiss}
+          />
         </View>
       </View>
     </Modal>
@@ -164,32 +161,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flex: 1,
   },
-  btn: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnPrimary: {
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  btnPrimaryText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-  },
   dismiss: {
     marginTop: 10,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  dismissText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
   },
 });

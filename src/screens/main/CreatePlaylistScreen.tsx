@@ -17,6 +17,8 @@ import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { fetchLikedPosts, createPlaylist, addPostToPlaylist, type PlaylistItem, type PlaylistVisibility } from '../../services/playlists';
 import { Icon } from '../../components/Icon';
+import { Button } from '../../components/Button';
+import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import VisibilitySelector from '../../components/VisibilitySelector';
@@ -24,8 +26,8 @@ import VisibilitySelector from '../../components/VisibilitySelector';
 type Props = NativeStackScreenProps<RootStackParamList, 'CreatePlaylist'>;
 
 const FALLBACK_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];
@@ -68,10 +70,11 @@ function SuggestionRow({
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         activeOpacity={0.7}
       >
+        {selected ? <GradientBorder borderRadius={16} /> : null}
         <Icon
           name={selected ? 'check' : 'add'}
           size={16}
-          color={selected ? COLORS.white : COLORS.textMuted}
+          color={selected ? COLORS.purpleNeon : COLORS.textMuted}
         />
       </TouchableOpacity>
     </View>
@@ -223,18 +226,15 @@ export default function CreatePlaylistScreen({ route }: Props) {
             <Icon name="back" size={32} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>New Playlist</Text>
-          <TouchableOpacity
-            style={[styles.createBtn, !canCreate && styles.createBtnDisabled]}
+          <Button
+            label="Create"
             onPress={handleCreate}
-            disabled={!canCreate || creating}
-            activeOpacity={0.75}
-          >
-            {creating ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <Text style={styles.createBtnText}>Create</Text>
-            )}
-          </TouchableOpacity>
+            variant="primary"
+            size="sm"
+            disabled={!canCreate}
+            busy={creating}
+            style={styles.createBtn}
+          />
         </View>
 
         <FlatList
@@ -280,21 +280,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   createBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.purple,
     minWidth: 68,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.45,
-    shadowRadius: 6,
-    elevation: 4,
   },
-  createBtnDisabled: { opacity: 0.35, shadowOpacity: 0 },
-  createBtnText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
 
   list: { paddingBottom: 48 },
 
@@ -405,16 +392,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
     backgroundColor: COLORS.surface,
+    overflow: 'hidden',
   },
   addBtnSelected: {
-    backgroundColor: COLORS.purple,
-    borderColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: 'transparent',
   },
-  addBtnText: { color: COLORS.textMuted, fontSize: 16, fontWeight: '700', lineHeight: 18 },
-  addBtnTextSelected: { color: COLORS.white },
 });

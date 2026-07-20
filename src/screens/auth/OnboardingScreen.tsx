@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   StatusBar,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { COLORS } from '../../theme/colors';
+import { Button } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { AuthStackParamList } from '../../navigation/types';
 
@@ -49,21 +49,22 @@ export default function OnboardingScreen({ navigation }: Props) {
           Discover, stream, and share music{'\n'}with millions worldwide.
         </Text>
 
-        <TouchableOpacity
-          style={styles.signInButton}
+        <Button
+          label="Sign In"
           onPress={() => navigation.navigate('SignIn')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.signInText}>Sign In</Text>
-        </TouchableOpacity>
+          variant="primary"
+          size="lg"
+          fullWidth
+        />
 
-        <TouchableOpacity
-          style={styles.signUpButton}
+        <Button
+          label="Create Account"
           onPress={() => navigation.navigate('SignUp')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.signUpText}>Create Account</Text>
-        </TouchableOpacity>
+          variant="secondary"
+          size="lg"
+          fullWidth
+          style={styles.signUpButton}
+        />
       </View>
     </SafeAreaView>
   );
@@ -83,7 +84,7 @@ const styles = StyleSheet.create({
     width: width * 1.1,
     height: width * 1.1,
     borderRadius: (width * 1.1) / 2,
-    backgroundColor: 'rgba(124, 58, 237, 0.07)',
+    backgroundColor: 'rgba(139, 61, 255, 0.07)',
     top: -width * 0.45,
     alignSelf: 'center',
   },
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
     width: width * 0.7,
     height: width * 0.7,
     borderRadius: (width * 0.7) / 2,
-    backgroundColor: 'rgba(124, 58, 237, 0.13)',
+    backgroundColor: 'rgba(139, 61, 255, 0.13)',
     top: -width * 0.2,
     alignSelf: 'center',
   },
@@ -101,7 +102,7 @@ const styles = StyleSheet.create({
     width: 130,
     height: 130,
     borderRadius: 65,
-    backgroundColor: 'rgba(124, 58, 237, 0.22)',
+    backgroundColor: 'rgba(139, 61, 255, 0.22)',
     top: 30,
     alignSelf: 'center',
   },
@@ -156,34 +157,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 6,
   },
-  signInButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  signInText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   signUpButton: {
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: COLORS.border,
-  },
-  signUpText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.3,
   },
 });

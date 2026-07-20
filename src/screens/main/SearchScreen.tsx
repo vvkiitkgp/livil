@@ -25,13 +25,14 @@ import { searchPosts, type FeedPost } from '../../services/posts';
 import { searchAlbums, type AlbumSearchResult } from '../../services/albums';
 import { supabase } from '../../../lib/supabase';
 import { Icon } from '../../components/Icon';
+import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 
 type Tab = 'users' | 'tracks' | 'albums';
 
 const FALLBACK_ACCENTS: [string, string][] = [
-  ['#7C3AED', '#3B1E6E'],
-  ['#EC4899', '#7C3AED'],
+  ['#8B3DFF', '#3B1E6E'],
+  ['#EC4899', '#8B3DFF'],
   ['#22D3EE', '#3B82F6'],
   ['#F59E0B', '#EF4444'],
 ];
@@ -293,6 +294,7 @@ export default function SearchScreen() {
           onPress={() => setTab('users')}
           style={[styles.tabPill, tab === 'users' && styles.tabPillActive]}
         >
+          {tab === 'users' ? <GradientBorder borderRadius={999} /> : null}
           <Text style={[styles.tabPillText, tab === 'users' && styles.tabPillTextActive]}>
             Users
           </Text>
@@ -302,6 +304,7 @@ export default function SearchScreen() {
           onPress={() => setTab('tracks')}
           style={[styles.tabPill, tab === 'tracks' && styles.tabPillActive]}
         >
+          {tab === 'tracks' ? <GradientBorder borderRadius={999} /> : null}
           <Text style={[styles.tabPillText, tab === 'tracks' && styles.tabPillTextActive]}>
             Tracks
           </Text>
@@ -311,6 +314,7 @@ export default function SearchScreen() {
           onPress={() => setTab('albums')}
           style={[styles.tabPill, tab === 'albums' && styles.tabPillActive]}
         >
+          {tab === 'albums' ? <GradientBorder borderRadius={999} /> : null}
           <Text style={[styles.tabPillText, tab === 'albums' && styles.tabPillTextActive]}>
             Albums
           </Text>
@@ -426,15 +430,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   tabPillActive: {
-    backgroundColor: COLORS.purple,
-    borderColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
+    borderColor: 'transparent',
   },
   tabPillText: {
     color: COLORS.textSecondary,
@@ -442,7 +441,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabPillTextActive: {
-    color: COLORS.white,
+    color: COLORS.purpleNeon,
   },
   centerState: {
     flex: 1,

@@ -23,6 +23,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { GradientBorder } from '../../components/GradientBorder';
 import FormInput from '../../components/FormInput';
 import SeekBar from '../../components/SeekBar';
 import AddBadge from '../../components/AddBadge';
@@ -537,7 +538,8 @@ export default function JamRoomScreen() {
               activeOpacity={0.7}
               onPress={handlePlayPause}
             >
-              <Icon name={activePostId ? 'pause' : 'play'} size={20} color={COLORS.white} />
+              <GradientBorder borderRadius={26} />
+              <Icon name={activePostId ? 'pause' : 'play'} size={20} color={COLORS.purpleNeon} />
             </TouchableOpacity>
           </View>
         )}
@@ -569,6 +571,7 @@ export default function JamRoomScreen() {
           onPress={() => handleTabChange('chat')}
           activeOpacity={0.8}
         >
+          {tab === 'chat' ? <GradientBorder borderRadius={8} /> : null}
           <View style={styles.tabLabelWrap}>
             <Text style={[styles.tabLabel, tab === 'chat' && styles.tabLabelActive]}>Chat</Text>
             {chatUnread > 0 && (
@@ -583,6 +586,7 @@ export default function JamRoomScreen() {
           onPress={() => handleTabChange('queue')}
           activeOpacity={0.8}
         >
+          {tab === 'queue' ? <GradientBorder borderRadius={8} /> : null}
           <Text style={[styles.tabLabel, tab === 'queue' && styles.tabLabelActive]}>Queue</Text>
         </TouchableOpacity>
       </View>
@@ -624,7 +628,8 @@ export default function JamRoomScreen() {
                 onPress={() => void handleSend()}
                 disabled={!chatText.trim() || sending}
               >
-                <Icon name="send" size={18} color={COLORS.white} />
+                <GradientBorder borderRadius={19} />
+                <Icon name="send" size={18} color={COLORS.purpleNeon} />
               </TouchableOpacity>
             </View>
           </KeyboardStickyView>
@@ -720,8 +725,8 @@ const styles = StyleSheet.create({
   controls: { flexDirection: 'row', gap: 24, marginBottom: 12 },
   controlBtn: {
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: COLORS.purple,
     alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
   presenceRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 4 },
   presenceItem: { position: 'relative' },
@@ -756,11 +761,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     padding: 3,
   },
-  tabBtn: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 8 },
-  tabBtnActive: { backgroundColor: COLORS.purple },
+  tabBtn: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 8, overflow: 'hidden' },
+  tabBtnActive: {},
   tabLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   tabLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  tabLabelActive: { color: COLORS.white },
+  tabLabelActive: { color: COLORS.purpleNeon, fontWeight: '700' },
   chatBadge: {
     backgroundColor: '#EF4444',
     borderRadius: 8,
@@ -809,8 +814,8 @@ const styles = StyleSheet.create({
   textInput: { maxHeight: 100 },
   sendBtn: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: COLORS.purple,
     alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
   sendBtnDisabled: { opacity: 0.4 },
 

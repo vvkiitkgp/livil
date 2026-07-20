@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
+import { Button } from './Button';
 import { useToast } from '../contexts/ToastContext';
 import { useRelationships, type RelationshipStatus } from '../contexts/RelationshipContext';
 import AddUserSheet from './AddUserSheet';
@@ -153,15 +154,13 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
           <Text style={styles.handle} numberOfLines={1}>@{item.username}</Text>
         </View>
         {chip ? (
-          <TouchableOpacity
-            activeOpacity={0.8}
+          <Button
+            label={chip.label}
             onPress={() => setActionUserId(item.userId)}
-            style={[styles.chip, chip.primary ? styles.chipPrimary : styles.chipSecondary]}
-          >
-            <Text style={chip.primary ? styles.chipPrimaryText : styles.chipSecondaryText}>
-              {chip.label}
-            </Text>
-          </TouchableOpacity>
+            variant={chip.primary ? 'primary' : 'secondary'}
+            size="sm"
+            style={styles.chip}
+          />
         ) : null}
       </TouchableOpacity>
     );
@@ -342,35 +341,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     minWidth: 80,
-  },
-  chipPrimary: {
-    backgroundColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  chipPrimaryText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  chipSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  chipSecondaryText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '600',
   },
   footerLoading: {
     paddingVertical: 16,

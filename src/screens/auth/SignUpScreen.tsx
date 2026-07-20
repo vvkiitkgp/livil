@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { Button } from '../../components/Button';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
@@ -235,21 +236,15 @@ export default function SignUpScreen({ navigation }: Props) {
               <Text style={styles.hint}>At least 6 characters</Text>
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                (loading || usernameStatus === 'checking' || usernameStatus === 'taken' || usernameStatus === 'invalid') && styles.buttonDisabled,
-              ]}
+            <Button
+              label="Create Account"
               onPress={handleSignUp}
-              disabled={loading || usernameStatus === 'checking' || usernameStatus === 'taken' || usernameStatus === 'invalid'}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Create Account</Text>
-              )}
-            </TouchableOpacity>
+              variant="primary"
+              size="lg"
+              busy={loading}
+              disabled={usernameStatus === 'checking' || usernameStatus === 'taken' || usernameStatus === 'invalid'}
+              fullWidth
+            />
 
             <Text style={styles.termsText}>
               By creating an account you agree to our{' '}
@@ -427,27 +422,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textMuted,
     marginTop: -2,
-  },
-  primaryButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 6,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   termsText: {
     fontSize: 13,

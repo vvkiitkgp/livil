@@ -4,12 +4,12 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { Button } from '../../components/Button';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
 
@@ -102,18 +102,14 @@ export default function ResetPasswordScreen({ onComplete, onCancel }: Props) {
             />
           </View>
 
-          <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
+          <Button
+            label="Update Password"
             onPress={handleReset}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Update Password</Text>
-            )}
-          </TouchableOpacity>
+            variant="primary"
+            size="lg"
+            busy={loading}
+            fullWidth
+          />
         </View>
 
         <View style={styles.footer}>
@@ -169,25 +165,6 @@ const styles = StyleSheet.create({
   eyeButton: {
     paddingHorizontal: 14,
     paddingVertical: 14,
-  },
-  primaryButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 6,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  primaryButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
   footer: {
     flexDirection: 'row',

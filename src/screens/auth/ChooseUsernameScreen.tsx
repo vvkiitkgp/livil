@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
 import { claimUsername } from '../../services/profileService';
 import { COLORS } from '../../theme/colors';
+import { Button } from '../../components/Button';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
 
@@ -193,18 +194,15 @@ export default function ChooseUsernameScreen({
             <UsernameStatusLine status={usernameStatus} />
           </View>
 
-          <TouchableOpacity
-            style={[styles.primaryButton, createDisabled && styles.buttonDisabled]}
+          <Button
+            label="Create Account"
             onPress={handleCreate}
+            variant="primary"
+            size="lg"
+            busy={loading}
             disabled={createDisabled}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Create Account</Text>
-            )}
-          </TouchableOpacity>
+            fullWidth
+          />
         </View>
 
         <View style={styles.footer}>
@@ -320,25 +318,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   verifiedText: { color: SUCCESS_GREEN, fontSize: 11, fontWeight: '700' },
-  primaryButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 6,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  primaryButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',

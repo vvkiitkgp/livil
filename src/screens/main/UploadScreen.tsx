@@ -16,6 +16,7 @@ import { pick, types, errorCodes, isErrorWithCode } from '@react-native-document
 
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
 import FormInput from '../../components/FormInput';
+import { Button } from '../../components/Button';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
@@ -405,32 +406,29 @@ export default function UploadScreen() {
                   </View>
                   {file ? (
                     <View style={styles.fileActions}>
-                      <TouchableOpacity
+                      <Button
+                        label="Change"
+                        size="sm"
+                        variant="secondary"
                         onPress={() => handlePickFile(slot)}
-                        activeOpacity={0.7}
                         disabled={submitting}
-                        style={styles.fileActionSecondary}
-                      >
-                        <Text style={styles.fileActionSecondaryText}>Change</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                      />
+                      <Button
+                        label="Remove"
+                        size="sm"
+                        variant="ghost"
                         onPress={() => handleClearFile(slot.kind)}
-                        activeOpacity={0.7}
                         disabled={submitting}
-                        style={styles.fileActionGhost}
-                      >
-                        <Text style={styles.fileActionGhostText}>Remove</Text>
-                      </TouchableOpacity>
+                      />
                     </View>
                   ) : (
-                    <TouchableOpacity
+                    <Button
+                      label="Choose"
+                      size="sm"
+                      variant="primary"
                       onPress={() => handlePickFile(slot)}
-                      activeOpacity={0.85}
                       disabled={submitting}
-                      style={styles.fileActionPrimary}
-                    >
-                      <Text style={styles.fileActionPrimaryText}>Choose</Text>
-                    </TouchableOpacity>
+                    />
                   )}
                 </View>
               );
@@ -657,14 +655,14 @@ export default function UploadScreen() {
               ) : null}
             </View>
           ) : (
-            <TouchableOpacity
-              onPress={handleSubmit}
-              activeOpacity={0.85}
+            <Button
+              label="Post track"
+              onPress={() => void handleSubmit()}
+              variant="primary"
+              size="lg"
+              fullWidth
               disabled={!canSubmit}
-              style={[styles.postButton, !canSubmit && styles.postButtonDisabled]}
-            >
-              <Text style={styles.postButtonText}>Post track</Text>
-            </TouchableOpacity>
+            />
           )}
         </View>
 
@@ -691,13 +689,13 @@ export default function UploadScreen() {
                   } will see a request to confirm.`
                 : 'Your track is live and up on your profile.'}
             </Text>
-            <TouchableOpacity
+            <Button
+              label="Done"
               onPress={handleDismissSuccess}
-              activeOpacity={0.85}
-              style={styles.successButton}
-            >
-              <Text style={styles.successButtonText}>Done</Text>
-            </TouchableOpacity>
+              variant="primary"
+              size="lg"
+              fullWidth
+            />
           </View>
         </View>
       </Modal>
@@ -873,39 +871,6 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
-  fileActionPrimary: {
-    backgroundColor: COLORS.purple,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  fileActionPrimaryText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  fileActionSecondary: {
-    backgroundColor: COLORS.purpleDim,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.purple,
-  },
-  fileActionSecondaryText: {
-    color: COLORS.purpleLight,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  fileActionGhost: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  fileActionGhostText: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
   fieldGroup: {
     gap: 7,
     marginBottom: 16,
@@ -1020,26 +985,6 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.bg,
   },
-  postButton: {
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  postButtonDisabled: {
-    opacity: 0.5,
-  },
-  postButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   progressBlock: {
     gap: 10,
     paddingVertical: 6,
@@ -1145,23 +1090,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 22,
     paddingHorizontal: 4,
-  },
-  successButton: {
-    alignSelf: 'stretch',
-    backgroundColor: COLORS.purple,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  successButtonText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
   },
 });

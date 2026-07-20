@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { GradientBorder } from './GradientBorder';
 
 export type ProfileTab = 'reposts' | 'uploads' | 'albums' | 'playlists';
 
@@ -61,9 +62,16 @@ export default function ProfileTabBar({
             <Pressable
               key={tab.key}
               onPress={() => onChange(tab.key)}
-              style={[styles.pill, isActive && styles.pillActive]}
-              android_ripple={{ color: COLORS.purpleDim }}
+              // No android_ripple: the ripple is drawn as a RECTANGLE that ignores
+              // borderRadius, so it flashed a square box over the pill's rounded
+              // outline on every tap. Opacity feedback instead.
+              style={({ pressed }) => [
+                styles.pill,
+                isActive && styles.pillActive,
+                pressed && styles.pillPressed,
+              ]}
             >
+              {isActive ? <GradientBorder borderRadius={999} /> : null}
               <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
               <Text style={[styles.count, isActive && styles.countActive]}>{c}</Text>
             </Pressable>
@@ -96,18 +104,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: 'transparent',
+    // No `overflow: 'hidden'` — GradientBorder already draws a correctly-rounded
+    // outline inside the bounds, so clipping buys nothing and actively hurts:
+    // overflow clips to the PADDING box (inside borderWidth), which shaved the
+    // outer edge of the glow and made the border look cut off.
   },
   pillActive: {
-    backgroundColor: COLORS.purple,
-    borderColor: COLORS.purple,
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
+    borderColor: 'transparent',
+  },
+  pillPressed: {
+    opacity: 0.7,
   },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
-  labelActive: { color: COLORS.white },
+  labelActive: { color: COLORS.purpleNeon },
   count: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
-  countActive: { color: 'rgba(255,255,255,0.75)' },
+  countActive: { color: COLORS.purpleNeon },
 });

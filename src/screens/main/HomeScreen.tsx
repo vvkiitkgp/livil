@@ -26,6 +26,9 @@ import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { Icon } from '../../components/Icon';
+import { Logo } from '../../components/Logo';
+import { Button } from '../../components/Button';
+import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
@@ -629,6 +632,10 @@ export default function HomeScreen() {
 
   const handleRefresh = useCallback(async () => {
     playback.pauseAll();
+    // The fixed top bar sits above the list at the same spot the pull-to-refresh
+    // spinner draws in — slide it out of the way for the duration of the refresh
+    // so the spinner is actually visible, then let it back in once done.
+    hideTopBar();
     setRefreshing(true);
     try {
       await Promise.all([
@@ -644,8 +651,9 @@ export default function HomeScreen() {
       ]);
     } finally {
       setRefreshing(false);
+      showTopBar();
     }
-  }, [appendFeedPage, playback]);
+  }, [appendFeedPage, playback, hideTopBar, showTopBar]);
 
   const handleEndReached = useCallback(() => {
     void appendFeedPage('end');
@@ -714,13 +722,13 @@ export default function HomeScreen() {
         {feedError ? (
           <View style={styles.errorBanner}>
             <Text style={styles.errorBannerText}>{feedError}</Text>
-            <TouchableOpacity
-              activeOpacity={0.85}
+            <Button
+              label="Retry"
+              size="md"
+              variant="primary"
               style={styles.retryButton}
               onPress={() => void appendFeedPage('initial')}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
+            />
           </View>
         ) : null}
       </>
@@ -814,11 +822,15 @@ export default function HomeScreen() {
         pointerEvents="box-none"
       >
         <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoMark}>
-              <Text style={styles.logoMarkText}>L</Text>
-            </View>
-            <Text style={styles.wordmark}>livil</Text>
+          {/* The mark carries the brand on its own now, so the row needs an
+              explicit label — without the "livil" text there is nothing for a
+              screen reader to announce. */}
+          <View style={styles.brandRow} accessibilityRole="header" accessibilityLabel="Livil">
+            {/* Mark only — the pulse glyph is itself a stylized wordmark, so the
+                "livil" text alongside it was redundant. Black-and-white to match
+                the app icon; the header is already near-black, so the icon's dark
+                plate is the background itself and the mark needs no tile. */}
+            <Logo size={96} color={COLORS.white} />
           </View>
           <View style={styles.topBarActions}>
             <TouchableOpacity
@@ -827,6 +839,7 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('Upload')}
               accessibilityLabel="Upload music"
             >
+              <GradientBorder borderRadius={19} />
               <Text style={styles.uploadButtonText}>+</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -881,7 +894,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(124, 58, 237, 0.25)',
+    borderBottomColor: 'rgba(139, 61, 255, 0.25)',
     zIndex: 10,
   },
   topBar: {
@@ -906,45 +919,16 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: COLORS.purple,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
   },
   uploadButtonText: {
-    color: COLORS.white,
+    color: COLORS.purpleNeon,
     fontSize: 24,
     fontWeight: '700',
     lineHeight: 26,
     marginTop: -2,
-  },
-  logoMark: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: COLORS.purple,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.purple,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  logoMarkText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  wordmark: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
   },
   inboxButton: {
     width: 38,
@@ -1097,15 +1081,6 @@ const styles = StyleSheet.create({
   retryButton: {
     marginTop: 10,
     alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: COLORS.purple,
-  },
-  retryButtonText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '800',
   },
 
   emptyFeed: {

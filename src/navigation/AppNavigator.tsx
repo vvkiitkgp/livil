@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     backgroundColor: 'transparent',
-    borderTopColor: 'rgba(124, 58, 237, 0.25)',
+    borderTopColor: 'rgba(139, 61, 255, 0.25)',
     borderTopWidth: StyleSheet.hairlineWidth,
     height: Platform.OS === 'ios' ? 84 : 64,
     paddingTop: 8,
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   tabBarBg: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
-    borderTopColor: 'rgba(124, 58, 237, 0.25)',
+    borderTopColor: 'rgba(139, 61, 255, 0.25)',
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   tabItem: {
