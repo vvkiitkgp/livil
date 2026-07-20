@@ -957,7 +957,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    overflow: 'hidden',
   },
   repostBtnLabel: {
     color: COLORS.purpleNeon,
@@ -1122,7 +1121,6 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   statsGroup: {
     flexDirection: 'row',

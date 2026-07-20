@@ -701,7 +701,11 @@ export default function ProfileScreen() {
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
-        ListHeaderComponent={renderHeader}
+        // Pass an ELEMENT, not the function. As a function it is treated as a
+        // component *type*, so every new useCallback identity (e.g. on tab
+        // switch) remounts the whole header — which reset GradientBorder's
+        // measured size to 0 and flashed the Edit-profile outline off for a frame.
+        ListHeaderComponent={renderHeader()}
         ListFooterComponent={renderFooter}
         stickyHeaderIndices={[1]}
         refreshControl={

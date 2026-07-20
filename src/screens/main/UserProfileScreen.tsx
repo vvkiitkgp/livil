@@ -604,7 +604,10 @@ export default function UserProfileScreen() {
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
-        ListHeaderComponent={renderHeader}
+        // Element, not function — see the note in ProfileScreen: as a component
+        // type it remounts the header on every tab switch and flickers the
+        // outlined buttons.
+        ListHeaderComponent={renderHeader()}
         ListFooterComponent={renderFooter}
         stickyHeaderIndices={[1]}
         onScrollToIndexFailed={() => { /* item not laid out yet — silently skip */ }}

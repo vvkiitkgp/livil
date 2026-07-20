@@ -62,8 +62,14 @@ export default function ProfileTabBar({
             <Pressable
               key={tab.key}
               onPress={() => onChange(tab.key)}
-              style={[styles.pill, isActive && styles.pillActive]}
-              android_ripple={{ color: COLORS.purpleDim }}
+              // No android_ripple: the ripple is drawn as a RECTANGLE that ignores
+              // borderRadius, so it flashed a square box over the pill's rounded
+              // outline on every tap. Opacity feedback instead.
+              style={({ pressed }) => [
+                styles.pill,
+                isActive && styles.pillActive,
+                pressed && styles.pillPressed,
+              ]}
             >
               {isActive ? <GradientBorder borderRadius={999} /> : null}
               <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
@@ -98,10 +104,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: 'transparent',
-    overflow: 'hidden',
+    // No `overflow: 'hidden'` — GradientBorder already draws a correctly-rounded
+    // outline inside the bounds, so clipping buys nothing and actively hurts:
+    // overflow clips to the PADDING box (inside borderWidth), which shaved the
+    // outer edge of the glow and made the border look cut off.
   },
   pillActive: {
     borderColor: 'transparent',
+  },
+  pillPressed: {
+    opacity: 0.7,
   },
   label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   labelActive: { color: COLORS.purpleNeon },

@@ -192,7 +192,10 @@ const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    // Deliberately no `overflow: 'hidden'`. GradientBorder draws its outline
+    // inward within the bounds, so clipping adds nothing — and it clips to the
+    // PADDING box (inside borderWidth), which shaves the outer edge of the glow
+    // and makes the border look cut off along curves.
   },
   fullWidth: {
     alignSelf: 'stretch',
