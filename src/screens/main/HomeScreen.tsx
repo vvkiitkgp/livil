@@ -26,6 +26,7 @@ import PostCardSkeleton from '../../components/PostCardSkeleton';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import CommentsSheet from '../../components/CommentsSheet';
 import { Icon } from '../../components/Icon';
+import { Logo } from '../../components/Logo';
 import { Button } from '../../components/Button';
 import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
@@ -822,6 +823,10 @@ export default function HomeScreen() {
       >
         <View style={styles.topBar}>
           <View style={styles.brandRow}>
+            {/* Black-and-white treatment, matching the app icon. The header is
+                already near-black, so the icon's dark plate is the background
+                itself — no tile, just the white pulse mark. */}
+            <Logo size={40} color={COLORS.white} />
             <Text style={styles.wordmark}>livil</Text>
           </View>
           <View style={styles.topBarActions}>
