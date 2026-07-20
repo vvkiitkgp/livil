@@ -97,7 +97,17 @@ export function GradientBorder({
   // across instances are harmless, but a stable id avoids re-creating the def.
   const gId = React.useMemo(() => nextGradientId(), []);
 
-  const minSide = Math.min(size.w, size.h);
+  // Floor to whole dp before drawing anything. onLayout reports fractional sizes
+  // (46dp at pixelRatio 2.75 is 126.5 physical px), and Android rounds the SVG's
+  // backing view DOWN to an integer. Drawing against the un-floored size put the
+  // outer stroke past that rounded edge, where it was clipped — on the bottom
+  // when the height rounded down, on the right when the width did. That is
+  // exactly the one-sided, content-dependent clipping seen on the play button
+  // (fixed 46dp height) and the first profile tab (text-dependent width).
+  const w = Math.floor(size.w);
+  const h = Math.floor(size.h);
+
+  const minSide = Math.min(w, h);
   const maxBloom = minSide * MAX_BLOOM_FRACTION;
   const layers = React.useMemo(
     () => (minSide < COMPACT_THRESHOLD ? BLOOM_LAYERS.filter((_, i) => i % 2 === 1) : BLOOM_LAYERS),
@@ -113,8 +123,8 @@ export function GradientBorder({
       // border "cut off" on one edge — intermittently, since it depends on the
       // exact sub-pixel size the row happened to lay out at.
       const inset = width / 2 + EDGE_GUARD;
-      const innerW = Math.max(0, size.w - width - EDGE_GUARD * 2);
-      const innerH = Math.max(0, size.h - width - EDGE_GUARD * 2);
+      const innerW = Math.max(0, w - width - EDGE_GUARD * 2);
+      const innerH = Math.max(0, h - width - EDGE_GUARD * 2);
       // Clamp to half the SHORTER side. A pill passes borderRadius: 999, and an
       // unclamped rx makes SVG cap rx at width/2 but ry at height/2 — which
       // renders an ellipse instead of a stadium. Clamping both to the same value
@@ -136,13 +146,13 @@ export function GradientBorder({
         />
       );
     },
-    [size.w, size.h, borderRadius, gId],
+    [w, h, borderRadius, gId],
   );
 
   return (
     <View style={StyleSheet.absoluteFill} onLayout={onLayout} pointerEvents="none">
-      {size.w > 0 && size.h > 0 ? (
-        <Svg width={size.w} height={size.h}>
+      {w > 0 && h > 0 ? (
+        <Svg width={w} height={h}>
           <Defs>
             <SvgLinearGradient id={gId} x1="0" y1="0" x2="1" y2="1">
               <Stop offset="0" stopColor={COLORS.purpleRoyal} stopOpacity="1" />
