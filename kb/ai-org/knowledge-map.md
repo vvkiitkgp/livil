@@ -76,7 +76,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
 | `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
 | `operations/runbooks/incident-response.md` | principal-platform | DO, P-PF, P-SE, human | 2026-07-21 | 180d |
-| `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-21 | 180d |
+| `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-22 | 180d |
 | `operations/scaling-assumptions.md` | principal-data | P-DA, P-PF, CA, DC | 2026-07-21 | 90d |
 | `operations/third-party.md` | principal-platform | P-PF, CA, DO | 2026-07-21 | 365d |
 | `security/model.md` | principal-security | P-SE, SR, P-DA, BE, ALL | 2026-07-21 | 90d |
