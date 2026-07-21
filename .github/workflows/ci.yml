@@ -172,6 +172,15 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/authorization.test.sql
 
+      # The RPC signature IS the service contract — there is no API tier (ADR-0004),
+      # and the client coalesces every field it reads, so a dropped key fails silently.
+      - name: RPC contract tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/rpc-contracts.test.sql
+
   board-readonly:
     name: board is proposal-only
     runs-on: ubuntu-latest
