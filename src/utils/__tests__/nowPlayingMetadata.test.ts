@@ -37,9 +37,9 @@ function track(over: Partial<NowPlayingInfo> = {}): NowPlayingInfo {
     artistName: 'Test Artist',
     mediaKind: 'audio',
     audioUrl: 'https://example.test/a.mp3',
-    videoUrl: null,
-    coverArtUrl: null,
-    thumbnailUrl: null,
+    videoUrl: undefined,
+    coverArtUrl: undefined,
+    thumbnailUrl: undefined,
     clipStartSec: null,
     clipEndSec: null,
     ...over,
@@ -147,7 +147,7 @@ describe('buildMediaQueueJson — the native background-skip queue', () => {
     // (ADR-0001). Native must receive the video URL as the playable source.
     const [item] = parse(
       buildMediaQueueJson(
-        [track({ mediaKind: 'video', audioUrl: null, videoUrl: 'https://example.test/v.mp4' })],
+        [track({ mediaKind: 'video', audioUrl: undefined, videoUrl: 'https://example.test/v.mp4' })],
         0,
       ),
     ).items;
