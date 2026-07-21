@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-platform
 consumers: [DO, P-PF, human]
-last_verified: 2026-07-21
+last_verified: 2026-07-22
 verify_every: 180d
 verified_by: manual
 visibility: public
@@ -51,8 +51,25 @@ Back it up. Just don't treat it as existential.
 
 **All four are required. A keystore without its passwords is useless.**
 
-Both currently exist on **one machine**. Neither is in any repository, by design — and neither
-is anywhere else, by omission.
+Neither is in any repository, by design.
+
+### Backup status — verified 2026-07-22
+
+A backup exists and has been restore-tested:
+
+- All four items are stored **together** in a single **AES-256 encrypted container**
+- Held by **two independent cloud providers**, neither of which is this laptop
+- Encryption was **verified enforced** — a wrong password is rejected, not ignored
+- The container was **opened after a reboot** and both files confirmed present, so the
+  password is genuinely known rather than only cached in this machine's keychain
+- The plaintext staging copy was deleted and the Trash emptied
+- The working keystore is unchanged: `sha256 1ae144ab…d881f`, 2,758 bytes
+
+**Locations and the container password are deliberately NOT recorded here — this document is
+public.** They are in the private knowledge base.
+
+Re-verify on the `verify_every` cadence in the frontmatter by actually opening the container
+and producing a signed build from the restored copy.
 
 ---
 
