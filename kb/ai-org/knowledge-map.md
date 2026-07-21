@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-48 document(s) under `kb/`.
+49 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 48 |
-| Drift-proof (tier 1 + 4) | 17 |
+| Documents | 49 |
+| Drift-proof (tier 1 + 4) | 18 |
 | Hand-maintained (tier 3 + 5) | 24 |
 | Past freshness SLA | 0 |
 | Private-content stubs | 5 |
@@ -96,6 +96,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0005-ios-platform-status.md` | principal-platform | ALL | 2026-07-21 | 9999d |
 | `decisions/0006-maintain-patched-video-until-trigger.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0007-storage-policies-unversioned.md` | principal-security | ALL | 2026-07-21 | 9999d |
+| `decisions/0008-notification-recipients-derived-server-side.md` | principal-realtime | ALL | 2026-07-22 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -115,7 +116,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | principal-data | 7 |
 | principal-platform | 6 |
 | principal-playback | 7 |
-| principal-realtime | 1 |
+| principal-realtime | 2 |
 | principal-security | 5 |
 
 Every document has exactly one accountable owner — a surface nobody owns will decay
