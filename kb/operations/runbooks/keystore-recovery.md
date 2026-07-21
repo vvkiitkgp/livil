@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-platform
 consumers: [DO, P-PF, human]
-last_verified: 2026-07-21
+last_verified: 2026-07-22
 verify_every: 180d
 verified_by: manual
 visibility: public
@@ -12,15 +12,31 @@ related_adrs: []
 
 # Runbook — Release Signing Key
 
-**The highest-stakes document in this repository.**
+**Play App Signing is ENROLLED. Losing the local keystore is recoverable.**
 
-Android requires every update to a listing to be signed with the same upload key. Lose that
-key and **this Play Store listing can never be updated again**. Not "with difficulty" — the
-app is frozen at its last published version, and continuing means a new listing with a new
-package name and zero installed users.
+This document previously opened by claiming that losing this key means the listing "can never
+be updated again." **That is false for this app**, and the correction matters more than
+anything else on the page — it was driving a P0 that isn't one.
 
-Constitution P50: any artifact whose loss is unrecoverable is a systemic risk, and its
-convenience today does not offset its cost on the day it is lost.
+Livil publishes an **App Bundle** (`bundleRelease` → `.aab`), and Google Play *requires* Play
+App Signing to publish an App Bundle. The listing was first released 2026-03-20, well after
+the August 2021 mandate. There is no configuration in which this app is published and not
+enrolled.
+
+**What that means concretely:**
+
+| | Who holds it | If lost |
+|---|---|---|
+| **App signing key** | **Google** | Not yours to lose. Google backs it up. |
+| **Upload key** (`livil-release.keystore`) | This laptop, one copy | **Resettable** — request through Play Console support |
+
+So the failure mode is *"a few days of delay and a support ticket"*, not *"the app is dead."*
+Constitution P50 still applies — a single-copy artifact is still worth backing up — but the
+cost of the bad day is days, not the product.
+
+⚠️ **Do not delete the keystore on the strength of this.** An upload key reset is a manual
+Google-side process with a real wait, and it is a worse day than opening a password manager.
+Back it up. Just don't treat it as existential.
 
 ---
 
@@ -35,8 +51,25 @@ convenience today does not offset its cost on the day it is lost.
 
 **All four are required. A keystore without its passwords is useless.**
 
-Both currently exist on **one machine**. Neither is in any repository, by design — and neither
-is anywhere else, by omission.
+Neither is in any repository, by design.
+
+### Backup status — verified 2026-07-22
+
+A backup exists and has been restore-tested:
+
+- All four items are stored **together** in a single **AES-256 encrypted container**
+- Held by **two independent cloud providers**, neither of which is this laptop
+- Encryption was **verified enforced** — a wrong password is rejected, not ignored
+- The container was **opened after a reboot** and both files confirmed present, so the
+  password is genuinely known rather than only cached in this machine's keychain
+- The plaintext staging copy was deleted and the Trash emptied
+- The working keystore is unchanged: `sha256 1ae144ab…d881f`, 2,758 bytes
+
+**Locations and the container password are deliberately NOT recorded here — this document is
+public.** They are in the private knowledge base.
+
+Re-verify on the `verify_every` cadence in the frontmatter by actually opening the container
+and producing a signed build from the restored copy.
 
 ---
 
@@ -92,24 +125,29 @@ Record the date in this document's `last_verified` field when you do this.
 
 Act immediately; the options narrow with time.
 
-### If Play App Signing is enrolled
-
+Play App Signing is enrolled (see the top of this page), so this is a recovery, not a loss.
 Google holds the app signing key; yours is only the *upload* key, and an upload key can be
 reset.
 
-1. Generate a new upload key
-2. Request an upload key reset through Play Console support, with the new certificate
-3. Wait for approval — **days, not hours**
-4. Sign future releases with the new upload key
+1. Generate a new upload key with `keytool`
+2. Request an **upload key reset** through Play Console → Help → Contact support, attaching
+   the new certificate (`.pem`)
+3. Wait for approval — **days, not hours.** Releases are blocked during this window
+4. Sign future releases with the new upload key; the app signing key is unchanged, so
+   existing installs update normally
 
-**Check whether Play App Signing is enrolled now, while nothing is wrong.** Play Console →
-Setup → App integrity. If it is, the worst case is a delay rather than a permanent loss — and
-that single fact changes the severity of everything on this page.
+Installed users are unaffected throughout — they only ever see Google's signature.
 
-### If it is not enrolled
+### Where enrolment is shown in Play Console
 
-There is no recovery. The listing cannot be updated. The only path forward is a new listing
-under a new package name, losing every install, rating, and review.
+The nav has moved and the old pointers are dead ends: there is no "Setup" section, and
+**Test and release → App integrity** now redirects to **Protected with Play**, which does not
+show signing. Do not go looking for it during an incident — enrolment is already established
+above by the fact that this app ships an App Bundle at all.
+
+If you need the actual **certificate fingerprints** (e.g. to compare against a restored
+backup, step 4 of the verification below), they are reachable from **Protected with Play →
+Automatic protection → Manage**.
 
 ---
 
