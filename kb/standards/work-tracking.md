@@ -139,6 +139,33 @@ This is the same tiering as code: agents propose, humans approve the irreversibl
 
 ---
 
+## Intake pipeline
+
+```
+board proposal ──▶ ADR + proposal in kb/  ──▶  HUMAN RATIFIES  ──▶  Epic in LIV
+                                                                        │
+                                                              triage-agent
+                                                                        │
+                                     ┌──────────────────────────────────┤
+                                     ▼                                  ▼
+                          path is WRITABLE                    path is PROPOSE-ONLY
+                        implementation agent                  agent writes a proposal
+                          branch agent/LIV-N                     human implements
+                                     │
+                                 PR ──▶ CI (6 jobs) ──▶ domain principal reviews
+                                                     ──▶ HUMAN MERGES
+```
+
+**Triage answers "implement or propose?" up front**, by checking the ticket's implied
+paths against `.claude/autonomy-config.yml`. Overall coverage is ~1%, so most of `src/`
+is propose-only and **many tickets will correctly end in a proposal**.
+
+Saying that during triage rather than at push time is the point. An agent that discovers
+at the end that it may not write the file has wasted the work.
+
+**Branch naming for agent work: `agent/LIV-N-slug`.** The `agent/` prefix is what
+`enforce-agent-scope.mjs` keys on — it is not cosmetic.
+
 ## Enforcement status
 
 | Rule | Enforcement |

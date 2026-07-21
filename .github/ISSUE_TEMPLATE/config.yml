@@ -1,0 +1,11 @@
+# Work is tracked in Jira (project LIV), not GitHub Issues — see
+# kb/standards/work-tracking.md. These templates exist for contributors who arrive via
+# GitHub; triage moves them to Jira.
+blank_issues_enabled: false
+contact_links:
+  - name: Work tracker (Jira LIV)
+    url: https://vvkiitkgp.atlassian.net/browse/LIV
+    about: Livil work is tracked in Jira. Prefer filing there.
+  - name: Security concern
+    url: https://github.com/vvkiitkgp/livil/security/advisories/new
+    about: Report privately. Do not open a public issue for a vulnerability.
