@@ -1,0 +1,33 @@
+enabled
+
+# THE KILL SWITCH
+#
+# Replace the word above with `disabled` (or delete this file) and every agent-authored
+# change is blocked at CI. One edit, one commit, no configuration, no coordination.
+#
+# The first line is the only line that is read. Everything below is commentary.
+#
+# WHY A FILE AND NOT A SETTING
+#
+# It is in the repository, so it is versioned, reviewable, and revertible. It works
+# from a phone over the GitHub web editor. It needs no credentials, no dashboard, and
+# no working local environment — which matters because the moment you need it is
+# probably a moment when something else is already broken.
+#
+# WHAT IT DOES AND DOES NOT DO
+#
+# Blocks: any commit marked agent-authored (branch `agent/*` or an `Agent-Implemented:`
+# trailer) from passing CI. Since agent work reaches main only via a PR a human merges,
+# and CI gates that merge, this stops agent changes landing.
+#
+# Does NOT: revert anything already merged, stop a running agent session mid-task, or
+# affect human commits. It is a gate on landing, not a stop button on execution. If an
+# agent session is actively doing something you want stopped, close the session.
+#
+# WHEN TO USE IT
+#
+# An agent did something you did not expect and you want to think. That is sufficient
+# reason. Re-enabling costs one commit; leaving it on while you investigate costs
+# nothing. Do not treat flipping it as an escalation — treat it as a pause.
+#
+# See kb/operations/runbooks/disable-autonomy.md

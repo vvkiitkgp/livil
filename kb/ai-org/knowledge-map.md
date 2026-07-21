@@ -16,15 +16,15 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-46 document(s) under `kb/`.
+48 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 46 |
+| Documents | 48 |
 | Drift-proof (tier 1 + 4) | 17 |
-| Hand-maintained (tier 3 + 5) | 22 |
+| Hand-maintained (tier 3 + 5) | 24 |
 | Past freshness SLA | 0 |
 | Private-content stubs | 5 |
 
@@ -58,6 +58,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
+| `ai-org/autonomy-policy.md` | chief-architect | ALL | 2026-07-21 | 90d |
 | `ai-org/board-charter.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/debate-protocol.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/knowledge-base-spec.md` | chief-architect | ALL | 2026-07-20 | 180d |
@@ -73,6 +74,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `operations/deployment.md` | principal-platform | DO, P-PF | 2026-07-21 | 90d |
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
+| `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
 | `operations/runbooks/incident-response.md` | principal-platform | DO, P-PF, P-SE, human | 2026-07-21 | 180d |
 | `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-21 | 180d |
 | `operations/scaling-assumptions.md` | principal-data | P-DA, P-PF, CA, DC | 2026-07-21 | 90d |
@@ -107,7 +109,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 14 |
+| chief-architect | 16 |
 | human | 1 |
 | principal-client | 5 |
 | principal-data | 7 |

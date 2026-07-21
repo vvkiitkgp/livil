@@ -88,7 +88,7 @@ Status: ✅ available · ⏳ planned (wave) · ✍️ awaiting human author · �
 | Build and release process | [operations/deployment.md](operations/deployment.md) ✅ |
 | External services, why chosen, exit paths | [operations/third-party.md](operations/third-party.md) ✅ |
 | Scale we design for, and the known cliffs | [operations/scaling-assumptions.md](operations/scaling-assumptions.md) ✅ |
-| Emergency procedures | [operations/runbooks/keystore-recovery.md](operations/runbooks/keystore-recovery.md) ✅ · [incident-response.md](operations/runbooks/incident-response.md) ✅ |
+| Emergency procedures | [operations/runbooks/keystore-recovery.md](operations/runbooks/keystore-recovery.md) ✅ · [incident-response.md](operations/runbooks/incident-response.md) ✅ · [disable-autonomy.md](operations/runbooks/disable-autonomy.md) ✅ |
 
 ### "How does the AI organization work?"
 | Question | Document |
@@ -98,6 +98,7 @@ Status: ✅ available · ⏳ planned (wave) · ✍️ awaiting human author · �
 | Which principals are routed into which debate | [ai-org/board-routing.yml](ai-org/board-routing.yml) ✅ |
 | Whether the advisory reviewers are worth listening to | [ai-org/review-log.md](ai-org/review-log.md) ✅ |
 | Where agents may write, and why the rest is propose-only | [`.claude/autonomy-config.yml`](../.claude/autonomy-config.yml) ✅ |
+| What agents may do without a human, and why the ceiling is Tier 2 | [ai-org/autonomy-policy.md](ai-org/autonomy-policy.md) ✅ |
 
 ### "Why is it like this?"
 | Question | Document |
