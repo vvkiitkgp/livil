@@ -128,13 +128,18 @@ touched it. Treat the platform as unsupported until a decision says otherwise.
 
 Ranked by cost of loss.
 
-| Asset | Blast radius | Backed up? |
-|---|---|---|
-| **Release signing key** | **Permanent** — the listing can never be updated | See [runbooks/keystore-recovery.md](runbooks/keystore-recovery.md) |
-| Supabase project | Total product outage; data loss if unrecovered | Provider backups only |
-| Play Console account | Cannot ship | Google account recovery |
-| Edge function source | Push breaks; source exists **only** in the provider | **No — not in any repo** |
-| Developer machine | Blocks releases entirely | Whatever is on it |
+| Asset | Blast radius | Recoverable? | Backed up? |
+|---|---|---|---|
+| Supabase project | Total product outage; user data loss | Only as far as provider backups reach | Provider backups only |
+| **Edge function source** | Push breaks | **No — the source exists nowhere but the provider** | **No — not in any repo** |
+| Play Console account | Cannot ship at all | Google account recovery, which can fail | Google account recovery |
+| Release signing key (**upload key**) | Releases blocked until reset approved — **days** | Yes — Play App Signing is enrolled; Google holds the app signing key | One copy, one laptop. See [runbooks/keystore-recovery.md](runbooks/keystore-recovery.md) |
+| Developer machine | Blocks releases entirely | Yes, with setup time | Whatever is on it |
+
+**This table was reordered on 2026-07-21.** The signing key sat at the top on the belief that
+its loss was permanent; it isn't (see the runbook). The genuinely unrecoverable asset here is
+the **edge function source**, which exists in no repository — it ranks below Supabase only
+because its blast radius is push notifications rather than the whole product.
 
 **Release capability depends on one machine.** The signing key and its passwords live on a
 single laptop. Nothing in this list is redundant.

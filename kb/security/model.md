@@ -106,8 +106,13 @@ HTML/script injection surface on the client.
 
 **Nothing shipped to a device is secret.** Treat anything in the app bundle as disclosed.
 
-The signing key is the one truly irreplaceable secret. Its loss is unrecoverable — see
+The local keystore is the **upload key**, not the app signing key. Play App Signing is enrolled
+(the app ships an `.aab`, which Play requires it for), so Google holds the app signing key and
+an upload key can be reset. Its loss costs days of blocked releases, **not** the listing — see
 [../operations/runbooks/keystore-recovery.md](../operations/runbooks/keystore-recovery.md).
+
+It is still a single-copy secret worth protecting; it is not the irreplaceable one this
+document previously called it.
 
 ---
 

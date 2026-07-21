@@ -45,8 +45,9 @@ repository. The keystore itself is gitignored.
 are missing, Gradle does not error — it produces an **unsigned** bundle. Play rejects it, but
 the build reports success, and the failure surfaces late and confusingly.
 
-Losing the keystore or its passwords means **this listing can never be updated again**. See
-[runbooks/keystore-recovery.md](runbooks/keystore-recovery.md).
+Losing the keystore or its passwords blocks releases until Google approves an **upload key
+reset** — days, not permanent. Play App Signing is enrolled, so Google holds the actual app
+signing key. See [runbooks/keystore-recovery.md](runbooks/keystore-recovery.md).
 
 ---
 
@@ -119,5 +120,5 @@ Recorded so the gap is deliberate rather than invisible:
 ## Related
 
 - [infrastructure.md](infrastructure.md) — what it deploys to
-- [runbooks/keystore-recovery.md](runbooks/keystore-recovery.md) — the unrecoverable risk
+- [runbooks/keystore-recovery.md](runbooks/keystore-recovery.md) — upload key backup and reset
 - [runbooks/incident-response.md](runbooks/incident-response.md) — when a release goes wrong
