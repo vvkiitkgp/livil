@@ -104,8 +104,20 @@ an underspecified request where guessing wrong is expensive is a refusal conditi
 
 ## Conventions
 
-**Branches:** `<type>/LIV-<n>-<short-slug>` — e.g. `fix/LIV-42-jam-membership-guard`.
-Types: `feat` · `fix` · `docs` · `refactor` · `chore`.
+**Branches — and the prefix is load-bearing, not cosmetic:**
+
+| Author | Prefix | Example |
+|---|---|---|
+| Human | `<type>/LIV-<n>-<slug>` | `fix/LIV-42-jam-membership-guard` |
+| **Agent** | **`agent/LIV-<n>-<slug>`** | `agent/LIV-42-jam-membership-guard` |
+
+`scripts/enforce-agent-scope.mjs` keys on the `agent/` prefix. An earlier version of this
+document specified `<type>/` for all work, which meant an agent following the documented
+convention **bypassed the scope gate entirely** — found by the triage agent on its first
+run. Agent commits must also carry an `Agent-Implemented:` trailer, which is the
+secondary marker.
+
+Types for human branches: `feat` · `fix` · `docs` · `refactor` · `chore`.
 
 **PR titles:** `<type>(<scope>): <summary> (LIV-<n>)`. The ticket key in the title is what links
 the two systems.
@@ -138,6 +150,33 @@ close things degrades your visibility into it.
 This is the same tiering as code: agents propose, humans approve the irreversible step.
 
 ---
+
+## Intake pipeline
+
+```
+board proposal ──▶ ADR + proposal in kb/  ──▶  HUMAN RATIFIES  ──▶  Epic in LIV
+                                                                        │
+                                                              triage-agent
+                                                                        │
+                                     ┌──────────────────────────────────┤
+                                     ▼                                  ▼
+                          path is WRITABLE                    path is PROPOSE-ONLY
+                        implementation agent                  agent writes a proposal
+                          branch agent/LIV-N                     human implements
+                                     │
+                                 PR ──▶ CI (6 jobs) ──▶ domain principal reviews
+                                                     ──▶ HUMAN MERGES
+```
+
+**Triage answers "implement or propose?" up front**, by checking the ticket's implied
+paths against `.claude/autonomy-config.yml`. Overall coverage is ~1%, so most of `src/`
+is propose-only and **many tickets will correctly end in a proposal**.
+
+Saying that during triage rather than at push time is the point. An agent that discovers
+at the end that it may not write the file has wasted the work.
+
+**Branch naming for agent work: `agent/LIV-N-slug`.** The `agent/` prefix is what
+`enforce-agent-scope.mjs` keys on — it is not cosmetic.
 
 ## Enforcement status
 

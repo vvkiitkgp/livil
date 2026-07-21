@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-122 TypeScript file(s) under `src/`, 37,956 lines.
+127 TypeScript file(s) under `src/`, 38,785 lines.
 
 ## Size hotspots
 
@@ -122,7 +122,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-45 file(s), 12,710 lines.
+46 file(s), 12,855 lines.
 
 | File | Lines |
 |---|---:|
@@ -156,6 +156,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ActivityBubble.tsx` | 162 |
 | `src/components/MentionSuggestions.tsx` | 160 |
 | `src/components/ErrorBoundary.tsx` | 153 |
+| `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/ProfileTabBar.tsx` | 123 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ProgressiveImage.tsx` | 99 |
@@ -174,7 +175,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-22 file(s), 5,914 lines.
+23 file(s), 6,087 lines.
 
 | File | Lines |
 |---|---:|
@@ -192,6 +193,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/conversations.ts` | 238 |
 | `src/services/profileService.ts` | 233 |
 | `src/services/uploads.ts` | 218 |
+| `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/stories.ts` | 152 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
@@ -226,10 +228,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-6 file(s), 534 lines.
+8 file(s), 933 lines.
 
 | File | Lines |
 |---|---:|
+| `src/utils/__tests__/playTracker.test.ts` | 208 |
+| `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
 | `src/utils/mentions.ts` | 105 |
 | `src/utils/playTracker.ts` | 83 |

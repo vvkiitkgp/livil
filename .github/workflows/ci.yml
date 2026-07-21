@@ -162,6 +162,51 @@ jobs:
           done
           echo "All migrations applied cleanly."
 
+      # The authorization tests `set role authenticated` and attempt REAL writes, so
+      # that role needs table privileges — otherwise every denial would come from a
+      # missing GRANT rather than from RLS, and the tests would pass for the wrong
+      # reason. Run after migrations so it covers every table they created.
+      - name: Grant table access to the app roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          grant usage on schema public to authenticated, anon;
+          grant all on all tables in schema public to authenticated;
+          grant select on all tables in schema public to anon;
+          grant all on all sequences in schema public to authenticated;
+          -- The jmem_insert policy's EXISTS reads jam_rooms and conversation_members,
+          -- whose own policies call is_conversation_member(). RLS applies to tables
+          -- referenced inside a policy expression, so `authenticated` must be able to
+          -- execute those SECURITY DEFINER helpers or a legitimate member is denied
+          -- for the wrong reason.
+          grant execute on all functions in schema public to authenticated, anon;
+          SQL
+
+
+      # RLS is the entire authorization perimeter (ADR-0004), and until now nothing
+      # asserted that a non-owner is denied anything.
+      #
+      # These attempt REAL inserts as the `authenticated` role, so a reverted policy
+      # fails them. An earlier version evaluated a hand-written COPY of the predicate
+      # and would have passed with the policy reverted — it could not have caught
+      # D-53 despite claiming to. Found by the code-reviewer agent.
+      - name: Authorization tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/authorization.test.sql
+
+      # The RPC signature IS the service contract — there is no API tier (ADR-0004),
+      # and the client coalesces every field it reads, so a dropped key fails silently.
+      - name: RPC contract tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/rpc-contracts.test.sql
+
   board-readonly:
     name: board is proposal-only
     runs-on: ubuntu-latest
@@ -183,3 +228,26 @@ jobs:
             BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
           fi
           node scripts/enforce-board-readonly.mjs --range "$BASE..HEAD"
+
+  agent-scope:
+    name: agents write only where tests exist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Overall coverage is ~1%. Implementation agents may write only where tests
+      # would actually fail if the behaviour broke; everywhere else they propose and
+      # a human implements. Scoping lives in .claude/autonomy-config.yml.
+      #
+      # Also enforces the never-list (native patch, signing config, keystore,
+      # kb/private, supabase client) for HUMAN commits too — those are unrecoverable
+      # or invisible regardless of who changed them.
+      - name: Agent writes stay inside tested paths
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          node scripts/enforce-agent-scope.mjs --range "$BASE..HEAD"
