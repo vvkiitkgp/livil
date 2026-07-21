@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-125 TypeScript file(s) under `src/`, 38,443 lines.
+126 TypeScript file(s) under `src/`, 38,600 lines.
 
 ## Size hotspots
 
@@ -174,7 +174,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-22 file(s), 5,914 lines.
+23 file(s), 6,071 lines.
 
 | File | Lines |
 |---|---:|
@@ -192,6 +192,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/conversations.ts` | 238 |
 | `src/services/profileService.ts` | 233 |
 | `src/services/uploads.ts` | 218 |
+| `src/services/__tests__/waveform.test.ts` | 157 |
 | `src/services/stories.ts` | 152 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
