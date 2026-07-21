@@ -59,9 +59,19 @@ create table if not exists public.profiles (
   show_activity boolean default true,
   fans_seen_at timestamptz,
   links text[] not null default '{}'::text[],
-  username_set boolean not null default false,
-  constraint profiles_links_max_10
-    check (array_length(links, 1) is null or array_length(links, 1) <= 10)
+  username_set boolean not null default false
+  -- NOTE: profiles_links_max_10 is deliberately NOT declared here.
+  --
+  -- A baseline describes the state BEFORE the migration set runs, so it must not
+  -- contain anything a later migration adds. Postgres has no
+  -- `ADD CONSTRAINT IF NOT EXISTS`, so a constraint present in both places makes
+  -- the replay fail — which is exactly what CI caught on its first run.
+  --
+  -- 20260607000000_edit_profile_schema.sql adds this constraint without dropping
+  -- first, so it must be absent here. Five other constraints (posts_clip_range_check,
+  -- post_views_pkey, posts_original_post_id_fkey, posts_kind_shape_check,
+  -- playlists_user_id_fkey) DO drop-then-add, so they are safe to declare here and
+  -- are kept — they make this file readable as a description of the schema.
 );
 
 -- ── tracks ──────────────────────────────────────────────────────────────────

@@ -545,11 +545,6 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `links` | `text[] not null default '{}'::text[]` |
 | `username_set` | `boolean not null default false` |
 
-**Table constraints**
-
-- `constraint profiles_links_max_10
-    check (array_length(links, 1) is null or array_length(links, 1) <= 10)`
-
 **Added by later migrations**
 
 | Column | Definition | Migration |
