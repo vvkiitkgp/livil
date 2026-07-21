@@ -1,5 +1,25 @@
 # Livil — Claude Code Guidelines
 
+> ## ▶ Start at [`kb/INDEX.md`](kb/INDEX.md)
+>
+> This file is the quick-reference. The **knowledge base** under [`kb/`](kb/) is the
+> source of truth — architecture, standards, decisions, and the security model — and it
+> routes you to the two or three documents a task actually needs.
+>
+> | Read | For |
+> |---|---|
+> | [`kb/INDEX.md`](kb/INDEX.md) | The routing table. Always first. |
+> | [`kb/ai-org/ENGINEERING_CONSTITUTION.md`](kb/ai-org/ENGINEERING_CONSTITUTION.md) | How we work, and when to refuse |
+> | [`kb/architecture/overview.md`](kb/architecture/overview.md) | What this system is |
+> | [`kb/decisions/`](kb/decisions/) | Why it is that way — with the rejected alternatives |
+>
+> **If you are an agent:** [`.claude/autonomy-config.yml`](.claude/autonomy-config.yml)
+> says where you may write. Most of `src/` is propose-only because coverage is ~1%, and
+> that is enforced by CI rather than by this sentence.
+>
+> Anything below that contradicts `kb/` is stale — `kb/` wins, and the contradiction is
+> a defect worth reporting.
+
 ## What is Livil?
 Livil is a social music platform — think Spotify + Discord + SoundCloud.
 Users can upload music (audio + video), listen together in real time (Jam rooms), chat with friends, build shared playlists, and follow each other's listening activity.
