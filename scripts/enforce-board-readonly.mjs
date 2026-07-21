@@ -64,7 +64,31 @@ function changedFiles() {
     console.error('FAIL  --range requires <base>..<head>');
     process.exit(2);
   }
-  return sh(`git diff --name-only ${range}`).split('\n').filter(Boolean);
+
+  // The base may not be reachable — a force-push orphans the previous commit, and a
+  // shallow clone may not have it. Fall back rather than crashing: a check that dies
+  // on an unresolvable base is a check that fails for reasons unrelated to what it
+  // guards, which is how a gate becomes noise and then gets disabled.
+  const [base] = range.split('..');
+  try {
+    sh(`git cat-file -e ${base}^{commit}`);
+  } catch {
+    console.log(`note  base ${base.slice(0, 8)} is unreachable (force-push or shallow clone) —`);
+    console.log('      falling back to HEAD~1');
+    try {
+      return sh('git diff --name-only HEAD~1..HEAD').split('\n').filter(Boolean);
+    } catch {
+      console.log('note  no parent commit either; nothing to compare');
+      return [];
+    }
+  }
+
+  try {
+    return sh(`git diff --name-only ${range}`).split('\n').filter(Boolean);
+  } catch (err) {
+    console.error(`FAIL  could not diff ${range}: ${err.message.split('\n')[0]}`);
+    process.exit(1);
+  }
 }
 
 function isBoardAuthored() {
