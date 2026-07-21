@@ -1,0 +1,75 @@
+name: AI Review
+
+# Advisory reviewers. They COMMENT; they never approve, merge, or push.
+#
+# The board (kb/ai-org/board-charter.md) reasons about architecture at proposal time.
+# These agents catch defects at commit time. Complementary, not redundant — and this is
+# where AI adds the most value in a repository with one maintainer and no second reviewer.
+#
+# Routing mirrors kb/ai-org/board-routing.yml: security review is not optional on paths
+# where a mistake is an authorization hole rather than a bug.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write   # comment only — no approve, no merge
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  route:
+    name: decide which reviewers run
+    runs-on: ubuntu-latest
+    outputs:
+      security: ${{ steps.paths.outputs.security }}
+      code: ${{ steps.paths.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - id: paths
+        name: Route by changed path
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          FILES=$(git diff --name-only "$BASE..HEAD")
+          echo "changed files:"; echo "$FILES" | sed 's/^/  /'
+
+          # Security review is MANDATORY on these. A mistake here is not a bug, it is an
+          # authorization hole — RLS is the entire perimeter (ADR-0004).
+          if echo "$FILES" | grep -qE '^(supabase/|patches/|lib/supabase\.ts|src/screens/auth/|src/navigation/RootNavigator\.tsx)'; then
+            echo "security=true" >> "$GITHUB_OUTPUT"
+            echo "→ security review REQUIRED"
+          else
+            echo "security=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Code review runs on any source change.
+          if echo "$FILES" | grep -qE '^(src/|lib/|App\.tsx|index\.js)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "→ code review required"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # NOTE: the reviewer jobs below are intentionally not wired to an agent runner yet.
+  # Until an autonomous runner is configured, review is invoked from a Claude Code session
+  # against the PR diff, and this workflow serves as the routing contract plus a visible
+  # record of which reviews a PR requires. Wiring a runner is a Phase 6 decision, because
+  # it is the point at which an agent starts acting without a human in the loop.
+  required-reviews:
+    name: required reviews for this PR
+    needs: route
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "Security review required: ${{ needs.route.outputs.security }}"
+          echo "Code review required:     ${{ needs.route.outputs.code }}"
+          if [ "${{ needs.route.outputs.security }}" = "true" ]; then
+            echo "::notice title=Security review required::This PR touches the authorization perimeter (supabase/, auth, or the native patch). Run the security-reviewer before merging."
+          fi

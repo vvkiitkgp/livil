@@ -96,6 +96,7 @@ Status: ✅ available · ⏳ planned (wave) · ✍️ awaiting human author · �
 | The Architecture Board — mandate, membership, limits | [ai-org/board-charter.md](ai-org/board-charter.md) ✅ |
 | How debates run, and why each round exists | [ai-org/debate-protocol.md](ai-org/debate-protocol.md) ✅ |
 | Which principals are routed into which debate | [ai-org/board-routing.yml](ai-org/board-routing.yml) ✅ |
+| Whether the advisory reviewers are worth listening to | [ai-org/review-log.md](ai-org/review-log.md) ✅ |
 
 ### "Why is it like this?"
 | Question | Document |

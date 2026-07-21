@@ -16,15 +16,15 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-45 document(s) under `kb/`.
+46 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 45 |
+| Documents | 46 |
 | Drift-proof (tier 1 + 4) | 17 |
-| Hand-maintained (tier 3 + 5) | 21 |
+| Hand-maintained (tier 3 + 5) | 22 |
 | Past freshness SLA | 0 |
 | Private-content stubs | 5 |
 
@@ -61,6 +61,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `ai-org/board-charter.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/debate-protocol.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/knowledge-base-spec.md` | chief-architect | ALL | 2026-07-20 | 180d |
+| `ai-org/review-log.md` | chief-architect | CA, CR, SR, DS | 2026-07-21 | 90d |
 | `architecture/auth.md` | principal-security | P-SE, SR, BE, CR | 2026-07-21 | 90d |
 | `architecture/backend.md` | principal-data | P-DA, BE, CR, QA | 2026-07-21 | 90d |
 | `architecture/client.md` | principal-client | P-CL, FE, RF, CR | 2026-07-21 | 90d |
@@ -106,7 +107,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 13 |
+| chief-architect | 14 |
 | human | 1 |
 | principal-client | 5 |
 | principal-data | 7 |
