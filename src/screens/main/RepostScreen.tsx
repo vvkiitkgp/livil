@@ -96,7 +96,7 @@ export default function RepostScreen() {
     let cancelled = false;
     async function load() {
       try {
-        const [post, plays] = await Promise.all([
+        const [post, _plays] = await Promise.all([
           fetchPostById(originalPostId),
           fetchTrackPlaysTotal(originalPostId).catch(() => 0),
         ]);

@@ -84,7 +84,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
   const [buffering, setBuffering] = useState(false);
-  const [readyForDisplay, setReadyForDisplay] = useState(false);
+  const [_readyForDisplay, setReadyForDisplay] = useState(false);
   // Natural aspect ratio of the video/cover — updated on first load.
   // Defaults to 1 (square) until the media reports its real dimensions.
   const [naturalAspect, setNaturalAspect] = useState(1);

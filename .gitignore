@@ -97,3 +97,8 @@ serviceAccountKey.json
 # The public kb/ holds stubs that name these documents without their content.
 # See kb/ai-org/knowledge-base-spec.md §4.
 kb/private/
+
+# Claude Code — agent definitions and shared settings ARE tracked so the AI
+# organization is reviewable and versioned. Personal/local overrides are not.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

@@ -10,6 +10,7 @@ import {PlaybackProvider} from './src/contexts/PlaybackContext';
 import {ToastProvider} from './src/contexts/ToastContext';
 import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
 import {hideNativeSplash} from './src/native/splashScreen';
+import {ErrorBoundary} from './src/components/ErrorBoundary';
 
 const AppTheme = {
   ...DarkTheme,
@@ -56,6 +57,7 @@ export default function App(): React.JSX.Element {
   }, []);
 
   return (
+    <ErrorBoundary>
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <KeyboardProvider>
@@ -79,6 +81,7 @@ export default function App(): React.JSX.Element {
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
 

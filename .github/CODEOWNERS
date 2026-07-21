@@ -1,0 +1,30 @@
+# Review ownership by domain, mirroring kb/ai-org/board-routing.yml.
+#
+# From Phase 6 onward the relevant principal is a required reviewer on
+# implementation PRs in its domain. Until GitHub teams exist for the agents,
+# these entries route to the repository owner and serve as documentation of who
+# SHOULD review what.
+
+*                                   @vvkiitkgp
+
+# playback — the native patch and the single-engine invariant
+/patches/                           @vvkiitkgp
+/src/components/GlobalAudioPlayer.tsx  @vvkiitkgp
+/src/components/FullScreenPlayer.tsx   @vvkiitkgp
+/src/contexts/PlaybackContext.tsx      @vvkiitkgp
+
+# data + security — RLS is the entire authorization perimeter
+/supabase/                          @vvkiitkgp
+/lib/supabase.ts                    @vvkiitkgp
+
+# security — session handling and untrusted input
+/src/screens/auth/                  @vvkiitkgp
+/src/navigation/RootNavigator.tsx   @vvkiitkgp
+
+# platform — build, release, CI
+/android/                           @vvkiitkgp
+/.github/                           @vvkiitkgp
+
+# the knowledge base and agent definitions
+/kb/                                @vvkiitkgp
+/.claude/                           @vvkiitkgp

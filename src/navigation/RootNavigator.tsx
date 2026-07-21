@@ -248,7 +248,11 @@ export default function RootNavigator() {
   // and the session state update switches the navigator to the App screens.
   useEffect(() => {
     const handleDeepLink = async (url: string) => {
-      console.log('[deeplink] received:', url);
+      // NEVER log the raw URL. Auth deep links carry access/refresh tokens in the
+      // fragment; logging them writes credentials to the device log, readable by
+      // other apps on older Android and by anyone with the device connected.
+      // Log only the shape.
+      console.log('[deeplink] received (scheme only):', url.split('?')[0].split('#')[0]);
       if (!url.startsWith('livil://auth')) { return; }
 
       // type=recovery marks a password-reset link (present alongside the

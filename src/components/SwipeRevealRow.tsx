@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import Animated, { useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
 import { COLORS } from '../theme/colors';
 import { REVEAL_WIDTH, useSwipeReveal } from '../contexts/SwipeRevealContext';

@@ -12,7 +12,6 @@ import {
   Image,
   TouchableOpacity,
   Animated,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -30,7 +29,6 @@ import { Icon } from '../../components/Icon';
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function relativeTime(iso: string): string {
   const diff = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
