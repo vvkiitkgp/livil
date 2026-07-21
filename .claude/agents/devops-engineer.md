@@ -57,7 +57,7 @@ signing, the signing key, `kb/private/`, and the Supabase client configuration.
 
 ## Your scope
 
-`.github/**`, `scripts/**` and tooling config are writable. **`android/app/build.gradle`
+`.github/**` and `scripts/**` are writable — not because they are unit-tested, but because CI verifies them immediately: a broken workflow fails on the very next push. **The enforcement scripts themselves are closed** — an agent that can edit its own scope gate has no scope gate. **`android/app/build.gradle`
 and anything matching `*.keystore` are closed permanently** — release signing is the one
 truly unrecoverable artifact in this project.
 

@@ -104,8 +104,20 @@ an underspecified request where guessing wrong is expensive is a refusal conditi
 
 ## Conventions
 
-**Branches:** `<type>/LIV-<n>-<short-slug>` — e.g. `fix/LIV-42-jam-membership-guard`.
-Types: `feat` · `fix` · `docs` · `refactor` · `chore`.
+**Branches — and the prefix is load-bearing, not cosmetic:**
+
+| Author | Prefix | Example |
+|---|---|---|
+| Human | `<type>/LIV-<n>-<slug>` | `fix/LIV-42-jam-membership-guard` |
+| **Agent** | **`agent/LIV-<n>-<slug>`** | `agent/LIV-42-jam-membership-guard` |
+
+`scripts/enforce-agent-scope.mjs` keys on the `agent/` prefix. An earlier version of this
+document specified `<type>/` for all work, which meant an agent following the documented
+convention **bypassed the scope gate entirely** — found by the triage agent on its first
+run. Agent commits must also carry an `Agent-Implemented:` trailer, which is the
+secondary marker.
+
+Types for human branches: `feat` · `fix` · `docs` · `refactor` · `chore`.
 
 **PR titles:** `<type>(<scope>): <summary> (LIV-<n>)`. The ticket key in the title is what links
 the two systems.

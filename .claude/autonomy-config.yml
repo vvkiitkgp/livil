@@ -43,6 +43,17 @@ writable:
   - path: supabase/tests/**
     why: tests themselves
 
+  - path: .github/**
+    why: >
+      Not unit-tested, but self-verifying in a way product code is not: a broken
+      workflow fails loudly on the very next push, before it can affect a user. That is
+      a real safety net, just a different one. Contrast a screen change, which fails
+      silently in production.
+  - path: scripts/**
+    why: >
+      Same reasoning — these run in CI, so a break is immediate and visible. Excludes
+      the enforcement scripts themselves; see never-list.
+
   - path: kb/**
     why: documentation; the board already writes here
   - path: .claude/**
@@ -66,20 +77,44 @@ propose_only:
   - path: ios/**
     why: does not build; status undecided (ADR-0005)
 
-# ── Closed to every agent, permanently ──────────────────────────────────────
-# Not a tier. These are never writable regardless of coverage, because a wrong
+# ── Closed to AGENTS, permanently ───────────────────────────────────────────
+# Not a tier. Never writable by an agent regardless of coverage, because a wrong
 # change is unrecoverable or breaks something no test can observe.
-never:
+#
+# HUMANS MAY EDIT THESE. An earlier version applied this list to every author, which
+# would have failed CI on the next release — `npm run prebuild:android` edits
+# build.gradle, so the version bump itself was blocked. Caught before it bit, but only
+# because adding self-edit paths made the over-reach obvious.
+never_agent:
   - path: patches/**
     why: the native patch — 1,373 lines across four languages, silent device-specific breakage
   - path: android/app/build.gradle
     why: release signing configuration
-  - path: "**/*.keystore"
-    why: the signing key; its loss ends Play Store updates permanently
-  - path: kb/private/**
-    why: private content must never be committed to this public repository
   - path: lib/supabase.ts
     why: client configuration and the auth flow
+  - path: scripts/enforce-agent-scope.mjs
+    why: >
+      An agent that can edit its own scope gate has no scope gate. Closed even though
+      scripts/** is otherwise writable.
+  - path: scripts/enforce-board-readonly.mjs
+    why: same — the board's read-only rule must not be self-editable
+  - path: .claude/autonomy-config.yml
+    why: >
+      Widening one's own permissions is not a change an agent may make. A human decides
+      what is writable, on evidence that tests exist.
+
+# ── Closed to EVERYONE, including humans ────────────────────────────────────
+# Committing these is always wrong, whoever does it.
+never_anyone:
+  - path: kb/private/**
+    why: >
+      Gitignored and backed by a separate private repo. Committing it to this PUBLIC
+      repository would publish the threat model, the RLS gap inventory and the debt
+      register. There is no author for whom that is correct.
+  - path: "**/*.keystore"
+    why: >
+      The upload signing key. Committing it to a public repo would disclose the one
+      artifact whose loss or compromise permanently ends Play Store updates.
 
 # ── How an area graduates ───────────────────────────────────────────────────
 # Move a path from propose_only to writable when:
