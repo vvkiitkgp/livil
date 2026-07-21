@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-07-20
+last_verified: 2026-07-21
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,24 +16,13 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 35 migration(s) in `supabase/migrations/`.
+Reconstructed from 36 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
-**8 table(s) are referenced by migrations but never created in this
+**0 table(s) are referenced by migrations but never created in this
 repository.** They predate the migration directory and were created directly in the hosted
 project. Their columns, constraints, and policies exist only in production.
-
-| Table referenced but not defined here | Altered by migrations? | Indexed here? |
-|---|:--:|:--:|
-| `follows` | no | yes (1) |
-| `friendships` | no | yes (2) |
-| `playlists` | yes (4) | yes (1) |
-| `post_comments` | yes (1) | yes (2) |
-| `post_views` | yes (1) | yes (2) |
-| `posts` | yes (2) | yes (2) |
-| `profiles` | yes (5) | no |
-| `tracks` | yes (1) | no |
 
 The consequence is that **this database cannot be rebuilt from this repository**, and the
 authorization model on those tables cannot be reviewed from source. Constitution P51 says
@@ -42,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-19 table(s).
+31 table(s).
 
 ### `activity_notifications`
 
@@ -141,6 +130,78 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 | `last_message_at` | `timestamptz` |
 | `last_message_preview` | `text` |
 | `created_at` | `timestamptz default now()` |
+
+### `device_tokens`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `user_id` | `uuid not null references auth.users(id) on delete cascade` |
+| `token` | `text not null` |
+| `platform` | `text not null default 'android'` |
+| `device_id` | `text not null` |
+| `created_at` | `timestamptz not null default now()` |
+| `updated_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `unique (user_id, device_id)`
+- `constraint device_tokens_platform_check check (platform in ('android', 'ios'))`
+
+**Indexes**
+
+- `device_tokens_user_id_idx` `(user_id)`
+
+### `follows`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `follower_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `following_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `kind` | `text not null default 'star'` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (follower_id, following_id)`
+- `constraint follows_check check (follower_id <> following_id)`
+- `constraint follows_kind_check check (kind = 'star')`
+
+**Indexes**
+
+- `follows_following_id_idx` `(following_id, created_at desc)`
+- `idx_follows_follower_kind` `(follower_id, kind, following_id)`
+
+### `friendships`
+
+RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `user_a_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `user_b_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `status` | `text not null` |
+| `requested_by` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+| `accepted_at` | `timestamptz` |
+
+**Table constraints**
+
+- `primary key (user_a_id, user_b_id)`
+- `constraint friendships_check check (user_a_id < user_b_id)`
+- `constraint friendships_check1 check (requested_by = user_a_id or requested_by = user_b_id)`
+- `constraint friendships_status_check check (status in ('pending', 'accepted', 'blocked'))`
+
+**Indexes**
+
+- `friendships_status_idx` `(status)`
+- `friendships_user_b_idx` `(user_b_id)`
+- `idx_friendships_user_a_status` `(user_a_id, status)`
+- `idx_friendships_user_b_status` `(user_b_id, status)`
 
 ### `jam_queue`
 
@@ -251,6 +312,48 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 
 - `after_message_insert` — after insert (`20260528000000_chat_jam.sql`)
 
+### `playlist_posts`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `playlist_id` | `uuid not null references public.playlists(id) on delete cascade` |
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `added_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (playlist_id, post_id)`
+
+### `playlists`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `name` | `text not null` |
+| `created_at` | `timestamptz not null default now()` |
+| `visibility` | `playlist_visibility not null default 'public'` |
+| `cover_emoji` | `text` |
+| `cover_color` | `text` |
+| `cover_color_2` | `text` |
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `visibility` | `public.playlist_visibility not null default 'public'` | `20260616000000_albums_and_playlist_visibility.sql` |
+| `cover_emoji` | `text` | `20260616000002_playlist_emoji_cover.sql` |
+| `cover_color` | `text` | `20260616000002_playlist_emoji_cover.sql` |
+| `cover_color_2` | `text` | `20260616000003_playlist_cover_gradient.sql` |
+
+**Indexes**
+
+- `playlists_owner_vis_idx` `(user_id, visibility)`
+
 ### `post_comment_likes`
 
 RLS enabled · realtime · defined in `20260607000004_post_comments_likes_reports.sql`
@@ -286,6 +389,54 @@ RLS enabled · defined in `20260607000004_post_comments_likes_reports.sql`
 
 - `post_comment_reports_reporter_idx` `(reporter_id)`
 
+### `post_comments`
+
+RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `author_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `body` | `text not null` |
+| `parent_comment_id` | `uuid references public.post_comments(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+| `like_count` | `integer not null default 0` |
+
+**Table constraints**
+
+- `constraint post_comments_body_check check (length(body) > 0)`
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `like_count` | `int not null default 0` | `20260607000004_post_comments_likes_reports.sql` |
+
+**Indexes**
+
+- `post_comments_post_id_idx` `(post_id, created_at)`
+- `post_comments_top_sort_idx` `(post_id, parent_comment_id, like_count desc, created_at desc)`
+- `post_comments_parent_idx` `(parent_comment_id)`
+
+### `post_likes`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (post_id, user_id)`
+
+**Indexes**
+
+- `post_likes_user_id_idx` `(user_id, created_at desc)`
+
 ### `post_reports`
 
 RLS enabled · defined in `20260607000007_post_reports.sql`
@@ -303,6 +454,115 @@ RLS enabled · defined in `20260607000007_post_reports.sql`
 
 - `post_reports_reporter_idx` `(reporter_id)`
 - `post_reports_post_idx` `(post_id)`
+
+### `post_views`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `played_at` | `timestamptz not null default now()` |
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `id` | `uuid not null default gen_random_uuid()` | `20260607000005_post_views_multi_play.sql` |
+
+**Indexes**
+
+- `post_views_post_id_idx` `(post_id)`
+- `post_views_user_id_played_at_idx` `(user_id, played_at desc)`
+
+### `posts`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `author_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `kind` | `text not null` |
+| `track_id` | `uuid not null references public.tracks(id) on delete cascade` |
+| `original_post_id` | `uuid references public.posts(id) on delete set null` |
+| `caption` | `text` |
+| `views_count` | `integer not null default 0` |
+| `likes_count` | `integer not null default 0` |
+| `reposts_count` | `integer not null default 0` |
+| `comments_count` | `integer not null default 0` |
+| `created_at` | `timestamptz not null default now()` |
+| `clip_start_sec` | `numeric(10,3)` |
+| `clip_end_sec` | `numeric(10,3)` |
+
+**Table constraints**
+
+- `constraint posts_kind_check check (kind in ('upload', 'repost'))`
+- `constraint posts_kind_shape_check check (
+    (kind = 'upload' and original_post_id is null) or kind = 'repost'
+  )`
+- `constraint posts_clip_range_check check (
+    (clip_start_sec is null and clip_end_sec is null)
+    or (clip_start_sec is not null and clip_end_sec is not null
+        and clip_start_sec >= 0 and clip_end_sec > clip_start_sec)
+  )`
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `clip_start_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
+| `clip_end_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
+
+**Indexes**
+
+- `posts_author_id_created_at_idx` `(author_id, created_at desc)`
+- `posts_author_id_kind_created_at_idx` `(author_id, kind, created_at desc)`
+- `posts_original_post_id_idx` `(original_post_id)`
+- `posts_track_id_idx` `(track_id)`
+- `idx_posts_created_at_id_desc` `(created_at DESC, id DESC)`
+- `idx_posts_author_created` `(author_id, created_at DESC)`
+
+### `profiles`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key references auth.users(id) on delete cascade` |
+| `username` | `text not null unique` |
+| `display_name` | `text` |
+| `avatar_url` | `text` |
+| `bio` | `text` |
+| `followers_count` | `integer default 0` |
+| `following_count` | `integer default 0` |
+| `created_at` | `timestamptz default now()` |
+| `last_seen_at` | `timestamptz` |
+| `show_activity` | `boolean default true` |
+| `fans_seen_at` | `timestamptz` |
+| `links` | `text[] not null default '{}'::text[]` |
+| `username_set` | `boolean not null default false` |
+
+**Table constraints**
+
+- `constraint profiles_links_max_10
+    check (array_length(links, 1) is null or array_length(links, 1) <= 10)`
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `last_seen_at` | `timestamptz` | `20260528000000_chat_jam.sql` |
+| `show_activity` | `boolean default true` | `20260528000000_chat_jam.sql` |
+| `fans_seen_at` | `timestamptz` | `20260530000000_relationships.sql` |
+| `links` | `text[] not null default '{}'` | `20260607000000_edit_profile_schema.sql` |
+| `username_set` | `boolean NOT NULL DEFAULT false` | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
+
+**Triggers**
+
+- `trg_enforce_username_immutable` — BEFORE UPDATE (`20260628000000_profiles_username_set_and_oauth_onboarding.sql`)
 
 ### `profiles_private`
 
@@ -357,6 +617,73 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 
 - `primary key (story_id, viewer_id)`
 
+### `track_collaborators`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `track_id` | `uuid not null references public.tracks(id) on delete cascade` |
+| `user_id` | `uuid references public.profiles(id) on delete set null` |
+| `custom_name` | `text` |
+| `role` | `text not null` |
+| `status` | `text not null default 'pending'` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `constraint collab_user_xor_custom check (
+    (user_id is not null and custom_name is null)
+    or (user_id is null and custom_name is not null)
+  )`
+- `constraint track_collaborators_role_check check (char_length(role) between 1 and 40)`
+- `constraint track_collaborators_status_check check (status in ('pending', 'accepted', 'declined'))`
+
+**Indexes**
+
+- `track_collab_track_idx` `(track_id)`
+- `track_collab_user_status_idx` `(user_id, status) where user_id is not null`
+
+### `tracks`
+
+RLS enabled · defined in `00000000000000_baseline_schema.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `uploader_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `title` | `text not null` |
+| `description` | `text` |
+| `audio_url` | `text` |
+| `video_url` | `text` |
+| `cover_art_url` | `text` |
+| `duration_seconds` | `integer` |
+| `created_at` | `timestamptz not null default now()` |
+| `media_kind` | `text not null` |
+| `thumbnail_url` | `text` |
+| `waveform_peaks` | `jsonb` |
+
+**Table constraints**
+
+- `constraint tracks_title_check check (char_length(title) between 1 and 120)`
+- `constraint tracks_description_check check (char_length(description) <= 2000)`
+- `constraint tracks_media_kind_check check (media_kind in ('audio', 'video'))`
+- `constraint tracks_media_shape_check check (
+    (media_kind = 'audio' and audio_url is not null)
+    or (media_kind = 'video' and video_url is not null and audio_url is null)
+  )`
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `waveform_peaks` | `jsonb` | `20260611000000_tracks_waveform_peaks.sql` |
+
+**Indexes**
+
+- `tracks_uploader_created_idx` `(uploader_id, created_at desc)`
+
 ### `user_recent_tracks`
 
 RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_tracks.sql`
@@ -384,74 +711,6 @@ RLS enabled · defined in `20260718000000_waitlist_table.sql`
 | `id` | `uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
 | `email` | `text NOT NULL UNIQUE` |
 | `created_at` | `timestamptz NOT NULL DEFAULT now()` |
-
-## Partial knowledge of undefined tables
-
-What migrations added to tables whose base definition is not in this repository.
-
-### `follows` *(base definition unknown)*
-
-- index `idx_follows_follower_kind` `(follower_id, kind, following_id)`
-
-### `friendships` *(base definition unknown)*
-
-- index `idx_friendships_user_a_status` `(user_a_id, status)`
-- index `idx_friendships_user_b_status` `(user_b_id, status)`
-
-### `playlists` *(base definition unknown)*
-
-| Column added | Definition | Migration |
-|---|---|---|
-| `visibility` | `public.playlist_visibility not null default 'public'` | `20260616000000_albums_and_playlist_visibility.sql` |
-| `cover_emoji` | `text` | `20260616000002_playlist_emoji_cover.sql` |
-| `cover_color` | `text` | `20260616000002_playlist_emoji_cover.sql` |
-| `cover_color_2` | `text` | `20260616000003_playlist_cover_gradient.sql` |
-
-- index `playlists_owner_vis_idx` `(user_id, visibility)`
-
-### `post_comments` *(base definition unknown)*
-
-| Column added | Definition | Migration |
-|---|---|---|
-| `like_count` | `int not null default 0` | `20260607000004_post_comments_likes_reports.sql` |
-
-- index `post_comments_top_sort_idx` `(post_id, parent_comment_id, like_count desc, created_at desc)`
-- index `post_comments_parent_idx` `(parent_comment_id)`
-
-### `post_views` *(base definition unknown)*
-
-| Column added | Definition | Migration |
-|---|---|---|
-| `id` | `uuid not null default gen_random_uuid()` | `20260607000005_post_views_multi_play.sql` |
-
-- index `post_views_post_id_idx` `(post_id)`
-- index `post_views_user_id_played_at_idx` `(user_id, played_at desc)`
-
-### `posts` *(base definition unknown)*
-
-| Column added | Definition | Migration |
-|---|---|---|
-| `clip_start_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
-| `clip_end_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
-
-- index `idx_posts_created_at_id_desc` `(created_at DESC, id DESC)`
-- index `idx_posts_author_created` `(author_id, created_at DESC)`
-
-### `profiles` *(base definition unknown)*
-
-| Column added | Definition | Migration |
-|---|---|---|
-| `last_seen_at` | `timestamptz` | `20260528000000_chat_jam.sql` |
-| `show_activity` | `boolean default true` | `20260528000000_chat_jam.sql` |
-| `fans_seen_at` | `timestamptz` | `20260530000000_relationships.sql` |
-| `links` | `text[] not null default '{}'` | `20260607000000_edit_profile_schema.sql` |
-| `username_set` | `boolean NOT NULL DEFAULT false` | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
-
-### `tracks` *(base definition unknown)*
-
-| Column added | Definition | Migration |
-|---|---|---|
-| `waveform_peaks` | `jsonb` | `20260611000000_tracks_waveform_peaks.sql` |
 
 ## Realtime publication
 

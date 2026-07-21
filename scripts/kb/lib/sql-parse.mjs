@@ -139,15 +139,16 @@ export function parseRls(migrations) {
 
     // Drops first; a create later in the same file re-adds.
     for (const d of body.matchAll(
-      /drop\s+policy\s+(?:if\s+exists\s+)?"([^"]+)"\s+on\s+(?:public\.)?([a-z_][a-z0-9_]*)/gi,
+      /drop\s+policy\s+(?:if\s+exists\s+)?(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+on\s+(?:public\.)?([a-z_][a-z0-9_]*)/gi,
     )) {
-      live.delete(`${d[2]}.${d[1]}`);
+      live.delete(`${d[3]}.${d[1] ?? d[2]}`);
     }
 
     for (const m of body.matchAll(
-      /create\s+policy\s+"([^"]+)"\s+on\s+(?:public\.)?([a-z_][a-z0-9_]*)\s+for\s+([a-z]+)([\s\S]*?);/gi,
+      /create\s+policy\s+(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+on\s+(?:public\.)?([a-z_][a-z0-9_]*)\s+for\s+([a-z]+)([\s\S]*?);/gi,
     )) {
-      const [, name, table, command, rest] = m;
+      const [, quoted, bare, table, command, rest] = m;
+      const name = quoted ?? bare;
       const roleMatch = rest.match(/\bto\s+([a-z_, ]+?)\s*(?:using|with\s+check|$)/i);
       const usingMatch = rest.match(/\busing\s*\(([\s\S]*?)\)\s*(?:with\s+check|$)/i);
       const checkMatch = rest.match(/\bwith\s+check\s*\(([\s\S]*)$/i);

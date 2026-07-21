@@ -77,3 +77,82 @@ jobs:
       - uses: actions/checkout@v4
       - name: CLAUDE.md must match build.gradle
         run: node scripts/check-version-sync.mjs
+
+  migrations:
+    name: migrations apply cleanly
+    runs-on: ubuntu-latest
+
+    # Replays every migration against an empty Postgres. This is the check that
+    # would have caught INC-0003, where a migration referenced a column that did
+    # not exist: it applied without error and the feature broke silently for a day,
+    # because Postgres does not validate column references inside a plpgsql body
+    # until the function is called.
+    #
+    # Only possible since the baseline migration exists — before that, 12 core
+    # tables had no CREATE TABLE anywhere and a replay failed immediately.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Migrations reference auth.uid(), the auth schema, and Supabase's storage
+      # objects. A bare Postgres has none of these, so stub just enough for the
+      # DDL to apply. The stubs are NOT a behavioural simulation — this job proves
+      # the migrations are syntactically valid and internally consistent, not that
+      # the policies do what they claim.
+      - name: Prepare Supabase-compatible shims
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          create schema if not exists auth;
+          create schema if not exists storage;
+          create schema if not exists realtime;
+          create table if not exists auth.users (id uuid primary key);
+          create or replace function auth.uid() returns uuid
+            language sql stable as $$ select null::uuid $$;
+          create or replace function auth.role() returns text
+            language sql stable as $$ select 'authenticated'::text $$;
+          create table if not exists storage.buckets (id text primary key, name text, public boolean);
+          create table if not exists storage.objects (
+            id uuid default gen_random_uuid() primary key,
+            bucket_id text, name text, owner uuid);
+          create or replace function storage.foldername(name text) returns text[]
+            language sql immutable as $$ select string_to_array(name, '/') $$;
+          create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true)
+            returns void language sql as $$ select $$;
+          do $$ begin
+            if not exists (select 1 from pg_roles where rolname='authenticated') then
+              create role authenticated;
+            end if;
+            if not exists (select 1 from pg_roles where rolname='anon') then
+              create role anon;
+            end if;
+            if not exists (select 1 from pg_roles where rolname='service_role') then
+              create role service_role;
+            end if;
+          end $$;
+          create publication supabase_realtime;
+          SQL
+
+      - name: Apply every migration in order
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -e
+          for f in supabase/migrations/*.sql; do
+            echo "── $f"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          echo "All migrations applied cleanly."

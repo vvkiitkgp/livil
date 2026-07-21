@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-07-20
+last_verified: 2026-07-21
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-121 TypeScript file(s) under `src/`, 37,930 lines.
+122 TypeScript file(s) under `src/`, 37,956 lines.
 
 ## Size hotspots
 
@@ -26,15 +26,15 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2107 |
-| `src/screens/main/ConversationScreen.tsx` | 1407 |
-| `src/components/PostCard.tsx` | 1186 |
-| `src/screens/main/HomeScreen.tsx` | 1114 |
+| `src/components/FullScreenPlayer.tsx` | 2047 |
+| `src/screens/main/ConversationScreen.tsx` | 1406 |
+| `src/components/PostCard.tsx` | 1197 |
+| `src/screens/main/HomeScreen.tsx` | 1104 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1064 |
-| `src/components/FloatingPlayer.tsx` | 920 |
+| `src/screens/main/ProfileScreen.tsx` | 1067 |
+| `src/components/FloatingPlayer.tsx` | 924 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
-| `src/screens/main/UserProfileScreen.tsx` | 788 |
+| `src/screens/main/UserProfileScreen.tsx` | 793 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/main/RepostScreen.tsx` | 749 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -84,16 +84,16 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-31 file(s), 15,702 lines.
+31 file(s), 15,700 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1407 |
-| `src/screens/main/HomeScreen.tsx` | 1114 |
+| `src/screens/main/ConversationScreen.tsx` | 1406 |
+| `src/screens/main/HomeScreen.tsx` | 1104 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1064 |
+| `src/screens/main/ProfileScreen.tsx` | 1067 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
-| `src/screens/main/UserProfileScreen.tsx` | 788 |
+| `src/screens/main/UserProfileScreen.tsx` | 793 |
 | `src/screens/main/RepostScreen.tsx` | 749 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/LibraryScreen.tsx` | 604 |
@@ -102,9 +102,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 484 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
-| `src/screens/main/StoryViewerScreen.tsx` | 443 |
+| `src/screens/main/StoryViewerScreen.tsx` | 441 |
 | `src/screens/main/InboxScreen.tsx` | 408 |
-| `src/screens/main/CreatePlaylistScreen.tsx` | 400 |
+| `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/SignInScreen.tsx` | 348 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
@@ -122,13 +122,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-45 file(s), 12,755 lines.
+45 file(s), 12,710 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2107 |
-| `src/components/PostCard.tsx` | 1186 |
-| `src/components/FloatingPlayer.tsx` | 920 |
+| `src/components/FullScreenPlayer.tsx` | 2047 |
+| `src/components/PostCard.tsx` | 1197 |
+| `src/components/FloatingPlayer.tsx` | 924 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 423 |
 | `src/components/MediaPlayer.tsx` | 419 |
@@ -226,7 +226,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-5 file(s), 461 lines.
+6 file(s), 534 lines.
 
 | File | Lines |
 |---|---:|
@@ -234,6 +234,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/mentions.ts` | 105 |
 | `src/utils/playTracker.ts` | 83 |
 | `src/utils/chatTime.ts` | 82 |
+| `src/utils/__tests__/chatTime.test.ts` | 73 |
 | `src/utils/errorMessages.ts` | 68 |
 
 ## Dependencies
