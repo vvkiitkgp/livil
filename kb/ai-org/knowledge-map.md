@@ -16,15 +16,15 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-39 document(s) under `kb/`.
+45 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 39 |
-| Drift-proof (tier 1 + 4) | 13 |
-| Hand-maintained (tier 3 + 5) | 19 |
+| Documents | 45 |
+| Drift-proof (tier 1 + 4) | 17 |
+| Hand-maintained (tier 3 + 5) | 21 |
 | Past freshness SLA | 0 |
 | Private-content stubs | 5 |
 
@@ -58,6 +58,8 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
+| `ai-org/board-charter.md` | chief-architect | ALL | 2026-07-21 | 180d |
+| `ai-org/debate-protocol.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/knowledge-base-spec.md` | chief-architect | ALL | 2026-07-20 | 180d |
 | `architecture/auth.md` | principal-security | P-SE, SR, BE, CR | 2026-07-21 | 90d |
 | `architecture/backend.md` | principal-data | P-DA, BE, CR, QA | 2026-07-21 | 90d |
@@ -81,12 +83,16 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
+| `debt/proposals/0001-hedge-the-patch.md` | principal-playback | CA, TR, ALL | 2026-07-21 | 9999d |
+| `debt/proposals/0002-version-storage-config.md` | principal-data | CA, TR, ALL | 2026-07-21 | 9999d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0003-on-device-waveform-decode.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0004-supabase-direct-no-api-tier.md` | principal-data | ALL | 2026-07-21 | 9999d |
 | `decisions/0005-ios-platform-status.md` | principal-platform | ALL | 2026-07-21 | 9999d |
+| `decisions/0006-maintain-patched-video-until-trigger.md` | principal-playback | ALL | 2026-07-21 | 9999d |
+| `decisions/0007-storage-policies-unversioned.md` | principal-security | ALL | 2026-07-21 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -100,14 +106,14 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 11 |
+| chief-architect | 13 |
 | human | 1 |
 | principal-client | 5 |
-| principal-data | 6 |
+| principal-data | 7 |
 | principal-platform | 6 |
-| principal-playback | 5 |
+| principal-playback | 7 |
 | principal-realtime | 1 |
-| principal-security | 4 |
+| principal-security | 5 |
 
 Every document has exactly one accountable owner — a surface nobody owns will decay
 (Constitution P48).

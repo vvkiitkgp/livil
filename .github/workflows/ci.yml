@@ -160,3 +160,25 @@ jobs:
             psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
           echo "All migrations applied cleanly."
+
+  board-readonly:
+    name: board is proposal-only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The Architecture Board proposes; it does not implement. This is the layer
+      # that actually enforces that — a prompt cannot fail a build, and an agent
+      # can be argued out of an instruction.
+      #
+      # Also blocks paths closed to EVERY agent (the native patch, signing config,
+      # kb/private) regardless of who authored the change.
+      - name: Board may write only under kb/
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          node scripts/enforce-board-readonly.mjs --range "$BASE..HEAD"

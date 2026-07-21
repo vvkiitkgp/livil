@@ -1,0 +1,138 @@
+# Architecture Board — participant routing
+#
+# Applied by the Chief Architect during Round 0 (triage). Encodes which principals
+# are pulled into a debate based on what a change touches.
+#
+# This is data, not a program. The Chief Architect reads it and exercises judgement;
+# it is not executed. Rules exist so routing is reviewable and consistent rather than
+# re-derived from scratch each time.
+#
+# See board-charter.md and debate-protocol.md.
+
+quorum:
+  min_principals: 2
+  max_principals: 4
+  critic_required: true          # the adversarial critic is never optional
+  # More than max_principals implicated => reject as too broad, require a split.
+  # A change spanning five domains is five decisions wearing one title.
+  over_max: reject_and_split
+  self_nomination: allowed       # any principal may join with a one-line reason
+
+# ── Domain ownership ────────────────────────────────────────────────────────
+# Paths each principal owns. Used for routing AND for review assignment from
+# Phase 6 onward.
+domains:
+  principal-playback:
+    owns:
+      - patches/**
+      - src/components/GlobalAudioPlayer.tsx
+      - src/components/FullScreenPlayer.tsx
+      - src/components/FloatingPlayer.tsx
+      - src/components/MediaPlayer.tsx
+      - src/contexts/PlaybackContext.tsx
+      - src/utils/nowPlayingMetadata.ts
+      - src/services/waveform.ts
+    doc: kb/architecture/playback.md
+
+  principal-data:
+    owns:
+      - supabase/**
+      - src/services/**
+      - lib/supabase.ts
+    doc: kb/architecture/backend.md
+
+  principal-client:
+    owns:
+      - src/screens/**
+      - src/components/**
+      - src/contexts/**
+      - src/navigation/**
+      - src/theme/**
+    doc: kb/architecture/client.md
+
+  principal-security:
+    owns:
+      - src/navigation/RootNavigator.tsx     # session gate + deep links
+      - src/screens/auth/**
+      - supabase/migrations/**               # RLS lives here
+    doc: kb/security/model.md
+
+  principal-realtime:
+    owns:
+      - src/services/jamRealtime.ts
+      - src/services/jamRooms.ts
+      - src/services/pushNotifications.ts
+      - src/services/pushDispatch.ts
+    doc: kb/architecture/realtime.md
+
+  principal-platform:
+    owns:
+      - android/**
+      - ios/**
+      - .github/**
+      - package.json
+      - "*.config.js"
+      - scripts/**
+    doc: kb/operations/infrastructure.md
+
+# ── Routing rules ───────────────────────────────────────────────────────────
+# First matching rule wins for `mandatory`; `escalate` entries are additive.
+routing:
+  - trigger: "patches/**"
+    mandatory: [principal-playback]
+    escalate:  [principal-platform]        # rebuild and upgrade risk
+    why: "The native patch is the largest upgrade obstacle in the project (ADR-0002)."
+
+  - trigger: "supabase/migrations/**"
+    mandatory: [principal-data]
+    escalate:  [principal-security]        # ALWAYS — RLS is the perimeter
+    why: "Row-level security is the entire authorization boundary (ADR-0004)."
+
+  - trigger: "new SECURITY DEFINER function"
+    mandatory: [principal-data, principal-security]
+    why: "A privileged function is a deliberate hole in the only perimeter (Constitution P17)."
+
+  - trigger: "src/contexts/PlaybackContext.tsx"
+    mandatory: [principal-playback, principal-client]
+    why: "The seam between the audio engine and the React state model."
+
+  - trigger: "jam | presence | broadcast | push"
+    mandatory: [principal-realtime]
+    escalate:  [principal-data]            # if RLS or schema is touched
+    why: "Jam sync and push have failure modes only visible across devices."
+
+  - trigger: "auth | deep link | session"
+    mandatory: [principal-security]
+    escalate:  [principal-client, principal-platform]
+    why: "Session handling is where untrusted input meets identity (Constitution P19)."
+
+  - trigger: "new native dependency"
+    mandatory: [principal-platform]
+    escalate:  [principal-playback]        # if media-adjacent
+    why: "Every dependency is a future upgrade obligation (Constitution P13)."
+
+  - trigger: "feed | query performance | unbounded query"
+    mandatory: [principal-data]
+    escalate:  [principal-client]
+    why: "Query cost and render cost are usually the same problem seen twice."
+
+  - trigger: "iOS revival"
+    mandatory: [principal-platform, principal-playback]
+    escalate:  [principal-security]
+    why: "See ADR-0005 — currently an open question, not a decision."
+
+  - trigger: "design system | tokens | component structure"
+    mandatory: [principal-client]
+    why: "Token discipline is the weakest standard in the repo today."
+
+# ── When a debate is NOT warranted ──────────────────────────────────────────
+# Triage should terminate at Round 0 for these. Debating them wastes the
+# mechanism and trains everyone to ignore it.
+no_debate:
+  - "Routine screen or component changes with no cross-domain effect"
+  - "Bug fixes that restore documented behaviour"
+  - "Adding a test"
+  - "Documentation corrections"
+  - "Anything already settled by an accepted ADR, unless the challenger meets
+     the bar in Constitution P53 — the constraint changed, or new evidence
+     contradicts the original reasoning"

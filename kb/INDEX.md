@@ -90,12 +90,19 @@ Status: ✅ available · ⏳ planned (wave) · ✍️ awaiting human author · �
 | Scale we design for, and the known cliffs | [operations/scaling-assumptions.md](operations/scaling-assumptions.md) ✅ |
 | Emergency procedures | [operations/runbooks/keystore-recovery.md](operations/runbooks/keystore-recovery.md) ✅ · [incident-response.md](operations/runbooks/incident-response.md) ✅ |
 
+### "How does the AI organization work?"
+| Question | Document |
+|----------|----------|
+| The Architecture Board — mandate, membership, limits | [ai-org/board-charter.md](ai-org/board-charter.md) ✅ |
+| How debates run, and why each round exists | [ai-org/debate-protocol.md](ai-org/debate-protocol.md) ✅ |
+| Which principals are routed into which debate | [ai-org/board-routing.yml](ai-org/board-routing.yml) ✅ |
+
 ### "Why is it like this?"
 | Question | Document |
 |----------|----------|
-| Decisions, alternatives considered, recorded dissent | [decisions/](decisions/) ✅ — [0001](decisions/0001-single-audio-engine.md) · [0002](decisions/0002-patched-video-library.md) · [0003](decisions/0003-on-device-waveform-decode.md) · [0004](decisions/0004-supabase-direct-no-api-tier.md) · [0005](decisions/0005-ios-platform-status.md) · [template](decisions/TEMPLATE.md) |
+| Decisions, alternatives considered, recorded dissent | [decisions/](decisions/) ✅ — [0001](decisions/0001-single-audio-engine.md) · [0002](decisions/0002-patched-video-library.md) · [0003](decisions/0003-on-device-waveform-decode.md) · [0004](decisions/0004-supabase-direct-no-api-tier.md) · [0005](decisions/0005-ios-platform-status.md) · [0006](decisions/0006-maintain-patched-video-until-trigger.md) · [0007](decisions/0007-storage-policies-unversioned.md) · [template](decisions/TEMPLATE.md) |
 | Past failures and the rules they produced | [incidents/README.md](incidents/README.md) ✅ 🔒 |
-| Known debt, ranked by blast radius | [debt/register.md](debt/register.md) ✅ 🔒 · [proposal template](debt/proposals/TEMPLATE.md) |
+| Known debt, ranked by blast radius | [debt/register.md](debt/register.md) ✅ 🔒 · [proposal template](debt/proposals/TEMPLATE.md) · open: [PROP-0001](debt/proposals/0001-hedge-the-patch.md) · [PROP-0002](debt/proposals/0002-version-storage-config.md) |
 
 ### "What are we building, and why?"
 | Question | Document |
