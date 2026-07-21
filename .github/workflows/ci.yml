@@ -70,9 +70,10 @@ jobs:
       # version number in CLAUDE.md.
       #
       # Runs without kb/private/, so only the public generators execute.
+      # The generators that write to kb/private/ skip automatically when that repo is
+      # absent, as it is here. This step is a real gate, not decorative.
       - name: Check generated docs are current
         run: npm run kb:generate -- --check
-        continue-on-error: true # private repo is unavailable in CI; see note above
 
   drift:
     name: version drift

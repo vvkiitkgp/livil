@@ -25,20 +25,31 @@ const GENERATORS = [
   ['knowledge-map', './generate/knowledge-map.mjs'], // last: reads what the others wrote
 ];
 
-if (!existsSync(PRIVATE)) {
-  console.error(
-    '\nFAIL  kb/private/ is not present.\n' +
-    '      Two generators write security-sensitive output there and must not fall back to\n' +
-    '      the public tree. Clone the private knowledge base first:\n\n' +
-    '        git clone git@github.com:vvkiitkgp/livil-kb-private.git kb/private\n',
+// Two generators write security-sensitive output to kb/private/ and must never fall
+// back to the public tree. When that repo is absent — as in CI, which has no access to
+// it — SKIP those generators rather than aborting.
+//
+// Aborting here made the CI "generated docs are current" step fail 100% of the time for
+// a reason unrelated to drift, and because the step was continue-on-error the failure was
+// swallowed. The check credited with preventing documentation drift was inert.
+const HAS_PRIVATE = existsSync(PRIVATE);
+if (!HAS_PRIVATE) {
+  console.log(
+    'note  kb/private/ absent — skipping generators that write there.\n' +
+    '      For the full set: git clone git@github.com:vvkiitkgp/livil-kb-private.git kb/private\n',
   );
-  process.exit(1);
 }
 
 console.log('\nRegenerating tier-1 knowledge base documents\n');
 
 const results = [];
+const PRIVATE_GENERATORS = new Set(['rpc-reference', 'rls-policies']);
+
 for (const [name, mod] of GENERATORS) {
+  if (!HAS_PRIVATE && PRIVATE_GENERATORS.has(name)) {
+    console.log(`  skip  ${name.padEnd(15)} (needs kb/private/)`);
+    continue;
+  }
   try {
     const { generate } = await import(mod);
     const r = generate();
@@ -76,7 +87,10 @@ if (alerts.length) {
 }
 
 if (check) {
-  const dirty = execSync('git status --porcelain kb/', { cwd: REPO, encoding: 'utf8' }).trim();
+  // Only consider TRACKED, MODIFIED generated files. `git status --porcelain` also lists
+  // untracked and hand-written files, which produced "docs are out of date" failures that
+  // had nothing to do with generated output.
+  const dirty = execSync('git diff --name-only -- kb/', { cwd: REPO, encoding: 'utf8' }).trim();
   if (dirty) {
     console.error('\nFAIL  generated documents are out of date. Run: npm run kb:generate\n');
     console.error(dirty + '\n');
