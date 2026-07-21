@@ -151,6 +151,17 @@ jobs:
           create publication supabase_realtime;
           SQL
 
+      - name: Apply every migration in order
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -e
+          for f in supabase/migrations/*.sql; do
+            echo "── $f"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          echo "All migrations applied cleanly."
+
       # The authorization tests `set role authenticated` and attempt REAL writes, so
       # that role needs table privileges — otherwise every denial would come from a
       # missing GRANT rather than from RLS, and the tests would pass for the wrong
@@ -172,16 +183,6 @@ jobs:
           grant execute on all functions in schema public to authenticated, anon;
           SQL
 
-      - name: Apply every migration in order
-        env:
-          PGPASSWORD: postgres
-        run: |
-          set -e
-          for f in supabase/migrations/*.sql; do
-            echo "── $f"
-            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
-          done
-          echo "All migrations applied cleanly."
 
       # RLS is the entire authorization perimeter (ADR-0004), and until now nothing
       # asserted that a non-owner is denied anything.
