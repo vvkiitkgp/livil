@@ -162,6 +162,16 @@ jobs:
           done
           echo "All migrations applied cleanly."
 
+      # RLS is the entire authorization perimeter (ADR-0004), and until now nothing
+      # asserted that a non-owner is denied anything. These tests would have caught
+      # D-53, where the RPC was guarded and the underlying table was left open.
+      - name: Authorization tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/authorization.test.sql
+
   board-readonly:
     name: board is proposal-only
     runs-on: ubuntu-latest
