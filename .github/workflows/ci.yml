@@ -3,10 +3,14 @@ name: CI
 # The gate that makes the standards in kb/standards/ real. Before this existed,
 # every rule was advisory because nothing ran at merge time.
 
+# Runs on every branch, not just main. The common `[main] + pull_request` pattern
+# assumes every change arrives via a PR; here feature branches are pushed and
+# reviewed directly, so gating on PRs would mean most pushes get no feedback at
+# all. workflow_dispatch allows a manual re-run without an empty commit.
 on:
   push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
