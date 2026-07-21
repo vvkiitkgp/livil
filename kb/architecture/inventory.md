@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-127 TypeScript file(s) under `src/`, 38,745 lines.
+127 TypeScript file(s) under `src/`, 38,785 lines.
 
 ## Size hotspots
 
@@ -175,7 +175,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-23 file(s), 6,071 lines.
+23 file(s), 6,087 lines.
 
 | File | Lines |
 |---|---:|
@@ -193,7 +193,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/conversations.ts` | 238 |
 | `src/services/profileService.ts` | 233 |
 | `src/services/uploads.ts` | 218 |
-| `src/services/__tests__/waveform.test.ts` | 157 |
+| `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/stories.ts` | 152 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
@@ -228,12 +228,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-8 file(s), 909 lines.
+8 file(s), 933 lines.
 
 | File | Lines |
 |---|---:|
+| `src/utils/__tests__/playTracker.test.ts` | 208 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
-| `src/utils/__tests__/playTracker.test.ts` | 184 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
 | `src/utils/mentions.ts` | 105 |
 | `src/utils/playTracker.ts` | 83 |

@@ -107,6 +107,22 @@ describe('sampleFeatures — bounds', () => {
     expect(Number.isNaN(f.centroid)).toBe(false);
   });
 
+  it('clamps out-of-range stored values into 0..1', () => {
+    // The previous version of this test used only in-range fixtures, so the clamp was
+    // never reached — all three clamp01 calls in the read path were deletable with the
+    // suite green. waveform_peaks is jsonb written by a VERSIONED analyzer, so a v1 row
+    // or a future analyzer change is exactly where an out-of-range value arrives.
+    // Found by the code-reviewer.
+    const dirty = v2({ peaks: [1.4, -0.2, 3], bass: [-1, 2, 0.5], flux: [5, -3, 0] });
+    for (const pos of [0, 0.5, 1, 1.5, 2]) {
+      const f = sampleFeatures(dirty, pos)!;
+      for (const v of [f.loud, f.bass, f.flux, f.centroid]) {
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
   it('keeps every channel within 0..1', () => {
     // The renderer maps these onto amplitude and speed; out-of-range values would
     // distort the wave rather than fail visibly.

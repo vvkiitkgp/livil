@@ -126,6 +126,17 @@ describe('play instances', () => {
     play('post-1', [0, 1, 2, 3]); // seek to start → second play
     expect(recorded).toHaveBeenCalledTimes(2);
   });
+
+  it('RESETS accumulated time on a backward jump, not just the recorded flag', () => {
+    // Feeding a full 3s after the seek could not distinguish the two: it reached a
+    // second play either way. With carried-over accumulation, the first tick after
+    // ANY backward seek records immediately with zero new listening — scrubbing back
+    // and forth would farm play counts. Found by the code-reviewer.
+    play('post-1', [10, 11, 12, 13]); // one play recorded
+    expect(recorded).toHaveBeenCalledTimes(1);
+    play('post-1', [0, 0.5]); // seek back, then only 0.5s of listening
+    expect(recorded).toHaveBeenCalledTimes(1); // must NOT record again
+  });
 });
 
 describe('multiple posts', () => {
@@ -174,10 +185,23 @@ describe('explicit resets', () => {
 });
 
 describe('failure isolation', () => {
-  it('does not throw when recording fails', () => {
+  it('swallows a failed record rather than leaving an unhandled rejection', async () => {
     // Play counting is fire-and-forget: a failed record must never break playback
-    // or surface to the user (kb/architecture/backend.md, fail-safe mode).
+    // (kb/architecture/backend.md, fail-safe mode).
+    //
+    // Asserting `not.toThrow()` proved NOTHING — the rejection is asynchronous, so the
+    // synchronous call returns cleanly whether or not `.catch()` exists. Removing the
+    // catch left the suite green while producing an unhandled rejection, which in RN
+    // dev is a redbox on a path that fires on every play. Found by the code-reviewer.
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+
     recorded.mockRejectedValueOnce(new Error('network down'));
-    expect(() => play('post-1', [0, 1, 2, 3])).not.toThrow();
+    play('post-1', [0, 1, 2, 3]);
+    await new Promise(r => setImmediate(r));
+
+    process.off('unhandledRejection', onUnhandled);
+    expect(unhandled).toEqual([]);
   });
 });

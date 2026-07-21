@@ -151,6 +151,21 @@ jobs:
           create publication supabase_realtime;
           SQL
 
+      # The authorization tests `set role authenticated` and attempt REAL writes, so
+      # that role needs table privileges — otherwise every denial would come from a
+      # missing GRANT rather than from RLS, and the tests would pass for the wrong
+      # reason. Run after migrations so it covers every table they created.
+      - name: Grant table access to the app roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          grant usage on schema public to authenticated, anon;
+          grant all on all tables in schema public to authenticated;
+          grant select on all tables in schema public to anon;
+          grant all on all sequences in schema public to authenticated;
+          SQL
+
       - name: Apply every migration in order
         env:
           PGPASSWORD: postgres
@@ -163,8 +178,12 @@ jobs:
           echo "All migrations applied cleanly."
 
       # RLS is the entire authorization perimeter (ADR-0004), and until now nothing
-      # asserted that a non-owner is denied anything. These tests would have caught
-      # D-53, where the RPC was guarded and the underlying table was left open.
+      # asserted that a non-owner is denied anything.
+      #
+      # These attempt REAL inserts as the `authenticated` role, so a reverted policy
+      # fails them. An earlier version evaluated a hand-written COPY of the predicate
+      # and would have passed with the policy reverted — it could not have caught
+      # D-53 despite claiming to. Found by the code-reviewer agent.
       - name: Authorization tests
         env:
           PGPASSWORD: postgres

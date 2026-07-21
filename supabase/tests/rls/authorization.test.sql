@@ -30,10 +30,10 @@
 --
 -- WHAT THESE TESTS ARE NOT
 --
---   They evaluate POLICY PREDICATES against synthetic rows as a specific role. They do
---   not exercise PostgREST, the storage API, or the real network path. A pass means the
---   policy logic denies the case; it does not prove the whole request path denies it
---   (Constitution P32).
+--   They attempt REAL writes and reads as the `authenticated` role, so the DEPLOYED
+--   policy is what allows or denies. They do NOT exercise PostgREST, the storage API,
+--   or the network path — a pass means the policy denies the case at the database, not
+--   that the whole request path does (Constitution P32).
 -- ============================================================================
 
 \set ON_ERROR_STOP on
@@ -88,68 +88,89 @@ begin
 end $$;
 
 -- ============================================================================
--- jam_room_members — the D-53 regression
+-- jam_room_members — the D-53 regression, against the REAL policy
 -- ============================================================================
--- The predicate below is jmem_insert's WITH CHECK as of 20260721120000. Before that
--- migration it was simply `user_id = auth.uid()`, with NO constraint on jam_room_id —
--- so the outsider case passed and granted queue access.
+--
+-- An earlier version of this file evaluated a hand-written COPY of the policy
+-- predicate. That was worthless: it would have passed with the policy reverted, and
+-- a copy transcribed FROM the fix could never have caught the bug it names. Found by
+-- the code-reviewer agent, which mutated the deployed policy and watched these
+-- assertions stay green.
+--
+-- These now attempt the REAL insert as the `authenticated` role. `set local role`
+-- means the caller is not the table owner, so RLS applies. Denial is the assertion.
 
-create or replace function pg_temp.jmem_insert_allows(p_room uuid, p_user uuid)
-returns boolean language sql stable as $$
-  select
-    (
-      p_user = auth.uid()
-      and exists (
-        select 1 from jam_rooms jr
-        join conversation_members cm on cm.conversation_id = jr.conversation_id
-        where jr.id = p_room and cm.user_id = auth.uid()
-      )
-    )
-    or exists (
-      select 1 from jam_rooms where id = p_room and host_id = auth.uid()
-    );
-$$;
+create or replace function pg_temp.can_insert_member(p_room uuid, p_user uuid)
+returns boolean language plpgsql as $$
+begin
+  -- Attempt the actual write the client would make, then undo it. If RLS refuses,
+  -- Postgres raises insufficient_privilege and we report false.
+  begin
+    insert into jam_room_members (jam_room_id, user_id, role, permissions)
+    values (p_room, p_user, 'listener', '{}'::jsonb);
+    delete from jam_room_members where jam_room_id = p_room and user_id = p_user;
+    return true;
+  exception
+    when insufficient_privilege then return false;
+    when others then
+      -- A unique violation means the row already exists, i.e. the policy allowed it.
+      if sqlstate = '23505' then return true; end if;
+      raise;
+  end;
+end $$;
 
+-- Mallory is authenticated but belongs to no conversation containing this jam.
 select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
 select pg_temp.assert(
-  'D-53: an outsider CANNOT self-join a jam room',
-  pg_temp.jmem_insert_allows('bbbbbbbb-0000-0000-0000-000000000001',
-                             '33333333-3333-3333-3333-333333333333'),
+  'D-53: an outsider CANNOT self-join a jam room (real policy)',
+  pg_temp.can_insert_member('bbbbbbbb-0000-0000-0000-000000000001',
+                            '33333333-3333-3333-3333-333333333333'),
   false);
+reset role;
 
+-- Bob is a member of the parent conversation.
 select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
 select pg_temp.assert(
-  'a conversation member CAN self-join',
-  pg_temp.jmem_insert_allows('bbbbbbbb-0000-0000-0000-000000000001',
-                             '22222222-2222-2222-2222-222222222222'),
+  'a conversation member CAN self-join (real policy)',
+  pg_temp.can_insert_member('bbbbbbbb-0000-0000-0000-000000000001',
+                            '22222222-2222-2222-2222-222222222222'),
   true);
+reset role;
 
+-- Alice hosts the room, so she may add another member.
 select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
 select pg_temp.assert(
-  'the host CAN add another member',
-  pg_temp.jmem_insert_allows('bbbbbbbb-0000-0000-0000-000000000001',
-                             '22222222-2222-2222-2222-222222222222'),
+  'the host CAN add another member (real policy)',
+  pg_temp.can_insert_member('bbbbbbbb-0000-0000-0000-000000000001',
+                            '22222222-2222-2222-2222-222222222222'),
   true);
+reset role;
 
 -- ============================================================================
--- jam_rooms — visibility is scoped to the parent conversation
+-- jam_rooms — visibility scoped to the parent conversation, against the REAL policy
 -- ============================================================================
-create or replace function pg_temp.jam_select_allows(p_room uuid)
-returns boolean language sql stable as $$
-  select exists (
-    select 1 from jam_rooms jr
-    join conversation_members cm on cm.conversation_id = jr.conversation_id
-    where jr.id = p_room and cm.user_id = auth.uid()
-  );
-$$;
+create or replace function pg_temp.can_see_jam(p_room uuid)
+returns boolean language plpgsql as $$
+declare n int;
+begin
+  select count(*) into n from jam_rooms where id = p_room;
+  return n > 0;   -- RLS filters rows; an outsider simply sees none
+end $$;
 
 select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
-select pg_temp.assert('an outsider CANNOT read a jam room',
-  pg_temp.jam_select_allows('bbbbbbbb-0000-0000-0000-000000000001'), false);
+set local role authenticated;
+select pg_temp.assert('an outsider CANNOT read a jam room (real policy)',
+  pg_temp.can_see_jam('bbbbbbbb-0000-0000-0000-000000000001'), false);
+reset role;
 
 select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
-select pg_temp.assert('a member CAN read the jam room',
-  pg_temp.jam_select_allows('bbbbbbbb-0000-0000-0000-000000000001'), true);
+set local role authenticated;
+select pg_temp.assert('a member CAN read the jam room (real policy)',
+  pg_temp.can_see_jam('bbbbbbbb-0000-0000-0000-000000000001'), true);
+reset role;
 
 -- ============================================================================
 -- Anon exposure — the D-10 regression
@@ -158,21 +179,15 @@ select pg_temp.assert('a member CAN read the jam room',
 -- in the app and on the marketing site, so `using (true)` without TO authenticated is
 -- public data.
 
-create or replace function pg_temp.policy_roles(p_table text, p_policy text)
-returns text language sql stable as $$
-  select coalesce(array_to_string(array(
-    select rolname from pg_roles where oid = any(p.polroles)), ','), 'PUBLIC')
-  from pg_policy p join pg_class c on c.oid = p.polrelid
-  where c.relname = p_table and p.polname = p_policy;
-$$;
-
 select pg_temp.assert(
   'D-10: follows has no PUBLIC select policy',
   exists (
     select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
     where c.relname = 'follows' and p.polcmd = 'r'
       and pg_get_expr(p.polqual, p.polrelid) = 'true'
-      and p.polroles = '{0}'          -- {0} is PUBLIC
+      and p.polcmd in ('r', '*')      -- `for all` grants select too
+      and (p.polroles = '{0}'         -- {0} is PUBLIC
+        or 'anon' = any(select rolname from pg_roles where oid = any(p.polroles)))
   ), false);
 
 select pg_temp.assert(
@@ -181,7 +196,9 @@ select pg_temp.assert(
     select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
     where c.relname = 'albums' and p.polcmd = 'r'
       and pg_get_expr(p.polqual, p.polrelid) = 'true'
-      and p.polroles = '{0}'
+      and p.polcmd in ('r', '*')
+      and (p.polroles = '{0}'
+        or 'anon' = any(select rolname from pg_roles where oid = any(p.polroles)))
   ), false);
 
 -- ============================================================================
