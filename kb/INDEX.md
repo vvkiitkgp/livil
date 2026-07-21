@@ -97,6 +97,7 @@ Status: ✅ available · ⏳ planned (wave) · ✍️ awaiting human author · �
 | How debates run, and why each round exists | [ai-org/debate-protocol.md](ai-org/debate-protocol.md) ✅ |
 | Which principals are routed into which debate | [ai-org/board-routing.yml](ai-org/board-routing.yml) ✅ |
 | Whether the advisory reviewers are worth listening to | [ai-org/review-log.md](ai-org/review-log.md) ✅ |
+| Where agents may write, and why the rest is propose-only | [`.claude/autonomy-config.yml`](../.claude/autonomy-config.yml) ✅ |
 
 ### "Why is it like this?"
 | Question | Document |

@@ -228,3 +228,26 @@ jobs:
             BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
           fi
           node scripts/enforce-board-readonly.mjs --range "$BASE..HEAD"
+
+  agent-scope:
+    name: agents write only where tests exist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Overall coverage is ~1%. Implementation agents may write only where tests
+      # would actually fail if the behaviour broke; everywhere else they propose and
+      # a human implements. Scoping lives in .claude/autonomy-config.yml.
+      #
+      # Also enforces the never-list (native patch, signing config, keystore,
+      # kb/private, supabase client) for HUMAN commits too — those are unrecoverable
+      # or invisible regardless of who changed them.
+      - name: Agent writes stay inside tested paths
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          node scripts/enforce-agent-scope.mjs --range "$BASE..HEAD"

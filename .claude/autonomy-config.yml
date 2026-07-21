@@ -1,0 +1,92 @@
+# Agent write access, scoped by whether a safety net actually exists.
+#
+# WHY THIS FILE EXISTS
+#
+# The roadmap gated implementation agents behind Phase 5 for a stated reason: an agent
+# modifying code with no test asserting the behaviour is not an engineer, it is an
+# unreviewed commit. Phase 5 delivered a targeted slice — 75 tests on the highest-blast-
+# radius seams — not the ≥60% coverage the roadmap named. Overall coverage is ~1%.
+#
+# Rather than pretend that bar was met, write access is scoped to where tests exist.
+# Everywhere else agents may PROPOSE and a human implements.
+#
+# This is the autonomy ladder applied honestly, and it creates the right incentive:
+# an area earns agent help by being tested.
+#
+# Enforced by scripts/enforce-agent-scope.mjs in CI. A prompt cannot fail a build.
+
+# ── Tier 2: agents may write; a human merges ────────────────────────────────
+# Every path here has tests that would fail if the behaviour broke, verified by
+# mutation testing.
+writable:
+  - path: src/utils/**
+    why: playTracker and nowPlayingMetadata at 100%; mutation-verified
+    tests: src/utils/__tests__/
+
+  - path: src/services/waveform.ts
+    why: the sampling read path is covered; the decoder is not, but needs hardware
+    tests: src/services/__tests__/waveform.test.ts
+
+  - path: src/components/GradientBorder.tsx
+    why: 8 geometry tests pinning traps that shipped as bugs
+    tests: src/components/__tests__/GradientBorder.test.tsx
+
+  - path: supabase/migrations/**
+    why: authorization + RPC contract tests exercise the deployed policy
+    tests: supabase/tests/rls/
+    requires_review: security-reviewer   # MANDATORY, not advisory
+
+  - path: src/__tests__/**
+    why: tests themselves
+  - path: src/**/__tests__/**
+    why: tests themselves
+  - path: supabase/tests/**
+    why: tests themselves
+
+  - path: kb/**
+    why: documentation; the board already writes here
+  - path: .claude/**
+    why: agent definitions are reviewable config
+
+# ── Tier 1: propose only ────────────────────────────────────────────────────
+# Listed explicitly rather than left as a default, so the reason is visible.
+propose_only:
+  - path: src/screens/**
+    why: 25 files, zero tests. An agent change here is unverifiable
+  - path: src/components/**
+    why: 44 files, one tested. Same
+  - path: src/services/**
+    why: 21 of 22 untested, and this is the data layer
+  - path: src/contexts/**
+    why: PlaybackContext has a 55-entry dependency array and no tests
+  - path: src/navigation/**
+    why: the session gate — security-relevant and untested
+  - path: android/**
+    why: native; failures are silent and need a device to observe
+  - path: ios/**
+    why: does not build; status undecided (ADR-0005)
+
+# ── Closed to every agent, permanently ──────────────────────────────────────
+# Not a tier. These are never writable regardless of coverage, because a wrong
+# change is unrecoverable or breaks something no test can observe.
+never:
+  - path: patches/**
+    why: the native patch — 1,373 lines across four languages, silent device-specific breakage
+  - path: android/app/build.gradle
+    why: release signing configuration
+  - path: "**/*.keystore"
+    why: the signing key; its loss ends Play Store updates permanently
+  - path: kb/private/**
+    why: private content must never be committed to this public repository
+  - path: lib/supabase.ts
+    why: client configuration and the auth flow
+
+# ── How an area graduates ───────────────────────────────────────────────────
+# Move a path from propose_only to writable when:
+#   1. Tests exist that fail when the behaviour breaks — demonstrated by mutation,
+#      not asserted
+#   2. Those tests run in CI
+#   3. The change is recorded here with its evidence
+#
+# Do NOT graduate a path because an agent found it inconvenient. The friction is the
+# mechanism working.
