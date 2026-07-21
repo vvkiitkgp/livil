@@ -164,6 +164,12 @@ jobs:
           grant all on all tables in schema public to authenticated;
           grant select on all tables in schema public to anon;
           grant all on all sequences in schema public to authenticated;
+          -- The jmem_insert policy's EXISTS reads jam_rooms and conversation_members,
+          -- whose own policies call is_conversation_member(). RLS applies to tables
+          -- referenced inside a policy expression, so `authenticated` must be able to
+          -- execute those SECURITY DEFINER helpers or a legitimate member is denied
+          -- for the wrong reason.
+          grant execute on all functions in schema public to authenticated, anon;
           SQL
 
       - name: Apply every migration in order
