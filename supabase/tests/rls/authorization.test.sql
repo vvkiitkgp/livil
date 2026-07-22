@@ -1253,11 +1253,23 @@ select pg_temp.assert(
   'delete #2: anon cannot execute it',
   has_function_privilege('anon', 'public.delete_my_account()', 'execute'), false);
 
+-- Walks the TRANSITIVE CLOSURE from auth.users rather than checking references to
+-- `profiles`. The narrow version of this assertion passed while deletion was still broken
+-- for any user whose uploaded track had been queued in a jam: profiles -> tracks (cascade)
+-- -> jam_rooms.current_track_id / jam_queue.track_id, both NO ACTION. Proving "nothing
+-- referencing profiles blocks" is not proving "an account can be deleted", and the gap
+-- between those sentences is where two real blockers lived.
 select pg_temp.assert(
-  'delete #3: no foreign key into profiles blocks deletion any more',
-  (select count(*) = 0 from pg_constraint
-    where contype='f' and confrelid='public.profiles'::regclass
-      and confdeltype in ('a','r')), true);
+  'delete #3: NOTHING reachable from auth.users by cascade still blocks deletion',
+  (with recursive deleted_tables(oid) as (
+     select 'auth.users'::regclass::oid
+     union
+     select c.conrelid from pg_constraint c join deleted_tables d on c.confrelid = d.oid
+      where c.contype='f' and c.confdeltype='c'
+   )
+   select count(*) = 0
+     from pg_constraint c join deleted_tables d on c.confrelid = d.oid
+    where c.contype='f' and c.confdeltype in ('a','r')), true);
 
 -- ── The property: a real deletion, and what survives it ─────────────────────
 insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000e9') on conflict do nothing;

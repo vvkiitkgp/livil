@@ -12,27 +12,42 @@
 -- And the email fallback could not have been honoured either, because **the database
 -- refused to delete a profile at all**:
 --
---   messages.sender_id     -> profiles(id)  NO ACTION
---   jam_rooms.host_id      -> profiles(id)  NO ACTION
---   jam_queue.suggested_by -> profiles(id)  NO ACTION
+--   messages.sender_id         -> profiles(id)  NO ACTION
+--   jam_rooms.host_id          -> profiles(id)  NO ACTION
+--   jam_queue.suggested_by     -> profiles(id)  NO ACTION
+--   jam_rooms.current_track_id -> tracks(id)    NO ACTION   <- one level deeper
+--   jam_queue.track_id         -> tracks(id)    NO ACTION   <- one level deeper
 --
--- Everything else already CASCADEs or SET NULLs. So deleting anyone who had ever sent a
--- message failed with 23503. The promise was unimplementable, not merely unimplemented.
+-- FIVE, not three. The last two are reached via profiles -> tracks and were missed by the
+-- first version of this migration; see section 1. Deleting anyone who had ever sent a
+-- message, or uploaded a track that was ever queued in a jam, failed with 23503. The
+-- promise was unimplementable, not merely unimplemented.
 --
 -- ── WHAT HAPPENS TO MESSAGES YOU SENT — the one real decision here ──────────
 --
--- SET NULL, not CASCADE. Both are available (all three columns are nullable), so this is
--- a choice and it should be argued rather than defaulted.
+-- SET NULL, not CASCADE. Both are available (the columns are nullable), so this is a
+-- choice and it should be argued rather than defaulted.
 --
--- The published page settles it. Section 3 lists what is deleted — profile, email and
--- credentials, posts and uploaded media, social activity (likes, follows, comments,
--- playlists), listening history. **Messages you sent are not on that list.** Section 4
--- then says explicitly: "Content you shared that has been saved or re-shared by other
--- users may persist outside of your account."
+-- The argument that stands: CASCADE means deleting your account punches holes in *other
+-- people's* conversation history — their record of a conversation they took part in,
+-- altered without their involvement. Anonymizing rather than erasing is also what
+-- docs/privacy-policy.html:489-491 describes ("delete **or anonymize**").
 --
--- CASCADE would also mean deleting your account punches holes in *other people's*
--- conversation history — their record of a conversation they participated in, altered
--- without their involvement. SET NULL leaves the message in place, unattributed.
+-- AN EARLIER VERSION OF THIS COMMENT CLAIMED THE DELETION PAGE SETTLES IT. It does not,
+-- and the security review was right to push back. Section 3 lists what is deleted and
+-- sent messages are absent — but it also lists "comments", which are equally content
+-- shared with others, as deleted. Section 4's "content you shared that has been saved or
+-- re-shared by other users" reads as being about reposts, not DMs. The page's categories
+-- are not self-consistent, so it is evidence, not a decision.
+--
+-- **STILL OPEN, and it is a product decision rather than a security one:** once
+-- sender_id is NULL, `msg_update`'s `sender_id = auth.uid()` is NULL for every caller,
+-- and it is the only write policy on `messages` — there is no delete policy at all. So a
+-- surviving message becomes permanently uneditable and undeletable BY ANYONE, including
+-- the recipient. If someone harasses a user and then deletes their account, it is frozen
+-- in that inbox with no moderation path (threat model §7). Recorded against D-62; the
+-- likely remedies are widening msg_update to admit `sender_id is null and <caller is a
+-- member>`, and saying plainly on the deletion page what happens to sent messages.
 --
 -- CONSEQUENCE FOR THE CLIENT, and it is not optional: `messages.sender_id` becomes
 -- nullable in practice, so every read path must render a deleted author rather than
@@ -73,6 +88,42 @@ alter table public.jam_queue
   drop constraint if exists jam_queue_suggested_by_fkey,
   add  constraint jam_queue_suggested_by_fkey
        foreign key (suggested_by) references public.profiles(id) on delete set null;
+
+-- ── And two more, ONE LEVEL DEEPER, which the first version of this file missed ──
+--
+-- Fixing the three FKs into `profiles` is not sufficient, and believing it was is the
+-- mistake this migration originally shipped with. The cascade continues:
+--
+--   auth.users -> profiles (cascade) -> tracks.uploader_id (cascade) -> ???
+--
+-- and lands on two references to `tracks` that are also NO ACTION:
+--
+--   jam_rooms.current_track_id -> tracks   (20260528000000_chat_jam.sql:67)
+--   jam_queue.track_id         -> tracks   (:94)
+--
+-- So ANY user who uploaded a track that was ever queued or played in a jam still could
+-- not be deleted — the same 23503, one level down. Confirmed against production.
+--
+-- Found by the security-reviewer, NOT by this file's own verification, which walked only
+-- foreign keys whose parent is `profiles`. That check proved "nothing referencing profiles
+-- blocks" while claiming "deletion is now possible" — a narrower measurement than the
+-- sentence it supported. That is the identical error recorded the same day against D-08's
+-- closure ("31 tables / 99 policies" vs "matches exactly"). Section 3 is now written to
+-- prove the actual property; see the note there.
+--
+-- No manual clearing of current_track_id is needed: ON DELETE SET NULL nulls it as the
+-- track is removed. The `update ... set status='ended'` below remains, because ending a
+-- jam is about the HOST leaving, not about the track.
+
+alter table public.jam_rooms
+  drop constraint if exists jam_rooms_current_track_id_fkey,
+  add  constraint jam_rooms_current_track_id_fkey
+       foreign key (current_track_id) references public.tracks(id) on delete set null;
+
+alter table public.jam_queue
+  drop constraint if exists jam_queue_track_id_fkey,
+  add  constraint jam_queue_track_id_fkey
+       foreign key (track_id) references public.tracks(id) on delete set null;
 
 
 -- ============================================================================
@@ -138,19 +189,45 @@ grant  execute on function public.delete_my_account() to authenticated;
 -- ============================================================================
 -- 3. Verify
 -- ============================================================================
--- Asserts the PROPERTY (deletion is now possible) rather than the change (three DDL
--- statements ran), by checking that no foreign key into profiles still blocks.
+-- Asserts the PROPERTY — that a row can actually be deleted from auth.users — rather than
+-- the change, and rather than a proxy for the property.
+--
+-- THE FIRST VERSION OF THIS BLOCK CHECKED ONLY FOREIGN KEYS WHOSE PARENT IS `profiles`.
+-- That is a real check, but it proves "nothing referencing profiles blocks", not "deletion
+-- is possible" — and the gap between those two sentences is exactly where the
+-- tracks -> jam_rooms/jam_queue blockers were hiding. It passed while deletion remained
+-- broken for any user whose upload had been played in a jam.
+--
+-- So this now walks the TRANSITIVE CLOSURE from auth.users: start there, follow every
+-- foreign key that CASCADES (those propagate the delete to the child table), and flag any
+-- NO ACTION / RESTRICT reference into anything reachable. SET NULL edges neither block nor
+-- propagate, so they correctly terminate a branch. `union` (not `union all`) terminates
+-- the recursion on the schema's self-references.
+--
+-- Verified before adoption: run against production BEFORE this migration, it returns all
+-- five real blockers — the three into `profiles` and the two into `tracks`. A check that
+-- only finds what you already knew is not evidence.
 
 do $$
 declare
   v_blocking text;
-  v_acl      text;
 begin
-  select string_agg(format('%s (%s)', c.conrelid::regclass, c.conname), ', ')
+  with recursive deleted_tables(oid) as (
+    select 'auth.users'::regclass::oid
+    union
+    select c.conrelid
+      from pg_constraint c
+      join deleted_tables d on c.confrelid = d.oid
+     where c.contype = 'f'
+       and c.confdeltype = 'c'        -- CASCADE: the delete reaches this table too
+  )
+  select string_agg(
+           format('%s.%s -> %s', c.conrelid::regclass, c.conname, c.confrelid::regclass),
+           ', ' order by c.conrelid::regclass::text)
     into v_blocking
     from pg_constraint c
+    join deleted_tables d on c.confrelid = d.oid
    where c.contype = 'f'
-     and c.confrelid = 'public.profiles'::regclass
      and c.confdeltype in ('a', 'r');   -- NO ACTION / RESTRICT
 
   if v_blocking is not null then
