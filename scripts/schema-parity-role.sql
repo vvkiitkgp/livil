@@ -1,0 +1,84 @@
+-- ============================================================================
+-- The read-only role the schema-parity job connects to production as
+-- ============================================================================
+--
+-- RUN THIS YOURSELF, against the production project, in the Supabase SQL editor.
+-- It is deliberately not applied by an agent and deliberately not a migration:
+-- creating a login role is a credential operation, and the password must not pass
+-- through a transcript, a repository, or a generated document.
+--
+-- WHY THIS ROLE CAN BE THIS WEAK
+--
+-- The parity job reads system catalogs only — pg_policy, pg_proc, pg_class,
+-- pg_trigger. Catalog reads need no grant beyond CONNECT: PostgreSQL exposes them
+-- to PUBLIC by design. So this role needs no SELECT on any application table, no
+-- USAGE on the public schema, and no membership in anything.
+--
+-- Concretely, if this credential leaks, the holder learns the SHAPE of the
+-- authorization perimeter — policy predicates and function bodies — and can read
+-- exactly zero rows of user data. That is the whole reason parity is checked this
+-- way rather than by running the authorization tests against production.
+--
+-- It is still a production credential and still worth rotating on a schedule.
+--
+-- THIS IS THIS REPOSITORY'S FIRST SECRET. Until now `gh secret list` was empty and
+-- nothing in CI could reach production. That is a real change in posture and was an
+-- explicit decision, not a side effect (see ADR/debt notes for D-55).
+--
+-- ============================================================================
+-- 1. Create the role. REPLACE THE PASSWORD before running.
+-- ============================================================================
+
+create role schema_parity_ro with login password 'REPLACE-ME-WITH-A-GENERATED-PASSWORD';
+
+-- Explicitly NOT granted, and each omission is load-bearing:
+--   no  grant usage on schema public          -> cannot name an application table
+--   no  grant select on ... tables            -> cannot read a row
+--   no  role membership                       -> does not inherit authenticated/anon
+--   no  bypassrls                             -> irrelevant anyway with no table access
+--
+-- Revoke the ability to create objects in whatever schema is default-writable.
+revoke all on schema public from schema_parity_ro;
+
+-- ============================================================================
+-- 2. Verify it can do the job and nothing else
+-- ============================================================================
+-- Reconnect AS schema_parity_ro and confirm both halves. The second is the one that
+-- matters — a role that can do the job is easy; a role that can do only the job is
+-- the point.
+--
+--   -- should return a count (catalog read works):
+--   select count(*) from pg_policy;
+--
+--   -- should ALL fail with "permission denied for schema public":
+--   select count(*) from public.profiles;
+--   select count(*) from public.messages;
+--   create table public.probe (i int);
+--
+-- ============================================================================
+-- 3. Store the connection string
+-- ============================================================================
+-- GitHub -> repo Settings -> Secrets and variables -> Actions -> New secret
+--   Name:  PRODUCTION_DATABASE_URL
+--   Value: postgresql://schema_parity_ro.<project-ref>:<password>@<pooler-host>:5432/postgres?sslmode=require
+--
+-- USE THE SESSION POOLER (port 5432), NOT the direct connection. This was learned the
+-- hard way: the direct host resolves to IPv6 only, and GitHub Actions runners have no
+-- IPv6, so the job fails with "Network is unreachable" — nothing to do with credentials
+-- or grants. Port 5432 (session), not 6543 (transaction): session mode behaves like a
+-- plain connection, and this job's whole value is that it is boring.
+--
+-- Note the username: the pooler requires `<role>.<project-ref>`, not the bare role name.
+--
+-- THE PASSWORD MUST BE ALPHANUMERIC. Also learned the hard way. A password containing
+-- `@` (or any of `: / ? # [ ]`) breaks URL parsing, and psql then reports the mangled
+-- HOSTNAME in its error — which contains part of the password. GitHub masks the exact
+-- secret value in logs, but not a substring of it, so the fragment lands in a public
+-- Actions log. Alphanumeric-only avoids the entire class.
+--
+-- ============================================================================
+-- 4. To undo
+-- ============================================================================
+--   drop role schema_parity_ro;
+-- and delete the GitHub secret. The job then fails closed rather than skipping —
+-- that is intentional; see the comment in scripts/schema-parity.sh.

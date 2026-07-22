@@ -67,6 +67,46 @@ prompt cannot fail a build and an agent can be argued out of an instruction.
 
 A human always merges. There is no auto-merge, on any path, for any agent.
 
+**What "a human merges" does and does not currently guarantee.** Verified against the
+GitHub API on 2026-07-22, because this claim is load-bearing for the whole Tier 2
+argument and had never been checked:
+
+```
+# classic branch protection
+required_status_checks:        6 contexts, correctly configured
+enforce_admins:                false
+required_pull_request_reviews: null
+
+# ruleset "Protect main" — a SECOND, overlapping system
+rules:  deletion, non_fast_forward,
+        pull_request { required_approving_review_count: 1 }
+bypass_actors: [RepositoryRole 5, bypass_mode "always"]
+```
+
+**Read both.** Protection is configured in two overlapping systems, and reading only the
+classic one is misleading: it reports `required_pull_request_reviews: null`, which looks
+like no review is required, while the ruleset requires one approving review. The first
+audit of this drew the weaker conclusion from the classic API alone; the discrepancy
+surfaced only when a real PR came back `BLOCKED` with every check green.
+
+So for anyone who is not a bypass actor, `main` requires a PR, one approving review, and
+six green contexts. That is a **stronger** guarantee than the classic API suggests.
+
+For the sole maintainer, who holds the always-bypass, all of it is advisory: they can push
+directly to `main` and merge past a red build. This is not an oversight to be fixed by
+default — a single maintainer needs an escape hatch, and removing it would mean a broken
+gate could lock the only person who can repair it out of the repository. It is recorded
+here because the previous wording implied a guarantee that the API does not provide.
+
+The honest statement of the ceiling is therefore: **an agent cannot merge its own work,
+and a human is always the one who decides — but the checks advise that human rather than
+binding them.** Tier 2 rests on the human's judgement, with CI as its best input.
+
+Commit `7fc8813`, titled *"probe: verify branch protection rejects direct push"*, is the
+evidence: it sits in `main`'s history with no associated PR. It was a direct push, and it
+was **not** rejected. The probe answered its question a week before anyone read the
+answer — a probe whose result is not written down was not a probe.
+
 ### How a path graduates to Tier 2
 
 1. Tests exist that fail when the behaviour breaks — **demonstrated by mutation, not

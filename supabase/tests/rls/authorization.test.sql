@@ -834,4 +834,396 @@ select pg_temp.assert(
   'LIV-10 #7: activity_record_play is not executable by PUBLIC',
   pg_temp.public_can_execute('public.activity_record_play(uuid)'), false);
 
+
+-- ============================================================================
+-- Counter-identity freeze — 20260722140000
+-- ============================================================================
+--
+-- The counter triggers fire on INSERT and DELETE only, while posts_update_own and
+-- post_comments_update_self permit updating ANY column. Moving the column that decides
+-- WHICH row gets counted, in between the increment and the decrement, makes the two stop
+-- cancelling — so a user can floor another user's reposts_count or inflate their own,
+-- leaving no visible rows behind. reposts_count is the 3.0-weight term in the feed
+-- ranking score, the highest of the four.
+--
+-- These assert on real UPDATEs as `authenticated`, not on the trigger's existence: a test
+-- that checks pg_trigger would pass against a trigger whose body had been gutted.
+--
+-- The last two cases are the ones that make this fixable rather than merely strict.
+-- posts_original_post_id_fkey is ON DELETE SET NULL, so deleting an original UPDATEs
+-- every repost of it — a freeze that cannot tell that cascade from a hand-written null
+-- makes reposted posts undeletable, turning a security fix into an outage.
+
+create or replace function pg_temp.update_raises(stmt text)
+returns boolean language plpgsql as $$
+begin
+  execute stmt;
+  return false;                      -- completed, so the freeze did NOT stop it
+exception when insufficient_privilege then
+  return true;
+end $$;
+
+insert into tracks (id, uploader_id, title, media_kind, audio_url) values
+  ('f0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
+   'freeze fixture', 'audio', 'https://example.invalid/a.mp3')
+on conflict do nothing;
+
+insert into posts (id, author_id, kind, track_id) values
+  ('f0000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111', 'upload',
+   'f0000000-0000-0000-0000-000000000001'),
+  ('f0000000-0000-0000-0000-0000000000a2', '11111111-1111-1111-1111-111111111111', 'upload',
+   'f0000000-0000-0000-0000-000000000001'),
+  ('f0000000-0000-0000-0000-0000000000b1', '33333333-3333-3333-3333-333333333333', 'upload',
+   'f0000000-0000-0000-0000-000000000001')
+on conflict do nothing;
+
+insert into posts (id, author_id, kind, track_id, original_post_id) values
+  ('f0000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', 'repost',
+   'f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000a1')
+on conflict do nothing;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'freeze #1: an upload CANNOT be switched to a repost pointing at another user''s post',
+  pg_temp.update_raises($q$update posts set kind='repost',
+     original_post_id='f0000000-0000-0000-0000-0000000000a1'
+   where id='f0000000-0000-0000-0000-0000000000b1'$q$), true);
+
+select pg_temp.assert(
+  'freeze #2: a repost CANNOT be retargeted at a different post (kind untouched)',
+  pg_temp.update_raises($q$update posts
+     set original_post_id='f0000000-0000-0000-0000-0000000000a2'
+   where id='f0000000-0000-0000-0000-0000000000c1'$q$), true);
+
+select pg_temp.assert(
+  'freeze #3: a repost CANNOT be orphaned by hand while its original still exists',
+  pg_temp.update_raises($q$update posts set original_post_id=null
+   where id='f0000000-0000-0000-0000-0000000000c1'$q$), true);
+
+select pg_temp.assert(
+  'freeze #4: a repost CANNOT be converted back to an upload',
+  pg_temp.update_raises($q$update posts set kind='upload'
+   where id='f0000000-0000-0000-0000-0000000000c1'$q$), true);
+
+reset role;
+
+-- The counter is the property that actually matters. If the freeze worked, the victim's
+-- count still reflects exactly the one real repost that exists.
+select pg_temp.assert(
+  'freeze #5: after four blocked attacks the victim''s reposts_count is unchanged',
+  (select reposts_count = 1 from posts where id='f0000000-0000-0000-0000-0000000000a1'), true);
+
+-- ── The carve-out: the FK cascade must still work ───────────────────────────
+-- Deliberately as `authenticated`, not as the owner. The whole carve-out rests on the
+-- EXISTS inside the trigger seeing the parent as already gone during the RI action, and
+-- the production path is a user deleting their own post under posts_delete_own. Running
+-- it as superuser would pass for a reason that does not apply in production.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+delete from posts where id='f0000000-0000-0000-0000-0000000000a1';
+reset role;
+
+select pg_temp.assert(
+  'freeze #6: deleting an original still succeeds despite ON DELETE SET NULL firing',
+  (select not exists (select 1 from posts where id='f0000000-0000-0000-0000-0000000000a1')), true);
+
+select pg_temp.assert(
+  'freeze #7: the orphaned repost survives with original_post_id set to null',
+  (select original_post_id is null from posts where id='f0000000-0000-0000-0000-0000000000c1'), true);
+
+-- ── post_comments.post_id ───────────────────────────────────────────────────
+insert into post_comments (id, post_id, author_id, body) values
+  ('f0000000-0000-0000-0000-0000000000d1', 'f0000000-0000-0000-0000-0000000000a2',
+   '33333333-3333-3333-3333-333333333333', 'original body')
+on conflict do nothing;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'freeze #8: a comment CANNOT be moved to a different post',
+  pg_temp.update_raises($q$update post_comments
+     set post_id='f0000000-0000-0000-0000-0000000000b1'
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), true);
+
+-- The freeze must be narrow. If this fails, the trigger is blocking legitimate edits and
+-- the first comment-edit feature will hit it.
+select pg_temp.assert(
+  'freeze #9: editing a comment''s BODY still works',
+  pg_temp.update_raises($q$update post_comments set body='edited'
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), false);
+
+reset role;
+
+-- update_raises returning false only means "nothing raised". An UPDATE that RLS filtered
+-- to zero rows returns false too, so #9 could pass vacuously. Assert the write landed.
+select pg_temp.assert(
+  'freeze #10: ...and the edit actually landed (guards #9 against a vacuous pass)',
+  (select body = 'edited' from post_comments where id='f0000000-0000-0000-0000-0000000000d1'), true);
+
+
+-- ============================================================================
+-- Counters are derived, not client-writable — 20260722160000
+-- ============================================================================
+--
+-- The freeze above stops a count being MOVED between rows. It does not stop one being
+-- SET. posts_update_own constrains which ROWS you may write and nothing constrains which
+-- COLUMNS, so before this guard `update posts set views_count = 2000000000` succeeded —
+-- measured, not assumed. fetch_home_feed reads the score straight off the row, so that is
+-- one request to the top of every feed.
+--
+-- The mechanism is pg_trigger_depth(): a client statement's own BEFORE trigger observes
+-- depth 1, while the counter triggers' writes are nested at 2. These tests matter more
+-- than most because that separation is invisible in the function body — a reader cannot
+-- tell by inspection that legitimate counting still works, which is what #5 and #6 pin.
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'counter #1: a user CANNOT set views_count on their own post',
+  pg_temp.update_raises($q$update posts set views_count=2000000000
+   where id='f0000000-0000-0000-0000-0000000000b1'$q$), true);
+
+select pg_temp.assert(
+  'counter #2: a user CANNOT set reposts_count — the 3.0-weight ranking term',
+  pg_temp.update_raises($q$update posts set reposts_count=999999
+   where id='f0000000-0000-0000-0000-0000000000b1'$q$), true);
+
+select pg_temp.assert(
+  'counter #3: a user CANNOT set their own followers_count',
+  pg_temp.update_raises($q$update profiles set followers_count=500000
+   where id='33333333-3333-3333-3333-333333333333'$q$), true);
+
+select pg_temp.assert(
+  'counter #4: a user CANNOT set a comment''s like_count',
+  pg_temp.update_raises($q$update post_comments set like_count=4242
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), true);
+
+-- INSERT is a separate door: posts_insert_own's WITH CHECK cannot constrain a column it
+-- does not name, so the UPDATE guard alone would be bypassed by never updating.
+insert into posts (id, author_id, kind, track_id, views_count, reposts_count) values
+  ('f0000000-0000-0000-0000-0000000000e1', '33333333-3333-3333-3333-333333333333', 'upload',
+   'f0000000-0000-0000-0000-000000000001', 999999, 888888);
+
+reset role;
+
+select pg_temp.assert(
+  'counter #5: counters supplied at INSERT are clamped to zero',
+  (select views_count = 0 and reposts_count = 0
+     from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+-- ── The guard must not break counting itself ────────────────────────────────
+-- If these two fail, the fix has silently turned every counter in the product off, which
+-- is a worse outcome than the vulnerability it closes.
+select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+insert into post_likes (post_id, user_id) values
+  ('f0000000-0000-0000-0000-0000000000e1', '22222222-2222-2222-2222-222222222222');
+reset role;
+
+select pg_temp.assert(
+  'counter #6: a real like STILL increments likes_count (trigger runs at depth 2)',
+  (select likes_count = 1 from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+delete from post_likes where post_id='f0000000-0000-0000-0000-0000000000e1'
+                         and user_id='22222222-2222-2222-2222-222222222222';
+reset role;
+
+select pg_temp.assert(
+  'counter #7: ...and unliking still decrements it',
+  (select likes_count = 0 from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+-- ── The guard must not be too broad ─────────────────────────────────────────
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'counter #8: editing a non-counter column on your own post still works',
+  pg_temp.update_raises($q$update posts set caption='edited caption'
+   where id='f0000000-0000-0000-0000-0000000000e1'$q$), false);
+
+reset role;
+
+select pg_temp.assert(
+  'counter #9: ...and that edit actually landed',
+  (select caption = 'edited caption' from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+-- The profiles depth-2 path, which nothing else covers. This is the one where a silent
+-- break stops follower counts product-wide, and it is also the only one of the three
+-- where a second BEFORE UPDATE trigger co-fires (trg_enforce_username_immutable, which
+-- sorts first by name) — so "the guard and the identity trigger coexist" is asserted here
+-- rather than assumed.
+select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+insert into follows (follower_id, following_id, kind) values
+  ('22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-333333333333', 'star');
+reset role;
+
+select pg_temp.assert(
+  'counter #10: a real follow STILL increments followers_count via the trigger',
+  (select followers_count = 1 from profiles where id='33333333-3333-3333-3333-333333333333'), true);
+
+select pg_temp.assert(
+  'counter #11: ...and the follower''s following_count too',
+  (select following_count = 1 from profiles where id='22222222-2222-2222-2222-222222222222'), true);
+
+-- The `auth.uid() is not null` half of the guard is unconditionally OFF for a null-uid
+-- caller. That is safe today only because no policy on these three tables is granted to
+-- `anon` — verified against production 2026-07-22. Nothing else in this suite exercises
+-- the null branch, because set_user always installs a constant-returning auth.uid(). The
+-- day someone adds a `to anon` write policy, this is what fails.
+create or replace function auth.uid() returns uuid language sql stable as $f$ select null::uuid $f$;
+set local role anon;
+
+select pg_temp.assert(
+  'counter #12: anon cannot reach the counter columns at all (no write policy applies)',
+  (select count(*) = 0 from pg_policy
+    where polrelid in ('public.posts'::regclass,'public.profiles'::regclass,
+                       'public.post_comments'::regclass)
+      and polcmd in ('a','w','*')
+      and (polroles::regrole[])::text like '%anon%'), true);
+
+reset role;
+
+
+-- ============================================================================
+-- Comment like counts, and conversation drift — 20260722180000
+-- ============================================================================
+--
+-- tg_post_comment_likes_count was SECURITY INVOKER, alone among the six counter trigger
+-- functions. Its `update post_comments set like_count` therefore ran as the CALLER under
+-- RLS, and the only UPDATE policy there is `author_id = auth.uid()` — so liking someone
+-- else's comment matched zero rows and the count never moved. No error: an RLS-filtered
+-- UPDATE is an update of nothing, not a failure. Reproduced with a control before fixing:
+-- liking another's comment gave 0, liking your own gave 1.
+--
+-- #1 is therefore the assertion that matters, and it must use a comment the liker did NOT
+-- write, or it passes against the broken version.
+
+insert into post_comments (id, post_id, author_id, body) values
+  ('f0000000-0000-0000-0000-0000000000f1', 'f0000000-0000-0000-0000-0000000000a2',
+   '11111111-1111-1111-1111-111111111111', 'alice wrote this')
+on conflict do nothing;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+insert into post_comment_likes (comment_id, user_id) values
+  ('f0000000-0000-0000-0000-0000000000f1', '33333333-3333-3333-3333-333333333333');
+reset role;
+
+select pg_temp.assert(
+  'likes #1: liking ANOTHER user''s comment increments like_count (was silently lost)',
+  (select like_count = 1 from post_comments where id='f0000000-0000-0000-0000-0000000000f1'), true);
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+delete from post_comment_likes where comment_id='f0000000-0000-0000-0000-0000000000f1'
+                                 and user_id='33333333-3333-3333-3333-333333333333';
+reset role;
+
+select pg_temp.assert(
+  'likes #2: ...and unliking decrements it',
+  (select like_count = 0 from post_comments where id='f0000000-0000-0000-0000-0000000000f1'), true);
+
+-- ── conversations: derived and identity columns ─────────────────────────────
+-- conv_update was a bare USING with no WITH CHECK and no column constraint, so any admin
+-- could write an arbitrary last_message_preview (shown to every member in their inbox)
+-- and an arbitrary last_message_at (which that list sorts by).
+
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+
+select pg_temp.assert(
+  'conv #1: an admin CANNOT forge last_message_preview',
+  pg_temp.update_raises($q$update conversations set last_message_preview='FAKE'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+select pg_temp.assert(
+  'conv #2: an admin CANNOT pin a conversation by setting last_message_at',
+  pg_temp.update_raises($q$update conversations
+     set last_message_at = now() + interval '10 years'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+select pg_temp.assert(
+  'conv #3: kind is immutable',
+  pg_temp.update_raises($q$update conversations set kind='dm'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+select pg_temp.assert(
+  'conv #4: created_by is immutable',
+  pg_temp.update_raises($q$update conversations
+     set created_by='33333333-3333-3333-3333-333333333333'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+-- The freeze must not break the one thing the client actually does.
+select pg_temp.assert(
+  'conv #5: renaming a group still works (the only client update)',
+  pg_temp.update_raises($q$update conversations set name='Renamed'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), false);
+
+reset role;
+
+select pg_temp.assert(
+  'conv #6: ...and the rename landed',
+  (select name = 'Renamed' from conversations where id='aaaaaaaa-0000-0000-0000-000000000001'), true);
+
+-- And a real message must still drive the derived columns, at depth 2.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+insert into messages (conversation_id, sender_id, body, kind) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
+   'a genuine message', 'text');
+reset role;
+
+select pg_temp.assert(
+  'conv #7: a real message STILL updates last_message_preview via the trigger',
+  (select last_message_preview = 'a genuine message'
+     from conversations where id='aaaaaaaa-0000-0000-0000-000000000001'), true);
+
+-- ── The created_by carve-out ────────────────────────────────────────────────
+-- conversations.created_by is `references profiles(id) on delete set null`, and
+-- profiles.id cascades from auth.users. So deleting a user issues an UPDATE against every
+-- conversation they created. An unconditional freeze raises inside that cascade and makes
+-- the delete fail — for anyone who ever started a DM, since get_or_create_dm sets
+-- created_by on every one.
+--
+-- This is the SECOND time this exact trap has appeared (freeze #6/#7 cover the
+-- posts.original_post_id instance). The first version of this migration had the carve-out
+-- for posts and not for conversations; a security review caught it, not these tests. That
+-- is what these two assertions are for.
+
+insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000c9') on conflict do nothing;
+insert into profiles (id, username, username_set) values
+  ('f0000000-0000-0000-0000-0000000000c9', 'departing', true) on conflict do nothing;
+insert into conversations (id, kind, created_by, name) values
+  ('f0000000-0000-0000-0000-0000000000ca', 'group', 'f0000000-0000-0000-0000-0000000000c9', 'theirs')
+on conflict do nothing;
+
+delete from profiles where id='f0000000-0000-0000-0000-0000000000c9';
+
+select pg_temp.assert(
+  'conv #8: deleting a profile still succeeds despite ON DELETE SET NULL on created_by',
+  (select not exists (select 1 from profiles where id='f0000000-0000-0000-0000-0000000000c9')), true);
+
+select pg_temp.assert(
+  'conv #9: the conversation survives with created_by nulled by the cascade',
+  (select created_by is null from conversations where id='f0000000-0000-0000-0000-0000000000ca'), true);
+
+-- And the carve-out must stay narrow: nulling created_by by hand, while the profile is
+-- very much alive, is still refused.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+
+select pg_temp.assert(
+  'conv #10: created_by CANNOT be nulled by hand while the profile still exists',
+  pg_temp.update_raises($q$update conversations set created_by=null
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+reset role;
+
 rollback;

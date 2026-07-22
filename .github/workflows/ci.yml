@@ -11,6 +11,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  # For schema-parity only. Drift can begin without a push — a migration applied by
+  # hand, or a merge that nobody ever applied — so the check cannot depend on someone
+  # happening to commit. 07:00 UTC daily.
+  schedule:
+    - cron: '0 7 * * *'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -206,6 +211,104 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/rpc-contracts.test.sql
+
+  schema-parity:
+    name: production matches the repo
+    runs-on: ubuntu-latest
+
+    # ========================================================================
+    # The gap between "CI proved it correct" and "it is installed".
+    #
+    # The `migrations` job above replays every migration and property-tests the
+    # result. That proves correctness. It says nothing about whether production
+    # ever received it. On 2026-07-22 the LIV-10 authorization fix sat merged and
+    # unapplied — the repo declared 95 policies, production enforced 99 — while
+    # the PR, the commit history, and every generated kb/ document read as fixed.
+    # See D-55. This job is the check that would have gone red.
+    #
+    # WHY NOT A PRE-MERGE GATE: parity is false BY DEFINITION between merging a
+    # migration and applying it, so requiring it on its own PR would block every
+    # migration PR by construction. It runs after merge and daily instead: main
+    # goes red the moment something merges unapplied, and stays red until someone
+    # applies it. Make it a required context so the NEXT PR inherits the failure —
+    # that is what stops drift accumulating.
+    #
+    # WHY postgres:17 HERE AND 15 ABOVE: production is 17.6. Policy predicates are
+    # compared as deparsed text (pg_get_expr), so the server version is part of the
+    # comparison. Verified 2026-07-22 that PG16 and PG17 deparse all 95 policies
+    # identically, so the risk is small — but matching production removes the class
+    # rather than betting on it. That the main replay job tests a version production
+    # does not run is a separate question, deliberately not changed here.
+    # ========================================================================
+    # workflow_dispatch is included so this can be run on demand, from any branch, without
+    # merging first. Without it the only way to learn whether the job works is to merge it
+    # and watch main — which is the same "find out in production" habit this job exists to
+    # end. It also gives an on-demand answer to "is production still in sync right now?"
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same shims as the `migrations` job. Kept in step with it by hand; if they
+      # drift, this job fails on replay rather than silently comparing the wrong thing.
+      - name: Prepare Supabase-compatible shims
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          create schema if not exists auth;
+          create schema if not exists storage;
+          create schema if not exists realtime;
+          create table if not exists auth.users (id uuid primary key);
+          create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
+          create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
+          create table if not exists storage.buckets (id text primary key, name text, public boolean);
+          create table if not exists storage.objects (id uuid default gen_random_uuid() primary key, bucket_id text, name text, owner uuid);
+          create or replace function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
+          create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void language sql as $$ select $$;
+          do $$ begin
+            if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
+            if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;
+            if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
+          end $$;
+          create publication supabase_realtime;
+          SQL
+
+      - name: Apply every migration in order
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "  $(basename "$f")"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      # NOTE the blanket grants from the `migrations` job are deliberately NOT run
+      # here. They exist to let the authorization tests act as `authenticated`, and
+      # one of them — `grant execute on all functions ... to anon` — would re-grant
+      # exactly what LIV-10 revoked, making the fingerprint disagree with production
+      # for a reason that is purely an artifact of the test harness.
+      - name: Compare against production
+        env:
+          EPHEMERAL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: scripts/schema-parity.sh
 
   board-readonly:
     name: board is proposal-only
