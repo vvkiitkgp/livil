@@ -1090,4 +1090,99 @@ select pg_temp.assert(
 
 reset role;
 
+
+-- ============================================================================
+-- Comment like counts, and conversation drift — 20260722180000
+-- ============================================================================
+--
+-- tg_post_comment_likes_count was SECURITY INVOKER, alone among the six counter trigger
+-- functions. Its `update post_comments set like_count` therefore ran as the CALLER under
+-- RLS, and the only UPDATE policy there is `author_id = auth.uid()` — so liking someone
+-- else's comment matched zero rows and the count never moved. No error: an RLS-filtered
+-- UPDATE is an update of nothing, not a failure. Reproduced with a control before fixing:
+-- liking another's comment gave 0, liking your own gave 1.
+--
+-- #1 is therefore the assertion that matters, and it must use a comment the liker did NOT
+-- write, or it passes against the broken version.
+
+insert into post_comments (id, post_id, author_id, body) values
+  ('f0000000-0000-0000-0000-0000000000f1', 'f0000000-0000-0000-0000-0000000000a2',
+   '11111111-1111-1111-1111-111111111111', 'alice wrote this')
+on conflict do nothing;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+insert into post_comment_likes (comment_id, user_id) values
+  ('f0000000-0000-0000-0000-0000000000f1', '33333333-3333-3333-3333-333333333333');
+reset role;
+
+select pg_temp.assert(
+  'likes #1: liking ANOTHER user''s comment increments like_count (was silently lost)',
+  (select like_count = 1 from post_comments where id='f0000000-0000-0000-0000-0000000000f1'), true);
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+delete from post_comment_likes where comment_id='f0000000-0000-0000-0000-0000000000f1'
+                                 and user_id='33333333-3333-3333-3333-333333333333';
+reset role;
+
+select pg_temp.assert(
+  'likes #2: ...and unliking decrements it',
+  (select like_count = 0 from post_comments where id='f0000000-0000-0000-0000-0000000000f1'), true);
+
+-- ── conversations: derived and identity columns ─────────────────────────────
+-- conv_update was a bare USING with no WITH CHECK and no column constraint, so any admin
+-- could write an arbitrary last_message_preview (shown to every member in their inbox)
+-- and an arbitrary last_message_at (which that list sorts by).
+
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+
+select pg_temp.assert(
+  'conv #1: an admin CANNOT forge last_message_preview',
+  pg_temp.update_raises($q$update conversations set last_message_preview='FAKE'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+select pg_temp.assert(
+  'conv #2: an admin CANNOT pin a conversation by setting last_message_at',
+  pg_temp.update_raises($q$update conversations
+     set last_message_at = now() + interval '10 years'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+select pg_temp.assert(
+  'conv #3: kind is immutable',
+  pg_temp.update_raises($q$update conversations set kind='dm'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+select pg_temp.assert(
+  'conv #4: created_by is immutable',
+  pg_temp.update_raises($q$update conversations
+     set created_by='33333333-3333-3333-3333-333333333333'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+-- The freeze must not break the one thing the client actually does.
+select pg_temp.assert(
+  'conv #5: renaming a group still works (the only client update)',
+  pg_temp.update_raises($q$update conversations set name='Renamed'
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), false);
+
+reset role;
+
+select pg_temp.assert(
+  'conv #6: ...and the rename landed',
+  (select name = 'Renamed' from conversations where id='aaaaaaaa-0000-0000-0000-000000000001'), true);
+
+-- And a real message must still drive the derived columns, at depth 2.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+insert into messages (conversation_id, sender_id, body, kind) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
+   'a genuine message', 'text');
+reset role;
+
+select pg_temp.assert(
+  'conv #7: a real message STILL updates last_message_preview via the trigger',
+  (select last_message_preview = 'a genuine message'
+     from conversations where id='aaaaaaaa-0000-0000-0000-000000000001'), true);
+
 rollback;

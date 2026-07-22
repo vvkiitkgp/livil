@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 41 migration(s) in `supabase/migrations/`.
+Reconstructed from 42 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -134,6 +134,10 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 | `last_message_at` | `timestamptz` |
 | `last_message_preview` | `text` |
 | `created_at` | `timestamptz default now()` |
+
+**Triggers**
+
+- `trg_conversations_freeze_derived` — before update (`20260722180000_fix_comment_like_counts_and_conversation_drift.sql`)
 
 ### `device_tokens`
 
@@ -753,6 +757,7 @@ same row-level security policies that gate ordinary reads.
 | Trigger | Table | Timing | Migration |
 |---|---|---|---|
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
+| `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
