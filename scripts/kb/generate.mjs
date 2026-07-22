@@ -90,7 +90,31 @@ if (check) {
   // Only consider TRACKED, MODIFIED generated files. `git status --porcelain` also lists
   // untracked and hand-written files, which produced "docs are out of date" failures that
   // had nothing to do with generated output.
-  const dirty = execSync('git diff --name-only -- kb/', { cwd: REPO, encoding: 'utf8' }).trim();
+  //
+  // Narrowed again 2026-07-22: scoping to `kb/` was still too wide. It failed on ANY
+  // hand-edited document under kb/ — the routine case — with the message "generated
+  // documents are out of date. Run: npm run kb:generate", which does not fix it, because
+  // the file was never generated. A gate that fires on the normal workflow and prescribes
+  // a remedy that cannot work is one people learn to ignore (P6). Scope it to the files
+  // these generators actually write, so a failure means what it says.
+  //
+  // Derived from GENERATORS rather than hardcoded: a new generator is then covered
+  // automatically, and cannot be silently uncovered by someone forgetting this list.
+  const GENERATED_PATHS = [
+    'kb/architecture/data-model.md',
+    'kb/architecture/inventory.md',
+    'kb/architecture/rpc-reference.md',
+    'kb/security/rls-policies.md',
+    'kb/ai-org/knowledge-map.md',
+    // Private originals, when that repo is present. Gitignored here, so `git diff` in
+    // THIS repo never reports them — listed for the reader, not for the check.
+    'kb/private/architecture/rpc-reference.md',
+    'kb/private/security/rls-policies.md',
+  ];
+  const dirty = execSync(
+    `git diff --name-only -- ${GENERATED_PATHS.map(p => `'${p}'`).join(' ')}`,
+    { cwd: REPO, encoding: 'utf8' },
+  ).trim();
   if (dirty) {
     console.error('\nFAIL  generated documents are out of date. Run: npm run kb:generate\n');
     console.error(dirty + '\n');
