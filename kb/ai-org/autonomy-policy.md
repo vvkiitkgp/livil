@@ -72,13 +72,27 @@ GitHub API on 2026-07-22, because this claim is load-bearing for the whole Tier 
 argument and had never been checked:
 
 ```
-required_status_checks: 6 contexts, correctly configured
+# classic branch protection
+required_status_checks:        6 contexts, correctly configured
 enforce_admins:                false
 required_pull_request_reviews: null
-ruleset "Protect main" bypass: RepositoryRole 5, bypass_mode "always"
+
+# ruleset "Protect main" — a SECOND, overlapping system
+rules:  deletion, non_fast_forward,
+        pull_request { required_approving_review_count: 1 }
+bypass_actors: [RepositoryRole 5, bypass_mode "always"]
 ```
 
-So the six required checks bind everyone **except the sole maintainer**, who can push
+**Read both.** Protection is configured in two overlapping systems, and reading only the
+classic one is misleading: it reports `required_pull_request_reviews: null`, which looks
+like no review is required, while the ruleset requires one approving review. The first
+audit of this drew the weaker conclusion from the classic API alone; the discrepancy
+surfaced only when a real PR came back `BLOCKED` with every check green.
+
+So for anyone who is not a bypass actor, `main` requires a PR, one approving review, and
+six green contexts. That is a **stronger** guarantee than the classic API suggests.
+
+For the sole maintainer, who holds the always-bypass, all of it is advisory: they can push
 directly to `main` and merge past a red build. This is not an oversight to be fixed by
 default — a single maintainer needs an escape hatch, and removing it would mean a broken
 gate could lock the only person who can repair it out of the repository. It is recorded
