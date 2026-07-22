@@ -185,7 +185,21 @@ jobs:
           -- referenced inside a policy expression, so `authenticated` must be able to
           -- execute those SECURITY DEFINER helpers or a legitimate member is denied
           -- for the wrong reason.
-          grant execute on all functions in schema public to authenticated, anon;
+          grant execute on all functions in schema public to authenticated;
+
+          -- NOT granted to `anon`, deliberately, and this was a real gate defect until
+          -- 2026-07-22. A blanket grant to anon here UNDID every `revoke execute ... from
+          -- anon` the migrations issue, so CI was systematically MORE PERMISSIVE than
+          -- production and no test could ever observe an anon-reachable function. It was
+          -- found when `delete #2` ("anon cannot execute delete_my_account") failed in CI
+          -- while being true in production.
+          --
+          -- Dropping anon here is safe: PostgreSQL's default is EXECUTE TO PUBLIC, which
+          -- anon already inherits, so every function keeps working EXCEPT the handful the
+          -- migrations explicitly revoke — which is exactly the production shape we want
+          -- to test against. See the same argument in
+          -- 20260722160000_counters_are_not_client_writable.sql, where the harness
+          -- re-granting is the reason a column-level REVOKE was rejected as a mechanism.
           SQL
 
 

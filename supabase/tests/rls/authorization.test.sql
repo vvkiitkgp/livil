@@ -1226,4 +1226,79 @@ select pg_temp.assert(
 
 reset role;
 
+
+-- ============================================================================
+-- Account deletion — 20260722200000
+-- ============================================================================
+--
+-- docs/delete-account.html has been live since June telling users to go to
+-- Profile -> Settings -> Delete Account. None of that exists, and the database REFUSED
+-- to delete a profile at all: messages.sender_id, jam_rooms.host_id and
+-- jam_queue.suggested_by all referenced profiles(id) with NO ACTION, so deleting anyone
+-- who had ever sent a message failed with 23503. The email fallback on that page could
+-- not have been honoured either.
+--
+-- #1 is the assertion that matters most and it is a structural one: the function takes
+-- NO argument. ADR-0008 decision #1 applied to a much more dangerous verb than a
+-- notification — a caller-supplied user id here would be account-deletion-as-a-service.
+-- Asserting the arity is asserting that the defect is unrepresentable rather than merely
+-- unchecked.
+
+select pg_temp.assert(
+  'delete #1: delete_my_account takes NO parameter, so a victim cannot be named',
+  (select pronargs = 0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname='public' and p.proname='delete_my_account'), true);
+
+select pg_temp.assert(
+  'delete #2: anon cannot execute it',
+  has_function_privilege('anon', 'public.delete_my_account()', 'execute'), false);
+
+select pg_temp.assert(
+  'delete #3: no foreign key into profiles blocks deletion any more',
+  (select count(*) = 0 from pg_constraint
+    where contype='f' and confrelid='public.profiles'::regclass
+      and confdeltype in ('a','r')), true);
+
+-- ── The property: a real deletion, and what survives it ─────────────────────
+insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000e9') on conflict do nothing;
+insert into profiles (id, username, username_set) values
+  ('f0000000-0000-0000-0000-0000000000e9', 'leaving', true) on conflict do nothing;
+insert into conversation_members (conversation_id, user_id, role) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000e9', 'member')
+on conflict do nothing;
+insert into messages (id, conversation_id, sender_id, body, kind) values
+  ('f0000000-0000-0000-0000-0000000000ea', 'aaaaaaaa-0000-0000-0000-000000000001',
+   'f0000000-0000-0000-0000-0000000000e9', 'the recipient keeps this', 'text')
+on conflict do nothing;
+
+select pg_temp.set_user('f0000000-0000-0000-0000-0000000000e9');
+select public.delete_my_account();
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+
+select pg_temp.assert(
+  'delete #4: the account is gone',
+  (select not exists (select 1 from auth.users where id='f0000000-0000-0000-0000-0000000000e9')), true);
+
+-- The reason SET NULL was chosen over CASCADE. docs/delete-account.html section 3 does not
+-- list sent messages among deleted data, and section 4 says content shared with others may
+-- persist. CASCADE would punch holes in the RECIPIENT's history of a conversation they
+-- took part in. If someone later "simplifies" these FKs to CASCADE, this fails.
+select pg_temp.assert(
+  'delete #5: a message the deleted user sent SURVIVES for its recipient',
+  (select body = 'the recipient keeps this'
+     from messages where id='f0000000-0000-0000-0000-0000000000ea'), true);
+
+select pg_temp.assert(
+  'delete #6: ...with its sender nulled rather than the row removed',
+  (select sender_id is null from messages where id='f0000000-0000-0000-0000-0000000000ea'), true);
+
+-- Deleting yourself must not touch anyone else. Cheap to assert, and the failure mode it
+-- guards against is catastrophic and silent.
+select pg_temp.assert(
+  'delete #7: other accounts are untouched',
+  (select count(*) = 3 from auth.users
+    where id in ('11111111-1111-1111-1111-111111111111',
+                 '22222222-2222-2222-2222-222222222222',
+                 '33333333-3333-3333-3333-333333333333')), true);
+
 rollback;
