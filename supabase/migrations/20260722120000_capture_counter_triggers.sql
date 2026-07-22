@@ -34,6 +34,23 @@
 -- opposite direction — writing what we think they should say and applying it — would be
 -- a behavioural change wearing a documentation change's clothes.
 --
+-- THE TRIGGER WRAPPERS WERE DUMPED TOO, via pg_get_triggerdef — not reconstructed.
+-- That distinction matters and the security review was right to demand it:
+-- pg_get_functiondef returns the FUNCTION only and says nothing about a trigger's
+-- timing, event list, row-vs-statement, column list or WHEN clause. Since every
+-- `create trigger` below is preceded by `drop trigger if exists`, applying this file
+-- REPLACES the live trigger — so a wrapper reconstructed from memory would silently
+-- change production, and (until this branch added pg_get_triggerdef to the fingerprint)
+-- the parity check could not have seen it.
+--
+-- Verified against production 2026-07-22, all five identical, none carrying a WHEN
+-- clause or a column list:
+--   trg_post_likes_count        AFTER INSERT OR DELETE ON public.post_likes    FOR EACH ROW
+--   trg_post_comments_count     AFTER INSERT OR DELETE ON public.post_comments FOR EACH ROW
+--   trg_post_reposts_count      AFTER INSERT OR DELETE ON public.posts         FOR EACH ROW
+--   trg_post_views_count        AFTER INSERT           ON public.post_views    FOR EACH ROW
+--   trg_follows_profile_counts  AFTER INSERT OR DELETE ON public.follows       FOR EACH ROW
+--
 -- Before transcribing, the guards were checked rather than assumed, because capturing
 -- production blindly is exactly how a security fix gets silently reverted (the D-53
 -- lesson). Verified 2026-07-22: production's create_jam_room and get_jam_snapshot both
@@ -166,9 +183,21 @@ create trigger trg_post_views_count
 -- ============================================================================
 --
 -- One trigger maintains BOTH sides of the edge: the followed user's followers_count and
--- the follower's following_count. Note it does not filter on follows.kind, so a 'star'
--- edge counts the same as a plain follow — matching production behaviour, recorded here
--- rather than corrected, because changing it would move numbers users can see.
+-- the follower's following_count.
+--
+-- It does not filter on follows.kind, and that is correct rather than an oversight —
+-- an earlier version of this comment claimed a 'star' edge "counts the same as a plain
+-- follow", which describes a state the schema cannot reach. `follows_kind_check`
+-- (00000000000000_baseline_schema.sql:170) constrains kind to 'star' and the column
+-- defaults to 'star', so THERE IS NO PLAIN FOLLOW. A `where kind = 'star'` filter here
+-- would be dead code.
+--
+-- The coupling is worth stating because it is remote and silent: src/services/follows.ts
+-- :22,27 DOES filter `.eq('kind','star')` when counting. Trigger and client agree today
+-- only because the CHECK constraint forces them to. If a migration ever relaxes
+-- follows_kind_check to admit a second kind, this trigger starts over-counting
+-- followers_count while the client's own count query does not — a divergence with no
+-- test behind it. Relaxing that constraint means revisiting this function.
 
 create or replace function public.tg_follows_profile_counts()
 returns trigger
@@ -216,6 +245,18 @@ create trigger trg_follows_profile_counts
 
 drop function if exists public.get_new_fans_summary();
 drop function if exists public.mark_fans_seen();
+
+-- The COLUMN from that same migration, which an earlier draft of this file forgot.
+-- Caught by the security review, and the omission is instructive: after the two function
+-- drops, functions would agree while profiles.fans_seen_at still existed in production
+-- and not in a replay — and scripts/schema-fingerprint.sql compares policies, RLS,
+-- functions and triggers but NOT COLUMNS, so parity would have reported green over a
+-- real remaining divergence. On a branch whose entire premise is that unmeasured object
+-- classes are where drift hides, that is the mistake to avoid twice.
+--
+-- Safe: no reference in src/ or lib/ except the generated database.types.ts, and the
+-- NewFansBanner that used it was removed in June.
+alter table public.profiles drop column if exists fans_seen_at;
 
 
 -- ============================================================================

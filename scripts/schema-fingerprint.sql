@@ -121,7 +121,14 @@ union all
 -- that maintain them, so a database rebuilt from source has every counter permanently
 -- at zero. D-08 was closed on "31 tables / 99 policies" — tables and policies matched,
 -- and nobody counted functions or triggers.
-select format('TRIGGER %s.%s fn=%s enabled=%s', c.relname, t.tgname, p.proname, t.tgenabled)
+-- pg_get_triggerdef, not just the function name: the wrapper carries the timing, the
+-- event list, row-vs-statement, the column list and any WHEN clause, and NONE of that is
+-- visible in the function it calls. Without this, a migration could replace a live
+-- trigger's timing or drop its WHEN clause and parity would still read green — which is
+-- precisely the "the check passed" that would not have been evidence.
+select format('TRIGGER %s.%s enabled=%s def=%s',
+              c.relname, t.tgname, t.tgenabled,
+              regexp_replace(pg_get_triggerdef(t.oid), '\s+', ' ', 'g'))
   from pg_trigger   t
   join pg_class     c on c.oid = t.tgrelid
   join pg_namespace n on n.oid = c.relnamespace
