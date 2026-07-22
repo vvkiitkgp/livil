@@ -916,7 +916,14 @@ select pg_temp.assert(
   (select reposts_count = 1 from posts where id='f0000000-0000-0000-0000-0000000000a1'), true);
 
 -- ── The carve-out: the FK cascade must still work ───────────────────────────
+-- Deliberately as `authenticated`, not as the owner. The whole carve-out rests on the
+-- EXISTS inside the trigger seeing the parent as already gone during the RI action, and
+-- the production path is a user deleting their own post under posts_delete_own. Running
+-- it as superuser would pass for a reason that does not apply in production.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
 delete from posts where id='f0000000-0000-0000-0000-0000000000a1';
+reset role;
 
 select pg_temp.assert(
   'freeze #6: deleting an original still succeeds despite ON DELETE SET NULL firing',
@@ -949,5 +956,11 @@ select pg_temp.assert(
    where id='f0000000-0000-0000-0000-0000000000d1'$q$), false);
 
 reset role;
+
+-- update_raises returning false only means "nothing raised". An UPDATE that RLS filtered
+-- to zero rows returns false too, so #9 could pass vacuously. Assert the write landed.
+select pg_temp.assert(
+  'freeze #10: ...and the edit actually landed (guards #9 against a vacuous pass)',
+  (select body = 'edited' from post_comments where id='f0000000-0000-0000-0000-0000000000d1'), true);
 
 rollback;

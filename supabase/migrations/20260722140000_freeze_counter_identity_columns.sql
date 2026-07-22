@@ -83,6 +83,7 @@
 create or replace function public.posts_freeze_counter_identity()
 returns trigger
 language plpgsql
+security definer
 set search_path = public
 as $$
 begin
@@ -97,7 +98,7 @@ begin
     -- cleared, and the post it pointed at no longer exists.
     if not (new.original_post_id is null
             and old.original_post_id is not null
-            and not exists (select 1 from posts where id = old.original_post_id)) then
+            and not exists (select 1 from public.posts where id = old.original_post_id)) then
       raise exception 'posts.original_post_id is immutable'
         using errcode = '42501';
     end if;
