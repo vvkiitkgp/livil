@@ -1053,4 +1053,41 @@ select pg_temp.assert(
   'counter #9: ...and that edit actually landed',
   (select caption = 'edited caption' from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
 
+-- The profiles depth-2 path, which nothing else covers. This is the one where a silent
+-- break stops follower counts product-wide, and it is also the only one of the three
+-- where a second BEFORE UPDATE trigger co-fires (trg_enforce_username_immutable, which
+-- sorts first by name) — so "the guard and the identity trigger coexist" is asserted here
+-- rather than assumed.
+select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+insert into follows (follower_id, following_id, kind) values
+  ('22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-333333333333', 'star');
+reset role;
+
+select pg_temp.assert(
+  'counter #10: a real follow STILL increments followers_count via the trigger',
+  (select followers_count = 1 from profiles where id='33333333-3333-3333-3333-333333333333'), true);
+
+select pg_temp.assert(
+  'counter #11: ...and the follower''s following_count too',
+  (select following_count = 1 from profiles where id='22222222-2222-2222-2222-222222222222'), true);
+
+-- The `auth.uid() is not null` half of the guard is unconditionally OFF for a null-uid
+-- caller. That is safe today only because no policy on these three tables is granted to
+-- `anon` — verified against production 2026-07-22. Nothing else in this suite exercises
+-- the null branch, because set_user always installs a constant-returning auth.uid(). The
+-- day someone adds a `to anon` write policy, this is what fails.
+create or replace function auth.uid() returns uuid language sql stable as $f$ select null::uuid $f$;
+set local role anon;
+
+select pg_temp.assert(
+  'counter #12: anon cannot reach the counter columns at all (no write policy applies)',
+  (select count(*) = 0 from pg_policy
+    where polrelid in ('public.posts'::regclass,'public.profiles'::regclass,
+                       'public.post_comments'::regclass)
+      and polcmd in ('a','w','*')
+      and (polroles::regrole[])::text like '%anon%'), true);
+
+reset role;
+
 rollback;

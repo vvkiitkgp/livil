@@ -224,6 +224,14 @@ end $$;
 revoke execute on function public.posts_clamp_counters_on_insert() from public, anon, authenticated;
 revoke execute on function public.profiles_freeze_counters()       from public, anon, authenticated;
 
+-- Re-issued for the two functions this file REPLACES rather than creates. `create or
+-- replace` preserves an existing ACL, so these are already revoked — but relying on that
+-- makes the privilege depend on apply order, and 20260722120000:262-279 records this repo
+-- being bitten by exactly the reverse (production kept a revoke a fresh replay did not
+-- have). Two lines removes the dependency.
+revoke execute on function public.posts_freeze_counter_identity() from public, anon, authenticated;
+revoke execute on function public.post_comments_freeze_post_id()  from public, anon, authenticated;
+
 
 -- ============================================================================
 -- 5. Verify
@@ -235,7 +243,16 @@ begin
   select string_agg(t.name, ', ') into v_missing
   from (values
     ('trg_posts_clamp_counters_on_insert', 'posts'),
-    ('trg_profiles_freeze_counters',       'profiles')
+    ('trg_profiles_freeze_counters',       'profiles'),
+    -- The two this file REPLACES the function of but does not create. Without these rows
+    -- the check has a silent-no-op hole that is this branch's own subject: if
+    -- 20260722140000 never reached the database, applying this file creates two orphan
+    -- functions nothing invokes, prints nothing, passes its own verify — and
+    -- `update posts set views_count = 2000000000` still succeeds. Only the profiles guard
+    -- and the INSERT clamp would be live. Given this repo has TWO recorded
+    -- merged-but-never-applied migrations, that is not hypothetical.
+    ('trg_posts_freeze_counter_identity',  'posts'),
+    ('trg_post_comments_freeze_post_id',   'post_comments')
   ) as t(name, tbl)
   where not exists (
     select 1 from pg_trigger g
@@ -247,5 +264,24 @@ begin
 
   if v_missing is not null then
     raise exception 'counter-write guards did not attach: %', v_missing;
+  end if;
+
+  -- Existence is not enough: a trigger left over from 20260722140000 would satisfy the
+  -- check above while calling a function body that has never heard of a counter. Assert
+  -- the guard is actually IN there.
+  select string_agg(t.fn, ', ') into v_missing
+  from (values
+    ('posts_freeze_counter_identity'), ('post_comments_freeze_post_id'),
+    ('profiles_freeze_counters'),      ('posts_clamp_counters_on_insert')
+  ) as t(fn)
+  where not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = t.fn
+       and pg_get_functiondef(p.oid) like '%pg_trigger_depth%'
+  );
+
+  if v_missing is not null then
+    raise exception
+      'counter guard missing from function body (stale definition?): %', v_missing;
   end if;
 end $$;
