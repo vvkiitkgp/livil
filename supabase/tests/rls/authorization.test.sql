@@ -1185,4 +1185,45 @@ select pg_temp.assert(
   (select last_message_preview = 'a genuine message'
      from conversations where id='aaaaaaaa-0000-0000-0000-000000000001'), true);
 
+-- ── The created_by carve-out ────────────────────────────────────────────────
+-- conversations.created_by is `references profiles(id) on delete set null`, and
+-- profiles.id cascades from auth.users. So deleting a user issues an UPDATE against every
+-- conversation they created. An unconditional freeze raises inside that cascade and makes
+-- the delete fail — for anyone who ever started a DM, since get_or_create_dm sets
+-- created_by on every one.
+--
+-- This is the SECOND time this exact trap has appeared (freeze #6/#7 cover the
+-- posts.original_post_id instance). The first version of this migration had the carve-out
+-- for posts and not for conversations; a security review caught it, not these tests. That
+-- is what these two assertions are for.
+
+insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000c9') on conflict do nothing;
+insert into profiles (id, username, username_set) values
+  ('f0000000-0000-0000-0000-0000000000c9', 'departing', true) on conflict do nothing;
+insert into conversations (id, kind, created_by, name) values
+  ('f0000000-0000-0000-0000-0000000000ca', 'group', 'f0000000-0000-0000-0000-0000000000c9', 'theirs')
+on conflict do nothing;
+
+delete from profiles where id='f0000000-0000-0000-0000-0000000000c9';
+
+select pg_temp.assert(
+  'conv #8: deleting a profile still succeeds despite ON DELETE SET NULL on created_by',
+  (select not exists (select 1 from profiles where id='f0000000-0000-0000-0000-0000000000c9')), true);
+
+select pg_temp.assert(
+  'conv #9: the conversation survives with created_by nulled by the cascade',
+  (select created_by is null from conversations where id='f0000000-0000-0000-0000-0000000000ca'), true);
+
+-- And the carve-out must stay narrow: nulling created_by by hand, while the profile is
+-- very much alive, is still refused.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+
+select pg_temp.assert(
+  'conv #10: created_by CANNOT be nulled by hand while the profile still exists',
+  pg_temp.update_raises($q$update conversations set created_by=null
+   where id='aaaaaaaa-0000-0000-0000-000000000001'$q$), true);
+
+reset role;
+
 rollback;

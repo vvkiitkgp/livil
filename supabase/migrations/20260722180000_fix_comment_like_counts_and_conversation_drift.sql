@@ -95,10 +95,18 @@ update public.post_comments c
 --
 -- Both message columns are maintained by update_conversation_last_message
 -- (20260528000000:167-193), a trigger on `messages`. So an admin can display an arbitrary
--- "last message" that nobody sent, and pin a conversation to the top of every member's
--- inbox indefinitely. Bounded to conversations you already administer, and not
--- anon-reachable — this is content spoofing, not privilege escalation, which is why it is
--- fixed here rather than treated as urgent.
+-- "last message" that nobody sent. Bounded to conversations you already administer, and
+-- not anon-reachable — content spoofing, not privilege escalation.
+--
+-- WHAT THIS DOES **NOT** CLOSE, corrected after review because the first draft implied it
+-- did: inbox PINNING is still reachable, by any member rather than only an admin, and by
+-- a different route. msg_insert (20260528000000:268-275) constrains sender_id and
+-- membership but NOT created_at, and PostgREST writes whatever columns the body names. So
+-- inserting a message dated ten years out passes the policy, and the trigger then writes
+-- that timestamp to last_message_at at depth 2 — which the guard below correctly permits,
+-- because that IS the legitimate path. list_my_conversations orders by last_message_at
+-- desc (:419). Closing it means clamping messages.created_at on insert, which is its own
+-- change on the hottest write path in the product and is not bundled here.
 --
 -- THE LEGITIMATE PATH IS PRESERVED: the only client update is updateGroupName
 -- (src/services/conversations.ts:217-225), which sends `{ name }` and nothing else.
@@ -116,9 +124,22 @@ begin
     raise exception 'conversations.kind is immutable'
       using errcode = '42501';
   end if;
+  -- created_by needs the same carve-out posts.original_post_id has, and an earlier
+  -- version of this file omitted it — caught in review. conversations.created_by is
+  -- `references profiles(id) on delete set null`, and profiles.id cascades from
+  -- auth.users, so deleting a user issues `update conversations set created_by = null`.
+  -- An unconditional freeze raises inside that cascade and aborts the delete, for anyone
+  -- who ever started a DM (get_or_create_dm sets created_by on every one).
+  --
+  -- Distinguished the same way as 20260722140000: during the RI action the parent row is
+  -- already gone, so the EXISTS is false; a hand-written null leaves the profile alive.
   if new.created_by is distinct from old.created_by then
-    raise exception 'conversations.created_by is immutable'
-      using errcode = '42501';
+    if not (new.created_by is null
+            and old.created_by is not null
+            and not exists (select 1 from public.profiles where id = old.created_by)) then
+      raise exception 'conversations.created_by is immutable'
+        using errcode = '42501';
+    end if;
   end if;
 
   -- Derived: owned by update_conversation_last_message, which runs nested on a message
