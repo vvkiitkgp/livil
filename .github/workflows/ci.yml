@@ -240,7 +240,14 @@ jobs:
     # rather than betting on it. That the main replay job tests a version production
     # does not run is a separate question, deliberately not changed here.
     # ========================================================================
-    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # workflow_dispatch is included so this can be run on demand, from any branch, without
+    # merging first. Without it the only way to learn whether the job works is to merge it
+    # and watch main — which is the same "find out in production" habit this job exists to
+    # end. It also gives an on-demand answer to "is production still in sync right now?"
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
 
     services:
       postgres:
