@@ -21,7 +21,8 @@
 --   5. activity_notify_friend_outcome — no proof a request existed; emission moved
 --      into accept/reject_friend_request, the transactions that can actually prove it
 --   6. activity_record_play / post_views — the RPC guard AND the direct-table path
---   7. revoke execute from public + anon on all five notification entry points
+--   7. revoke execute from public + anon on the four surviving notification
+--      entry points (a fifth, a dead activity_notify_post overload, is dropped)
 --
 -- Forward-only. Every statement is `if not exists` / `drop ... if exists` guarded and
 -- is a no-op when re-applied. Policies are OR'd, so every replacement DROPS the old
@@ -49,32 +50,132 @@
 -- the RPC. This is the jam_room_members bug of 20260721120000, on a different table;
 -- that migration fixed one instance and left this one open.
 --
--- THE FIX: there is no legitimate client-side self-insert. Both paths that add a
--- member to a conversation are SECURITY DEFINER and therefore bypass RLS entirely:
---   get_or_create_dm  (chat_jam.sql:157)  — gated by assert_friendship
---   create_group      (20260720192310)    — gated by assert_friendship per member
--- The only direct-table insert the client makes is addGroupMember()
--- (src/services/conversations.ts:127-131), which upserts role = 'member' and is an
--- admin action. So clause 1 is deleted rather than narrowed, and clause 2 is
--- additionally constrained to role = 'member' — no client path grants admin, and an
--- admin minting further admins is a durability escalation with no feature behind it.
+-- THE FIX — corrected after a BLOCKING security review of the first attempt.
+--
+-- The first version of this policy deleted clause 1 and constrained clause 2 to
+-- role = 'member', on the stated rationale that admin membership could only be
+-- obtained through a DEFINER path gated by assert_friendship. THAT RATIONALE WAS
+-- FALSE, and the chain survived intact:
+--
+--   create_group (20260720192310:119-130) validates members inside
+--     `foreach v_uid in array p_member_ids loop`
+--   An EMPTY array iterates zero times, so assert_friendship never runs — and the
+--   caller is then inserted as 'admin' unconditionally, by a DEFINER function that
+--   bypasses RLS.
+--
+--   So: rpc/create_group with p_member_ids = [] mints an admin membership for an
+--   attacker with zero friends and zero memberships; the role='member' constraint is
+--   then satisfied trivially and any victim can be inserted. Constraining WHAT ROLE an
+--   admin may grant, while leaving WHO may be granted it unconstrained, closed nothing.
+--
+-- The lesson is the one 20260721120000 already recorded and this file failed to copy:
+-- constrain the RELATIONSHIP, not the shape of the row. That migration required the
+-- inserted member to belong to the jam's parent conversation. The equivalent here is
+-- the rule create_group already means to enforce per member — you may only pull your
+-- own accepted friends into a conversation.
+--
+-- VERIFIED not to deny any legitimate caller. The only direct-table insert the client
+-- makes is addGroupMember() (src/services/conversations.ts:124-131), reached solely
+-- from GroupInfoScreen's picker, whose loadFriends() (:192-199) selects from
+-- friendships with status = 'accepted' and the caller as a participant. The picker
+-- cannot offer a non-friend, so this policy cannot refuse one.
+--
+-- Both halves are kept — friendship AND role = 'member' — because they answer
+-- different questions, and the review showed what happens when only one is asked.
 
 drop policy if exists "members_insert" on public.conversation_members;
 
 create policy "members_insert" on public.conversation_members
   for insert to authenticated
   with check (
-    -- An existing ADMIN of this exact conversation may add an ordinary member.
+    -- An existing ADMIN of this exact conversation…
     -- Note the correlated reference to conversation_members.conversation_id: the row
     -- being inserted must land in a conversation the caller already administers.
-    coalesce(conversation_members.role, 'member') = 'member'
-    and exists (
+    exists (
       select 1 from public.conversation_members cm
       where cm.conversation_id = conversation_members.conversation_id
         and cm.user_id = auth.uid()
         and cm.role = 'admin'
     )
+    -- …may add one of their own accepted friends…
+    -- This is the clause whose absence made the whole policy inert: without it, an
+    -- admin membership minted by create_group([]) admits ANY user in the product.
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.user_a_id = auth.uid() and f.user_b_id = conversation_members.user_id)
+          or (f.user_b_id = auth.uid() and f.user_a_id = conversation_members.user_id))
+    )
+    -- …as an ordinary member. No client path grants admin; an admin minting further
+    -- admins is a durability escalation with no feature behind it.
+    and coalesce(conversation_members.role, 'member') = 'member'
   );
+
+-- Defence in depth, and the root of the bypass above: refuse to mint an admin
+-- membership for a group that has no members to be friends with. The loop that
+-- validates p_member_ids is the ONLY authorization in create_group, so an empty array
+-- makes the function unauthorized by construction.
+--
+-- NOTE the check is "at least one member OTHER THAN the caller", not "the array is
+-- non-empty". The review proposed rejecting an empty array; that is one character
+-- short of the hole, because the loop body is guarded by `if v_uid <> v_me`, so
+-- p_member_ids = [caller] also iterates without ever calling assert_friendship and
+-- mints exactly the same memberless admin row.
+--
+-- VERIFIED not to deny any legitimate caller. create_group has exactly one caller —
+-- createGroup() (src/services/conversations.ts:66-73), reached only from
+-- NewConversationScreen:182, which already refuses an empty selection twice: a guard
+-- at :176 ("Select at least one friend") and a disabled submit button at :363.
+--
+-- Body otherwise VERBATIM from 20260720192310.
+create or replace function public.create_group(p_name text, p_member_ids uuid[])
+returns uuid
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_id   uuid;
+  v_me   uuid := auth.uid();
+  v_uid  uuid;
+begin
+  if v_me is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  -- AUTHORIZATION: a member list containing nobody but the caller means the loop
+  -- below checks nothing, and the caller would still be written in as admin.
+  if (select count(*) from unnest(coalesce(p_member_ids, '{}'::uuid[])) u
+       where u <> v_me) < 1 then
+    raise exception 'group_requires_members';
+  end if;
+
+  -- AUTHORIZATION: validate every member BEFORE creating anything, so a rejected
+  -- member cannot leave a half-built group behind.
+  foreach v_uid in array p_member_ids loop
+    if v_uid <> v_me then
+      perform assert_friendship(v_me, v_uid);
+    end if;
+  end loop;
+
+  insert into conversations (kind, name, created_by)
+  values ('group', p_name, v_me)
+  returning id into v_id;
+
+  insert into conversation_members (conversation_id, user_id, role)
+  values (v_id, v_me, 'admin');
+
+  foreach v_uid in array p_member_ids loop
+    if v_uid <> v_me then
+      insert into conversation_members (conversation_id, user_id, role)
+      values (v_id, v_uid, 'member')
+      on conflict (conversation_id, user_id) do nothing;
+    end if;
+  end loop;
+
+  return v_id;
+end;
+$function$;
 
 -- The same chain is reachable one step later through UPDATE. members_update was
 -- `using (user_id = auth.uid())` with NO WITH CHECK, so any member of any conversation
@@ -98,12 +199,20 @@ create policy "members_update" on public.conversation_members
 create or replace function public.conversation_members_freeze_identity()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   -- last_read_at is the only column the client updates (markAsRead). Membership
   -- identity and role are granted by an admin or by a SECURITY DEFINER RPC; they are
   -- never self-service. Raising insufficient_privilege rather than silently ignoring
   -- the change: a rejected privilege escalation should be visible.
+  --
+  -- IF YOU ARE HERE BECAUSE A PROMOTE-TO-ADMIN FEATURE HIT THIS EXCEPTION: this fires
+  -- for EVERY caller, including a future SECURITY DEFINER RPC, because triggers run
+  -- regardless of who is executing. Nothing does that today. When something does, give
+  -- it a named exemption (a session GUC set by that RPC, or an explicit condition
+  -- here) rather than deleting the trigger — deleting it reopens self-promotion for
+  -- every member of every conversation.
   if new.role is distinct from old.role
      or new.user_id is distinct from old.user_id
      or new.conversation_id is distinct from old.conversation_id then
@@ -478,7 +587,9 @@ begin
 
   delete from friendships where user_a_id = v_lo and user_b_id = v_hi;
 
-  -- Emitted before the row is forgotten. Same reasoning as accept.
+  -- Emitted immediately after the delete, in the same transaction that proved the
+  -- request was pending and was not the caller's own. Same reasoning as accept: this
+  -- is the last point at which the proof existed.
   insert into activity_notifications (recipient_id, type, actor_id, updated_at)
   values (other_user_id, 'friend_rejected', me, now());
 end;
@@ -628,7 +739,8 @@ $$;
 -- defence in depth, and it removes the class of bug where a future edit forgets that
 -- early return.
 --
--- Scoped to exactly the five entry points this ticket touches. A project-wide audit of
+-- Scoped to exactly the four surviving entry points this ticket touches (the fifth,
+-- activity_notify_post(uuid, text), was dropped above). A project-wide audit of
 -- the other ~35 functions is a separate ticket — a blanket revoke across the schema
 -- would be a change nobody in this PR verified.
 --
@@ -670,8 +782,27 @@ grant execute on function public.activity_record_play(uuid)                    t
 --
 -- polcmd: 'a' = insert, 'w' = update, '*' = all (which grants both).
 do $$
-declare v_extra text;
+declare
+  v_extra text;
+  v_norls text;
 begin
+  -- FIRST: a policy on a table with RLS disabled is inert. Every `create policy` above
+  -- would be decoration, the policy scan below would find nothing to complain about,
+  -- and this migration would report success on a perimeter that does not exist.
+  -- Checked before the policy scan because it invalidates the policy scan's meaning.
+  select string_agg(relname, ', ') into v_norls
+    from pg_class
+   where oid in ('public.conversation_members'::regclass,
+                 'public.friendships'::regclass,
+                 'public.post_views'::regclass)
+     and not relrowsecurity;
+
+  if v_norls is not null then
+    raise exception
+      'LIV-10 aborted: row-level security is DISABLED on %, so every policy in this migration is inert',
+      v_norls;
+  end if;
+
   select string_agg(format('%s (%s on %s)', polname, polcmd, polrelid::regclass), ', ')
     into v_extra
   from pg_policy

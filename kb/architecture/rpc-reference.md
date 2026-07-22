@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, P-SE, SR, BE]
-last_verified: 2026-07-21
+last_verified: 2026-07-22
 verify_every: 9999d
 verified_by: generated
 visibility: private-content

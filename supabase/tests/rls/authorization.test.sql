@@ -264,6 +264,29 @@ select pg_temp.assert(
 
 -- ── Extra fixtures ──────────────────────────────────────────────────────────
 -- Inserted as the owner, so RLS does not apply to the setup itself.
+
+-- A FOURTH user: dave is an accepted friend of alice, and belongs to no conversation.
+--
+-- He exists because the first version of this suite asserted that alice could add
+-- MALLORY — the file's designated outsider, and not her friend — and so pinned the
+-- unfixed vulnerability as intended behaviour. The positive case needs a user who is
+-- genuinely addable, and the negative case needs one who is genuinely not. Reusing
+-- mallory for both is what hid the hole.
+insert into auth.users (id) values
+  ('44444444-4444-4444-4444-444444444444')
+on conflict do nothing;
+
+insert into profiles (id, username, username_set) values
+  ('44444444-4444-4444-4444-444444444444', 'dave', true)
+on conflict do nothing;
+
+-- alice (1111…) < dave (4444…), which friendships_check requires.
+insert into friendships (user_a_id, user_b_id, requested_by, status, accepted_at) values
+  ('11111111-1111-1111-1111-111111111111',
+   '44444444-4444-4444-4444-444444444444',
+   '11111111-1111-1111-1111-111111111111', 'accepted', now())
+on conflict do nothing;
+
 insert into tracks (id, uploader_id, title, media_kind, audio_url) values
   ('cccccccc-0000-0000-0000-000000000001',
    '11111111-1111-1111-1111-111111111111', 'Alice Track', 'audio', 'https://x/a.mp3')
@@ -375,22 +398,104 @@ select pg_temp.assert(
   true);
 reset role;
 
--- POSITIVE — an ADMIN adding an ordinary member (addGroupMember,
--- src/services/conversations.ts:124). This is the only legitimate direct-table
--- insert; the DM and group-creation paths are SECURITY DEFINER and bypass RLS.
+-- THE CLAUSE THE FIRST ATTEMPT MISSED. An admin may add a FRIEND, not anyone.
+--
+-- This assertion previously ran the other way round — it asserted that alice COULD
+-- add mallory, who is not her friend — and so encoded the live vulnerability as the
+-- expected behaviour. A test can defend a bug as effectively as it can catch one.
+--
+-- Why it matters even though the policy also requires the caller to be an admin:
+-- create_group(p_member_ids => '{}') mints an admin membership for a user with no
+-- friends and no memberships at all, so "is an admin of this conversation" is a
+-- condition an attacker grants themselves. Friendship is the condition they cannot.
 select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
 set local role authenticated;
 select pg_temp.assert(
-  'LIV-10 #1: an admin CAN still add a member to their own conversation',
+  'LIV-10 #1: an admin CANNOT add a user they are not friends with',
   pg_temp.allows($$insert into conversation_members
       (conversation_id, user_id, role)
     values ('aaaaaaaa-0000-0000-0000-000000000001',
             '33333333-3333-3333-3333-333333333333', 'member')$$),
+  false);
+
+-- The role clause, isolated: dave satisfies BOTH other clauses (alice is an admin of
+-- this conversation, and they are accepted friends), so only `role = 'member'` can be
+-- what denies this. Runs BEFORE the positive insert below, because pg_temp.allows()
+-- reports a unique violation as "allowed" and dave must not already be a member.
+select pg_temp.assert(
+  'LIV-10 #1: an admin CANNOT grant admin, even to a friend',
+  pg_temp.allows($$insert into conversation_members
+      (conversation_id, user_id, role)
+    values ('aaaaaaaa-0000-0000-0000-000000000001',
+            '44444444-4444-4444-4444-444444444444', 'admin')$$),
+  false);
+
+-- POSITIVE — an admin adding an accepted FRIEND as a member (addGroupMember,
+-- src/services/conversations.ts:124, whose picker offers only accepted friends).
+-- This is the only legitimate direct-table insert; the DM and group-creation paths
+-- are SECURITY DEFINER and bypass RLS.
+select pg_temp.assert(
+  'LIV-10 #1: an admin CAN still add an accepted friend',
+  pg_temp.allows($$insert into conversation_members
+      (conversation_id, user_id, role)
+    values ('aaaaaaaa-0000-0000-0000-000000000001',
+            '44444444-4444-4444-4444-444444444444', 'member')$$),
   true);
 reset role;
 delete from conversation_members
  where conversation_id = 'aaaaaaaa-0000-0000-0000-000000000001'
-   and user_id = '33333333-3333-3333-3333-333333333333';
+   and user_id = '44444444-4444-4444-4444-444444444444';
+
+-- THE ROOT OF THE BYPASS: create_group's per-member friendship check lives inside a
+-- loop over p_member_ids, so an empty array authorizes nothing and still writes the
+-- caller in as admin. That admin row is the foothold every step above depends on.
+--
+-- '{}' and '{self}' are both asserted: the loop body is guarded by `if v_uid <> v_me`,
+-- so a list containing only the caller skips the check exactly as an empty one does.
+-- Returns the RAISED ERROR, or 'ok'. Returning the message rather than a boolean is
+-- deliberate: a bare `when others then return false` would report "denied" for ANY
+-- failure, so a create_group broken for an unrelated reason would make all three
+-- denials below pass while proving nothing. Asserting the specific error means each
+-- case must be refused by the guard it names.
+create or replace function pg_temp.create_group_result(p_members uuid[])
+returns text language plpgsql as $$
+declare v_id uuid;
+begin
+  select create_group('a group', p_members) into v_id;
+  return 'ok';
+exception when others then
+  return sqlerrm;
+end $$;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+select pg_temp.assert(
+  'LIV-10 #1: create_group with NO members cannot mint a memberless admin row',
+  pg_temp.create_group_result('{}'::uuid[]) = 'group_requires_members', true);
+-- The shape the review''s own suggestion would have missed: the loop body is guarded
+-- by `if v_uid <> v_me`, so a list containing only the caller skips assert_friendship
+-- exactly as an empty one does, and mints the same memberless admin row.
+select pg_temp.assert(
+  'LIV-10 #1: create_group listing only the caller cannot either',
+  pg_temp.create_group_result(array['33333333-3333-3333-3333-333333333333']::uuid[])
+    = 'group_requires_members', true);
+-- Unchanged behaviour, asserted because the new guard runs before it and must not
+-- shadow it: a non-empty list of non-friends is still refused by assert_friendship.
+select pg_temp.assert(
+  'LIV-10 #1: create_group still refuses a non-friend member',
+  pg_temp.create_group_result(array['11111111-1111-1111-1111-111111111111']::uuid[])
+    = 'not_friends', true);
+reset role;
+
+-- POSITIVE — create_group must still work for a real friend list, or group creation
+-- is dead. alice and dave are accepted friends.
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+set local role authenticated;
+select pg_temp.assert(
+  'LIV-10 #1: create_group CAN still create a group of friends',
+  pg_temp.create_group_result(array['44444444-4444-4444-4444-444444444444']::uuid[])
+    = 'ok', true);
+reset role;
 
 -- ============================================================================
 -- LIV-10 #2 — friendships: status was unconstrained
