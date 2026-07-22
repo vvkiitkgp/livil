@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 40 migration(s) in `supabase/migrations/`.
+Reconstructed from 41 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -550,6 +550,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `trg_post_reposts_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 - `trg_posts_freeze_counter_identity` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
+- `trg_posts_clamp_counters_on_insert` — before insert (`20260722160000_counters_are_not_client_writable.sql`)
 
 ### `profiles`
 
@@ -584,6 +585,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_enforce_username_immutable` — BEFORE UPDATE (`20260628000000_profiles_username_set_and_oauth_onboarding.sql`)
+- `trg_profiles_freeze_counters` — before update (`20260722160000_counters_are_not_client_writable.sql`)
 
 ### `profiles_private`
 
@@ -760,7 +762,9 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
+| `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
+| `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
 
 ## Related
 

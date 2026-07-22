@@ -963,4 +963,94 @@ select pg_temp.assert(
   'freeze #10: ...and the edit actually landed (guards #9 against a vacuous pass)',
   (select body = 'edited' from post_comments where id='f0000000-0000-0000-0000-0000000000d1'), true);
 
+
+-- ============================================================================
+-- Counters are derived, not client-writable — 20260722160000
+-- ============================================================================
+--
+-- The freeze above stops a count being MOVED between rows. It does not stop one being
+-- SET. posts_update_own constrains which ROWS you may write and nothing constrains which
+-- COLUMNS, so before this guard `update posts set views_count = 2000000000` succeeded —
+-- measured, not assumed. fetch_home_feed reads the score straight off the row, so that is
+-- one request to the top of every feed.
+--
+-- The mechanism is pg_trigger_depth(): a client statement's own BEFORE trigger observes
+-- depth 1, while the counter triggers' writes are nested at 2. These tests matter more
+-- than most because that separation is invisible in the function body — a reader cannot
+-- tell by inspection that legitimate counting still works, which is what #5 and #6 pin.
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'counter #1: a user CANNOT set views_count on their own post',
+  pg_temp.update_raises($q$update posts set views_count=2000000000
+   where id='f0000000-0000-0000-0000-0000000000b1'$q$), true);
+
+select pg_temp.assert(
+  'counter #2: a user CANNOT set reposts_count — the 3.0-weight ranking term',
+  pg_temp.update_raises($q$update posts set reposts_count=999999
+   where id='f0000000-0000-0000-0000-0000000000b1'$q$), true);
+
+select pg_temp.assert(
+  'counter #3: a user CANNOT set their own followers_count',
+  pg_temp.update_raises($q$update profiles set followers_count=500000
+   where id='33333333-3333-3333-3333-333333333333'$q$), true);
+
+select pg_temp.assert(
+  'counter #4: a user CANNOT set a comment''s like_count',
+  pg_temp.update_raises($q$update post_comments set like_count=4242
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), true);
+
+-- INSERT is a separate door: posts_insert_own's WITH CHECK cannot constrain a column it
+-- does not name, so the UPDATE guard alone would be bypassed by never updating.
+insert into posts (id, author_id, kind, track_id, views_count, reposts_count) values
+  ('f0000000-0000-0000-0000-0000000000e1', '33333333-3333-3333-3333-333333333333', 'upload',
+   'f0000000-0000-0000-0000-000000000001', 999999, 888888);
+
+reset role;
+
+select pg_temp.assert(
+  'counter #5: counters supplied at INSERT are clamped to zero',
+  (select views_count = 0 and reposts_count = 0
+     from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+-- ── The guard must not break counting itself ────────────────────────────────
+-- If these two fail, the fix has silently turned every counter in the product off, which
+-- is a worse outcome than the vulnerability it closes.
+select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+insert into post_likes (post_id, user_id) values
+  ('f0000000-0000-0000-0000-0000000000e1', '22222222-2222-2222-2222-222222222222');
+reset role;
+
+select pg_temp.assert(
+  'counter #6: a real like STILL increments likes_count (trigger runs at depth 2)',
+  (select likes_count = 1 from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+select pg_temp.set_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+delete from post_likes where post_id='f0000000-0000-0000-0000-0000000000e1'
+                         and user_id='22222222-2222-2222-2222-222222222222';
+reset role;
+
+select pg_temp.assert(
+  'counter #7: ...and unliking still decrements it',
+  (select likes_count = 0 from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
+-- ── The guard must not be too broad ─────────────────────────────────────────
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'counter #8: editing a non-counter column on your own post still works',
+  pg_temp.update_raises($q$update posts set caption='edited caption'
+   where id='f0000000-0000-0000-0000-0000000000e1'$q$), false);
+
+reset role;
+
+select pg_temp.assert(
+  'counter #9: ...and that edit actually landed',
+  (select caption = 'edited caption' from posts where id='f0000000-0000-0000-0000-0000000000e1'), true);
+
 rollback;
