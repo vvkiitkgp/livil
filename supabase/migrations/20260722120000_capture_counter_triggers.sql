@@ -260,7 +260,33 @@ alter table public.profiles drop column if exists fans_seen_at;
 
 
 -- ============================================================================
--- 7. Verify, rather than assert
+-- 7. EXECUTE privileges — matching production, which is stricter than the default
+-- ============================================================================
+--
+-- Found by the parity check itself on the run immediately after the first apply, which
+-- is a decent argument for the check: body hashes matched exactly while `public_exec`
+-- did not. Production has PUBLIC execute REVOKED on all five, and `create or replace`
+-- preserves an existing ACL — so production kept its revoke and only a fresh replay
+-- showed the PostgreSQL default of EXECUTE TO PUBLIC.
+--
+-- Production is right here and the default is wrong. A trigger function is invoked by
+-- the trigger machinery as the table owner; nothing should ever call these by name, and
+-- each is SECURITY DEFINER and writes to posts/profiles, so a directly-callable copy is
+-- a gift. `revoke` also removes the class of bug where someone later calls one manually
+-- to "fix" a counter and double-counts it.
+--
+-- No grant back to `authenticated`, deliberately — unlike LIV-10's section 7, where the
+-- client genuinely calls the RPCs, nothing calls these at all.
+
+revoke execute on function public.tg_post_likes_count()       from public, anon, authenticated;
+revoke execute on function public.tg_post_comments_count()    from public, anon, authenticated;
+revoke execute on function public.tg_post_reposts_count()     from public, anon, authenticated;
+revoke execute on function public.tg_post_views_count()       from public, anon, authenticated;
+revoke execute on function public.tg_follows_profile_counts() from public, anon, authenticated;
+
+
+-- ============================================================================
+-- 8. Verify, rather than assert
 -- ============================================================================
 --
 -- The whole point of this file is that nobody counted. So it counts, and refuses to
