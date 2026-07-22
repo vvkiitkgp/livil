@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-07-21
+last_verified: 2026-07-22
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 37 migration(s) in `supabase/migrations/`.
+Reconstructed from 38 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -115,6 +115,10 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 **Indexes**
 
 - `(unnamed)` `(user_id)`
+
+**Triggers**
+
+- `trg_conversation_members_freeze_identity` — before update (`20260722000000_liv10_authorization_guards.sql`)
 
 ### `conversations`
 
@@ -724,6 +728,7 @@ same row-level security policies that gate ordinary reads.
 
 | Trigger | Table | Timing | Migration |
 |---|---|---|---|
+| `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
