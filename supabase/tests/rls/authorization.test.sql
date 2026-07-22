@@ -834,4 +834,120 @@ select pg_temp.assert(
   'LIV-10 #7: activity_record_play is not executable by PUBLIC',
   pg_temp.public_can_execute('public.activity_record_play(uuid)'), false);
 
+
+-- ============================================================================
+-- Counter-identity freeze — 20260722140000
+-- ============================================================================
+--
+-- The counter triggers fire on INSERT and DELETE only, while posts_update_own and
+-- post_comments_update_self permit updating ANY column. Moving the column that decides
+-- WHICH row gets counted, in between the increment and the decrement, makes the two stop
+-- cancelling — so a user can floor another user's reposts_count or inflate their own,
+-- leaving no visible rows behind. reposts_count is the 3.0-weight term in the feed
+-- ranking score, the highest of the four.
+--
+-- These assert on real UPDATEs as `authenticated`, not on the trigger's existence: a test
+-- that checks pg_trigger would pass against a trigger whose body had been gutted.
+--
+-- The last two cases are the ones that make this fixable rather than merely strict.
+-- posts_original_post_id_fkey is ON DELETE SET NULL, so deleting an original UPDATEs
+-- every repost of it — a freeze that cannot tell that cascade from a hand-written null
+-- makes reposted posts undeletable, turning a security fix into an outage.
+
+create or replace function pg_temp.update_raises(stmt text)
+returns boolean language plpgsql as $$
+begin
+  execute stmt;
+  return false;                      -- completed, so the freeze did NOT stop it
+exception when insufficient_privilege then
+  return true;
+end $$;
+
+insert into tracks (id, uploader_id, title, media_kind, audio_url) values
+  ('f0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
+   'freeze fixture', 'audio', 'https://example.invalid/a.mp3')
+on conflict do nothing;
+
+insert into posts (id, author_id, kind, track_id) values
+  ('f0000000-0000-0000-0000-0000000000a1', '11111111-1111-1111-1111-111111111111', 'upload',
+   'f0000000-0000-0000-0000-000000000001'),
+  ('f0000000-0000-0000-0000-0000000000a2', '11111111-1111-1111-1111-111111111111', 'upload',
+   'f0000000-0000-0000-0000-000000000001'),
+  ('f0000000-0000-0000-0000-0000000000b1', '33333333-3333-3333-3333-333333333333', 'upload',
+   'f0000000-0000-0000-0000-000000000001')
+on conflict do nothing;
+
+insert into posts (id, author_id, kind, track_id, original_post_id) values
+  ('f0000000-0000-0000-0000-0000000000c1', '33333333-3333-3333-3333-333333333333', 'repost',
+   'f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000a1')
+on conflict do nothing;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'freeze #1: an upload CANNOT be switched to a repost pointing at another user''s post',
+  pg_temp.update_raises($q$update posts set kind='repost',
+     original_post_id='f0000000-0000-0000-0000-0000000000a1'
+   where id='f0000000-0000-0000-0000-0000000000b1'$q$), true);
+
+select pg_temp.assert(
+  'freeze #2: a repost CANNOT be retargeted at a different post (kind untouched)',
+  pg_temp.update_raises($q$update posts
+     set original_post_id='f0000000-0000-0000-0000-0000000000a2'
+   where id='f0000000-0000-0000-0000-0000000000c1'$q$), true);
+
+select pg_temp.assert(
+  'freeze #3: a repost CANNOT be orphaned by hand while its original still exists',
+  pg_temp.update_raises($q$update posts set original_post_id=null
+   where id='f0000000-0000-0000-0000-0000000000c1'$q$), true);
+
+select pg_temp.assert(
+  'freeze #4: a repost CANNOT be converted back to an upload',
+  pg_temp.update_raises($q$update posts set kind='upload'
+   where id='f0000000-0000-0000-0000-0000000000c1'$q$), true);
+
+reset role;
+
+-- The counter is the property that actually matters. If the freeze worked, the victim's
+-- count still reflects exactly the one real repost that exists.
+select pg_temp.assert(
+  'freeze #5: after four blocked attacks the victim''s reposts_count is unchanged',
+  (select reposts_count = 1 from posts where id='f0000000-0000-0000-0000-0000000000a1'), true);
+
+-- ── The carve-out: the FK cascade must still work ───────────────────────────
+delete from posts where id='f0000000-0000-0000-0000-0000000000a1';
+
+select pg_temp.assert(
+  'freeze #6: deleting an original still succeeds despite ON DELETE SET NULL firing',
+  (select not exists (select 1 from posts where id='f0000000-0000-0000-0000-0000000000a1')), true);
+
+select pg_temp.assert(
+  'freeze #7: the orphaned repost survives with original_post_id set to null',
+  (select original_post_id is null from posts where id='f0000000-0000-0000-0000-0000000000c1'), true);
+
+-- ── post_comments.post_id ───────────────────────────────────────────────────
+insert into post_comments (id, post_id, author_id, body) values
+  ('f0000000-0000-0000-0000-0000000000d1', 'f0000000-0000-0000-0000-0000000000a2',
+   '33333333-3333-3333-3333-333333333333', 'original body')
+on conflict do nothing;
+
+select pg_temp.set_user('33333333-3333-3333-3333-333333333333');
+set local role authenticated;
+
+select pg_temp.assert(
+  'freeze #8: a comment CANNOT be moved to a different post',
+  pg_temp.update_raises($q$update post_comments
+     set post_id='f0000000-0000-0000-0000-0000000000b1'
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), true);
+
+-- The freeze must be narrow. If this fails, the trigger is blocking legitimate edits and
+-- the first comment-edit feature will hit it.
+select pg_temp.assert(
+  'freeze #9: editing a comment''s BODY still works',
+  pg_temp.update_raises($q$update post_comments set body='edited'
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), false);
+
+reset role;
+
 rollback;

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 39 migration(s) in `supabase/migrations/`.
+Reconstructed from 40 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -430,6 +430,7 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_post_comments_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
+- `trg_post_comments_freeze_post_id` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
 
 ### `post_likes`
 
@@ -548,6 +549,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_post_reposts_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
+- `trg_posts_freeze_counter_identity` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
 
 ### `profiles`
 
@@ -753,9 +755,11 @@ same row-level security policies that gate ordinary reads.
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 
 ## Related
