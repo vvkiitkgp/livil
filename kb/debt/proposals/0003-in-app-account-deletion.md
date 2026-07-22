@@ -78,8 +78,15 @@ authorship display:
 | `track_collaborators.user_id` | already SET NULL | track credits |
 
 Render a single shared placeholder — a `[deleted]` display name and the existing initials
-fallback. Note the last two rows were **already** nullable, so this class of bug may exist
-today independently of deletion; that is worth checking while in the code.
+fallback. Note two of these were **already** nullable, so this class of bug may exist today
+independently of deletion; that is worth checking while in the code.
+
+**The `track_collaborators` row needs its own handling and is the easiest to miss.**
+`20260722200000` relaxed `collab_user_xor_custom` so a credit whose user was deleted
+becomes `(user_id null, custom_name null)` — previously an impossible state, which is
+exactly why the cascade failed with `23514` before the migration. Any credit renderer that
+assumes "no `user_id` means show `custom_name`" will now print an empty string. It should
+show the same `[deleted]` placeholder.
 
 ### 2. Settings screen
 

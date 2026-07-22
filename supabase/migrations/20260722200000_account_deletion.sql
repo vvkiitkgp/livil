@@ -126,6 +126,43 @@ alter table public.jam_queue
        foreign key (track_id) references public.tracks(id) on delete set null;
 
 
+-- ── And a CHECK constraint, which is a THIRD failure mode the FK walk cannot see ──
+--
+-- `track_collaborators.user_id` was ALREADY `on delete set null`, so it never appeared as
+-- a blocker in any foreign-key walk — including the generalized one in section 3, because
+-- a SET NULL edge neither blocks nor propagates. But the table also carries:
+--
+--   constraint collab_user_xor_custom check (
+--     (user_id is not null and custom_name is null)
+--     or (user_id is null and custom_name is not null))
+--
+-- and `src/services/tracks.ts:438-447` writes exactly `{user_id: <profile>, custom_name:
+-- null}` when crediting a real user. So the cascade's own UPDATE produces `(null, null)`,
+-- both disjuncts fail, and deletion aborts with 23514 — a CHECK violation, not 23503.
+--
+-- CONFIRMED AGAINST PRODUCTION: 18 such rows exist, all of them credits on a DIFFERENT
+-- uploader's track. This was not hypothetical; it would have failed for real users.
+--
+-- This repository has already paid for this exact lesson once:
+-- 20260607000009_allow_orphaned_reposts.sql exists solely because
+-- `posts_kind_shape_check` forbade the state that `posts.original_post_id ON DELETE SET
+-- NULL` produces. Same mechanism, different table, five weeks apart.
+--
+-- RELAXING THE CHECK RATHER THAN CASCADING THE FK, deliberately: CASCADE would delete a
+-- credit from ANOTHER uploader's track, which contradicts this file's own argument for
+-- SET NULL on messages — do not alter other people's records to tidy up your own
+-- departure. A `(null, null)` row is an anonymized credit and renders as the same
+-- `[deleted]` placeholder as every other nulled author. It is the seventh such surface
+-- and is listed in PROP-0003 §1.
+
+alter table public.track_collaborators
+  drop constraint if exists collab_user_xor_custom;
+
+alter table public.track_collaborators
+  add constraint collab_user_xor_custom
+  check (not (user_id is not null and custom_name is not null));
+
+
 -- ============================================================================
 -- 2. delete_my_account()
 -- ============================================================================
@@ -207,6 +244,17 @@ grant  execute on function public.delete_my_account() to authenticated;
 -- Verified before adoption: run against production BEFORE this migration, it returns all
 -- five real blockers — the three into `profiles` and the two into `tracks`. A check that
 -- only finds what you already knew is not evidence.
+--
+-- **AND IT IS STILL NOT SUFFICIENT ON ITS OWN.** A foreign-key walk cannot see the other
+-- ways a cascade fails: a CHECK constraint the resulting NULL violates (which is exactly
+-- what `collab_user_xor_custom` did, above, on 18 live rows), a NOT NULL column targeted
+-- by SET NULL, an ON DELETE SET DEFAULT whose default has no parent, or a BEFORE UPDATE
+-- trigger that raises — `posts_freeze_counter_identity` raises on any change to
+-- `original_post_id` and only permits this cascade because of a hand-written carve-out.
+--
+-- Which is why `delete #4`–`#7` in the test suite delete a MAXIMALLY CONNECTED user
+-- rather than one with a single message. The static check below proves a narrow property
+-- precisely; the dynamic test proves the property this migration actually claims.
 
 do $$
 declare

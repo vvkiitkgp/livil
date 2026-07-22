@@ -1260,7 +1260,7 @@ select pg_temp.assert(
 -- referencing profiles blocks" is not proving "an account can be deleted", and the gap
 -- between those sentences is where two real blockers lived.
 select pg_temp.assert(
-  'delete #3: NOTHING reachable from auth.users by cascade still blocks deletion',
+  'delete #3: no NO ACTION/RESTRICT foreign key is reachable from auth.users by cascade',
   (with recursive deleted_tables(oid) as (
      select 'auth.users'::regclass::oid
      union
@@ -1272,6 +1272,21 @@ select pg_temp.assert(
     where c.contype='f' and c.confdeltype in ('a','r')), true);
 
 -- ── The property: a real deletion, and what survives it ─────────────────────
+--
+-- The fixture is deliberately MAXIMALLY CONNECTED. An earlier version deleted a user
+-- whose only tie was one message, and it passed while deletion was broken twice over:
+-- once on tracks -> jam_rooms/jam_queue (NO ACTION, found by review), and once on
+-- track_collaborators' XOR CHECK, which no foreign-key walk can see because the FK was
+-- already SET NULL. Both would have failed here, loudly, against a user who had actually
+-- used the product.
+--
+-- Each tie below exists to exercise a distinct cascade mechanism:
+--   collaborator credit on ANOTHER user's track -> SET NULL into a CHECK constraint
+--   a repost of another user's post             -> the posts_freeze_counter_identity carve-out
+--   own track queued in someone ELSE's jam      -> profiles -> tracks -> jam_queue
+--   a jam they host                             -> SET NULL on host_id
+--   a conversation they created                 -> conversations_freeze_derived carve-out
+--   an activity notification they caused        -> actor_id SET NULL
 insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000e9') on conflict do nothing;
 insert into profiles (id, username, username_set) values
   ('f0000000-0000-0000-0000-0000000000e9', 'leaving', true) on conflict do nothing;
@@ -1281,6 +1296,52 @@ on conflict do nothing;
 insert into messages (id, conversation_id, sender_id, body, kind) values
   ('f0000000-0000-0000-0000-0000000000ea', 'aaaaaaaa-0000-0000-0000-000000000001',
    'f0000000-0000-0000-0000-0000000000e9', 'the recipient keeps this', 'text')
+on conflict do nothing;
+
+-- A credit on ALICE's track. This is the one that fails with 23514 if the XOR check is
+-- not relaxed — and it is invisible to any foreign-key walk.
+insert into track_collaborators (track_id, user_id, role, status) values
+  ('f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000e9',
+   'producer', 'accepted')
+on conflict do nothing;
+
+-- Their own track, and their own post of it.
+insert into tracks (id, uploader_id, title, media_kind, audio_url) values
+  ('f0000000-0000-0000-0000-0000000000eb', 'f0000000-0000-0000-0000-0000000000e9',
+   'their upload', 'audio', 'https://example.invalid/t.mp3')
+on conflict do nothing;
+insert into posts (id, author_id, kind, track_id) values
+  ('f0000000-0000-0000-0000-0000000000ec', 'f0000000-0000-0000-0000-0000000000e9', 'upload',
+   'f0000000-0000-0000-0000-0000000000eb')
+on conflict do nothing;
+
+-- A repost of ALICE's post: drives posts_freeze_counter_identity's ON DELETE SET NULL
+-- carve-out during the cascade, and decrements alice's reposts_count via the counter
+-- trigger at depth >= 2.
+insert into posts (id, author_id, kind, track_id, original_post_id) values
+  ('f0000000-0000-0000-0000-0000000000ed', 'f0000000-0000-0000-0000-0000000000e9', 'repost',
+   'f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000a2')
+on conflict do nothing;
+
+-- A jam they host, with THEIR track queued in it and set as current.
+insert into jam_rooms (id, conversation_id, host_id, status, current_track_id) values
+  ('f0000000-0000-0000-0000-0000000000ee', 'aaaaaaaa-0000-0000-0000-000000000001',
+   'f0000000-0000-0000-0000-0000000000e9', 'active', 'f0000000-0000-0000-0000-0000000000eb')
+on conflict do nothing;
+insert into jam_queue (jam_room_id, track_id, suggested_by) values
+  ('f0000000-0000-0000-0000-0000000000ee', 'f0000000-0000-0000-0000-0000000000eb',
+   'f0000000-0000-0000-0000-0000000000e9')
+on conflict do nothing;
+
+-- And their track queued in a jam hosted by SOMEONE ELSE, which is the tracks ->
+-- jam_queue path that the profiles-only check could never reach.
+insert into jam_queue (jam_room_id, track_id, suggested_by) values
+  ('bbbbbbbb-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000eb',
+   '11111111-1111-1111-1111-111111111111')
+on conflict do nothing;
+
+insert into activity_notifications (recipient_id, type, actor_id) values
+  ('11111111-1111-1111-1111-111111111111', 'new_fan', 'f0000000-0000-0000-0000-0000000000e9')
 on conflict do nothing;
 
 select pg_temp.set_user('f0000000-0000-0000-0000-0000000000e9');
@@ -1306,6 +1367,20 @@ select pg_temp.assert(
 
 -- Deleting yourself must not touch anyone else. Cheap to assert, and the failure mode it
 -- guards against is catastrophic and silent.
+-- The ties that must survive, anonymized rather than removed. #8 is the assertion that
+-- the XOR-check relaxation actually holds; #9 is the tracks -> jam_queue path.
+select pg_temp.assert(
+  'delete #8: a credit on ANOTHER user''s track survives, anonymized to (null, null)',
+  (select user_id is null and custom_name is null
+     from track_collaborators
+    where track_id='f0000000-0000-0000-0000-000000000001'
+      and role='producer'), true);
+
+select pg_temp.assert(
+  'delete #9: their track leaves someone else''s jam queue without blocking the delete',
+  (select track_id is null from jam_queue
+    where jam_room_id='bbbbbbbb-0000-0000-0000-000000000001'), true);
+
 select pg_temp.assert(
   'delete #7: other accounts are untouched',
   (select count(*) = 3 from auth.users
