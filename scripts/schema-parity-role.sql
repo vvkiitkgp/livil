@@ -60,11 +60,21 @@ revoke all on schema public from schema_parity_ro;
 -- ============================================================================
 -- GitHub -> repo Settings -> Secrets and variables -> Actions -> New secret
 --   Name:  PRODUCTION_DATABASE_URL
---   Value: postgresql://schema_parity_ro:<password>@<host>:5432/postgres?sslmode=require
+--   Value: postgresql://schema_parity_ro.<project-ref>:<password>@<pooler-host>:5432/postgres?sslmode=require
 --
--- Use the DIRECT connection host, not the pooler: the job issues one short catalog
--- query per run, so pooling buys nothing and the pooler's prepared-statement handling
--- is a needless variable in a check whose whole value is that it is boring.
+-- USE THE SESSION POOLER (port 5432), NOT the direct connection. This was learned the
+-- hard way: the direct host resolves to IPv6 only, and GitHub Actions runners have no
+-- IPv6, so the job fails with "Network is unreachable" — nothing to do with credentials
+-- or grants. Port 5432 (session), not 6543 (transaction): session mode behaves like a
+-- plain connection, and this job's whole value is that it is boring.
+--
+-- Note the username: the pooler requires `<role>.<project-ref>`, not the bare role name.
+--
+-- THE PASSWORD MUST BE ALPHANUMERIC. Also learned the hard way. A password containing
+-- `@` (or any of `: / ? # [ ]`) breaks URL parsing, and psql then reports the mangled
+-- HOSTNAME in its error — which contains part of the password. GitHub masks the exact
+-- secret value in logs, but not a substring of it, so the fragment lands in a public
+-- Actions log. Alphanumeric-only avoids the entire class.
 --
 -- ============================================================================
 -- 4. To undo

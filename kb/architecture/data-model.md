@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 38 migration(s) in `supabase/migrations/`.
+Reconstructed from 39 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -179,6 +179,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `follows_following_id_idx` `(following_id, created_at desc)`
 - `idx_follows_follower_kind` `(follower_id, kind, following_id)`
+
+**Triggers**
+
+- `trg_follows_profile_counts` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 
 ### `friendships`
 
@@ -423,6 +427,10 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 - `post_comments_top_sort_idx` `(post_id, parent_comment_id, like_count desc, created_at desc)`
 - `post_comments_parent_idx` `(parent_comment_id)`
 
+**Triggers**
+
+- `trg_post_comments_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
+
 ### `post_likes`
 
 RLS enabled · defined in `00000000000000_baseline_schema.sql`
@@ -440,6 +448,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Indexes**
 
 - `post_likes_user_id_idx` `(user_id, created_at desc)`
+
+**Triggers**
+
+- `trg_post_likes_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 
 ### `post_reports`
 
@@ -480,6 +492,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `post_views_post_id_idx` `(post_id)`
 - `post_views_user_id_played_at_idx` `(user_id, played_at desc)`
+
+**Triggers**
+
+- `trg_post_views_count` — after insert (`20260722120000_capture_counter_triggers.sql`)
 
 ### `posts`
 
@@ -528,6 +544,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `posts_track_id_idx` `(track_id)`
 - `idx_posts_created_at_id_desc` `(created_at DESC, id DESC)`
 - `idx_posts_author_created` `(author_id, created_at DESC)`
+
+**Triggers**
+
+- `trg_post_reposts_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 
 ### `profiles`
 
@@ -729,8 +749,13 @@ same row-level security policies that gate ordinary reads.
 | Trigger | Table | Timing | Migration |
 |---|---|---|---|
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
+| `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
+| `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 
 ## Related

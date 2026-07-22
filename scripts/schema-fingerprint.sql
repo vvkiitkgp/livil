@@ -94,6 +94,22 @@ select format('FUNC %s(%s) secdef=%s public_exec=%s anon_exec=%s body=%s',
   join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public'
    and p.prokind = 'f'
+   -- PLATFORM-OWNED, excluded deliberately and by name.
+   --
+   -- rls_auto_enable() is a Supabase event-trigger function that enables RLS on any new
+   -- table created in `public`. It is created by the platform, not by us, so it exists in
+   -- production and can never exist in a replay — a permanent one-line diff that would
+   -- train everyone to skim past this check's output (P6).
+   --
+   -- Excluded rather than captured: writing a platform object into our migrations means
+   -- fighting whatever the platform does with it next. It is benign to exclude — it
+   -- `returns event_trigger`, so it is not directly callable, and the migrations enable
+   -- RLS explicitly on all 31 tables anyway (verified: RLS state matches exactly), so it
+   -- is belt-and-braces rather than load-bearing.
+   --
+   -- Anything added here must be argued in a comment like this one. An unexplained name
+   -- on this list is indistinguishable from hiding a finding.
+   and p.proname not in ('rls_auto_enable')
 
 union all
 

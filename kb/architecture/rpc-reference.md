@@ -16,7 +16,7 @@ related_adrs: []
 that bypasses row-level security and assesses whether each performs an authorization check.
 Naming the ones that do not would hand an attacker a map, and this repository is public.
 
-Scope: 29 `SECURITY DEFINER` function(s) across the migration set.
+Scope: 34 `SECURITY DEFINER` function(s) across the migration set.
 
 | | |
 |---|---|
