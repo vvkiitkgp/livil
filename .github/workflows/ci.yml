@@ -226,6 +226,17 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/rpc-contracts.test.sql
 
+      # A SECURITY DEFINER function with no pinned search_path resolves unqualified
+      # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
+      # This asserts the property holds for every DEFINER function, so a new one added
+      # without `set search_path` fails on the migration that introduces it.
+      - name: SECURITY DEFINER search_path lint
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/definer-search-path.test.sql
+
   schema-parity:
     name: production matches the repo
     runs-on: ubuntu-latest
