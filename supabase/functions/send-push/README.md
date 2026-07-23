@@ -16,11 +16,17 @@ prod change and its authorization model is the whole point of the review.
 ## What the security review must confirm (see the SECURITY MODEL header in `index.ts`)
 
 1. **Auth**: actor is derived from the JWT, never the body; anon is rejected.
-2. **Authorization** (`authorize()`): deny-by-default, one relationship gate per `kind`.
-   Tighten the kinds marked `REVIEW` — `new_fan` is currently denied pending the stars
-   schema, and the `activity_*` / `message` gates are weaker than ideal because the client
-   args don't include the originating row id (this is the D-45 argument for server-side
-   dispatch).
+2. **Authorization** (`authorize()`): deny-by-default, one relationship gate per `kind`,
+   all against verified schema (`conversation_members`, `friendships.status='accepted'`
+   with `user_a_id`/`user_b_id`, the one-way `follows` star edge, `posts.author_id`):
+   - `message` / `reaction` / `jam_invite_dm` → a REAL conversation-membership intersection.
+   - `friend_accepted` / `jam_*` → an accepted (mutual) friendship exists.
+   - `new_follower` / `new_fan` → a one-way star edge `actor → recipient` exists.
+   - `activity_*` → **coarse** secondary gate (recipient is a real author). This is the one
+     that stays weak: the client args carry no post id and the legitimate dispatch already
+     passed `activity_notify_post` (a DEFINER RPC that authorizes). Verify this is acceptable,
+     or adopt D-45 (dispatch from inside that RPC) as the real fix.
+   - `friend_request` → allowed (the request IS the action); leans on the rate limit.
 3. **Content**: `title`/`body` are clamped and only ever placed in the notification body.
 4. **Rate limit**: `checkRateLimit` is in-memory and therefore advisory only — replace with
    a shared store before relying on it (D-12).

@@ -52,16 +52,26 @@ const KINDS = new Set([
   'activity_like', 'activity_comment', 'activity_repost', 'activity_milestone',
 ]);
 
-// notifee channels the client created (see ensureChannels in pushNotifications.ts).
-function channelFor(kind: string): string {
+// notifee channels the client actually created (ensureChannels in pushNotifications.ts):
+// 'social', 'activity', 'messages', 'jam'. Fixed from an earlier version that routed
+// activity_* to 'social' — the client has a dedicated 'activity' channel.
+export function channelFor(kind: string): string {
   if (kind === 'message' || kind === 'reaction') return 'messages';
   if (kind.startsWith('jam_')) return 'jam';
-  return 'social';
+  if (kind.startsWith('activity_')) return 'activity';
+  return 'social'; // friend_request, friend_accepted, new_follower, new_fan
 }
 
 const MAX_BODY = 240;
-const clamp = (s: unknown, n: number) =>
+export const clamp = (s: unknown, n: number) =>
   typeof s === 'string' ? s.slice(0, n) : '';
+
+export const isValidKind = (k: string): boolean => KINDS.has(k);
+export const isValidRecipient = (r: unknown): r is string =>
+  typeof r === 'string' && UUID_RE.test(r);
+// Only self-directed kinds may target the caller; everything else targeting yourself
+// is suspicious and denied.
+export const selfTargetAllowed = (kind: string): boolean => kind === 'activity_milestone';
 
 type PushRequest = {
   recipientUserId?: string;
@@ -89,51 +99,51 @@ function json(status: number, payload: Record<string, unknown>): Response {
 // given the originating row id — the like, the comment, the message). Where that is so,
 // this enforces the strongest relationship gate the args permit and the comment says
 // what is NOT proven. Tightening each is tracked with D-45.
-async function authorize(
+export async function authorize(
   admin: SupabaseClient,
   kind: string,
   actor: string,
   recipient: string,
 ): Promise<boolean> {
-  if (actor === recipient) {
-    // Only self-directed kinds may target yourself; everything else is suspicious.
-    return kind === 'activity_milestone';
-  }
+  if (actor === recipient) return selfTargetAllowed(kind);
 
   switch (kind) {
     case 'message':
     case 'reaction':
     case 'jam_invite_dm': {
-      // Must share a conversation. (Membership is the LIV-10/LIV-11 perimeter.)
-      const { data } = await admin.rpc('users_share_conversation', {
-        a: actor, b: recipient,
-      });
-      // Fallback if that helper is not deployed: a direct membership intersection.
-      if (typeof data === 'boolean') return data;
-      const { count } = await admin
-        .from('conversation_members')
-        .select('conversation_id', { count: 'exact', head: true })
-        .eq('user_id', recipient);
-      return (count ?? 0) > 0; // REVIEW: weak — see note; prefer the RPC intersection.
+      // Must share a conversation — a REAL intersection: some conversation_id that both
+      // actor and recipient are members of. (Membership is the LIV-10/LIV-11 perimeter.)
+      const [a, b] = await Promise.all([
+        admin.from('conversation_members').select('conversation_id').eq('user_id', actor),
+        admin.from('conversation_members').select('conversation_id').eq('user_id', recipient),
+      ]);
+      const mine = new Set((a.data ?? []).map((r: { conversation_id: string }) => r.conversation_id));
+      return (b.data ?? []).some((r: { conversation_id: string }) => mine.has(r.conversation_id));
     }
 
     case 'friend_request':
-      // Sending a request IS the action; recipient is the target. Allowed, but this is
-      // the prime spam vector — MUST be rate-limited (see checkRateLimit) and ideally
-      // gated on an actual pending friendships row written by send_friend_request.
+      // Sending a request IS the action; recipient is the target. Allowed, but it is the
+      // prime spam vector, so it leans on the rate limit in the handler (D-12).
       return true;
 
-    case 'friend_accepted': {
-      // A friendship edge (either direction) must now exist between the two.
+    case 'friend_accepted':
+    case 'jam_started':
+    case 'jam_join':
+    case 'jam_ended': {
+      // An ACCEPTED friendship must exist between the two (either direction). Columns are
+      // user_a_id / user_b_id (verified against the schema), status = 'accepted'.
       const { count } = await admin
         .from('friendships')
         .select('*', { count: 'exact', head: true })
-        .or(`and(user_a.eq.${actor},user_b.eq.${recipient}),and(user_a.eq.${recipient},user_b.eq.${actor})`);
+        .eq('status', 'accepted')
+        .or(`and(user_a_id.eq.${actor},user_b_id.eq.${recipient}),and(user_a_id.eq.${recipient},user_b_id.eq.${actor})`);
       return (count ?? 0) > 0;
     }
 
-    case 'new_follower': {
-      // Actor must actually follow recipient.
+    case 'new_follower':
+    case 'new_fan': {
+      // A star edge actor -> recipient must exist. `follows.kind` is always 'star' on this
+      // project (there is no plain follow), so new_follower and new_fan are the same edge.
       const { count } = await admin
         .from('follows')
         .select('*', { count: 'exact', head: true })
@@ -142,29 +152,15 @@ async function authorize(
       return (count ?? 0) > 0;
     }
 
-    case 'new_fan': {
-      // Actor must have starred a track owned by recipient. REVIEW: needs the stars
-      // schema; enforce it once confirmed. Deny until then.
-      return false;
-    }
-
-    case 'jam_started':
-    case 'jam_join':
-    case 'jam_ended': {
-      // Actor and recipient must share a jam room, or be friends (invites go to friends).
-      const { count } = await admin
-        .from('friendships')
-        .select('*', { count: 'exact', head: true })
-        .or(`and(user_a.eq.${actor},user_b.eq.${recipient}),and(user_a.eq.${recipient},user_b.eq.${actor})`);
-      return (count ?? 0) > 0;
-    }
-
     case 'activity_like':
     case 'activity_comment':
     case 'activity_repost': {
-      // Recipient must own a post the actor acted on. We are not given the post id, so
-      // at minimum require recipient to be a real author with ≥1 post. REVIEW/D-45:
-      // pass the post id and verify the like/comment/repost row exists.
+      // SECONDARY, coarse gate. The legitimate dispatch already passed activity_notify_post
+      // (a SECURITY DEFINER RPC that derives the recipient and authorizes the action), and
+      // the client args carry no post id (routing param is just 'ActivityCenter'), so this
+      // function cannot re-prove the specific like/comment/repost. It requires only that the
+      // recipient is a real author. The durable fix is D-45 — dispatch from inside that RPC
+      // so the edge function is not client-callable and the recipient is never a parameter.
       const { count } = await admin
         .from('posts')
         .select('id', { count: 'exact', head: true })
@@ -193,7 +189,7 @@ function checkRateLimit(actor: string): boolean {
   return true;
 }
 
-Deno.serve(async (req: Request): Promise<Response> => {
+export async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
   // 1. AUTHENTICATION — resolve the actor from the JWT, not the body.
@@ -276,7 +272,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   return json(200, { ok: true, sent, pruned: deadTokens.length });
-});
+}
+
+// Only start the server when run as the entrypoint — so the test file can import the
+// pure helpers and `handler`/`authorize` without binding a port.
+if (import.meta.main) Deno.serve(handler);
 
 // ── FCM HTTP v1 auth: mint an access token from the service account (RS256 JWT). ──
 // The legacy `key=` server-key API was decommissioned (2024), so v1 + OAuth2 is required.
