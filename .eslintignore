@@ -1,0 +1,4 @@
+node_modules
+# Supabase edge functions run on Deno, not the RN/Node app runtime — they use Deno
+# globals and jsr: imports the app's ESLint/TS config doesn't (and shouldn't) resolve.
+supabase/functions
