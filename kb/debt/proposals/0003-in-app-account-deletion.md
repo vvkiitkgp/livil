@@ -14,11 +14,30 @@ related_adrs: [0004, 0008]
 
 | | |
 |---|---|
-| **Status** | **Draft** |
-| **Date** | 2026-07-22 |
+| **Status** | **Ratified** — 2026-07-23 (human) |
+| **Date** | 2026-07-22 · ratified 2026-07-23 |
 | **Domain** | client (with data) |
 | **Addresses** | D-62, and the Play Store obligation attached to `docs/delete-account.html` |
-| **Jira** | *(added on ratification)* |
+| **Jira** | Epic *pending creation* — see Ratification note |
+
+---
+
+## Ratification note (2026-07-23)
+
+Ratified by the human maintainer. The database half is already merged (`955dd19`, PR #74)
+and applied to production; this ratification blesses the **client half** as work.
+
+**This does not, by itself, let an agent write the screens.** `src/screens/**` and
+`src/services/**` remain `propose_only` in `.claude/autonomy-config.yml` because they have
+no tests, and ratifying a proposal does not change that gate — the two are independent.
+For an agent to implement any plan step below, that path must first earn `writable` by
+gaining tests (the graduation criteria in `autonomy-policy.md`). Until then a human
+implements, which is the same rule that made this a proposal rather than a commit.
+
+Concretely: **plan step 3** (the `deleteMyAccount()` service, which the plan already says
+to unit-test) is the one step that can pull `src/services/profileService.ts` toward
+`writable` by bringing its own tests. The screen and rendering steps stay human-authored
+until `src/screens/**` has a testing story of its own.
 
 ---
 
