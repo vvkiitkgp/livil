@@ -13,7 +13,10 @@ prod change and its authorization model is the whole point of the review.
   flag this PR — that is the gate working, not a mistake.
 - Deploying to prod and holding the FCM service-account secret are human responsibilities.
 
-## What the security review must confirm (see the SECURITY MODEL header in `index.ts`)
+> Structure: `index.ts` is a thin entrypoint (`Deno.serve(handler)`); all logic + the
+> SECURITY MODEL header live in `app.ts`; `index.test.ts` imports from `app.ts`.
+
+## What the security review must confirm (see the SECURITY MODEL header in `app.ts`)
 
 1. **Auth**: actor is derived from the JWT, never the body; anon is rejected.
 2. **Authorization** (`authorize()`): deny-by-default, one relationship gate per `kind`,

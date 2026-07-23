@@ -15,7 +15,7 @@ import {
   isValidKind,
   isValidRecipient,
   selfTargetAllowed,
-} from './index.ts';
+} from './app.ts';
 
 // ── a minimal fake of the supabase-js query builder ─────────────────────────
 // resolver(table, filters, opts) returns the awaited `{ data }` or `{ count }`.
