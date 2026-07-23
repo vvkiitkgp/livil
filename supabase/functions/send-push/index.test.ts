@@ -12,6 +12,7 @@ import {
   authorize,
   channelFor,
   clamp,
+  defaultBody,
   isValidKind,
   isValidRecipient,
   selfTargetAllowed,
@@ -58,6 +59,14 @@ Deno.test('channelFor routes each kind to the channel the client created', () =>
   assertEquals(channelFor('activity_milestone'), 'activity');
   assertEquals(channelFor('friend_request'), 'social');
   assertEquals(channelFor('new_fan'), 'social');
+});
+
+Deno.test('defaultBody: kinds without client copy get server-generated text', () => {
+  assertEquals(defaultBody('friend_request'), 'sent you a friend request');
+  assertEquals(defaultBody('friend_accepted'), 'accepted your friend request');
+  assertEquals(defaultBody('new_fan'), 'started following you');
+  assertEquals(defaultBody('jam_invite_dm'), 'invited you to a Jam');
+  assertEquals(defaultBody('jam_ended'), 'ended the Jam');
 });
 
 Deno.test('clamp truncates and tolerates non-strings', () => {

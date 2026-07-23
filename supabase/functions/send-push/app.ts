@@ -58,6 +58,24 @@ const MAX_BODY = 240;
 export const clamp = (s: unknown, n: number) =>
   typeof s === 'string' ? s.slice(0, n) : '';
 
+// Server-side copy for the kinds the client dispatches WITHOUT title/body (the
+// relationship/jam kinds). The notification title is set to the actor's display name
+// separately, so these read as "<Actor> <body>". message/reaction/activity_*/milestone
+// carry their own client text and never reach here.
+export function defaultBody(kind: string): string {
+  switch (kind) {
+    case 'friend_request': return 'sent you a friend request';
+    case 'friend_accepted': return 'accepted your friend request';
+    case 'new_follower':
+    case 'new_fan': return 'started following you';
+    case 'jam_invite_dm': return 'invited you to a Jam';
+    case 'jam_started': return 'started a Jam';
+    case 'jam_join': return 'joined your Jam';
+    case 'jam_ended': return 'ended the Jam';
+    default: return 'sent you a notification';
+  }
+}
+
 export const isValidKind = (k: string): boolean => KINDS.has(k);
 export const isValidRecipient = (r: unknown): r is string =>
   typeof r === 'string' && UUID_RE.test(r);
@@ -228,11 +246,24 @@ export async function handler(req: Request): Promise<Response> {
 
   // 5. Build the DATA-ONLY FCM payload the client's notifee renderer expects. All FCM
   // data values must be strings. `route` + flattened params drive tap-routing.
+  // Copy. message/reaction/activity_*/milestone carry client-supplied text; the
+  // relationship + jam kinds send none and expect the server to fill it from the
+  // actor's name (else the notification arrives blank — LIV-9 device test, 2026-07-23).
+  let title = clamp(payload.title, 120);
+  let body = clamp(payload.body, MAX_BODY);
+  if (!title || !body) {
+    const { data: prof } = await admin
+      .from('profiles').select('display_name, username').eq('id', actor).maybeSingle();
+    const actorName = ((prof?.display_name as string) || (prof?.username as string) || 'Someone');
+    if (!title) title = actorName;
+    if (!body) body = defaultBody(kind);
+  }
+
   const data: Record<string, string> = {
     kind,
     channelId: channelFor(kind),
-    title: clamp(payload.title, 120),
-    body: clamp(payload.body, MAX_BODY),
+    title,
+    body,
     actorUserId: actor,
   };
   if (payload.data?.route) data.route = payload.data.route;
