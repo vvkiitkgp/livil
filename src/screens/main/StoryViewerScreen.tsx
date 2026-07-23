@@ -20,9 +20,9 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { COLORS } from '../../theme/colors';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
-import { usePlayback } from '../../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
-import { markStorySeen } from '../../services/stories';
+import { markStorySeen, type Story } from '../../services/stories';
 import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
 
@@ -48,6 +48,45 @@ function avatarInitials(displayName: string | null, username: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
+/**
+ * Build a NowPlayingInfo for a story so its AUDIO plays through the single
+ * `GlobalAudioPlayer` engine (ADR-0001) instead of a second `<Video>`.
+ *
+ * `clipStartSec` / `clipEndSec` are deliberately passed as NULL: we do NOT want
+ * GAP's native Android clip-end watcher to auto-advance the queue mid-story
+ * (that would jump to whatever is in the stale queue). Instead the story viewer's
+ * own timer governs advance, and we seek GAP to the clip start manually via
+ * `markSeekTarget`. The postId is story-scoped (`story_viewer_<id>`) so it never
+ * collides with a real feed post's playback identity.
+ */
+function storyToNowPlaying(story: Story): NowPlayingInfo {
+  const t = story.track;
+  return {
+    postId: `story_viewer_${story.id}`,
+    trackId: t.id,
+    title: t.title,
+    artistName: story.author.displayName ?? story.author.username,
+    authorId: story.author.id,
+    authorUsername: story.author.username,
+    authorAvatarUrl: story.author.avatarUrl,
+    coverArtUrl: t.coverArtUrl,
+    thumbnailUrl: t.thumbnailUrl,
+    mediaKind: t.mediaKind,
+    audioUrl: t.audioUrl ?? undefined,
+    videoUrl: t.videoUrl ?? undefined,
+    likesCount: 0,
+    commentsCount: 0,
+    repostsCount: 0,
+    viewsCount: 0,
+    viewerHasLiked: false,
+    clipStartSec: null,
+    clipEndSec: null,
+    kind: 'upload',
+    originalPostId: null,
+    knownDurationSec: 0,
+  };
+}
+
 export default function StoryViewerScreen() {
   const route = useRoute<StoryViewerRoute>();
   const navigation = useNavigation<StoryViewerNav>();
@@ -70,17 +109,31 @@ export default function StoryViewerScreen() {
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const initialSeekDoneRef = useRef(false);
+  // Snapshot of whatever the single engine was playing before the viewer opened,
+  // so we can restore it (paused) on close — the viewer drives GAP with the
+  // story audio while open, which clobbers nowPlaying.
+  const prevNowPlayingRef = useRef<NowPlayingInfo | null>(null);
 
   const story = orderedStories[index];
 
-  // Pause global player on mount and hide FloatingPlayer.
-  // Intentionally do NOT call clearNowPlaying() so the user can resume
-  // whatever was playing after closing the story viewer.
+  // On mount: remember the current track, pause it, and hide the FloatingPlayer.
+  // The story's own AUDIO is then driven through the single GlobalAudioPlayer
+  // engine (see the per-story effect below) — NOT a second <Video> — per
+  // ADR-0001. On close we restore the pre-story track (left paused) so the user
+  // can resume whatever was playing before.
   useEffect(() => {
+    prevNowPlayingRef.current = playback.nowPlaying;
     playback.handlersRef.current?.pause();
     playback.pauseAll();
     playback.setStoryViewerOpen(true);
     return () => {
+      // Stop the story audio, then restore the previous track (paused). pauseAll
+      // runs AFTER setNowPlaying so GAP settles on paused rather than auto-playing
+      // the restored track.
+      playback.handlersRef.current?.pause();
+      const prev = prevNowPlayingRef.current;
+      if (prev) { playback.setNowPlaying(prev); }
+      playback.pauseAll();
       playback.setStoryViewerOpen(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,7 +162,19 @@ export default function StoryViewerScreen() {
     initialSeekDoneRef.current = false;
     setPaused(false);
 
-    // Seek to clip start on first load.
+    // Drive this story's AUDIO through the single GlobalAudioPlayer engine.
+    // A one-item queue with the default 'off' repeat mode contains GAP's
+    // auto-advance (a lock-screen "next" or any stray end-of-track resolves to a
+    // no-op instead of jumping into a stale queue). markSeekTarget pre-commits
+    // positionRef to the clip start so GAP seeks there on load; requestPlay
+    // activates the engine.
+    const info = storyToNowPlaying(story);
+    playback.setQueue([info], 0, 'story');
+    playback.setNowPlaying(info);
+    playback.markSeekTarget(story.clipStartSec);
+    playback.requestPlay(info.postId);
+
+    // Seek the MUTED picture frame to the clip start on first load.
     setSeekTo(story.clipStartSec);
     setTimeout(() => setSeekTo(null), 0);
 
@@ -159,6 +224,13 @@ export default function StoryViewerScreen() {
 
   // Pause / resume the progress bar when the story pauses/plays.
   useEffect(() => {
+    // Drive the single engine — a tap holds/resumes the story AUDIO through GAP
+    // (the muted picture frame is paused by the `paused` prop separately).
+    if (paused) {
+      playback.handlersRef.current?.pause();
+    } else {
+      playback.handlersRef.current?.play();
+    }
     if (paused) {
       progressAnimRef.current?.stop();
     } else {
@@ -238,6 +310,10 @@ export default function StoryViewerScreen() {
               seekTo={seekTo}
               visible
               pauseWhenOffScreen={false}
+              // MUTED picture-only frame — the story's audio plays through the
+              // single GlobalAudioPlayer engine (ADR-0001), never a second
+              // <Video>. Without this the viewer runs two audio engines at once.
+              muted
               style={StyleSheet.absoluteFill}
             />
           ) : null}

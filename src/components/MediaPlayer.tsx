@@ -50,6 +50,21 @@ export type MediaPlayerProps = {
    * clips rows — set false there and rely on tab blur (`pauseAll`) instead.
    */
   pauseWhenOffScreen?: boolean;
+  /**
+   * Render as a MUTED, foreground-only video FRAME: produces NO audio, holds NO
+   * background audio focus, and does NOT claim the PlaybackContext active slot.
+   * Set this when the audio is being driven by the single `GlobalAudioPlayer`
+   * engine and this surface only shows the picture — mirroring how
+   * `FullScreenPlayer` slaves a muted frame to the engine.
+   *
+   * Default false so the standalone preview paths (Upload / Repost), which have
+   * no post for GAP to play, keep their own audio unchanged.
+   *
+   * WHY IT EXISTS: mounting a second, audible `<Video>` alongside GAP violates
+   * the single-engine invariant (ADR-0001) — it resurrects audio↔video desync
+   * and the lock-screen notification "carousel". A muted frame cannot.
+   */
+  muted?: boolean;
   /** Override the container style — e.g. pass StyleSheet.absoluteFill for full-screen use. */
   style?: StyleProp<ViewStyle>;
 };
@@ -75,6 +90,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     seekTo,
     visible,
     pauseWhenOffScreen = true,
+    muted = false,
     style,
   },
   ref,
@@ -149,7 +165,11 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   const effectivePaused = paused || (pauseWhenOffScreen && !visibilityGateOpen);
 
   // If we just transitioned from paused to playing, claim the active slot.
+  // A MUTED frame owns no audio, so it must NOT touch the active slot — GAP is
+  // the engine and owns it. Claiming/releasing it here would fight GAP (its
+  // reportPaused stops the queue).
   useEffect(() => {
+    if (muted) { return; }
     if (!effectivePaused) {
       playback.requestPlay(postId);
     } else if (playback.isActive(postId)) {
@@ -157,7 +177,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     }
     // We intentionally exclude `playback` from deps — its methods are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectivePaused, postId]);
+  }, [effectivePaused, postId, muted]);
 
   // Apply an external seek (from SeekBar drag-end).
   useEffect(() => {
@@ -191,13 +211,15 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
   const handleEnd = useCallback(() => {
     onEnded?.();
-    playback.reportPaused(postId);
-  }, [onEnded, playback, postId]);
+    // A muted frame owns no playback slot — don't report a pause that would stop
+    // GAP's queue. The caller (e.g. StoryViewer) governs advance itself.
+    if (!muted) { playback.reportPaused(postId); }
+  }, [onEnded, playback, postId, muted]);
 
   const handleError = useCallback(() => {
     setErrored(true);
-    playback.reportPaused(postId);
-  }, [playback, postId]);
+    if (!muted) { playback.reportPaused(postId); }
+  }, [playback, postId, muted]);
 
   // Debounce buffering state to avoid overlay flashing on brief ExoPlayer rebuffer events.
   const bufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,7 +260,9 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         rate={effectivePaused ? 0 : rate}
         {...(Platform.OS === 'android'
           ? {
-              disableFocus: effectivePaused,
+              // A muted frame must never grab audio focus — it carries no sound
+              // and GAP owns the session. Otherwise release focus while paused.
+              disableFocus: muted || effectivePaused,
             }
           : {})}
         style={styles.video}
@@ -250,11 +274,13 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         onBuffer={handleBuffer}
         onReadyForDisplay={handleReadyForDisplay}
         progressUpdateInterval={250}
-        playInBackground={media.kind === 'audio'}
-        playWhenInactive={media.kind === 'audio'}
+        // A muted frame is foreground-only picture — it must not play in the
+        // background (GAP is the sole background-audio + MediaSession owner).
+        playInBackground={!muted && media.kind === 'audio'}
+        playWhenInactive={!muted && media.kind === 'audio'}
         ignoreSilentSwitch="ignore"
-        muted={false}
-        volume={1.0}
+        muted={muted}
+        volume={muted ? 0 : 1.0}
       />
 
       {/* For audio posts we layer the cover (or fallback art) on top of the
