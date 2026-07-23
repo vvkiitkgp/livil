@@ -1,6 +1,11 @@
 module.exports = {
   preset: '@react-native/jest-preset',
 
+  // supabase/functions/** are Deno edge functions with their own Deno test runner
+  // (jsr: imports, Deno globals). Jest must not discover *.test.ts there, or it fails
+  // trying to resolve `jsr:@std/assert`. They are tested with `deno test`, not Jest.
+  testPathIgnorePatterns: ['/node_modules/', '/supabase/functions/'],
+
   // Several dependencies ship untranspiled ESM. Jest does not transform anything
   // under node_modules by default, so importing them fails with
   // "SyntaxError: Unexpected token 'export'". Each entry below is a package that
