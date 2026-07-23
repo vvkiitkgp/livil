@@ -13,19 +13,22 @@ name: edge-function-parity
 # API (not the DB), so it uses SUPABASE_ACCESS_TOKEN rather than PRODUCTION_DATABASE_URL.
 
 on:
-  # Run on PRs to main and pushes to main so a broken prod surfaces on the change that would
-  # ship against it, and the next PR inherits the red until it is fixed.
+  # SECURITY: the LIVE check needs an account-level Supabase PAT. Do NOT add `pull_request`
+  # here — same-repo agent branches get secrets injected, and the runner executes THAT
+  # branch's copy of the script, so a modified script could exfiltrate an account-wide token.
+  # PRs run only the no-secret self-test (see the two guarded steps in the job below).
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   # Deployment state can regress without any push (a function deleted in the dashboard, a
   # project restore), so poll daily like schema-parity. 07:00 UTC.
   schedule:
     - cron: '0 7 * * *'
-  # On-demand answer to "are the required functions deployed right now?" from any branch,
-  # without merging first.
+  # On-demand answer to "are the required functions deployed right now?" without merging.
   workflow_dispatch:
+  # Runs the self-test only (no secret exposed) so the parsing/assertion logic is guarded on
+  # every proposed change to the script.
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: edge-function-parity-${{ github.ref }}
@@ -47,10 +50,18 @@ jobs:
           # No `cache: npm` and no `npm ci`: the script uses only Node built-ins (global
           # fetch on Node 22), so installing dependencies would only slow the job down.
 
+      # Runs on EVERY trigger (including pull_request). No secret is referenced, so it is safe
+      # on PR branches, and it is the one real regression guard on the parsing/assertion logic.
+      - name: Self-test parsing logic
+        run: node scripts/check-edge-functions.mjs --self-test
+
+      # The LIVE check. Gated OFF for pull_request so the account-level PAT is never exposed to
+      # PR-branch-controlled code — see the SECURITY note on the triggers above.
       # The token is a Supabase personal access token (account-level), NOT a project API key.
       # If the secret is absent the script prints a loud ::warning:: and exits 0 — see its
       # header for why a missing secret must not paint the whole check red.
       - name: Assert required edge functions are deployed
+        if: github.event_name != 'pull_request'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node scripts/check-edge-functions.mjs

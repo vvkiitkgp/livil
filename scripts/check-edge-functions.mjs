@@ -18,8 +18,8 @@
  * WHAT IT DOES
  * ------------
  * Lists the deployed edge functions for the production project via the Supabase Management
- * API and asserts every function in REQUIRED_FUNCTIONS is present (matched by slug, falling
- * back to name). Exits non-zero with a clear message if any is missing.
+ * API and asserts every function in REQUIRED_FUNCTIONS is present (matched by SLUG ONLY).
+ * Exits non-zero with a clear message if any is missing.
  *
  * SECRET
  * ------
@@ -53,9 +53,15 @@ const MANAGEMENT_API = 'https://api.supabase.com';
 // ── Pure logic (unit-tested via --self-test) ────────────────────────────────
 
 /**
- * Extract the set of deployed function identifiers from a Management API response.
- * The API returns an array of objects; each has a `slug` (and a human `name`). We accept
- * either so a rename of the display name never spuriously trips the check.
+ * Extract the set of deployed function SLUGS from a Management API response.
+ *
+ * SLUG ONLY — never the display `name`. The client invokes by slug
+ * (`supabase.functions.invoke('send-push')` routes to `/functions/v1/<slug>`), so the slug is
+ * the only identifier that determines whether a real invoke resolves. Accepting a `name` match
+ * would widen the accept-set: a function with slug `send-push-v2` but display name `send-push`
+ * would report present while the actual invoke 404s — reintroducing the exact D-54 false
+ * negative this check exists to prevent. An entry without a string `slug` is a Management API
+ * contract break, so we throw rather than guess.
  * @param {unknown} apiResponse parsed JSON from GET /v1/projects/{ref}/functions
  * @returns {Set<string>}
  */
@@ -67,10 +73,12 @@ export function deployedSlugs(apiResponse) {
   }
   const slugs = new Set();
   for (const fn of apiResponse) {
-    if (fn && typeof fn === 'object') {
-      if (typeof fn.slug === 'string') slugs.add(fn.slug);
-      if (typeof fn.name === 'string') slugs.add(fn.name);
+    if (!fn || typeof fn !== 'object' || typeof fn.slug !== 'string') {
+      throw new Error(
+        `Management API function entry has no string 'slug' (contract break): ${JSON.stringify(fn)}`,
+      );
     }
+    slugs.add(fn.slug);
   }
   return slugs;
 }
@@ -105,6 +113,9 @@ function stepSummary(markdown) {
 }
 
 async function fetchDeployedFunctions(token) {
+  // Single-page assumption: this endpoint returns the full functions list unpaginated (the
+  // project has a handful of functions). If Supabase ever paginates it, a required function
+  // could fall off a later page and read as missing — revisit if the count approaches a page.
   const url = `${MANAGEMENT_API}/v1/projects/${PROJECT_REF}/functions`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -140,7 +151,7 @@ function selfTest() {
   const absent = [
     { id: 'b', slug: 'some-other-fn', name: 'some-other-fn', status: 'ACTIVE', version: 1 },
   ];
-  const renamedNameOnly = [{ id: 'a', name: 'send-push', status: 'ACTIVE' }];
+  const slugMissing = [{ id: 'a', name: 'send-push', status: 'ACTIVE' }]; // no `slug` field
 
   // The guardrail must PASS when the function is deployed …
   check('present → nothing missing', missingFunctions(present, REQUIRED_FUNCTIONS).length === 0);
@@ -154,11 +165,16 @@ function selfTest() {
   // Empty project (exactly the D-54 state: list_edge_functions returned []).
   check('empty list → reports send-push missing', missingFunctions([], ['send-push']).length === 1);
 
-  // Slug absent but name matches → still considered present.
-  check(
-    'name-only match counts as present',
-    missingFunctions(renamedNameOnly, ['send-push']).length === 0,
-  );
+  // Slug-only matching: a `name` that matches is NOT enough. An entry missing `slug` is a
+  // contract break and must throw, never be treated as a name fallback (the D-54 vector:
+  // slug `send-push-v2` + display name `send-push` would 404 on invoke).
+  let slugMissingThrew = false;
+  try {
+    missingFunctions(slugMissing, ['send-push']);
+  } catch {
+    slugMissingThrew = true;
+  }
+  check('entry without slug throws (no name fallback)', slugMissingThrew);
 
   // Malformed payloads must throw, not silently pass (a non-array is an API contract break).
   let threw = false;
