@@ -283,6 +283,39 @@ begin
       'account deletion still blocked by foreign key(s): %', v_blocking;
   end if;
 
+  -- The FK walk above is self-verifying: a missed `drop constraint` leaves the old NO
+  -- ACTION FK, which the walk then enumerates by ANY name. The CHECK relaxation has no such
+  -- backstop — `drop constraint if exists collab_user_xor_custom` is a silent no-op if
+  -- production named it differently, `add constraint` succeeds, the migration applies
+  -- clean, and deletion still aborts with 23514 on the 18 live rows. So assert the
+  -- PROPERTY the relaxation exists to establish, by NAME-INDEPENDENT means: no CHECK on
+  -- this table may still forbid (null, null). This closes the one gap between "the change
+  -- ran" and "the property holds" that the rest of this block already covers.
+  if exists (
+    select 1 from pg_constraint c
+     where c.conrelid = 'public.track_collaborators'::regclass
+       and c.contype = 'c'
+       and pg_get_constraintdef(c.oid) ~* '(user_id|custom_name)'
+       and pg_get_constraintdef(c.oid) !~* '^CHECK \(\(NOT '
+  ) then
+    raise exception
+      'a CHECK on track_collaborators still constrains user_id/custom_name — deletion of a credited user would abort with 23514';
+  end if;
+
+  -- Close the NOT NULL sub-class permanently and for every future SET NULL FK, not just
+  -- the nine that exist today: a SET NULL action onto a NOT NULL column fails 23502 at
+  -- runtime and is invisible to a foreign-key walk. Static, cheap, and it covers the whole
+  -- class rather than the instances we happened to trip over.
+  select string_agg(distinct format('%s.%s', c.conrelid::regclass, a.attname), ', ')
+    into v_blocking
+    from pg_constraint c
+    join lateral unnest(c.conkey) k on true
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k
+   where c.contype = 'f' and c.confdeltype = 'n' and a.attnotnull;
+  if v_blocking is not null then
+    raise exception 'ON DELETE SET NULL onto NOT NULL column(s): %', v_blocking;
+  end if;
+
   if not exists (
     select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname = 'delete_my_account' and p.prosecdef

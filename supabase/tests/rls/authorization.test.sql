@@ -1280,13 +1280,19 @@ select pg_temp.assert(
 -- already SET NULL. Both would have failed here, loudly, against a user who had actually
 -- used the product.
 --
--- Each tie below exists to exercise a distinct cascade mechanism:
+-- Each tie below exists to exercise a distinct cascade mechanism. The third review
+-- corrected two of these comments — they named a mechanism the fixture did not actually
+-- reach — and the fixture now includes the row that reaches it:
 --   collaborator credit on ANOTHER user's track -> SET NULL into a CHECK constraint
---   a repost of another user's post             -> the posts_freeze_counter_identity carve-out
---   own track queued in someone ELSE's jam      -> profiles -> tracks -> jam_queue
---   a jam they host                             -> SET NULL on host_id
---   a conversation they created                 -> conversations_freeze_derived carve-out
---   an activity notification they caused        -> actor_id SET NULL
+--   a repost the leaving user made               -> trg_post_reposts_count decrements alice
+--        at depth >= 2, re-entering the freeze trigger's counter block (must not abort)
+--   own track queued in someone ELSE's jam       -> profiles -> tracks -> jam_queue
+--   a jam they host                              -> SET NULL on host_id
+--   a conversation THEY created                  -> conversations_freeze_derived carve-out
+--        inside the cascade (not just the direct-delete path conv #8/#9 cover)
+--   an activity notification they caused         -> actor_id SET NULL
+-- (The review also suggested a repost driving the original_post_id carve-out inside the
+-- cascade; that state is unreachable — see the NOTE at the repost insert below.)
 insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000e9') on conflict do nothing;
 insert into profiles (id, username, username_set) values
   ('f0000000-0000-0000-0000-0000000000e9', 'leaving', true) on conflict do nothing;
@@ -1296,6 +1302,17 @@ on conflict do nothing;
 insert into messages (id, conversation_id, sender_id, body, kind) values
   ('f0000000-0000-0000-0000-0000000000ea', 'aaaaaaaa-0000-0000-0000-000000000001',
    'f0000000-0000-0000-0000-0000000000e9', 'the recipient keeps this', 'text')
+on conflict do nothing;
+
+-- A conversation the LEAVING user created — so conversations_freeze_derived's created_by
+-- carve-out fires INSIDE delete_my_account's cascade, not only via the direct delete that
+-- conv #8/#9 exercise. The conversation must survive with created_by nulled.
+insert into conversations (id, kind, created_by) values
+  ('f0000000-0000-0000-0000-0000000000ef', 'group', 'f0000000-0000-0000-0000-0000000000e9')
+on conflict do nothing;
+insert into conversation_members (conversation_id, user_id, role) values
+  ('f0000000-0000-0000-0000-0000000000ef', 'f0000000-0000-0000-0000-0000000000e9', 'admin'),
+  ('f0000000-0000-0000-0000-0000000000ef', '22222222-2222-2222-2222-222222222222', 'member')
 on conflict do nothing;
 
 -- A credit on ALICE's track. This is the one that fails with 23514 if the XOR check is
@@ -1315,13 +1332,27 @@ insert into posts (id, author_id, kind, track_id) values
    'f0000000-0000-0000-0000-0000000000eb')
 on conflict do nothing;
 
--- A repost of ALICE's post: drives posts_freeze_counter_identity's ON DELETE SET NULL
--- carve-out during the cascade, and decrements alice's reposts_count via the counter
--- trigger at depth >= 2.
+-- The leaving user's OWN repost of alice's post. Its author_id cascades, so this row is
+-- DELETED during the cascade — which fires trg_post_reposts_count AFTER DELETE, decrementing
+-- alice's reposts_count and re-entering posts_freeze_counter_identity's counter block at
+-- depth >= 2. That path must not abort the delete. (This does NOT drive the SET NULL
+-- carve-out — see the next insert, which does.)
 insert into posts (id, author_id, kind, track_id, original_post_id) values
   ('f0000000-0000-0000-0000-0000000000ed', 'f0000000-0000-0000-0000-0000000000e9', 'repost',
    'f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000a2')
 on conflict do nothing;
+
+-- NOTE — the third review suggested adding "alice reposting the leaving user's post" to
+-- drive posts_freeze_counter_identity's SET NULL carve-out from INSIDE the account cascade.
+-- Attempting it proved the carve-out is UNREACHABLE by that path, which is worth recording:
+-- a real repost carries its original's track_id (createRepost copies it), posts_track_id_fkey
+-- is ON DELETE CASCADE, and the leaver's track is deleted with them — so every repost of the
+-- leaver's posts CASCADES AWAY before posts_original_post_id_fkey's SET NULL could fire. The
+-- only way a repost survives its original's deletion is a hand-built row whose track differs
+-- from its original's, which does not occur in production. So the carve-out's real trigger is
+-- a DIRECT single-post delete (a user deleting one upload while reposts of it survive), which
+-- freeze #6/#7 already cover. Not forcing a synthetic row here — a test that passes only for a
+-- state production cannot reach is the trap this suite exists to avoid.
 
 -- A jam they host, with THEIR track queued in it and set as current.
 insert into jam_rooms (id, conversation_id, host_id, status, current_track_id) values
@@ -1380,6 +1411,13 @@ select pg_temp.assert(
   'delete #9: their track leaves someone else''s jam queue without blocking the delete',
   (select track_id is null from jam_queue
     where jam_room_id='bbbbbbbb-0000-0000-0000-000000000001'), true);
+
+-- The conversation the leaving user created survives for its remaining member, created_by
+-- nulled by the cascade through conversations_freeze_derived's carve-out — INSIDE
+-- delete_my_account rather than the direct delete conv #8/#9 exercise.
+select pg_temp.assert(
+  'delete #10: a conversation they created survives with created_by nulled',
+  (select created_by is null from conversations where id='f0000000-0000-0000-0000-0000000000ef'), true);
 
 select pg_temp.assert(
   'delete #7: other accounts are untouched',
