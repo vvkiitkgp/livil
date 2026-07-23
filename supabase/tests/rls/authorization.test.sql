@@ -1226,4 +1226,204 @@ select pg_temp.assert(
 
 reset role;
 
+
+-- ============================================================================
+-- Account deletion — 20260722200000
+-- ============================================================================
+--
+-- docs/delete-account.html has been live since June telling users to go to
+-- Profile -> Settings -> Delete Account. None of that exists, and the database REFUSED
+-- to delete a profile at all: messages.sender_id, jam_rooms.host_id and
+-- jam_queue.suggested_by all referenced profiles(id) with NO ACTION, so deleting anyone
+-- who had ever sent a message failed with 23503. The email fallback on that page could
+-- not have been honoured either.
+--
+-- #1 is the assertion that matters most and it is a structural one: the function takes
+-- NO argument. ADR-0008 decision #1 applied to a much more dangerous verb than a
+-- notification — a caller-supplied user id here would be account-deletion-as-a-service.
+-- Asserting the arity is asserting that the defect is unrepresentable rather than merely
+-- unchecked.
+
+select pg_temp.assert(
+  'delete #1: delete_my_account takes NO parameter, so a victim cannot be named',
+  (select pronargs = 0 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname='public' and p.proname='delete_my_account'), true);
+
+select pg_temp.assert(
+  'delete #2: anon cannot execute it',
+  has_function_privilege('anon', 'public.delete_my_account()', 'execute'), false);
+
+-- Walks the TRANSITIVE CLOSURE from auth.users rather than checking references to
+-- `profiles`. The narrow version of this assertion passed while deletion was still broken
+-- for any user whose uploaded track had been queued in a jam: profiles -> tracks (cascade)
+-- -> jam_rooms.current_track_id / jam_queue.track_id, both NO ACTION. Proving "nothing
+-- referencing profiles blocks" is not proving "an account can be deleted", and the gap
+-- between those sentences is where two real blockers lived.
+select pg_temp.assert(
+  'delete #3: no NO ACTION/RESTRICT foreign key is reachable from auth.users by cascade',
+  (with recursive deleted_tables(oid) as (
+     select 'auth.users'::regclass::oid
+     union
+     select c.conrelid from pg_constraint c join deleted_tables d on c.confrelid = d.oid
+      where c.contype='f' and c.confdeltype='c'
+   )
+   select count(*) = 0
+     from pg_constraint c join deleted_tables d on c.confrelid = d.oid
+    where c.contype='f' and c.confdeltype in ('a','r')), true);
+
+-- ── The property: a real deletion, and what survives it ─────────────────────
+--
+-- The fixture is deliberately MAXIMALLY CONNECTED. An earlier version deleted a user
+-- whose only tie was one message, and it passed while deletion was broken twice over:
+-- once on tracks -> jam_rooms/jam_queue (NO ACTION, found by review), and once on
+-- track_collaborators' XOR CHECK, which no foreign-key walk can see because the FK was
+-- already SET NULL. Both would have failed here, loudly, against a user who had actually
+-- used the product.
+--
+-- Each tie below exists to exercise a distinct cascade mechanism. The third review
+-- corrected two of these comments — they named a mechanism the fixture did not actually
+-- reach — and the fixture now includes the row that reaches it:
+--   collaborator credit on ANOTHER user's track -> SET NULL into a CHECK constraint
+--   a repost the leaving user made               -> trg_post_reposts_count decrements alice
+--        at depth >= 2, re-entering the freeze trigger's counter block (must not abort)
+--   own track queued in someone ELSE's jam       -> profiles -> tracks -> jam_queue
+--   a jam they host                              -> SET NULL on host_id
+--   a conversation THEY created                  -> conversations_freeze_derived carve-out
+--        inside the cascade (not just the direct-delete path conv #8/#9 cover)
+--   an activity notification they caused         -> actor_id SET NULL
+-- (The review also suggested a repost driving the original_post_id carve-out inside the
+-- cascade; that state is unreachable — see the NOTE at the repost insert below.)
+insert into auth.users (id) values ('f0000000-0000-0000-0000-0000000000e9') on conflict do nothing;
+insert into profiles (id, username, username_set) values
+  ('f0000000-0000-0000-0000-0000000000e9', 'leaving', true) on conflict do nothing;
+insert into conversation_members (conversation_id, user_id, role) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000e9', 'member')
+on conflict do nothing;
+insert into messages (id, conversation_id, sender_id, body, kind) values
+  ('f0000000-0000-0000-0000-0000000000ea', 'aaaaaaaa-0000-0000-0000-000000000001',
+   'f0000000-0000-0000-0000-0000000000e9', 'the recipient keeps this', 'text')
+on conflict do nothing;
+
+-- A conversation the LEAVING user created — so conversations_freeze_derived's created_by
+-- carve-out fires INSIDE delete_my_account's cascade, not only via the direct delete that
+-- conv #8/#9 exercise. The conversation must survive with created_by nulled.
+insert into conversations (id, kind, created_by) values
+  ('f0000000-0000-0000-0000-0000000000ef', 'group', 'f0000000-0000-0000-0000-0000000000e9')
+on conflict do nothing;
+insert into conversation_members (conversation_id, user_id, role) values
+  ('f0000000-0000-0000-0000-0000000000ef', 'f0000000-0000-0000-0000-0000000000e9', 'admin'),
+  ('f0000000-0000-0000-0000-0000000000ef', '22222222-2222-2222-2222-222222222222', 'member')
+on conflict do nothing;
+
+-- A credit on ALICE's track. This is the one that fails with 23514 if the XOR check is
+-- not relaxed — and it is invisible to any foreign-key walk.
+insert into track_collaborators (track_id, user_id, role, status) values
+  ('f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000e9',
+   'producer', 'accepted')
+on conflict do nothing;
+
+-- Their own track, and their own post of it.
+insert into tracks (id, uploader_id, title, media_kind, audio_url) values
+  ('f0000000-0000-0000-0000-0000000000eb', 'f0000000-0000-0000-0000-0000000000e9',
+   'their upload', 'audio', 'https://example.invalid/t.mp3')
+on conflict do nothing;
+insert into posts (id, author_id, kind, track_id) values
+  ('f0000000-0000-0000-0000-0000000000ec', 'f0000000-0000-0000-0000-0000000000e9', 'upload',
+   'f0000000-0000-0000-0000-0000000000eb')
+on conflict do nothing;
+
+-- The leaving user's OWN repost of alice's post. Its author_id cascades, so this row is
+-- DELETED during the cascade — which fires trg_post_reposts_count AFTER DELETE, decrementing
+-- alice's reposts_count and re-entering posts_freeze_counter_identity's counter block at
+-- depth >= 2. That path must not abort the delete. (This does NOT drive the SET NULL
+-- carve-out — see the next insert, which does.)
+insert into posts (id, author_id, kind, track_id, original_post_id) values
+  ('f0000000-0000-0000-0000-0000000000ed', 'f0000000-0000-0000-0000-0000000000e9', 'repost',
+   'f0000000-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000a2')
+on conflict do nothing;
+
+-- NOTE — the third review suggested adding "alice reposting the leaving user's post" to
+-- drive posts_freeze_counter_identity's SET NULL carve-out from INSIDE the account cascade.
+-- Attempting it proved the carve-out is UNREACHABLE by that path, which is worth recording:
+-- a real repost carries its original's track_id (createRepost copies it), posts_track_id_fkey
+-- is ON DELETE CASCADE, and the leaver's track is deleted with them — so every repost of the
+-- leaver's posts CASCADES AWAY before posts_original_post_id_fkey's SET NULL could fire. The
+-- only way a repost survives its original's deletion is a hand-built row whose track differs
+-- from its original's, which does not occur in production. So the carve-out's real trigger is
+-- a DIRECT single-post delete (a user deleting one upload while reposts of it survive), which
+-- freeze #6/#7 already cover. Not forcing a synthetic row here — a test that passes only for a
+-- state production cannot reach is the trap this suite exists to avoid.
+
+-- A jam they host, with THEIR track queued in it and set as current.
+insert into jam_rooms (id, conversation_id, host_id, status, current_track_id) values
+  ('f0000000-0000-0000-0000-0000000000ee', 'aaaaaaaa-0000-0000-0000-000000000001',
+   'f0000000-0000-0000-0000-0000000000e9', 'active', 'f0000000-0000-0000-0000-0000000000eb')
+on conflict do nothing;
+insert into jam_queue (jam_room_id, track_id, suggested_by) values
+  ('f0000000-0000-0000-0000-0000000000ee', 'f0000000-0000-0000-0000-0000000000eb',
+   'f0000000-0000-0000-0000-0000000000e9')
+on conflict do nothing;
+
+-- And their track queued in a jam hosted by SOMEONE ELSE, which is the tracks ->
+-- jam_queue path that the profiles-only check could never reach.
+insert into jam_queue (jam_room_id, track_id, suggested_by) values
+  ('bbbbbbbb-0000-0000-0000-000000000001', 'f0000000-0000-0000-0000-0000000000eb',
+   '11111111-1111-1111-1111-111111111111')
+on conflict do nothing;
+
+insert into activity_notifications (recipient_id, type, actor_id) values
+  ('11111111-1111-1111-1111-111111111111', 'new_fan', 'f0000000-0000-0000-0000-0000000000e9')
+on conflict do nothing;
+
+select pg_temp.set_user('f0000000-0000-0000-0000-0000000000e9');
+select public.delete_my_account();
+select pg_temp.set_user('11111111-1111-1111-1111-111111111111');
+
+select pg_temp.assert(
+  'delete #4: the account is gone',
+  (select not exists (select 1 from auth.users where id='f0000000-0000-0000-0000-0000000000e9')), true);
+
+-- The reason SET NULL was chosen over CASCADE. docs/delete-account.html section 3 does not
+-- list sent messages among deleted data, and section 4 says content shared with others may
+-- persist. CASCADE would punch holes in the RECIPIENT's history of a conversation they
+-- took part in. If someone later "simplifies" these FKs to CASCADE, this fails.
+select pg_temp.assert(
+  'delete #5: a message the deleted user sent SURVIVES for its recipient',
+  (select body = 'the recipient keeps this'
+     from messages where id='f0000000-0000-0000-0000-0000000000ea'), true);
+
+select pg_temp.assert(
+  'delete #6: ...with its sender nulled rather than the row removed',
+  (select sender_id is null from messages where id='f0000000-0000-0000-0000-0000000000ea'), true);
+
+-- Deleting yourself must not touch anyone else. Cheap to assert, and the failure mode it
+-- guards against is catastrophic and silent.
+-- The ties that must survive, anonymized rather than removed. #8 is the assertion that
+-- the XOR-check relaxation actually holds; #9 is the tracks -> jam_queue path.
+select pg_temp.assert(
+  'delete #8: a credit on ANOTHER user''s track survives, anonymized to (null, null)',
+  (select user_id is null and custom_name is null
+     from track_collaborators
+    where track_id='f0000000-0000-0000-0000-000000000001'
+      and role='producer'), true);
+
+select pg_temp.assert(
+  'delete #9: their track leaves someone else''s jam queue without blocking the delete',
+  (select track_id is null from jam_queue
+    where jam_room_id='bbbbbbbb-0000-0000-0000-000000000001'), true);
+
+-- The conversation the leaving user created survives for its remaining member, created_by
+-- nulled by the cascade through conversations_freeze_derived's carve-out — INSIDE
+-- delete_my_account rather than the direct delete conv #8/#9 exercise.
+select pg_temp.assert(
+  'delete #10: a conversation they created survives with created_by nulled',
+  (select created_by is null from conversations where id='f0000000-0000-0000-0000-0000000000ef'), true);
+
+select pg_temp.assert(
+  'delete #7: other accounts are untouched',
+  (select count(*) = 3 from auth.users
+    where id in ('11111111-1111-1111-1111-111111111111',
+                 '22222222-2222-2222-2222-222222222222',
+                 '33333333-3333-3333-3333-333333333333')), true);
+
 rollback;
