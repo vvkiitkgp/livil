@@ -77,15 +77,70 @@ Do not paste ADR content into tickets. Link.
 
 ---
 
+## Status workflow — Jira holds the state, and the state must stay true
+
+Every ticket moves through exactly these statuses. **An agent updates the status as work moves**;
+letting a ticket sit in the wrong status is the same failure as a stale document (P51).
+
+| Status | Meaning | Who moves it |
+|---|---|---|
+| **To Do** | A focused bug or feature has been found and filed. Not started. | The finder, on creation |
+| **In Progress** | Someone is actively working it. The PR is open and **not yet merged**. | The implementer, when it starts work |
+| **ToDo Deploy** | Merged, and reaching users needs a **new Play Store build**. | The implementer, at merge |
+| **Apply to Prod** | Merged, and reaching users needs a **migration/RLS change applied to the database** (no app build). | The implementer, at merge |
+| **Done** | Live in production. | **The human only** — after building + publishing (ToDo Deploy) or applying the migration (Apply to Prod) |
+
+```
+To Do ─▶ In Progress ─▶ ┬─ ToDo Deploy ──▶ (human builds + publishes) ─▶ Done
+                        ├─ Apply to Prod ─▶ (human applies migration)  ─▶ Done
+                        └─ Done directly  ── docs / CI / KB: live at merge, no ship step
+```
+
+**Rules an agent must not break:**
+- **Only a human moves a ticket to Done.** Reaching production is a human ship step —
+  a Play Store build or a migration applied to the live database — and neither is an agent action.
+  An agent leaves the ticket in ToDo Deploy or Apply to Prod and says so.
+- **Pick the lane by what the change touches**, not by convenience: client/native → ToDo Deploy;
+  `supabase/migrations/**` or any live-database change → Apply to Prod; docs/CI/KB that are live the
+  moment they merge → straight to Done (no human ship step exists for them).
+- A ticket is **In Progress only while its PR is unmerged.** The moment it merges it leaves In Progress.
+
+> `Apply to Prod` is a board status that must be created in Jira settings (the API cannot create
+> statuses). Until it exists, a merged database change waits in In Progress with a comment saying it
+> is awaiting production apply — never Done, because the defect is still live.
+
+---
+
+## One ticket, one concern
+
+**A ticket is a single focused bug or a single focused feature — never a bundle.** If closing it
+requires fixing several independent things, it is an **Epic**, and each independent thing is its own
+child Task or Story.
+
+The test: *can this ticket be finished, reviewed, and moved to Done as one unit?* If half of it can
+be done while the other half is still open, it is two tickets.
+
+**Why:** a bundled ticket cannot be assigned in pieces, cannot be partially closed, and hides on the
+board what is actually done. Six defects behind one id read as one green checkmark when five are
+fixed and one is still live — which is exactly how a live defect gets mistaken for a closed one.
+
+**Triage splits before implementation.** An oversized ticket is broken into an Epic + focused
+children *at triage*, before any implementer picks it up — not discovered mid-PR. Agents implement
+one focused ticket at a time.
+
+---
+
 ## Definition of ready
 
 A ticket an agent may pick up must have:
 
-1. **A concrete outcome** — what is true when this is done, in observable terms
-2. **Scope boundaries** — explicitly what is *not* included
-3. **The affected domain**, so it routes to the right reviewer
-4. **Acceptance criteria** that can be checked, not judged
-5. **A link** to the ADR, proposal, or incident that motivated it
+1. **A single concern** — one focused bug or feature (see *One ticket, one concern*). A bundle is
+   sent back to be split into an Epic, not worked as-is.
+2. **A concrete outcome** — what is true when this is done, in observable terms
+3. **Scope boundaries** — explicitly what is *not* included
+4. **The affected domain**, so it routes to the right reviewer
+5. **Acceptance criteria** that can be checked, not judged
+6. **A link** to the ADR, proposal, or incident that motivated it
 
 **A ticket that fails this is sent back with specific questions, not guessed at.** Guessing on
 an underspecified request where guessing wrong is expensive is a refusal condition
