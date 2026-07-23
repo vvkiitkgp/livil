@@ -46,6 +46,17 @@ signing, the signing key, `kb/private/`, and the Supabase client configuration.
 5. **Smallest change that fully solves the problem** (P25). Propose the larger refactor;
    do not perform it.
 
+## Keep the ticket's status true
+
+Move the Jira ticket as the work moves (`kb/standards/work-tracking.md` → *Status workflow*):
+
+- **In Progress** when you start and open the PR — and only while it is unmerged.
+- At merge, move it to the lane that matches what the change touches: **ToDo Deploy** (needs a
+  Play Store build) or **Apply to Prod** (a `supabase/migrations/**` or other live-database change).
+  Docs/CI/KB that are live at merge go straight to **Done**.
+- **Never move a ticket to Done yourself** if it needs a human ship step — a build or a migration
+  applied to production. Leave it in ToDo Deploy / Apply to Prod and say so. Only the human closes it.
+
 ## What you never do
 
 - Merge, approve, or push to `main`. You open a PR; a human decides.
