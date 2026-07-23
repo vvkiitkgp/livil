@@ -22,11 +22,12 @@ prod change and its authorization model is the whole point of the review.
    - `message` / `reaction` / `jam_invite_dm` → a REAL conversation-membership intersection.
    - `friend_accepted` / `jam_*` → an accepted (mutual) friendship exists.
    - `new_follower` / `new_fan` → a one-way star edge `actor → recipient` exists.
-   - `activity_*` → **coarse** secondary gate (recipient is a real author). This is the one
-     that stays weak: the client args carry no post id and the legitimate dispatch already
-     passed `activity_notify_post` (a DEFINER RPC that authorizes). Verify this is acceptable,
-     or adopt D-45 (dispatch from inside that RPC) as the real fix.
-   - `friend_request` → allowed (the request IS the action); leans on the rate limit.
+   - `activity_*` → **coarse** secondary gate (recipient is a real author). The client args
+     carry no post id and the legitimate dispatch already passed `activity_notify_post` (a
+     DEFINER RPC that authorizes). **Accepted for launch (2026-07-23):** clamped bodies + low
+     harm. D-45 (dispatch from inside that RPC) remains the durable fix.
+   - `friend_request` → a **pending** request from actor → recipient must exist (written by
+     `send_friend_request`). Tightened from the earlier `return true` (the spam vector).
 3. **Content**: `title`/`body` are clamped and only ever placed in the notification body.
 4. **Rate limit**: `checkRateLimit` is in-memory and therefore advisory only — replace with
    a shared store before relying on it (D-12).

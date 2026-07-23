@@ -121,10 +121,20 @@ export async function authorize(
       return (b.data ?? []).some((r: { conversation_id: string }) => mine.has(r.conversation_id));
     }
 
-    case 'friend_request':
-      // Sending a request IS the action; recipient is the target. Allowed, but it is the
-      // prime spam vector, so it leans on the rate limit in the handler (D-12).
-      return true;
+    case 'friend_request': {
+      // A PENDING request from actor -> recipient must exist (written by
+      // send_friend_request). Without this, any authenticated user could push
+      // "X sent you a friend request" to anyone — the prime spam vector. friendships is
+      // canonically ordered by _friendship_pair, so the OR covers both column orderings;
+      // requested_by pins the direction to the actor.
+      const { count } = await admin
+        .from('friendships')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
+        .eq('requested_by', actor)
+        .or(`and(user_a_id.eq.${actor},user_b_id.eq.${recipient}),and(user_a_id.eq.${recipient},user_b_id.eq.${actor})`);
+      return (count ?? 0) > 0;
+    }
 
     case 'friend_accepted':
     case 'jam_started':

@@ -116,9 +116,11 @@ Deno.test('activity_*: coarse gate — recipient must be a real author', async (
   assertEquals(await authorize(noPosts, 'activity_comment', A, B), false);
 });
 
-Deno.test('friend_request is allowed (the request IS the action)', async () => {
-  const any = fakeAdmin(() => ({ count: 0 }));
-  assertEquals(await authorize(any, 'friend_request', A, B), true);
+Deno.test('friend_request: requires a pending request from actor -> recipient', async () => {
+  const pending = fakeAdmin(() => ({ count: 1 }));
+  const none = fakeAdmin(() => ({ count: 0 }));
+  assertEquals(await authorize(pending, 'friend_request', A, B), true);
+  assertEquals(await authorize(none, 'friend_request', A, B), false);
 });
 
 Deno.test('self-targeting: only activity_milestone; unknown kinds denied', async () => {
