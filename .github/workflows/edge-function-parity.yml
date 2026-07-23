@@ -1,0 +1,56 @@
+name: edge-function-parity
+
+# LIV-29 — assert the edge functions the client depends on actually EXIST in production.
+#
+# Background: LIV-9 / D-54 was a P0 outage. `src/services/pushDispatch.ts` invokes the
+# `send-push` edge function, but that function was never deployed to the live project, and
+# `supabase.functions.invoke` fails silently (returns {data:null, error} instead of throwing,
+# and callers `void` it). Every out-of-app push was dead for months with no signal. This job
+# is the signal: if a required function is missing from prod, main goes red.
+#
+# This mirrors the schema-parity job's philosophy: correctness in the repo says nothing about
+# what is actually DEPLOYED. Parity checks close that gap. It talks to the Supabase Management
+# API (not the DB), so it uses SUPABASE_ACCESS_TOKEN rather than PRODUCTION_DATABASE_URL.
+
+on:
+  # Run on PRs to main and pushes to main so a broken prod surfaces on the change that would
+  # ship against it, and the next PR inherits the red until it is fixed.
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Deployment state can regress without any push (a function deleted in the dashboard, a
+  # project restore), so poll daily like schema-parity. 07:00 UTC.
+  schedule:
+    - cron: '0 7 * * *'
+  # On-demand answer to "are the required functions deployed right now?" from any branch,
+  # without merging first.
+  workflow_dispatch:
+
+concurrency:
+  group: edge-function-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22.11.0'
+
+jobs:
+  parity:
+    name: required edge functions exist in prod
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          # No `cache: npm` and no `npm ci`: the script uses only Node built-ins (global
+          # fetch on Node 22), so installing dependencies would only slow the job down.
+
+      # The token is a Supabase personal access token (account-level), NOT a project API key.
+      # If the secret is absent the script prints a loud ::warning:: and exits 0 — see its
+      # header for why a missing secret must not paint the whole check red.
+      - name: Assert required edge functions are deployed
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/check-edge-functions.mjs
