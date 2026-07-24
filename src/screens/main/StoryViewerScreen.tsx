@@ -98,6 +98,11 @@ export default function StoryViewerScreen() {
   // handleProgress crossing clipEnd can both fire in the same tick, which would
   // call setIndex(i => i + 1) twice and skip a story. Reset per story.
   const advancedRef = useRef(false);
+  // Skip the FIRST run of the `paused` effect (below). On mount handlersRef still
+  // points at the OUTGOING feed track, so its play() would resumePlay() THAT track
+  // and hijack the story — the story is already started by the per-story index
+  // effect's requestPlay + GAP's activation.
+  const didMountPausedRef = useRef(false);
   // Full snapshot of the single engine's state before the viewer opened, so the
   // user's now-playing track, position, AND queue are restored intact on close —
   // the viewer clobbers all of them while it drives the story audio through GAP.
@@ -324,6 +329,10 @@ export default function StoryViewerScreen() {
 
   // Pause / resume the progress bar when the story pauses/plays.
   useEffect(() => {
+    if (!didMountPausedRef.current) {
+      didMountPausedRef.current = true;
+      return; // mount run: story already started by the index effect; play() here would resume the OUTGOING feed track and hijack the story
+    }
     // Drive the single engine — a tap holds/resumes the story AUDIO through GAP
     // (the muted picture frame is paused by the `paused` prop separately).
     if (paused) {

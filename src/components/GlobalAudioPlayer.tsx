@@ -68,6 +68,7 @@ export default function GlobalAudioPlayer() {
     videoFrameBuffering,
     queueVersion,
     clipVersion,
+    isStoryViewerOpen,
   } = usePlayback();
   const { showToast } = useToast();
 
@@ -161,6 +162,11 @@ export default function GlobalAudioPlayer() {
       return;
     }
     if (activePostId === mine) { return; }
+    // While a story drives the single engine it OWNS the queue + active pointer;
+    // never pull a feed track over it. A stale activePostId from the outgoing feed
+    // track must not resurrect the feed queue. Restore-on-close runs BEFORE
+    // setStoryViewerOpen(false), via setNowPlaying+seek — not this path — so it's unaffected.
+    if (isStoryViewerOpen) { return; }
 
     const next = queueRef.current[currentIndexRef.current];
     if (next?.audioUrl ?? next?.videoUrl) {
@@ -169,7 +175,7 @@ export default function GlobalAudioPlayer() {
     }
     // No else: GAP is the sole engine now, so it never releases to anyone. A
     // queue item with neither url is a data error — leave the current paused.
-  }, [activePostId, queueRef, currentIndexRef, setNowPlaying]);
+  }, [activePostId, queueRef, currentIndexRef, setNowPlaying, isStoryViewerOpen]);
 
   // Lazily resolve the album the active track belongs to, then patch it into
   // `nowPlaying.albumTitle` so the car / lock-screen MediaSession shows the
