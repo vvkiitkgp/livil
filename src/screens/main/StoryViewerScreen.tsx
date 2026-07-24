@@ -383,36 +383,20 @@ export default function StoryViewerScreen() {
     [close],
   );
 
-  // Tap to advance. `maxDuration(250)` so a press-and-hold can't register as a
-  // tap — a hold is claimed by the long-press gesture below instead.
+  // Tap to advance.
   const tapGesture = useMemo(
     () =>
       Gesture.Tap()
         .runOnJS(true)
-        .maxDuration(250)
         .onEnd(() => {
           advance();
         }),
     [advance],
   );
 
-  // Press-and-HOLD to pause (Instagram model), release/cancel to resume. Drives
-  // the existing `paused` state, which the `paused` effect routes to the single
-  // engine. `onFinalize` fires on BOTH release and cancel, so the story can never
-  // get stuck paused.
-  const longPressGesture = useMemo(
-    () =>
-      Gesture.LongPress()
-        .runOnJS(true)
-        .minDuration(250)
-        .onStart(() => setPaused(true))
-        .onFinalize(() => setPaused(false)),
-    [],
-  );
-
   const composedGesture = useMemo(
-    () => Gesture.Race(panGesture, longPressGesture, tapGesture),
-    [panGesture, longPressGesture, tapGesture],
+    () => Gesture.Race(panGesture, tapGesture),
+    [panGesture, tapGesture],
   );
 
   if (!story || orderedStories.length === 0) {
@@ -439,11 +423,6 @@ export default function StoryViewerScreen() {
               // single GlobalAudioPlayer engine (ADR-0001), never a second
               // <Video>. Without this the viewer runs two audio engines at once.
               muted
-              // Story mode: render no touch handlers. The GestureDetector above
-              // owns all touch (tap→advance, hold→pause, swipe→close); otherwise
-              // MediaPlayer's inner Pressables win the Gesture.Race and toggle
-              // pause instead of advancing (Issue 1).
-              interactionsDisabled
               style={StyleSheet.absoluteFill}
             />
           ) : null}

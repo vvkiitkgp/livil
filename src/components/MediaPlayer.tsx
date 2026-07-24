@@ -65,16 +65,6 @@ export type MediaPlayerProps = {
    * and the lock-screen notification "carousel". A muted frame cannot.
    */
   muted?: boolean;
-  /**
-   * Story mode: render NO touch handlers — the parent `GestureDetector` owns all
-   * touch. When true the container becomes a `pointerEvents="box-none"` `View`
-   * (no `onPress`), the audio cover/fallback art become `pointerEvents="none"`
-   * `View`s, the video tap-overlay is not rendered, and the paused play-glyph is
-   * suppressed so a held-pause in a story doesn't flash a play button.
-   *
-   * Default false so feed / Upload / Repost keep their own tap-to-pause.
-   */
-  interactionsDisabled?: boolean;
   /** Override the container style — e.g. pass StyleSheet.absoluteFill for full-screen use. */
   style?: StyleProp<ViewStyle>;
 };
@@ -101,7 +91,6 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     visible,
     pauseWhenOffScreen = true,
     muted = false,
-    interactionsDisabled = false,
     style,
   },
   ref,
@@ -253,21 +242,12 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     return { uri: media.videoUrl };
   }, [media]);
 
-  // Story mode: the parent GestureDetector owns all touch, so render no press
-  // handlers here. A plain box-none View lets gestures fall through to the parent.
-  const Container = interactionsDisabled ? View : Pressable;
-  const containerProps = interactionsDisabled
-    ? ({ pointerEvents: 'box-none' } as const)
-    : ({
-        onPress: onTogglePaused,
-        accessibilityRole: 'button' as const,
-        accessibilityLabel: effectivePaused ? 'Play' : 'Pause',
-      } as const);
-
   return (
-    <Container
+    <Pressable
       style={[styles.container, { aspectRatio: naturalAspect }, style]}
-      {...containerProps}
+      onPress={onTogglePaused}
+      accessibilityRole="button"
+      accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
     >
       {/* The Video element always fills the container so the native surface
           (ExoPlayer on Android, AVPlayer on iOS) has real layout — earlier
@@ -309,54 +289,36 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
           relying on pointerEvents="none" to bubble taps through to the
           outer Pressable is unreliable on Android Fabric. */}
       {media.kind === 'audio' && media.coverUrl ? (
-        interactionsDisabled ? (
-          <View style={styles.cover} pointerEvents="none">
-            <Image
-              source={{ uri: media.coverUrl }}
-              style={styles.coverImg}
-              resizeMode="cover"
-            />
-          </View>
-        ) : (
-          <Pressable
-            style={styles.cover}
-            onPress={onTogglePaused}
-            accessibilityRole="button"
-            accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
-          >
-            <Image
-              source={{ uri: media.coverUrl }}
-              style={styles.coverImg}
-              resizeMode="cover"
-            />
-          </Pressable>
-        )
+        <Pressable
+          style={styles.cover}
+          onPress={onTogglePaused}
+          accessibilityRole="button"
+          accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
+        >
+          <Image
+            source={{ uri: media.coverUrl }}
+            style={styles.coverImg}
+            resizeMode="cover"
+          />
+        </Pressable>
       ) : null}
 
       {media.kind === 'audio' && !media.coverUrl ? (
-        interactionsDisabled ? (
-          <View style={styles.fallbackArt} pointerEvents="none">
-            <View style={styles.fallbackBlobA} pointerEvents="none" />
-            <View style={styles.fallbackBlobB} pointerEvents="none" />
-          </View>
-        ) : (
-          <Pressable
-            style={styles.fallbackArt}
-            onPress={onTogglePaused}
-            accessibilityRole="button"
-            accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
-          >
-            <View style={styles.fallbackBlobA} pointerEvents="none" />
-            <View style={styles.fallbackBlobB} pointerEvents="none" />
-          </Pressable>
-        )
+        <Pressable
+          style={styles.fallbackArt}
+          onPress={onTogglePaused}
+          accessibilityRole="button"
+          accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
+        >
+          <View style={styles.fallbackBlobA} pointerEvents="none" />
+          <View style={styles.fallbackBlobB} pointerEvents="none" />
+        </Pressable>
       ) : null}
 
       {/* Transparent touch overlay for video — the native ExoPlayer/AVPlayer surface
           can swallow taps before the React Pressable wrapper receives them on Android.
-          This view sits above the Video surface and reliably captures all taps.
-          In story mode the parent GestureDetector owns touch, so it is omitted. */}
-      {media.kind === 'video' && !interactionsDisabled && (
+          This view sits above the Video surface and reliably captures all taps. */}
+      {media.kind === 'video' && (
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onTogglePaused}
@@ -365,9 +327,8 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         />
       )}
 
-      {/* Center play-glyph overlay shown when paused or before first play.
-          Suppressed in story mode: a held-pause shouldn't flash a play button. */}
-      {effectivePaused && !interactionsDisabled ? (
+      {/* Center play-glyph overlay shown when paused or before first play. */}
+      {effectivePaused ? (
         <View pointerEvents="none" style={styles.playGlyphWrap}>
           <View style={styles.playGlyph}>
             <View style={{ marginLeft: 4 }}>
@@ -395,7 +356,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
           <ActivityIndicator size="small" color={COLORS.purpleLight} />
         </View>
       ) : null}
-    </Container>
+    </Pressable>
   );
 });
 
