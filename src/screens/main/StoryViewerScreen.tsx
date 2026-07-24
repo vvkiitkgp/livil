@@ -809,8 +809,7 @@ export default function StoryViewerScreen() {
             <View style={styles.waveWrap} pointerEvents="none">
               <StoryWaveBars
                 waveform={waveform}
-                clipStartSec={story.clipStartSec}
-                clipEndSec={story.clipEndSec}
+                playing={!paused}
                 width={SCREEN_W - 28}
               />
             </View>

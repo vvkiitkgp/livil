@@ -1,155 +1,135 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Reanimated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useFrameCallback,
+  withTiming,
+  withSequence,
+  Easing,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { COLORS } from '../theme/colors';
 import { usePlayback } from '../contexts/PlaybackContext';
-import type { WaveformData } from '../services/waveform';
+import { sampleFeatures, type WaveformData } from '../services/waveform';
 
 /**
- * Story waveform — vertical BARS (matching the design), not the floating player's
- * continuous line. Reads the precomputed `tracks.waveform_peaks` loudness envelope
- * (0..1 per bucket, absolute seconds), slices the story's CLIP window, and renders
- * it as bars. A bright "played" layer sweeps left→right across the same bars as the
- * clip plays, driven by the live absolute positionRef the story engine advances.
+ * Story music visualizer — REACTIVE bars that bounce with the song, not a
+ * progress bar. Reads the precomputed `tracks.waveform_peaks` features at the
+ * live absolute position the story engine drives: overall level sets how tall the
+ * bars swell, low-band onsets punch a transient "kick", and a per-bar phase makes
+ * neighbours differ so it reads as an equalizer. Settles flat when paused.
  *
- * No analysis here — peaks only. With no data (video, or not loaded yet) it draws a
- * calm resting pattern so the bar row still reads as intentional.
+ * Renders NOTHING when there is no analysis (video, or not yet loaded) — the wave
+ * is only shown when it can actually react to the music.
  */
 
-const BAR_COUNT = 44;
+const BAR_COUNT = 26;
 const HEIGHT = 30;
-const MIN_BAR = 0.12; // floor so quiet buckets stay visible
+const TICK_MS = 40; // feature sampling cadence (~25Hz)
 
-function fallbackBars(n: number): number[] {
-  // Deterministic, calm resting shape (no wall-clock, no randomness).
-  return Array.from({ length: n }, (_, i) => 0.26 + 0.13 * Math.abs(Math.sin(i * 0.7)));
-}
-
-function computeBars(
-  waveform: WaveformData | null,
-  clipStartSec: number,
-  clipEndSec: number,
-  barCount: number,
-): number[] {
-  const peaks = waveform?.peaks;
-  if (!peaks || peaks.length === 0) {
-    return fallbackBars(barCount);
-  }
-  const hz = waveform!.hz || 15;
-  const start = Math.max(0, Math.floor(clipStartSec * hz));
-  const end = Math.min(peaks.length, Math.max(start + 1, Math.ceil(clipEndSec * hz)));
-  const slice = peaks.slice(start, end);
-  if (slice.length === 0) {
-    return fallbackBars(barCount);
-  }
-  const bars: number[] = [];
-  for (let i = 0; i < barCount; i++) {
-    const a = Math.floor((i / barCount) * slice.length);
-    const b = Math.max(a + 1, Math.floor(((i + 1) / barCount) * slice.length));
-    let m = 0;
-    for (let j = a; j < b && j < slice.length; j++) {
-      m = Math.max(m, slice[j]!);
-    }
-    bars.push(m);
-  }
-  // Normalize to the loudest bar so a short/quiet clip still fills the row.
-  const peak = Math.max(...bars, 0.0001);
-  return bars.map(v => Math.max(MIN_BAR, v / peak));
+function VizBar({
+  index,
+  level,
+  kick,
+  phase,
+}: {
+  index: number;
+  level: SharedValue<number>;
+  kick: SharedValue<number>;
+  phase: SharedValue<number>;
+}) {
+  const style = useAnimatedStyle(() => {
+    // Per-bar sway, phase-offset so adjacent bars differ (equalizer look).
+    const sway = 0.3 + 0.7 * Math.abs(Math.sin(index * 0.55 + phase.value));
+    // Centre bars react a little more to the kick than the edges.
+    const bump = 0.55 + 0.45 * Math.sin((index / BAR_COUNT) * Math.PI);
+    const h = level.value * sway + kick.value * bump;
+    return { transform: [{ scaleY: Math.max(0.06, Math.min(1, h)) }] };
+  });
+  return <Reanimated.View style={[styles.bar, style]} />;
 }
 
 export default function StoryWaveBars({
   waveform,
-  clipStartSec,
-  clipEndSec,
+  playing,
   width,
 }: {
   waveform: WaveformData | null;
-  clipStartSec: number;
-  clipEndSec: number;
+  playing: boolean;
   width: number;
 }) {
   const { positionRef } = usePlayback();
-  const bars = useMemo(
-    () => computeBars(waveform, clipStartSec, clipEndSec, BAR_COUNT),
-    [waveform, clipStartSec, clipEndSec],
-  );
+  const level = useSharedValue(0); // overall energy (eased)
+  const kick = useSharedValue(0);  // transient punch on onsets
+  const phase = useSharedValue(0); // UI-thread sway phase
 
-  // Played fraction of the clip, polled off the live absolute position (~25Hz).
-  const progress = useSharedValue(0);
+  // Advance the sway phase on the UI thread; faster when the music is louder.
+  useFrameCallback(frame => {
+    'worklet';
+    const dt = frame.timeSincePreviousFrame ?? 16;
+    let p = phase.value + (0.004 + level.value * 0.006) * dt;
+    if (p > 1e6) { p = 0; }
+    phase.value = p;
+  });
+
+  // Sample the precomputed features at the live position and feed the bars.
   useEffect(() => {
-    const clipDur = Math.max(0.001, clipEndSec - clipStartSec);
+    if (!waveform || !playing) {
+      level.value = withTiming(0, { duration: 320, easing: Easing.out(Easing.quad) });
+      kick.value = withTiming(0, { duration: 200 });
+      return;
+    }
+    let prevAbove = false;
+    let fluxEma = 0;
+    let lastKickAt = 0;
+    let elapsed = 0;
     const id = setInterval(() => {
-      const frac = (positionRef.current - clipStartSec) / clipDur;
-      progress.value = Math.min(1, Math.max(0, frac));
-    }, 40);
+      elapsed += TICK_MS;
+      const f = sampleFeatures(waveform, positionRef.current);
+      if (!f) { return; }
+      // Overall level from loudness/bass (v1 rows have bass≈loud).
+      const lvl = Math.min(1, 0.15 + 0.85 * Math.max(f.loud, f.bass));
+      level.value = withTiming(lvl, { duration: TICK_MS * 2, easing: Easing.out(Easing.quad) });
+      // Onset → kick: adaptive, rising-edge, rate-limited (v1 flux≈0 → no kicks).
+      fluxEma = fluxEma * 0.9 + f.flux * 0.1;
+      const threshold = Math.min(0.9, Math.max(0.22, fluxEma * 1.4));
+      const above = f.flux > threshold;
+      if (above && !prevAbove && elapsed - lastKickAt >= 110) {
+        lastKickAt = elapsed;
+        kick.value = withSequence(
+          withTiming(0.5, { duration: 45, easing: Easing.out(Easing.quad) }),
+          withTiming(0, { duration: 230, easing: Easing.in(Easing.quad) }),
+        );
+      }
+      prevAbove = above;
+    }, TICK_MS);
     return () => clearInterval(id);
-  }, [clipStartSec, clipEndSec, positionRef, progress]);
+  }, [waveform, playing, positionRef, level, kick]);
 
-  const fillStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+  // No analysis → show nothing (per product: react to the music, or don't show).
+  if (!waveform) { return null; }
 
   return (
     <View style={[styles.row, { width, height: HEIGHT }]}>
-      {/* Unplayed (dim) bars */}
-      <View style={styles.barsLayer}>
-        {bars.map((h, i) => (
-          <View key={i} style={[styles.bar, styles.barDim, { height: `${h * 100}%` }]} />
-        ))}
-      </View>
-      {/* Played (bright) bars, revealed left→right by the progress width. The inner
-          row is pinned to the left at the FULL width so the bars stay aligned with
-          the dim layer as the overflow-hidden parent clips it. */}
-      <Reanimated.View style={[styles.fill, fillStyle]}>
-        <View style={[styles.barsLayerFixed, { width }]}>
-          {bars.map((h, i) => (
-            <View key={i} style={[styles.bar, styles.barBright, { height: `${h * 100}%` }]} />
-          ))}
-        </View>
-      </Reanimated.View>
+      {Array.from({ length: BAR_COUNT }, (_, i) => (
+        <VizBar key={i} index={i} level={level} kick={kick} phase={phase} />
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    justifyContent: 'center',
-  },
-  barsLayer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    right: 0,
-    bottom: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  // Same as barsLayer but a FIXED left-pinned width (set inline), so the bright
-  // row's bars stay aligned with the dim row while the parent clips it by width.
-  barsLayerFixed: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
+    alignItems: 'flex-end',
+    gap: 3,
   },
   bar: {
     flex: 1,
-    minHeight: 2,
+    height: HEIGHT,
     borderRadius: 2,
-  },
-  barDim: {
-    backgroundColor: 'rgba(255,255,255,0.28)',
-  },
-  barBright: {
     backgroundColor: COLORS.purpleNeon,
-  },
-  fill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    overflow: 'hidden',
+    transformOrigin: '50% 100%',
   },
 });
