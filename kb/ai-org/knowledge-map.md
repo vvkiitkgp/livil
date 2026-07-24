@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-50 document(s) under `kb/`.
+52 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 50 |
-| Drift-proof (tier 1 + 4) | 19 |
+| Documents | 52 |
+| Drift-proof (tier 1 + 4) | 21 |
 | Hand-maintained (tier 3 + 5) | 24 |
 | Past freshness SLA | 0 |
 | Private-content stubs | 5 |
@@ -39,8 +39,8 @@ content, so the hand-maintained count is the number worth keeping small.
 | `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-07-24 | 9999d |
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-07-24 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-07-24 | 9999d |
-| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-07-23 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-07-23 | 9999d |
+| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-07-24 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-07-24 | 9999d |
 
 ## Tier 2 — Enforced
 
@@ -89,6 +89,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0001-hedge-the-patch.md` | principal-playback | CA, TR, ALL | 2026-07-21 | 9999d |
 | `debt/proposals/0002-version-storage-config.md` | principal-data | CA, TR, ALL | 2026-07-21 | 9999d |
 | `debt/proposals/0003-in-app-account-deletion.md` | principal-client | CA, TR, ALL | 2026-07-22 | 9999d |
+| `debt/proposals/0004-harden-stories-backend.md` | principal-data | CA, TR, ALL | 2026-07-24 | 9999d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
@@ -98,6 +99,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0006-maintain-patched-video-until-trigger.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0007-storage-policies-unversioned.md` | principal-security | ALL | 2026-07-21 | 9999d |
 | `decisions/0008-notification-recipients-derived-server-side.md` | principal-realtime | ALL | 2026-07-22 | 9999d |
+| `decisions/0009-stories-backend-audit-and-hardening.md` | principal-data | ALL | 2026-07-24 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -114,7 +116,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | chief-architect | 16 |
 | human | 1 |
 | principal-client | 6 |
-| principal-data | 7 |
+| principal-data | 9 |
 | principal-platform | 6 |
 | principal-playback | 7 |
 | principal-realtime | 2 |
