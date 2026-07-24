@@ -7,9 +7,12 @@
  * not a second <Video>. The screen does that by feeding GAP a NowPlayingInfo built
  * here. Two properties are load-bearing and silent if wrong:
  *
- *   1. clip bounds are NULL — if a real clip window leaked through, GAP's native
- *      Android clip-end watcher would auto-advance the queue mid-story (jumping to
- *      a stale/wrong track). No crash, just the wrong track.
+ *   1. the REAL clip window is passed through (both bounds non-null) — setNowPlaying
+ *      only arms positionRef = clipStart / clipWindowRef when BOTH are non-null, so
+ *      the engine loads AT the clip start instead of 0:00 or the prior feed
+ *      position. (Returning NULL bounds here was the LIV-31 device-test bug.) The
+ *      viewer keeps a one-item queue with repeat forced OFF, so the native clip-end
+ *      watcher can't advance into a stale queue.
  *   2. the post id is a SYNTHETIC, recognisable, non-uuid id — the play-count
  *      tracker keys off `isStoryViewerPostId` to skip a DB round-trip that would
  *      fail the uuid cast every time. If the prefix and the check drift apart the
@@ -69,12 +72,30 @@ describe('storyViewerPostId / isStoryViewerPostId', () => {
 });
 
 describe('storyToNowPlaying', () => {
-  it('passes NO clip window to GAP so native clip-end never advances the queue', () => {
+  it('passes the REAL clip window through so GAP loads at the clip start', () => {
     const info = storyToNowPlaying(makeStory({ clipStartSec: 12, clipEndSec: 27 }));
-    // The story clip is 12→27, but GAP must load the full track with no clip —
-    // the viewer seeks to the start itself and its own timer advances.
-    expect(info.clipStartSec).toBeNull();
-    expect(info.clipEndSec).toBeNull();
+    // setNowPlaying's new-post branch only arms positionRef = clipStart /
+    // clipWindowRef when BOTH bounds are non-null. Returning null (the old
+    // behaviour) forced positionRef = 0 and played from 0:00 / the feed position.
+    expect(info.clipStartSec).toBe(12);
+    expect(info.clipEndSec).toBe(27);
+  });
+
+  it('always yields NON-NULL bounds, guarding legacy null clip rows', () => {
+    // Both bounds must stay non-null or setNowPlaying will NOT arm the window.
+    // A legacy null start falls back to 0; a null end to start + fallback length.
+    const nullStart = storyToNowPlaying(
+      makeStory({ clipStartSec: null as unknown as number, clipEndSec: 8 }),
+    );
+    expect(nullStart.clipStartSec).toBe(0);
+    expect(nullStart.clipEndSec).toBe(8);
+
+    const nullEnd = storyToNowPlaying(
+      makeStory({ clipStartSec: 5, clipEndSec: null as unknown as number }),
+    );
+    expect(nullEnd.clipStartSec).toBe(5);
+    expect(nullEnd.clipEndSec).not.toBeNull();
+    expect(nullEnd.clipEndSec! > nullEnd.clipStartSec!).toBe(true);
   });
 
   it('uses the synthetic story post id (not a real posts row)', () => {

@@ -20,7 +20,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { COLORS } from '../../theme/colors';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
-import { usePlayback, type NowPlayingInfo } from '../../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
 import { markStorySeen } from '../../services/stories';
 import { storyToNowPlaying, storyViewerPostId } from '../../utils/storyPlayback';
@@ -65,6 +65,11 @@ type PlaybackSnapshot = {
   playSource: 'user' | 'queue';
   position: number;
   duration: number;
+  // Repeat/shuffle are forced OFF for the story session so GAP's native clip-end
+  // watcher can't loop the clip or wrap-reload the one-item queue (racing the
+  // JS advance). Captured here and restored on close.
+  repeatMode: RepeatMode;
+  shuffleEnabled: boolean;
 };
 
 export default function StoryViewerScreen() {
@@ -89,6 +94,10 @@ export default function StoryViewerScreen() {
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const initialSeekDoneRef = useRef(false);
+  // Single-fire latch for advance(): the progress-bar animation finishing and
+  // handleProgress crossing clipEnd can both fire in the same tick, which would
+  // call setIndex(i => i + 1) twice and skip a story. Reset per story.
+  const advancedRef = useRef(false);
   // Full snapshot of the single engine's state before the viewer opened, so the
   // user's now-playing track, position, AND queue are restored intact on close —
   // the viewer clobbers all of them while it drives the story audio through GAP.
@@ -111,9 +120,16 @@ export default function StoryViewerScreen() {
       playSource: playback.playSourceRef.current,
       position: playback.positionRef.current,
       duration: playback.durationRef.current,
+      repeatMode: playback.repeatMode,
+      shuffleEnabled: playback.shuffleEnabled,
     };
     playback.handlersRef.current?.pause();
     playback.pauseAll();
+    // Force repeat/shuffle OFF for the story session (restored on close). A
+    // leaked repeatMode 'all'/'one' would make GAP's native watcher loop the clip
+    // or wrap-reload the one-item queue at clipEnd, racing the JS advance.
+    playback.setRepeatMode('off');
+    playback.setShuffleEnabled(false);
     playback.setStoryViewerOpen(true);
     return () => {
       // Stop the story audio and kill the progress timer (a JS-driven timing can
@@ -132,6 +148,9 @@ export default function StoryViewerScreen() {
         playback.userQueueRef.current = snap.userQueue;
         playback.queueSourceRef.current = snap.queueSource;
         playback.playSourceRef.current = snap.playSource;
+        // Restore the repeat/shuffle modes we forced OFF for the story session.
+        playback.setRepeatMode(snap.repeatMode);
+        playback.setShuffleEnabled(snap.shuffleEnabled);
       }
 
       if (snap?.nowPlaying) {
@@ -167,6 +186,11 @@ export default function StoryViewerScreen() {
   }, [navigation]);
 
   const advance = useCallback(() => {
+    // Single-fire: the progress-anim finish callback and handleProgress crossing
+    // clipEnd can both fire in one tick; without this latch that runs setIndex
+    // twice and skips a story. Reset at the top of the per-story effect below.
+    if (advancedRef.current) {return;}
+    advancedRef.current = true;
     if (index < orderedStories.length - 1) {
       setIndex(i => i + 1);
     } else {
@@ -183,18 +207,33 @@ export default function StoryViewerScreen() {
 
     progressAnim.setValue(0);
     initialSeekDoneRef.current = false;
+    advancedRef.current = false;
     setPaused(false);
 
-    // Drive this story's AUDIO through the single GlobalAudioPlayer engine.
-    // A one-item queue with the default 'off' repeat mode contains GAP's
-    // auto-advance (a lock-screen "next" or any stray end-of-track resolves to a
-    // no-op instead of jumping into a stale queue). markSeekTarget pre-commits
-    // positionRef to the clip start so GAP seeks there on load; requestPlay
-    // activates the engine.
+    // Drive this story's AUDIO through the single GlobalAudioPlayer engine
+    // (ADR-0001). A one-item queue with repeat forced OFF (see mount effect)
+    // contains GAP's native auto-advance — a stray clip-end/next resolves to a
+    // no-op instead of jumping into a stale queue.
+    //
+    // Order matters (mirrors PostCard's union of both play paths):
+    //   1. setQueue / setNowPlaying — the now-playing info carries the REAL clip,
+    //      so setNowPlaying's new-post branch sets positionRef = clipStart and
+    //      clipWindowRef = {start,end} (both bounds non-null).
+    //   2. markSeekTarget BEFORE the forced seek — arm the seek-guard so any
+    //      stale feed-position onProgress is filtered, and bump seekNonce to nudge
+    //      the muted picture frame.
+    //   3. handlersRef.seek(clipStart) — FORCE the engine to the clip start. This
+    //      is the ONLY reposition when the story's audioUrl equals the already-
+    //      loaded feed track (no onLoad fires, so handleLoad's seek never runs).
+    //      It is a safe no-op for a fresh source (handleLoad also seeks). NOT
+    //      wrapped in setTimeout — that would re-race the deferred setNowPlaying
+    //      updater. null-safe for the fresh-app path (no handlers yet).
+    //   4. requestPlay last — activate the engine.
     const info = storyToNowPlaying(story);
     playback.setQueue([info], 0, 'story');
     playback.setNowPlaying(info);
     playback.markSeekTarget(story.clipStartSec);
+    playback.handlersRef.current?.seek(story.clipStartSec);
     playback.requestPlay(info.postId);
 
     // Seek the MUTED picture frame to the clip start on first load.

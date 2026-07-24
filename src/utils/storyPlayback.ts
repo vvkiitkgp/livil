@@ -17,6 +17,14 @@ import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 const STORY_VIEWER_POST_PREFIX = 'story_viewer_';
 
 /**
+ * Fallback clip length (seconds) applied only if a legacy story row has a null
+ * `clipEndSec`. Stories are persisted with a non-null clip today (author-side
+ * validation caps a clip at 10s), so this is purely defensive — it keeps the
+ * end bound non-null so `setNowPlaying` still arms the clip window.
+ */
+const STORY_CLIP_FALLBACK_LEN = 10;
+
+/**
  * The playback-slot id the story viewer assigns while a story drives GAP. It is
  * NOT a real `posts` row id — it is scoped so it can never collide with a feed
  * post's id, and so play-count recording can be skipped for it.
@@ -37,16 +45,31 @@ export function isStoryViewerPostId(postId: string): boolean {
 /**
  * Build a `NowPlayingInfo` so a story's audio plays through GAP.
  *
- * `clipStartSec` / `clipEndSec` are deliberately NULL: we do NOT want GAP's
- * native Android clip-end watcher to auto-advance the queue mid-story (it would
- * jump into whatever queue is loaded). The story viewer's own timer governs
- * advance, and it seeks GAP to the clip start manually via `markSeekTarget`.
+ * The story's REAL clip window (`clipStartSec` / `clipEndSec`) is passed through.
+ * `setNowPlaying`'s new-post branch only arms the clip window (positionRef =
+ * clipStart, clipWindowRef = {start,end}) when BOTH bounds are non-null — so GAP
+ * loads AT the clip start instead of 0:00, and the muted picture frame lines up.
+ * The story viewer keeps a one-item queue AND forces `repeatMode` to 'off' for
+ * the session (see StoryViewerScreen), so GAP's native clip-end watcher resolves
+ * any advance to a no-op instead of looping/jumping into a stale queue; the
+ * viewer's own timer governs the visible advance.
+ *
+ * (This previously returned NULL clip bounds. That forced positionRef = 0 in the
+ * deferred `setNowPlaying` updater, which raced and overwrote the synchronous
+ * `markSeekTarget(clipStart)` — so the viewer played the FULL track from 0:00 or
+ * continued from the prior feed position. Fixed in LIV-31 round 2.)
+ *
+ * Bounds are guarded against legacy NULLs so both stay non-null (start → 0,
+ * end → start + `STORY_CLIP_FALLBACK_LEN`); the `setNowPlaying` guard only arms
+ * the window when both are non-null.
  *
  * Engagement counts are zeroed and `kind` is a plain `'upload'` — stories carry
  * no like/comment/repost surface, and the synthetic post id has no metrics row.
  */
 export function storyToNowPlaying(story: Story): NowPlayingInfo {
   const t = story.track;
+  const clipStartSec = story.clipStartSec ?? 0;
+  const clipEndSec = story.clipEndSec ?? clipStartSec + STORY_CLIP_FALLBACK_LEN;
   return {
     postId: storyViewerPostId(story.id),
     trackId: t.id,
@@ -65,8 +88,8 @@ export function storyToNowPlaying(story: Story): NowPlayingInfo {
     repostsCount: 0,
     viewsCount: 0,
     viewerHasLiked: false,
-    clipStartSec: null,
-    clipEndSec: null,
+    clipStartSec,
+    clipEndSec,
     kind: 'upload',
     originalPostId: null,
     knownDurationSec: 0,
