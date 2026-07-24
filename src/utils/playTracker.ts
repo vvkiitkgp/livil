@@ -1,4 +1,5 @@
 import { recordPlay } from '../services/posts';
+import { isStoryViewerPostId } from './storyPlayback';
 
 /**
  * Play-count tracker.
@@ -43,6 +44,12 @@ const BACKWARD_DELTA_SEC = 0.5;
  * Idempotent — safe to fire many times per second.
  */
 export function trackPlayProgress(postId: string, positionSec: number): void {
+  // Synthetic playback ids (the story viewer's `story_viewer_<uuid>`) are not
+  // real `posts` rows. Recording a play for one fires `activity_record_play`
+  // with a non-uuid → the cast fails every time (swallowed, but a doomed
+  // round-trip + an error log per story). Skip tracking for them entirely.
+  if (isStoryViewerPostId(postId)) { return; }
+
   let s = sessions.get(postId);
   if (!s) {
     s = { accumulated: 0, recorded: false, lastPos: positionSec };

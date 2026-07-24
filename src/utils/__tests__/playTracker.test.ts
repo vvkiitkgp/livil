@@ -184,6 +184,24 @@ describe('explicit resets', () => {
   });
 });
 
+describe('synthetic (story-viewer) post ids', () => {
+  it('never records a play for a story_viewer_ id', () => {
+    // The story viewer routes its audio through the single engine under a synthetic
+    // `story_viewer_<uuid>` slot id. That id is NOT a real posts row, so recording a
+    // play fires `activity_record_play` with a value that fails the uuid cast every
+    // time. Even a full, threshold-crossing listen must not attempt the record.
+    play('story_viewer_b3f1c2d4-0000-4a00-8000-000000000000', [0, 1, 2, 3, 4, 5]);
+    expect(recorded).not.toHaveBeenCalled();
+  });
+
+  it('still records a normal post in the same run (guard is not global)', () => {
+    play('story_viewer_abc', [0, 1, 2, 3]);
+    play('post-1', [0, 1, 2, 3]);
+    expect(recorded).toHaveBeenCalledTimes(1);
+    expect(recorded).toHaveBeenCalledWith('post-1');
+  });
+});
+
 describe('failure isolation', () => {
   it('swallows a failed record rather than leaving an unhandled rejection', async () => {
     // Play counting is fire-and-forget: a failed record must never break playback

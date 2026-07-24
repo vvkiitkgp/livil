@@ -20,9 +20,10 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { COLORS } from '../../theme/colors';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
-import { usePlayback } from '../../contexts/PlaybackContext';
+import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
 import { markStorySeen } from '../../services/stories';
+import { storyToNowPlaying, storyViewerPostId } from '../../utils/storyPlayback';
 import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
 
@@ -48,6 +49,29 @@ function avatarInitials(displayName: string | null, username: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
+/**
+ * Snapshot of the single engine's full state before the viewer opened, so it can
+ * be restored intact on close. The viewer overwrites ALL of this — nowPlaying,
+ * the queue refs, and positionRef — while it drives the story audio through GAP;
+ * restoring only nowPlaying would leave the user's queue as `[last story]` and
+ * their song resumed from 0.
+ */
+type PlaybackSnapshot = {
+  nowPlaying: NowPlayingInfo | null;
+  queue: NowPlayingInfo[];
+  currentIndex: number;
+  userQueue: NowPlayingInfo[];
+  queueSource: string;
+  playSource: 'user' | 'queue';
+  position: number;
+  duration: number;
+  // Repeat/shuffle are forced OFF for the story session so GAP's native clip-end
+  // watcher can't loop the clip or wrap-reload the one-item queue (racing the
+  // JS advance). Captured here and restored on close.
+  repeatMode: RepeatMode;
+  shuffleEnabled: boolean;
+};
+
 export default function StoryViewerScreen() {
   const route = useRoute<StoryViewerRoute>();
   const navigation = useNavigation<StoryViewerNav>();
@@ -70,17 +94,118 @@ export default function StoryViewerScreen() {
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const initialSeekDoneRef = useRef(false);
+  // Single-fire latch for advance(): the progress-bar animation finishing and
+  // handleProgress crossing clipEnd can both fire in the same tick, which would
+  // call setIndex(i => i + 1) twice and skip a story. Reset per story.
+  const advancedRef = useRef(false);
+  // Skip the FIRST run of the `paused` effect (below). On mount handlersRef still
+  // points at the OUTGOING feed track, so its play() would resumePlay() THAT track
+  // and hijack the story — the story is already started by the per-story index
+  // effect's requestPlay + GAP's activation.
+  const didMountPausedRef = useRef(false);
+  // Full snapshot of the single engine's state before the viewer opened, so the
+  // user's now-playing track, position, AND queue are restored intact on close —
+  // the viewer clobbers all of them while it drives the story audio through GAP.
+  const snapshotRef = useRef<PlaybackSnapshot | null>(null);
+  // The source URL loaded into the single engine when a story activates. Used to
+  // decide whether the per-story forced seek is safe: it is ONLY correct when the
+  // story reuses the already-loaded source (same-source → no onLoad → handleLoad's
+  // seek never runs). If a DIFFERENT track is loaded, a forced seek would drive the
+  // OUTGOING track and race the source switch (Issue 3).
+  const loadedSrcRef = useRef<string | null>(null);
 
   const story = orderedStories[index];
 
-  // Pause global player on mount and hide FloatingPlayer.
-  // Intentionally do NOT call clearNowPlaying() so the user can resume
-  // whatever was playing after closing the story viewer.
+  // On mount: snapshot the engine state, pause the current track, and hide the
+  // FloatingPlayer. The story's own AUDIO is then driven through the single
+  // GlobalAudioPlayer engine (see the per-story effect below) — NOT a second
+  // <Video> — per ADR-0001. On close we restore the full pre-story state (left
+  // paused) so the user resumes exactly where they were.
   useEffect(() => {
+    snapshotRef.current = {
+      nowPlaying: playback.nowPlaying,
+      queue: playback.queueRef.current,
+      currentIndex: playback.currentIndexRef.current,
+      userQueue: playback.userQueueRef.current,
+      queueSource: playback.queueSourceRef.current,
+      playSource: playback.playSourceRef.current,
+      position: playback.positionRef.current,
+      duration: playback.durationRef.current,
+      repeatMode: playback.repeatMode,
+      shuffleEnabled: playback.shuffleEnabled,
+    };
+    // Record the source currently loaded in the engine (the pre-story track), so
+    // the per-story effect can gate its forced seek to the same-source case.
+    loadedSrcRef.current = snapshotRef.current.nowPlaying
+      ? (snapshotRef.current.nowPlaying.audioUrl ?? snapshotRef.current.nowPlaying.videoUrl ?? null)
+      : null;
     playback.handlersRef.current?.pause();
     playback.pauseAll();
+    // Force repeat/shuffle OFF for the story session (restored on close). A
+    // leaked repeatMode 'all'/'one' would make GAP's native watcher loop the clip
+    // or wrap-reload the one-item queue at clipEnd, racing the JS advance.
+    playback.setRepeatMode('off');
+    playback.setShuffleEnabled(false);
     playback.setStoryViewerOpen(true);
     return () => {
+      // Stop the story audio and kill the progress timer (a JS-driven timing can
+      // otherwise resolve after a swipe-close and call advance()/close() on an
+      // unmounted screen).
+      playback.handlersRef.current?.pause();
+      progressAnimRef.current?.stop();
+
+      const snap = snapshotRef.current;
+      // Restore the full queue the one-item story queue overwrote (setQueue
+      // reassigns these refs to NEW arrays, so the snapshotted old arrays were
+      // never mutated in place). Applied for both branches below.
+      if (snap) {
+        playback.queueRef.current = snap.queue;
+        playback.currentIndexRef.current = snap.currentIndex;
+        playback.userQueueRef.current = snap.userQueue;
+        playback.queueSourceRef.current = snap.queueSource;
+        playback.playSourceRef.current = snap.playSource;
+        // Restore the repeat/shuffle modes we forced OFF for the story session.
+        playback.setRepeatMode(snap.repeatMode);
+        playback.setShuffleEnabled(snap.shuffleEnabled);
+      }
+
+      if (snap?.nowPlaying) {
+        // Restore the previous track. setNowPlaying resets positionRef to the new
+        // postId's clip start (PlaybackContext:288 new-post branch), so re-apply
+        // the saved live position/duration on the next tick, after that updater
+        // has run — otherwise the user's song resumes from 0.
+        const { nowPlaying: prev, position, duration } = snap;
+        playback.setNowPlaying(prev);
+        setTimeout(() => {
+          playback.durationRef.current = duration;
+          // Force the NATIVE engine back to the pre-story position. Raw ref writes
+          // are not enough: when `prev` reuses the story's source (no reload → no
+          // onLoad → handleLoad's seek never runs) the native playhead stays at the
+          // story clip, and on resume onProgress drags positionRef back to it — the
+          // feed card then shows the story position (Issue 2).
+          //   same-source (the bug)   → engine seeked to `position`; guard drops
+          //                             the stale story-position samples.
+          //   different-source        → engine is paused by pauseAll and
+          //                             setNowPlaying+handleLoad seek anyway; this
+          //                             extra seek is a harmless no-op.
+          //   fresh-app (prev==null)  → untouched (clearNowPlaying else branch).
+          // handlersRef/markSeekTarget belong to the provider (which outlives this
+          // screen), so calling them from the post-unmount timer is safe.
+          playback.markSeekTarget(position);
+          playback.handlersRef.current?.seek(position);
+        }, 0);
+      } else {
+        // Nothing was playing before (the common "fresh app → tap a story ring"
+        // path). Clear the clobbered story now-playing + queue, else closing
+        // un-hides the FloatingPlayer showing the just-closed story, paused.
+        playback.clearNowPlaying();
+      }
+
+      // pauseAll (activePostId → null) runs AFTER setNowPlaying. GAP gates
+      // playback on activePostId, and null never equals the restored postId in
+      // any interleaving, so the restored track settles PAUSED — it does not
+      // auto-play (confirmed in review).
+      playback.pauseAll();
       playback.setStoryViewerOpen(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,6 +216,11 @@ export default function StoryViewerScreen() {
   }, [navigation]);
 
   const advance = useCallback(() => {
+    // Single-fire: the progress-anim finish callback and handleProgress crossing
+    // clipEnd can both fire in one tick; without this latch that runs setIndex
+    // twice and skips a story. Reset at the top of the per-story effect below.
+    if (advancedRef.current) {return;}
+    advancedRef.current = true;
     if (index < orderedStories.length - 1) {
       setIndex(i => i + 1);
     } else {
@@ -107,9 +237,49 @@ export default function StoryViewerScreen() {
 
     progressAnim.setValue(0);
     initialSeekDoneRef.current = false;
+    advancedRef.current = false;
     setPaused(false);
 
-    // Seek to clip start on first load.
+    // Drive this story's AUDIO through the single GlobalAudioPlayer engine
+    // (ADR-0001). A one-item queue with repeat forced OFF (see mount effect)
+    // contains GAP's native auto-advance — a stray clip-end/next resolves to a
+    // no-op instead of jumping into a stale queue.
+    //
+    // Order matters (mirrors PostCard's union of both play paths):
+    //   1. setQueue / setNowPlaying — the now-playing info carries the REAL clip,
+    //      so setNowPlaying's new-post branch sets positionRef = clipStart and
+    //      clipWindowRef = {start,end} (both bounds non-null).
+    //   2. markSeekTarget BEFORE the forced seek — arm the seek-guard so any
+    //      stale feed-position onProgress is filtered, and bump seekNonce to nudge
+    //      the muted picture frame.
+    //   3. handlersRef.seek(clipStart) — FORCE the engine to the clip start, but
+    //      ONLY when the story reuses the already-loaded source (Case A). Then no
+    //      onLoad fires, so handleLoad's seek never runs and this is the sole
+    //      reposition. For a DIFFERENT/absent source (Case B) setNowPlaying
+    //      switches GAP's source and handleLoad seeks to positionRef(=clipStart);
+    //      a forced seek here would drive the OUTGOING track and RACE the switch
+    //      (Issue 3 — the feed's loaded track playing under the story picture).
+    //      NOT wrapped in setTimeout — that would re-race the deferred setNowPlaying
+    //      updater. null-safe for the fresh-app path (no handlers yet).
+    //   4. requestPlay last — activate the engine.
+    const info = storyToNowPlaying(story);
+    const storyUrl = info.audioUrl ?? info.videoUrl ?? null;
+    const sameSource = loadedSrcRef.current != null && loadedSrcRef.current === storyUrl;
+
+    playback.setQueue([info], 0, 'story');
+    playback.setNowPlaying(info);
+    playback.markSeekTarget(story.clipStartSec);
+    if (sameSource) {
+      // Case A: same source already loaded, no onLoad → force reposition.
+      playback.handlersRef.current?.seek(story.clipStartSec);
+    }
+    // else Case B: different/no source — setNowPlaying switches GAP's source and
+    // handleLoad seeks to positionRef(=clipStart). A forced seek here would drive
+    // the OUTGOING track and race the switch.
+    playback.requestPlay(info.postId);
+    loadedSrcRef.current = storyUrl;
+
+    // Seek the MUTED picture frame to the clip start on first load.
     setSeekTo(story.clipStartSec);
     setTimeout(() => setSeekTo(null), 0);
 
@@ -159,6 +329,17 @@ export default function StoryViewerScreen() {
 
   // Pause / resume the progress bar when the story pauses/plays.
   useEffect(() => {
+    if (!didMountPausedRef.current) {
+      didMountPausedRef.current = true;
+      return; // mount run: story already started by the index effect; play() here would resume the OUTGOING feed track and hijack the story
+    }
+    // Drive the single engine — a tap holds/resumes the story AUDIO through GAP
+    // (the muted picture frame is paused by the `paused` prop separately).
+    if (paused) {
+      playback.handlersRef.current?.pause();
+    } else {
+      playback.handlersRef.current?.play();
+    }
     if (paused) {
       progressAnimRef.current?.stop();
     } else {
@@ -229,7 +410,7 @@ export default function StoryViewerScreen() {
           {/* Background media — fills entire screen */}
           {media ? (
             <MediaPlayer
-              postId={`story_viewer_${story.id}`}
+              postId={storyViewerPostId(story.id)}
               media={media}
               paused={paused}
               onTogglePaused={() => setPaused(p => !p)}
@@ -238,6 +419,10 @@ export default function StoryViewerScreen() {
               seekTo={seekTo}
               visible
               pauseWhenOffScreen={false}
+              // MUTED picture-only frame — the story's audio plays through the
+              // single GlobalAudioPlayer engine (ADR-0001), never a second
+              // <Video>. Without this the viewer runs two audio engines at once.
+              muted
               style={StyleSheet.absoluteFill}
             />
           ) : null}
