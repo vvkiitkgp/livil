@@ -184,7 +184,8 @@ function FriendStoriesRow({
                 navigation.navigate('StoryViewer', {
                   clusters: routeClusters,
                   startAuthorIndex: i,
-                  startStoryIndex: 0,
+                  // Open at the first UNWATCHED clip (Instagram), not the start.
+                  startStoryIndex: cluster.firstUnseenIndex,
                 })
               }
             >

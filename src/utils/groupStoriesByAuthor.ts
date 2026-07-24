@@ -24,6 +24,10 @@ export type StoryCluster = {
   storyIds: string[];
   /** True if ANY of this author's stories is still unseen by the viewer. */
   hasUnseen: boolean;
+  /** Index into `storyIds` of the first UNSEEN story — where the viewer should
+   *  open (Instagram opens at the first unwatched clip, not the start). 0 when
+   *  every story is already seen. */
+  firstUnseenIndex: number;
 };
 
 /**
@@ -54,11 +58,13 @@ export function groupStoriesByAuthor(stories: Story[]): StoryCluster[] {
   const clusters: StoryCluster[] = order.map(authorId => {
     const items = byAuthor.get(authorId)!;
     const chronological = [...items].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const firstUnseen = chronological.findIndex(s => s.viewedAt === null);
     return {
       author: chronological[0]!.author,
       authorId,
       storyIds: chronological.map(s => s.id),
-      hasUnseen: chronological.some(s => s.viewedAt === null),
+      hasUnseen: firstUnseen >= 0,
+      firstUnseenIndex: firstUnseen >= 0 ? firstUnseen : 0,
     };
   });
 

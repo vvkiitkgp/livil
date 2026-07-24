@@ -104,6 +104,25 @@ describe('groupStoriesByAuthor', () => {
   it('returns an empty array for no stories', () => {
     expect(groupStoriesByAuthor([])).toEqual([]);
   });
+
+  it('points firstUnseenIndex at the first unwatched clip', () => {
+    // Watched the first two of three → should open at index 2 (the third).
+    const clusters = groupStoriesByAuthor([
+      mk('s1', 'maya', '2026-07-24T09:00:00Z', '2026-07-24T09:30:00Z'),
+      mk('s2', 'maya', '2026-07-24T10:00:00Z', '2026-07-24T10:30:00Z'),
+      mk('s3', 'maya', '2026-07-24T11:00:00Z', null),
+    ]);
+    expect(clusters[0]!.storyIds).toEqual(['s1', 's2', 's3']);
+    expect(clusters[0]!.firstUnseenIndex).toBe(2);
+  });
+
+  it('firstUnseenIndex is 0 when every clip is already seen', () => {
+    const clusters = groupStoriesByAuthor([
+      mk('s1', 'kb', '2026-07-24T09:00:00Z', '2026-07-24T09:30:00Z'),
+      mk('s2', 'kb', '2026-07-24T10:00:00Z', '2026-07-24T10:30:00Z'),
+    ]);
+    expect(clusters[0]!.firstUnseenIndex).toBe(0);
+  });
 });
 
 describe('flattenClusters', () => {

@@ -44,7 +44,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
 import Scrim from '../../components/Scrim';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
-import WaveVisualizer from '../../components/WaveVisualizer';
+import StoryWaveBars from '../../components/StoryWaveBars';
 import { getOrAnalyzeWaveform } from '../../services/tracks';
 import type { WaveformData } from '../../services/waveform';
 
@@ -800,12 +800,11 @@ export default function StoryViewerScreen() {
               <Text style={styles.commentText}>{story.comment}</Text>
             ) : null}
             <View style={styles.waveWrap} pointerEvents="none">
-              <WaveVisualizer
-                playing={!paused}
-                suppressed={false}
-                width={SCREEN_W - 28}
-                color={COLORS.purpleLight}
+              <StoryWaveBars
                 waveform={waveform}
+                clipStartSec={story.clipStartSec}
+                clipEndSec={story.clipEndSec}
+                width={SCREEN_W - 28}
               />
             </View>
             <TouchableOpacity
