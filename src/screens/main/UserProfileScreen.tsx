@@ -37,6 +37,7 @@ import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components
 import ProfileGridCard from '../../components/ProfileGridCard';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useStories } from '../../contexts/StoriesContext';
 import AddUserSheet from '../../components/AddUserSheet';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
@@ -117,6 +118,22 @@ export default function UserProfileScreen() {
   const playback = usePlayback();
   const rel = useRelationships();
   const { showToast } = useToast();
+  const { clusters: storyClusters } = useStories();
+
+  // Instagram-style story ring on the profile avatar: if this user has active
+  // stories the viewer can see, the ring becomes tappable and reflects seen state.
+  const storyCluster = useMemo(
+    () => storyClusters.find(c => c.authorId === userId) ?? null,
+    [storyClusters, userId],
+  );
+  const openUserStories = useCallback(() => {
+    if (!storyCluster) { return; }
+    navigation.navigate('StoryViewer', {
+      clusters: [{ authorId: storyCluster.authorId, storyIds: storyCluster.storyIds }],
+      startAuthorIndex: 0,
+      startStoryIndex: storyCluster.firstUnseenIndex,
+    });
+  }, [storyCluster, navigation]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
   const comments = useCommentsCountDeltas();
@@ -507,8 +524,22 @@ export default function UserProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatarRingGlow} />
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.85}
+            onPress={storyCluster ? openUserStories : undefined}
+            disabled={!storyCluster}
+          >
+            <View
+              style={[
+                styles.avatarRingGlow,
+                storyCluster
+                  ? storyCluster.hasUnseen
+                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
+                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : null,
+              ]}
+            />
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -516,7 +547,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               ) : null}
             </View>
-          </View>
+          </TouchableOpacity>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -584,7 +615,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy]);
+  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
