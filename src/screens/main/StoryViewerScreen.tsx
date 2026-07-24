@@ -94,10 +94,15 @@ export default function StoryViewerScreen() {
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const initialSeekDoneRef = useRef(false);
-  // Single-fire latch for advance(): the progress-bar animation finishing and
-  // handleProgress crossing clipEnd can both fire in the same tick, which would
-  // call setIndex(i => i + 1) twice and skip a story. Reset per story.
-  const advancedRef = useRef(false);
+  // Dedupe latch for advance(), keyed by the story index it fired FROM. Both
+  // clocks that reach clip end for a story — the progress-bar animation finishing
+  // and handleProgress crossing clipEnd — resolve to a SINGLE advance. A boolean
+  // latch reset per story was NOT enough: a stale progress animation belonging to
+  // the outgoing story can finish a frame AFTER the index changed and the boolean
+  // was reset, firing a second advance that SKIPS the next story. Keying by the
+  // source index makes advance idempotent per story no matter when the second
+  // clock fires (init -1 so the first story can still advance).
+  const advancedFromIndexRef = useRef(-1);
   // Skip the FIRST run of the `paused` effect (below). On mount handlersRef still
   // points at the OUTGOING feed track, so its play() would resumePlay() THAT track
   // and hijack the story — the story is already started by the per-story index
@@ -216,11 +221,12 @@ export default function StoryViewerScreen() {
   }, [navigation]);
 
   const advance = useCallback(() => {
-    // Single-fire: the progress-anim finish callback and handleProgress crossing
-    // clipEnd can both fire in one tick; without this latch that runs setIndex
-    // twice and skips a story. Reset at the top of the per-story effect below.
-    if (advancedRef.current) {return;}
-    advancedRef.current = true;
+    // Idempotent per source index: whichever clock reaches clip end first records
+    // this index; any later clock for the SAME story — including a stale progress
+    // animation that finishes after the index already changed — is a no-op. See
+    // the advancedFromIndexRef declaration above.
+    if (advancedFromIndexRef.current === index) {return;}
+    advancedFromIndexRef.current = index;
     if (index < orderedStories.length - 1) {
       setIndex(i => i + 1);
     } else {
@@ -237,7 +243,6 @@ export default function StoryViewerScreen() {
 
     progressAnim.setValue(0);
     initialSeekDoneRef.current = false;
-    advancedRef.current = false;
     setPaused(false);
 
     // Drive this story's AUDIO through the single GlobalAudioPlayer engine
@@ -427,9 +432,6 @@ export default function StoryViewerScreen() {
             />
           ) : null}
 
-          {/* Dark gradient overlay at top */}
-          <View style={styles.topGradient} pointerEvents="none" />
-
           {/* ── Top UI (not inside GestureDetector so taps are reliable) ── */}
           <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
             {/* Progress pills */}
@@ -512,17 +514,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-  },
-  topGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 140,
-    backgroundColor: 'transparent',
-    // Emulate a top-to-transparent gradient with a semi-opaque overlay
-    opacity: 0.45,
-    // backgroundColor: 'black' would block content; use a solid-to-transparent feel with the overlay approach
   },
   // Progress bar row
   progressRow: {
