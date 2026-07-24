@@ -44,6 +44,9 @@ import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
 import Scrim from '../../components/Scrim';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import WaveVisualizer from '../../components/WaveVisualizer';
+import { getOrAnalyzeWaveform } from '../../services/tracks';
+import type { WaveformData } from '../../services/waveform';
 
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
@@ -417,6 +420,27 @@ export default function StoryViewerScreen() {
     return null;
   }, [story]);
 
+  // ── Beat-synced visualizer envelope ──
+  // Resolve the current story track's precomputed loudness envelope (cache → DB →
+  // analyze-on-device) and hand it to WaveVisualizer, which indexes it by the live
+  // ABSOLUTE positionRef the story audio drives through the single engine. Mirrors
+  // FloatingPlayer exactly, including the AUDIO-ONLY gate: analyzing a video would
+  // pull the whole remote file into memory and OOM-crash (audioUrl is null for
+  // video anyway) — so video stories keep the decorative wave.
+  const [waveform, setWaveform] = useState<WaveformData | null>(null);
+  const activeTrackId = story?.track.id ?? null;
+  const analyzableUrl =
+    story?.track.mediaKind === 'audio' ? (story?.track.audioUrl ?? undefined) : undefined;
+  useEffect(() => {
+    if (!activeTrackId || !analyzableUrl) { setWaveform(null); return; }
+    let cancelled = false;
+    setWaveform(null); // clear while the new story's envelope resolves
+    getOrAnalyzeWaveform(activeTrackId, analyzableUrl)
+      .then(data => { if (!cancelled) { setWaveform(data); } })
+      .catch(() => { if (!cancelled) { setWaveform(null); } });
+    return () => { cancelled = true; };
+  }, [activeTrackId, analyzableUrl]);
+
   // ── Go to the song's post: deep-link to the original upload via its author's
   //    profile (the app has no standalone post screen). ──
   const openSong = useCallback(async () => {
@@ -654,6 +678,15 @@ export default function StoryViewerScreen() {
             {story.comment ? (
               <Text style={styles.commentText}>{story.comment}</Text>
             ) : null}
+            <View style={styles.waveWrap} pointerEvents="none">
+              <WaveVisualizer
+                playing={!paused}
+                suppressed={false}
+                width={SCREEN_W - 28}
+                color={COLORS.purpleLight}
+                waveform={waveform}
+              />
+            </View>
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.songBar}
@@ -834,6 +867,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  waveWrap: {
+    height: 30,
+    justifyContent: 'center',
   },
   songBar: {
     flexDirection: 'row',
