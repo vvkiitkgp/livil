@@ -85,8 +85,10 @@ One or more forward-only migrations plus a test, implementing ADR-0009's Decisio
 
 ## Scope boundaries
 
-**Not** included: the friends-vs-star visibility semantics (escalated to the founder in ADR-0009
-§5 — a product decision, not this proposal); any new columns for LIV-22/23 (reactions, replies,
+**Not** included: the friends-vs-star visibility semantics — resolved by founder decision
+2026-07-24 (ADR-0009 §5), which ratifies the shipped predicate (friends OR outbound-star OR
+self; fans excluded), so no policy change is needed here; any new columns for LIV-22/23
+(reactions, replies,
 seen-by UI) until those specs exist; a "seen-by" author-read policy on `story_views` unless
 LIV-22/23 requires it; signed URLs / media-object privacy (the ADR-0004 partial-exit trigger);
 any redesign of the shipped schema.

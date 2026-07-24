@@ -20,8 +20,9 @@ related_adrs: [4, 7, 8]
 | **Decided by** | Architecture Board — LIV-24 debate |
 | **Participants** | principal-data, principal-security, adversarial-critic |
 
-**Board recommendation — PENDING FOUNDER RATIFICATION (2026-07-24). One sub-decision is
-Escalated (see Decision §5).**
+**Board recommendation — PENDING FOUNDER RATIFICATION (2026-07-24). The former P63 visibility
+escalation was resolved by founder decision 2026-07-24 (see Decision §5); the decision ratifies
+the shipped predicate.**
 
 ---
 
@@ -70,12 +71,16 @@ policy. This is now fixed, but the coupling is invisible from the stories migrat
    purge is viable; this reverses the ADR-0008 blocker where availability was unknown.
    Expiry-in-predicate already guarantees correctness regardless of when the reaper runs; the
    reaper is for table hygiene, not authorization.
-5. **Escalated sub-decision (Constitution P63).** The ticket says "friends-only reads," but the
-   shipped policy grants "accepted friend OR I star them" — broader than friends-only. Whether
-   stories should be visible to people the author only follows/stars is a **product decision**
-   about intended audience, not a schema question. The board does not ratify or silently narrow
-   it — it escalates to the founder. Until decided, the shipped "friends-or-star" behavior
-   stands.
+5. **Visibility semantics — resolved by founder decision (2026-07-24).** The former P63
+   escalation is closed. A viewer **V** may read a story authored by **A** exactly when: **A = V**
+   (own story, re-watchable) **OR** A and V are **mutual friends** **OR** **V has starred A**
+   (outbound star, viewer→author). This is precisely the shipped `stories_select` predicate, so
+   the founder decision **ratifies the shipped behavior — no policy change is required.** The
+   directionality is load-bearing: starring is viewer→author, so **fans (users who starred V but
+   whom V has not friended or starred back) are excluded** — the star branch checks
+   `follower_id = auth.uid()` (V is the starrer), not the reverse. Moving to a stricter
+   "mutual-friends-only" rule, or a looser "fans included" rule, would be a **new** product
+   decision requiring a change to this predicate.
 6. **Two illegal states the shipped schema permits, found by the critic, must be fixed
    (follow-on, PROP-0004):**
    - (a) `expires_at` is client-trusted — `stories_insert` only checks `author_id`, and the
@@ -141,7 +146,8 @@ small, contained, additive migrations; the backend becomes reviewable.
 
 ## Revisit when
 
-- The founder decides the friends-vs-star visibility question (Decision §5).
+- The decided visibility rule (Decision §5) changes — e.g. to mutual-friends-only, or to
+  include fans.
 - LIV-22/23 specs require new columns (reactions, replies, seen-by list).
 - Media privacy becomes a product promise → signed URLs (ADR-0004 partial exit).
 - Story volume makes the correlated `EXISTS` subqueries a measured cost.
