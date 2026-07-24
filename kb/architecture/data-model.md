@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-07-23
+last_verified: 2026-07-24
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 44 migration(s) in `supabase/migrations/`.
+Reconstructed from 45 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
