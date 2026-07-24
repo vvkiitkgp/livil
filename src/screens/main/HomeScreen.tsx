@@ -41,6 +41,7 @@ import {
 } from '../../services/posts';
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
+import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
 
@@ -103,8 +104,8 @@ function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
 }
 
 
-function storyInitials(story: Story): string {
-  const name = story.author.displayName?.trim() || story.author.username;
+function storyInitials(author: { displayName: string | null; username: string }): string {
+  const name = author.displayName?.trim() || author.username;
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return '?';
@@ -136,7 +137,13 @@ function FriendStoriesRow({
   stories: Story[];
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const storyIds = useMemo(() => stories.map(s => s.id), [stories]);
+  // One ring per author (Instagram-style). The viewer is handed the ordered
+  // clusters so cross-author tap/swipe works; the tapped ring is startAuthorIndex.
+  const clusters = useMemo(() => groupStoriesByAuthor(stories), [stories]);
+  const routeClusters = useMemo(
+    () => clusters.map(c => ({ authorId: c.authorId, storyIds: c.storyIds })),
+    [clusters],
+  );
 
   if (loading) {
     return (
@@ -166,30 +173,46 @@ function FriendStoriesRow({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.storiesRow}
       >
-        {stories.map((item, i) => {
-          const seen = item.viewedAt !== null;
+        {clusters.map((cluster, i) => {
+          const seen = !cluster.hasUnseen;
+          const count = cluster.storyIds.length;
           return (
             <Pressable
-              key={item.id}
+              key={cluster.authorId}
               style={styles.storyCell}
-              onPress={() => navigation.navigate('StoryViewer', { storyIds, startIndex: i })}
+              onPress={() =>
+                navigation.navigate('StoryViewer', {
+                  clusters: routeClusters,
+                  startAuthorIndex: i,
+                  startStoryIndex: 0,
+                })
+              }
             >
-              <View style={[
-                styles.storyRing,
-                seen
-                  ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
-                  : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
-              ]}>
-                <View style={styles.storyAvatar}>
-                  {item.author.avatarUrl ? (
-                    <Image source={{ uri: item.author.avatarUrl }} style={styles.storyAvatarImg} />
-                  ) : (
-                    <Text style={styles.storyAvatarText}>{storyInitials(item)}</Text>
-                  )}
+              <View style={styles.storyRingWrap}>
+                <View style={[
+                  styles.storyRing,
+                  seen
+                    ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                    : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
+                ]}>
+                  <View style={styles.storyAvatar}>
+                    {cluster.author.avatarUrl ? (
+                      <Image source={{ uri: cluster.author.avatarUrl }} style={styles.storyAvatarImg} />
+                    ) : (
+                      <Text style={styles.storyAvatarText}>
+                        {storyInitials(cluster.author)}
+                      </Text>
+                    )}
+                  </View>
                 </View>
+                {count > 1 ? (
+                  <View style={[styles.storyCountBadge, seen && styles.storyCountBadgeSeen]}>
+                    <Text style={styles.storyCountText}>{count}</Text>
+                  </View>
+                ) : null}
               </View>
               <Text style={styles.storyUsername} numberOfLines={1}>
-                @{item.author.username}
+                @{cluster.author.username}
               </Text>
             </Pressable>
           );
@@ -973,6 +996,32 @@ const styles = StyleSheet.create({
     width: 76,
     alignItems: 'center',
     gap: 8,
+  },
+  storyRingWrap: {
+    width: 74,
+    height: 74,
+  },
+  storyCountBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: COLORS.purple,
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyCountBadgeSeen: {
+    backgroundColor: COLORS.textMuted,
+  },
+  storyCountText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '800',
   },
   storyRing: {
     width: 74,

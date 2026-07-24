@@ -12,24 +12,50 @@ import {
   Image,
   TouchableOpacity,
   Animated,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
 
 import { COLORS } from '../../theme/colors';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
 import { usePlayback, type NowPlayingInfo, type RepeatMode } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
-import { markStorySeen } from '../../services/stories';
+import { useRelationships } from '../../contexts/RelationshipContext';
+import { useToast } from '../../contexts/ToastContext';
+import {
+  markStorySeen,
+  deleteStory,
+  getStoryPostAuthorId,
+  type Story,
+} from '../../services/stories';
 import { storyToNowPlaying, storyViewerPostId } from '../../utils/storyPlayback';
+import { flattenClusters, flatStartIndex } from '../../utils/groupStoriesByAuthor';
 import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
+import Scrim from '../../components/Scrim';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
 
+const { width: SCREEN_W } = Dimensions.get('window');
+/** Left third of the screen taps BACK; the rest taps FORWARD (Instagram). */
+const TAP_BACK_FRACTION = 0.3;
+/** Drag distance (dp) / fling velocity past which a downward swipe dismisses. */
+const DISMISS_DISTANCE = 120;
+const DISMISS_VELOCITY = 850;
+/** Horizontal drag (dp) past which a swipe jumps to the adjacent author. */
+const AUTHOR_SWIPE_DISTANCE = 64;
 
 function relativeTime(iso: string): string {
   const diff = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -65,67 +91,110 @@ type PlaybackSnapshot = {
   playSource: 'user' | 'queue';
   position: number;
   duration: number;
-  // Repeat/shuffle are forced OFF for the story session so GAP's native clip-end
-  // watcher can't loop the clip or wrap-reload the one-item queue (racing the
-  // JS advance). Captured here and restored on close.
   repeatMode: RepeatMode;
   shuffleEnabled: boolean;
 };
+
+/** A flat playable entry: the resolved story plus which author cluster it belongs
+ *  to. Author index travels WITH each surviving story, so deletion/seen-updates
+ *  can never misalign the index from its author boundary. */
+type ViewerItem = { story: Story; authorIndex: number };
 
 export default function StoryViewerScreen() {
   const route = useRoute<StoryViewerRoute>();
   const navigation = useNavigation<StoryViewerNav>();
   const playback = usePlayback();
-  const { stories, markSeenLocal } = useStories();
+  const { stories, markSeenLocal, removeLocal } = useStories();
+  const { meId } = useRelationships();
+  const { showToast } = useToast();
 
-  const { storyIds, startIndex } = route.params;
+  const { clusters, startAuthorIndex, startStoryIndex } = route.params;
 
-  // Build ordered story list from context (only IDs that are still present).
-  const orderedStories = useMemo(
-    () => storyIds.map(id => stories.find(s => s.id === id)).filter(Boolean) as typeof stories,
-    [storyIds, stories],
+  // Flatten the author clusters into one ordered index space (contiguous per
+  // author), carrying each story's author index so cross-author tap/swipe and
+  // per-author progress segments work off a single `index` — which keeps the
+  // load-bearing per-story playback effect below unchanged.
+  const flat = useMemo(() => flattenClusters(clusters), [clusters]);
+
+  const items = useMemo<ViewerItem[]>(
+    () =>
+      flat.orderedStoryIds
+        .map((id, i) => {
+          const s = stories.find(x => x.id === id);
+          return s ? { story: s, authorIndex: flat.authorIndexByStory[i]! } : null;
+        })
+        .filter((x): x is ViewerItem => x !== null),
+    [flat, stories],
   );
 
-  const [index, setIndex] = useState(Math.min(startIndex, Math.max(0, orderedStories.length - 1)));
+  const initialIndex = useMemo(
+    () => flatStartIndex(clusters, startAuthorIndex, startStoryIndex ?? 0),
+    [clusters, startAuthorIndex, startStoryIndex],
+  );
+
+  const [index, setIndex] = useState(() =>
+    Math.min(initialIndex, Math.max(0, flat.orderedStoryIds.length - 1)),
+  );
   const [paused, setPaused] = useState(false);
   const [seekTo, setSeekTo] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
-  const initialSeekDoneRef = useRef(false);
-  // Dedupe latch for advance(), keyed by the story index it fired FROM. Both
-  // clocks that reach clip end for a story — the progress-bar animation finishing
-  // and handleProgress crossing clipEnd — resolve to a SINGLE advance. A boolean
-  // latch reset per story was NOT enough: a stale progress animation belonging to
-  // the outgoing story can finish a frame AFTER the index changed and the boolean
-  // was reset, firing a second advance that SKIPS the next story. Keying by the
-  // source index makes advance idempotent per story no matter when the second
-  // clock fires (init -1 so the first story can still advance).
-  const advancedFromIndexRef = useRef(-1);
-  // Skip the FIRST run of the `paused` effect (below). On mount handlersRef still
-  // points at the OUTGOING feed track, so its play() would resumePlay() THAT track
-  // and hijack the story — the story is already started by the per-story index
-  // effect's requestPlay + GAP's activation.
+  // Monotonic "presentation" id, bumped every time the current story changes
+  // (forward, backward, author jump, or a delete shifting the list). advance()
+  // latches on it so the two clocks (progress-anim finish + handleProgress
+  // clip-end) can fire at most ONE advance per presentation, while a stale clock
+  // from a prior presentation is ignored — and returning to a story (backward)
+  // gets a fresh presentation, so it isn't wrongly latched shut.
+  const presentationRef = useRef(0);
+  const advancedForRef = useRef(-1);
+  // Skip the FIRST run of the `paused` effect. On mount handlersRef still points
+  // at the OUTGOING feed track, so its play() would resumePlay() THAT track and
+  // hijack the story — the story is started by the per-story effect + GAP.
   const didMountPausedRef = useRef(false);
-  // Full snapshot of the single engine's state before the viewer opened, so the
-  // user's now-playing track, position, AND queue are restored intact on close —
-  // the viewer clobbers all of them while it drives the story audio through GAP.
   const snapshotRef = useRef<PlaybackSnapshot | null>(null);
-  // The source URL loaded into the single engine when a story activates. Used to
-  // decide whether the per-story forced seek is safe: it is ONLY correct when the
-  // story reuses the already-loaded source (same-source → no onLoad → handleLoad's
-  // seek never runs). If a DIFFERENT track is loaded, a forced seek would drive the
-  // OUTGOING track and race the source switch (Issue 3).
+  // Source URL loaded into the engine when a story activates — the per-story
+  // forced seek is only safe when the story reuses the already-loaded source.
   const loadedSrcRef = useRef<string | null>(null);
 
-  const story = orderedStories[index];
+  const item = items[index];
+  const story = item?.story;
+  const currentAuthorIndex = item?.authorIndex ?? -1;
+  const isOwner = !!meId && !!story && story.author.id === meId;
 
-  // On mount: snapshot the engine state, pause the current track, and hide the
-  // FloatingPlayer. The story's own AUDIO is then driven through the single
-  // GlobalAudioPlayer engine (see the per-story effect below) — NOT a second
-  // <Video> — per ADR-0001. On close we restore the full pre-story state (left
-  // paused) so the user resumes exactly where they were.
+  // The current author's stories → the segmented progress bar shows only these.
+  const authorItems = useMemo(
+    () => items.filter(x => x.authorIndex === currentAuthorIndex),
+    [items, currentAuthorIndex],
+  );
+  const activeInAuthor = useMemo(
+    () => (story ? authorItems.findIndex(x => x.story.id === story.id) : -1),
+    [authorItems, story],
+  );
+
+  // ── Gesture transform (reanimated): drag-follow dismiss + chrome fade ──
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const chromeOpacity = useSharedValue(1);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { scale: scale.value },
+    ],
+  }));
+  const chromeStyle = useAnimatedStyle(() => ({ opacity: chromeOpacity.value }));
+
+  // On mount: snapshot engine state, pause the current track, hide FloatingPlayer.
+  // The story AUDIO is then driven through the single GlobalAudioPlayer engine
+  // (see the per-story effect) — NOT a second <Video> — per ADR-0001. On close we
+  // restore the full pre-story state (left paused).
   useEffect(() => {
     snapshotRef.current = {
       nowPlaying: playback.nowPlaying,
@@ -139,77 +208,45 @@ export default function StoryViewerScreen() {
       repeatMode: playback.repeatMode,
       shuffleEnabled: playback.shuffleEnabled,
     };
-    // Record the source currently loaded in the engine (the pre-story track), so
-    // the per-story effect can gate its forced seek to the same-source case.
     loadedSrcRef.current = snapshotRef.current.nowPlaying
       ? (snapshotRef.current.nowPlaying.audioUrl ?? snapshotRef.current.nowPlaying.videoUrl ?? null)
       : null;
     playback.handlersRef.current?.pause();
     playback.pauseAll();
-    // Force repeat/shuffle OFF for the story session (restored on close). A
-    // leaked repeatMode 'all'/'one' would make GAP's native watcher loop the clip
-    // or wrap-reload the one-item queue at clipEnd, racing the JS advance.
+    // Force repeat/shuffle OFF for the story session (restored on close), so
+    // GAP's native watcher can't loop the clip or wrap-reload the one-item queue.
     playback.setRepeatMode('off');
     playback.setShuffleEnabled(false);
     playback.setStoryViewerOpen(true);
     return () => {
-      // Stop the story audio and kill the progress timer (a JS-driven timing can
-      // otherwise resolve after a swipe-close and call advance()/close() on an
-      // unmounted screen).
       playback.handlersRef.current?.pause();
       progressAnimRef.current?.stop();
 
       const snap = snapshotRef.current;
-      // Restore the full queue the one-item story queue overwrote (setQueue
-      // reassigns these refs to NEW arrays, so the snapshotted old arrays were
-      // never mutated in place). Applied for both branches below.
       if (snap) {
         playback.queueRef.current = snap.queue;
         playback.currentIndexRef.current = snap.currentIndex;
         playback.userQueueRef.current = snap.userQueue;
         playback.queueSourceRef.current = snap.queueSource;
         playback.playSourceRef.current = snap.playSource;
-        // Restore the repeat/shuffle modes we forced OFF for the story session.
         playback.setRepeatMode(snap.repeatMode);
         playback.setShuffleEnabled(snap.shuffleEnabled);
       }
 
       if (snap?.nowPlaying) {
-        // Restore the previous track. setNowPlaying resets positionRef to the new
-        // postId's clip start (PlaybackContext:288 new-post branch), so re-apply
-        // the saved live position/duration on the next tick, after that updater
-        // has run — otherwise the user's song resumes from 0.
         const { nowPlaying: prev, position, duration } = snap;
         playback.setNowPlaying(prev);
         setTimeout(() => {
           playback.durationRef.current = duration;
-          // Force the NATIVE engine back to the pre-story position. Raw ref writes
-          // are not enough: when `prev` reuses the story's source (no reload → no
-          // onLoad → handleLoad's seek never runs) the native playhead stays at the
-          // story clip, and on resume onProgress drags positionRef back to it — the
-          // feed card then shows the story position (Issue 2).
-          //   same-source (the bug)   → engine seeked to `position`; guard drops
-          //                             the stale story-position samples.
-          //   different-source        → engine is paused by pauseAll and
-          //                             setNowPlaying+handleLoad seek anyway; this
-          //                             extra seek is a harmless no-op.
-          //   fresh-app (prev==null)  → untouched (clearNowPlaying else branch).
-          // handlersRef/markSeekTarget belong to the provider (which outlives this
-          // screen), so calling them from the post-unmount timer is safe.
+          // Force the NATIVE engine back to the pre-story position (raw ref writes
+          // are not enough for the same-source case — see the util's notes).
           playback.markSeekTarget(position);
           playback.handlersRef.current?.seek(position);
         }, 0);
       } else {
-        // Nothing was playing before (the common "fresh app → tap a story ring"
-        // path). Clear the clobbered story now-playing + queue, else closing
-        // un-hides the FloatingPlayer showing the just-closed story, paused.
         playback.clearNowPlaying();
       }
 
-      // pauseAll (activePostId → null) runs AFTER setNowPlaying. GAP gates
-      // playback on activePostId, and null never equals the restored postId in
-      // any interleaving, so the restored track settles PAUSED — it does not
-      // auto-play (confirmed in review).
       playback.pauseAll();
       playback.setStoryViewerOpen(false);
     };
@@ -220,53 +257,61 @@ export default function StoryViewerScreen() {
     navigation.goBack();
   }, [navigation]);
 
-  const advance = useCallback(() => {
-    // Idempotent per source index: whichever clock reaches clip end first records
-    // this index; any later clock for the SAME story — including a stale progress
-    // animation that finishes after the index already changed — is a no-op. See
-    // the advancedFromIndexRef declaration above.
-    if (advancedFromIndexRef.current === index) {return;}
-    advancedFromIndexRef.current = index;
-    if (index < orderedStories.length - 1) {
-      setIndex(i => i + 1);
-    } else {
+  // ── Navigation between stories ──
+  const goForward = useCallback(() => {
+    setIndex(i => {
+      if (i < items.length - 1) {return i + 1;}
       close();
-    }
-  }, [index, orderedStories.length, close]);
+      return i;
+    });
+  }, [items.length, close]);
 
-  // Start/restart the progress bar animation when the story changes.
+  const goBackward = useCallback(() => {
+    setIndex(i => (i > 0 ? i - 1 : i));
+  }, []);
+
+  // Jump to the first story of the adjacent author cluster (Instagram horizontal
+  // swipe). Past the last author, close; before the first, stay.
+  const jumpAuthor = useCallback(
+    (dir: 1 | -1) => {
+      const target = currentAuthorIndex + dir;
+      const idx = items.findIndex(x => x.authorIndex === target);
+      if (idx >= 0) {
+        setIndex(idx);
+      } else if (dir === 1) {
+        close();
+      }
+    },
+    [currentAuthorIndex, items, close],
+  );
+
+  // Single-fire advance, keyed by presentation id (see presentationRef).
+  const requestAdvance = useCallback(
+    (fromPresentation: number) => {
+      if (fromPresentation !== presentationRef.current) {return;}
+      if (advancedForRef.current === fromPresentation) {return;}
+      advancedForRef.current = fromPresentation;
+      goForward();
+    },
+    [goForward],
+  );
+
+  // ── Per-story effect: drive this story's AUDIO through the single engine ──
+  // Keyed on the current story id (not the raw index) so a delete that shifts the
+  // list, or a backward/author jump, always re-drives audio for whatever story is
+  // now current.
+  const storyId = story?.id;
   useEffect(() => {
     if (!story) {
       close();
       return;
     }
 
+    presentationRef.current += 1;
     progressAnim.setValue(0);
-    initialSeekDoneRef.current = false;
     setPaused(false);
 
-    // Drive this story's AUDIO through the single GlobalAudioPlayer engine
-    // (ADR-0001). A one-item queue with repeat forced OFF (see mount effect)
-    // contains GAP's native auto-advance — a stray clip-end/next resolves to a
-    // no-op instead of jumping into a stale queue.
-    //
-    // Order matters (mirrors PostCard's union of both play paths):
-    //   1. setQueue / setNowPlaying — the now-playing info carries the REAL clip,
-    //      so setNowPlaying's new-post branch sets positionRef = clipStart and
-    //      clipWindowRef = {start,end} (both bounds non-null).
-    //   2. markSeekTarget BEFORE the forced seek — arm the seek-guard so any
-    //      stale feed-position onProgress is filtered, and bump seekNonce to nudge
-    //      the muted picture frame.
-    //   3. handlersRef.seek(clipStart) — FORCE the engine to the clip start, but
-    //      ONLY when the story reuses the already-loaded source (Case A). Then no
-    //      onLoad fires, so handleLoad's seek never runs and this is the sole
-    //      reposition. For a DIFFERENT/absent source (Case B) setNowPlaying
-    //      switches GAP's source and handleLoad seeks to positionRef(=clipStart);
-    //      a forced seek here would drive the OUTGOING track and RACE the switch
-    //      (Issue 3 — the feed's loaded track playing under the story picture).
-    //      NOT wrapped in setTimeout — that would re-race the deferred setNowPlaying
-    //      updater. null-safe for the fresh-app path (no handlers yet).
-    //   4. requestPlay last — activate the engine.
+    // Order mirrors PostCard's union of both play paths — see storyPlayback.ts.
     const info = storyToNowPlaying(story);
     const storyUrl = info.audioUrl ?? info.videoUrl ?? null;
     const sameSource = loadedSrcRef.current != null && loadedSrcRef.current === storyUrl;
@@ -291,9 +336,10 @@ export default function StoryViewerScreen() {
     // Mark seen after 500ms dwell.
     if (seenTimerRef.current) {clearTimeout(seenTimerRef.current);}
     if (story.viewedAt === null) {
+      const id = story.id;
       seenTimerRef.current = setTimeout(() => {
-        markStorySeen(story.id).catch(() => {});
-        markSeenLocal(story.id);
+        markStorySeen(id).catch(() => {});
+        markSeenLocal(id);
       }, 500);
     }
 
@@ -301,54 +347,49 @@ export default function StoryViewerScreen() {
       if (seenTimerRef.current) {clearTimeout(seenTimerRef.current);}
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index]);
+  }, [storyId]);
 
-  // Run the progress bar animation in sync with the clip duration.
   const clipDuration = story ? story.clipEndSec - story.clipStartSec : 0;
 
   const startProgressAnim = useCallback(() => {
     if (progressAnimRef.current) {progressAnimRef.current.stop();}
     progressAnim.setValue(0);
     if (clipDuration <= 0) {return;}
+    const p = presentationRef.current;
     progressAnimRef.current = Animated.timing(progressAnim, {
       toValue: 1,
       duration: clipDuration * 1000,
       useNativeDriver: false,
     });
     progressAnimRef.current.start(({ finished }) => {
-      if (finished) {advance();}
+      if (finished) {requestAdvance(p);}
     });
-  }, [progressAnim, clipDuration, advance]);
+  }, [progressAnim, clipDuration, requestAdvance]);
 
   const handleLoaded = useCallback(() => {
     startProgressAnim();
   }, [startProgressAnim]);
 
-  // When playback reaches clip_end, auto-advance.
+  // When playback reaches clip_end, auto-advance (the audio-accurate clock).
   const handleProgress = useCallback((pos: number) => {
     if (!story) {return;}
     if (pos >= story.clipEndSec) {
-      advance();
+      requestAdvance(presentationRef.current);
     }
-  }, [story, advance]);
+  }, [story, requestAdvance]);
 
   // Pause / resume the progress bar when the story pauses/plays.
   useEffect(() => {
     if (!didMountPausedRef.current) {
       didMountPausedRef.current = true;
-      return; // mount run: story already started by the index effect; play() here would resume the OUTGOING feed track and hijack the story
+      return; // mount run: story already started by the per-story effect
     }
-    // Drive the single engine — a tap holds/resumes the story AUDIO through GAP
-    // (the muted picture frame is paused by the `paused` prop separately).
     if (paused) {
       playback.handlersRef.current?.pause();
-    } else {
-      playback.handlersRef.current?.play();
-    }
-    if (paused) {
       progressAnimRef.current?.stop();
     } else {
-      // Resume — restart from current value.
+      playback.handlersRef.current?.play();
+      const p = presentationRef.current;
       const remaining = clipDuration * (1 - (progressAnim as any)._value) * 1000;
       if (remaining > 0) {
         progressAnimRef.current = Animated.timing(progressAnim, {
@@ -357,7 +398,7 @@ export default function StoryViewerScreen() {
           useNativeDriver: false,
         });
         progressAnimRef.current.start(({ finished }) => {
-          if (finished) {advance();}
+          if (finished) {requestAdvance(p);}
         });
       }
     }
@@ -376,71 +417,174 @@ export default function StoryViewerScreen() {
     return null;
   }, [story]);
 
-  // Swipe-down to close.
-  const panGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .runOnJS(true)
-        .activeOffsetY([8, Infinity])
-        .onEnd(e => {
-          if (e.translationY > 80 || e.velocityY > 500) {close();}
-        }),
-    [close],
-  );
+  // ── Go to the song's post: deep-link to the original upload via its author's
+  //    profile (the app has no standalone post screen). ──
+  const openSong = useCallback(async () => {
+    if (!story) {return;}
+    const authorId = await getStoryPostAuthorId(story.originalPostId);
+    if (!authorId) {
+      showToast("Couldn't open the song's post.", { kind: 'error' });
+      return;
+    }
+    navigation.goBack();
+    setTimeout(
+      () => navigation.navigate('UserProfile', { userId: authorId, focusPostId: story.originalPostId }),
+      180,
+    );
+  }, [story, navigation, showToast]);
 
-  // Tap to advance.
+  // ── Author delete ──
+  const onConfirmDelete = useCallback(async () => {
+    if (!story) {return;}
+    const id = story.id;
+    setDeleting(true);
+    try {
+      await deleteStory(id);
+    } catch {
+      setDeleting(false);
+      showToast("Couldn't delete story. Please try again.", { kind: 'error' });
+      return;
+    }
+    setDeleting(false);
+    setConfirmDelete(false);
+    // If this was the only story left, close; otherwise clamp the index and let
+    // the story-keyed effect re-drive whatever is now current.
+    if (items.length <= 1) {
+      removeLocal(id);
+      close();
+      return;
+    }
+    if (index >= items.length - 1) {
+      setIndex(i => Math.max(0, i - 1));
+    }
+    removeLocal(id);
+  }, [story, items.length, index, removeLocal, close, showToast]);
+
+  const openMenu = useCallback(() => {
+    setPaused(true);
+    setMenuOpen(true);
+  }, []);
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    setPaused(false);
+  }, []);
+
+  // ── Gestures ──
+  // Tap: left third → previous, elsewhere → next.
   const tapGesture = useMemo(
     () =>
       Gesture.Tap()
-        .runOnJS(true)
-        .onEnd(() => {
-          advance();
+        .maxDuration(250)
+        .onEnd((e, success) => {
+          if (!success) {return;}
+          if (e.x < SCREEN_W * TAP_BACK_FRACTION) {
+            runOnJS(goBackward)();
+          } else {
+            runOnJS(goForward)();
+          }
         }),
-    [advance],
+    [goBackward, goForward],
+  );
+
+  // Long-press: hold to pause + fade the chrome; release to resume.
+  const longPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(220)
+        .maxDistance(20)
+        .onStart(() => {
+          chromeOpacity.value = withTiming(0, { duration: 150 });
+          runOnJS(setPaused)(true);
+        })
+        .onFinalize(() => {
+          chromeOpacity.value = withTiming(1, { duration: 150 });
+          runOnJS(setPaused)(false);
+        }),
+    [chromeOpacity],
+  );
+
+  // Pan: downward drag follows the finger and dismisses past a threshold;
+  // horizontal drag jumps between authors.
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(12)
+        .onUpdate(e => {
+          if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
+            tx.value = e.translationX;
+            ty.value = 0;
+            scale.value = 1;
+          } else {
+            ty.value = Math.max(0, e.translationY);
+            tx.value = 0;
+            const prog = Math.min(1, ty.value / 500);
+            scale.value = 1 - prog * 0.12;
+          }
+        })
+        .onEnd(e => {
+          const horizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
+          if (horizontal && Math.abs(e.translationX) > AUTHOR_SWIPE_DISTANCE) {
+            runOnJS(jumpAuthor)(e.translationX < 0 ? 1 : -1);
+          } else if (!horizontal && (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY)) {
+            runOnJS(close)();
+            return;
+          }
+          tx.value = withSpring(0);
+          ty.value = withSpring(0);
+          scale.value = withSpring(1);
+        }),
+    [tx, ty, scale, jumpAuthor, close],
   );
 
   const composedGesture = useMemo(
-    () => Gesture.Race(panGesture, tapGesture),
-    [panGesture, tapGesture],
+    () => Gesture.Race(panGesture, longPressGesture, tapGesture),
+    [panGesture, longPressGesture, tapGesture],
   );
 
-  if (!story || orderedStories.length === 0) {
+  if (!story || items.length === 0) {
     return null;
   }
 
   return (
     <View style={styles.root}>
-      <GestureDetector gesture={composedGesture}>
-        <View style={styles.root}>
-          {/* Background media — fills entire screen */}
-          {media ? (
-            <MediaPlayer
-              postId={storyViewerPostId(story.id)}
-              media={media}
-              paused={paused}
-              onTogglePaused={() => setPaused(p => !p)}
-              onProgress={handleProgress}
-              onLoaded={handleLoaded}
-              seekTo={seekTo}
-              visible
-              pauseWhenOffScreen={false}
-              // MUTED picture-only frame — the story's audio plays through the
-              // single GlobalAudioPlayer engine (ADR-0001), never a second
-              // <Video>. Without this the viewer runs two audio engines at once.
-              muted
-              style={StyleSheet.absoluteFill}
-            />
-          ) : null}
+      <Reanimated.View style={[styles.root, containerStyle]}>
+        {/* Media + gesture surface */}
+        <GestureDetector gesture={composedGesture}>
+          <View style={styles.root}>
+            {media ? (
+              <MediaPlayer
+                postId={storyViewerPostId(story.id)}
+                media={media}
+                paused={paused}
+                onTogglePaused={() => {}}
+                onProgress={handleProgress}
+                onLoaded={handleLoaded}
+                seekTo={seekTo}
+                visible
+                pauseWhenOffScreen={false}
+                // MUTED picture-only frame — the story's audio plays through the
+                // single GlobalAudioPlayer engine (ADR-0001), never a second
+                // <Video>.
+                muted
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null}
+            <Scrim edge="top" height={150} peakOpacity={0.72} />
+            <Scrim edge="bottom" height={230} peakOpacity={0.82} />
+          </View>
+        </GestureDetector>
 
-          {/* ── Top UI (not inside GestureDetector so taps are reliable) ── */}
+        {/* Chrome — OUTSIDE the GestureDetector so its buttons get reliable taps;
+            fades out on hold via chromeStyle. */}
+        <Reanimated.View style={[StyleSheet.absoluteFill, chromeStyle]} pointerEvents="box-none">
           <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
-            {/* Progress pills */}
+            {/* Segmented progress — the CURRENT author's stories only. */}
             <View style={styles.progressRow}>
-              {orderedStories.map((s, i) => (
-                <View key={s.id} style={[styles.progressPill, { flex: 1 }]}>
-                  {i < index ? (
+              {authorItems.map((it, i) => (
+                <View key={it.story.id} style={styles.progressPill}>
+                  {i < activeInAuthor ? (
                     <View style={styles.progressFillFull} />
-                  ) : i === index ? (
+                  ) : i === activeInAuthor ? (
                     <Animated.View
                       style={[
                         styles.progressFillActive,
@@ -452,7 +596,7 @@ export default function StoryViewerScreen() {
               ))}
             </View>
 
-            {/* Header row */}
+            {/* Header */}
             <View style={styles.headerRow}>
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -481,25 +625,98 @@ export default function StoryViewerScreen() {
                   <Text style={styles.authorTime}>{relativeTime(story.createdAt)}</Text>
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={close}
-                activeOpacity={0.7}
-                style={styles.closeBtn}
-                hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
-              >
-                <Icon name="close" size={18} color={COLORS.white} />
-              </TouchableOpacity>
+
+              <View style={styles.headerActions}>
+                {isOwner ? (
+                  <TouchableOpacity
+                    onPress={openMenu}
+                    activeOpacity={0.7}
+                    style={styles.headerBtn}
+                    hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+                  >
+                    <Icon name="overflow" size={20} color={COLORS.white} />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={close}
+                  activeOpacity={0.7}
+                  style={styles.headerBtn}
+                  hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+                >
+                  <Icon name="close" size={18} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
             </View>
           </SafeAreaView>
 
-          {/* ── Bottom comment ── */}
-          {story.comment ? (
-            <SafeAreaView style={styles.commentArea} edges={['bottom']} pointerEvents="none">
+          {/* Bottom stack: comment → go-to-song bar */}
+          <SafeAreaView style={styles.bottomArea} edges={['bottom']} pointerEvents="box-none">
+            {story.comment ? (
               <Text style={styles.commentText}>{story.comment}</Text>
-            </SafeAreaView>
-          ) : null}
-        </View>
-      </GestureDetector>
+            ) : null}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.songBar}
+              onPress={openSong}
+            >
+              <View style={styles.songCover}>
+                {story.track.coverArtUrl ? (
+                  <Image source={{ uri: story.track.coverArtUrl }} style={styles.songCoverImg} />
+                ) : (
+                  <Icon name="musicNotes" size={16} color={COLORS.white} />
+                )}
+              </View>
+              <View style={styles.songText}>
+                <Text style={styles.songTitle} numberOfLines={1}>
+                  {story.track.title}
+                </Text>
+                <Text style={styles.songSub} numberOfLines={1}>
+                  Tap to open the song's post
+                </Text>
+              </View>
+              <Icon name="arrowRight" size={18} color={COLORS.purpleLight} />
+            </TouchableOpacity>
+          </SafeAreaView>
+        </Reanimated.View>
+      </Reanimated.View>
+
+      {/* Owner overflow menu */}
+      {menuOpen ? (
+        <>
+          <TouchableOpacity style={styles.menuBackdrop} activeOpacity={1} onPress={closeMenu} />
+          <SafeAreaView style={styles.menuAnchor} edges={['top']} pointerEvents="box-none">
+            <View style={styles.menu}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setMenuOpen(false);
+                  setConfirmDelete(true);
+                }}
+              >
+                <Icon name="trash" size={18} color={COLORS.error} />
+                <Text style={styles.menuItemText}>Delete story</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </>
+      ) : null}
+
+      <ConfirmActionModal
+        visible={confirmDelete}
+        title="Delete this story?"
+        message="It will be removed for everyone right away. This can't be undone."
+        glyph="🗑"
+        tone="destructive"
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        busy={deleting}
+        onConfirm={onConfirmDelete}
+        onCancel={() => {
+          setConfirmDelete(false);
+          setPaused(false);
+        }}
+      />
     </View>
   );
 }
@@ -515,7 +732,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  // Progress bar row
   progressRow: {
     flexDirection: 'row',
     paddingHorizontal: 8,
@@ -523,6 +739,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   progressPill: {
+    flex: 1,
     height: 3,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.35)',
@@ -543,7 +760,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: COLORS.white,
   },
-  // Header
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -588,29 +804,109 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 1,
   },
-  closeBtn: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerBtn: {
     width: 32,
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Bottom comment
-  commentArea: {
+  // Bottom stack
+  bottomArea: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 18,
-    paddingBottom: 24,
-    paddingTop: 14,
+    paddingHorizontal: 14,
+    paddingBottom: 18,
+    gap: 10,
   },
   commentText: {
     color: COLORS.white,
     fontSize: 15,
     fontWeight: '600',
     lineHeight: 22,
+    paddingHorizontal: 2,
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  songBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+    backgroundColor: 'rgba(14,14,21,0.55)',
+  },
+  songCover: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: COLORS.purpleDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  songCoverImg: {
+    width: '100%',
+    height: '100%',
+  },
+  songText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  songTitle: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  songSub: {
+    color: COLORS.purpleLight,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  // Owner menu
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  menuAnchor: {
+    position: 'absolute',
+    top: 0,
+    right: 14,
+  },
+  menu: {
+    marginTop: 52,
+    minWidth: 180,
+    backgroundColor: COLORS.surface,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  menuItemText: {
+    color: COLORS.error,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

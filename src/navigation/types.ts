@@ -67,5 +67,12 @@ export type RootStackParamList = {
     seedClipStartSec?: number | null;
     seedClipEndSec?: number | null;
   };
-  StoryViewer: { storyIds: string[]; startIndex: number };
+  // Stories are grouped by author (one tray ring per person). The viewer receives
+  // the ordered clusters plus which ring/story was tapped, and flattens them into
+  // one ordered index space internally (so cross-author tap/swipe works).
+  StoryViewer: {
+    clusters: { authorId: string; storyIds: string[] }[];
+    startAuthorIndex: number;
+    startStoryIndex?: number;
+  };
 };
