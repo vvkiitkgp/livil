@@ -102,6 +102,12 @@ export default function StoryViewerScreen() {
   // user's now-playing track, position, AND queue are restored intact on close —
   // the viewer clobbers all of them while it drives the story audio through GAP.
   const snapshotRef = useRef<PlaybackSnapshot | null>(null);
+  // The source URL loaded into the single engine when a story activates. Used to
+  // decide whether the per-story forced seek is safe: it is ONLY correct when the
+  // story reuses the already-loaded source (same-source → no onLoad → handleLoad's
+  // seek never runs). If a DIFFERENT track is loaded, a forced seek would drive the
+  // OUTGOING track and race the source switch (Issue 3).
+  const loadedSrcRef = useRef<string | null>(null);
 
   const story = orderedStories[index];
 
@@ -123,6 +129,11 @@ export default function StoryViewerScreen() {
       repeatMode: playback.repeatMode,
       shuffleEnabled: playback.shuffleEnabled,
     };
+    // Record the source currently loaded in the engine (the pre-story track), so
+    // the per-story effect can gate its forced seek to the same-source case.
+    loadedSrcRef.current = snapshotRef.current.nowPlaying
+      ? (snapshotRef.current.nowPlaying.audioUrl ?? snapshotRef.current.nowPlaying.videoUrl ?? null)
+      : null;
     playback.handlersRef.current?.pause();
     playback.pauseAll();
     // Force repeat/shuffle OFF for the story session (restored on close). A
@@ -161,8 +172,22 @@ export default function StoryViewerScreen() {
         const { nowPlaying: prev, position, duration } = snap;
         playback.setNowPlaying(prev);
         setTimeout(() => {
-          playback.positionRef.current = position;
           playback.durationRef.current = duration;
+          // Force the NATIVE engine back to the pre-story position. Raw ref writes
+          // are not enough: when `prev` reuses the story's source (no reload → no
+          // onLoad → handleLoad's seek never runs) the native playhead stays at the
+          // story clip, and on resume onProgress drags positionRef back to it — the
+          // feed card then shows the story position (Issue 2).
+          //   same-source (the bug)   → engine seeked to `position`; guard drops
+          //                             the stale story-position samples.
+          //   different-source        → engine is paused by pauseAll and
+          //                             setNowPlaying+handleLoad seek anyway; this
+          //                             extra seek is a harmless no-op.
+          //   fresh-app (prev==null)  → untouched (clearNowPlaying else branch).
+          // handlersRef/markSeekTarget belong to the provider (which outlives this
+          // screen), so calling them from the post-unmount timer is safe.
+          playback.markSeekTarget(position);
+          playback.handlersRef.current?.seek(position);
         }, 0);
       } else {
         // Nothing was playing before (the common "fresh app → tap a story ring"
@@ -222,19 +247,32 @@ export default function StoryViewerScreen() {
     //   2. markSeekTarget BEFORE the forced seek — arm the seek-guard so any
     //      stale feed-position onProgress is filtered, and bump seekNonce to nudge
     //      the muted picture frame.
-    //   3. handlersRef.seek(clipStart) — FORCE the engine to the clip start. This
-    //      is the ONLY reposition when the story's audioUrl equals the already-
-    //      loaded feed track (no onLoad fires, so handleLoad's seek never runs).
-    //      It is a safe no-op for a fresh source (handleLoad also seeks). NOT
-    //      wrapped in setTimeout — that would re-race the deferred setNowPlaying
+    //   3. handlersRef.seek(clipStart) — FORCE the engine to the clip start, but
+    //      ONLY when the story reuses the already-loaded source (Case A). Then no
+    //      onLoad fires, so handleLoad's seek never runs and this is the sole
+    //      reposition. For a DIFFERENT/absent source (Case B) setNowPlaying
+    //      switches GAP's source and handleLoad seeks to positionRef(=clipStart);
+    //      a forced seek here would drive the OUTGOING track and RACE the switch
+    //      (Issue 3 — the feed's loaded track playing under the story picture).
+    //      NOT wrapped in setTimeout — that would re-race the deferred setNowPlaying
     //      updater. null-safe for the fresh-app path (no handlers yet).
     //   4. requestPlay last — activate the engine.
     const info = storyToNowPlaying(story);
+    const storyUrl = info.audioUrl ?? info.videoUrl ?? null;
+    const sameSource = loadedSrcRef.current != null && loadedSrcRef.current === storyUrl;
+
     playback.setQueue([info], 0, 'story');
     playback.setNowPlaying(info);
     playback.markSeekTarget(story.clipStartSec);
-    playback.handlersRef.current?.seek(story.clipStartSec);
+    if (sameSource) {
+      // Case A: same source already loaded, no onLoad → force reposition.
+      playback.handlersRef.current?.seek(story.clipStartSec);
+    }
+    // else Case B: different/no source — setNowPlaying switches GAP's source and
+    // handleLoad seeks to positionRef(=clipStart). A forced seek here would drive
+    // the OUTGOING track and race the switch.
     playback.requestPlay(info.postId);
+    loadedSrcRef.current = storyUrl;
 
     // Seek the MUTED picture frame to the clip start on first load.
     setSeekTo(story.clipStartSec);
@@ -336,20 +374,36 @@ export default function StoryViewerScreen() {
     [close],
   );
 
-  // Tap to advance.
+  // Tap to advance. `maxDuration(250)` so a press-and-hold can't register as a
+  // tap — a hold is claimed by the long-press gesture below instead.
   const tapGesture = useMemo(
     () =>
       Gesture.Tap()
         .runOnJS(true)
+        .maxDuration(250)
         .onEnd(() => {
           advance();
         }),
     [advance],
   );
 
+  // Press-and-HOLD to pause (Instagram model), release/cancel to resume. Drives
+  // the existing `paused` state, which the `paused` effect routes to the single
+  // engine. `onFinalize` fires on BOTH release and cancel, so the story can never
+  // get stuck paused.
+  const longPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .runOnJS(true)
+        .minDuration(250)
+        .onStart(() => setPaused(true))
+        .onFinalize(() => setPaused(false)),
+    [],
+  );
+
   const composedGesture = useMemo(
-    () => Gesture.Race(panGesture, tapGesture),
-    [panGesture, tapGesture],
+    () => Gesture.Race(panGesture, longPressGesture, tapGesture),
+    [panGesture, longPressGesture, tapGesture],
   );
 
   if (!story || orderedStories.length === 0) {
@@ -376,6 +430,11 @@ export default function StoryViewerScreen() {
               // single GlobalAudioPlayer engine (ADR-0001), never a second
               // <Video>. Without this the viewer runs two audio engines at once.
               muted
+              // Story mode: render no touch handlers. The GestureDetector above
+              // owns all touch (tap→advance, hold→pause, swipe→close); otherwise
+              // MediaPlayer's inner Pressables win the Gesture.Race and toggle
+              // pause instead of advancing (Issue 1).
+              interactionsDisabled
               style={StyleSheet.absoluteFill}
             />
           ) : null}
