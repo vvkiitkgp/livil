@@ -25,6 +25,10 @@ export type RootStackParamList = {
     // the post into view; openComments opens the CommentsSheet for it;
     // highlightCommentId pulses that comment row briefly when the sheet opens.
     focusPostId?: string;
+    // Which profile tab the focused post lives in, so the profile opens on the
+    // right tab (uploads vs reposts) before scrolling — else focusPostId can't be
+    // found in the default tab's list. Used by the story viewer's "go to song".
+    focusPostKind?: 'upload' | 'repost';
     openComments?: boolean;
     highlightCommentId?: string;
   };

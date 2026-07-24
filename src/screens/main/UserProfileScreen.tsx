@@ -113,7 +113,7 @@ export default function UserProfileScreen() {
   const route = useRoute<UserProfileRouteProp>();
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
-  const { userId, focusPostId, openComments, highlightCommentId } = route.params;
+  const { userId, focusPostId, focusPostKind, openComments, highlightCommentId } = route.params;
   const playback = usePlayback();
   const rel = useRelationships();
   const { showToast } = useToast();
@@ -138,7 +138,11 @@ export default function UserProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
-  const [tab, setTab] = useState<ProfileTab>('reposts');
+  // Open on the tab that holds a deep-linked post (uploads for "go to song"),
+  // otherwise the default reposts tab.
+  const [tab, setTab] = useState<ProfileTab>(
+    focusPostKind === 'upload' ? 'uploads' : 'reposts',
+  );
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);

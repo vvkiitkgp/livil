@@ -537,7 +537,14 @@ export default function StoryViewerScreen() {
     }
     navigation.goBack();
     setTimeout(
-      () => navigation.navigate('UserProfile', { userId: authorId, focusPostId: story.originalPostId }),
+      () =>
+        navigation.navigate('UserProfile', {
+          userId: authorId,
+          focusPostId: story.originalPostId,
+          // The story's original post is always an upload → open the Uploads tab
+          // so focusPostId is found there and scrolls into view.
+          focusPostKind: 'upload',
+        }),
       180,
     );
   }, [story, navigation, showToast]);
