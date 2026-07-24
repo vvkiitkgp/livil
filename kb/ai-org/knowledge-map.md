@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-54 document(s) under `kb/`.
+56 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 54 |
-| Drift-proof (tier 1 + 4) | 23 |
+| Documents | 56 |
+| Drift-proof (tier 1 + 4) | 25 |
 | Hand-maintained (tier 3 + 5) | 24 |
 | Past freshness SLA | 0 |
 | Private-content stubs | 5 |
@@ -90,6 +90,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0002-version-storage-config.md` | principal-data | CA, TR, ALL | 2026-07-21 | 9999d |
 | `debt/proposals/0003-in-app-account-deletion.md` | principal-client | CA, TR, ALL | 2026-07-22 | 9999d |
 | `debt/proposals/0004-harden-stories-backend.md` | principal-data | CA, TR, ALL | 2026-07-24 | 9999d |
+| `debt/proposals/0004-harden-stories-draft.md` | chief-architect | CA, TR, ALL | 2026-07-24 | 9999d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
@@ -100,6 +101,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0007-storage-policies-unversioned.md` | principal-security | ALL | 2026-07-21 | 9999d |
 | `decisions/0008-notification-recipients-derived-server-side.md` | principal-realtime | ALL | 2026-07-22 | 9999d |
 | `decisions/0009-stories-backend-audit-and-hardening.md` | principal-data | ALL | 2026-07-24 | 9999d |
+| `decisions/0009-stories-harden-draft-declarative-rls.md` | chief-architect | ALL | 2026-07-24 | 9999d |
 | `decisions/0011-patch-hedge-ratification-and-scope-correction.md` | principal-playback | ALL | 2026-07-24 | 9999d |
 | `decisions/0012-storage-config-ratification-and-modifications.md` | principal-security | ALL | 2026-07-24 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
@@ -115,7 +117,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 16 |
+| chief-architect | 18 |
 | human | 1 |
 | principal-client | 6 |
 | principal-data | 9 |

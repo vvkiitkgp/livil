@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-127 TypeScript file(s) under `src/`, 38,799 lines.
+129 TypeScript file(s) under `src/`, 39,282 lines.
 
 ## Size hotspots
 
@@ -38,9 +38,10 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/main/RepostScreen.tsx` | 749 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
+| `src/screens/main/StoryViewerScreen.tsx` | 617 |
 | `src/screens/main/LibraryScreen.tsx` | 604 |
 
-> 13 file(s) over the threshold against **1 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 14 file(s) over the threshold against **1 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -84,7 +85,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-31 file(s), 15,700 lines.
+31 file(s), 15,876 lines.
 
 | File | Lines |
 |---|---:|
@@ -96,13 +97,13 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 793 |
 | `src/screens/main/RepostScreen.tsx` | 749 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
+| `src/screens/main/StoryViewerScreen.tsx` | 617 |
 | `src/screens/main/LibraryScreen.tsx` | 604 |
 | `src/screens/main/GroupInfoScreen.tsx` | 585 |
 | `src/screens/main/SearchScreen.tsx` | 543 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 484 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
-| `src/screens/main/StoryViewerScreen.tsx` | 441 |
 | `src/screens/main/InboxScreen.tsx` | 408 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
@@ -122,7 +123,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-46 file(s), 12,855 lines.
+46 file(s), 12,887 lines.
 
 | File | Lines |
 |---|---:|
@@ -130,8 +131,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1197 |
 | `src/components/FloatingPlayer.tsx` | 924 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/components/GlobalAudioPlayer.tsx` | 423 |
-| `src/components/MediaPlayer.tsx` | 419 |
+| `src/components/MediaPlayer.tsx` | 445 |
+| `src/components/GlobalAudioPlayer.tsx` | 429 |
 | `src/components/QueueList.tsx` | 406 |
 | `src/components/DetailView.tsx` | 395 |
 | `src/components/ClipRangeSlider.tsx` | 387 |
@@ -228,15 +229,17 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-8 file(s), 933 lines.
+10 file(s), 1,208 lines.
 
 | File | Lines |
 |---|---:|
-| `src/utils/__tests__/playTracker.test.ts` | 208 |
+| `src/utils/__tests__/playTracker.test.ts` | 226 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
+| `src/utils/__tests__/storyPlayback.test.ts` | 152 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
 | `src/utils/mentions.ts` | 105 |
-| `src/utils/playTracker.ts` | 83 |
+| `src/utils/storyPlayback.ts` | 98 |
+| `src/utils/playTracker.ts` | 90 |
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
 | `src/utils/errorMessages.ts` | 68 |
