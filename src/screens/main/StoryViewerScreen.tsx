@@ -103,6 +103,37 @@ type PlaybackSnapshot = {
  *  can never misalign the index from its author boundary. */
 type ViewerItem = { story: Story; authorIndex: number };
 
+/**
+ * A static preview of an author's first story, shown as the incoming/outgoing
+ * face of the cube during a horizontal swipe. Deliberately renders NO MediaPlayer
+ * (cover art only) — a second video surface would mean a second audio engine.
+ */
+function AuthorFacePreview({ item }: { item: ViewerItem }) {
+  const s = item.story;
+  return (
+    <View style={styles.previewRoot}>
+      {s.track.coverArtUrl ? (
+        <Image source={{ uri: s.track.coverArtUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : (
+        <View style={styles.previewFallback} />
+      )}
+      <Scrim edge="top" height={150} peakOpacity={0.72} />
+      <SafeAreaView style={styles.previewHeader} edges={['top']} pointerEvents="none">
+        <View style={styles.authorAvatar}>
+          {s.author.avatarUrl ? (
+            <Image source={{ uri: s.author.avatarUrl }} style={styles.authorAvatarImg} />
+          ) : (
+            <Text style={styles.authorAvatarText}>
+              {avatarInitials(s.author.displayName, s.author.username)}
+            </Text>
+          )}
+        </View>
+        <Text style={styles.authorUsername}>@{s.author.username}</Text>
+      </SafeAreaView>
+    </View>
+  );
+}
+
 export default function StoryViewerScreen() {
   const route = useRoute<StoryViewerRoute>();
   const navigation = useNavigation<StoryViewerNav>();
@@ -179,19 +210,61 @@ export default function StoryViewerScreen() {
     [authorItems, story],
   );
 
-  // ── Gesture transform (reanimated): drag-follow dismiss + chrome fade ──
-  const tx = useSharedValue(0);
+  // The adjacent authors' first stories — the static preview faces of the cube.
+  // They render cover art + header only (NO MediaPlayer → no second audio engine).
+  const nextAuthorItem = useMemo(
+    () => items.find(x => x.authorIndex === currentAuthorIndex + 1) ?? null,
+    [items, currentAuthorIndex],
+  );
+  const prevAuthorItem = useMemo(
+    () => items.find(x => x.authorIndex === currentAuthorIndex - 1) ?? null,
+    [items, currentAuthorIndex],
+  );
+  const hasNext = !!nextAuthorItem;
+  const hasPrev = !!prevAuthorItem;
+
+  // ── Gesture transforms (reanimated) ──
+  // cubeX: horizontal drag → a 3D cube rotation between authors (Instagram).
+  // ty/scale: vertical drag-follow dismiss. chromeOpacity: fade chrome on hold.
+  const cubeX = useSharedValue(0);
   const ty = useSharedValue(0);
   const scale = useSharedValue(1);
   const chromeOpacity = useSharedValue(1);
 
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: tx.value },
-      { translateY: ty.value },
-      { scale: scale.value },
-    ],
-  }));
+  // The live (front) face: composes the vertical dismiss with the cube rotateY.
+  // Hinges on the trailing edge so it turns like a cube face, not a flat flip.
+  const currentFaceStyle = useAnimatedStyle(() => {
+    const rot = (cubeX.value / SCREEN_W) * 90;
+    return {
+      transform: [
+        { perspective: 1000 },
+        { translateY: ty.value },
+        { scale: scale.value },
+        { rotateY: `${rot}deg` },
+      ],
+      transformOrigin: cubeX.value <= 0 ? '100% 50%' : '0% 50%',
+    };
+  });
+  // The incoming NEXT author's face — hidden edge-on at rest (90°), rotating to
+  // front as you drag left (cubeX 0 → -W).
+  const nextFaceStyle = useAnimatedStyle(() => {
+    const rot = 90 + (cubeX.value / SCREEN_W) * 90;
+    return {
+      transform: [{ perspective: 1000 }, { rotateY: `${rot}deg` }],
+      transformOrigin: '0% 50%',
+      opacity: cubeX.value < 0 ? 1 : 0,
+    };
+  });
+  // The incoming PREV author's face — hidden edge-on (-90°), rotating to front as
+  // you drag right (cubeX 0 → +W).
+  const prevFaceStyle = useAnimatedStyle(() => {
+    const rot = -90 + (cubeX.value / SCREEN_W) * 90;
+    return {
+      transform: [{ perspective: 1000 }, { rotateY: `${rot}deg` }],
+      transformOrigin: '100% 50%',
+      opacity: cubeX.value > 0 ? 1 : 0,
+    };
+  });
   const chromeStyle = useAnimatedStyle(() => ({ opacity: chromeOpacity.value }));
 
   // On mount: snapshot engine state, pause the current track, hide FloatingPlayer.
@@ -286,6 +359,18 @@ export default function StoryViewerScreen() {
       }
     },
     [currentAuthorIndex, items, close],
+  );
+
+  // Commit a cube swipe: change author (setIndex → re-drives audio for the new
+  // story via the story-keyed effect), then snap the rotation to 0 so the now-
+  // front face shows the new story. Only ever calls jumpAuthor — the cube never
+  // touches the playback path.
+  const commitCube = useCallback(
+    (dir: 1 | -1) => {
+      jumpAuthor(dir);
+      cubeX.value = 0;
+    },
+    [jumpAuthor, cubeX],
   );
 
   // Single-fire advance, keyed by presentation id (see presentationRef).
@@ -527,37 +612,60 @@ export default function StoryViewerScreen() {
     [chromeOpacity],
   );
 
-  // Pan: downward drag follows the finger and dismisses past a threshold;
-  // horizontal drag jumps between authors.
+  // Pan: horizontal drag drives the cube rotation between authors; downward drag
+  // follows the finger and dismisses past a threshold. When there is no author in
+  // the drag direction the rotation rubber-bands (¼ tracking) so it reads as a wall.
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
         .minDistance(12)
         .onUpdate(e => {
           if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
-            tx.value = e.translationX;
+            const goingNext = e.translationX < 0;
+            const hasTarget = goingNext ? hasNext : hasPrev;
+            cubeX.value = hasTarget ? e.translationX : e.translationX * 0.25;
             ty.value = 0;
             scale.value = 1;
           } else {
             ty.value = Math.max(0, e.translationY);
-            tx.value = 0;
+            cubeX.value = 0;
             const prog = Math.min(1, ty.value / 500);
             scale.value = 1 - prog * 0.12;
           }
         })
         .onEnd(e => {
           const horizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
-          if (horizontal && Math.abs(e.translationX) > AUTHOR_SWIPE_DISTANCE) {
-            runOnJS(jumpAuthor)(e.translationX < 0 ? 1 : -1);
-          } else if (!horizontal && (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY)) {
+          if (horizontal) {
+            const dir: 1 | -1 = e.translationX < 0 ? 1 : -1;
+            const hasTarget = dir === 1 ? hasNext : hasPrev;
+            const passed =
+              Math.abs(e.translationX) > AUTHOR_SWIPE_DISTANCE || Math.abs(e.velocityX) > 700;
+            if (hasTarget && passed) {
+              // Finish the turn, then commit the author change at edge-on (invisible).
+              cubeX.value = withTiming(
+                dir === 1 ? -SCREEN_W : SCREEN_W,
+                { duration: 190 },
+                finished => {
+                  if (finished) {runOnJS(commitCube)(dir);}
+                },
+              );
+              return;
+            }
+            if (!hasTarget && passed && dir === 1) {
+              runOnJS(close)(); // past the last author → close
+              return;
+            }
+            cubeX.value = withTiming(0, { duration: 170 });
+            return;
+          }
+          if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
             runOnJS(close)();
             return;
           }
-          tx.value = withSpring(0);
           ty.value = withSpring(0);
           scale.value = withSpring(1);
         }),
-    [tx, ty, scale, jumpAuthor, close],
+    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close],
   );
 
   const composedGesture = useMemo(
@@ -571,7 +679,20 @@ export default function StoryViewerScreen() {
 
   return (
     <View style={styles.root}>
-      <Reanimated.View style={[styles.root, containerStyle]}>
+      {/* Adjacent cube faces — static previews (cover art + header), no MediaPlayer
+          and no audio, so the cube stays a purely visual flourish. */}
+      {prevAuthorItem ? (
+        <Reanimated.View style={[StyleSheet.absoluteFill, styles.face, prevFaceStyle]} pointerEvents="none">
+          <AuthorFacePreview item={prevAuthorItem} />
+        </Reanimated.View>
+      ) : null}
+      {nextAuthorItem ? (
+        <Reanimated.View style={[StyleSheet.absoluteFill, styles.face, nextFaceStyle]} pointerEvents="none">
+          <AuthorFacePreview item={nextAuthorItem} />
+        </Reanimated.View>
+      ) : null}
+
+      <Reanimated.View style={[styles.root, styles.face, currentFaceStyle]}>
         {/* Media + gesture surface */}
         <GestureDetector gesture={composedGesture}>
           <View style={styles.root}>
@@ -758,6 +879,33 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  // Cube faces hide their back so a rotated-away face doesn't show mirrored.
+  face: {
+    backfaceVisibility: 'hidden',
+  },
+  previewRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  previewFallback: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: COLORS.purpleDim,
+  },
+  previewHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 18,
   },
   overlay: {
     position: 'absolute',
