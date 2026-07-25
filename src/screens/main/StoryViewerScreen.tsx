@@ -169,6 +169,13 @@ export default function StoryViewerScreen() {
   const [index, setIndex] = useState(() =>
     Math.min(initialIndex, Math.max(0, flat.orderedStoryIds.length - 1)),
   );
+  // Mirror of `index` so navigation decisions (advance-past-end → close) can read
+  // the current index WITHOUT doing it inside a setIndex updater — a navigation
+  // dispatch there runs during render and warns "setState while rendering".
+  const indexRef = useRef(index);
+  useEffect(() => {
+    indexRef.current = index;
+  }, [index]);
   const [paused, setPaused] = useState(false);
   const [seekTo, setSeekTo] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -335,11 +342,13 @@ export default function StoryViewerScreen() {
 
   // ── Navigation between stories ──
   const goForward = useCallback(() => {
-    setIndex(i => {
-      if (i < items.length - 1) {return i + 1;}
+    // Decide OUTSIDE the updater: calling close() (a navigation dispatch) inside a
+    // setIndex updater fires during render and warns "setState while rendering".
+    if (indexRef.current < items.length - 1) {
+      setIndex(i => i + 1);
+    } else {
       close();
-      return i;
-    });
+    }
   }, [items.length, close]);
 
   const goBackward = useCallback(() => {
