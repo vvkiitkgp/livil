@@ -466,7 +466,17 @@ export default function GlobalAudioPlayer() {
       // The ONE MediaSession for every post (audio + video). FullScreenPlayer's
       // <Video> is muted with no notification controls, so it never creates a
       // second session.
-      showNotificationControls
+      //
+      // EXCEPT during a clip session (stories): a story is a purely in-app,
+      // foreground-only player and must NEVER appear on the lock screen or in the
+      // notification shade (product call, ADR-0013 phase 2). Suppressing here also
+      // dodges the Fabric trap — the story→music metadata swap-back on close is a
+      // deferred prop while backgrounded, so a story card would otherwise linger in
+      // the shade showing the story track. The user's real music card returns
+      // (paused) when the clip session ends and this flips back on. The invariant
+      // is unchanged: there is still at most ONE session owner — this toggle only
+      // decides whether that one owner is present, never adds a second.
+      showNotificationControls={!isStoryViewerOpen}
       muted={false}
       volume={1.0}
       {...(Platform.OS === 'android'
