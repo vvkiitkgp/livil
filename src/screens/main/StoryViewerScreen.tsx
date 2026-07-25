@@ -399,9 +399,10 @@ export default function StoryViewerScreen() {
     if (!isVideo || sameSource) {
       startProgressAnim();
     }
-    // Same-source video: no onLoad → hide the poster once the seek has rendered.
+    // Same-source video: no onLoad → the progress-crossing signal (or this
+    // fallback) hides the poster once the forced seek has rendered.
     if (isVideo && sameSource) {
-      posterTimerRef.current = setTimeout(() => setPosterVisible(false), 280);
+      posterTimerRef.current = setTimeout(() => setPosterVisible(false), 900);
     }
 
     // Seek the MUTED picture frame to the clip start on first load.
@@ -426,12 +427,25 @@ export default function StoryViewerScreen() {
   }, [storyId]);
 
   // Video picture-frame loaded (different-source video only — audio has no frame).
-  // Start the bar and hide the poster once the frame has seeked to the clip start.
+  // Start the bar; the poster hides on the DETERMINISTIC signal below (the frame's
+  // progress crossing the clip start), with this long timer only as an anti-strand
+  // fallback if progress events never arrive.
   const handleLoaded = useCallback(() => {
     startProgressAnim();
     if (posterTimerRef.current) { clearTimeout(posterTimerRef.current); }
-    posterTimerRef.current = setTimeout(() => setPosterVisible(false), 220);
+    posterTimerRef.current = setTimeout(() => setPosterVisible(false), 900);
   }, [startProgressAnim]);
+
+  // Deterministic poster hide: the muted frame reports ~0 while a fresh load is
+  // still at the file start and only crosses clipStart once its seek has actually
+  // landed — exactly the moment the 0:00 frame can no longer flash. Used ONLY for
+  // the poster; never for advance (ADR-0013 — the JS timer is the advance clock).
+  const handleFrameProgress = useCallback((pos: number) => {
+    if (!story) { return; }
+    if (pos >= story.clipStartSec - 0.75) {
+      setPosterVisible(false);
+    }
+  }, [story]);
 
   // NOTE: there is deliberately NO clip-end-by-position clock here. Under the clip
   // session (ADR-0013) the JS progress timer (startProgressAnim) is the SOLE advance
@@ -692,6 +706,9 @@ export default function StoryViewerScreen() {
                   paused={paused}
                   onTogglePaused={() => {}}
                   onLoaded={handleLoaded}
+                  // Poster-only signal (never advance — ADR-0013): hides the
+                  // clip-start poster when the frame's position crosses clipStart.
+                  onProgress={handleFrameProgress}
                   seekTo={seekTo}
                   visible
                   pauseWhenOffScreen={false}

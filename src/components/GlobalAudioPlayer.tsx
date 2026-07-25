@@ -106,6 +106,13 @@ export default function GlobalAudioPlayer() {
 
   // Activate for ANY playable track — GAP is the single audio engine for both
   // audio posts and the audio track of video posts (source = audioUrl ?? videoUrl).
+  //
+  // ⚠ ORDER-DEPENDENT with the activePostId effect BELOW: on story-close restore
+  // (exitClipSession → setNowPlaying(prev) then pauseAll), this effect's
+  // setPaused(false) must run BEFORE that effect's activePostId===null →
+  // setPaused(true), so the restored track settles PAUSED. That holds because
+  // effects run in declaration order. Do NOT move this effect below the
+  // activePostId effect, or the user's music will auto-play through a story close.
   useEffect(() => {
     const url = nowPlaying?.audioUrl ?? nowPlaying?.videoUrl;
     if (url) {

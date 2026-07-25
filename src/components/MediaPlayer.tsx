@@ -37,6 +37,9 @@ export type MediaPlayerProps = {
   onProgress?: (positionSeconds: number) => void;
   onLoaded?: (durationSeconds: number) => void;
   onEnded?: () => void;
+  /** Fired when the native surface has painted a frame (onReadyForDisplay). The
+   *  story viewer uses this to hide its clip-start poster deterministically. */
+  onReadyForDisplay?: () => void;
   /** Externally requested seek position in seconds; used after the user drags
    *  the SeekBar thumb. */
   seekTo?: number | null;
@@ -96,6 +99,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     onProgress,
     onLoaded,
     onEnded,
+    onReadyForDisplay,
     seekTo,
     visible,
     pauseWhenOffScreen = true,
@@ -245,7 +249,10 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
   const handleReadyForDisplay = useCallback(() => {
     setReadyForDisplay(true);
-  }, []);
+    // Surface the native "first frame painted" signal to the parent — the story
+    // viewer uses it to drop its poster deterministically instead of on a timer.
+    onReadyForDisplay?.();
+  }, [onReadyForDisplay]);
 
   const source = useMemo(() => {
     if (media.kind === 'audio') {return { uri: media.audioUrl };}

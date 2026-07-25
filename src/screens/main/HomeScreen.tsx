@@ -91,17 +91,6 @@ function prefetchFeedMedia(posts: FeedPost[]): void {
   }
 }
 
-function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) {
-    return false;
-  }
-  for (const id of b) {
-    if (!a.has(id)) {
-      return false;
-    }
-  }
-  return true;
-}
 
 
 function storyInitials(author: { displayName: string | null; username: string }): string {
@@ -308,7 +297,10 @@ export default function HomeScreen() {
   const loadingMoreRef = useRef(false);
   const loadingInitialRef = useRef(true);
 
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  // Viewability feeds ONLY the pagination prefetch (refs, no setState). The former
+  // per-scroll `visibleIds` state re-rendered every mounted PostCard several times a
+  // second while scrolling (the "large list is slow to update" warning) for a
+  // `visible` prop PostCard hasn't read since the single-engine consolidation.
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
     minimumViewTime: 120,
@@ -365,18 +357,12 @@ export default function HomeScreen() {
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
       let maxIndex = 0;
       for (const v of viewableItems) {
         if (typeof v.index === 'number') {
           maxIndex = Math.max(maxIndex, v.index);
         }
-        const row = v.item as FeedListItem | undefined;
-        if (row?.kind === 'post' && v.isViewable) {
-          ids.add(row.post.id);
-        }
       }
-      setVisibleIds(prev => (visiblePostIdSetsEqual(prev, ids) ? prev : ids));
 
       const len = postsRef.current.length;
       const nearEnd =
@@ -398,8 +384,8 @@ export default function HomeScreen() {
   ).current;
 
   // Deliberately no pauseAll() on blur — audio should keep playing when the
-  // user navigates to another screen (e.g. UserProfile). PostCard's `visible`
-  // prop already stops inline video when cards leave the viewport.
+  // user navigates to another screen (e.g. UserProfile). Cards render no inline
+  // video (single-engine, ADR-0001), so nothing needs pausing on scroll-away.
 
   // One-time: load my profile for the hero avatar.
   useEffect(() => {
@@ -689,14 +675,12 @@ export default function HomeScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
-          pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [visibleIds, comments, handlePostDeleted],
+    [comments, handlePostDeleted],
   );
 
   const feedKeyExtractor = useCallback((item: FeedListItem) => {

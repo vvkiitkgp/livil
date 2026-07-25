@@ -10,7 +10,6 @@ import {
   Image,
   Linking,
   Share,
-  type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -162,11 +161,9 @@ export default function ProfileScreen() {
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
 
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [allLinksOpen, setAllLinksOpen] = useState(false);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -207,21 +204,8 @@ export default function ProfileScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, posts, playback.setQueue]);
 
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        const item = v.item as ListItem | undefined;
-        if (item?.kind === 'post' && v.isViewable) {
-          ids.add(item.post.id);
-        }
-      }
-      setVisibleIds(ids);
-    },
-  ).current;
-
   // Deliberately no pauseAll() on blur — audio should keep playing when the
-  // user navigates to another screen. PostCard's `visible` prop handles inline video.
+  // user navigates to another screen. Cards render no inline video (ADR-0001).
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
     const [profRes, statsData, follow] = await Promise.all([
@@ -528,13 +512,12 @@ export default function ProfileScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [tab, tabCounts, handleTabChange, visibleIds, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist],
   );
 
   const renderHeader = useCallback(() => {
@@ -721,8 +704,6 @@ export default function ProfileScreen() {
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         onScroll={handleScroll}
