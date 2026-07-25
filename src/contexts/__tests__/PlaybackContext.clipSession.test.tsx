@@ -81,9 +81,14 @@ describe('clip session lifecycle', () => {
 
     expect(src).toBe('song.mp3');
     expect(get().isStoryViewerOpen).toBe(true);
+    // The media card's metadata is pinned to the pre-story track for the whole
+    // session (the OS notification must keep showing the user's music, never
+    // the story) — and released on exit.
+    expect(get().clipSessionPrevTrack?.postId).toBe('song');
 
     act(() => { get().exitClipSession(); });
     expect(get().isStoryViewerOpen).toBe(false);
+    expect(get().clipSessionPrevTrack).toBeNull();
   });
 
   it('restores the user\'s track on exit', () => {

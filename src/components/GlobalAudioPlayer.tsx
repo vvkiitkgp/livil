@@ -69,6 +69,7 @@ export default function GlobalAudioPlayer() {
     queueVersion,
     clipVersion,
     isStoryViewerOpen,
+    clipSessionPrevTrack,
   } = usePlayback();
   const { showToast } = useToast();
 
@@ -430,12 +431,21 @@ export default function GlobalAudioPlayer() {
   const videoBufferGate = nowPlaying.mediaKind === 'video' && videoFrameBuffering;
   videoGateRef.current = videoBufferGate;
 
+  // The OS media card must NEVER show a story. During a clip session the card's
+  // metadata is PINNED to the user's pre-story track (set at session enter, in the
+  // foreground — so no Fabric-deferral risk): the shade keeps showing the user's
+  // music, which reads as paused the moment the app backgrounds (native host-pause
+  // via playInBackground=false). If nothing was playing before the story there is
+  // nothing to pin, so the card is suppressed entirely (see showNotificationControls).
+  const notificationTrack =
+    isStoryViewerOpen && clipSessionPrevTrack ? clipSessionPrevTrack : nowPlaying;
+
   return (
     <Video
       ref={videoRef}
       source={{
         uri: audioSrc,
-        metadata: buildNowPlayingMetadata(nowPlaying),
+        metadata: buildNowPlayingMetadata(notificationTrack),
         ...(startPositionMs !== undefined ? { startPosition: startPositionMs } : {}),
       }}
       paused={paused || videoBufferGate}
@@ -467,16 +477,13 @@ export default function GlobalAudioPlayer() {
       // <Video> is muted with no notification controls, so it never creates a
       // second session.
       //
-      // EXCEPT during a clip session (stories): a story is a purely in-app,
-      // foreground-only player and must NEVER appear on the lock screen or in the
-      // notification shade (product call, ADR-0013 phase 2). Suppressing here also
-      // dodges the Fabric trap — the story→music metadata swap-back on close is a
-      // deferred prop while backgrounded, so a story card would otherwise linger in
-      // the shade showing the story track. The user's real music card returns
-      // (paused) when the clip session ends and this flips back on. The invariant
-      // is unchanged: there is still at most ONE session owner — this toggle only
-      // decides whether that one owner is present, never adds a second.
-      showNotificationControls={!isStoryViewerOpen}
+      // During a clip session (stories) the card's METADATA is pinned to the
+      // user's pre-story track (see notificationTrack above), so the shade keeps
+      // showing their music — a story itself must NEVER appear on the lock screen
+      // (product call, ADR-0013 phase 2). Controls are suppressed only when there
+      // was no pre-story track (nothing legitimate to show). Invariant unchanged:
+      // at most ONE session owner; this only decides whether that owner is present.
+      showNotificationControls={!isStoryViewerOpen || clipSessionPrevTrack != null}
       muted={false}
       volume={1.0}
       {...(Platform.OS === 'android'

@@ -174,6 +174,10 @@ type PlaybackContextValue = {
 
   // --- story viewer (hides FloatingPlayer while stories are fullscreen) ---
   isStoryViewerOpen: boolean;
+  /** The track that was playing when the clip session opened (null if none, or no
+   *  session). GAP pins the media notification's METADATA to this for the whole
+   *  session, so the OS card keeps showing the user's music — never the story. */
+  clipSessionPrevTrack: NowPlayingInfo | null;
   setStoryViewerOpen: (open: boolean) => void;
   /** Enter a declared clip session (stories): snapshots the engine, forces
    *  repeat/shuffle off, disarms the native clip-end watcher, and returns the
@@ -233,6 +237,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isImmersive, setIsImmersiveState] = useState(false);
   const [isStoryViewerOpen, setIsStoryViewerOpenState] = useState(false);
+  const [clipSessionPrevTrack, setClipSessionPrevTrack] = useState<NowPlayingInfo | null>(null);
   const [isRepostOpen, setIsRepostOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
   const [shuffleEnabled, setShuffleEnabledState] = useState(false);
@@ -716,6 +721,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setRepeatMode('off');
     setShuffleEnabled(false);
     clipSessionRef.current = true;
+    // Pin the media card's metadata to the user's music for the whole session —
+    // the OS notification must keep showing THIS track (paused), never the story.
+    setClipSessionPrevTrack(prevNowPlaying);
     setStoryViewerOpen(true);
     return prevNowPlaying
       ? (prevNowPlaying.audioUrl ?? prevNowPlaying.videoUrl ?? null)
@@ -761,6 +769,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     pauseAll();
     clipSessionRef.current = false;
     setStoryViewerOpen(false);
+    setClipSessionPrevTrack(null);
     clipSnapshotRef.current = null;
   }, [pauseAll, setRepeatMode, setShuffleEnabled, setNowPlaying, clearNowPlaying, markSeekTarget, setStoryViewerOpen]);
 
@@ -819,6 +828,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setImmersive,
       toggleImmersive,
       isStoryViewerOpen,
+      clipSessionPrevTrack,
       setStoryViewerOpen,
       enterClipSession,
       exitClipSession,
@@ -878,6 +888,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setImmersive,
       toggleImmersive,
       isStoryViewerOpen,
+      clipSessionPrevTrack,
       setStoryViewerOpen,
       enterClipSession,
       exitClipSession,
