@@ -465,6 +465,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, [generateShuffleOrder, bumpQueue]);
 
   const playNext = useCallback(() => {
+    // Stories drive their OWN advance from the StoryViewer (a JS progress clock),
+    // never through playNext. The native (Android) clip-end watcher can still emit
+    // onNextTrack → playNext for a story — notably when advancing to a LATER clip
+    // of the SAME track, where the native side momentarily holds the previous
+    // clip's end and the forward seek to the new clip start trips it early.
+    // playNext on the one-item story queue would just deactivate and cut the story
+    // short (the "clip is way under 10s" bug), so ignore it while a story is active.
+    if (queueSourceRef.current === 'story') { return; }
     if (userQueueRef.current.length > 0) {
       const track = userQueueRef.current.shift()!;
       activeRef.current = track.postId;
