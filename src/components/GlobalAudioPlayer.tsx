@@ -371,6 +371,20 @@ export default function GlobalAudioPlayer() {
     [repeatMode, shuffleEnabled],
   );
 
+  // Start the native player AT the clip/resume offset instead of 0. Without this
+  // the engine loads the full track and plays from 0:00 while buffering, then
+  // seeks to the offset only in onLoad — an audible ~1s intro before a clipped
+  // story/repost jumps to its clip start. `startPosition` seeks during source
+  // preparation, so playback begins at the offset. Captured per-post (positionRef
+  // holds the clip start when a NEW post is set), stable across renders; undefined
+  // for a full play from 0:00, so non-clipped playback is unchanged. (Declared
+  // before the early returns below to keep hook order stable.)
+  const startPositionMs = useMemo(() => {
+    const p = positionRef.current;
+    return p > 0.05 ? Math.round(p * 1000) : undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlaying?.postId]);
+
   // Don't render when the jam PlaybackEngine drives audio, or nothing is playing.
   if (engineDriving || !nowPlaying) {
     return null;
@@ -393,7 +407,11 @@ export default function GlobalAudioPlayer() {
   return (
     <Video
       ref={videoRef}
-      source={{ uri: audioSrc, metadata: buildNowPlayingMetadata(nowPlaying) }}
+      source={{
+        uri: audioSrc,
+        metadata: buildNowPlayingMetadata(nowPlaying),
+        ...(startPositionMs !== undefined ? { startPosition: startPositionMs } : {}),
+      }}
       paused={paused || videoBufferGate}
       rate={rate}
       onLoad={handleLoad}
