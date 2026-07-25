@@ -265,6 +265,19 @@ export default function GlobalAudioPlayer() {
       const mine = myPostIdRef.current;
       if (!mine) { return; }
       if (e.isPlaying && pausedRef.current) {
+        // Mirror the PAUSE branch's guards: during a source load/swap ExoPlayer can
+        // emit a stray isPlaying=true carried over from the OUTGOING item. Seen on
+        // story-close restore — the engine swapped back to the user's track while
+        // the story was still "playing" natively, this branch mis-read it as a
+        // lock-screen play, and the user's music auto-played while the pill showed
+        // the play icon (JS paused / native playing desync). Our `paused` prop is
+        // already true — no edge for RNV to re-apply — so force the native player
+        // down imperatively instead of just ignoring the report.
+        if (bufferingRef.current || Date.now() < loadGuardUntilRef.current || videoGateRef.current) {
+          console.log('[LIVIL][GAP] stray native PLAY during load → force pause');
+          videoRef.current?.pause();
+          return;
+        }
         console.log('[LIVIL][GAP] lock-screen PLAY → sync');
         setPaused(false);
         resumePlay(mine);

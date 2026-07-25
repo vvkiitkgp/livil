@@ -746,6 +746,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
         durationRef.current = duration;
         markSeekTarget(position);
         handlersRef.current?.seek(position);
+        // Assert the FINAL state explicitly: restored track paused, JS state and
+        // the pill icon in sync. Without this, a stray native isPlaying report
+        // during the source swap-back could leave native playing while JS (and the
+        // play/pause icon) said paused. GAP's stray-PLAY guard is the primary
+        // defense; this makes the end-state deterministic regardless.
+        handlersRef.current?.pause();
       }, 0);
     } else {
       clearNowPlaying();
