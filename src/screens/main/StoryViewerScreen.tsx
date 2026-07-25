@@ -473,9 +473,14 @@ export default function StoryViewerScreen() {
   }, [startProgressAnim]);
 
   // When playback reaches clip_end, auto-advance (the audio-accurate clock).
+  // Only treat this as a real crossing when pos is NEAR clipEnd — the muted
+  // picture frame can momentarily report a stale position from the previous story
+  // (e.g. 160s) before its seek settles, and a bare `pos >= clipEnd` would then
+  // fire an immediate advance and cut the clip short. The visual progress bar (a
+  // clipDuration timer) is the primary advance clock; this is the audio backstop.
   const handleProgress = useCallback((pos: number) => {
     if (!story) {return;}
-    if (pos >= story.clipEndSec) {
+    if (pos >= story.clipEndSec && pos <= story.clipEndSec + 1.5) {
       requestAdvance(presentationRef.current);
     }
   }, [story, requestAdvance]);
