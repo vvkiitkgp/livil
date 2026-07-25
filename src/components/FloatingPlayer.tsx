@@ -209,7 +209,14 @@ export default function FloatingPlayer() {
   // ─── Slide in / out ───────────────────────────────────────────────────────────
   const slideAnim  = useRef(new Animated.Value(0)).current;
   const wasVisible = useRef(false);
-  const shouldShow = !!nowPlaying || !!activeJam;
+  // While a story/repost owns the screen the pill must be treated as HIDDEN — not
+  // just `return null`ed below. During a story the single engine's nowPlaying IS
+  // the story, so without this `shouldShow` stayed true, slideAnim sat at the
+  // "shown" position, and on close (return-null lifts before nowPlaying settles)
+  // the pill animated OUT visibly for ~200ms — a hacky flash. Gating shouldShow
+  // keeps slideAnim parked at hidden throughout, so closing a story reveals the
+  // pill only if the user's music is actually being restored.
+  const shouldShow = (!!nowPlaying || !!activeJam) && !isStoryViewerOpen && !isRepostOpen;
   useEffect(() => {
     if (shouldShow && !wasVisible.current) {
       wasVisible.current = true;

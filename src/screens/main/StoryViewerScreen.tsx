@@ -23,6 +23,8 @@ import Reanimated, {
   useAnimatedStyle,
   withTiming,
   withSpring,
+  withRepeat,
+  Easing,
   runOnJS,
 } from 'react-native-reanimated';
 
@@ -44,9 +46,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
 import Scrim from '../../components/Scrim';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
-import StoryWaveBars from '../../components/StoryWaveBars';
-import { getOrAnalyzeWaveform } from '../../services/tracks';
-import type { WaveformData } from '../../services/waveform';
+import { GradientBorder } from '../../components/GradientBorder';
 
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
@@ -159,11 +159,15 @@ export default function StoryViewerScreen() {
   const [paused, setPaused] = useState(false);
   const [seekTo, setSeekTo] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Poster shown over a VIDEO story while it loads/seeks, so the 0:00 frame never
+  // flashes before the clip start. Hidden once the frame is at the clip.
+  const [posterVisible, setPosterVisible] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   // Monotonic "presentation" id, bumped every time the current story changes
   // (forward, backward, author jump, or a delete shifting the list). advance()
@@ -268,8 +272,14 @@ export default function StoryViewerScreen() {
   }, []);
 
   const close = useCallback(() => {
+    // Pause the engine IMMEDIATELY, before the dismiss/navigation animation, so a
+    // gesture always wins over playback — otherwise the story audio keeps playing
+    // through the close transition (exitClipSession only pauses on unmount, after
+    // the animation). Every close path (swipe-down, X, tap-past-end) routes here.
+    playback.handlersRef.current?.pause();
+    progressAnimRef.current?.stop();
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, playback]);
 
   // ── Navigation between stories ──
   const goForward = useCallback(() => {
@@ -356,6 +366,11 @@ export default function StoryViewerScreen() {
     progressAnim.setValue(0);
     setPaused(false);
 
+    const isVideo = story.track.mediaKind === 'video' && !!story.track.videoUrl;
+    // Show the poster over a video until it has seeked to the clip start (below).
+    if (posterTimerRef.current) { clearTimeout(posterTimerRef.current); }
+    setPosterVisible(isVideo);
+
     // Order mirrors PostCard's union of both play paths — see storyPlayback.ts.
     const info = storyToNowPlaying(story);
     const storyUrl = info.audioUrl ?? info.videoUrl ?? null;
@@ -365,19 +380,27 @@ export default function StoryViewerScreen() {
     playback.setNowPlaying(info);
     playback.markSeekTarget(story.clipStartSec);
     if (sameSource) {
-      // Case A: same source already loaded, so the MediaPlayer will NOT reload and
-      // its onLoad will NOT fire — force the reposition AND start the progress bar
-      // here, because handleLoaded (which normally starts it) won't run. This is
-      // the "two clips of the same track" case where story 2's bar never moved.
+      // Case A: same source already loaded → force the reposition. (For a video,
+      // the picture frame won't fire onLoad, so hide the poster on a short timer.)
       playback.handlersRef.current?.seek(story.clipStartSec);
-      startProgressAnim();
     }
     // else Case B: different/no source — setNowPlaying switches GAP's source and
-    // handleLoad seeks to positionRef(=clipStart), and MediaPlayer.onLoad →
-    // handleLoaded starts the bar. A forced seek here would drive the OUTGOING
-    // track and race the switch.
+    // handleLoad seeks to positionRef(=clipStart). For a DIFFERENT-source video the
+    // picture frame's onLoad → handleLoaded hides the poster; a forced seek here
+    // would drive the OUTGOING track and race the switch.
     playback.requestPlay(info.postId);
     loadedSrcRef.current = storyUrl;
+
+    // Start the progress bar: AUDIO has no picture frame (no MediaPlayer/onLoad),
+    // and a same-source video won't fire onLoad — start here in both cases.
+    // Different-source video starts it from handleLoaded.
+    if (!isVideo || sameSource) {
+      startProgressAnim();
+    }
+    // Same-source video: no onLoad → hide the poster once the seek has rendered.
+    if (isVideo && sameSource) {
+      posterTimerRef.current = setTimeout(() => setPosterVisible(false), 280);
+    }
 
     // Seek the MUTED picture frame to the clip start on first load.
     setSeekTo(story.clipStartSec);
@@ -395,12 +418,17 @@ export default function StoryViewerScreen() {
 
     return () => {
       if (seenTimerRef.current) {clearTimeout(seenTimerRef.current);}
+      if (posterTimerRef.current) {clearTimeout(posterTimerRef.current);}
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storyId]);
 
+  // Video picture-frame loaded (different-source video only — audio has no frame).
+  // Start the bar and hide the poster once the frame has seeked to the clip start.
   const handleLoaded = useCallback(() => {
     startProgressAnim();
+    if (posterTimerRef.current) { clearTimeout(posterTimerRef.current); }
+    posterTimerRef.current = setTimeout(() => setPosterVisible(false), 220);
   }, [startProgressAnim]);
 
   // NOTE: there is deliberately NO clip-end-by-position clock here. Under the clip
@@ -449,26 +477,17 @@ export default function StoryViewerScreen() {
     return null;
   }, [story]);
 
-  // ── Beat-synced visualizer envelope ──
-  // Resolve the current story track's precomputed loudness envelope (cache → DB →
-  // analyze-on-device) and hand it to WaveVisualizer, which indexes it by the live
-  // ABSOLUTE positionRef the story audio drives through the single engine. Mirrors
-  // FloatingPlayer exactly, including the AUDIO-ONLY gate: analyzing a video would
-  // pull the whole remote file into memory and OOM-crash (audioUrl is null for
-  // video anyway) — so video stories keep the decorative wave.
-  const [waveform, setWaveform] = useState<WaveformData | null>(null);
-  const activeTrackId = story?.track.id ?? null;
-  const analyzableUrl =
-    story?.track.mediaKind === 'audio' ? (story?.track.audioUrl ?? undefined) : undefined;
+  // A gentle continuous glow pulse on the "open the song's post" bar — it draws
+  // the eye to the CTA (and replaces the removed visualizer as the live element).
+  const songGlow = useSharedValue(1);
   useEffect(() => {
-    if (!activeTrackId || !analyzableUrl) { setWaveform(null); return; }
-    let cancelled = false;
-    setWaveform(null); // clear while the new story's envelope resolves
-    getOrAnalyzeWaveform(activeTrackId, analyzableUrl)
-      .then(data => { if (!cancelled) { setWaveform(data); } })
-      .catch(() => { if (!cancelled) { setWaveform(null); } });
-    return () => { cancelled = true; };
-  }, [activeTrackId, analyzableUrl]);
+    songGlow.value = withRepeat(
+      withTiming(0.5, { duration: 1300, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
+  }, [songGlow]);
+  const songGlowStyle = useAnimatedStyle(() => ({ opacity: songGlow.value }));
 
   // ── Go to the song's post: deep-link to the original upload via its author's
   //    profile (the app has no standalone post screen). ──
@@ -647,23 +666,65 @@ export default function StoryViewerScreen() {
         {/* Media + gesture surface */}
         <GestureDetector gesture={composedGesture}>
           <View style={styles.root}>
-            {media ? (
-              <MediaPlayer
-                postId={storyViewerPostId(story.id)}
-                media={media}
-                paused={paused}
-                onTogglePaused={() => {}}
-                onLoaded={handleLoaded}
-                seekTo={seekTo}
-                visible
-                pauseWhenOffScreen={false}
-                // MUTED picture-only frame — the story's audio plays through the
-                // single GlobalAudioPlayer engine (ADR-0001), never a second
-                // <Video>.
-                muted
-                style={StyleSheet.absoluteFill}
-              />
-            ) : null}
+            {media && media.kind === 'video' ? (
+              <>
+                {/* VIDEO — full-screen picture frame, MUTED (audio plays through the
+                    single GlobalAudioPlayer engine, ADR-0001; never a second audible
+                    <Video>). */}
+                <MediaPlayer
+                  postId={storyViewerPostId(story.id)}
+                  media={media}
+                  paused={paused}
+                  onTogglePaused={() => {}}
+                  onLoaded={handleLoaded}
+                  seekTo={seekTo}
+                  visible
+                  pauseWhenOffScreen={false}
+                  muted
+                  style={StyleSheet.absoluteFill}
+                />
+                {/* Poster over the video until it seeks to the clip start, so the
+                    0:00 frame never flashes. */}
+                {posterVisible ? (
+                  story.track.coverArtUrl ? (
+                    <Image
+                      source={{ uri: story.track.coverArtUrl }}
+                      style={StyleSheet.absoluteFill}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.videoPosterDark} />
+                  )
+                ) : null}
+              </>
+            ) : (
+              // AUDIO — show the cover as a centered SQUARE (proper aspect ratio),
+              // over a soft blurred version of itself, NOT stretched full-screen.
+              <View style={styles.audioStage}>
+                {story.track.coverArtUrl ? (
+                  <>
+                    <Image
+                      source={{ uri: story.track.coverArtUrl }}
+                      style={StyleSheet.absoluteFill}
+                      resizeMode="cover"
+                      blurRadius={28}
+                    />
+                    <View style={styles.audioBgTint} />
+                    <View style={styles.audioCoverWrap}>
+                      <Image
+                        source={{ uri: story.track.coverArtUrl }}
+                        style={styles.audioCover}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.audioFallback}>
+                    <Icon name="musicNotes" size={64} color={COLORS.purpleLight} />
+                  </View>
+                )}
+              </View>
+            )}
             <Scrim edge="top" height={150} peakOpacity={0.72} />
             <Scrim edge="bottom" height={230} peakOpacity={0.82} />
           </View>
@@ -744,40 +805,39 @@ export default function StoryViewerScreen() {
             </View>
           </SafeAreaView>
 
-          {/* Bottom stack: comment → go-to-song bar */}
+          {/* Bottom stack: comment → glowing go-to-song bar */}
           <SafeAreaView style={styles.bottomArea} edges={['bottom']} pointerEvents="box-none">
             {story.comment ? (
               <Text style={styles.commentText}>{story.comment}</Text>
             ) : null}
-            <View style={styles.waveWrap} pointerEvents="none">
-              <StoryWaveBars
-                waveform={waveform}
-                playing={!paused}
-                width={SCREEN_W - 28}
-              />
+            <View style={styles.songBarWrap}>
+              {/* Pulsing purple gradient glow border (house GradientBorder). */}
+              <Reanimated.View style={[StyleSheet.absoluteFill, songGlowStyle]} pointerEvents="none">
+                <GradientBorder borderRadius={14} strokeWidth={1.75} />
+              </Reanimated.View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.songBar}
+                onPress={openSong}
+              >
+                <View style={styles.songCover}>
+                  {story.track.coverArtUrl ? (
+                    <Image source={{ uri: story.track.coverArtUrl }} style={styles.songCoverImg} />
+                  ) : (
+                    <Icon name="musicNotes" size={16} color={COLORS.white} />
+                  )}
+                </View>
+                <View style={styles.songText}>
+                  <Text style={styles.songTitle} numberOfLines={1}>
+                    {story.track.title}
+                  </Text>
+                  <Text style={styles.songSub} numberOfLines={1}>
+                    Tap to open the song's post
+                  </Text>
+                </View>
+                <Icon name="arrowRight" size={18} color={COLORS.purpleLight} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.songBar}
-              onPress={openSong}
-            >
-              <View style={styles.songCover}>
-                {story.track.coverArtUrl ? (
-                  <Image source={{ uri: story.track.coverArtUrl }} style={styles.songCoverImg} />
-                ) : (
-                  <Icon name="musicNotes" size={16} color={COLORS.white} />
-                )}
-              </View>
-              <View style={styles.songText}>
-                <Text style={styles.songTitle} numberOfLines={1}>
-                  {story.track.title}
-                </Text>
-                <Text style={styles.songSub} numberOfLines={1}>
-                  Tap to open the song's post
-                </Text>
-              </View>
-              <Icon name="arrowRight" size={18} color={COLORS.purpleLight} />
-            </TouchableOpacity>
           </SafeAreaView>
         </Reanimated.View>
       </Reanimated.View>
@@ -831,6 +891,56 @@ const styles = StyleSheet.create({
   // Cube faces hide their back so a rotated-away face doesn't show mirrored.
   face: {
     backfaceVisibility: 'hidden',
+  },
+  // Audio story: centered square cover over a soft blurred background.
+  audioStage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioBgTint: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(10,10,15,0.5)',
+  },
+  audioCoverWrap: {
+    width: SCREEN_W * 0.72,
+    aspectRatio: 1,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 56,
+  },
+  audioCover: {
+    width: '100%',
+    height: '100%',
+  },
+  audioFallback: {
+    width: SCREEN_W * 0.72,
+    aspectRatio: 1,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 56,
+  },
+  videoPosterDark: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: COLORS.bg,
   },
   previewRoot: {
     flex: 1,
@@ -964,20 +1074,17 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  waveWrap: {
-    height: 30,
-    justifyContent: 'center',
+  songBarWrap: {
+    borderRadius: 14,
   },
   songBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 9,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: COLORS.purple,
-    backgroundColor: 'rgba(14,14,21,0.55)',
+    borderRadius: 14,
+    backgroundColor: 'rgba(14,14,21,0.62)',
   },
   songCover: {
     width: 32,
