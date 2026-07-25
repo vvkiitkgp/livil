@@ -393,6 +393,23 @@ export default function StoryViewerScreen() {
     [goForward],
   );
 
+  const clipDuration = story ? story.clipEndSec - story.clipStartSec : 0;
+
+  const startProgressAnim = useCallback(() => {
+    if (progressAnimRef.current) {progressAnimRef.current.stop();}
+    progressAnim.setValue(0);
+    if (clipDuration <= 0) {return;}
+    const p = presentationRef.current;
+    progressAnimRef.current = Animated.timing(progressAnim, {
+      toValue: 1,
+      duration: clipDuration * 1000,
+      useNativeDriver: false,
+    });
+    progressAnimRef.current.start(({ finished }) => {
+      if (finished) {requestAdvance(p);}
+    });
+  }, [progressAnim, clipDuration, requestAdvance]);
+
   // ── Per-story effect: drive this story's AUDIO through the single engine ──
   // Keyed on the current story id (not the raw index) so a delete that shifts the
   // list, or a backward/author jump, always re-drives audio for whatever story is
@@ -417,12 +434,17 @@ export default function StoryViewerScreen() {
     playback.setNowPlaying(info);
     playback.markSeekTarget(story.clipStartSec);
     if (sameSource) {
-      // Case A: same source already loaded, no onLoad → force reposition.
+      // Case A: same source already loaded, so the MediaPlayer will NOT reload and
+      // its onLoad will NOT fire — force the reposition AND start the progress bar
+      // here, because handleLoaded (which normally starts it) won't run. This is
+      // the "two clips of the same track" case where story 2's bar never moved.
       playback.handlersRef.current?.seek(story.clipStartSec);
+      startProgressAnim();
     }
     // else Case B: different/no source — setNowPlaying switches GAP's source and
-    // handleLoad seeks to positionRef(=clipStart). A forced seek here would drive
-    // the OUTGOING track and race the switch.
+    // handleLoad seeks to positionRef(=clipStart), and MediaPlayer.onLoad →
+    // handleLoaded starts the bar. A forced seek here would drive the OUTGOING
+    // track and race the switch.
     playback.requestPlay(info.postId);
     loadedSrcRef.current = storyUrl;
 
@@ -445,23 +467,6 @@ export default function StoryViewerScreen() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storyId]);
-
-  const clipDuration = story ? story.clipEndSec - story.clipStartSec : 0;
-
-  const startProgressAnim = useCallback(() => {
-    if (progressAnimRef.current) {progressAnimRef.current.stop();}
-    progressAnim.setValue(0);
-    if (clipDuration <= 0) {return;}
-    const p = presentationRef.current;
-    progressAnimRef.current = Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: clipDuration * 1000,
-      useNativeDriver: false,
-    });
-    progressAnimRef.current.start(({ finished }) => {
-      if (finished) {requestAdvance(p);}
-    });
-  }, [progressAnim, clipDuration, requestAdvance]);
 
   const handleLoaded = useCallback(() => {
     startProgressAnim();
