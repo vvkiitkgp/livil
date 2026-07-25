@@ -12,6 +12,7 @@ import {
   Image,
   TouchableOpacity,
   Animated,
+  AppState,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -283,7 +284,13 @@ export default function StoryViewerScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Idempotent: close() can be reached from several triggers in the same beat
+  // (gesture + AppState background + advance-past-end); a second goBack() would
+  // pop the SCREEN UNDER the story.
+  const closedRef = useRef(false);
   const close = useCallback(() => {
+    if (closedRef.current) { return; }
+    closedRef.current = true;
     // Pause the engine IMMEDIATELY, before the dismiss/navigation animation, so a
     // gesture always wins over playback — otherwise the story audio keeps playing
     // through the close transition (exitClipSession only pauses on unmount, after
@@ -292,6 +299,19 @@ export default function StoryViewerScreen() {
     progressAnimRef.current?.stop();
     navigation.goBack();
   }, [navigation, playback]);
+
+  // Stories are FOREGROUND-ONLY (product call, Instagram semantics — ADR-0013
+  // phase 2): leaving the app closes the viewer entirely. Audio is stopped
+  // NATIVELY by GAP's playInBackground={false} during a clip session (a JS pause
+  // here would be Fabric-deferred while backgrounded); this listener closes the
+  // SCREEN so returning to the app lands on whatever was under the story
+  // (Home / profile), with the user's music restored paused by exitClipSession.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') { close(); }
+    });
+    return () => sub.remove();
+  }, [close]);
 
   // ── Navigation between stories ──
   const goForward = useCallback(() => {

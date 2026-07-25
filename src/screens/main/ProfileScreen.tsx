@@ -27,6 +27,7 @@ import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useStories } from '../../contexts/StoriesContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   listPostsForUser,
@@ -149,6 +150,23 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
+
+  // Instagram-style story ring on MY OWN avatar: my active stories are in the
+  // story feed (stories_select includes self), so if I have a cluster the ring
+  // is tappable and opens my stories — purple until I've watched them, grey after.
+  const { clusters: storyClusters } = useStories();
+  const myStoryCluster = useMemo(
+    () => (profile ? storyClusters.find(c => c.authorId === profile.id) ?? null : null),
+    [storyClusters, profile],
+  );
+  const openMyStories = useCallback(() => {
+    if (!myStoryCluster) { return; }
+    navigation.navigate('StoryViewer', {
+      clusters: [{ authorId: myStoryCluster.authorId, storyIds: myStoryCluster.storyIds }],
+      startAuthorIndex: 0,
+      startStoryIndex: myStoryCluster.firstUnseenIndex,
+    });
+  }, [myStoryCluster, navigation]);
 
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
@@ -540,8 +558,22 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatarRingGlow} />
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.85}
+            onPress={myStoryCluster ? openMyStories : undefined}
+            disabled={!myStoryCluster}
+          >
+            <View
+              style={[
+                styles.avatarRingGlow,
+                myStoryCluster
+                  ? myStoryCluster.hasUnseen
+                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
+                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : null,
+              ]}
+            />
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -549,7 +581,7 @@ export default function ProfileScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               ) : null}
             </View>
-          </View>
+          </TouchableOpacity>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />

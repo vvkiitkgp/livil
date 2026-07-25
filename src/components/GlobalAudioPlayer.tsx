@@ -454,8 +454,14 @@ export default function GlobalAudioPlayer() {
       currentClipJson={currentClipJson}
       mediaSessionStateJson={mediaSessionStateJson}
       progressUpdateInterval={250}
-      playInBackground
-      playWhenInactive
+      // Clip sessions (stories) are FOREGROUND-ONLY by product decision (ADR-0013
+      // phase 2, Instagram semantics): backgrounding must stop story audio
+      // immediately. playInBackground={false} makes RNV pause the player NATIVELY
+      // on host-pause — critical, because a JS-side pause would be deferred by
+      // Fabric while backgrounded and the whole song would keep playing (the
+      // reported bug). Normal music keeps full background playback.
+      playInBackground={!isStoryViewerOpen}
+      playWhenInactive={!isStoryViewerOpen}
       ignoreSilentSwitch="ignore"
       // The ONE MediaSession for every post (audio + video). FullScreenPlayer's
       // <Video> is muted with no notification controls, so it never creates a
