@@ -356,10 +356,16 @@ export default function GlobalAudioPlayer() {
   // timeline. Recompute on track change (postId), repeat toggle (repeatMode), and
   // in-place clip-handle edits (clipVersion). Reads the live clipWindowRef so a
   // just-dragged window is reflected.
+  //
+  // In a CLIP SESSION (stories) send an INACTIVE clip (active:false) so the native
+  // clip-end watcher is DISARMED at the source — a story's advance is owned by the
+  // JS clock (ADR-0013). Without this the native watcher fires onNextTrack on the
+  // story's ≤10s window, and a same-track forward seek trips it early (the class
+  // of bugs the clip session removes rather than suppresses).
   const currentClipJson = useMemo(
-    () => buildCurrentClipJson(clipWindowRef.current, repeatMode),
+    () => buildCurrentClipJson(isStoryViewerOpen ? null : clipWindowRef.current, repeatMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nowPlaying?.postId, clipVersion, repeatMode],
+    [nowPlaying?.postId, clipVersion, repeatMode, isStoryViewerOpen],
   );
 
   // Push the in-app shuffle/repeat state into the MediaSession so a Bluetooth
