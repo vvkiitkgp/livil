@@ -28,6 +28,8 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 
+import { ViewType } from 'react-native-video';
+
 import { COLORS } from '../../theme/colors';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
 import { usePlayback } from '../../contexts/PlaybackContext';
@@ -585,10 +587,19 @@ export default function StoryViewerScreen() {
   // Pan: horizontal drag drives the cube rotation between authors; downward drag
   // follows the finger and dismisses past a threshold. When there is no author in
   // the drag direction the rotation rubber-bands (¼ tracking) so it reads as a wall.
+  //
+  // GESTURES WIN OVER PLAYBACK: the moment the pan activates we pause the story
+  // (engine + muted frame + progress clock, via the same `paused` machinery as
+  // hold-to-pause). Audio playing through a drag-dismiss reads as a hang. Resume
+  // only on spring-back; a committed dismiss stays paused (close() also pauses),
+  // and a committed author-jump re-drives playback via the per-story effect.
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
         .minDistance(12)
+        .onStart(() => {
+          runOnJS(setPaused)(true);
+        })
         .onUpdate(e => {
           if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
             const goingNext = e.translationX < 0;
@@ -622,18 +633,22 @@ export default function StoryViewerScreen() {
               return;
             }
             if (!hasTarget && passed && dir === 1) {
-              runOnJS(close)(); // past the last author → close
+              runOnJS(close)(); // past the last author → close (stays paused)
               return;
             }
+            // Rubber-band back to the same story → resume.
             cubeX.value = withTiming(0, { duration: 170 });
+            runOnJS(setPaused)(false);
             return;
           }
           if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
-            runOnJS(close)();
+            runOnJS(close)(); // dismissing → stays paused through the animation
             return;
           }
+          // Spring back from an uncommitted vertical drag → resume.
           ty.value = withSpring(0);
           scale.value = withSpring(1);
+          runOnJS(setPaused)(false);
         }),
     [cubeX, ty, scale, hasNext, hasPrev, commitCube, close],
   );
@@ -681,6 +696,11 @@ export default function StoryViewerScreen() {
                   visible
                   pauseWhenOffScreen={false}
                   muted
+                  // TextureView, not SurfaceView: the drag-dismiss / cube gestures
+                  // TRANSFORM this frame, and Android SurfaceView ignores transforms
+                  // (video pixels freeze in place while the chrome moves — reads as
+                  // a hang). TextureView composites in the view hierarchy and follows.
+                  viewType={ViewType.TEXTURE}
                   style={StyleSheet.absoluteFill}
                 />
                 {/* Poster over the video until it seeks to the clip start, so the
