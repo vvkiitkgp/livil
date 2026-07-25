@@ -222,21 +222,31 @@ export default function StoryViewerScreen() {
   const ty = useSharedValue(0);
   const scale = useSharedValue(1);
   const chromeOpacity = useSharedValue(1);
+  // 0→1 while the ⋯ options sheet is open: zooms the whole story UI out over the
+  // black root, dims it with a shade, and slides the sheet up (Instagram pattern).
+  const menuProgress = useSharedValue(0);
 
   // The live (front) face: composes the vertical dismiss with the cube rotateY.
   // Hinges on the trailing edge so it turns like a cube face, not a flat flip.
+  // While the options sheet is open the whole face zooms out and gains rounded
+  // corners (menuProgress).
   const currentFaceStyle = useAnimatedStyle(() => {
     const rot = (cubeX.value / SCREEN_W) * 90;
     return {
       transform: [
         { perspective: 1000 },
         { translateY: ty.value },
-        { scale: scale.value },
+        { scale: scale.value * (1 - 0.12 * menuProgress.value) },
         { rotateY: `${rot}deg` },
       ],
       transformOrigin: cubeX.value <= 0 ? '100% 50%' : '0% 50%',
+      borderRadius: 28 * menuProgress.value,
     };
   });
+  const menuShadeStyle = useAnimatedStyle(() => ({ opacity: menuProgress.value }));
+  const menuSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - menuProgress.value) * 360 }],
+  }));
   // The incoming NEXT author's face — hidden edge-on at rest (90°), rotating to
   // front as you drag left (cubeX 0 → -W).
   const nextFaceStyle = useAnimatedStyle(() => {
@@ -555,14 +565,29 @@ export default function StoryViewerScreen() {
     removeLocal(id);
   }, [story, items.length, index, removeLocal, close, showToast]);
 
+  // ⋯ options sheet (Instagram pattern): opening pauses the story and zooms the
+  // whole UI out; tapping the zoomed-out story (the shade) resumes full screen.
   const openMenu = useCallback(() => {
     setPaused(true);
     setMenuOpen(true);
-  }, []);
-  const closeMenu = useCallback(() => {
+    menuProgress.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.quad) });
+  }, [menuProgress]);
+  const finishCloseMenu = useCallback(() => {
     setMenuOpen(false);
     setPaused(false);
   }, []);
+  const closeMenu = useCallback(() => {
+    menuProgress.value = withTiming(0, { duration: 190, easing: Easing.in(Easing.quad) }, finished => {
+      if (finished) { runOnJS(finishCloseMenu)(); }
+    });
+  }, [menuProgress, finishCloseMenu]);
+
+  const openAuthorProfile = useCallback(() => {
+    if (!story) { return; }
+    const authorId = story.author.id;
+    navigation.goBack();
+    setTimeout(() => navigation.navigate('UserProfile', { userId: authorId }), 180);
+  }, [story, navigation]);
 
   // ── Gestures ──
   // Tap: left third → previous, elsewhere → next.
@@ -691,7 +716,7 @@ export default function StoryViewerScreen() {
         </Reanimated.View>
       ) : null}
 
-      <Reanimated.View style={[styles.root, styles.face, currentFaceStyle]}>
+      <Reanimated.View style={[styles.root, styles.face, styles.faceClip, currentFaceStyle]}>
         {/* Media + gesture surface */}
         <GestureDetector gesture={composedGesture}>
           <View style={styles.root}>
@@ -794,13 +819,7 @@ export default function StoryViewerScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 style={styles.authorRow}
-                onPress={() => {
-                  navigation.goBack();
-                  setTimeout(
-                    () => navigation.navigate('UserProfile', { userId: story.author.id }),
-                    180,
-                  );
-                }}
+                onPress={openAuthorProfile}
               >
                 <View style={styles.authorAvatar}>
                   {story.author.avatarUrl ? (
@@ -820,16 +839,14 @@ export default function StoryViewerScreen() {
               </TouchableOpacity>
 
               <View style={styles.headerActions}>
-                {isOwner ? (
-                  <TouchableOpacity
-                    onPress={openMenu}
-                    activeOpacity={0.7}
-                    style={styles.headerBtn}
-                    hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
-                  >
-                    <Icon name="overflow" size={20} color={COLORS.white} />
-                  </TouchableOpacity>
-                ) : null}
+                <TouchableOpacity
+                  onPress={openMenu}
+                  activeOpacity={0.7}
+                  style={styles.headerBtn}
+                  hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+                >
+                  <Icon name="overflow" size={20} color={COLORS.white} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={close}
                   activeOpacity={0.7}
@@ -879,25 +896,43 @@ export default function StoryViewerScreen() {
         </Reanimated.View>
       </Reanimated.View>
 
-      {/* Owner overflow menu */}
+      {/* ⋯ options sheet (Instagram pattern): the story is zoomed out behind a
+          translucent shade — tapping it resumes full screen — and the options
+          slide up from the bottom. */}
       {menuOpen ? (
         <>
-          <TouchableOpacity style={styles.menuBackdrop} activeOpacity={1} onPress={closeMenu} />
-          <SafeAreaView style={styles.menuAnchor} edges={['top']} pointerEvents="box-none">
-            <View style={styles.menu}>
-              <TouchableOpacity
-                style={styles.menuItem}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setMenuOpen(false);
-                  setConfirmDelete(true);
-                }}
-              >
-                <Icon name="trash" size={18} color={COLORS.error} />
-                <Text style={styles.menuItemText}>Delete story</Text>
+          <Reanimated.View style={[styles.menuShade, menuShadeStyle]}>
+            <TouchableOpacity style={styles.menuShadeTap} activeOpacity={1} onPress={closeMenu} />
+          </Reanimated.View>
+          <Reanimated.View style={[styles.sheet, menuSheetStyle]}>
+            <SafeAreaView edges={['bottom']}>
+              <View style={styles.sheetHandle} />
+              <TouchableOpacity style={styles.sheetRow} activeOpacity={0.7} onPress={openSong}>
+                <Icon name="musicNotes" size={20} color={COLORS.white} />
+                <Text style={styles.sheetRowText}>Open the song's post</Text>
               </TouchableOpacity>
-            </View>
-          </SafeAreaView>
+              <TouchableOpacity style={styles.sheetRow} activeOpacity={0.7} onPress={openAuthorProfile}>
+                <Icon name="profile" size={20} color={COLORS.white} />
+                <Text style={styles.sheetRowText}>View @{story.author.username}</Text>
+              </TouchableOpacity>
+              {isOwner ? (
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Straight into the confirm modal (which covers the screen);
+                    // stay paused — cancel resumes, delete advances/closes.
+                    menuProgress.value = withTiming(0, { duration: 150 });
+                    setMenuOpen(false);
+                    setConfirmDelete(true);
+                  }}
+                >
+                  <Icon name="trash" size={20} color={COLORS.error} />
+                  <Text style={[styles.sheetRowText, styles.sheetRowDanger]}>Delete story</Text>
+                </TouchableOpacity>
+              ) : null}
+            </SafeAreaView>
+          </Reanimated.View>
         </>
       ) : null}
 
@@ -928,6 +963,13 @@ const styles = StyleSheet.create({
   // Cube faces hide their back so a rotated-away face doesn't show mirrored.
   face: {
     backfaceVisibility: 'hidden',
+  },
+  // Current face only: clips to the animated borderRadius while the options
+  // sheet zooms the story out. Full-bleed content, so nothing is clipped at
+  // radius 0; the inner GradientBorder is well inside bounds (safe per the
+  // overflow rule — this is not a GradientBorder host).
+  faceClip: {
+    overflow: 'hidden',
   },
   // Audio story: centered square cover over a soft blurred background.
   audioStage: {
@@ -1150,40 +1192,54 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 1,
   },
-  // Owner menu
-  menuBackdrop: {
+  // ⋯ options sheet
+  menuShade: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  menuAnchor: {
+  menuShadeTap: {
+    flex: 1,
+  },
+  sheet: {
     position: 'absolute',
-    top: 0,
-    right: 14,
-  },
-  menu: {
-    marginTop: 52,
-    minWidth: 180,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: COLORS.surface,
-    borderRadius: 13,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
   },
-  menuItem: {
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    marginBottom: 8,
+  },
+  sheetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    paddingVertical: 9,
+    gap: 12,
+    paddingVertical: 14,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 12,
   },
-  menuItemText: {
+  sheetRowText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  sheetRowDanger: {
     color: COLORS.error,
-    fontSize: 14,
-    fontWeight: '700',
   },
 });
