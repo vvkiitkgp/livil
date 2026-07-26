@@ -68,6 +68,19 @@ const TAP_BACK_FRACTION = 0.3;
  */
 const TAP_GUARD_TOP = 130;
 const TAP_GUARD_BOTTOM = 190;
+/**
+ * Approx height of the ⋯ options sheet (handle + rows + bottom safe area). The
+ * zoomed-out card is scaled and lifted so it sits CENTERED in the space above
+ * the sheet with even padding all round, instead of half-hidden behind it.
+ */
+const MENU_SHEET_H = 260;
+const MENU_CARD_PAD = 26;
+const MENU_SCALE = Math.max(
+  0.6,
+  (SCREEN_H - MENU_SHEET_H - MENU_CARD_PAD * 2) / SCREEN_H,
+);
+const MENU_LIFT = -MENU_SHEET_H / 2;
+const MENU_CARD_RADIUS = 26;
 /** Drag distance (dp) / fling velocity past which a downward swipe dismisses. */
 const DISMISS_DISTANCE = 120;
 const DISMISS_VELOCITY = 850;
@@ -265,10 +278,11 @@ export default function StoryViewerScreen() {
   // corners (menuProgress).
   const currentFaceStyle = useAnimatedStyle(() => {
     const rot = (cubeX.value / SCREEN_W) * 90;
-    // Menu open: shrink a little more AND lift the card so it sits centered in
-    // the space ABOVE the sheet instead of half-hidden behind it.
-    const menuScale = 1 - 0.18 * menuProgress.value;
-    const menuLift = -SCREEN_H * 0.08 * menuProgress.value;
+    const m = menuProgress.value;
+    // Menu open: scale down to leave even padding, and lift so the card is
+    // CENTERED in the space above the sheet.
+    const menuScale = 1 - (1 - MENU_SCALE) * m;
+    const menuLift = MENU_LIFT * m;
     return {
       transform: [
         { perspective: 1000 },
@@ -276,10 +290,19 @@ export default function StoryViewerScreen() {
         { scale: scale.value * menuScale },
         { rotateY: `${rot}deg` },
       ],
-      transformOrigin: cubeX.value <= 0 ? '100% 50%' : '0% 50%',
-      borderRadius: 28 * menuProgress.value,
+      // The cube hinges on the trailing EDGE while swiping — but that origin also
+      // makes the menu zoom shrink toward the right edge, leaving the card
+      // off-centre with black down one side. Scale about the CENTRE whenever the
+      // sheet is involved (gestures are inert then, so the hinge isn't needed).
+      // Safe to switch at m===0 because menuScale is 1 there — scaling by 1 is
+      // identity about any origin, so there's no jump.
+      transformOrigin: m > 0 ? '50% 50%' : (cubeX.value <= 0 ? '100% 50%' : '0% 50%'),
+      borderRadius: MENU_CARD_RADIUS * m,
     };
   });
+  // Purple gradient glow around the zoomed-out card — the house GradientBorder,
+  // faded in with the zoom so it never shows at full screen.
+  const menuBorderStyle = useAnimatedStyle(() => ({ opacity: menuProgress.value }));
   const menuShadeStyle = useAnimatedStyle(() => ({ opacity: menuProgress.value }));
   const menuSheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - menuProgress.value) * 360 }],
@@ -1044,6 +1067,18 @@ export default function StoryViewerScreen() {
               </TouchableOpacity>
             </View>
           </SafeAreaView>
+        </Reanimated.View>
+
+        {/* Purple gradient glow around the zoomed-out card (house GradientBorder),
+            faded in with the zoom. Last child so it sits above the media + chrome;
+            non-interactive. The face's overflow:hidden doesn't shave it — the face
+            has no borderWidth (padding box == border box) and GradientBorder's
+            bloom is drawn INWARD by design. */}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, menuBorderStyle]}
+          pointerEvents="none"
+        >
+          <GradientBorder borderRadius={MENU_CARD_RADIUS} strokeWidth={2} />
         </Reanimated.View>
       </Reanimated.View>
 
