@@ -271,6 +271,11 @@ export default function StoryViewerScreen() {
   // gestures are inert — a tap on the shade must only close the menu, never leak
   // into the tap zones underneath (the LIV-62 fall-through class).
   const menuOpenSv = useSharedValue(false);
+  // "Did this gesture actually engage?" latches. onFinalize/onEnd fire even for
+  // gestures that never activated, so each end-handler must only undo what its
+  // own start-handler did — otherwise it clobbers state it never set.
+  const holdEngagedSv = useSharedValue(false);
+  const panEngagedSv = useSharedValue(false);
 
   // The live (front) face: composes the vertical dismiss with the cube rotateY.
   // Hinges on the trailing edge so it turns like a cube face, not a flat flip.
@@ -756,17 +761,26 @@ export default function StoryViewerScreen() {
         .onStart(e => {
           if (menuOpenSv.value) { return; }
           if (e.y < TAP_GUARD_TOP || e.y > SCREEN_H - TAP_GUARD_BOTTOM) { return; }
+          holdEngagedSv.value = true;
           chromeOpacity.value = withTiming(0, { duration: 150 });
           runOnJS(setPaused)(true);
         })
         .onFinalize(() => {
-          if (menuOpenSv.value) { return; }
-          // Harmless if onStart was zone-guarded: chrome is already visible and
-          // paused is already false — these are idempotent.
+          // ONLY undo what onStart actually did. onFinalize fires even when the
+          // gesture never activated (guarded by a dead zone, or beaten to the
+          // touch by another responder) — and on a VIDEO story MediaPlayer's
+          // Pressable claims the touch, so tapping ⋯ finalized a long-press that
+          // never started and its unconditional setPaused(false) raced openMenu,
+          // resuming the video under the sheet. Audio stories have no Pressable,
+          // which is why only video misbehaved. The menuOpenSv check alone can't
+          // fix this: it's a JS→UI shared-value write, so it may not have
+          // propagated by the time this worklet runs.
+          if (!holdEngagedSv.value) { return; }
+          holdEngagedSv.value = false;
           chromeOpacity.value = withTiming(1, { duration: 150 });
           runOnJS(setPaused)(false);
         }),
-    [chromeOpacity, menuOpenSv],
+    [chromeOpacity, menuOpenSv, holdEngagedSv],
   );
 
   // Pan: horizontal drag drives the cube rotation between authors; downward drag
@@ -784,6 +798,7 @@ export default function StoryViewerScreen() {
         .minDistance(12)
         .onStart(() => {
           if (menuOpenSv.value) { return; }
+          panEngagedSv.value = true;
           runOnJS(setPaused)(true);
         })
         .onUpdate(e => {
@@ -804,7 +819,10 @@ export default function StoryViewerScreen() {
           }
         })
         .onEnd(e => {
-          if (menuOpenSv.value) { return; }
+          // Only act if onStart engaged (see holdEngagedSv note) — a pan that
+          // never started must not resume playback or move the card.
+          if (!panEngagedSv.value) { return; }
+          panEngagedSv.value = false;
           const horizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
           if (horizontal) {
             const dir: 1 | -1 = e.translationX < 0 ? 1 : -1;
@@ -840,7 +858,7 @@ export default function StoryViewerScreen() {
           scale.value = withSpring(1);
           runOnJS(setPaused)(false);
         }),
-    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close, menuOpenSv],
+    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close, menuOpenSv, panEngagedSv],
   );
 
   const composedGesture = useMemo(
