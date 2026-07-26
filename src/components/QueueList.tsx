@@ -3,8 +3,11 @@ import { View, Text, StyleSheet, Dimensions, Image } from 'react-native';
 import Animated, {
   FadeOutLeft,
   LinearTransition,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
+  withRepeat,
   withSpring,
   withTiming,
   runOnJS,
@@ -26,6 +29,55 @@ export type DisplayItem = {
   displayIndex: number;
   isCurrent: boolean;
 };
+
+// ─── Now-playing equalizer ─────────────────────────────────────────────────
+
+const EQ_H = 14;
+
+/**
+ * Purely decorative — this is NOT driven by the audio. Each bar gets its own
+ * duration and start delay, all mutually non-divisible, so the three drift
+ * permanently out of phase and read as random rather than as a synchronised
+ * pulse. Cheaper and steadier than re-rolling a random target every cycle,
+ * which needs a JS round-trip per bar per bounce.
+ *
+ * The beat-synced wave is a separate thing entirely (WaveVisualizer, driven by
+ * `tracks.waveform_peaks`) — do not wire this to it. A queue row is off-screen
+ * most of the time and is not worth a decode.
+ */
+const EQ_BARS = [
+  { from: 0.35, to: 1.0, duration: 380, delay: 0 },
+  { from: 0.55, to: 0.8, duration: 530, delay: 130 },
+  { from: 0.3, to: 0.9, duration: 450, delay: 260 },
+] as const;
+
+function EqBar({ spec }: { spec: (typeof EQ_BARS)[number] }) {
+  const h = useSharedValue(spec.from * EQ_H);
+
+  useEffect(() => {
+    h.value = withDelay(
+      spec.delay,
+      withRepeat(withTiming(spec.to * EQ_H, { duration: spec.duration }), -1, true),
+    );
+    // Reanimated keeps an infinite repeat running after unmount otherwise.
+    return () => cancelAnimation(h);
+  }, [h, spec]);
+
+  const style = useAnimatedStyle(() => ({ height: h.value }));
+
+  return <Animated.View style={[st.eqBar, style]} />;
+}
+
+/** Three bouncing bars marking the row that is currently playing. */
+function EqIndicator() {
+  return (
+    <View style={st.eq}>
+      {EQ_BARS.map((spec, i) => (
+        <EqBar key={i} spec={spec} />
+      ))}
+    </View>
+  );
+}
 
 // ─── Queue Row ─────────────────────────────────────────────────────────────
 
@@ -205,7 +257,7 @@ const QueueRow = React.memo(function QueueRow({
               {item.track.artistName}
             </Text>
           </View>
-          {item.isCurrent && <View style={st.dot} />}
+          {item.isCurrent && <EqIndicator />}
         </Animated.View>
       </GestureDetector>
     </Animated.View>
@@ -408,6 +460,15 @@ const st = StyleSheet.create({
   title: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
   titleCur: { color: COLORS.purpleLight },
   artist: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.purple },
+  // Bars grow upward from a common baseline, so the container is fixed-height
+  // and bottom-aligned. Solid purple is fine here — the no-fill rule exempts
+  // small indicators, and an outlined 3px bar would be invisible.
+  eq: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: EQ_H,
+    gap: 2,
+  },
+  eqBar: { width: 3, borderRadius: 1.5, backgroundColor: COLORS.purpleNeon },
   empty: { color: COLORS.textMuted, fontSize: 14, paddingTop: 20, textAlign: 'center' },
 });
