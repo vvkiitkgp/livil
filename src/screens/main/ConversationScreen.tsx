@@ -69,12 +69,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Conversation'>;
 
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
-const MAX_CHARS = 500;
+const MAX_CHARS = 250;
 
 /**
- * Second ceiling alongside MAX_CHARS. 500 characters arranged as 500 newlines is
- * still within the character budget but renders as a bubble tall enough to push
- * the whole conversation off-screen, so line count is capped independently.
+ * Second ceiling alongside MAX_CHARS. A message can sit inside the character
+ * budget and still be almost entirely newlines, rendering as a bubble tall
+ * enough to push the whole conversation off-screen, so line count is capped
+ * independently.
  *
  * Both ceilings clamp rather than reject, matching how MAX_CHARS already behaves.
  * Note this is a composer-side guard only — `messages.body` has no equivalent
