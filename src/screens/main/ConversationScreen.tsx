@@ -1022,7 +1022,7 @@ export default function ConversationScreen() {
                   nativeID="conversation-input"
                   value={text}
                   onChangeText={t => setText(t.slice(0, MAX_CHARS))}
-                  placeholder="Message…"
+                  placeholder="Send Message…"
                   placeholderTextColor={COLORS.textMuted}
                   multiline
                   style={styles.textInput}
