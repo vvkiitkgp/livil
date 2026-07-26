@@ -1389,7 +1389,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
   },
   inputWrap: { flex: 1 },
-  textInput: { maxHeight: 100 },
+  // FormInput's default `paddingVertical: 15` is tuned for full-width auth
+  // fields; in a chat composer it makes the collapsed box read as a text area.
+  // Tighten it locally (the style prop merges after FormInput's own) so the
+  // single-line height sits alongside the 38px send button. `maxHeight` is
+  // untouched, so the input still grows with longer messages.
+  textInput: { maxHeight: 100, paddingVertical: 9 },
   charCounter: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 2, marginRight: 4 },
   charCounterOver: { color: COLORS.error },
   sendBtn: {
