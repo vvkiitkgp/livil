@@ -181,8 +181,14 @@ const QueueRow = React.memo(function QueueRow({
       {/* Row — moves freely for swipe (X) and drag (Y) */}
       <GestureDetector gesture={gesture}>
         <Animated.View style={[st.row, animStyle]}>
-          {item.track.coverArtUrl ? (
-            <Image source={{ uri: item.track.coverArtUrl }} style={st.cover} />
+          {/* Audio posts carry `coverArtUrl`; video posts only have a
+              `thumbnailUrl`. Same fallback the floating and full-screen
+              players use, so a row never shows an empty tile for a video. */}
+          {(item.track.coverArtUrl ?? item.track.thumbnailUrl) ? (
+            <Image
+              source={{ uri: (item.track.coverArtUrl ?? item.track.thumbnailUrl)! }}
+              style={st.cover}
+            />
           ) : (
             <View style={[st.cover, st.coverFb]} />
           )}
