@@ -69,7 +69,29 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Conversation'>;
 
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
-const MAX_CHARS = 500;
+const MAX_CHARS = 250;
+
+/** How many characters from the cap the countdown starts showing. */
+const COUNTER_VISIBLE_FROM = 50;
+
+/**
+ * Second ceiling alongside MAX_CHARS. A message can sit inside the character
+ * budget and still be almost entirely newlines, rendering as a bubble tall
+ * enough to push the whole conversation off-screen, so line count is capped
+ * independently.
+ *
+ * Both ceilings clamp rather than reject, matching how MAX_CHARS already behaves.
+ * Note this is a composer-side guard only — `messages.body` has no equivalent
+ * constraint in Postgres, so it shapes what this app sends, not what it can
+ * receive.
+ */
+const MAX_LINES = 10;
+
+function clampComposerInput(raw: string): string {
+  const byChars = raw.slice(0, MAX_CHARS);
+  const lines = byChars.split('\n');
+  return lines.length <= MAX_LINES ? byChars : lines.slice(0, MAX_LINES).join('\n');
+}
 
 const MORE_EMOJIS = [
   '😀','😃','😄','😁','😆','😅','🤣','😊','😇','🥰',
@@ -1021,14 +1043,14 @@ export default function ConversationScreen() {
                 <FormInput
                   nativeID="conversation-input"
                   value={text}
-                  onChangeText={t => setText(t.slice(0, MAX_CHARS))}
-                  placeholder="Message…"
+                  onChangeText={t => setText(clampComposerInput(t))}
+                  placeholder="Send Message…"
                   placeholderTextColor={COLORS.textMuted}
                   multiline
                   style={styles.textInput}
                   returnKeyType="default"
                 />
-                {text.length > MAX_CHARS - 100 && (
+                {text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
                   <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
                     {MAX_CHARS - text.length}
                   </Text>
@@ -1389,7 +1411,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
   },
   inputWrap: { flex: 1 },
-  textInput: { maxHeight: 100 },
+  // FormInput's default `paddingVertical: 15` is tuned for full-width auth
+  // fields; in a chat composer it makes the collapsed box read as a text area.
+  // Tighten it locally (the style prop merges after FormInput's own) so the
+  // single-line height sits alongside the 38px send button. `maxHeight` is
+  // untouched, so the input still grows with longer messages.
+  textInput: { maxHeight: 100, paddingVertical: 9 },
   charCounter: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 2, marginRight: 4 },
   charCounterOver: { color: COLORS.error },
   sendBtn: {
