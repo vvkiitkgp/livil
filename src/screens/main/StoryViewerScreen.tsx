@@ -355,11 +355,23 @@ export default function StoryViewerScreen() {
     [jumpAuthor, cubeX],
   );
 
+  // Mirrors menuOpen for callbacks (the progress-anim finish closure). While the
+  // ⋯ sheet is open an advance must NOT fire — on the last story it would CLOSE
+  // the viewer under the open sheet (seen on device: tap ⋯ near clip end → sheet
+  // shows for a second → story exits). A suppressed finish is remembered and
+  // replayed when the sheet is dismissed (Instagram behavior).
+  const menuOpenRef = useRef(false);
+  const pendingAdvanceRef = useRef(false);
+
   // Single-fire advance, keyed by presentation id (see presentationRef).
   const requestAdvance = useCallback(
     (fromPresentation: number) => {
       if (fromPresentation !== presentationRef.current) {return;}
       if (advancedForRef.current === fromPresentation) {return;}
+      if (menuOpenRef.current) {
+        pendingAdvanceRef.current = true;
+        return;
+      }
       advancedForRef.current = fromPresentation;
       goForward();
     },
@@ -396,6 +408,9 @@ export default function StoryViewerScreen() {
 
     presentationRef.current += 1;
     progressAnim.setValue(0);
+    // A finish suppressed under the sheet belongs to the PREVIOUS story — never
+    // replay it onto this one.
+    pendingAdvanceRef.current = false;
     setPaused(false);
 
     const isVideo = story.track.mediaKind === 'video' && !!story.track.videoUrl;
@@ -572,6 +587,10 @@ export default function StoryViewerScreen() {
     }
     setDeleting(false);
     setConfirmDelete(false);
+    // The sheet/confirm flow is over — release the advance suppression so the
+    // NEXT story's clock isn't wrongly gated, and drop any stale pending finish.
+    menuOpenRef.current = false;
+    pendingAdvanceRef.current = false;
     // If this was the only story left, close; otherwise clamp the index and let
     // the story-keyed effect re-drive whatever is now current.
     if (items.length <= 1) {
@@ -588,14 +607,29 @@ export default function StoryViewerScreen() {
   // ⋯ options sheet (Instagram pattern): opening pauses the story and zooms the
   // whole UI out; tapping the zoomed-out story (the shade) resumes full screen.
   const openMenu = useCallback(() => {
+    // Stop the advance clock SYNCHRONOUSLY. setPaused(true) stops it too, but only
+    // in the [paused] effect a beat later — tapping ⋯ near the clip's end let the
+    // running animation FINISH in that window, advancing past the last story and
+    // closing the viewer under the just-opened sheet. The menuOpenRef gate in
+    // requestAdvance is the backstop; this closes the window at the source.
+    progressAnimRef.current?.stop();
+    menuOpenRef.current = true;
     setPaused(true);
     setMenuOpen(true);
     menuProgress.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.quad) });
   }, [menuProgress]);
   const finishCloseMenu = useCallback(() => {
+    menuOpenRef.current = false;
     setMenuOpen(false);
     setPaused(false);
-  }, []);
+    // A clip that finished while the sheet was open advances now that the sheet is
+    // dismissed (on the last story this closes the viewer — expected, the clip is
+    // over). Otherwise the [paused] effect resumes the remaining clock as usual.
+    if (pendingAdvanceRef.current) {
+      pendingAdvanceRef.current = false;
+      goForward();
+    }
+  }, [goForward]);
   const closeMenu = useCallback(() => {
     menuProgress.value = withTiming(0, { duration: 190, easing: Easing.in(Easing.quad) }, finished => {
       if (finished) { runOnJS(finishCloseMenu)(); }
@@ -941,7 +975,9 @@ export default function StoryViewerScreen() {
                   activeOpacity={0.7}
                   onPress={() => {
                     // Straight into the confirm modal (which covers the screen);
-                    // stay paused — cancel resumes, delete advances/closes.
+                    // stay paused — cancel resumes, delete advances/closes. Keep
+                    // menuOpenRef TRUE so a stale clip-finish stays suppressed
+                    // while the confirm modal is up; cancel/delete resolve it.
                     menuProgress.value = withTiming(0, { duration: 150 });
                     setMenuOpen(false);
                     setConfirmDelete(true);
@@ -968,7 +1004,14 @@ export default function StoryViewerScreen() {
         onConfirm={onConfirmDelete}
         onCancel={() => {
           setConfirmDelete(false);
+          menuOpenRef.current = false;
           setPaused(false);
+          // Same replay as finishCloseMenu: a clip that ended under the sheet /
+          // confirm modal advances once the user is back on the story.
+          if (pendingAdvanceRef.current) {
+            pendingAdvanceRef.current = false;
+            goForward();
+          }
         }}
       />
     </View>
