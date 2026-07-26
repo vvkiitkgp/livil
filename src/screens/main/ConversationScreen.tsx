@@ -71,6 +71,9 @@ type Route = RouteProp<RootStackParamList, 'Conversation'>;
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
 const MAX_CHARS = 250;
 
+/** How many characters from the cap the countdown starts showing. */
+const COUNTER_VISIBLE_FROM = 50;
+
 /**
  * Second ceiling alongside MAX_CHARS. A message can sit inside the character
  * budget and still be almost entirely newlines, rendering as a bubble tall
@@ -1047,7 +1050,7 @@ export default function ConversationScreen() {
                   style={styles.textInput}
                   returnKeyType="default"
                 />
-                {text.length > MAX_CHARS - 100 && (
+                {text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
                   <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
                     {MAX_CHARS - text.length}
                   </Text>
