@@ -183,6 +183,22 @@ export default function StoryViewerScreen() {
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  /**
+   * Halt the progress bar at the VALUE level, not just the animation we hold a
+   * ref to. `progressAnimRef` points at the NEWEST animation only — a rapid
+   * pause→resume (React batches both `setPaused` calls into one effect run) could
+   * start a second animation while the first was still driving `progressAnim`,
+   * orphaning it. `stop()` then froze the newest while the orphan kept the bar
+   * moving — the "bar keeps running while the story is paused" report.
+   * `Animated.Value.stopAnimation()` detaches EVERY animation on the value, so
+   * orphans cannot survive. Returns the frozen value via the callback.
+   */
+  const stopProgress = useCallback((onStopped?: (value: number) => void) => {
+    progressAnimRef.current?.stop();
+    progressAnimRef.current = null;
+    progressAnim.stopAnimation(v => onStopped?.(v));
+  }, [progressAnim]);
   // Monotonic "presentation" id, bumped every time the current story changes
   // (forward, backward, author jump, or a delete shifting the list). advance()
   // latches on it so the two clocks (progress-anim finish + handleProgress
@@ -249,11 +265,15 @@ export default function StoryViewerScreen() {
   // corners (menuProgress).
   const currentFaceStyle = useAnimatedStyle(() => {
     const rot = (cubeX.value / SCREEN_W) * 90;
+    // Menu open: shrink a little more AND lift the card so it sits centered in
+    // the space ABOVE the sheet instead of half-hidden behind it.
+    const menuScale = 1 - 0.18 * menuProgress.value;
+    const menuLift = -SCREEN_H * 0.08 * menuProgress.value;
     return {
       transform: [
         { perspective: 1000 },
-        { translateY: ty.value },
-        { scale: scale.value * (1 - 0.12 * menuProgress.value) },
+        { translateY: ty.value + menuLift },
+        { scale: scale.value * menuScale },
         { rotateY: `${rot}deg` },
       ],
       transformOrigin: cubeX.value <= 0 ? '100% 50%' : '0% 50%',
@@ -315,9 +335,9 @@ export default function StoryViewerScreen() {
     // through the close transition (exitClipSession only pauses on unmount, after
     // the animation). Every close path (swipe-down, X, tap-past-end) routes here.
     playback.handlersRef.current?.pause();
-    progressAnimRef.current?.stop();
+    stopProgress();
     navigation.goBack();
-  }, [navigation, playback]);
+  }, [navigation, playback, stopProgress]);
 
   // Stories are FOREGROUND-ONLY (product call, Instagram semantics — ADR-0013
   // phase 2): leaving the app closes the viewer entirely. Audio is stopped
@@ -404,7 +424,7 @@ export default function StoryViewerScreen() {
   const clipDuration = story ? story.clipEndSec - story.clipStartSec : 0;
 
   const startProgressAnim = useCallback(() => {
-    if (progressAnimRef.current) {progressAnimRef.current.stop();}
+    stopProgress();
     progressAnim.setValue(0);
     if (clipDuration <= 0) {return;}
     const p = presentationRef.current;
@@ -418,7 +438,7 @@ export default function StoryViewerScreen() {
       console.log(`[LIVIL][STORY] progressAnim FINISH presentation=${p} finished=${finished}`);
       if (finished) {requestAdvance(p);}
     });
-  }, [progressAnim, clipDuration, requestAdvance]);
+  }, [progressAnim, clipDuration, requestAdvance, stopProgress]);
 
   // ── Per-story effect: drive this story's AUDIO through the single engine ──
   // Keyed on the current story id (not the raw index) so a delete that shifts the
@@ -534,21 +554,27 @@ export default function StoryViewerScreen() {
     console.log(`[LIVIL][STORY] paused effect → ${paused}`);
     if (paused) {
       playback.handlersRef.current?.pause();
-      progressAnimRef.current?.stop();
+      stopProgress();
     } else {
       playback.handlersRef.current?.play();
       const p = presentationRef.current;
-      const remaining = clipDuration * (1 - (progressAnim as any)._value) * 1000;
-      if (remaining > 0) {
-        progressAnimRef.current = Animated.timing(progressAnim, {
-          toValue: 1,
-          duration: remaining,
-          useNativeDriver: false,
-        });
-        progressAnimRef.current.start(({ finished }) => {
-          if (finished) {requestAdvance(p);}
-        });
-      }
+      // Stop FIRST (kills any orphan), and take the frozen value from the stop
+      // callback rather than the private `_value`, so the remaining duration is
+      // measured off the bar's true position.
+      stopProgress(currentValue => {
+        const remaining = clipDuration * (1 - currentValue) * 1000;
+        console.log(`[LIVIL][STORY] resume at ${currentValue.toFixed(2)} → remainingMs=${Math.round(remaining)}`);
+        if (remaining > 0) {
+          progressAnimRef.current = Animated.timing(progressAnim, {
+            toValue: 1,
+            duration: remaining,
+            useNativeDriver: false,
+          });
+          progressAnimRef.current.start(({ finished }) => {
+            if (finished) {requestAdvance(p);}
+          });
+        }
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
@@ -642,13 +668,18 @@ export default function StoryViewerScreen() {
     // closing the viewer under the just-opened sheet. The menuOpenRef gate in
     // requestAdvance is the backstop; this closes the window at the source.
     console.log('[LIVIL][STORY] openMenu — stopping clock, raising menuOpenRef');
-    progressAnimRef.current?.stop();
+    stopProgress();
     menuOpenRef.current = true;
     menuOpenSv.value = true;
     setPaused(true);
     setMenuOpen(true);
+    // Fade the chrome OUT with the zoom (same as hold-to-pause). Keeping the
+    // progress pills + header floating over a shrunken, dimmed card looked wrong —
+    // Instagram shows just the media behind the sheet. The bottom stack would sit
+    // behind the sheet anyway.
+    chromeOpacity.value = withTiming(0, { duration: 180 });
     menuProgress.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.quad) });
-  }, [menuProgress, menuOpenSv]);
+  }, [menuProgress, menuOpenSv, stopProgress, chromeOpacity]);
   const finishCloseMenu = useCallback(() => {
     console.log(`[LIVIL][STORY] finishCloseMenu pendingAdvance=${pendingAdvanceRef.current}`);
     menuOpenRef.current = false;
@@ -664,10 +695,12 @@ export default function StoryViewerScreen() {
     }
   }, [goForward, menuOpenSv]);
   const closeMenu = useCallback(() => {
+    // Bring the chrome back as the card zooms in (mirror of openMenu).
+    chromeOpacity.value = withTiming(1, { duration: 200 });
     menuProgress.value = withTiming(0, { duration: 190, easing: Easing.in(Easing.quad) }, finished => {
       if (finished) { runOnJS(finishCloseMenu)(); }
     });
-  }, [menuProgress, finishCloseMenu]);
+  }, [menuProgress, finishCloseMenu, chromeOpacity]);
 
   const openAuthorProfile = useCallback(() => {
     console.log('[LIVIL][STORY] openAuthorProfile → goBack + navigate');
@@ -1046,6 +1079,7 @@ export default function StoryViewerScreen() {
                     // menuOpenRef TRUE so a stale clip-finish stays suppressed
                     // while the confirm modal is up; cancel/delete resolve it.
                     menuProgress.value = withTiming(0, { duration: 150 });
+                    chromeOpacity.value = withTiming(1, { duration: 150 });
                     setMenuOpen(false);
                     setConfirmDelete(true);
                   }}
@@ -1073,6 +1107,7 @@ export default function StoryViewerScreen() {
           setConfirmDelete(false);
           menuOpenRef.current = false;
           menuOpenSv.value = false;
+          chromeOpacity.value = withTiming(1, { duration: 150 });
           setPaused(false);
           // Same replay as finishCloseMenu: a clip that ended under the sheet /
           // confirm modal advances once the user is back on the story.
