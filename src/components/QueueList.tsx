@@ -111,6 +111,14 @@ const QueueRow = React.memo(function QueueRow({
 
   const gesture = Gesture.Race(dragG, swipeG, tapG);
 
+  // Artwork falls back the same way the lock-screen metadata does (see
+  // buildNowPlayingMetadata): audio posts carry `coverArtUrl`, video posts only
+  // have a `thumbnailUrl`, and anything with neither borrows the author's
+  // avatar so a row is never an empty tile. The placeholder below is now only
+  // reached for a track whose author has no avatar either.
+  const artUri =
+    item.track.coverArtUrl ?? item.track.thumbnailUrl ?? item.track.authorAvatarUrl;
+
   const animStyle = useAnimatedStyle(() => {
     // This item is being dragged — follow finger
     if (isMe.value) {
@@ -181,14 +189,8 @@ const QueueRow = React.memo(function QueueRow({
       {/* Row — moves freely for swipe (X) and drag (Y) */}
       <GestureDetector gesture={gesture}>
         <Animated.View style={[st.row, animStyle]}>
-          {/* Audio posts carry `coverArtUrl`; video posts only have a
-              `thumbnailUrl`. Same fallback the floating and full-screen
-              players use, so a row never shows an empty tile for a video. */}
-          {(item.track.coverArtUrl ?? item.track.thumbnailUrl) ? (
-            <Image
-              source={{ uri: (item.track.coverArtUrl ?? item.track.thumbnailUrl)! }}
-              style={st.cover}
-            />
+          {artUri ? (
+            <Image source={{ uri: artUri }} style={st.cover} />
           ) : (
             <View style={[st.cover, st.coverFb]} />
           )}
