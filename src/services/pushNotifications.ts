@@ -14,6 +14,7 @@ import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/re
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { COLORS } from '../theme/colors';
 import { navigateWhenReady } from '../navigation/navigationRef';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -189,7 +190,11 @@ export async function displayPushNotification(
   const baseAndroid = {
     channelId,
     importance: AndroidImportance.HIGH,
-    smallIcon: 'ic_launcher',
+    // Android masks the small icon to its alpha channel, so a full-colour
+    // launcher icon renders as a solid white square in the status bar.
+    // `ic_stat_livil` is the flat white pulse silhouette on transparent.
+    smallIcon: 'ic_stat_livil',
+    color: COLORS.purple,
     pressAction: { id: 'default' },
   };
 
