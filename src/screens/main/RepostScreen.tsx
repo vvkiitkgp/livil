@@ -71,6 +71,10 @@ export default function RepostScreen() {
   const clipEndRef = useRef(0);
   clipStartRef.current = clipStart;
   clipEndRef.current = clipEnd;
+  // Cooldown after a clip-end loop: onProgress fires several times in the final
+  // frames AND can deliver stale positions from before the seek lands, which
+  // would re-trigger the loop and stutter at the clip start.
+  const loopGuardUntilRef = useRef(0);
 
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -173,6 +177,19 @@ export default function RepostScreen() {
 
   const handleProgress = useCallback((pos: number) => {
     setPosition(pos);
+    // Honour the selected clip window: the preview LOOPS back to clip start when
+    // it reaches clip end, so you hear exactly what you're about to post while
+    // adjusting the handles. Without this the preview ran on past clip end
+    // through the rest of the track.
+    const start = clipStartRef.current;
+    const end = clipEndRef.current;
+    if (end <= start) { return; }            // window not established yet
+    if (pos < end) { return; }
+    if (Date.now() < loopGuardUntilRef.current) { return; }
+    loopGuardUntilRef.current = Date.now() + 400;
+    setPosition(start);
+    setSeekTo(start);
+    setTimeout(() => setSeekTo(null), 0);
   }, []);
 
   const handleRangeChange = useCallback((s: number, e: number) => {

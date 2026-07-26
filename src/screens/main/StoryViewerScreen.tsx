@@ -54,9 +54,33 @@ import { GradientBorder } from '../../components/GradientBorder';
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 /** Left third of the screen taps BACK; the rest taps FORWARD (Instagram). */
 const TAP_BACK_FRACTION = 0.3;
+/**
+ * CHROME DEAD ZONES for the tap/long-press recognizers. RNGH's native recognizers
+ * hit-test their own attached view (the full-screen media surface) and do NOT
+ * yield to plain RN touchables layered above it — so a tap on the ⋯ button ALSO
+ * fired the right-zone "next" (LIV-62: on a single story that closed the viewer
+ * under the just-opened sheet; header taps were firing a harmless "previous").
+ * Instagram's rule: taps over the chrome never navigate. Top band covers the
+ * progress pills + header row; bottom band covers the comment + song bar stack.
+ */
+const TAP_GUARD_TOP = 130;
+const TAP_GUARD_BOTTOM = 190;
+/**
+ * Approx height of the ⋯ options sheet (handle + rows + bottom safe area). The
+ * zoomed-out card is scaled and lifted so it sits CENTERED in the space above
+ * the sheet with even padding all round, instead of half-hidden behind it.
+ */
+const MENU_SHEET_H = 260;
+const MENU_CARD_PAD = 26;
+const MENU_SCALE = Math.max(
+  0.6,
+  (SCREEN_H - MENU_SHEET_H - MENU_CARD_PAD * 2) / SCREEN_H,
+);
+const MENU_LIFT = -MENU_SHEET_H / 2;
+const MENU_CARD_RADIUS = 26;
 /** Drag distance (dp) / fling velocity past which a downward swipe dismisses. */
 const DISMISS_DISTANCE = 120;
 const DISMISS_VELOCITY = 850;
@@ -172,6 +196,22 @@ export default function StoryViewerScreen() {
   const seenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  /**
+   * Halt the progress bar at the VALUE level, not just the animation we hold a
+   * ref to. `progressAnimRef` points at the NEWEST animation only — a rapid
+   * pause→resume (React batches both `setPaused` calls into one effect run) could
+   * start a second animation while the first was still driving `progressAnim`,
+   * orphaning it. `stop()` then froze the newest while the orphan kept the bar
+   * moving — the "bar keeps running while the story is paused" report.
+   * `Animated.Value.stopAnimation()` detaches EVERY animation on the value, so
+   * orphans cannot survive. Returns the frozen value via the callback.
+   */
+  const stopProgress = useCallback((onStopped?: (value: number) => void) => {
+    progressAnimRef.current?.stop();
+    progressAnimRef.current = null;
+    progressAnim.stopAnimation(v => onStopped?.(v));
+  }, [progressAnim]);
   // Monotonic "presentation" id, bumped every time the current story changes
   // (forward, backward, author jump, or a delete shifting the list). advance()
   // latches on it so the two clocks (progress-anim finish + handleProgress
@@ -226,6 +266,11 @@ export default function StoryViewerScreen() {
   // 0→1 while the ⋯ options sheet is open: zooms the whole story UI out over the
   // black root, dims it with a shade, and slides the sheet up (Instagram pattern).
   const menuProgress = useSharedValue(0);
+  // Worklet-readable mirror of menuOpenRef (gesture callbacks are worklets and
+  // cannot read JS refs): while the sheet / delete-confirm is up, ALL story
+  // gestures are inert — a tap on the shade must only close the menu, never leak
+  // into the tap zones underneath (the LIV-62 fall-through class).
+  const menuOpenSv = useSharedValue(false);
 
   // The live (front) face: composes the vertical dismiss with the cube rotateY.
   // Hinges on the trailing edge so it turns like a cube face, not a flat flip.
@@ -233,17 +278,31 @@ export default function StoryViewerScreen() {
   // corners (menuProgress).
   const currentFaceStyle = useAnimatedStyle(() => {
     const rot = (cubeX.value / SCREEN_W) * 90;
+    const m = menuProgress.value;
+    // Menu open: scale down to leave even padding, and lift so the card is
+    // CENTERED in the space above the sheet.
+    const menuScale = 1 - (1 - MENU_SCALE) * m;
+    const menuLift = MENU_LIFT * m;
     return {
       transform: [
         { perspective: 1000 },
-        { translateY: ty.value },
-        { scale: scale.value * (1 - 0.12 * menuProgress.value) },
+        { translateY: ty.value + menuLift },
+        { scale: scale.value * menuScale },
         { rotateY: `${rot}deg` },
       ],
-      transformOrigin: cubeX.value <= 0 ? '100% 50%' : '0% 50%',
-      borderRadius: 28 * menuProgress.value,
+      // The cube hinges on the trailing EDGE while swiping — but that origin also
+      // makes the menu zoom shrink toward the right edge, leaving the card
+      // off-centre with black down one side. Scale about the CENTRE whenever the
+      // sheet is involved (gestures are inert then, so the hinge isn't needed).
+      // Safe to switch at m===0 because menuScale is 1 there — scaling by 1 is
+      // identity about any origin, so there's no jump.
+      transformOrigin: m > 0 ? '50% 50%' : (cubeX.value <= 0 ? '100% 50%' : '0% 50%'),
+      borderRadius: MENU_CARD_RADIUS * m,
     };
   });
+  // Purple gradient glow around the zoomed-out card — the house GradientBorder,
+  // faded in with the zoom so it never shows at full screen.
+  const menuBorderStyle = useAnimatedStyle(() => ({ opacity: menuProgress.value }));
   const menuShadeStyle = useAnimatedStyle(() => ({ opacity: menuProgress.value }));
   const menuSheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - menuProgress.value) * 360 }],
@@ -296,9 +355,9 @@ export default function StoryViewerScreen() {
     // through the close transition (exitClipSession only pauses on unmount, after
     // the animation). Every close path (swipe-down, X, tap-past-end) routes here.
     playback.handlersRef.current?.pause();
-    progressAnimRef.current?.stop();
+    stopProgress();
     navigation.goBack();
-  }, [navigation, playback]);
+  }, [navigation, playback, stopProgress]);
 
   // Stories are FOREGROUND-ONLY (product call, Instagram semantics — ADR-0013
   // phase 2): leaving the app closes the viewer entirely. Audio is stopped
@@ -308,7 +367,7 @@ export default function StoryViewerScreen() {
   // (Home / profile), with the user's music restored paused by exitClipSession.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (state !== 'active') { close(); }
+      if (state !== 'active') { close(); } // app backgrounded
     });
     return () => sub.remove();
   }, [close]);
@@ -320,7 +379,7 @@ export default function StoryViewerScreen() {
     if (indexRef.current < items.length - 1) {
       setIndex(i => i + 1);
     } else {
-      close();
+      close(); // advanced past the last story
     }
   }, [items.length, close]);
 
@@ -337,7 +396,7 @@ export default function StoryViewerScreen() {
       if (idx >= 0) {
         setIndex(idx);
       } else if (dir === 1) {
-        close();
+        close(); // swiped past the last author
       }
     },
     [currentAuthorIndex, items, close],
@@ -355,11 +414,23 @@ export default function StoryViewerScreen() {
     [jumpAuthor, cubeX],
   );
 
+  // Mirrors menuOpen for callbacks (the progress-anim finish closure). While the
+  // ⋯ sheet is open an advance must NOT fire — on the last story it would CLOSE
+  // the viewer under the open sheet (seen on device: tap ⋯ near clip end → sheet
+  // shows for a second → story exits). A suppressed finish is remembered and
+  // replayed when the sheet is dismissed (Instagram behavior).
+  const menuOpenRef = useRef(false);
+  const pendingAdvanceRef = useRef(false);
+
   // Single-fire advance, keyed by presentation id (see presentationRef).
   const requestAdvance = useCallback(
     (fromPresentation: number) => {
       if (fromPresentation !== presentationRef.current) {return;}
       if (advancedForRef.current === fromPresentation) {return;}
+      if (menuOpenRef.current) {
+        pendingAdvanceRef.current = true;
+        return;
+      }
       advancedForRef.current = fromPresentation;
       goForward();
     },
@@ -369,7 +440,7 @@ export default function StoryViewerScreen() {
   const clipDuration = story ? story.clipEndSec - story.clipStartSec : 0;
 
   const startProgressAnim = useCallback(() => {
-    if (progressAnimRef.current) {progressAnimRef.current.stop();}
+    stopProgress();
     progressAnim.setValue(0);
     if (clipDuration <= 0) {return;}
     const p = presentationRef.current;
@@ -381,7 +452,7 @@ export default function StoryViewerScreen() {
     progressAnimRef.current.start(({ finished }) => {
       if (finished) {requestAdvance(p);}
     });
-  }, [progressAnim, clipDuration, requestAdvance]);
+  }, [progressAnim, clipDuration, requestAdvance, stopProgress]);
 
   // ── Per-story effect: drive this story's AUDIO through the single engine ──
   // Keyed on the current story id (not the raw index) so a delete that shifts the
@@ -390,12 +461,15 @@ export default function StoryViewerScreen() {
   const storyId = story?.id;
   useEffect(() => {
     if (!story) {
-      close();
+      close(); // nothing left at this index (e.g. all deleted)
       return;
     }
 
     presentationRef.current += 1;
     progressAnim.setValue(0);
+    // A finish suppressed under the sheet belongs to the PREVIOUS story — never
+    // replay it onto this one.
+    pendingAdvanceRef.current = false;
     setPaused(false);
 
     const isVideo = story.track.mediaKind === 'video' && !!story.track.videoUrl;
@@ -492,21 +566,26 @@ export default function StoryViewerScreen() {
     }
     if (paused) {
       playback.handlersRef.current?.pause();
-      progressAnimRef.current?.stop();
+      stopProgress();
     } else {
       playback.handlersRef.current?.play();
       const p = presentationRef.current;
-      const remaining = clipDuration * (1 - (progressAnim as any)._value) * 1000;
-      if (remaining > 0) {
-        progressAnimRef.current = Animated.timing(progressAnim, {
-          toValue: 1,
-          duration: remaining,
-          useNativeDriver: false,
-        });
-        progressAnimRef.current.start(({ finished }) => {
-          if (finished) {requestAdvance(p);}
-        });
-      }
+      // Stop FIRST (kills any orphan), and take the frozen value from the stop
+      // callback rather than the private `_value`, so the remaining duration is
+      // measured off the bar's true position.
+      stopProgress(currentValue => {
+        const remaining = clipDuration * (1 - currentValue) * 1000;
+        if (remaining > 0) {
+          progressAnimRef.current = Animated.timing(progressAnim, {
+            toValue: 1,
+            duration: remaining,
+            useNativeDriver: false,
+          });
+          progressAnimRef.current.start(({ finished }) => {
+            if (finished) {requestAdvance(p);}
+          });
+        }
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
@@ -572,35 +651,64 @@ export default function StoryViewerScreen() {
     }
     setDeleting(false);
     setConfirmDelete(false);
+    // The sheet/confirm flow is over — release the advance suppression so the
+    // NEXT story's clock isn't wrongly gated, and drop any stale pending finish.
+    menuOpenRef.current = false;
+    menuOpenSv.value = false;
+    pendingAdvanceRef.current = false;
     // If this was the only story left, close; otherwise clamp the index and let
     // the story-keyed effect re-drive whatever is now current.
     if (items.length <= 1) {
       removeLocal(id);
-      close();
+      close(); // deleted the only story
       return;
     }
     if (index >= items.length - 1) {
       setIndex(i => Math.max(0, i - 1));
     }
     removeLocal(id);
-  }, [story, items.length, index, removeLocal, close, showToast]);
+  }, [story, items.length, index, removeLocal, close, showToast, menuOpenSv]);
 
   // ⋯ options sheet (Instagram pattern): opening pauses the story and zooms the
   // whole UI out; tapping the zoomed-out story (the shade) resumes full screen.
   const openMenu = useCallback(() => {
+    // Stop the advance clock SYNCHRONOUSLY. setPaused(true) stops it too, but only
+    // in the [paused] effect a beat later — tapping ⋯ near the clip's end let the
+    // running animation FINISH in that window, advancing past the last story and
+    // closing the viewer under the just-opened sheet. The menuOpenRef gate in
+    // requestAdvance is the backstop; this closes the window at the source.
+    stopProgress();
+    menuOpenRef.current = true;
+    menuOpenSv.value = true;
     setPaused(true);
     setMenuOpen(true);
+    // Fade the chrome OUT with the zoom (same as hold-to-pause). Keeping the
+    // progress pills + header floating over a shrunken, dimmed card looked wrong —
+    // Instagram shows just the media behind the sheet. The bottom stack would sit
+    // behind the sheet anyway.
+    chromeOpacity.value = withTiming(0, { duration: 180 });
     menuProgress.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.quad) });
-  }, [menuProgress]);
+  }, [menuProgress, menuOpenSv, stopProgress, chromeOpacity]);
   const finishCloseMenu = useCallback(() => {
+    menuOpenRef.current = false;
+    menuOpenSv.value = false;
     setMenuOpen(false);
     setPaused(false);
-  }, []);
+    // A clip that finished while the sheet was open advances now that the sheet is
+    // dismissed (on the last story this closes the viewer — expected, the clip is
+    // over). Otherwise the [paused] effect resumes the remaining clock as usual.
+    if (pendingAdvanceRef.current) {
+      pendingAdvanceRef.current = false;
+      goForward();
+    }
+  }, [goForward, menuOpenSv]);
   const closeMenu = useCallback(() => {
+    // Bring the chrome back as the card zooms in (mirror of openMenu).
+    chromeOpacity.value = withTiming(1, { duration: 200 });
     menuProgress.value = withTiming(0, { duration: 190, easing: Easing.in(Easing.quad) }, finished => {
       if (finished) { runOnJS(finishCloseMenu)(); }
     });
-  }, [menuProgress, finishCloseMenu]);
+  }, [menuProgress, finishCloseMenu, chromeOpacity]);
 
   const openAuthorProfile = useCallback(() => {
     if (!story) { return; }
@@ -617,30 +725,48 @@ export default function StoryViewerScreen() {
         .maxDuration(250)
         .onEnd((e, success) => {
           if (!success) {return;}
+          // Sheet open: the same physical tap that hits the shade/rows must never
+          // leak into the navigation zones underneath (LIV-62).
+          if (menuOpenSv.value) {
+            return;
+          }
+          // Chrome dead zones: RNGH doesn't yield to the RN touchables layered
+          // above this surface, so taps on the header (⋯ / X / author) and the
+          // bottom stack double-fire here — Instagram rule: chrome never navigates.
+          if (e.y < TAP_GUARD_TOP || e.y > SCREEN_H - TAP_GUARD_BOTTOM) {
+            return;
+          }
           if (e.x < SCREEN_W * TAP_BACK_FRACTION) {
             runOnJS(goBackward)();
           } else {
             runOnJS(goForward)();
           }
         }),
-    [goBackward, goForward],
+    [goBackward, goForward, menuOpenSv],
   );
 
-  // Long-press: hold to pause + fade the chrome; release to resume.
+  // Long-press: hold to pause + fade the chrome; release to resume. Same guards
+  // as the tap: inert while the sheet is up, and holds that BEGIN on the chrome
+  // bands belong to the buttons there, not to hold-to-pause.
   const longPressGesture = useMemo(
     () =>
       Gesture.LongPress()
         .minDuration(220)
         .maxDistance(20)
-        .onStart(() => {
+        .onStart(e => {
+          if (menuOpenSv.value) { return; }
+          if (e.y < TAP_GUARD_TOP || e.y > SCREEN_H - TAP_GUARD_BOTTOM) { return; }
           chromeOpacity.value = withTiming(0, { duration: 150 });
           runOnJS(setPaused)(true);
         })
         .onFinalize(() => {
+          if (menuOpenSv.value) { return; }
+          // Harmless if onStart was zone-guarded: chrome is already visible and
+          // paused is already false — these are idempotent.
           chromeOpacity.value = withTiming(1, { duration: 150 });
           runOnJS(setPaused)(false);
         }),
-    [chromeOpacity],
+    [chromeOpacity, menuOpenSv],
   );
 
   // Pan: horizontal drag drives the cube rotation between authors; downward drag
@@ -657,9 +783,13 @@ export default function StoryViewerScreen() {
       Gesture.Pan()
         .minDistance(12)
         .onStart(() => {
+          if (menuOpenSv.value) { return; }
           runOnJS(setPaused)(true);
         })
         .onUpdate(e => {
+          // Inert under the sheet — a drag on the shade must not move/dismiss the
+          // story behind it (same fall-through class as the tap, LIV-62).
+          if (menuOpenSv.value) { return; }
           if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
             const goingNext = e.translationX < 0;
             const hasTarget = goingNext ? hasNext : hasPrev;
@@ -674,6 +804,7 @@ export default function StoryViewerScreen() {
           }
         })
         .onEnd(e => {
+          if (menuOpenSv.value) { return; }
           const horizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
           if (horizontal) {
             const dir: 1 | -1 = e.translationX < 0 ? 1 : -1;
@@ -692,7 +823,7 @@ export default function StoryViewerScreen() {
               return;
             }
             if (!hasTarget && passed && dir === 1) {
-              runOnJS(close)(); // past the last author → close (stays paused)
+              runOnJS(close)(); // past the last author — stays paused
               return;
             }
             // Rubber-band back to the same story → resume.
@@ -701,7 +832,7 @@ export default function StoryViewerScreen() {
             return;
           }
           if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
-            runOnJS(close)(); // dismissing → stays paused through the animation
+            runOnJS(close)(); // dismissing — stays paused through the animation
             return;
           }
           // Spring back from an uncommitted vertical drag → resume.
@@ -709,7 +840,7 @@ export default function StoryViewerScreen() {
           scale.value = withSpring(1);
           runOnJS(setPaused)(false);
         }),
-    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close],
+    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close, menuOpenSv],
   );
 
   const composedGesture = useMemo(
@@ -914,6 +1045,18 @@ export default function StoryViewerScreen() {
             </View>
           </SafeAreaView>
         </Reanimated.View>
+
+        {/* Purple gradient glow around the zoomed-out card (house GradientBorder),
+            faded in with the zoom. Last child so it sits above the media + chrome;
+            non-interactive. The face's overflow:hidden doesn't shave it — the face
+            has no borderWidth (padding box == border box) and GradientBorder's
+            bloom is drawn INWARD by design. */}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, menuBorderStyle]}
+          pointerEvents="none"
+        >
+          <GradientBorder borderRadius={MENU_CARD_RADIUS} strokeWidth={2} />
+        </Reanimated.View>
       </Reanimated.View>
 
       {/* ⋯ options sheet (Instagram pattern): the story is zoomed out behind a
@@ -931,18 +1074,24 @@ export default function StoryViewerScreen() {
                 <Icon name="musicNotes" size={20} color={COLORS.white} />
                 <Text style={styles.sheetRowText}>Open the song's post</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.sheetRow} activeOpacity={0.7} onPress={openAuthorProfile}>
-                <Icon name="profile" size={20} color={COLORS.white} />
-                <Text style={styles.sheetRowText}>View @{story.author.username}</Text>
-              </TouchableOpacity>
+              {!isOwner ? (
+                // Pointless on your OWN story — you'd be "viewing" yourself.
+                <TouchableOpacity style={styles.sheetRow} activeOpacity={0.7} onPress={openAuthorProfile}>
+                  <Icon name="profile" size={20} color={COLORS.white} />
+                  <Text style={styles.sheetRowText}>View @{story.author.username}</Text>
+                </TouchableOpacity>
+              ) : null}
               {isOwner ? (
                 <TouchableOpacity
                   style={styles.sheetRow}
                   activeOpacity={0.7}
                   onPress={() => {
                     // Straight into the confirm modal (which covers the screen);
-                    // stay paused — cancel resumes, delete advances/closes.
+                    // stay paused — cancel resumes, delete advances/closes. Keep
+                    // menuOpenRef TRUE so a stale clip-finish stays suppressed
+                    // while the confirm modal is up; cancel/delete resolve it.
                     menuProgress.value = withTiming(0, { duration: 150 });
+                    chromeOpacity.value = withTiming(1, { duration: 150 });
                     setMenuOpen(false);
                     setConfirmDelete(true);
                   }}
@@ -968,7 +1117,16 @@ export default function StoryViewerScreen() {
         onConfirm={onConfirmDelete}
         onCancel={() => {
           setConfirmDelete(false);
+          menuOpenRef.current = false;
+          menuOpenSv.value = false;
+          chromeOpacity.value = withTiming(1, { duration: 150 });
           setPaused(false);
+          // Same replay as finishCloseMenu: a clip that ended under the sheet /
+          // confirm modal advances once the user is back on the story.
+          if (pendingAdvanceRef.current) {
+            pendingAdvanceRef.current = false;
+            goForward();
+          }
         }}
       />
     </View>

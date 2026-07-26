@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-07-25
+last_verified: 2026-07-26
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-134 TypeScript file(s) under `src/`, 40,634 lines.
+133 TypeScript file(s) under `src/`, 40,936 lines.
 
 ## Size hotspots
 
@@ -27,17 +27,17 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2047 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1424 |
 | `src/screens/main/ConversationScreen.tsx` | 1406 |
-| `src/components/PostCard.tsx` | 1197 |
-| `src/screens/main/HomeScreen.tsx` | 1154 |
+| `src/components/PostCard.tsx` | 1194 |
+| `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1067 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1046 |
-| `src/components/FloatingPlayer.tsx` | 924 |
-| `src/screens/main/UserProfileScreen.tsx` | 828 |
+| `src/screens/main/ProfileScreen.tsx` | 1080 |
+| `src/components/FloatingPlayer.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
+| `src/screens/main/UserProfileScreen.tsx` | 810 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/screens/main/RepostScreen.tsx` | 749 |
+| `src/screens/main/RepostScreen.tsx` | 766 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/LibraryScreen.tsx` | 604 |
 
@@ -86,22 +86,22 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-31 file(s), 16,390 lines.
+31 file(s), 16,741 lines.
 
 | File | Lines |
 |---|---:|
+| `src/screens/main/StoryViewerScreen.tsx` | 1424 |
 | `src/screens/main/ConversationScreen.tsx` | 1406 |
-| `src/screens/main/HomeScreen.tsx` | 1154 |
+| `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1067 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1046 |
-| `src/screens/main/UserProfileScreen.tsx` | 828 |
+| `src/screens/main/ProfileScreen.tsx` | 1080 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
-| `src/screens/main/RepostScreen.tsx` | 749 |
+| `src/screens/main/UserProfileScreen.tsx` | 810 |
+| `src/screens/main/RepostScreen.tsx` | 766 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/LibraryScreen.tsx` | 604 |
 | `src/screens/main/GroupInfoScreen.tsx` | 585 |
-| `src/screens/main/SearchScreen.tsx` | 543 |
+| `src/screens/main/SearchScreen.tsx` | 520 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 484 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
@@ -124,16 +124,16 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-48 file(s), 13,130 lines.
+47 file(s), 13,059 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2047 |
-| `src/components/PostCard.tsx` | 1197 |
-| `src/components/FloatingPlayer.tsx` | 924 |
+| `src/components/PostCard.tsx` | 1194 |
+| `src/components/FloatingPlayer.tsx` | 931 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/components/GlobalAudioPlayer.tsx` | 453 |
-| `src/components/MediaPlayer.tsx` | 445 |
+| `src/components/GlobalAudioPlayer.tsx` | 496 |
+| `src/components/MediaPlayer.tsx` | 463 |
 | `src/components/QueueList.tsx` | 406 |
 | `src/components/DetailView.tsx` | 395 |
 | `src/components/ClipRangeSlider.tsx` | 387 |
@@ -159,7 +159,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MentionSuggestions.tsx` | 160 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
-| `src/components/StoryWaveBars.tsx` | 136 |
 | `src/components/ProfileTabBar.tsx` | 123 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ProgressiveImage.tsx` | 99 |
@@ -209,15 +208,15 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-9 file(s), 2,179 lines.
+9 file(s), 2,201 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 899 |
+| `src/contexts/PlaybackContext.tsx` | 916 |
 | `src/contexts/JamRealtimeContext.tsx` | 389 |
 | `src/contexts/RelationshipContext.tsx` | 294 |
 | `src/contexts/ToastContext.tsx` | 183 |
-| `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 143 |
+| `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |
 | `src/contexts/ChromeVisibilityContext.tsx` | 69 |
 | `src/contexts/StoriesContext.tsx` | 54 |
