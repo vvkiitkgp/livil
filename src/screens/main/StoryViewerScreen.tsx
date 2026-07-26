@@ -54,9 +54,20 @@ import { GradientBorder } from '../../components/GradientBorder';
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
 type StoryViewerNav = NativeStackNavigationProp<RootStackParamList, 'StoryViewer'>;
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 /** Left third of the screen taps BACK; the rest taps FORWARD (Instagram). */
 const TAP_BACK_FRACTION = 0.3;
+/**
+ * CHROME DEAD ZONES for the tap/long-press recognizers. RNGH's native recognizers
+ * hit-test their own attached view (the full-screen media surface) and do NOT
+ * yield to plain RN touchables layered above it — so a tap on the ⋯ button ALSO
+ * fired the right-zone "next" (LIV-62: on a single story that closed the viewer
+ * under the just-opened sheet; header taps were firing a harmless "previous").
+ * Instagram's rule: taps over the chrome never navigate. Top band covers the
+ * progress pills + header row; bottom band covers the comment + song bar stack.
+ */
+const TAP_GUARD_TOP = 130;
+const TAP_GUARD_BOTTOM = 190;
 /** Drag distance (dp) / fling velocity past which a downward swipe dismisses. */
 const DISMISS_DISTANCE = 120;
 const DISMISS_VELOCITY = 850;
@@ -226,6 +237,11 @@ export default function StoryViewerScreen() {
   // 0→1 while the ⋯ options sheet is open: zooms the whole story UI out over the
   // black root, dims it with a shade, and slides the sheet up (Instagram pattern).
   const menuProgress = useSharedValue(0);
+  // Worklet-readable mirror of menuOpenRef (gesture callbacks are worklets and
+  // cannot read JS refs): while the sheet / delete-confirm is up, ALL story
+  // gestures are inert — a tap on the shade must only close the menu, never leak
+  // into the tap zones underneath (the LIV-62 fall-through class).
+  const menuOpenSv = useSharedValue(false);
 
   // The live (front) face: composes the vertical dismiss with the cube rotateY.
   // Hinges on the trailing edge so it turns like a cube face, not a flat flip.
@@ -602,6 +618,7 @@ export default function StoryViewerScreen() {
     // The sheet/confirm flow is over — release the advance suppression so the
     // NEXT story's clock isn't wrongly gated, and drop any stale pending finish.
     menuOpenRef.current = false;
+    menuOpenSv.value = false;
     pendingAdvanceRef.current = false;
     // If this was the only story left, close; otherwise clamp the index and let
     // the story-keyed effect re-drive whatever is now current.
@@ -614,7 +631,7 @@ export default function StoryViewerScreen() {
       setIndex(i => Math.max(0, i - 1));
     }
     removeLocal(id);
-  }, [story, items.length, index, removeLocal, close, showToast]);
+  }, [story, items.length, index, removeLocal, close, showToast, menuOpenSv]);
 
   // ⋯ options sheet (Instagram pattern): opening pauses the story and zooms the
   // whole UI out; tapping the zoomed-out story (the shade) resumes full screen.
@@ -627,13 +644,15 @@ export default function StoryViewerScreen() {
     console.log('[LIVIL][STORY] openMenu — stopping clock, raising menuOpenRef');
     progressAnimRef.current?.stop();
     menuOpenRef.current = true;
+    menuOpenSv.value = true;
     setPaused(true);
     setMenuOpen(true);
     menuProgress.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.quad) });
-  }, [menuProgress]);
+  }, [menuProgress, menuOpenSv]);
   const finishCloseMenu = useCallback(() => {
     console.log(`[LIVIL][STORY] finishCloseMenu pendingAdvance=${pendingAdvanceRef.current}`);
     menuOpenRef.current = false;
+    menuOpenSv.value = false;
     setMenuOpen(false);
     setPaused(false);
     // A clip that finished while the sheet was open advances now that the sheet is
@@ -643,7 +662,7 @@ export default function StoryViewerScreen() {
       pendingAdvanceRef.current = false;
       goForward();
     }
-  }, [goForward]);
+  }, [goForward, menuOpenSv]);
   const closeMenu = useCallback(() => {
     menuProgress.value = withTiming(0, { duration: 190, easing: Easing.in(Easing.quad) }, finished => {
       if (finished) { runOnJS(finishCloseMenu)(); }
@@ -669,6 +688,19 @@ export default function StoryViewerScreen() {
         .maxDuration(250)
         .onEnd((e, success) => {
           if (!success) {return;}
+          // Sheet open: the same physical tap that hits the shade/rows must never
+          // leak into the navigation zones underneath (LIV-62).
+          if (menuOpenSv.value) {
+            runOnJS(logTapZone)('IGNORED (menu open)', e.x);
+            return;
+          }
+          // Chrome dead zones: RNGH doesn't yield to the RN touchables layered
+          // above this surface, so taps on the header (⋯ / X / author) and the
+          // bottom stack double-fire here — Instagram rule: chrome never navigates.
+          if (e.y < TAP_GUARD_TOP || e.y > SCREEN_H - TAP_GUARD_BOTTOM) {
+            runOnJS(logTapZone)('IGNORED (chrome band)', e.x);
+            return;
+          }
           if (e.x < SCREEN_W * TAP_BACK_FRACTION) {
             runOnJS(logTapZone)('LEFT→prev', e.x);
             runOnJS(goBackward)();
@@ -677,24 +709,31 @@ export default function StoryViewerScreen() {
             runOnJS(goForward)();
           }
         }),
-    [goBackward, goForward, logTapZone],
+    [goBackward, goForward, logTapZone, menuOpenSv],
   );
 
-  // Long-press: hold to pause + fade the chrome; release to resume.
+  // Long-press: hold to pause + fade the chrome; release to resume. Same guards
+  // as the tap: inert while the sheet is up, and holds that BEGIN on the chrome
+  // bands belong to the buttons there, not to hold-to-pause.
   const longPressGesture = useMemo(
     () =>
       Gesture.LongPress()
         .minDuration(220)
         .maxDistance(20)
-        .onStart(() => {
+        .onStart(e => {
+          if (menuOpenSv.value) { return; }
+          if (e.y < TAP_GUARD_TOP || e.y > SCREEN_H - TAP_GUARD_BOTTOM) { return; }
           chromeOpacity.value = withTiming(0, { duration: 150 });
           runOnJS(setPaused)(true);
         })
         .onFinalize(() => {
+          if (menuOpenSv.value) { return; }
+          // Harmless if onStart was zone-guarded: chrome is already visible and
+          // paused is already false — these are idempotent.
           chromeOpacity.value = withTiming(1, { duration: 150 });
           runOnJS(setPaused)(false);
         }),
-    [chromeOpacity],
+    [chromeOpacity, menuOpenSv],
   );
 
   // Pan: horizontal drag drives the cube rotation between authors; downward drag
@@ -711,9 +750,13 @@ export default function StoryViewerScreen() {
       Gesture.Pan()
         .minDistance(12)
         .onStart(() => {
+          if (menuOpenSv.value) { return; }
           runOnJS(setPaused)(true);
         })
         .onUpdate(e => {
+          // Inert under the sheet — a drag on the shade must not move/dismiss the
+          // story behind it (same fall-through class as the tap, LIV-62).
+          if (menuOpenSv.value) { return; }
           if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
             const goingNext = e.translationX < 0;
             const hasTarget = goingNext ? hasNext : hasPrev;
@@ -728,6 +771,7 @@ export default function StoryViewerScreen() {
           }
         })
         .onEnd(e => {
+          if (menuOpenSv.value) { return; }
           const horizontal = Math.abs(e.translationX) > Math.abs(e.translationY);
           if (horizontal) {
             const dir: 1 | -1 = e.translationX < 0 ? 1 : -1;
@@ -763,7 +807,7 @@ export default function StoryViewerScreen() {
           scale.value = withSpring(1);
           runOnJS(setPaused)(false);
         }),
-    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close],
+    [cubeX, ty, scale, hasNext, hasPrev, commitCube, close, menuOpenSv],
   );
 
   const composedGesture = useMemo(
@@ -1028,6 +1072,7 @@ export default function StoryViewerScreen() {
         onCancel={() => {
           setConfirmDelete(false);
           menuOpenRef.current = false;
+          menuOpenSv.value = false;
           setPaused(false);
           // Same replay as finishCloseMenu: a clip that ended under the sheet /
           // confirm modal advances once the user is back on the story.
