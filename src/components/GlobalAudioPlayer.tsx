@@ -69,6 +69,7 @@ export default function GlobalAudioPlayer() {
     queueVersion,
     clipVersion,
     isStoryViewerOpen,
+    clipSessionPrevTrack,
   } = usePlayback();
   const { showToast } = useToast();
 
@@ -106,6 +107,13 @@ export default function GlobalAudioPlayer() {
 
   // Activate for ANY playable track — GAP is the single audio engine for both
   // audio posts and the audio track of video posts (source = audioUrl ?? videoUrl).
+  //
+  // ⚠ ORDER-DEPENDENT with the activePostId effect BELOW: on story-close restore
+  // (exitClipSession → setNowPlaying(prev) then pauseAll), this effect's
+  // setPaused(false) must run BEFORE that effect's activePostId===null →
+  // setPaused(true), so the restored track settles PAUSED. That holds because
+  // effects run in declaration order. Do NOT move this effect below the
+  // activePostId effect, or the user's music will auto-play through a story close.
   useEffect(() => {
     const url = nowPlaying?.audioUrl ?? nowPlaying?.videoUrl;
     if (url) {
@@ -258,6 +266,19 @@ export default function GlobalAudioPlayer() {
       const mine = myPostIdRef.current;
       if (!mine) { return; }
       if (e.isPlaying && pausedRef.current) {
+        // Mirror the PAUSE branch's guards: during a source load/swap ExoPlayer can
+        // emit a stray isPlaying=true carried over from the OUTGOING item. Seen on
+        // story-close restore — the engine swapped back to the user's track while
+        // the story was still "playing" natively, this branch mis-read it as a
+        // lock-screen play, and the user's music auto-played while the pill showed
+        // the play icon (JS paused / native playing desync). Our `paused` prop is
+        // already true — no edge for RNV to re-apply — so force the native player
+        // down imperatively instead of just ignoring the report.
+        if (bufferingRef.current || Date.now() < loadGuardUntilRef.current || videoGateRef.current) {
+          console.log('[LIVIL][GAP] stray native PLAY during load → force pause');
+          videoRef.current?.pause();
+          return;
+        }
         console.log('[LIVIL][GAP] lock-screen PLAY → sync');
         setPaused(false);
         resumePlay(mine);
@@ -356,10 +377,16 @@ export default function GlobalAudioPlayer() {
   // timeline. Recompute on track change (postId), repeat toggle (repeatMode), and
   // in-place clip-handle edits (clipVersion). Reads the live clipWindowRef so a
   // just-dragged window is reflected.
+  //
+  // In a CLIP SESSION (stories) send an INACTIVE clip (active:false) so the native
+  // clip-end watcher is DISARMED at the source — a story's advance is owned by the
+  // JS clock (ADR-0013). Without this the native watcher fires onNextTrack on the
+  // story's ≤10s window, and a same-track forward seek trips it early (the class
+  // of bugs the clip session removes rather than suppresses).
   const currentClipJson = useMemo(
-    () => buildCurrentClipJson(clipWindowRef.current, repeatMode),
+    () => buildCurrentClipJson(isStoryViewerOpen ? null : clipWindowRef.current, repeatMode),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nowPlaying?.postId, clipVersion, repeatMode],
+    [nowPlaying?.postId, clipVersion, repeatMode, isStoryViewerOpen],
   );
 
   // Push the in-app shuffle/repeat state into the MediaSession so a Bluetooth
@@ -370,6 +397,20 @@ export default function GlobalAudioPlayer() {
     () => buildMediaSessionStateJson(repeatMode, shuffleEnabled),
     [repeatMode, shuffleEnabled],
   );
+
+  // Start the native player AT the clip/resume offset instead of 0. Without this
+  // the engine loads the full track and plays from 0:00 while buffering, then
+  // seeks to the offset only in onLoad — an audible ~1s intro before a clipped
+  // story/repost jumps to its clip start. `startPosition` seeks during source
+  // preparation, so playback begins at the offset. Captured per-post (positionRef
+  // holds the clip start when a NEW post is set), stable across renders; undefined
+  // for a full play from 0:00, so non-clipped playback is unchanged. (Declared
+  // before the early returns below to keep hook order stable.)
+  const startPositionMs = useMemo(() => {
+    const p = positionRef.current;
+    return p > 0.05 ? Math.round(p * 1000) : undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowPlaying?.postId]);
 
   // Don't render when the jam PlaybackEngine drives audio, or nothing is playing.
   if (engineDriving || !nowPlaying) {
@@ -390,10 +431,23 @@ export default function GlobalAudioPlayer() {
   const videoBufferGate = nowPlaying.mediaKind === 'video' && videoFrameBuffering;
   videoGateRef.current = videoBufferGate;
 
+  // The OS media card must NEVER show a story. During a clip session the card's
+  // metadata is PINNED to the user's pre-story track (set at session enter, in the
+  // foreground — so no Fabric-deferral risk): the shade keeps showing the user's
+  // music, which reads as paused the moment the app backgrounds (native host-pause
+  // via playInBackground=false). If nothing was playing before the story there is
+  // nothing to pin, so the card is suppressed entirely (see showNotificationControls).
+  const notificationTrack =
+    isStoryViewerOpen && clipSessionPrevTrack ? clipSessionPrevTrack : nowPlaying;
+
   return (
     <Video
       ref={videoRef}
-      source={{ uri: audioSrc, metadata: buildNowPlayingMetadata(nowPlaying) }}
+      source={{
+        uri: audioSrc,
+        metadata: buildNowPlayingMetadata(notificationTrack),
+        ...(startPositionMs !== undefined ? { startPosition: startPositionMs } : {}),
+      }}
       paused={paused || videoBufferGate}
       rate={rate}
       onLoad={handleLoad}
@@ -410,13 +464,26 @@ export default function GlobalAudioPlayer() {
       currentClipJson={currentClipJson}
       mediaSessionStateJson={mediaSessionStateJson}
       progressUpdateInterval={250}
-      playInBackground
-      playWhenInactive
+      // Clip sessions (stories) are FOREGROUND-ONLY by product decision (ADR-0013
+      // phase 2, Instagram semantics): backgrounding must stop story audio
+      // immediately. playInBackground={false} makes RNV pause the player NATIVELY
+      // on host-pause — critical, because a JS-side pause would be deferred by
+      // Fabric while backgrounded and the whole song would keep playing (the
+      // reported bug). Normal music keeps full background playback.
+      playInBackground={!isStoryViewerOpen}
+      playWhenInactive={!isStoryViewerOpen}
       ignoreSilentSwitch="ignore"
       // The ONE MediaSession for every post (audio + video). FullScreenPlayer's
       // <Video> is muted with no notification controls, so it never creates a
       // second session.
-      showNotificationControls
+      //
+      // During a clip session (stories) the card's METADATA is pinned to the
+      // user's pre-story track (see notificationTrack above), so the shade keeps
+      // showing their music — a story itself must NEVER appear on the lock screen
+      // (product call, ADR-0013 phase 2). Controls are suppressed only when there
+      // was no pre-story track (nothing legitimate to show). Invariant unchanged:
+      // at most ONE session owner; this only decides whether that owner is present.
+      showNotificationControls={!isStoryViewerOpen || clipSessionPrevTrack != null}
       muted={false}
       volume={1.0}
       {...(Platform.OS === 'android'

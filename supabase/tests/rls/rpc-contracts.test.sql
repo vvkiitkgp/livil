@@ -128,6 +128,21 @@ select pg_temp.assert_rpc_exists('add_star');
 -- known, recorded defect rather than on a regression. When D-31 is fixed — by writing
 -- the function or removing the call — move it into the list above or delete this note.
 
+-- ── list_active_stories is bounded by a LIMIT (PROP-0004 / ADR-0009 Decision 3) ─
+-- The social graph already bounds the result, but an unbounded list is the wrong
+-- default (P22). This is the source-inspection ratchet; the behavioural proof that
+-- the LIMIT truncates lives in stories-harden.test.sql.
+select pg_temp.assert(
+  'list_active_stories carries a LIMIT',
+  (select pg_get_functiondef(oid) ilike '%limit%'
+   from pg_proc where proname = 'list_active_stories' limit 1), true);
+
+-- list_active_stories must stay SECURITY INVOKER so RLS still filters what the
+-- caller may see — same reasoning as fetch_home_feed below.
+select pg_temp.assert(
+  'list_active_stories is NOT security definer',
+  (select prosecdef from pg_proc where proname = 'list_active_stories' limit 1), false);
+
 -- ── fetch_home_feed is SECURITY INVOKER, deliberately ───────────────────────
 -- The feed must run as the caller so row-level security still filters what they may
 -- see. Flipping it to DEFINER would silently expose every post to every user, and

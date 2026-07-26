@@ -41,6 +41,7 @@ import {
 } from '../../services/posts';
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
+import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
 
@@ -90,21 +91,10 @@ function prefetchFeedMedia(posts: FeedPost[]): void {
   }
 }
 
-function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) {
-    return false;
-  }
-  for (const id of b) {
-    if (!a.has(id)) {
-      return false;
-    }
-  }
-  return true;
-}
 
 
-function storyInitials(story: Story): string {
-  const name = story.author.displayName?.trim() || story.author.username;
+function storyInitials(author: { displayName: string | null; username: string }): string {
+  const name = author.displayName?.trim() || author.username;
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return '?';
@@ -136,7 +126,13 @@ function FriendStoriesRow({
   stories: Story[];
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const storyIds = useMemo(() => stories.map(s => s.id), [stories]);
+  // One ring per author (Instagram-style). The viewer is handed the ordered
+  // clusters so cross-author tap/swipe works; the tapped ring is startAuthorIndex.
+  const clusters = useMemo(() => groupStoriesByAuthor(stories), [stories]);
+  const routeClusters = useMemo(
+    () => clusters.map(c => ({ authorId: c.authorId, storyIds: c.storyIds })),
+    [clusters],
+  );
 
   if (loading) {
     return (
@@ -166,30 +162,47 @@ function FriendStoriesRow({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.storiesRow}
       >
-        {stories.map((item, i) => {
-          const seen = item.viewedAt !== null;
+        {clusters.map((cluster, i) => {
+          const seen = !cluster.hasUnseen;
+          const count = cluster.storyIds.length;
           return (
             <Pressable
-              key={item.id}
+              key={cluster.authorId}
               style={styles.storyCell}
-              onPress={() => navigation.navigate('StoryViewer', { storyIds, startIndex: i })}
+              onPress={() =>
+                navigation.navigate('StoryViewer', {
+                  clusters: routeClusters,
+                  startAuthorIndex: i,
+                  // Open at the first UNWATCHED clip (Instagram), not the start.
+                  startStoryIndex: cluster.firstUnseenIndex,
+                })
+              }
             >
-              <View style={[
-                styles.storyRing,
-                seen
-                  ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
-                  : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
-              ]}>
-                <View style={styles.storyAvatar}>
-                  {item.author.avatarUrl ? (
-                    <Image source={{ uri: item.author.avatarUrl }} style={styles.storyAvatarImg} />
-                  ) : (
-                    <Text style={styles.storyAvatarText}>{storyInitials(item)}</Text>
-                  )}
+              <View style={styles.storyRingWrap}>
+                <View style={[
+                  styles.storyRing,
+                  seen
+                    ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                    : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
+                ]}>
+                  <View style={styles.storyAvatar}>
+                    {cluster.author.avatarUrl ? (
+                      <Image source={{ uri: cluster.author.avatarUrl }} style={styles.storyAvatarImg} />
+                    ) : (
+                      <Text style={styles.storyAvatarText}>
+                        {storyInitials(cluster.author)}
+                      </Text>
+                    )}
+                  </View>
                 </View>
+                {count > 1 ? (
+                  <View style={[styles.storyCountBadge, seen && styles.storyCountBadgeSeen]}>
+                    <Text style={styles.storyCountText}>{count}</Text>
+                  </View>
+                ) : null}
               </View>
               <Text style={styles.storyUsername} numberOfLines={1}>
-                @{item.author.username}
+                @{cluster.author.username}
               </Text>
             </Pressable>
           );
@@ -284,7 +297,10 @@ export default function HomeScreen() {
   const loadingMoreRef = useRef(false);
   const loadingInitialRef = useRef(true);
 
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  // Viewability feeds ONLY the pagination prefetch (refs, no setState). The former
+  // per-scroll `visibleIds` state re-rendered every mounted PostCard several times a
+  // second while scrolling (the "large list is slow to update" warning) for a
+  // `visible` prop PostCard hasn't read since the single-engine consolidation.
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
     minimumViewTime: 120,
@@ -341,18 +357,12 @@ export default function HomeScreen() {
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
       let maxIndex = 0;
       for (const v of viewableItems) {
         if (typeof v.index === 'number') {
           maxIndex = Math.max(maxIndex, v.index);
         }
-        const row = v.item as FeedListItem | undefined;
-        if (row?.kind === 'post' && v.isViewable) {
-          ids.add(row.post.id);
-        }
       }
-      setVisibleIds(prev => (visiblePostIdSetsEqual(prev, ids) ? prev : ids));
 
       const len = postsRef.current.length;
       const nearEnd =
@@ -374,8 +384,8 @@ export default function HomeScreen() {
   ).current;
 
   // Deliberately no pauseAll() on blur — audio should keep playing when the
-  // user navigates to another screen (e.g. UserProfile). PostCard's `visible`
-  // prop already stops inline video when cards leave the viewport.
+  // user navigates to another screen (e.g. UserProfile). Cards render no inline
+  // video (single-engine, ADR-0001), so nothing needs pausing on scroll-away.
 
   // One-time: load my profile for the hero avatar.
   useEffect(() => {
@@ -665,14 +675,12 @@ export default function HomeScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
-          pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [visibleIds, comments, handlePostDeleted],
+    [comments, handlePostDeleted],
   );
 
   const feedKeyExtractor = useCallback((item: FeedListItem) => {
@@ -973,6 +981,32 @@ const styles = StyleSheet.create({
     width: 76,
     alignItems: 'center',
     gap: 8,
+  },
+  storyRingWrap: {
+    width: 74,
+    height: 74,
+  },
+  storyCountBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: COLORS.purple,
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyCountBadgeSeen: {
+    backgroundColor: COLORS.textMuted,
+  },
+  storyCountText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '800',
   },
   storyRing: {
     width: 74,

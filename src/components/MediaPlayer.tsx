@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { View, StyleSheet, Image, Pressable, Text, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
-import Video, { type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
+import Video, { ViewType, type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
 import { usePlayback } from '../contexts/PlaybackContext';
@@ -37,6 +37,9 @@ export type MediaPlayerProps = {
   onProgress?: (positionSeconds: number) => void;
   onLoaded?: (durationSeconds: number) => void;
   onEnded?: () => void;
+  /** Fired when the native surface has painted a frame (onReadyForDisplay). The
+   *  story viewer uses this to hide its clip-start poster deterministically. */
+  onReadyForDisplay?: () => void;
   /** Externally requested seek position in seconds; used after the user drags
    *  the SeekBar thumb. */
   seekTo?: number | null;
@@ -65,6 +68,15 @@ export type MediaPlayerProps = {
    * and the lock-screen notification "carousel". A muted frame cannot.
    */
   muted?: boolean;
+  /**
+   * Android video surface type. Default (undefined) keeps RNV's SurfaceView —
+   * cheapest and right for static feed cards. Pass `ViewType.TEXTURE` when the
+   * PARENT ANIMATES this player with transforms (translate/scale/rotate): a
+   * SurfaceView is composited outside the view hierarchy and IGNORES transforms,
+   * so the video pixels stay frozen in place while everything else moves (the
+   * story viewer's drag-dismiss "hang"). TextureView follows transforms.
+   */
+  viewType?: ViewType;
   /** Override the container style — e.g. pass StyleSheet.absoluteFill for full-screen use. */
   style?: StyleProp<ViewStyle>;
 };
@@ -87,10 +99,12 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     onProgress,
     onLoaded,
     onEnded,
+    onReadyForDisplay,
     seekTo,
     visible,
     pauseWhenOffScreen = true,
     muted = false,
+    viewType,
     style,
   },
   ref,
@@ -235,7 +249,10 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
   const handleReadyForDisplay = useCallback(() => {
     setReadyForDisplay(true);
-  }, []);
+    // Surface the native "first frame painted" signal to the parent — the story
+    // viewer uses it to drop its poster deterministically instead of on a timer.
+    onReadyForDisplay?.();
+  }, [onReadyForDisplay]);
 
   const source = useMemo(() => {
     if (media.kind === 'audio') {return { uri: media.audioUrl };}
@@ -281,6 +298,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         ignoreSilentSwitch="ignore"
         muted={muted}
         volume={muted ? 0 : 1.0}
+        {...(viewType !== undefined ? { viewType } : {})}
       />
 
       {/* For audio posts we layer the cover (or fallback art) on top of the

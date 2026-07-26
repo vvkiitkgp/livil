@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   FlatList,
   ActivityIndicator,
   Image,
-  type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -71,7 +70,6 @@ export default function SearchScreen() {
   const [errorTracks, setErrorTracks] = useState('');
   const [errorAlbums, setErrorAlbums] = useState('');
   const [meId, setMeId] = useState<string | null>(null);
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -151,23 +149,6 @@ export default function SearchScreen() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [query, tab]);
 
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-    minimumViewTime: 120,
-  }).current;
-
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        if (v.isViewable && v.item) {
-          ids.add((v.item as FeedPost).id);
-        }
-      }
-      setVisibleIds(ids);
-    },
-  ).current;
-
   const goToProfile = useCallback(
     (userId: string) => {
       navigation.navigate('UserProfile', { userId });
@@ -212,13 +193,11 @@ export default function SearchScreen() {
     ({ item }: { item: FeedPost }) => (
       <PostCard
         post={comments.withDelta(item)}
-        visible={visibleIds.has(item.id)}
-        pauseWhenOffScreen
         onCommentsPress={comments.openComments}
         onDeleted={handlePostDeleted}
       />
     ),
-    [visibleIds, comments, handlePostDeleted],
+    [comments, handlePostDeleted],
   );
 
   const renderAlbumRow = useCallback(
@@ -364,8 +343,6 @@ export default function SearchScreen() {
           contentContainerStyle={[styles.trackListContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          viewabilityConfig={viewabilityConfig}
-          onViewableItemsChanged={handleViewableItemsChanged}
         />
       ) : (
         <FlatList

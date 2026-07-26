@@ -25,6 +25,10 @@ export type RootStackParamList = {
     // the post into view; openComments opens the CommentsSheet for it;
     // highlightCommentId pulses that comment row briefly when the sheet opens.
     focusPostId?: string;
+    // Which profile tab the focused post lives in, so the profile opens on the
+    // right tab (uploads vs reposts) before scrolling — else focusPostId can't be
+    // found in the default tab's list. Used by the story viewer's "go to song".
+    focusPostKind?: 'upload' | 'repost';
     openComments?: boolean;
     highlightCommentId?: string;
   };
@@ -67,5 +71,12 @@ export type RootStackParamList = {
     seedClipStartSec?: number | null;
     seedClipEndSec?: number | null;
   };
-  StoryViewer: { storyIds: string[]; startIndex: number };
+  // Stories are grouped by author (one tray ring per person). The viewer receives
+  // the ordered clusters plus which ring/story was tapped, and flattens them into
+  // one ordered index space internally (so cross-author tap/swipe works).
+  StoryViewer: {
+    clusters: { authorId: string; storyIds: string[] }[];
+    startAuthorIndex: number;
+    startStoryIndex?: number;
+  };
 };

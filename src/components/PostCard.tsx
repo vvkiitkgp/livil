@@ -25,14 +25,6 @@ import ProgressiveImage from './ProgressiveImage';
 
 export type PostCardProps = {
   post: FeedPost;
-  /** Visibility from the parent FlatList — feeds MediaPlayer's debounced off-screen
-   *  pause and drives the dedup'd view count after a brief dwell. */
-  visible: boolean;
-  /**
-   * When false, playback is not auto-paused from FlatList viewability (Home feed).
-   * Profile / single-column feeds should keep the default true.
-   */
-  pauseWhenOffScreen?: boolean;
   /** Tap the comments stat to open the CommentsSheet for this post. */
   onCommentsPress?: (postId: string) => void;
   /**
@@ -82,13 +74,16 @@ function avatarInitials(author: { displayName: string | null; username: string }
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-// `visible` and `pauseWhenOffScreen` are still accepted for source compatibility —
-// several screens pass them — but PostCard deliberately ignores them. Since the
-// single-engine consolidation (ADR-0001) this component produces no audio: it renders
-// cover art and a play button that hands off to GlobalAudioPlayer. There is nothing
-// here to pause when it scrolls off screen. The props are vestigial and should be
-// removed from PostCardProps and its call sites in a separate change.
-export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
+// Since the single-engine consolidation (ADR-0001) this component produces no audio:
+// it renders cover art and a play button that hands off to GlobalAudioPlayer, so it
+// needs no viewability wiring. (The former `visible`/`pauseWhenOffScreen` props were
+// vestigial and forced every feed to re-render all mounted cards on each scroll tick;
+// removed with the feed-jank fix.)
+//
+// Memoized: feed items keep a stable identity (useCommentsCountDeltas.withDelta
+// returns the same object when there's no delta), so React.memo lets a like /
+// comment / pagination on ONE card skip re-rendering every other mounted card.
+function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
@@ -1194,3 +1189,5 @@ const styles = StyleSheet.create({
     color: '#FF4D6D',
   },
 });
+
+export default React.memo(PostCard);

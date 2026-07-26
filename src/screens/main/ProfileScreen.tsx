@@ -10,7 +10,6 @@ import {
   Image,
   Linking,
   Share,
-  type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -28,6 +27,7 @@ import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useStories } from '../../contexts/StoriesContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   listPostsForUser,
@@ -151,6 +151,23 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
+  // Instagram-style story ring on MY OWN avatar: my active stories are in the
+  // story feed (stories_select includes self), so if I have a cluster the ring
+  // is tappable and opens my stories — purple until I've watched them, grey after.
+  const { clusters: storyClusters } = useStories();
+  const myStoryCluster = useMemo(
+    () => (profile ? storyClusters.find(c => c.authorId === profile.id) ?? null : null),
+    [storyClusters, profile],
+  );
+  const openMyStories = useCallback(() => {
+    if (!myStoryCluster) { return; }
+    navigation.navigate('StoryViewer', {
+      clusters: [{ authorId: myStoryCluster.authorId, storyIds: myStoryCluster.storyIds }],
+      startAuthorIndex: 0,
+      startStoryIndex: myStoryCluster.firstUnseenIndex,
+    });
+  }, [myStoryCluster, navigation]);
+
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -162,11 +179,9 @@ export default function ProfileScreen() {
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
 
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [allLinksOpen, setAllLinksOpen] = useState(false);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -207,21 +222,8 @@ export default function ProfileScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, posts, playback.setQueue]);
 
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        const item = v.item as ListItem | undefined;
-        if (item?.kind === 'post' && v.isViewable) {
-          ids.add(item.post.id);
-        }
-      }
-      setVisibleIds(ids);
-    },
-  ).current;
-
   // Deliberately no pauseAll() on blur — audio should keep playing when the
-  // user navigates to another screen. PostCard's `visible` prop handles inline video.
+  // user navigates to another screen. Cards render no inline video (ADR-0001).
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
     const [profRes, statsData, follow] = await Promise.all([
@@ -528,13 +530,12 @@ export default function ProfileScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [tab, tabCounts, handleTabChange, visibleIds, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist],
   );
 
   const renderHeader = useCallback(() => {
@@ -557,8 +558,22 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatarRingGlow} />
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.85}
+            onPress={myStoryCluster ? openMyStories : undefined}
+            disabled={!myStoryCluster}
+          >
+            <View
+              style={[
+                styles.avatarRingGlow,
+                myStoryCluster
+                  ? myStoryCluster.hasUnseen
+                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
+                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : null,
+              ]}
+            />
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -566,7 +581,7 @@ export default function ProfileScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               ) : null}
             </View>
-          </View>
+          </TouchableOpacity>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -721,8 +736,6 @@ export default function ProfileScreen() {
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         onScroll={handleScroll}

@@ -8,7 +8,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
-  type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -37,6 +36,7 @@ import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components
 import ProfileGridCard from '../../components/ProfileGridCard';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useStories } from '../../contexts/StoriesContext';
 import AddUserSheet from '../../components/AddUserSheet';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
@@ -113,10 +113,26 @@ export default function UserProfileScreen() {
   const route = useRoute<UserProfileRouteProp>();
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
-  const { userId, focusPostId, openComments, highlightCommentId } = route.params;
+  const { userId, focusPostId, focusPostKind, openComments, highlightCommentId } = route.params;
   const playback = usePlayback();
   const rel = useRelationships();
   const { showToast } = useToast();
+  const { clusters: storyClusters } = useStories();
+
+  // Instagram-style story ring on the profile avatar: if this user has active
+  // stories the viewer can see, the ring becomes tappable and reflects seen state.
+  const storyCluster = useMemo(
+    () => storyClusters.find(c => c.authorId === userId) ?? null,
+    [storyClusters, userId],
+  );
+  const openUserStories = useCallback(() => {
+    if (!storyCluster) { return; }
+    navigation.navigate('StoryViewer', {
+      clusters: [{ authorId: storyCluster.authorId, storyIds: storyCluster.storyIds }],
+      startAuthorIndex: 0,
+      startStoryIndex: storyCluster.firstUnseenIndex,
+    });
+  }, [storyCluster, navigation]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
   const comments = useCommentsCountDeltas();
@@ -138,7 +154,11 @@ export default function UserProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
-  const [tab, setTab] = useState<ProfileTab>('reposts');
+  // Open on the tab that holds a deep-linked post (uploads for "go to song"),
+  // otherwise the default reposts tab.
+  const [tab, setTab] = useState<ProfileTab>(
+    focusPostKind === 'upload' ? 'uploads' : 'reposts',
+  );
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
@@ -148,9 +168,6 @@ export default function UserProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
-
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -194,17 +211,6 @@ export default function UserProfileScreen() {
     // retrigger a queue rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, posts, playback.setQueue]);
-
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        const item = v.item as ListItem | undefined;
-        if (item?.kind === 'post' && v.isViewable) { ids.add(item.post.id); }
-      }
-      setVisibleIds(ids);
-    },
-  ).current;
 
   const fetchProfileAndStats = useCallback(async (uid: string) => {
     const [profRes, statsData, follow] = await Promise.all([
@@ -472,13 +478,12 @@ export default function UserProfileScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [tab, tabCounts, handleTabChange, visibleIds, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist],
   );
 
   const renderHeader = useCallback(() => {
@@ -503,8 +508,22 @@ export default function UserProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatarRingGlow} />
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.85}
+            onPress={storyCluster ? openUserStories : undefined}
+            disabled={!storyCluster}
+          >
+            <View
+              style={[
+                styles.avatarRingGlow,
+                storyCluster
+                  ? storyCluster.hasUnseen
+                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
+                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : null,
+              ]}
+            />
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -512,7 +531,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               ) : null}
             </View>
-          </View>
+          </TouchableOpacity>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -580,7 +599,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy]);
+  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -626,8 +645,6 @@ export default function UserProfileScreen() {
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
       />

@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-07-24
+last_verified: 2026-07-25
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 45 migration(s) in `supabase/migrations/`.
+Reconstructed from 46 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -630,6 +630,10 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 
 - `stories_active_idx` `(expires_at desc, author_id)`
 
+**Triggers**
+
+- `stories_pin_expiry_trg` — before insert or update (`20260724120000_prop0004_harden_stories.sql`)
+
 ### `story_views`
 
 RLS enabled · defined in `20260530000001_repost_and_stories.sql`
@@ -770,6 +774,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
+| `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 
 ## Related
 
