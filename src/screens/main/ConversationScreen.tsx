@@ -71,6 +71,24 @@ type Route = RouteProp<RootStackParamList, 'Conversation'>;
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
 const MAX_CHARS = 500;
 
+/**
+ * Second ceiling alongside MAX_CHARS. 500 characters arranged as 500 newlines is
+ * still within the character budget but renders as a bubble tall enough to push
+ * the whole conversation off-screen, so line count is capped independently.
+ *
+ * Both ceilings clamp rather than reject, matching how MAX_CHARS already behaves.
+ * Note this is a composer-side guard only — `messages.body` has no equivalent
+ * constraint in Postgres, so it shapes what this app sends, not what it can
+ * receive.
+ */
+const MAX_LINES = 10;
+
+function clampComposerInput(raw: string): string {
+  const byChars = raw.slice(0, MAX_CHARS);
+  const lines = byChars.split('\n');
+  return lines.length <= MAX_LINES ? byChars : lines.slice(0, MAX_LINES).join('\n');
+}
+
 const MORE_EMOJIS = [
   '😀','😃','😄','😁','😆','😅','🤣','😊','😇','🥰',
   '😍','🤩','😘','😗','😙','😚','🙂','🤗','🤭','🫡',
@@ -1021,7 +1039,7 @@ export default function ConversationScreen() {
                 <FormInput
                   nativeID="conversation-input"
                   value={text}
-                  onChangeText={t => setText(t.slice(0, MAX_CHARS))}
+                  onChangeText={t => setText(clampComposerInput(t))}
                   placeholder="Send Message…"
                   placeholderTextColor={COLORS.textMuted}
                   multiline
