@@ -675,7 +675,7 @@ export default function ProfileScreen() {
             style={styles.actionButton}
             onPress={() => {
               Share.share({
-                message: `Join me on Livil — the social music app 🎵\nhttps://livil.app`,
+                message: `Join me on Livil — the social music app 🎵\nhttps://livil-music.com`,
               });
             }}
           />
