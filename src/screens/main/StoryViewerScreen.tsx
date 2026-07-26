@@ -347,10 +347,7 @@ export default function StoryViewerScreen() {
   // (gesture + AppState background + advance-past-end); a second goBack() would
   // pop the SCREEN UNDER the story.
   const closedRef = useRef(false);
-  // `reason` is diagnostic — every close path names itself so a device log shows
-  // exactly who exited the viewer (LIV-62 debugging).
-  const close = useCallback((reason: string = 'unspecified') => {
-    console.log(`[LIVIL][STORY] close(${reason}) closed=${closedRef.current} idx=${indexRef.current}`);
+  const close = useCallback(() => {
     if (closedRef.current) { return; }
     closedRef.current = true;
     // Pause the engine IMMEDIATELY, before the dismiss/navigation animation, so a
@@ -370,8 +367,7 @@ export default function StoryViewerScreen() {
   // (Home / profile), with the user's music restored paused by exitClipSession.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      console.log(`[LIVIL][STORY] AppState → ${state}`);
-      if (state !== 'active') { close(`appstate-${state}`); }
+      if (state !== 'active') { close(); } // app backgrounded
     });
     return () => sub.remove();
   }, [close]);
@@ -380,11 +376,10 @@ export default function StoryViewerScreen() {
   const goForward = useCallback(() => {
     // Decide OUTSIDE the updater: calling close() (a navigation dispatch) inside a
     // setIndex updater fires during render and warns "setState while rendering".
-    console.log(`[LIVIL][STORY] goForward idx=${indexRef.current} items=${items.length}`);
     if (indexRef.current < items.length - 1) {
       setIndex(i => i + 1);
     } else {
-      close('advance-past-last');
+      close(); // advanced past the last story
     }
   }, [items.length, close]);
 
@@ -401,7 +396,7 @@ export default function StoryViewerScreen() {
       if (idx >= 0) {
         setIndex(idx);
       } else if (dir === 1) {
-        close('jump-author-past-end');
+        close(); // swiped past the last author
       }
     },
     [currentAuthorIndex, items, close],
@@ -430,11 +425,9 @@ export default function StoryViewerScreen() {
   // Single-fire advance, keyed by presentation id (see presentationRef).
   const requestAdvance = useCallback(
     (fromPresentation: number) => {
-      console.log(`[LIVIL][STORY] requestAdvance from=${fromPresentation} current=${presentationRef.current} advancedFor=${advancedForRef.current} menuOpen=${menuOpenRef.current}`);
       if (fromPresentation !== presentationRef.current) {return;}
       if (advancedForRef.current === fromPresentation) {return;}
       if (menuOpenRef.current) {
-        console.log('[LIVIL][STORY] requestAdvance SUPPRESSED (menu open) → pending');
         pendingAdvanceRef.current = true;
         return;
       }
@@ -451,14 +444,12 @@ export default function StoryViewerScreen() {
     progressAnim.setValue(0);
     if (clipDuration <= 0) {return;}
     const p = presentationRef.current;
-    console.log(`[LIVIL][STORY] progressAnim START presentation=${p} durMs=${Math.round(clipDuration * 1000)}`);
     progressAnimRef.current = Animated.timing(progressAnim, {
       toValue: 1,
       duration: clipDuration * 1000,
       useNativeDriver: false,
     });
     progressAnimRef.current.start(({ finished }) => {
-      console.log(`[LIVIL][STORY] progressAnim FINISH presentation=${p} finished=${finished}`);
       if (finished) {requestAdvance(p);}
     });
   }, [progressAnim, clipDuration, requestAdvance, stopProgress]);
@@ -469,9 +460,8 @@ export default function StoryViewerScreen() {
   // now current.
   const storyId = story?.id;
   useEffect(() => {
-    console.log(`[LIVIL][STORY] per-story effect storyId=${storyId ?? 'NONE'} idx=${indexRef.current} items=${items.length}`);
     if (!story) {
-      close('no-story-at-index');
+      close(); // nothing left at this index (e.g. all deleted)
       return;
     }
 
@@ -574,7 +564,6 @@ export default function StoryViewerScreen() {
       didMountPausedRef.current = true;
       return; // mount run: story already started by the per-story effect
     }
-    console.log(`[LIVIL][STORY] paused effect → ${paused}`);
     if (paused) {
       playback.handlersRef.current?.pause();
       stopProgress();
@@ -586,7 +575,6 @@ export default function StoryViewerScreen() {
       // measured off the bar's true position.
       stopProgress(currentValue => {
         const remaining = clipDuration * (1 - currentValue) * 1000;
-        console.log(`[LIVIL][STORY] resume at ${currentValue.toFixed(2)} → remainingMs=${Math.round(remaining)}`);
         if (remaining > 0) {
           progressAnimRef.current = Animated.timing(progressAnim, {
             toValue: 1,
@@ -629,7 +617,6 @@ export default function StoryViewerScreen() {
   // ── Go to the song's post: deep-link to the original upload via its author's
   //    profile (the app has no standalone post screen). ──
   const openSong = useCallback(async () => {
-    console.log('[LIVIL][STORY] openSong → resolving post author, then goBack + navigate');
     if (!story) {return;}
     const authorId = await getStoryPostAuthorId(story.originalPostId);
     if (!authorId) {
@@ -673,7 +660,7 @@ export default function StoryViewerScreen() {
     // the story-keyed effect re-drive whatever is now current.
     if (items.length <= 1) {
       removeLocal(id);
-      close('deleted-last-story');
+      close(); // deleted the only story
       return;
     }
     if (index >= items.length - 1) {
@@ -690,7 +677,6 @@ export default function StoryViewerScreen() {
     // running animation FINISH in that window, advancing past the last story and
     // closing the viewer under the just-opened sheet. The menuOpenRef gate in
     // requestAdvance is the backstop; this closes the window at the source.
-    console.log('[LIVIL][STORY] openMenu — stopping clock, raising menuOpenRef');
     stopProgress();
     menuOpenRef.current = true;
     menuOpenSv.value = true;
@@ -704,7 +690,6 @@ export default function StoryViewerScreen() {
     menuProgress.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.quad) });
   }, [menuProgress, menuOpenSv, stopProgress, chromeOpacity]);
   const finishCloseMenu = useCallback(() => {
-    console.log(`[LIVIL][STORY] finishCloseMenu pendingAdvance=${pendingAdvanceRef.current}`);
     menuOpenRef.current = false;
     menuOpenSv.value = false;
     setMenuOpen(false);
@@ -726,7 +711,6 @@ export default function StoryViewerScreen() {
   }, [menuProgress, finishCloseMenu, chromeOpacity]);
 
   const openAuthorProfile = useCallback(() => {
-    console.log('[LIVIL][STORY] openAuthorProfile → goBack + navigate');
     if (!story) { return; }
     const authorId = story.author.id;
     navigation.goBack();
@@ -735,9 +719,6 @@ export default function StoryViewerScreen() {
 
   // ── Gestures ──
   // Tap: left third → previous, elsewhere → next.
-  const logTapZone = useCallback((zone: string, x: number) => {
-    console.log(`[LIVIL][STORY] tapGesture ${zone} x=${Math.round(x)}`);
-  }, []);
   const tapGesture = useMemo(
     () =>
       Gesture.Tap()
@@ -747,25 +728,21 @@ export default function StoryViewerScreen() {
           // Sheet open: the same physical tap that hits the shade/rows must never
           // leak into the navigation zones underneath (LIV-62).
           if (menuOpenSv.value) {
-            runOnJS(logTapZone)('IGNORED (menu open)', e.x);
             return;
           }
           // Chrome dead zones: RNGH doesn't yield to the RN touchables layered
           // above this surface, so taps on the header (⋯ / X / author) and the
           // bottom stack double-fire here — Instagram rule: chrome never navigates.
           if (e.y < TAP_GUARD_TOP || e.y > SCREEN_H - TAP_GUARD_BOTTOM) {
-            runOnJS(logTapZone)('IGNORED (chrome band)', e.x);
             return;
           }
           if (e.x < SCREEN_W * TAP_BACK_FRACTION) {
-            runOnJS(logTapZone)('LEFT→prev', e.x);
             runOnJS(goBackward)();
           } else {
-            runOnJS(logTapZone)('RIGHT→next', e.x);
             runOnJS(goForward)();
           }
         }),
-    [goBackward, goForward, logTapZone, menuOpenSv],
+    [goBackward, goForward, menuOpenSv],
   );
 
   // Long-press: hold to pause + fade the chrome; release to resume. Same guards
@@ -846,7 +823,7 @@ export default function StoryViewerScreen() {
               return;
             }
             if (!hasTarget && passed && dir === 1) {
-              runOnJS(close)('swipe-past-last-author'); // stays paused
+              runOnJS(close)(); // past the last author — stays paused
               return;
             }
             // Rubber-band back to the same story → resume.
@@ -855,7 +832,7 @@ export default function StoryViewerScreen() {
             return;
           }
           if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
-            runOnJS(close)('swipe-dismiss'); // stays paused through the animation
+            runOnJS(close)(); // dismissing — stays paused through the animation
             return;
           }
           // Spring back from an uncommitted vertical drag → resume.
@@ -1022,7 +999,7 @@ export default function StoryViewerScreen() {
                   <Icon name="overflow" size={20} color={COLORS.white} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => close('header-x')}
+                  onPress={close}
                   activeOpacity={0.7}
                   style={styles.headerBtn}
                   hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
