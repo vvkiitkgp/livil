@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-07-26
+last_verified: 2026-07-29
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,17 +16,17 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-57 document(s) under `kb/`.
+59 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 57 |
-| Drift-proof (tier 1 + 4) | 26 |
+| Documents | 59 |
+| Drift-proof (tier 1 + 4) | 28 |
 | Hand-maintained (tier 3 + 5) | 24 |
 | Past freshness SLA | 0 |
-| Private-content stubs | 5 |
+| Private-content stubs | 6 |
 
 Tiers 1 and 4 cannot drift by construction — the first is regenerated, the second is never
 edited. Historical documentation drift in this project occurred entirely in hand-maintained
@@ -36,11 +36,11 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-07-26 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-07-26 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-07-26 | 9999d |
-| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-07-26 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-07-26 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-07-29 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-07-29 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-07-29 | 9999d |
+| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-07-29 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-07-29 | 9999d |
 
 ## Tier 2 — Enforced
 
@@ -91,6 +91,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0003-in-app-account-deletion.md` | principal-client | CA, TR, ALL | 2026-07-22 | 9999d |
 | `debt/proposals/0004-harden-stories-backend.md` | principal-data | CA, TR, ALL | 2026-07-24 | 9999d |
 | `debt/proposals/0004-harden-stories-draft.md` | chief-architect | CA, TR, ALL | 2026-07-24 | 9999d |
+| `debt/proposals/0005-restore-the-messages-write-boundary.md` 🔒 | chief-architect | CA, TR, ALL | 2026-07-29 | 30d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
@@ -105,6 +106,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0011-patch-hedge-ratification-and-scope-correction.md` | principal-playback | ALL | 2026-07-24 | 9999d |
 | `decisions/0012-storage-config-ratification-and-modifications.md` | principal-security | ALL | 2026-07-24 | 9999d |
 | `decisions/0013-story-clip-session.md` | chief-architect | ALL | 2026-07-25 | 9999d |
+| `decisions/0014-reject-widening-msg-update-for-orphaned-messages.md` | chief-architect | ALL | 2026-07-29 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -118,7 +120,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 19 |
+| chief-architect | 21 |
 | human | 1 |
 | principal-client | 6 |
 | principal-data | 9 |
