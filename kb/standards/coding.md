@@ -140,11 +140,36 @@ file — it is the ratio of very large units to extracted logic (Constitution P2
 
 ## Comments
 
-Comment **why**, not what (Constitution P37). The codebase does this well in its hardest
-places — the native patch and the playback engine — and that is the standard to match.
+**The default is no comment.** Readable code needs none, and a comment restating what the code
+plainly does is noise that has to be read, maintained, and kept true. Write a comment when there
+is something the code genuinely cannot say.
 
-**Non-obvious code must carry its reason.** Undocumented cleverness is a defect regardless of
-correctness (P27). If a workaround exists because of a platform behaviour, name the behaviour.
+Comment **why**, not what (Constitution P37).
+
+| Rule | |
+|---|---|
+| Default to none | If the code is clear, leave it alone. Renaming a variable beats explaining it. |
+| **Two or three lines** | That is the normal size. A comment longer than the code it describes is a smell. |
+| Non-obvious code must carry its reason | Undocumented cleverness is a defect regardless of correctness (P27). Name the platform behaviour, the bug, the constraint. |
+| One place, not many | A rule that belongs in `kb/` goes in `kb/`, with a link. Do not restate a decision at every call site. |
+| No narration | Not `-- now we check membership`. Not section banners around three lines. Not a comment per statement. |
+| No history | `git log` and the ADRs hold that. Do not leave "changed from X because Y" in the source. |
+
+**Length is not thoroughness.** The longer a comment is, the less likely it is to be read and the
+more likely it is to drift out of true — and a confidently wrong comment is worse than none,
+because it is believed. This is not hypothetical: the `msg_update` fix (LIV-78) shipped a
+paragraph explicitly labelled load-bearing that taught a **wrong rule** about SQL qualification,
+and stated the failure direction backwards. The code was correct; the essay next to it was not.
+
+Where a long explanation genuinely is needed — the native patch, the playback engine, a migration
+that encodes an authorization boundary — the right size is still a few lines plus **a link to the
+ADR or kb document that holds the reasoning**. That is what keeps the reasoning reviewable and in
+one place. `kb/` is the source of truth; source files point at it.
+
+> **Agents especially.** Verbose commenting is the most common failure in agent-authored code
+> here. Do not explain your own reasoning to the reader, do not justify the change in the file,
+> and do not restate the ticket. The PR body is where that goes. Assume the reader is a competent
+> engineer who has the ticket open.
 
 ---
 
