@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-133 TypeScript file(s) under `src/`, 41,055 lines.
+135 TypeScript file(s) under `src/`, 41,170 lines.
 
 ## Size hotspots
 
@@ -232,7 +232,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-12 file(s), 1,500 lines.
+14 file(s), 1,615 lines.
 
 | File | Lines |
 |---|---:|
@@ -247,7 +247,9 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/playTracker.ts` | 90 |
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
+| `src/utils/__tests__/authorDisplay.test.ts` | 70 |
 | `src/utils/errorMessages.ts` | 68 |
+| `src/utils/authorDisplay.ts` | 45 |
 
 ## Dependencies
 
