@@ -45,6 +45,11 @@ signing, the signing key, `kb/private/`, and the Supabase client configuration.
    `npm test`. Never report work as verified that you did not run (P6).
 5. **Smallest change that fully solves the problem** (P25). Propose the larger refactor;
    do not perform it.
+6. **Comment sparingly.** The default is no comment; readable code needs none. When one is
+   needed, two or three lines, explaining *why* — never narrating what the code does, never
+   restating the ticket, never justifying your change in the file. That belongs in the PR body.
+   Over-commenting is the most common defect in agent-authored code here, and a long confident
+   comment that is wrong is worse than none. See `kb/standards/coding.md` → *Comments*.
 
 ## What you never do
 
