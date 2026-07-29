@@ -237,6 +237,21 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/stories-harden.test.sql
 
+      # LIV-78 — the `messages` UPDATE boundary. msg_update shipped with no
+      # WITH CHECK, so the USING expression was applied to the NEW row and
+      # constrained only sender_id: an author could move their own message into
+      # another conversation, and — via the shape PostgREST emits for an
+      # unfiltered PATCH — into one they are not even a member of. Attempts REAL
+      # updates as `authenticated`, so the deployed policy AND the freeze trigger
+      # are what allow or deny. Every denial is paired with an assertion on the
+      # stored row, because an UPDATE filtered out by USING raises nothing.
+      - name: messages write-boundary tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/messages-write-boundary.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
