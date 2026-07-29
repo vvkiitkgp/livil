@@ -1,43 +1,17 @@
--- ============================================================================
--- messages write-boundary tests — LIV-78, against the REAL policy and trigger
--- ============================================================================
+-- messages write-boundary tests — LIV-78. See ADR-0014 for the decision.
 --
--- WHY THIS EXISTS
+-- Covers both halves of the fix, which fail differently: the policy's WITH CHECK stops a
+-- move into a conversation the caller is not in; the freeze trigger stops a move between
+-- two they are in, which RLS cannot see because it cannot compare OLD to NEW.
 --
--- RLS is the entire authorization perimeter (ADR-0004). `msg_update` shipped as
--- `for update using (sender_id = auth.uid())` with NO `WITH CHECK`. PostgreSQL
--- then applies the USING expression to the NEW row, and that expression
--- constrains exactly one column — so the author of a message could rewrite every
--- other column, including `conversation_id`, and MOVE the message out of the
--- conversation it was sent to. It vanishes from the recipient's thread and
--- reappears elsewhere with its original timestamp, reading as authentic history
--- in a place it was never sent.
---
--- Two things had to be verified, not one:
---
---   * the policy's WITH CHECK — stops a move into a conversation the caller is
---     NOT a member of, and stops it regardless of statement shape; and
---   * the BEFORE UPDATE freeze trigger — stops a move BETWEEN two conversations
---     the caller IS a member of. RLS cannot compare OLD to NEW, so the policy
---     alone cannot see that case at all. A fix that closed only the first would
---     be the D-53 shape again: guard the front door, leave the building open.
---
--- These attempt REAL updates as the `authenticated` role, so the DEPLOYED policy
--- and trigger are what allow or deny. Every denial assertion is paired with an
--- assertion on the STORED ROW, because an UPDATE filtered out by a USING clause
--- affects zero rows and raises NOTHING — "no error" is not "no effect", and a
--- test that only catches the exception would pass against a policy that silently
--- did the wrong thing. Verify the property, not the change.
---
--- HOW TO RUN — against the ephemeral Postgres in CI, after all migrations are
--- applied and the app roles are granted table access:
+-- Runs as `authenticated` against the deployed policy and trigger. Every denial is paired
+-- with an assertion on the stored row: an UPDATE filtered out by USING affects zero rows
+-- and raises nothing, so "no error" is not "no effect".
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/messages-write-boundary.test.sql
 --
--- WHAT THESE TESTS ARE NOT: they exercise the database, not PostgREST or the
--- network path (P32). Where a PostgREST behaviour is under test, the statement
--- shape PostgREST emits is replayed as SQL and labelled as such.
--- ============================================================================
+-- Exercises the database, not PostgREST (P32); where PostgREST behaviour is under test its
+-- statement shape is replayed as SQL and labelled.
 
 \set ON_ERROR_STOP on
 begin;
@@ -318,30 +292,18 @@ select pg_temp.assert(
   true);
 rollback to savepoint step5;
 
--- ============================================================================
--- Step 6 — a member who LEFT cannot still edit the messages they left behind
--- ============================================================================
--- THIS IS THE ASSERTION THAT ISOLATES THE POLICY'S MEMBERSHIP CLAUSE, and it was
--- added because without it the clause was not verified at all: mutation-testing
--- showed that stripping `and exists (... conversation_members ...)` from the WITH
--- CHECK left every other assertion in this file green. The freeze trigger masks
--- it — with conversation_id immutable, no relocation can reach the membership
--- term. A test that cannot fail when half the fix is deleted is decoration (P29).
+-- Step 6 — a member who LEFT cannot still edit the messages they left behind.
 --
--- The case where the term does bite is the one it shares with msg_insert:
--- authorship is not membership. `members_delete` lets a user leave a conversation
--- (leaveConversation) and lets an admin remove them, and their messages stay
--- behind. Under the old policy they remained the author, so `sender_id =
--- auth.uid()` still held and they could keep rewriting the text of a conversation
--- they are no longer part of — retroactively editing other people's record of a
--- thread they have left.
+-- The only assertion that isolates the WITH CHECK's membership clause: stripping that
+-- clause leaves every other assertion here green, because the freeze trigger blocks
+-- relocation before the membership term is ever reached (P29).
 --
--- The unfiltered shape is used for the same reason as step 2b: with a `where id =`
--- filter the statement requires SELECT privilege, msg_select hides the row from
--- the departed member, and the UPDATE matches zero rows — which looks like a
--- denial but is only invisibility, and would evaporate the moment msg_select is
--- loosened. Referencing no column removes msg_select from the picture entirely
--- and leaves msg_update's own WITH CHECK as the only thing deciding.
+-- Authorship is not membership. `members_delete` lets a user leave or be removed while
+-- their messages stay; under the old policy they stayed the author and could keep
+-- rewriting a thread they are no longer part of.
+--
+-- Unfiltered shape, as in step 2b: a `where id =` filter makes msg_select hide the row,
+-- so the UPDATE matches zero rows — invisibility, not denial.
 savepoint step6;
 
 -- Give the author a message in ALT, then remove them from ALT.
