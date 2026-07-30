@@ -37,6 +37,8 @@ export type RootStackParamList = {
   Following: undefined;
   RecentlyPlayed: undefined;
   EditProfile: undefined;
+  Settings: undefined;
+  AccountSettings: undefined;
   CreatePlaylist: {
     initialPost?: {
       postId: string;
