@@ -129,7 +129,11 @@ jobs:
           create schema if not exists auth;
           create schema if not exists storage;
           create schema if not exists realtime;
-          create table if not exists auth.users (id uuid primary key);
+          -- `email` and its unique index mirror the real auth.users. LIV-74's deletion
+          -- ledger hashes the address, and the re-signup test needs the uniqueness to be
+          -- present for "the address is free again" to mean anything.
+          create table if not exists auth.users (id uuid primary key, email text);
+          create unique index if not exists users_email_key on auth.users (email);
           create or replace function auth.uid() returns uuid
             language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text
@@ -252,6 +256,18 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/messages-write-boundary.test.sql
 
+      # LIV-74 — account deletion deletes the user's messages (reversing ADR-0014) and
+      # records the departure in a ledger no client may read. The assertions that carry
+      # the weight are the ones about someone ELSE's data: a group co-member's messages
+      # survive, a third party's DM is untouched, and a reserved username is released
+      # only back to the address that gave it up.
+      - name: account deletion tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/account-deletion-liv74.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
@@ -326,7 +342,8 @@ jobs:
           create schema if not exists auth;
           create schema if not exists storage;
           create schema if not exists realtime;
-          create table if not exists auth.users (id uuid primary key);
+          create table if not exists auth.users (id uuid primary key, email text);
+          create unique index if not exists users_email_key on auth.users (email);
           create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
           create table if not exists storage.buckets (id text primary key, name text, public boolean);
