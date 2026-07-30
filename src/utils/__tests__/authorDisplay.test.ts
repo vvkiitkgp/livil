@@ -1,6 +1,8 @@
 import {
   AUTHOR_INITIAL_FALLBACK,
   DELETED_AUTHOR_NAME,
+  avatarInitials,
+  resolveAuthorById,
   resolveAuthorDisplay,
 } from '../authorDisplay';
 
@@ -65,5 +67,68 @@ describe('resolveAuthorDisplay', () => {
   it('takes the initial from the same field the name came from', () => {
     expect(resolveAuthorDisplay({ displayName: 'Vamsi', username: 'zed' }).initial).toBe('V');
     expect(resolveAuthorDisplay({ displayName: '', username: 'zed' }).initial).toBe('Z');
+  });
+});
+
+describe('resolveAuthorById', () => {
+  it('resolves a live author from the profile the join returned', () => {
+    const d = resolveAuthorById('u1', { displayName: 'Vamsi', username: 'vvk' });
+    expect(d.name).toBe('Vamsi');
+    expect(d.initial).toBe('V');
+    expect(d.isDeleted).toBe(false);
+  });
+
+  it('falls back to the username', () => {
+    const d = resolveAuthorById('u1', { displayName: null, username: 'vvk' });
+    expect(d.name).toBe('vvk');
+    expect(d.initial).toBe('V');
+    expect(d.isDeleted).toBe(false);
+  });
+
+  it('reports a nulled author id as deleted', () => {
+    const d = resolveAuthorById(null, { displayName: null, username: null });
+    expect(d.name).toBe(DELETED_AUTHOR_NAME);
+    expect(d.isDeleted).toBe(true);
+    expect(d.initial).toBe(AUTHOR_INITIAL_FALLBACK);
+  });
+
+  it('does not call a live author deleted when the profile join missed', () => {
+    const d = resolveAuthorById('u1', { displayName: null, username: null });
+    expect(d.isDeleted).toBe(false);
+    expect(d.name).toBe('');
+    expect(d.name).not.toBe(DELETED_AUTHOR_NAME);
+    expect(d.initial).toBe(AUTHOR_INITIAL_FALLBACK);
+  });
+
+  it('treats an empty author id as absent, not as a live author', () => {
+    expect(resolveAuthorById('', { displayName: 'Vamsi' }).isDeleted).toBe(true);
+  });
+
+  it('never derives the initial from the deleted placeholder', () => {
+    expect(resolveAuthorById(null, {}).initial).not.toBe('[');
+  });
+});
+
+describe('avatarInitials', () => {
+  it('takes two letters from a single-word name', () => {
+    expect(avatarInitials(resolveAuthorDisplay({ displayName: 'Vamsi' }))).toBe('VA');
+  });
+
+  it('takes one letter from each of the first two words', () => {
+    expect(avatarInitials(resolveAuthorDisplay({ displayName: 'Vamsi Bosara' }))).toBe('VB');
+  });
+
+  it('ignores everything past the second word', () => {
+    expect(avatarInitials(resolveAuthorDisplay({ displayName: 'Ann Bee Cee' }))).toBe('AB');
+  });
+
+  it('uses the ? fallback for a deleted author, never the placeholder text', () => {
+    const d = resolveAuthorDisplay({ displayName: null, username: null });
+    expect(avatarInitials(d)).toBe(AUTHOR_INITIAL_FALLBACK);
+    expect(avatarInitials(d)).not.toBe('[D');
+  });
+
+  it('uses the ? fallback for a live author whose profile join missed', () => {
+    expect(avatarInitials(resolveAuthorById('u1', {}))).toBe(AUTHOR_INITIAL_FALLBACK);
   });
 });

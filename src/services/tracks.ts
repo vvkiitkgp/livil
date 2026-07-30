@@ -3,6 +3,7 @@ import type { Json } from '../../lib/database.types';
 import type { PendingCollaborator } from '../constants/roles';
 import { uploadTrackFile, resolveReadableUri, type PickedFile } from './uploads';
 import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
+import { resolveAuthorById, resolveAuthorDisplay, type AuthorDisplay } from '../utils/authorDisplay';
 
 export type PostMode = 'audio' | 'video';
 
@@ -485,14 +486,43 @@ export async function createTrack(
 // ─── Collaborator fetch ──────────────────────────────────────────────────────
 
 export type TrackCollaboratorInfo = {
-  /** null for custom (no-account) collaborators */
+  /** null for custom (no-account) collaborators, and for a deleted account */
   userId: string | null;
   role: string;
-  /** Display name or custom name */
-  displayName: string | null;
-  username: string | null;
+  display: AuthorDisplay;
   avatarUrl: string | null;
 };
+
+type CollaboratorRow = { user_id: string | null; custom_name: string | null; role: string };
+type CollaboratorProfile = { username: string; display_name: string | null; avatar_url: string | null };
+
+/**
+ * `(user_id null, custom_name null)` is the state account deletion made representable
+ * by relaxing `collab_user_xor_custom`; a custom-name credit is a real name, not a
+ * deleted author.
+ */
+export function toCollaboratorInfo(
+  row: CollaboratorRow,
+  profile: CollaboratorProfile | undefined,
+): TrackCollaboratorInfo {
+  if (row.user_id) {
+    return {
+      userId: row.user_id,
+      role: row.role,
+      display: resolveAuthorById(row.user_id, {
+        displayName: profile?.display_name,
+        username: profile?.username,
+      }),
+      avatarUrl: profile?.avatar_url ?? null,
+    };
+  }
+  return {
+    userId: null,
+    role: row.role,
+    display: resolveAuthorDisplay({ displayName: row.custom_name }),
+    avatarUrl: null,
+  };
+}
 
 /**
  * Returns all collaborators for a track (both linked-user and custom-name).
@@ -526,25 +556,9 @@ export async function fetchTrackCollaborators(
     }
   }
 
-  return rows.map(r => {
-    if (r.user_id) {
-      const p = profileMap.get(r.user_id as string);
-      return {
-        userId: r.user_id as string,
-        role: r.role as string,
-        displayName: p?.display_name ?? null,
-        username: p?.username ?? null,
-        avatarUrl: p?.avatar_url ?? null,
-      };
-    }
-    return {
-      userId: null,
-      role: r.role as string,
-      displayName: r.custom_name as string | null,
-      username: null,
-      avatarUrl: null,
-    };
-  });
+  return (rows as CollaboratorRow[]).map(r =>
+    toCollaboratorInfo(r, r.user_id ? profileMap.get(r.user_id) : undefined),
+  );
 }
 
 export type ProfileSearchResult = {
