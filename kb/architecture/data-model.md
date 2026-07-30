@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 47 migration(s) in `supabase/migrations/`.
+Reconstructed from 48 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-31 table(s).
+32 table(s).
 
 ### `activity_notifications`
 
@@ -138,6 +138,22 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `trg_conversations_freeze_derived` — before update (`20260722180000_fix_comment_like_counts_and_conversation_drift.sql`)
+
+### `deleted_accounts`
+
+RLS enabled · defined in `20260730000000_liv74_delete_messages_and_deletion_ledger.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `bigint generated always as identity primary key` |
+| `email_sha256` | `text` |
+| `username` | `text` |
+| `deleted_at` | `timestamptz not null default now()` |
+
+**Indexes**
+
+- `deleted_accounts_username_idx` `(username)`
+- `deleted_accounts_email_idx` `(email_sha256)`
 
 ### `device_tokens`
 
@@ -591,6 +607,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `trg_enforce_username_immutable` — BEFORE UPDATE (`20260628000000_profiles_username_set_and_oauth_onboarding.sql`)
 - `trg_profiles_freeze_counters` — before update (`20260722160000_counters_are_not_client_writable.sql`)
+- `trg_enforce_username_reservation` — before insert or update (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
 
 ### `profiles_private`
 
@@ -776,6 +793,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
+| `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 
 ## Related
