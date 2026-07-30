@@ -59,6 +59,13 @@ writable:
   - path: .claude/**
     why: agent definitions are reviewable config
 
+  - path: src/screens/**
+    why: account-deletion client work; maintainer-authorised 2026-07-31, ahead of tests
+  - path: src/components/**
+    why: same
+  - path: src/services/**
+    why: same
+
 # ── Tier 1: propose only ────────────────────────────────────────────────────
 # Listed explicitly rather than left as a default, so the reason is visible.
 propose_only:
