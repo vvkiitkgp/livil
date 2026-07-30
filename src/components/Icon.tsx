@@ -36,6 +36,7 @@ import {
   EyeSlash,
   Faders,
   Flag,
+  Gear,
   Globe,
   Guitar,
   Handshake,
@@ -89,7 +90,7 @@ export type IconName =
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
-  | 'clipStart' | 'clipEnd' | 'minusCircle'
+  | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings'
   // status & feedback
   | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email'
   // tab bar
@@ -144,6 +145,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   clipStart: [CaretLineRight, 'bold'],
   clipEnd: [CaretLineLeft, 'bold'],
   minusCircle: [MinusCircle, 'regular'],
+  settings: [Gear, 'regular'],
   // status
   check: [Check, 'bold'],
   checkCircle: [CheckCircle, 'fill'],

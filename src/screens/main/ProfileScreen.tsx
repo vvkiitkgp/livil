@@ -179,8 +179,6 @@ export default function ProfileScreen() {
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
 
-  const [signOutOpen, setSignOutOpen] = useState(false);
-  const [signOutBusy, setSignOutBusy] = useState(false);
   const [allLinksOpen, setAllLinksOpen] = useState(false);
 
   useEffect(() => {
@@ -392,19 +390,6 @@ export default function ProfileScreen() {
     }
   }, [endReached, fetchPosts, loadingMore, posts, tab]);
 
-  const handleSignOut = useCallback(() => {
-    setSignOutOpen(true);
-  }, []);
-
-  const confirmSignOut = useCallback(async () => {
-    if (signOutBusy) { return; }
-    setSignOutBusy(true);
-    playback.pauseAll();
-    await supabase.auth.signOut();
-    setSignOutBusy(false);
-    setSignOutOpen(false);
-  }, [playback, signOutBusy]);
-
   // Build the list data: a sentinel item for the sticky tab bar, then content
   // for the active tab (posts list / album grid / playlist grid) or an
   // empty/loading placeholder. We can't lean on ListEmptyComponent because the
@@ -548,12 +533,14 @@ export default function ProfileScreen() {
         <View style={styles.topBar}>
           <Text style={styles.brand}>livil</Text>
           <TouchableOpacity
-            style={styles.signOutInline}
-            onPress={handleSignOut}
+            style={styles.headerIconBtn}
+            onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.8}
-            accessibilityLabel="Sign out"
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={styles.signOutInlineText}>Sign out</Text>
+            <Icon name="settings" size={24} color={COLORS.white} />
           </TouchableOpacity>
         </View>
 
@@ -662,13 +649,6 @@ export default function ProfileScreen() {
         {/* Action buttons */}
         <View style={styles.actionRow}>
           <Button
-            label="Edit profile"
-            variant="primary"
-            size="md"
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('EditProfile')}
-          />
-          <Button
             label="Invite friends"
             variant="secondary"
             size="md"
@@ -691,7 +671,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, error, loading, handleSignOut, navigation]);
+  }, [profile, stats, followCounts, error, loading, navigation]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -740,24 +720,6 @@ export default function ProfileScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-      />
-
-      <ConfirmActionModal
-        visible={signOutOpen}
-        title="Sign out of Livil?"
-        message="You'll need your password to sign back in."
-        bullets={[
-          'Playback stops on this device',
-          'Push notifications pause until you sign in again',
-          'Your music and friends stay safe',
-        ]}
-        glyph="↪"
-        tone="destructive"
-        confirmLabel="Sign out"
-        cancelLabel="Stay signed in"
-        busy={signOutBusy}
-        onConfirm={confirmSignOut}
-        onCancel={() => setSignOutOpen(false)}
       />
 
       <ConfirmActionModal
@@ -812,17 +774,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -0.5,
   },
-  signOutInline: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  signOutInlineText: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hero: {
     alignItems: 'center',
