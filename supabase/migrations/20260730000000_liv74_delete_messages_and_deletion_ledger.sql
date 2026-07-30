@@ -166,6 +166,14 @@ $$;
 -- A live account already holding a ledgered username keeps it. Nothing here touches
 -- existing rows, and profiles.username remains the authority for live names; the ledger
 -- only gates a NEW claim.
+--
+-- The shape check is part of the reservation, not decoration next to it. `btrim` strips
+-- SPACES only, so `target<TAB>` and `target<U+00A0>` normalise to something that is not
+-- `target` and walk straight past the ledger; a Cyrillic `а` does the same. Enumerating
+-- separators loses that race — the regex makes every one of them unrepresentable. It is
+-- claim_username's own regex, and both client paths already apply it before writing
+-- (SignUpScreen.tsx:32, ChooseUsernameScreen.tsx:38), so it denies no legitimate caller.
+-- Existing rows are never revalidated: an unchanged username returns above.
 
 create or replace function public.enforce_username_reservation()
 returns trigger
@@ -179,6 +187,11 @@ declare
 begin
   if tg_op = 'UPDATE' and new.username is not distinct from old.username then
     return new;
+  end if;
+
+  if v_name !~ '^[a-z0-9_]{3,30}$' then
+    raise exception 'Username must be 3-30 characters: letters, numbers, underscore'
+      using errcode = '22023';
   end if;
 
   select public.account_email_hash(u.email) into v_hash
@@ -281,13 +294,22 @@ begin
   -- A DM goes whole — see the header; this is ratified, not an oversight. Cascades from
   -- conversations take conversation_members, messages, message_reactions, jam_rooms and
   -- jam_queue with it.
+  --
+  -- EXACTLY TWO MEMBERS, and that clause is load-bearing. What the maintainer ratified is
+  -- a two-party thread going with the party who leaves. `kind = 'dm'` alone does not mean
+  -- two parties: section 6 closes the way a third person gets added, but a `dm` that
+  -- already has three members would otherwise let one of them destroy the other two's
+  -- history. Anything wider is treated as a group — only the departing user's own
+  -- messages go, which is the fail-safe direction.
   delete from public.conversations c
    where c.kind = 'dm'
      and exists (
        select 1 from public.conversation_members m
         where m.conversation_id = c.id
           and m.user_id = v_me
-     );
+     )
+     and (select count(*) from public.conversation_members m2
+           where m2.conversation_id = c.id) = 2;
 
   -- Groups keep everyone else's messages. Runs after the DM sweep, so this is the
   -- group remainder.
@@ -311,7 +333,55 @@ grant  execute on function public.delete_my_account() to authenticated;
 
 
 -- ============================================================================
--- 6. Drift check
+-- 6. DM membership is fixed when the DM is created
+-- ============================================================================
+-- `members_insert` (20260722000000:88) never checked `kind`, so the admin of a DM —
+-- which get_or_create_dm makes the person who opened it — could add any accepted friend
+-- to it. Harmless while nothing could delete a message; section 5 makes it a way to
+-- destroy the other party's history through an account the attacker controls. Verified
+-- end to end as `authenticated`: the insert was allowed, and the puppet's deletion took
+-- the two-party thread with it.
+--
+-- The fix belongs here rather than only in the delete, because this is where the illegal
+-- state is created: a `dm` has exactly the two people who chose each other, for its whole
+-- life. The delete keeps its own count check anyway (section 5) — a `dm` with three
+-- members may already exist from before this migration.
+--
+-- Not a narrowing of any legitimate path. get_or_create_dm and create_group are SECURITY
+-- DEFINER, so RLS never applied to their inserts; the one client-side direct insert is
+-- addGroupMember() (src/services/conversations.ts:124), reached only from GroupInfoScreen.
+--
+-- Every other clause is reproduced verbatim from 20260722000000 — this adds one term.
+-- `drop policy if exists` first: permissive policies OR together.
+
+drop policy if exists "members_insert" on public.conversation_members;
+
+create policy "members_insert" on public.conversation_members
+  for insert to authenticated
+  with check (
+    exists (
+      select 1 from public.conversation_members cm
+      where cm.conversation_id = conversation_members.conversation_id
+        and cm.user_id = auth.uid()
+        and cm.role = 'admin'
+    )
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.user_a_id = auth.uid() and f.user_b_id = conversation_members.user_id)
+          or (f.user_b_id = auth.uid() and f.user_a_id = conversation_members.user_id))
+    )
+    and coalesce(conversation_members.role, 'member') = 'member'
+    and exists (
+      select 1 from public.conversations c
+      where c.id = conversation_members.conversation_id
+        and c.kind = 'group'
+    )
+  );
+
+
+-- ============================================================================
+-- 7. Drift check
 -- ============================================================================
 -- A half-applied perimeter that looks applied is worse than a failed apply.
 
@@ -330,6 +400,19 @@ begin
   if v_bad is not null then
     raise exception
       'LIV-74 aborted: deleted_accounts must have no policies, found: %', v_bad;
+  end if;
+
+  -- RLS does not gate TRUNCATE — only the table privilege does, and the two assertions
+  -- above would stay green while the ledger was emptied in one statement.
+  select string_agg(format('%s:%s', r, p), ', ')
+    into v_bad
+    from unnest(array['anon', 'authenticated']) r,
+         unnest(array['TRUNCATE', 'DELETE', 'UPDATE', 'INSERT', 'SELECT']) p
+   where has_table_privilege(r, 'public.deleted_accounts', p);
+  if v_bad is not null then
+    raise exception
+      'LIV-74 aborted: a client role holds table privileges on deleted_accounts (RLS does not cover TRUNCATE): %',
+      v_bad;
   end if;
 
   if not exists (
@@ -398,5 +481,19 @@ begin
   ) then
     raise exception
       'LIV-74 aborted: delete_my_account must remain SECURITY DEFINER with no parameter';
+  end if;
+
+  -- Section 6, name-independently: no INSERT policy on conversation_members may admit a
+  -- row without constraining the conversation's kind. A second permissive policy would OR
+  -- with the scoped one and reopen the whole finding.
+  select string_agg(polname, ', ') into v_bad
+    from pg_policy
+   where polrelid = 'public.conversation_members'::regclass
+     and polcmd in ('a', '*')
+     and pg_get_expr(polwithcheck, polrelid) not like '%kind%';
+  if v_bad is not null then
+    raise exception
+      'LIV-74 aborted: an INSERT policy on conversation_members does not constrain conversations.kind: %',
+      v_bad;
   end if;
 end $$;

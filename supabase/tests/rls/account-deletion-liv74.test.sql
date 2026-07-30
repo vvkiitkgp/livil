@@ -37,8 +37,9 @@ begin
   execute stmt;
   return true;
 exception
-  when insufficient_privilege then return false;
-  when unique_violation      then return false;
+  when insufficient_privilege  then return false;
+  when unique_violation        then return false;
+  when invalid_parameter_value then return false;
 end $$;
 
 grant usage on schema auth to authenticated;
@@ -66,7 +67,8 @@ insert into conversations (id, kind) values
   ('c7000000-0000-0000-0000-000000000002', 'group'),   -- departing + mate
   ('c7000000-0000-0000-0000-000000000003', 'dm'),      -- stranger + other, a third party
   ('c7000000-0000-0000-0000-000000000004', 'group'),   -- departing is the only sender
-  ('c7000000-0000-0000-0000-000000000005', 'group');   -- the mate's message is long
+  ('c7000000-0000-0000-0000-000000000005', 'group'),   -- the mate's message is long
+  ('c7000000-0000-0000-0000-000000000006', 'dm');      -- a THREE-member 'dm' (see #10a)
 
 insert into conversation_members (conversation_id, user_id, role) values
   ('c7000000-0000-0000-0000-000000000001', 'd7000000-0000-0000-0000-000000000001', 'member'),
@@ -78,7 +80,14 @@ insert into conversation_members (conversation_id, user_id, role) values
   ('c7000000-0000-0000-0000-000000000004', 'd7000000-0000-0000-0000-000000000001', 'admin'),
   ('c7000000-0000-0000-0000-000000000004', 'd7000000-0000-0000-0000-000000000003', 'member'),
   ('c7000000-0000-0000-0000-000000000005', 'd7000000-0000-0000-0000-000000000001', 'member'),
-  ('c7000000-0000-0000-0000-000000000005', 'd7000000-0000-0000-0000-000000000003', 'member');
+  ('c7000000-0000-0000-0000-000000000005', 'd7000000-0000-0000-0000-000000000003', 'member'),
+  -- The departing user was ADDED to someone else's two-party thread. Inserted as the
+  -- table owner, so RLS is not applied — this is the shape that can already exist in a
+  -- database written before the members_insert fix, which is exactly what the delete's
+  -- own member count has to defend against.
+  ('c7000000-0000-0000-0000-000000000006', 'd7000000-0000-0000-0000-000000000004', 'member'),
+  ('c7000000-0000-0000-0000-000000000006', 'd7000000-0000-0000-0000-000000000005', 'member'),
+  ('c7000000-0000-0000-0000-000000000006', 'd7000000-0000-0000-0000-000000000001', 'member');
 
 -- created_at is explicit throughout. It defaults to now(), which is the TRANSACTION
 -- timestamp — every fixture row would share one value and "the most recent remaining
@@ -116,6 +125,15 @@ insert into messages (id, conversation_id, sender_id, kind, body, created_at) va
    'd7000000-0000-0000-0000-000000000001', 'text',
    'SECRET LAST WORD nobody else should keep a copy of',
    timestamptz '2026-01-01 00:00:06+00');
+
+-- The two other parties' messages in the three-member 'dm'.
+insert into messages (id, conversation_id, sender_id, kind, body, created_at) values
+  ('e7000000-0000-0000-0000-00000000000b', 'c7000000-0000-0000-0000-000000000006',
+   'd7000000-0000-0000-0000-000000000004', 'text', 'stranger''s half of a private thread',
+   timestamptz '2026-01-01 00:00:10+00'),
+  ('e7000000-0000-0000-0000-00000000000c', 'c7000000-0000-0000-0000-000000000006',
+   'd7000000-0000-0000-0000-000000000005', 'text', 'other''s half of a private thread',
+   timestamptz '2026-01-01 00:00:11+00');
 
 -- A group where the departing user is the only sender at all, so the recompute has
 -- nothing left to fall back to.
@@ -218,6 +236,22 @@ select pg_temp.assert(
   'liv74 #10: a DM between two OTHER users is untouched',
   (select count(*) = 1 from messages
     where conversation_id='c7000000-0000-0000-0000-000000000003'), true);
+
+-- ── A `dm` is only a two-party thread if it has two parties ─────────────────
+-- The security review's finding: `kind = 'dm'` was taken to mean "the two people who
+-- chose each other". Adding a third person made deleting an account a way to destroy two
+-- strangers' history. Section 6 closes the door; these assert the delete is safe even
+-- when the door was already open, which is the case for any row written before it.
+select pg_temp.assert(
+  'liv74 #10a: a three-member ''dm'' the deleter was ADDED to SURVIVES',
+  exists(select 1 from conversations where id='c7000000-0000-0000-0000-000000000006'), true);
+
+select pg_temp.assert(
+  'liv74 #10b: ...with both other parties'' messages intact',
+  (select count(*) = 2 from messages
+    where conversation_id='c7000000-0000-0000-0000-000000000006'
+      and body in ('stranger''s half of a private thread',
+                   'other''s half of a private thread')), true);
 
 select pg_temp.assert(
   'liv74 #11: the mate''s reaction on the deleted message went with it',
@@ -359,6 +393,48 @@ select pg_temp.assert(
   'liv74 #24: ...and no profile holds it',
   exists(select 1 from profiles where username='liv74_departing'), false);
 
+-- ── The reservation cannot be walked around ─────────────────────────────────
+-- `btrim` with one argument strips SPACES only, so a trailing tab, newline or U+00A0
+-- normalises to something that is not the reserved name and sails past the ledger
+-- comparison; a Cyrillic `а` does the same without any whitespace at all. Run here, while
+-- `liv74_departing` is reserved and held by nobody, so a denial cannot be the unique
+-- constraint. Two write paths reach this without ever seeing claim_username's regex:
+-- handle_new_user copies the signup metadata verbatim, and profiles_update_own permits a
+-- direct PATCH while username_set is false.
+set local role authenticated;
+select pg_temp.assert(
+  'liv74 #24a: a TAB-suffixed lookalike of the reserved username is DENIED',
+  pg_temp.allows(format($$insert into profiles (id, username, username_set)
+                          values ('d7000000-0000-0000-0000-0000000000a2', %L, true)$$,
+                        e'liv74_departing\t')), false);
+select pg_temp.assert(
+  'liv74 #24b: a NEWLINE-suffixed lookalike is DENIED',
+  pg_temp.allows(format($$insert into profiles (id, username, username_set)
+                          values ('d7000000-0000-0000-0000-0000000000a2', %L, true)$$,
+                        e'liv74_departing\n')), false);
+select pg_temp.assert(
+  'liv74 #24c: a NO-BREAK-SPACE-suffixed lookalike is DENIED',
+  pg_temp.allows(format($$insert into profiles (id, username, username_set)
+                          values ('d7000000-0000-0000-0000-0000000000a2', %L, true)$$,
+                        'liv74_departing' || U&'\00a0')), false);
+select pg_temp.assert(
+  'liv74 #24d: a Cyrillic-homoglyph lookalike is DENIED',
+  pg_temp.allows(format($$insert into profiles (id, username, username_set)
+                          values ('d7000000-0000-0000-0000-0000000000a2', %L, true)$$,
+                        'liv74_dep' || U&'\0430' || 'rting')), false);
+-- Case folding was always handled; asserted as the control that makes the four above
+-- meaningful rather than a general "profiles rejects everything" result.
+select pg_temp.assert(
+  'liv74 #24e: an UPPERCASE spelling of the reserved username is DENIED',
+  pg_temp.allows($$insert into profiles (id, username, username_set)
+                   values ('d7000000-0000-0000-0000-0000000000a2', 'LIV74_DEPARTING', true)$$),
+  false);
+reset role;
+
+select pg_temp.assert(
+  'liv74 #24f: none of the lookalikes landed',
+  (select count(*) = 0 from profiles where lower(username) like 'liv74_dep%'), true);
+
 select pg_temp.set_user('d7000000-0000-0000-0000-0000000000a1');
 set local role authenticated;
 select pg_temp.assert(
@@ -381,5 +457,72 @@ select pg_temp.assert(
 select pg_temp.assert(
   'liv74 #28: a username held by a LIVE account is still unavailable',
   is_username_available('liv74_mate'), false);
+
+
+-- ============================================================================
+-- DM membership is fixed when the DM is created
+-- ============================================================================
+-- The finding, at its root: `members_insert` never looked at `kind`, so the admin of a DM
+-- — which get_or_create_dm makes whoever opened it — could add an accepted friend to
+-- another person's two-party thread. Replayed here as `authenticated` against the real
+-- policy, not against a copy of its predicate.
+insert into auth.users (id, email) values
+  ('d7000000-0000-0000-0000-0000000000b1', 'attacker@example.invalid'),
+  ('d7000000-0000-0000-0000-0000000000b2', 'victim@example.invalid'),
+  ('d7000000-0000-0000-0000-0000000000b3', 'puppet@example.invalid');
+insert into profiles (id, username, username_set) values
+  ('d7000000-0000-0000-0000-0000000000b1', 'liv74_attacker', true),
+  ('d7000000-0000-0000-0000-0000000000b2', 'liv74_victim',   true),
+  ('d7000000-0000-0000-0000-0000000000b3', 'liv74_puppet',   true);
+insert into friendships (user_a_id, user_b_id, status, requested_by) values
+  ('d7000000-0000-0000-0000-0000000000b1', 'd7000000-0000-0000-0000-0000000000b2', 'accepted',
+   'd7000000-0000-0000-0000-0000000000b1'),
+  ('d7000000-0000-0000-0000-0000000000b1', 'd7000000-0000-0000-0000-0000000000b3', 'accepted',
+   'd7000000-0000-0000-0000-0000000000b1');
+
+-- Through the real RPC, so the attacker is the DM's admin exactly as in production.
+select pg_temp.set_user('d7000000-0000-0000-0000-0000000000b1');
+select get_or_create_dm('d7000000-0000-0000-0000-0000000000b1',
+                        'd7000000-0000-0000-0000-0000000000b2') as dm_id \gset
+
+-- get_or_create_dm is SECURITY DEFINER, so RLS never applied to its inserts. If that were
+-- wrong, adding `kind = 'group'` to members_insert would have broken DM creation outright
+-- — this is the assertion that would have caught it.
+select pg_temp.assert(
+  'liv74 #29: get_or_create_dm still creates a DM with both parties in it',
+  (select count(*) = 2 from conversation_members where conversation_id = :'dm_id'), true);
+
+set local role authenticated;
+select pg_temp.assert(
+  'liv74 #30: the DM''s admin CANNOT add a third person to it',
+  pg_temp.allows(format($$insert into conversation_members (conversation_id, user_id, role)
+                          values (%L, 'd7000000-0000-0000-0000-0000000000b3', 'member')$$,
+                        :'dm_id')), false);
+reset role;
+
+select pg_temp.assert(
+  'liv74 #31: the DM still has exactly its two parties',
+  (select count(*) = 2 from conversation_members where conversation_id = :'dm_id'), true);
+
+-- The policy must still admit the write it exists to permit. If this goes red the fix has
+-- overshot and #30 would be passing for the wrong reason.
+insert into conversations (id, kind) values
+  ('c7000000-0000-0000-0000-000000000007', 'group');
+insert into conversation_members (conversation_id, user_id, role) values
+  ('c7000000-0000-0000-0000-000000000007', 'd7000000-0000-0000-0000-0000000000b1', 'admin');
+
+set local role authenticated;
+select pg_temp.assert(
+  'liv74 #32: the same admin CAN still add the same friend to a GROUP',
+  pg_temp.allows($$insert into conversation_members (conversation_id, user_id, role)
+                   values ('c7000000-0000-0000-0000-000000000007',
+                           'd7000000-0000-0000-0000-0000000000b3', 'member')$$), true);
+reset role;
+
+select pg_temp.assert(
+  'liv74 #33: ...and that member is really in the group',
+  exists(select 1 from conversation_members
+          where conversation_id='c7000000-0000-0000-0000-000000000007'
+            and user_id='d7000000-0000-0000-0000-0000000000b3'), true);
 
 rollback;
