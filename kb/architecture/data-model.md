@@ -340,6 +340,7 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 
 - `after_message_insert` — after insert (`20260528000000_chat_jam.sql`)
 - `trg_messages_freeze_identity` — before update (`20260729000000_liv78_msg_update_with_check.sql`)
+- `after_message_delete` — after delete (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
 
 ### `playlist_posts`
 
@@ -783,6 +784,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
+| `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |

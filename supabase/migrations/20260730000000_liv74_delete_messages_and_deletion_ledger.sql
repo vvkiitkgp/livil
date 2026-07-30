@@ -19,7 +19,7 @@
 -- `messages_reply_to_id_fkey` is NO ACTION, so deleting a message another member
 -- replied to aborts with 23503 — and no foreign-key walk from auth.users can see it,
 -- because the RPC's DELETE is explicit rather than a cascade. CASCADE here would
--- remove that member's reply, which is the one thing section 3 must not do.
+-- remove that member's reply, which is the one thing section 5 must not do.
 
 alter table public.messages
   drop constraint if exists messages_reply_to_id_fkey,
@@ -28,12 +28,91 @@ alter table public.messages
 
 
 -- ============================================================================
--- 2. The deletion ledger
+-- 2. The delete side of the conversation preview
+-- ============================================================================
+-- `after_message_insert` maintains conversations.last_message_at/_preview and there was
+-- no counterpart for a message going away, so a departing user's last group message
+-- survived them in the preview every member reads. Fixed generally rather than inside the
+-- RPC: deleteMessage() (LIV-81) would leave the same stale row.
+--
+-- conversations_freeze_derived needs no carve-out. Its derived-field guard bites only at
+-- pg_trigger_depth() = 1, and a trigger-issued UPDATE arrives at depth 2 — the same
+-- mechanism the insert side already relies on. Verified, not assumed.
+--
+-- FOR EACH STATEMENT over a transition table: a departing user's group messages go in one
+-- statement, and a per-row trigger would issue one UPDATE per message against a
+-- conversation row that, on the DM path, is itself mid-delete.
+
+create or replace function public.message_preview(p_kind text, p_body text)
+returns text
+language sql
+immutable
+as $$
+  select case p_kind
+           when 'text'        then left(p_body, 80)
+           when 'track_share' then '🎵 Shared a track'
+           when 'jam_invite'  then '🎶 Started a Jam Room'
+           when 'sticker'     then '🖼 Sent a sticker'
+           when 'system'      then null
+           else left(p_body, 80)
+         end
+$$;
+
+-- Rewritten only to call the shared preview. Two copies of that CASE would drift, and the
+-- drift would be invisible: a message would read one way when sent and another after a
+-- later one was deleted.
+create or replace function public.update_conversation_last_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.conversations
+     set last_message_at      = new.created_at,
+         last_message_preview = public.message_preview(new.kind, new.body)
+   where id = new.conversation_id;
+  return new;
+end $$;
+
+create or replace function public.recompute_conversation_last_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  update public.conversations c
+     set last_message_at      = m.created_at,
+         last_message_preview = public.message_preview(m.kind, m.body)
+    from (select distinct conversation_id from deleted) d
+    left join lateral (
+           select created_at, kind, body
+             from public.messages
+            where conversation_id = d.conversation_id
+            order by created_at desc, id desc
+            limit 1
+         ) m on true
+   where c.id = d.conversation_id;
+  return null;
+end $$;
+
+drop trigger if exists after_message_delete on public.messages;
+
+create trigger after_message_delete
+  after delete on public.messages
+  referencing old table as deleted
+  for each statement
+  execute function public.recompute_conversation_last_message();
+
+
+-- ============================================================================
+-- 3. The deletion ledger
 -- ============================================================================
 -- A HASH of the email, never the address: retaining plaintext contact data after a
 -- deletion request is the thing the deletion promise exists to prevent. The hash still
 -- answers "has this address deleted before?" and identifies the one account allowed to
--- reclaim the username (section 3).
+-- reclaim the username (section 4).
 --
 -- Both payload columns are nullable on purpose. A NOT NULL here would let a user with no
 -- email, or no profile row, abort their own deletion — the failure class this schema has
@@ -73,7 +152,7 @@ $$;
 
 
 -- ============================================================================
--- 3. The recorded username is reserved, and released only to the same address
+-- 4. The recorded username is reserved, and released only to the same address
 -- ============================================================================
 -- Enforced by a trigger on `profiles`, not inside claim_username, because
 -- `profiles_update_own` lets any account with `username_set = false` write `username`
@@ -162,7 +241,7 @@ end $$;
 
 
 -- ============================================================================
--- 4. delete_my_account()
+-- 5. delete_my_account()
 -- ============================================================================
 -- Unchanged from 20260724000000's version except for the ledger write and the two
 -- deletes. Still no parameter, so the account deleted is always auth.uid() and there is
@@ -232,7 +311,7 @@ grant  execute on function public.delete_my_account() to authenticated;
 
 
 -- ============================================================================
--- 5. Drift check
+-- 6. Drift check
 -- ============================================================================
 -- A half-applied perimeter that looks applied is worse than a failed apply.
 
@@ -261,6 +340,28 @@ begin
   ) then
     raise exception
       'LIV-74 aborted: trg_enforce_username_reservation is not installed on profiles';
+  end if;
+
+  -- Both sides of the preview, asserted together: an insert maintainer with no delete
+  -- counterpart is the defect this section fixes.
+  if not exists (
+    select 1 from pg_trigger
+     where tgrelid = 'public.messages'::regclass
+       and tgname = 'after_message_delete'
+       and not tgisinternal
+  ) then
+    raise exception
+      'LIV-74 aborted: after_message_delete is not installed, so a deleted message stays in the conversation preview';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+     where tgrelid = 'public.messages'::regclass
+       and tgname = 'after_message_insert'
+       and not tgisinternal
+  ) then
+    raise exception
+      'LIV-74 aborted: after_message_insert is missing, so the preview is no longer maintained on send';
   end if;
 
   -- The property section 1 exists to establish, by name-independent means, and widened to

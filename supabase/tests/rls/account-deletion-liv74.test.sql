@@ -64,7 +64,9 @@ insert into profiles (id, username, username_set) values
 insert into conversations (id, kind) values
   ('c7000000-0000-0000-0000-000000000001', 'dm'),      -- departing + friend
   ('c7000000-0000-0000-0000-000000000002', 'group'),   -- departing + mate
-  ('c7000000-0000-0000-0000-000000000003', 'dm');      -- stranger + other, a third party
+  ('c7000000-0000-0000-0000-000000000003', 'dm'),      -- stranger + other, a third party
+  ('c7000000-0000-0000-0000-000000000004', 'group'),   -- departing is the only sender
+  ('c7000000-0000-0000-0000-000000000005', 'group');   -- the mate's message is long
 
 insert into conversation_members (conversation_id, user_id, role) values
   ('c7000000-0000-0000-0000-000000000001', 'd7000000-0000-0000-0000-000000000001', 'member'),
@@ -72,33 +74,83 @@ insert into conversation_members (conversation_id, user_id, role) values
   ('c7000000-0000-0000-0000-000000000002', 'd7000000-0000-0000-0000-000000000001', 'member'),
   ('c7000000-0000-0000-0000-000000000002', 'd7000000-0000-0000-0000-000000000003', 'member'),
   ('c7000000-0000-0000-0000-000000000003', 'd7000000-0000-0000-0000-000000000004', 'member'),
-  ('c7000000-0000-0000-0000-000000000003', 'd7000000-0000-0000-0000-000000000005', 'member');
+  ('c7000000-0000-0000-0000-000000000003', 'd7000000-0000-0000-0000-000000000005', 'member'),
+  ('c7000000-0000-0000-0000-000000000004', 'd7000000-0000-0000-0000-000000000001', 'admin'),
+  ('c7000000-0000-0000-0000-000000000004', 'd7000000-0000-0000-0000-000000000003', 'member'),
+  ('c7000000-0000-0000-0000-000000000005', 'd7000000-0000-0000-0000-000000000001', 'member'),
+  ('c7000000-0000-0000-0000-000000000005', 'd7000000-0000-0000-0000-000000000003', 'member');
 
-insert into messages (id, conversation_id, sender_id, kind, body) values
+-- created_at is explicit throughout. It defaults to now(), which is the TRANSACTION
+-- timestamp — every fixture row would share one value and "the most recent remaining
+-- message" would be decided by the id tie-break instead of by what the test means.
+insert into messages (id, conversation_id, sender_id, kind, body, created_at) values
   ('e7000000-0000-0000-0000-000000000001', 'c7000000-0000-0000-0000-000000000001',
-   'd7000000-0000-0000-0000-000000000001', 'text', 'dm sent by the departing user'),
+   'd7000000-0000-0000-0000-000000000001', 'text', 'dm sent by the departing user',
+   timestamptz '2026-01-01 00:00:00+00'),
   ('e7000000-0000-0000-0000-000000000002', 'c7000000-0000-0000-0000-000000000001',
-   'd7000000-0000-0000-0000-000000000002', 'text', 'dm sent by the friend'),
-  ('e7000000-0000-0000-0000-000000000003', 'c7000000-0000-0000-0000-000000000002',
-   'd7000000-0000-0000-0000-000000000001', 'text', 'group message by the departing user'),
+   'd7000000-0000-0000-0000-000000000002', 'text', 'dm sent by the friend',
+   timestamptz '2026-01-01 00:00:01+00'),
   ('e7000000-0000-0000-0000-000000000004', 'c7000000-0000-0000-0000-000000000002',
-   'd7000000-0000-0000-0000-000000000003', 'text', 'group message by the mate'),
+   'd7000000-0000-0000-0000-000000000003', 'text', 'group message by the mate',
+   timestamptz '2026-01-01 00:00:02+00'),
+  ('e7000000-0000-0000-0000-000000000003', 'c7000000-0000-0000-0000-000000000002',
+   'd7000000-0000-0000-0000-000000000001', 'text', 'group message by the departing user',
+   timestamptz '2026-01-01 00:00:03+00'),
   ('e7000000-0000-0000-0000-000000000006', 'c7000000-0000-0000-0000-000000000003',
-   'd7000000-0000-0000-0000-000000000004', 'text', 'a third party''s DM');
+   'd7000000-0000-0000-0000-000000000004', 'text', 'a third party''s DM',
+   timestamptz '2026-01-01 00:00:04+00');
 
 -- The mate's REPLY to the departing user's group message. messages_reply_to_id_fkey was
 -- NO ACTION, so before LIV-74 §1 this row alone made the delete abort with 23503 — and it
 -- is invisible to the cascade walk in 20260722200000, because the delete is explicit.
-insert into messages (id, conversation_id, sender_id, kind, body, reply_to_id) values
+insert into messages (id, conversation_id, sender_id, kind, body, reply_to_id, created_at) values
   ('e7000000-0000-0000-0000-000000000005', 'c7000000-0000-0000-0000-000000000002',
    'd7000000-0000-0000-0000-000000000003', 'text', 'the mate quoting them',
-   'e7000000-0000-0000-0000-000000000003');
+   'e7000000-0000-0000-0000-000000000003', timestamptz '2026-01-01 00:00:05+00');
+
+-- The group whose LAST message is the departing user's. This is the row that carries the
+-- leak: `after_message_insert` copies the body into conversations.last_message_preview,
+-- which every member reads, and nothing recomputed it when the message went away.
+insert into messages (id, conversation_id, sender_id, kind, body, created_at) values
+  ('e7000000-0000-0000-0000-000000000007', 'c7000000-0000-0000-0000-000000000002',
+   'd7000000-0000-0000-0000-000000000001', 'text',
+   'SECRET LAST WORD nobody else should keep a copy of',
+   timestamptz '2026-01-01 00:00:06+00');
+
+-- A group where the departing user is the only sender at all, so the recompute has
+-- nothing left to fall back to.
+insert into messages (id, conversation_id, sender_id, kind, body, created_at) values
+  ('e7000000-0000-0000-0000-000000000008', 'c7000000-0000-0000-0000-000000000004',
+   'd7000000-0000-0000-0000-000000000001', 'text', 'the only message this group ever had',
+   timestamptz '2026-01-01 00:00:07+00');
+
+-- A group whose surviving message is longer than the 80-character preview cap, so the
+-- recompute has to truncate it exactly as the insert side does.
+insert into messages (id, conversation_id, sender_id, kind, body, created_at) values
+  ('e7000000-0000-0000-0000-000000000009', 'c7000000-0000-0000-0000-000000000005',
+   'd7000000-0000-0000-0000-000000000003', 'text',
+   repeat('the mate wrote a very long message. ', 8),
+   timestamptz '2026-01-01 00:00:08+00'),
+  ('e7000000-0000-0000-0000-00000000000a', 'c7000000-0000-0000-0000-000000000005',
+   'd7000000-0000-0000-0000-000000000001', 'text', 'and the departing user answered last',
+   timestamptz '2026-01-01 00:00:09+00');
 
 -- A reaction by someone else on a message that is about to be deleted, and one by the
 -- departing user on a message that survives.
 insert into message_reactions (message_id, user_id, emoji) values
   ('e7000000-0000-0000-0000-000000000003', 'd7000000-0000-0000-0000-000000000003', '🔥'),
   ('e7000000-0000-0000-0000-000000000004', 'd7000000-0000-0000-0000-000000000001', '🎵');
+
+-- Preconditions. Without these the preview assertions after the deletion could pass
+-- against a conversation that never held the departing user's text in the first place.
+select pg_temp.assert(
+  'liv74 #0a: the group preview holds the departing user''s last message BEFORE deletion',
+  (select last_message_preview = 'SECRET LAST WORD nobody else should keep a copy of'
+     from conversations where id='c7000000-0000-0000-0000-000000000002'), true);
+select pg_temp.assert(
+  'liv74 #0b: ...and so does the group where they are the only sender',
+  (select last_message_preview = 'the only message this group ever had'
+     from conversations where id='c7000000-0000-0000-0000-000000000004'), true);
 
 
 -- ============================================================================
@@ -175,6 +227,44 @@ select pg_temp.assert(
 select pg_temp.assert(
   'liv74 #12: the mate''s message the departing user reacted to still stands',
   exists(select 1 from messages where id='e7000000-0000-0000-0000-000000000004'), true);
+
+
+-- ── The conversation preview is a COPY of the message body ──────────────────
+-- Deleting the row is not deleting the text: `after_message_insert` writes up to 80
+-- characters of it into conversations.last_message_preview, which every member of the
+-- group reads. Two forms, because they fail differently — the exact recomputed value, and
+-- the absence of any fragment of what was deleted.
+
+select pg_temp.assert(
+  'liv74 #12a: no fragment of the departing user''s message survives in the group preview',
+  (select last_message_preview like '%SECRET%' or last_message_preview like '%nobody else%'
+     from conversations where id='c7000000-0000-0000-0000-000000000002'), false);
+
+select pg_temp.assert(
+  'liv74 #12b: the group preview recomputed to the newest REMAINING message, timestamp included',
+  (select last_message_preview = 'the mate quoting them'
+      and last_message_at = timestamptz '2026-01-01 00:00:05+00'
+     from conversations where id='c7000000-0000-0000-0000-000000000002'), true);
+
+-- NULL, not the empty string and not the stale value. A conversation with no messages has
+-- no last message, and the client renders a blank row rather than a ghost of a deleted one.
+select pg_temp.assert(
+  'liv74 #12c: a group that lost ALL its messages has both fields NULL',
+  (select last_message_at is null and last_message_preview is null
+     from conversations where id='c7000000-0000-0000-0000-000000000004'), true);
+
+-- The recompute must truncate exactly as the insert side does, or a message would read one
+-- way when sent and another after a later one was deleted.
+select pg_temp.assert(
+  'liv74 #12d: the recomputed preview is capped at 80 characters, like the insert side',
+  (select last_message_preview = left(repeat('the mate wrote a very long message. ', 8), 80)
+      and length(last_message_preview) = 80
+     from conversations where id='c7000000-0000-0000-0000-000000000005'), true);
+
+select pg_temp.assert(
+  'liv74 #12e: a third party''s conversation preview is untouched',
+  (select last_message_preview = 'a third party''s DM'
+     from conversations where id='c7000000-0000-0000-0000-000000000003'), true);
 
 
 -- ============================================================================
