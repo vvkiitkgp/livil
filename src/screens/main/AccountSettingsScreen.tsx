@@ -6,7 +6,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
-import { Button } from '../../components/Button';
+import { SettingsRow } from '../../components/SettingsRow';
+import { SettingsSection } from '../../components/SettingsSection';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { supabase } from '../../../lib/supabase';
@@ -47,24 +48,21 @@ export default function AccountSettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <Button
-          label="Edit profile"
-          variant="primary"
-          size="md"
-          fullWidth
-          style={styles.row}
-          onPress={() => navigation.navigate('EditProfile')}
-        />
-        <Button
-          label="Sign out"
-          variant="secondary"
-          size="md"
-          fullWidth
-          style={styles.row}
-          onPress={() => setSignOutOpen(true)}
-        />
-        {/* LIV-74's Delete account row goes here, and only here — the deletion
-            path is deliberately Profile → Settings → Account settings → Delete. */}
+        <SettingsSection>
+          <SettingsRow
+            label="Edit profile"
+            onPress={() => navigation.navigate('EditProfile')}
+          />
+          <SettingsRow
+            label="Sign out"
+            chevron={false}
+            onPress={() => setSignOutOpen(true)}
+          />
+          {/* LIV-74's Delete account row goes here, and only here — the deletion
+              path is deliberately Profile → Settings → Account settings → Delete.
+              It is `<SettingsRow destructive chevron={false} …>`: a red label on
+              an otherwise identical row. */}
+        </SettingsSection>
       </ScrollView>
 
       <ConfirmActionModal
@@ -101,6 +99,5 @@ const styles = StyleSheet.create({
   headerBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  body: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
-  row: { marginBottom: 12 },
+  body: { paddingTop: 16, paddingBottom: 40 },
 });

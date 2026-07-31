@@ -6,7 +6,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
-import { Button } from '../../components/Button';
+import { SettingsRow } from '../../components/SettingsRow';
+import { SettingsSection } from '../../components/SettingsSection';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -30,14 +31,12 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <Text style={styles.sectionLabel}>Account</Text>
-        <Button
-          label="Account settings"
-          variant="secondary"
-          size="md"
-          fullWidth
-          onPress={() => navigation.navigate('AccountSettings')}
-        />
+        <SettingsSection title="Account">
+          <SettingsRow
+            label="Account settings"
+            onPress={() => navigation.navigate('AccountSettings')}
+          />
+        </SettingsSection>
       </ScrollView>
     </SafeAreaView>
   );
@@ -56,13 +55,5 @@ const styles = StyleSheet.create({
   headerBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  body: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
-  sectionLabel: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
+  body: { paddingTop: 16, paddingBottom: 40 },
 });

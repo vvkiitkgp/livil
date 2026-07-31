@@ -90,7 +90,7 @@ export type IconName =
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
-  | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings'
+  | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
   | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email'
   // tab bar
@@ -146,6 +146,9 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   clipEnd: [CaretLineLeft, 'bold'],
   minusCircle: [MinusCircle, 'regular'],
   settings: [Gear, 'regular'],
+  // Same glyph as `forward`, kept separate: a list-row disclosure wants a
+  // lighter weight and should be restyleable without touching nav arrows.
+  disclosure: [CaretRight, 'regular'],
   // status
   check: [Check, 'bold'],
   checkCircle: [CheckCircle, 'fill'],

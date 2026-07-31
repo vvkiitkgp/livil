@@ -97,6 +97,19 @@ describe('AccountSettingsScreen', () => {
     expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores a second confirm while the first is still in flight', async () => {
+    let release!: (v: unknown) => void;
+    mockSignOut.mockImplementationOnce(() => new Promise(r => { release = r; }));
+    const { tree } = mount();
+    act(() => { pressable(tree, 'Sign out').props.onPress(); });
+    // Re-read between calls: the first sets signOutBusy, and only the closure
+    // rendered after that carries the guard.
+    act(() => { void confirm(tree).props.onConfirm(); });
+    act(() => { void confirm(tree).props.onConfirm(); });
+    await act(async () => { release({ error: null }); });
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+
   it('stops playback before signing out', async () => {
     const { tree, ctx } = mount();
     const pause = jest.spyOn(ctx, 'pauseAll');
