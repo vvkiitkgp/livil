@@ -21,6 +21,13 @@ const labelStyle = (t: TestRenderer.ReactTestRenderer, label: string) =>
     t.root.findAllByType(Text).find(n => n.props.children === label)!.props.style,
   );
 
+/** accessibilityLabel excludes the SettingsRow composite, which also carries onPress. */
+const pressableStyle = (t: TestRenderer.ReactTestRenderer, label: string) =>
+  t.root.findAll(
+    n => typeof n.props?.onPress === 'function' && n.props?.accessibilityLabel === label,
+    { deep: false },
+  )[0]!.props.style;
+
 const chevrons = (t: TestRenderer.ReactTestRenderer) =>
   t.root.findAll(n => n.props?.name === 'disclosure', { deep: false });
 
@@ -41,9 +48,9 @@ describe('SettingsRow', () => {
     const danger = render(<SettingsRow label="Delete account" destructive onPress={() => {}} />);
     expect(labelStyle(plain, 'Sign out').color).toBe(COLORS.white);
     expect(labelStyle(danger, 'Delete account').color).toBe(COLORS.error);
-    expect(StyleSheet.flatten(danger.root.findAll(
-      n => typeof n.props?.onPress === 'function', { deep: false },
-    )[0]!.props.style({ pressed: false })).backgroundColor).toBeUndefined();
+    const idle = StyleSheet.flatten(pressableStyle(danger, 'Delete account')({ pressed: false }));
+    expect(idle.backgroundColor).toBeUndefined();
+    expect(idle.borderWidth).toBeUndefined();
   });
 
   it('shows a disclosure chevron on navigation rows and none on action rows', () => {
@@ -53,7 +60,7 @@ describe('SettingsRow', () => {
 
   it('tints the whole row while pressed', () => {
     const t = render(<SettingsRow label="Edit profile" onPress={() => {}} />);
-    const style = t.root.findAll(n => typeof n.props?.onPress === 'function', { deep: false })[0]!.props.style;
+    const style = pressableStyle(t, 'Edit profile');
     expect(StyleSheet.flatten(style({ pressed: true })).backgroundColor).toBe(COLORS.surface);
     expect(StyleSheet.flatten(style({ pressed: false })).backgroundColor).toBeUndefined();
   });

@@ -104,8 +104,8 @@ describe('AccountSettingsScreen', () => {
     act(() => { pressable(tree, 'Sign out').props.onPress(); });
     // Re-read between calls: the first sets signOutBusy, and only the closure
     // rendered after that carries the guard.
-    act(() => { void confirm(tree).props.onConfirm(); });
-    act(() => { void confirm(tree).props.onConfirm(); });
+    act(() => { confirm(tree).props.onConfirm(); });
+    act(() => { confirm(tree).props.onConfirm(); });
     await act(async () => { release({ error: null }); });
     expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
