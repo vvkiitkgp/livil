@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-139 TypeScript file(s) under `src/`, 41,504 lines.
+135 TypeScript file(s) under `src/`, 41,170 lines.
 
 ## Size hotspots
 
@@ -32,7 +32,7 @@ reading alone (Constitution P28).
 | `src/components/PostCard.tsx` | 1194 |
 | `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1036 |
+| `src/screens/main/ProfileScreen.tsx` | 1080 |
 | `src/components/FloatingPlayer.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
 | `src/screens/main/UserProfileScreen.tsx` | 810 |
@@ -66,8 +66,6 @@ case the call fails silently wherever its result is discarded.
 | `Following` | `undefined` |
 | `RecentlyPlayed` | `undefined` |
 | `EditProfile` | `undefined` |
-| `Settings` | `undefined` |
-| `AccountSettings` | `undefined` |
 | `CreatePlaylist` | `{ initialPost?: { postId: string` |
 | `title` | `string` |
 | `artistName` | `string` |
@@ -88,7 +86,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-35 file(s), 17,100 lines.
+31 file(s), 16,786 lines.
 
 | File | Lines |
 |---|---:|
@@ -96,7 +94,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ConversationScreen.tsx` | 1433 |
 | `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1036 |
+| `src/screens/main/ProfileScreen.tsx` | 1080 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
 | `src/screens/main/UserProfileScreen.tsx` | 810 |
 | `src/screens/main/RepostScreen.tsx` | 766 |
@@ -123,14 +121,10 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/__tests__/AccountSettingsScreen.test.tsx` | 110 |
-| `src/screens/main/AccountSettingsScreen.tsx` | 107 |
-| `src/screens/main/__tests__/SettingsScreen.test.tsx` | 72 |
-| `src/screens/main/SettingsScreen.tsx` | 69 |
 
 ## Components
 
-47 file(s), 13,130 lines.
+47 file(s), 13,128 lines.
 
 | File | Lines |
 |---|---:|
@@ -153,7 +147,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Button.tsx` | 214 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
-| `src/components/Icon.tsx` | 203 |
+| `src/components/Icon.tsx` | 201 |
 | `src/components/ConfirmActionModal.tsx` | 188 |
 | `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
@@ -264,34 +258,34 @@ version is not the version running (Constitution P52).
 
 | Package | Declared | Installed |
 |---|---|---|
-| `@notifee/react-native` | `^9.1.8` | ***(not installed)*** |
-| `@react-native-async-storage/async-storage` | `^1.23.1` | ***(not installed)*** |
-| `@react-native-documents/picker` | `^10.1.7` | ***(not installed)*** |
-| `@react-native-firebase/app` | `^24.1.0` | ***(not installed)*** |
-| `@react-native-firebase/messaging` | `^24.1.0` | ***(not installed)*** |
-| `@react-native-masked-view/masked-view` | `^0.3.2` | ***(not installed)*** |
-| `@react-navigation/bottom-tabs` | `^7.15.10` | ***(not installed)*** |
-| `@react-navigation/native` | `^7.2.2` | ***(not installed)*** |
-| `@react-navigation/native-stack` | `^7.14.12` | ***(not installed)*** |
-| `@react-navigation/stack` | `^7.8.11` | ***(not installed)*** |
-| `@supabase/supabase-js` | `^2.99.3` | ***(not installed)*** |
-| `fft.js` | `4.0.4` | *(not installed)* |
-| `lucide-react-native` | `1.18.0` | *(not installed)* |
-| `phosphor-react-native` | `3.0.6` | *(not installed)* |
-| `react` | `19.2.3` | *(not installed)* |
-| `react-native` | `0.85.3` | *(not installed)* |
-| `react-native-app-auth` | `^8.4.0` | ***(not installed)*** |
-| `react-native-audio-api` | `0.12.2` | *(not installed)* |
-| `react-native-gesture-handler` | `^2.24.0` | ***(not installed)*** |
-| `react-native-image-crop-picker` | `^0.51.1` | ***(not installed)*** |
-| `react-native-keyboard-controller` | `^1.21.9` | ***(not installed)*** |
-| `react-native-reanimated` | `^4.4.0` | ***(not installed)*** |
-| `react-native-safe-area-context` | `^5.8.0` | ***(not installed)*** |
-| `react-native-screens` | `^4.11.0` | ***(not installed)*** |
-| `react-native-svg` | `15.15.5` | *(not installed)* |
-| `react-native-url-polyfill` | `^3.0.0` | ***(not installed)*** |
-| `react-native-video` | `6.19.2` | *(not installed)* |
-| `react-native-worklets` | `^0.9.0` | ***(not installed)*** |
-| `text-encoding-polyfill` | `^0.6.7` | ***(not installed)*** |
+| `@notifee/react-native` | `^9.1.8` | 9.1.8 |
+| `@react-native-async-storage/async-storage` | `^1.23.1` | 1.23.1 |
+| `@react-native-documents/picker` | `^10.1.7` | 10.1.7 |
+| `@react-native-firebase/app` | `^24.1.0` | 24.1.0 |
+| `@react-native-firebase/messaging` | `^24.1.0` | 24.1.0 |
+| `@react-native-masked-view/masked-view` | `^0.3.2` | 0.3.2 |
+| `@react-navigation/bottom-tabs` | `^7.15.10` | 7.15.10 |
+| `@react-navigation/native` | `^7.2.2` | 7.2.2 |
+| `@react-navigation/native-stack` | `^7.14.12` | 7.14.12 |
+| `@react-navigation/stack` | `^7.8.11` | 7.8.11 |
+| `@supabase/supabase-js` | `^2.99.3` | 2.99.3 |
+| `fft.js` | `4.0.4` | 4.0.4 |
+| `lucide-react-native` | `1.18.0` | 1.18.0 |
+| `phosphor-react-native` | `3.0.6` | 3.0.6 |
+| `react` | `19.2.3` | 19.2.3 |
+| `react-native` | `0.85.3` | 0.85.3 |
+| `react-native-app-auth` | `^8.4.0` | 8.4.0 |
+| `react-native-audio-api` | `0.12.2` | 0.12.2 |
+| `react-native-gesture-handler` | `^2.24.0` | **2.31.2** |
+| `react-native-image-crop-picker` | `^0.51.1` | 0.51.1 |
+| `react-native-keyboard-controller` | `^1.21.9` | 1.21.9 |
+| `react-native-reanimated` | `^4.4.0` | 4.4.0 |
+| `react-native-safe-area-context` | `^5.8.0` | 5.8.0 |
+| `react-native-screens` | `^4.11.0` | **4.25.2** |
+| `react-native-svg` | `15.15.5` | 15.15.5 |
+| `react-native-url-polyfill` | `^3.0.0` | 3.0.0 |
+| `react-native-video` | `6.19.2` | 6.19.2 |
+| `react-native-worklets` | `^0.9.0` | **0.9.1** |
+| `text-encoding-polyfill` | `^0.6.7` | 0.6.7 |
 
 *Bold = installed version differs from the floor of the declared range.*
