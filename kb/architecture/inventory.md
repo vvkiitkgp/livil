@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-07-30
+last_verified: 2026-07-31
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-135 TypeScript file(s) under `src/`, 41,170 lines.
+142 TypeScript file(s) under `src/`, 41,731 lines.
 
 ## Size hotspots
 
@@ -32,7 +32,7 @@ reading alone (Constitution P28).
 | `src/components/PostCard.tsx` | 1194 |
 | `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1080 |
+| `src/screens/main/ProfileScreen.tsx` | 1036 |
 | `src/components/FloatingPlayer.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
 | `src/screens/main/UserProfileScreen.tsx` | 810 |
@@ -66,6 +66,8 @@ case the call fails silently wherever its result is discarded.
 | `Following` | `undefined` |
 | `RecentlyPlayed` | `undefined` |
 | `EditProfile` | `undefined` |
+| `Settings` | `undefined` |
+| `AccountSettings` | `undefined` |
 | `CreatePlaylist` | `{ initialPost?: { postId: string` |
 | `title` | `string` |
 | `artistName` | `string` |
@@ -86,7 +88,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-31 file(s), 16,786 lines.
+35 file(s), 17,101 lines.
 
 | File | Lines |
 |---|---:|
@@ -94,7 +96,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ConversationScreen.tsx` | 1433 |
 | `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
-| `src/screens/main/ProfileScreen.tsx` | 1080 |
+| `src/screens/main/ProfileScreen.tsx` | 1036 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
 | `src/screens/main/UserProfileScreen.tsx` | 810 |
 | `src/screens/main/RepostScreen.tsx` | 766 |
@@ -121,10 +123,14 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
+| `src/screens/main/__tests__/AccountSettingsScreen.test.tsx` | 123 |
+| `src/screens/main/AccountSettingsScreen.tsx` | 104 |
+| `src/screens/main/__tests__/SettingsScreen.test.tsx` | 72 |
+| `src/screens/main/SettingsScreen.tsx` | 60 |
 
 ## Components
 
-47 file(s), 13,128 lines.
+50 file(s), 13,356 lines.
 
 | File | Lines |
 |---|---:|
@@ -147,7 +153,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Button.tsx` | 214 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
-| `src/components/Icon.tsx` | 201 |
+| `src/components/Icon.tsx` | 206 |
 | `src/components/ConfirmActionModal.tsx` | 188 |
 | `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
@@ -164,8 +170,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/AddBadge.tsx` | 95 |
+| `src/components/__tests__/SettingsRow.test.tsx` | 92 |
 | `src/components/DetailActionSheet.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
+| `src/components/SettingsRow.tsx` | 79 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
 | `src/components/GradientFill.tsx` | 74 |
 | `src/components/PostCardSkeleton.tsx` | 74 |
@@ -173,6 +181,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FeedEndMessage.tsx` | 73 |
 | `src/components/FormInput.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
+| `src/components/SettingsSection.tsx` | 52 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/Logo.tsx` | 22 |
 
