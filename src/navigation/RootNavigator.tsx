@@ -30,6 +30,8 @@ import JamRoomScreen from '../screens/main/JamRoomScreen';
 import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import ActivityCenterScreen from '../screens/main/ActivityCenterScreen';
 import EditProfileScreen from '../screens/main/EditProfileScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import AccountSettingsScreen from '../screens/main/AccountSettingsScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
@@ -478,6 +480,20 @@ export default function RootNavigator() {
             <Stack.Screen
               name="EditProfile"
               component={EditProfileScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="AccountSettings"
+              component={AccountSettingsScreen}
               options={{
                 animation: 'slide_from_right',
               }}
