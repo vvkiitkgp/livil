@@ -23,7 +23,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ClipRangeSlider from './ClipRangeSlider';
+import CollabAvatar from './CollabAvatar';
 import QueueList from './QueueList';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { fetchAlbumForTrack, type AlbumForTrack } from '../services/albums';
@@ -115,13 +117,6 @@ function roleIcon(role: string): IconName {
     'Featured': 'star',
   };
   return map[role] ?? 'musicNote';
-}
-
-function avatarInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) { return '?'; }
-  if (parts.length === 1) { return parts[0]!.slice(0, 2).toUpperCase(); }
-  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -298,7 +293,11 @@ function CreditsWidget({
         activeOpacity={0.75}
         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       >
-        <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
+        <CollabAvatar
+          uri={nowPlaying.authorAvatarUrl}
+          display={resolveAuthorDisplay({ displayName: nowPlaying.artistName })}
+          size={52}
+        />
       </TouchableOpacity>
 
       {/* One row per role */}
@@ -319,7 +318,7 @@ function CreditsWidget({
                 >
                   <CollabAvatar
                     uri={m.avatarUrl}
-                    name={m.displayName ?? m.username ?? '?'}
+                    display={m.display}
                     size={28}
                   />
                 </TouchableOpacity>
@@ -328,7 +327,7 @@ function CreditsWidget({
                 <View key={`c${i}`} style={i > 0 ? cwSt.overlap : undefined}>
                   <CollabAvatar
                     uri={m.avatarUrl}
-                    name={m.displayName ?? m.username ?? '?'}
+                    display={m.display}
                     size={28}
                   />
                 </View>
@@ -347,34 +346,6 @@ const cwSt = StyleSheet.create({
   emoji: { width: 22, alignItems: 'center' },
   avRow: { flexDirection: 'row', alignItems: 'center' },
   overlap: { marginLeft: -8 },
-});
-
-/** Small avatar circle used in collaborator rows. */
-function CollabAvatar({ uri, name, size = 36 }: { uri: string | null; name: string; size?: number }) {
-  return (
-    <View style={[avSt.wrap, { width: size, height: size, borderRadius: size / 2 }]}>
-      {uri ? (
-        <Image source={{ uri }} style={avSt.img} />
-      ) : (
-        <Text style={[avSt.initials, { fontSize: size * 0.35 }]}>
-          {avatarInitials(name || '?')}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-const avSt = StyleSheet.create({
-  wrap: {
-    backgroundColor: COLORS.purpleDim,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  img: { width: '100%', height: '100%' },
-  initials: { color: COLORS.purpleLight, fontWeight: '700' },
 });
 
 /** Info tab: artist + collaborators by role + engagement stats. */
@@ -480,7 +451,11 @@ function InfoContent({
           navigation.dispatch(StackActions.push('UserProfile', { userId: nowPlaying.authorId }));
         }}
       >
-        <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
+        <CollabAvatar
+          uri={nowPlaying.authorAvatarUrl}
+          display={resolveAuthorDisplay({ displayName: nowPlaying.artistName })}
+          size={52}
+        />
         <View style={infoSt.artistMeta}>
           <Text style={infoSt.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
           <Text style={infoSt.artistHandle} numberOfLines={1}>@{nowPlaying.authorUsername}</Text>
@@ -530,7 +505,7 @@ function InfoContent({
                   >
                     <CollabAvatar
                       uri={m.avatarUrl}
-                      name={m.displayName ?? m.username ?? '?'}
+                      display={m.display}
                       size={36}
                     />
                   </View>

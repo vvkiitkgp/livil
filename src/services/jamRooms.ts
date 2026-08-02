@@ -3,6 +3,7 @@ import { sendMessage } from './messages';
 import { broadcastJamEnded } from './jamRealtime';
 import { sendPush } from './pushDispatch';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
+import { resolveAuthorById, type AuthorDisplay } from '../utils/authorDisplay';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -17,7 +18,8 @@ export type JamPermissions = {
 
 export type JamRoomState = {
   jamRoomId: string;
-  hostId: string;
+  /** null once the host's account is gone — `jam_rooms.host_id` is ON DELETE SET NULL */
+  hostId: string | null;
   hostUsername: string;
   playbackPositionMs: number;
   isPlaying: boolean;
@@ -27,14 +29,51 @@ export type JamRoomState = {
 export type QueueItem = {
   id: string;
   trackId: string;
-  suggestedBy: string | null;
-  suggestedByUsername: string | null;
+  suggestedById: string | null;
+  suggestedBy: AuthorDisplay;
   position: number;
   upvotes: number;
   trackTitle: string | null;
   trackArtist: string | null;
   trackCoverArt: string | null;
 };
+
+type QueueRow = { id: string; track_id: string; suggested_by: string | null; position: number; upvotes: number };
+type ProfileLite = { username: string; displayName: string | null };
+type TrackLite = { title: string | null; cover_art_url: string | null; uploader_id: string | null };
+
+export function toJamRoomState(row: Record<string, unknown>): JamRoomState {
+  return {
+    jamRoomId: row.jam_room_id as string,
+    hostId: (row.host_id as string | null) ?? null,
+    hostUsername: (row.host_username as string | null) ?? 'Unknown',
+    playbackPositionMs: Number(row.playback_position_ms ?? 0),
+    isPlaying: Boolean(row.is_playing),
+    hostClockAt: (row.host_clock_at as string | null) ?? null,
+  };
+}
+
+export function toQueueItem(
+  row: QueueRow,
+  track: TrackLite | undefined,
+  uploader: ProfileLite | null,
+  suggester: ProfileLite | null,
+): QueueItem {
+  return {
+    id: row.id,
+    trackId: row.track_id,
+    suggestedById: row.suggested_by,
+    suggestedBy: resolveAuthorById(row.suggested_by, {
+      displayName: suggester?.displayName,
+      username: suggester?.username,
+    }),
+    position: row.position,
+    upvotes: row.upvotes,
+    trackTitle: track?.title ?? null,
+    trackArtist: uploader ? (uploader.displayName ?? uploader.username) : null,
+    trackCoverArt: track?.cover_art_url ?? null,
+  };
+}
 
 export async function createJamRoom(
   conversationId: string,
@@ -72,15 +111,7 @@ export async function joinJamRoom(jamRoomId: string): Promise<JamRoomState> {
     p_jam_room_id: jamRoomId,
   });
   if (error) { throw error; }
-  const row = data as Record<string, unknown>;
-  return {
-    jamRoomId: row.jam_room_id as string,
-    hostId: row.host_id as string,
-    hostUsername: (row.host_username as string | null) ?? 'Unknown',
-    playbackPositionMs: Number(row.playback_position_ms ?? 0),
-    isPlaying: Boolean(row.is_playing),
-    hostClockAt: (row.host_clock_at as string | null) ?? null,
-  };
+  return toJamRoomState(data as Record<string, unknown>);
 }
 
 export async function getMyJamPermissions(jamRoomId: string): Promise<JamPermissions> {
@@ -206,7 +237,7 @@ export async function getJamQueue(jamRoomId: string): Promise<QueueItem[]> {
 
   if (error || !queueRows || queueRows.length === 0) { return []; }
 
-  const rows = queueRows as { id: string; track_id: string; suggested_by: string | null; position: number; upvotes: number }[];
+  const rows = queueRows as QueueRow[];
 
   const trackIds = rows.map(r => r.track_id).filter(Boolean);
   const suggesterIds = rows.map(r => r.suggested_by).filter((id): id is string => !!id);
@@ -237,19 +268,12 @@ export async function getJamQueue(jamRoomId: string): Promise<QueueItem[]> {
 
   return rows.map(r => {
     const track = trackMap.get(r.track_id);
-    const uploader = track?.uploader_id ? profileMap.get(track.uploader_id) : null;
-    const suggester = r.suggested_by ? profileMap.get(r.suggested_by) : null;
-    return {
-      id: r.id,
-      trackId: r.track_id,
-      suggestedBy: r.suggested_by,
-      suggestedByUsername: suggester?.username ?? null,
-      position: r.position,
-      upvotes: r.upvotes,
-      trackTitle: track?.title ?? null,
-      trackArtist: uploader ? (uploader.displayName ?? uploader.username) : null,
-      trackCoverArt: track?.cover_art_url ?? null,
-    };
+    return toQueueItem(
+      r,
+      track,
+      track?.uploader_id ? profileMap.get(track.uploader_id) ?? null : null,
+      r.suggested_by ? profileMap.get(r.suggested_by) ?? null : null,
+    );
   });
 }
 
