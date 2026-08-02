@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-146 TypeScript file(s) under `src/`, 42,263 lines.
+147 TypeScript file(s) under `src/`, 42,729 lines.
 
 ## Size hotspots
 
@@ -88,7 +88,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-35 file(s), 17,098 lines.
+35 file(s), 17,251 lines.
 
 | File | Lines |
 |---|---:|
@@ -116,6 +116,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PlaylistScreen.tsx` | 260 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
+| `src/screens/main/__tests__/AccountSettingsScreen.test.tsx` | 230 |
 | `src/screens/main/FollowingScreen.tsx` | 221 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 217 |
@@ -123,8 +124,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/__tests__/AccountSettingsScreen.test.tsx` | 123 |
-| `src/screens/main/AccountSettingsScreen.tsx` | 104 |
+| `src/screens/main/AccountSettingsScreen.tsx` | 150 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 72 |
 | `src/screens/main/SettingsScreen.tsx` | 60 |
 
@@ -189,7 +189,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-24 file(s), 6,421 lines.
+25 file(s), 6,734 lines.
 
 | File | Lines |
 |---|---:|
@@ -202,10 +202,11 @@ case the call fails silently wherever its result is discarded.
 | `src/services/messages.ts` | 362 |
 | `src/services/jamRooms.ts` | 325 |
 | `src/services/waveform.ts` | 324 |
+| `src/services/profileService.ts` | 317 |
 | `src/services/activity.ts` | 306 |
 | `src/services/conversations.ts` | 291 |
 | `src/services/jamRealtime.ts` | 251 |
-| `src/services/profileService.ts` | 233 |
+| `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
 | `src/services/uploads.ts` | 218 |
 | `src/services/__tests__/authorMapping.test.ts` | 197 |
 | `src/services/stories.ts` | 179 |
