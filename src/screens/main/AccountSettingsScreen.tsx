@@ -10,13 +10,18 @@ import { SettingsRow } from '../../components/SettingsRow';
 import { SettingsSection } from '../../components/SettingsSection';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
+import { useToast } from '../../contexts/ToastContext';
+import { deleteMyAccount } from '../../services/profileService';
 import { supabase } from '../../../lib/supabase';
 
 export default function AccountSettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const playback = usePlayback();
+  const { showToast } = useToast();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // No navigation reset after signOut: RootNavigator swaps the whole signed-in
   // stack for AuthNavigator on SIGNED_OUT, so this screen unmounts itself.
@@ -28,6 +33,22 @@ export default function AccountSettingsScreen() {
     setSignOutBusy(false);
     setSignOutOpen(false);
   }, [playback, signOutBusy]);
+
+  // No success branch: deleteMyAccount signs out, so the screen is gone before
+  // it resolves. Only the failure path has anything left to update.
+  const confirmDelete = useCallback(async () => {
+    if (deleteBusy) { return; }
+    setDeleteBusy(true);
+    playback.pauseAll();
+    try {
+      await deleteMyAccount();
+    } catch (e) {
+      setDeleteBusy(false);
+      showToast(e instanceof Error ? e.message : 'Could not delete your account.', {
+        kind: 'error',
+      });
+    }
+  }, [deleteBusy, playback, showToast]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -58,10 +79,12 @@ export default function AccountSettingsScreen() {
             chevron={false}
             onPress={() => setSignOutOpen(true)}
           />
-          {/* LIV-74's Delete account row goes here, and only here — the deletion
-              path is deliberately Profile → Settings → Account settings → Delete.
-              It is `<SettingsRow destructive chevron={false} …>`: a red label on
-              an otherwise identical row. */}
+          <SettingsRow
+            label="Delete account"
+            destructive
+            chevron={false}
+            onPress={() => setDeleteOpen(true)}
+          />
         </SettingsSection>
       </ScrollView>
 
@@ -81,6 +104,29 @@ export default function AccountSettingsScreen() {
         busy={signOutBusy}
         onConfirm={confirmSignOut}
         onCancel={() => setSignOutOpen(false)}
+      />
+
+      <ConfirmActionModal
+        visible={deleteOpen}
+        title="Delete your account?"
+        message={
+          deleteBusy
+            ? 'Deleting your account…'
+            : 'This permanently deletes your Livil account. It cannot be undone.'
+        }
+        bullets={[
+          'Your uploads, cover art and avatar are deleted',
+          'Your posts, playlists, likes, follows and listening history are deleted',
+          'Your direct message threads are deleted, for you and the other person',
+          'Your messages in group chats are deleted',
+          'You are signed out on this device',
+        ]}
+        tone="destructive"
+        confirmLabel="Delete my account"
+        cancelLabel="Keep my account"
+        busy={deleteBusy}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteOpen(false)}
       />
     </SafeAreaView>
   );

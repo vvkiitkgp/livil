@@ -2,6 +2,7 @@ import ImagePicker, {
   type Image as CroppedImage,
 } from 'react-native-image-crop-picker';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
+import { TRACKS_MEDIA_BUCKET } from './uploads';
 
 export const AVATARS_BUCKET = 'avatars';
 
@@ -229,4 +230,87 @@ export async function uploadAvatar(
 
   const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
   return data.publicUrl;
+}
+
+const DELETABLE_BUCKETS = [AVATARS_BUCKET, TRACKS_MEDIA_BUCKET];
+const LIST_PAGE = 100;
+const REMOVE_BATCH = 100;
+
+/**
+ * `list()` is one level deep, pages at 100, and returns folders as entries with
+ * a null id — so `tracks-media/${userId}` yields track folders, not files.
+ * Without the recursion every upload survives the account, silently.
+ */
+async function listOwnedPaths(bucket: string, root: string): Promise<string[]> {
+  const paths: string[] = [];
+  const dirs = [root];
+
+  while (dirs.length > 0) {
+    const dir = dirs.shift() as string;
+    let offset = 0;
+
+    for (;;) {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .list(dir, { limit: LIST_PAGE, offset });
+      if (error) {
+        throw new Error(`Could not read your files in ${bucket}: ${error.message}`);
+      }
+
+      const entries = data ?? [];
+      for (const entry of entries) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.id === null) { dirs.push(path); } else { paths.push(path); }
+      }
+
+      if (entries.length < LIST_PAGE) { break; }
+      offset += LIST_PAGE;
+    }
+  }
+
+  return paths;
+}
+
+/**
+ * storage-api answers 200 with only the rows it actually deleted, so a short
+ * return is a refusal rather than an error. Treating it as success would orphan
+ * those files behind a deleted account, unreachable forever.
+ */
+async function removeOwnedPaths(bucket: string, paths: string[]): Promise<void> {
+  for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+    const batch = paths.slice(i, i + REMOVE_BATCH);
+    const { data, error } = await supabase.storage.from(bucket).remove(batch);
+    if (error) {
+      throw new Error(`Could not delete your files in ${bucket}: ${error.message}`);
+    }
+    if ((data?.length ?? 0) < batch.length) {
+      throw new Error(`Only some of your files in ${bucket} could be deleted.`);
+    }
+  }
+}
+
+/**
+ * Permanent. Storage goes first and a failure there aborts: the RPC removes the
+ * auth user, and since 20260802000000 the client is the only thing that deletes
+ * the files at all. Takes no argument — the prefix is the session's.
+ */
+export async function deleteMyAccount(): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const userId = userData?.user?.id;
+  if (userError || !userId) {
+    throw new Error('You are not signed in.');
+  }
+
+  for (const bucket of DELETABLE_BUCKETS) {
+    await removeOwnedPaths(bucket, await listOwnedPaths(bucket, userId));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { error: rpcError } = await db.rpc('delete_my_account');
+  if (rpcError) {
+    throw new Error(rpcError.message);
+  }
+
+  await supabase.auth.signOut();
 }
