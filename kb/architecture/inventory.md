@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-07-31
+last_verified: 2026-08-02
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-142 TypeScript file(s) under `src/`, 41,731 lines.
+146 TypeScript file(s) under `src/`, 42,263 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2047 |
+| `src/components/FullScreenPlayer.tsx` | 2022 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1442 |
 | `src/screens/main/ConversationScreen.tsx` | 1433 |
 | `src/components/PostCard.tsx` | 1194 |
@@ -88,7 +88,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-35 file(s), 17,101 lines.
+35 file(s), 17,098 lines.
 
 | File | Lines |
 |---|---:|
@@ -102,7 +102,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/RepostScreen.tsx` | 766 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/LibraryScreen.tsx` | 604 |
-| `src/screens/main/GroupInfoScreen.tsx` | 585 |
+| `src/screens/main/GroupInfoScreen.tsx` | 582 |
 | `src/screens/main/SearchScreen.tsx` | 520 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 484 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
@@ -130,11 +130,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-50 file(s), 13,356 lines.
+52 file(s), 13,437 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2047 |
+| `src/components/FullScreenPlayer.tsx` | 2022 |
 | `src/components/PostCard.tsx` | 1194 |
 | `src/components/FloatingPlayer.tsx` | 931 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -181,30 +181,33 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FeedEndMessage.tsx` | 73 |
 | `src/components/FormInput.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
+| `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsSection.tsx` | 52 |
+| `src/components/CollabAvatar.tsx` | 39 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/Logo.tsx` | 22 |
 
 ## Services
 
-23 file(s), 6,133 lines.
+24 file(s), 6,421 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 806 |
-| `src/services/tracks.ts` | 694 |
+| `src/services/tracks.ts` | 708 |
 | `src/services/pushNotifications.ts` | 449 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/messages.ts` | 362 |
+| `src/services/jamRooms.ts` | 325 |
 | `src/services/waveform.ts` | 324 |
 | `src/services/activity.ts` | 306 |
-| `src/services/jamRooms.ts` | 301 |
+| `src/services/conversations.ts` | 291 |
 | `src/services/jamRealtime.ts` | 251 |
-| `src/services/conversations.ts` | 238 |
 | `src/services/profileService.ts` | 233 |
 | `src/services/uploads.ts` | 218 |
+| `src/services/__tests__/authorMapping.test.ts` | 197 |
 | `src/services/stories.ts` | 179 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/relationships.ts` | 132 |
@@ -241,7 +244,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-14 file(s), 1,615 lines.
+14 file(s), 1,707 lines.
 
 | File | Lines |
 |---|---:|
@@ -249,6 +252,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
+| `src/utils/__tests__/authorDisplay.test.ts` | 135 |
 | `src/utils/groupStoriesByAuthor.ts` | 125 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
 | `src/utils/mentions.ts` | 105 |
@@ -256,9 +260,8 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/playTracker.ts` | 90 |
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
-| `src/utils/__tests__/authorDisplay.test.ts` | 70 |
+| `src/utils/authorDisplay.ts` | 72 |
 | `src/utils/errorMessages.ts` | 68 |
-| `src/utils/authorDisplay.ts` | 45 |
 
 ## Dependencies
 
