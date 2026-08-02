@@ -65,6 +65,13 @@ writable:
     why: same
   - path: src/services/**
     why: same
+  - path: src/navigation/**
+    why: >
+      account-deletion client work; maintainer-authorised 2026-08-02, AHEAD OF TESTS.
+      This one is the session gate (auth stack vs app stack). PROP-0007 argued against
+      graduating it on a route-parity test, and that argument still stands — parity says
+      nothing about the gate. Widened anyway, deliberately, to unblock LIV-73/LIV-74.
+      Revert by deleting this entry once the client work has landed.
 
 # ── Tier 1: propose only ────────────────────────────────────────────────────
 # Listed explicitly rather than left as a default, so the reason is visible.
