@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-security
 consumers: [P-SE, SR, P-DA, QA]
-last_verified: 2026-07-30
+last_verified: 2026-08-02
 verify_every: 9999d
 verified_by: generated
 visibility: private-content
