@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-07-30
+last_verified: 2026-08-02
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-138 TypeScript file(s) under `src/`, 41,628 lines.
+139 TypeScript file(s) under `src/`, 41,702 lines.
 
 ## Size hotspots
 

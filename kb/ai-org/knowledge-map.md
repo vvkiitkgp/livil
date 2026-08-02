@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-07-30
+last_verified: 2026-08-02
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -37,8 +37,8 @@ content, so the hand-maintained count is the number worth keeping small.
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
 | `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-07-30 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-07-30 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-07-30 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-08-02 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-08-02 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-07-30 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-07-30 | 9999d |
 
