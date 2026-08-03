@@ -136,6 +136,36 @@ export async function openOsNotificationSettings(channelId?: string): Promise<vo
   await notifee.openNotificationSettings(channelId);
 }
 
+/**
+ * The ids of channels the user has silenced in Android settings.
+ *
+ * Android owns per-category state and we deliberately do not mirror it into our
+ * own storage: the OS is authoritative, the user can change it from outside the
+ * app at any time, and a second copy would drift and then lie in the settings
+ * list. Reading it back is the correct direction of dependency.
+ *
+ * One `getChannels()` call rather than four `getChannel()` calls. Empty on iOS,
+ * which has no channels, and on any failure — an unknown state should read as
+ * "on" rather than falsely telling the user they are missing notifications.
+ */
+export async function getBlockedChannelIds(): Promise<Set<string>> {
+  if (Platform.OS !== 'android') return new Set();
+  try {
+    const channels = await notifee.getChannels();
+    return new Set(
+      channels
+        // `blocked` covers an explicitly turned-off channel. IMPORTANCE_NONE is
+        // the same thing reached by a different control ("Importance: None"),
+        // and does NOT always set `blocked` — check both or the row lies.
+        .filter(c => c.blocked || c.importance === AndroidImportance.NONE)
+        .map(c => c.id),
+    );
+  } catch (e) {
+    console.warn('[push] getBlockedChannelIds failed', e);
+    return new Set();
+  }
+}
+
 export type NotificationChannel = {
   id: string;
   name: string;

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-157 TypeScript file(s) under `src/`, 44,712 lines.
+158 TypeScript file(s) under `src/`, 44,888 lines.
 
 ## Size hotspots
 
@@ -90,7 +90,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-39 file(s), 18,341 lines.
+39 file(s), 18,396 lines.
 
 | File | Lines |
 |---|---:|
@@ -119,19 +119,19 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PlaylistScreen.tsx` | 260 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 242 |
+| `src/screens/main/NotificationSettingsScreen.tsx` | 238 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
-| `src/screens/main/NotificationSettingsScreen.tsx` | 226 |
 | `src/screens/main/FollowingScreen.tsx` | 221 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 217 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 200 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 197 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
+| `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 191 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 164 |
-| `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 148 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 118 |
 
 ## Components
@@ -198,13 +198,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-25 file(s), 6,860 lines.
+26 file(s), 6,981 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 806 |
 | `src/services/tracks.ts` | 708 |
-| `src/services/pushNotifications.ts` | 515 |
+| `src/services/pushNotifications.ts` | 545 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
@@ -222,6 +222,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
+| `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
 | `src/services/friendActivity.ts` | 33 |

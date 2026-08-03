@@ -16,6 +16,7 @@ import { useToast } from '../../contexts/ToastContext';
 import {
   NOTIFICATION_CHANNELS,
   disablePushForUser,
+  getBlockedChannelIds,
   isPushEnabled,
   openOsNotificationSettings,
   requestPushPermissionInteractive,
@@ -29,6 +30,7 @@ export default function NotificationSettingsScreen() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [blockedChannels, setBlockedChannels] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -43,12 +45,13 @@ export default function NotificationSettingsScreen() {
   const refresh = useCallback(async () => {
     try {
       const { data } = await supabase.auth.getUser();
-      const on = await isPushEnabled();
+      const [on, blocked] = await Promise.all([isPushEnabled(), getBlockedChannelIds()]);
       if (!mounted.current) {
         return;
       }
       setUserId(data.user?.id ?? null);
       setEnabled(on);
+      setBlockedChannels(blocked);
     } finally {
       if (mounted.current) {
         setLoading(false);
@@ -156,17 +159,26 @@ export default function NotificationSettingsScreen() {
         {isAndroid ? (
           <>
             <SettingsSection title="Categories">
-              {NOTIFICATION_CHANNELS.map(channel => (
-                <SettingsRow
-                  key={channel.id}
-                  icon="bell"
-                  label={channel.name}
-                  subtitle={channel.description}
-                  external
-                  disabled={!enabled}
-                  onPress={() => void openChannel(channel.id)}
-                />
-              ))}
+              {NOTIFICATION_CHANNELS.map(channel => {
+                const blocked = blockedChannels.has(channel.id);
+                return (
+                  <SettingsRow
+                    key={channel.id}
+                    icon={blocked ? 'bellOff' : 'bell'}
+                    iconColor={blocked ? COLORS.textMuted : undefined}
+                    iconBackground={blocked ? COLORS.inputBg : undefined}
+                    label={channel.name}
+                    subtitle={channel.description}
+                    // The state is Android's, read back via getChannels() — we
+                    // report it rather than storing our own copy that could
+                    // disagree with what the OS actually does.
+                    value={loading ? undefined : blocked ? 'Off' : 'On'}
+                    external
+                    disabled={!enabled}
+                    onPress={() => void openChannel(channel.id)}
+                  />
+                );
+              })}
             </SettingsSection>
             <Text style={styles.note}>
               Sound, vibration and importance for each category are controlled by

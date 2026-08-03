@@ -6,7 +6,20 @@
 
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Platform, Switch, Text } from 'react-native';
+import { AppState, Platform, Switch, Text } from 'react-native';
+
+/**
+ * Captured so a test can simulate returning from Android's settings screen —
+ * the moment the channel state is most likely to have changed underneath us.
+ */
+let appStateListener: ((state: string) => void) | undefined;
+jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+  _event: string,
+  handler: (state: string) => void,
+) => {
+  appStateListener = handler;
+  return { remove: () => { appStateListener = undefined; } };
+}) as unknown as typeof AppState.addEventListener);
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn() }),
@@ -16,12 +29,14 @@ const mockIsPushEnabled = jest.fn().mockResolvedValue(true);
 const mockRequestPermission = jest.fn().mockResolvedValue(true);
 const mockDisablePush = jest.fn().mockResolvedValue(undefined);
 const mockOpenOsSettings = jest.fn().mockResolvedValue(undefined);
+const mockGetBlockedChannelIds = jest.fn().mockResolvedValue(new Set<string>());
 
 jest.mock('../../../services/pushNotifications', () => ({
   isPushEnabled: (...a: unknown[]) => mockIsPushEnabled(...(a as [])),
   requestPushPermissionInteractive: (...a: unknown[]) => mockRequestPermission(...(a as [])),
   disablePushForUser: (...a: unknown[]) => mockDisablePush(...(a as [])),
   openOsNotificationSettings: (...a: unknown[]) => mockOpenOsSettings(...(a as [])),
+  getBlockedChannelIds: (...a: unknown[]) => mockGetBlockedChannelIds(...(a as [])),
   NOTIFICATION_CHANNELS: [
     { id: 'social', name: 'Social', description: 'Friends', importance: 3 },
     { id: 'messages', name: 'Messages', description: 'DMs', importance: 4 },
@@ -77,6 +92,7 @@ describe('NotificationSettingsScreen', () => {
     mockRequestPermission.mockResolvedValue(true);
     mockDisablePush.mockResolvedValue(undefined);
     mockOpenOsSettings.mockResolvedValue(undefined);
+    mockGetBlockedChannelIds.mockResolvedValue(new Set<string>());
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
   });
 
@@ -129,6 +145,33 @@ describe('NotificationSettingsScreen', () => {
     mockIsPushEnabled.mockResolvedValue(false);
     const tree = await mount();
     expect(pressable(tree, 'Messages').props.accessibilityState.disabled).toBe(true);
+  });
+
+  describe('channel state read back from Android', () => {
+    it('reports each channel as On when nothing is silenced', async () => {
+      const shown = texts(await mount());
+      expect(shown.filter(s => s === 'On')).toHaveLength(2);
+      expect(shown).not.toContain('Off');
+    });
+
+    it('reports a silenced channel as Off', async () => {
+      mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
+      const tree = await mount();
+      const shown = texts(tree);
+      expect(shown).toContain('Off');
+      expect(shown.filter(s => s === 'On')).toHaveLength(1);
+    });
+
+    it('re-reads the OS state when the app returns to the foreground', async () => {
+      const tree = await mount();
+      expect(texts(tree)).not.toContain('Off');
+
+      // The user taps a channel row, silences it in Android settings, comes back.
+      mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
+      await act(async () => { appStateListener?.('active'); });
+
+      expect(texts(tree)).toContain('Off');
+    });
   });
 
   describe('on iOS', () => {
