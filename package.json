@@ -13,7 +13,8 @@
     "start:android": "npx react-native run-android",
     "test": "jest",
     "postinstall": "patch-package",
-    "prebuild:android": "node -e \"const fs=require('fs'),p='android/app/build.gradle',g=fs.readFileSync(p,'utf8');let n=g.replace(/versionCode (\\d+)/,(m,c)=>'versionCode '+(+c+1)).replace(/versionName \\\"(\\d+\\.\\d+\\.)(\\d+)\\\"/,(m,pre,patch)=>'versionName \\\"'+pre+(+patch+1)+'\\\"');fs.writeFileSync(p,n);console.log(n.match(/versionCode \\d+/)[0],n.match(/versionName \\\"[^\\\"]+\\\"/)[0])\"",
+    "prebuild:android": "node scripts/bump-version.mjs",
+    "version:sync": "node scripts/bump-version.mjs --sync",
     "build:android": "cd android && ./gradlew bundleRelease && cd .."
   },
   "dependencies": {

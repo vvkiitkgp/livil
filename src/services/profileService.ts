@@ -136,6 +136,34 @@ export async function updateProfile(
   if (error) {throw error;}
 }
 
+/**
+ * Whether the user broadcasts "last seen" / now-playing to friends.
+ *
+ * Read side already exists: `conversations.ts` gates presence on this column.
+ * Defaults to `true` on any error so a transient failure never silently
+ * presents the user as having opted out of something they didn't.
+ */
+export async function getShowActivity(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('show_activity')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return (data as { show_activity: boolean | null } | null)?.show_activity ?? true;
+}
+
+export async function updateShowActivity(
+  userId: string,
+  showActivity: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ show_activity: showActivity })
+    .eq('id', userId);
+  if (error) {throw error;}
+}
+
 export async function updatePrivateProfile(
   userId: string,
   patch: PrivateProfilePatch,

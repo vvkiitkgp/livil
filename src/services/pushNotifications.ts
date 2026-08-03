@@ -99,6 +99,88 @@ async function requestOsNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Whether push is currently live for this device: the OS permission is granted
+ * AND the user has not turned it off in Settings.
+ *
+ * Both halves matter. The OS permission alone is not enough — turning push off
+ * from Settings deletes the device token and records 'denied', which leaves the
+ * OS permission granted but no delivery path. Checking only our own status is
+ * likewise wrong: the user can revoke the permission from OS settings behind
+ * our back.
+ */
+export async function isPushEnabled(): Promise<boolean> {
+  const status = await getPushPromptStatus();
+  if (status === 'denied') return false;
+  return await checkOsNotificationPermission();
+}
+
+/**
+ * Settings-screen "off" switch. Deletes this device's token so the edge
+ * function stops targeting it, and records 'denied' so a later app launch does
+ * not silently re-register (registerDeviceForUser short-circuits on 'denied').
+ *
+ * The OS permission is deliberately left alone — an app cannot revoke it, and
+ * re-enabling from Settings should not have to re-prompt.
+ */
+export async function disablePushForUser(userId: string): Promise<void> {
+  await setPushPromptStatus('denied');
+  await unregisterDevice(userId);
+}
+
+/**
+ * Open the OS notification settings for this app, or for one channel when
+ * `channelId` is given (Android only — iOS has no per-channel concept and
+ * lands on the app's notification page either way).
+ */
+export async function openOsNotificationSettings(channelId?: string): Promise<void> {
+  await notifee.openNotificationSettings(channelId);
+}
+
+export type NotificationChannel = {
+  id: string;
+  name: string;
+  description: string;
+  importance: AndroidImportance;
+};
+
+/**
+ * The Android notification channels, in the order the settings list shows them.
+ *
+ * This is the single source of truth: `ensureChannels` creates them from this
+ * array and NotificationSettingsScreen lists them from it, so a channel can
+ * never exist in the OS without a settings row (or vice versa).
+ *
+ * `social` is DEFAULT (silent tray); the rest are HIGH so they surface as a
+ * heads-up banner — DEFAULT-importance social notifications were being missed.
+ */
+export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
+  {
+    id: 'social',
+    name: 'Social',
+    description: 'Friend requests, new followers, and fan activity',
+    importance: AndroidImportance.DEFAULT,
+  },
+  {
+    id: 'activity',
+    name: 'Activity',
+    description: 'Likes, comments, reposts, milestones, and new fans on your tracks',
+    importance: AndroidImportance.HIGH,
+  },
+  {
+    id: 'messages',
+    name: 'Messages',
+    description: 'Direct messages, group messages, and reactions',
+    importance: AndroidImportance.HIGH,
+  },
+  {
+    id: 'jam',
+    name: 'Jam Rooms',
+    description: 'Jam invites and host activity',
+    importance: AndroidImportance.HIGH,
+  },
+];
+
+/**
  * Whether to render the pre-prompt modal. Returns true only when:
  *  - the user has never resolved the prompt before ('pending'), AND
  *  - the OS hasn't already granted permission (handles users who installed
@@ -136,36 +218,20 @@ function handleNotificationData(data: Record<string, string> | undefined): void 
  */
 const CHAT_KINDS = new Set(['message', 'reaction', 'jam_invite_dm']);
 
+/**
+ * Create the per-category channels so users can mute by category from Android
+ * settings. Defined by NOTIFICATION_CHANNELS — add a channel there, not here.
+ */
 async function ensureChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  // Three channels so users can mute by category via Android settings.
-  await notifee.createChannel({
-    id: 'social',
-    name: 'Social',
-    importance: AndroidImportance.DEFAULT,
-    description: 'Friend requests, new followers, and fan activity',
-  });
-  // Activity center: likes, comments, reposts, play milestones, new fans, and
-  // friend-request outcomes. HIGH importance so these surface as a heads-up
-  // banner (the 'social' channel is DEFAULT = silent tray, which users miss).
-  await notifee.createChannel({
-    id: 'activity',
-    name: 'Activity',
-    importance: AndroidImportance.HIGH,
-    description: 'Likes, comments, reposts, milestones, and new fans on your tracks',
-  });
-  await notifee.createChannel({
-    id: 'messages',
-    name: 'Messages',
-    importance: AndroidImportance.HIGH,
-    description: 'Direct messages, group messages, and reactions',
-  });
-  await notifee.createChannel({
-    id: 'jam',
-    name: 'Jam Rooms',
-    importance: AndroidImportance.HIGH,
-    description: 'Jam invites and host activity',
-  });
+  for (const channel of NOTIFICATION_CHANNELS) {
+    await notifee.createChannel({
+      id: channel.id,
+      name: channel.name,
+      importance: channel.importance,
+      description: channel.description,
+    });
+  }
 }
 
 /**
