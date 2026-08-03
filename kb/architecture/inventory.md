@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-158 TypeScript file(s) under `src/`, 44,888 lines.
+158 TypeScript file(s) under `src/`, 44,918 lines.
 
 ## Size hotspots
 
@@ -90,7 +90,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-39 file(s), 18,396 lines.
+39 file(s), 18,426 lines.
 
 | File | Lines |
 |---|---:|
@@ -118,7 +118,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/SettingsScreen.tsx` | 271 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PlaylistScreen.tsx` | 260 |
-| `src/screens/main/PrivacyDataScreen.tsx` | 242 |
+| `src/screens/main/PrivacyDataScreen.tsx` | 255 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 238 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
@@ -129,9 +129,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 197 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 191 |
+| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 181 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 164 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 118 |
 
 ## Components
