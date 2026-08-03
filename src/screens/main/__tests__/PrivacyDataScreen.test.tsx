@@ -138,6 +138,23 @@ describe('PrivacyDataScreen', () => {
       );
     });
 
+    it('stays usable when only the comments column is unreadable', async () => {
+      // Exactly the shape of shipping this screen before its migration is
+      // applied: one read fails, the other must still load and stay writable.
+      mockGetCommentsFriendsOnly.mockRejectedValue(
+        new Error("column profiles.comments_friends_only does not exist"),
+      );
+      mockGetShowActivity.mockResolvedValue(false);
+      const tree = await mount();
+
+      expect(activitySwitch(tree).props.value).toBe(false);
+      expect(activitySwitch(tree).props.disabled).toBe(false);
+      expect(commentsSwitch(tree).props.value).toBe(false);
+
+      await act(async () => { activitySwitch(tree).props.onValueChange(true); });
+      expect(mockUpdateShowActivity).toHaveBeenCalledWith('u1', true);
+    });
+
     it('leaves the activity switch alone', async () => {
       const tree = await mount();
       await act(async () => { commentsSwitch(tree).props.onValueChange(true); });

@@ -49,18 +49,31 @@ export default function PrivacyDataScreen() {
         if (!uid) {
           return;
         }
-        const [activity, friendsOnly] = await Promise.all([
+        // Set the id BEFORE the reads, and settle the reads independently.
+        // Both matter: the toggles are gated on `userId`, so awaiting the reads
+        // first meant one failing column left every switch permanently
+        // disabled — and one shared Promise.all meant a failure in either read
+        // discarded the other's value too.
+        if (mounted.current) {
+          setUserId(uid);
+        }
+
+        const [activity, friendsOnly] = await Promise.allSettled([
           getShowActivity(uid),
           getCommentsFriendsOnly(uid),
         ]);
-        if (mounted.current) {
-          setUserId(uid);
-          setShowActivity(activity);
-          setCommentsFriendsOnly(friendsOnly);
+        if (!mounted.current) {
+          return;
         }
-      } catch {
-        // Leave the switch at its `true` default and let the row stay
-        // interactive — a failed read should not present the user as opted out.
+        // A failed read keeps the permissive default (visible / everyone) — it
+        // must never present the user as opted out of something they did not
+        // choose.
+        if (activity.status === 'fulfilled') {
+          setShowActivity(activity.value);
+        }
+        if (friendsOnly.status === 'fulfilled') {
+          setCommentsFriendsOnly(friendsOnly.value);
+        }
       } finally {
         if (mounted.current) {
           setLoading(false);
