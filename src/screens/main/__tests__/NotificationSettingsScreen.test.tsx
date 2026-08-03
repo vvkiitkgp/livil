@@ -30,6 +30,9 @@ const mockRequestPermission = jest.fn().mockResolvedValue(true);
 const mockDisablePush = jest.fn().mockResolvedValue(undefined);
 const mockOpenOsSettings = jest.fn().mockResolvedValue(undefined);
 const mockGetBlockedChannelIds = jest.fn().mockResolvedValue(new Set<string>());
+const ALL_ON = { social: true, activity: true, messages: true, jam: true };
+const mockGetPrefs = jest.fn().mockResolvedValue({ ...ALL_ON });
+const mockUpdatePref = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../../../services/pushNotifications', () => ({
   isPushEnabled: (...a: unknown[]) => mockIsPushEnabled(...(a as [])),
@@ -37,6 +40,9 @@ jest.mock('../../../services/pushNotifications', () => ({
   disablePushForUser: (...a: unknown[]) => mockDisablePush(...(a as [])),
   openOsNotificationSettings: (...a: unknown[]) => mockOpenOsSettings(...(a as [])),
   getBlockedChannelIds: (...a: unknown[]) => mockGetBlockedChannelIds(...(a as [])),
+  getNotificationPreferences: (...a: unknown[]) => mockGetPrefs(...(a as [])),
+  updateNotificationPreference: (...a: unknown[]) => mockUpdatePref(...(a as [])),
+  ALL_CATEGORIES_ON: { social: true, activity: true, messages: true, jam: true },
   NOTIFICATION_CHANNELS: [
     { id: 'social', name: 'Social', description: 'Friends', importance: 3 },
     { id: 'messages', name: 'Messages', description: 'DMs', importance: 4 },
@@ -93,6 +99,8 @@ describe('NotificationSettingsScreen', () => {
     mockDisablePush.mockResolvedValue(undefined);
     mockOpenOsSettings.mockResolvedValue(undefined);
     mockGetBlockedChannelIds.mockResolvedValue(new Set<string>());
+    mockGetPrefs.mockResolvedValue({ ...ALL_ON });
+    mockUpdatePref.mockResolvedValue(undefined);
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
   });
 
@@ -135,42 +143,107 @@ describe('NotificationSettingsScreen', () => {
     );
   });
 
-  it('opens the OS settings for a specific channel', async () => {
+  it('links out to the OS notification settings', async () => {
     const tree = await mount();
-    await act(async () => { pressable(tree, 'Messages').props.onPress(); });
-    expect(mockOpenOsSettings).toHaveBeenCalledWith('messages');
+    await act(async () => {
+      pressable(tree, 'Android notification settings').props.onPress();
+    });
+    // No channel id: this is the app-level page, not a per-category deep link.
+    expect(mockOpenOsSettings).toHaveBeenCalledWith(undefined);
   });
 
-  it('disables the channel rows while push is off', async () => {
-    mockIsPushEnabled.mockResolvedValue(false);
-    const tree = await mount();
-    expect(pressable(tree, 'Messages').props.accessibilityState.disabled).toBe(true);
-  });
+  describe('category switches', () => {
+    // Switch order follows NOTIFICATION_CHANNELS after the master toggle.
+    const socialSwitch = (t: TestRenderer.ReactTestRenderer) => t.root.findAllByType(Switch)[1]!;
+    const messagesSwitch = (t: TestRenderer.ReactTestRenderer) => t.root.findAllByType(Switch)[2]!;
 
-  describe('channel state read back from Android', () => {
-    it('reports each channel as On when nothing is silenced', async () => {
-      const shown = texts(await mount());
-      expect(shown.filter(s => s === 'On')).toHaveLength(2);
-      expect(shown).not.toContain('Off');
+    it('defaults every category on for a user who has never set one', async () => {
+      const tree = await mount();
+      expect(socialSwitch(tree).props.value).toBe(true);
+      expect(messagesSwitch(tree).props.value).toBe(true);
     });
 
-    it('reports a silenced channel as Off', async () => {
+    it('reflects a stored preference', async () => {
+      mockGetPrefs.mockResolvedValue({ ...ALL_ON, messages: false });
+      const tree = await mount();
+      expect(messagesSwitch(tree).props.value).toBe(false);
+      expect(socialSwitch(tree).props.value).toBe(true);
+    });
+
+    it('persists only the category that changed', async () => {
+      const tree = await mount();
+      await act(async () => { messagesSwitch(tree).props.onValueChange(false); });
+      expect(mockUpdatePref).toHaveBeenCalledWith('u1', 'messages', false);
+      expect(mockUpdatePref).toHaveBeenCalledTimes(1);
+      expect(messagesSwitch(tree).props.value).toBe(false);
+      expect(socialSwitch(tree).props.value).toBe(true);
+    });
+
+    it('rolls back and warns when the write fails', async () => {
+      mockUpdatePref.mockRejectedValueOnce(new Error('offline'));
+      const tree = await mount();
+      await act(async () => { messagesSwitch(tree).props.onValueChange(false); });
+
+      expect(messagesSwitch(tree).props.value).toBe(true);
+      expect(mockShowToast).toHaveBeenCalledWith(
+        'Could not update that notification setting.',
+        { kind: 'error' },
+      );
+    });
+
+    it('stays editable while device push is off — the preference is account-level', async () => {
+      // It applies to every device the user signs in on, so turning push off on
+      // this one must not lock them out of configuring it.
+      mockIsPushEnabled.mockResolvedValue(false);
+      const tree = await mount();
+      expect(messagesSwitch(tree).props.disabled).toBe(false);
+    });
+
+    it('keeps every category on when the preference read fails', async () => {
+      mockGetPrefs.mockRejectedValue(new Error('offline'));
+      const tree = await mount();
+      expect(socialSwitch(tree).props.value).toBe(true);
+      expect(messagesSwitch(tree).props.value).toBe(true);
+    });
+  });
+
+  describe('Android channel state, surfaced but never mirrored', () => {
+    const OS_SILENCED = "Silenced in Android settings — these won't appear";
+
+    it('says nothing when the OS will deliver normally', async () => {
+      expect(texts(await mount())).not.toContain(OS_SILENCED);
+    });
+
+    it('warns when we would send but Android will not show it', async () => {
+      mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
+      expect(texts(await mount())).toContain(OS_SILENCED);
+    });
+
+    it('stays quiet when the user turned the category off themselves', async () => {
+      // Their own switch already explains the silence; the OS note would be noise.
+      mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
+      mockGetPrefs.mockResolvedValue({ ...ALL_ON, messages: false });
+      expect(texts(await mount())).not.toContain(OS_SILENCED);
+    });
+
+    it('does not let the OS state overwrite our switch', async () => {
+      // The whole point of not mirroring: Android blocking the channel must not
+      // silently flip the user's stored preference.
       mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
       const tree = await mount();
-      const shown = texts(tree);
-      expect(shown).toContain('Off');
-      expect(shown.filter(s => s === 'On')).toHaveLength(1);
+      expect(tree.root.findAllByType(Switch)[2]!.props.value).toBe(true);
+      expect(mockUpdatePref).not.toHaveBeenCalled();
     });
 
     it('re-reads the OS state when the app returns to the foreground', async () => {
       const tree = await mount();
-      expect(texts(tree)).not.toContain('Off');
+      expect(texts(tree)).not.toContain(OS_SILENCED);
 
-      // The user taps a channel row, silences it in Android settings, comes back.
+      // The user opens Android settings, silences the channel, comes back.
       mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
       await act(async () => { appStateListener?.('active'); });
 
-      expect(texts(tree)).toContain('Off');
+      expect(texts(tree)).toContain(OS_SILENCED);
     });
   });
 
@@ -178,13 +251,18 @@ describe('NotificationSettingsScreen', () => {
     beforeAll(() => { (Platform as { OS: string }).OS = 'ios'; });
     afterAll(() => { (Platform as { OS: string }).OS = 'android'; });
 
-    it('offers one system-settings row instead of per-channel rows', async () => {
+    it('still offers the category switches — this is where they matter most', async () => {
+      // iOS has no channels, so the server-side preference is the ONLY per-category
+      // control an iOS user has.
       const tree = await mount();
-      expect(texts(tree)).not.toContain('Social');
+      expect(texts(tree)).toContain('Social');
+      expect(tree.root.findAllByType(Switch).length).toBeGreaterThan(1);
+    });
 
-      await act(async () => { pressable(tree, 'Open system settings').props.onPress(); });
-      // No channel id — iOS has no per-channel concept.
-      expect(mockOpenOsSettings).toHaveBeenCalledWith(undefined);
+    it('never claims a category is silenced by Android', async () => {
+      mockGetBlockedChannelIds.mockResolvedValue(new Set(['messages']));
+      const tree = await mount();
+      expect(texts(tree)).not.toContain("Silenced in Android settings — these won't appear");
     });
   });
 });
