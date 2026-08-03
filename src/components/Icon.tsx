@@ -19,6 +19,10 @@ import {
   ArrowSquareOut,
   ArrowUp,
   ArrowsClockwise,
+  Bell,
+  BellSlash,
+  Broadcast,
+  Camera,
   CaretDown,
   CaretLeft,
   CaretLineLeft,
@@ -35,8 +39,10 @@ import {
   Eye,
   EyeSlash,
   Faders,
+  FileText,
   Flag,
   Gear,
+  Gift,
   Globe,
   Guitar,
   Handshake,
@@ -46,6 +52,8 @@ import {
   IconProps as PhProps,
   IconWeight,
   Info,
+  InstagramLogo,
+  Lifebuoy,
   Lock,
   MagnifyingGlass,
   MinusCircle,
@@ -67,13 +75,16 @@ import {
   Repeat,
   RepeatOnce,
   ShareNetwork,
+  ShieldCheck,
   Shuffle,
+  SignOut,
   SkipBack,
   SkipForward,
   Star,
   Trash,
   User,
   UsersThree,
+  Warning,
   WarningCircle,
   X,
   XCircle,
@@ -101,7 +112,10 @@ export type IconName =
   | 'public' | 'friends' | 'lock'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
-  | 'star' | 'handshake' | 'wave';
+  | 'star' | 'handshake' | 'wave'
+  // settings
+  | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
+  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -181,6 +195,21 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   star: [Star, 'fill'],
   handshake: [Handshake, 'fill'],
   wave: [HandWaving, 'fill'],
+  // settings — `regular` throughout: these sit inside a tinted tile in
+  // SettingsRow, where a filled glyph reads as a solid blob at 20px.
+  bell: [Bell, 'regular'],
+  bellOff: [BellSlash, 'regular'],
+  shield: [ShieldCheck, 'regular'],
+  gift: [Gift, 'regular'],
+  support: [Lifebuoy, 'regular'],
+  instagram: [InstagramLogo, 'regular'],
+  // Distinct from `error` (WarningCircle): the triangle is the danger-banner
+  // glyph on DeleteAccountScreen, where it needs to read at 32px.
+  warningTriangle: [Warning, 'regular'],
+  camera: [Camera, 'fill'],
+  document: [FileText, 'regular'],
+  broadcast: [Broadcast, 'regular'],
+  signOut: [SignOut, 'regular'],
 };
 
 export interface IconProps {

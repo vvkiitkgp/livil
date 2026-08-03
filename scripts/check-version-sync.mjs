@@ -47,4 +47,22 @@ if (statedName !== actualName || statedCode !== actualCode) {
   process.exit(1);
 }
 
+// Third copy of the same fact: src/constants/appVersion.ts is generated from
+// build.gradle so the Settings footer can show a build number without pulling in
+// a native module. Generated or not, it drifts the moment someone edits
+// build.gradle by hand — which is exactly the failure this script exists for.
+const constant = readFileSync(join(REPO, 'src/constants/appVersion.ts'), 'utf8');
+const constName = constant.match(/APP_VERSION_NAME\s*=\s*'([^']+)'/)?.[1];
+const constCode = constant.match(/APP_VERSION_CODE\s*=\s*(\d+)/)?.[1];
+
+if (constName !== actualName || constCode !== actualCode) {
+  console.error(
+    '\nFAIL  version drift between src/constants/appVersion.ts and build.gradle\n\n' +
+    `        build.gradle   : versionName ${actualName}  versionCode ${actualCode}\n` +
+    `        appVersion.ts  : versionName ${constName}  versionCode ${constCode}\n\n` +
+    '      Run `npm run version:sync` and commit the result.\n',
+  );
+  process.exit(1);
+}
+
 console.log(`PASS  version in sync: ${actualName} (${actualCode})`);

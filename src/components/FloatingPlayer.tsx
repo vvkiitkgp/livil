@@ -25,6 +25,7 @@ import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { getOrAnalyzeWaveform } from '../services/tracks';
 import type { WaveformData } from '../services/waveform';
 import { COLORS } from '../theme/colors';
+import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
 import WaveVisualizer from './WaveVisualizer';
 
@@ -33,7 +34,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 // ─── Dimensions ───────────────────────────────────────────────────────────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const D    = 60;   // circle diameter
+const D    = FLOATING_PLAYER_HEIGHT;   // circle diameter
 const R    = D / 2;
 const B    = 4;    // arc ring width
 
@@ -75,7 +76,10 @@ const WIGGLE_INTERVAL_MS  = 14000; // spacing between hints if still not dragged
 // Avatar
 const AV = 28;  // avatar diameter
 
-export const FLOATING_PLAYER_HEIGHT = D;
+// Re-exported so the 16 screens that already import it from here keep working.
+// The definition lives in constants/layout so a screen can reserve space for
+// the player without pulling this module's dependency graph into its tests.
+export { FLOATING_PLAYER_HEIGHT };
 
 // ─── Repeat icon glyphs ───────────────────────────────────────────────────────
 function RepeatGlyph({ mode }: { mode: string }) {

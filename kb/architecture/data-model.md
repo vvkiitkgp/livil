@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-08-02
+last_verified: 2026-08-03
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 49 migration(s) in `supabase/migrations/`.
+Reconstructed from 50 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -603,6 +603,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `fans_seen_at` | `timestamptz` | `20260530000000_relationships.sql` |
 | `links` | `text[] not null default '{}'` | `20260607000000_edit_profile_schema.sql` |
 | `username_set` | `boolean NOT NULL DEFAULT false` | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
+| `comments_friends_only` | `boolean not null default false` | `20260803000000_profiles_comments_friends_only.sql` |
 
 **Triggers**
 

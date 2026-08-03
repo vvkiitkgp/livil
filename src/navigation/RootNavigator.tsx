@@ -31,7 +31,9 @@ import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import ActivityCenterScreen from '../screens/main/ActivityCenterScreen';
 import EditProfileScreen from '../screens/main/EditProfileScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
-import AccountSettingsScreen from '../screens/main/AccountSettingsScreen';
+import NotificationSettingsScreen from '../screens/main/NotificationSettingsScreen';
+import PrivacyDataScreen from '../screens/main/PrivacyDataScreen';
+import DeleteAccountScreen from '../screens/main/DeleteAccountScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
@@ -492,8 +494,22 @@ export default function RootNavigator() {
               }}
             />
             <Stack.Screen
-              name="AccountSettings"
-              component={AccountSettingsScreen}
+              name="NotificationSettings"
+              component={NotificationSettingsScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="PrivacyData"
+              component={PrivacyDataScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="DeleteAccount"
+              component={DeleteAccountScreen}
               options={{
                 animation: 'slide_from_right',
               }}

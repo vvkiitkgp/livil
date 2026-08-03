@@ -1008,6 +1008,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           bio: string | null
+          comments_friends_only: boolean
           created_at: string | null
           display_name: string | null
           fans_seen_at: string | null
@@ -1022,6 +1023,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           bio?: string | null
+          comments_friends_only?: boolean
           created_at?: string | null
           display_name?: string | null
           fans_seen_at?: string | null
@@ -1036,6 +1038,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           bio?: string | null
+          comments_friends_only?: boolean
           created_at?: string | null
           display_name?: string | null
           fans_seen_at?: string | null

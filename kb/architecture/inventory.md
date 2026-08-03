@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-02
+last_verified: 2026-08-03
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-147 TypeScript file(s) under `src/`, 42,729 lines.
+158 TypeScript file(s) under `src/`, 44,918 lines.
 
 ## Size hotspots
 
@@ -33,7 +33,7 @@ reading alone (Constitution P28).
 | `src/screens/main/HomeScreen.tsx` | 1138 |
 | `src/screens/main/UploadScreen.tsx` | 1096 |
 | `src/screens/main/ProfileScreen.tsx` | 1036 |
-| `src/components/FloatingPlayer.tsx` | 931 |
+| `src/components/FloatingPlayer.tsx` | 935 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
 | `src/screens/main/UserProfileScreen.tsx` | 810 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -67,7 +67,9 @@ case the call fails silently wherever its result is discarded.
 | `RecentlyPlayed` | `undefined` |
 | `EditProfile` | `undefined` |
 | `Settings` | `undefined` |
-| `AccountSettings` | `undefined` |
+| `NotificationSettings` | `undefined` |
+| `PrivacyData` | `undefined` |
+| `DeleteAccount` | `undefined` |
 | `CreatePlaylist` | `{ initialPost?: { postId: string` |
 | `title` | `string` |
 | `artistName` | `string` |
@@ -88,7 +90,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-35 file(s), 17,251 lines.
+39 file(s), 18,426 lines.
 
 | File | Lines |
 |---|---:|
@@ -113,30 +115,34 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 348 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
+| `src/screens/main/SettingsScreen.tsx` | 271 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PlaylistScreen.tsx` | 260 |
+| `src/screens/main/PrivacyDataScreen.tsx` | 255 |
+| `src/screens/main/NotificationSettingsScreen.tsx` | 238 |
+| `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
-| `src/screens/main/__tests__/AccountSettingsScreen.test.tsx` | 230 |
 | `src/screens/main/FollowingScreen.tsx` | 221 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 217 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 200 |
+| `src/screens/main/__tests__/SettingsScreen.test.tsx` | 197 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
+| `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 191 |
+| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 181 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/AccountSettingsScreen.tsx` | 150 |
-| `src/screens/main/__tests__/SettingsScreen.test.tsx` | 72 |
-| `src/screens/main/SettingsScreen.tsx` | 60 |
+| `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 118 |
 
 ## Components
 
-52 file(s), 13,437 lines.
+55 file(s), 14,122 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2022 |
 | `src/components/PostCard.tsx` | 1194 |
-| `src/components/FloatingPlayer.tsx` | 931 |
+| `src/components/FloatingPlayer.tsx` | 935 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 496 |
 | `src/components/QueueList.tsx` | 475 |
@@ -148,12 +154,15 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/CommentItem.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
+| `src/components/Icon.tsx` | 235 |
 | `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
 | `src/components/Button.tsx` | 214 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
-| `src/components/Icon.tsx` | 206 |
+| `src/components/SettingsRow.tsx` | 202 |
+| `src/components/__tests__/SettingsRow.test.tsx` | 201 |
+| `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/ConfirmActionModal.tsx` | 188 |
 | `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
@@ -165,15 +174,15 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MentionSuggestions.tsx` | 160 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
+| `src/components/SettingsHighlightCard.tsx` | 124 |
 | `src/components/ProfileTabBar.tsx` | 123 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/AddBadge.tsx` | 95 |
-| `src/components/__tests__/SettingsRow.test.tsx` | 92 |
+| `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
-| `src/components/SettingsRow.tsx` | 79 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
 | `src/components/GradientFill.tsx` | 74 |
 | `src/components/PostCardSkeleton.tsx` | 74 |
@@ -182,27 +191,27 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FormInput.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
-| `src/components/SettingsSection.tsx` | 52 |
+| `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/CollabAvatar.tsx` | 39 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/Logo.tsx` | 22 |
 
 ## Services
 
-25 file(s), 6,734 lines.
+26 file(s), 6,981 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 806 |
 | `src/services/tracks.ts` | 708 |
-| `src/services/pushNotifications.ts` | 449 |
+| `src/services/pushNotifications.ts` | 545 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
+| `src/services/profileService.ts` | 377 |
 | `src/services/messages.ts` | 362 |
 | `src/services/jamRooms.ts` | 325 |
 | `src/services/waveform.ts` | 324 |
-| `src/services/profileService.ts` | 317 |
 | `src/services/activity.ts` | 306 |
 | `src/services/conversations.ts` | 291 |
 | `src/services/jamRealtime.ts` | 251 |
@@ -213,6 +222,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
+| `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
 | `src/services/friendActivity.ts` | 33 |
