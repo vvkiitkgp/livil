@@ -16,11 +16,8 @@ export const DELETE_ACCOUNT_INFO_URL = 'https://livil-music.com/delete-account.h
 
 export const SUPPORT_EMAIL = 'vvk.iitkgp@gmail.com';
 
-/**
- * TODO(vamsi): confirm the handle before release — it is not recorded anywhere
- * in the repo, so this is the one link here that has not been verified.
- */
-export const INSTAGRAM_URL = 'https://instagram.com/livil.music';
+/** Confirmed by Vamsi, 2026-08-03. Underscore, not a dot — `livil.music` is a 404. */
+export const INSTAGRAM_URL = 'https://instagram.com/livil_music';
 
 /**
  * `market://` opens the Play Store app directly; the https form is the
