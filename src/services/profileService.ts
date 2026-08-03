@@ -164,6 +164,38 @@ export async function updateShowActivity(
   if (error) {throw error;}
 }
 
+/**
+ * Whether the user wants comments on their posts limited to accepted friends.
+ *
+ * NOT ENFORCED YET. `post_comments_insert_self` still only checks
+ * `author_id = auth.uid()`, so this reads and writes a preference that nothing
+ * acts on. Enforcement needs an RLS amendment on post_comments plus a security
+ * review — see 20260803000000_profiles_comments_friends_only.sql.
+ *
+ * Defaults to false (everyone) on error, matching the column default, so a
+ * failed read never shows the user a restriction they did not choose.
+ */
+export async function getCommentsFriendsOnly(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('comments_friends_only')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return (data as { comments_friends_only: boolean | null } | null)?.comments_friends_only ?? false;
+}
+
+export async function updateCommentsFriendsOnly(
+  userId: string,
+  friendsOnly: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ comments_friends_only: friendsOnly })
+    .eq('id', userId);
+  if (error) {throw error;}
+}
+
 export async function updatePrivateProfile(
   userId: string,
   patch: PrivateProfilePatch,

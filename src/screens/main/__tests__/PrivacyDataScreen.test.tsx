@@ -18,9 +18,13 @@ jest.mock('@react-navigation/native', () => ({
 
 const mockGetShowActivity = jest.fn().mockResolvedValue(true);
 const mockUpdateShowActivity = jest.fn().mockResolvedValue(undefined);
+const mockGetCommentsFriendsOnly = jest.fn().mockResolvedValue(false);
+const mockUpdateCommentsFriendsOnly = jest.fn().mockResolvedValue(undefined);
 jest.mock('../../../services/profileService', () => ({
   getShowActivity: (...a: unknown[]) => mockGetShowActivity(...(a as [])),
   updateShowActivity: (...a: unknown[]) => mockUpdateShowActivity(...(a as [])),
+  getCommentsFriendsOnly: (...a: unknown[]) => mockGetCommentsFriendsOnly(...(a as [])),
+  updateCommentsFriendsOnly: (...a: unknown[]) => mockUpdateCommentsFriendsOnly(...(a as [])),
 }));
 
 const mockGetUser = jest.fn().mockResolvedValue({ data: { user: { id: 'u1' } } });
@@ -53,6 +57,9 @@ const texts = (t: TestRenderer.ReactTestRenderer) =>
 const activitySwitch = (t: TestRenderer.ReactTestRenderer) =>
   t.root.findAllByType(Switch)[0]!;
 
+const commentsSwitch = (t: TestRenderer.ReactTestRenderer) =>
+  t.root.findAllByType(Switch)[1]!;
+
 const pressable = (t: TestRenderer.ReactTestRenderer, label: string) =>
   t.root.findAll(
     n => typeof n.props?.onPress === 'function' && n.props?.accessibilityLabel === label,
@@ -64,6 +71,8 @@ describe('PrivacyDataScreen', () => {
     jest.clearAllMocks();
     mockGetShowActivity.mockResolvedValue(true);
     mockUpdateShowActivity.mockResolvedValue(undefined);
+    mockGetCommentsFriendsOnly.mockResolvedValue(false);
+    mockUpdateCommentsFriendsOnly.mockResolvedValue(undefined);
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
   });
 
@@ -96,6 +105,50 @@ describe('PrivacyDataScreen', () => {
     mockGetShowActivity.mockRejectedValue(new Error('offline'));
     const tree = await mount();
     expect(activitySwitch(tree).props.value).toBe(true);
+  });
+
+  describe('comment audience', () => {
+    it('defaults to everyone, not friends-only', async () => {
+      const tree = await mount();
+      expect(commentsSwitch(tree).props.value).toBe(false);
+    });
+
+    it('reflects the stored preference', async () => {
+      mockGetCommentsFriendsOnly.mockResolvedValue(true);
+      const tree = await mount();
+      expect(commentsSwitch(tree).props.value).toBe(true);
+    });
+
+    it('persists a change', async () => {
+      const tree = await mount();
+      await act(async () => { commentsSwitch(tree).props.onValueChange(true); });
+      expect(mockUpdateCommentsFriendsOnly).toHaveBeenCalledWith('u1', true);
+      expect(commentsSwitch(tree).props.value).toBe(true);
+    });
+
+    it('rolls back and warns when the write fails', async () => {
+      mockUpdateCommentsFriendsOnly.mockRejectedValueOnce(new Error('offline'));
+      const tree = await mount();
+      await act(async () => { commentsSwitch(tree).props.onValueChange(true); });
+
+      expect(commentsSwitch(tree).props.value).toBe(false);
+      expect(mockShowToast).toHaveBeenCalledWith(
+        'Could not update who can comment.',
+        { kind: 'error' },
+      );
+    });
+
+    it('leaves the activity switch alone', async () => {
+      const tree = await mount();
+      await act(async () => { commentsSwitch(tree).props.onValueChange(true); });
+      expect(mockUpdateShowActivity).not.toHaveBeenCalled();
+      expect(activitySwitch(tree).props.value).toBe(true);
+    });
+  });
+
+  it('offers no blocking control — reporting is the moderation path', async () => {
+    const shown = texts(await mount()).join(' ').toLowerCase();
+    expect(shown).not.toContain('block');
   });
 
   it('routes to the delete-account screen', async () => {

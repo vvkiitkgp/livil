@@ -13,7 +13,12 @@ import {
 import { SettingsHeader } from '../../components/SettingsHeader';
 import { FLOATING_PLAYER_HEIGHT } from '../../constants/layout';
 import { useToast } from '../../contexts/ToastContext';
-import { getShowActivity, updateShowActivity } from '../../services/profileService';
+import {
+  getCommentsFriendsOnly,
+  getShowActivity,
+  updateCommentsFriendsOnly,
+  updateShowActivity,
+} from '../../services/profileService';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '../../constants/links';
 import { supabase } from '../../../lib/supabase';
 
@@ -24,6 +29,7 @@ export default function PrivacyDataScreen() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [showActivity, setShowActivity] = useState(true);
+  const [commentsFriendsOnly, setCommentsFriendsOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -43,10 +49,14 @@ export default function PrivacyDataScreen() {
         if (!uid) {
           return;
         }
-        const value = await getShowActivity(uid);
+        const [activity, friendsOnly] = await Promise.all([
+          getShowActivity(uid),
+          getCommentsFriendsOnly(uid),
+        ]);
         if (mounted.current) {
           setUserId(uid);
-          setShowActivity(value);
+          setShowActivity(activity);
+          setCommentsFriendsOnly(friendsOnly);
         }
       } catch {
         // Leave the switch at its `true` default and let the row stay
@@ -59,19 +69,28 @@ export default function PrivacyDataScreen() {
     })();
   }, []);
 
-  const onToggleActivity = useCallback(
-    async (next: boolean) => {
+  /**
+   * Optimistic write shared by both switches: move under the finger, roll back
+   * and explain if the write loses.
+   */
+  const persistToggle = useCallback(
+    async (
+      next: boolean,
+      apply: (value: boolean) => void,
+      write: (uid: string, value: boolean) => Promise<void>,
+      failureMessage: string,
+    ) => {
       if (busy || !userId) {
         return;
       }
       setBusy(true);
-      setShowActivity(next);
+      apply(next);
       try {
-        await updateShowActivity(userId, next);
+        await write(userId, next);
       } catch {
         if (mounted.current) {
-          setShowActivity(!next);
-          showToast('Could not update your activity status.', { kind: 'error' });
+          apply(!next);
+          showToast(failureMessage, { kind: 'error' });
         }
       } finally {
         if (mounted.current) {
@@ -80,6 +99,28 @@ export default function PrivacyDataScreen() {
       }
     },
     [busy, showToast, userId],
+  );
+
+  const onToggleActivity = useCallback(
+    (next: boolean) =>
+      persistToggle(
+        next,
+        setShowActivity,
+        updateShowActivity,
+        'Could not update your activity status.',
+      ),
+    [persistToggle],
+  );
+
+  const onToggleCommentsAudience = useCallback(
+    (next: boolean) =>
+      persistToggle(
+        next,
+        setCommentsFriendsOnly,
+        updateCommentsFriendsOnly,
+        'Could not update who can comment.',
+      ),
+    [persistToggle],
   );
 
   const openPrivacyPolicy = useCallback(async () => {
@@ -117,6 +158,22 @@ export default function PrivacyDataScreen() {
             toggle={{
               value: showActivity,
               onValueChange: onToggleActivity,
+              disabled: busy || loading || !userId,
+            }}
+          />
+        </SettingsSection>
+
+        {/* Likes stay open to everyone by design and have no toggle — comments
+            are the only audience control, and blocking is deliberately not a
+            feature (reporting is the moderation path). */}
+        <SettingsSection title="Comments">
+          <SettingsRow
+            icon="comment"
+            label="Comments from friends only"
+            subtitle="Off means anyone on Livil can comment on your posts"
+            toggle={{
+              value: commentsFriendsOnly,
+              onValueChange: onToggleCommentsAudience,
               disabled: busy || loading || !userId,
             }}
           />
