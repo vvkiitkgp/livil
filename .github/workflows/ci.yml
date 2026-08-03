@@ -268,6 +268,19 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/account-deletion-liv74.test.sql
 
+      # profiles.comments_friends_only shipped in 1.1.14 with a Settings switch and NO
+      # enforcement — post_comments_insert_self checked only `author_id = auth.uid()`,
+      # so the control looked like protection and was not one. Step 1 is that exact
+      # attack. The suite also pins the ways a fix goes wrong in the other direction:
+      # refusing a real friend, locking an author out of their own post, or making the
+      # restriction apply to everyone rather than only those who opted in.
+      - name: comments friends-only tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comments-friends-only.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
