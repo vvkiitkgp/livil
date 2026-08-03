@@ -622,6 +622,33 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          activity: boolean
+          jam: boolean
+          messages: boolean
+          social: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity?: boolean
+          jam?: boolean
+          messages?: boolean
+          social?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity?: boolean
+          jam?: boolean
+          messages?: boolean
+          social?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       playlist_posts: {
         Row: {
           added_at: string

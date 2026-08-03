@@ -98,6 +98,34 @@ function json(status: number, payload: Record<string, unknown>): Response {
   });
 }
 
+// ── Per-category preference. ALLOW BY DEFAULT. ─────────────────────────────
+// Whether the recipient has switched this kind's category off in Livil's settings.
+//
+// Note the polarity is the opposite of authorize(): that one denies by default because
+// it is a security perimeter, this one ALLOWS by default because it is a preference. An
+// absent row, an unreadable table, or a null column all mean "no objection" — a user who
+// has never touched the setting must keep receiving notifications, and a transient
+// database error must not silently stop delivery. Only an explicit `false` suppresses.
+//
+// Selects all four columns and indexes in JS rather than interpolating the category into
+// .select(). channelFor() only ever returns one of four literals so either is safe today,
+// but a fixed select cannot become an injection point if that ever stops being true.
+export async function isCategoryMuted(
+  admin: SupabaseClient,
+  recipient: string,
+  kind: string,
+): Promise<boolean> {
+  const category = channelFor(kind);
+  const { data, error } = await admin
+    .from('notification_preferences')
+    .select('social, activity, messages, jam')
+    .eq('user_id', recipient)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return (data as Record<string, unknown>)[category] === false;
+}
+
 // ── Authorization, per kind. DENY BY DEFAULT. ───────────────────────────────
 // Returns true only if `actor` is allowed to notify `recipient` for `kind`. Uses the
 // service-role client to read relationship tables (RLS-independent), so the checks here
@@ -234,6 +262,15 @@ export async function handler(req: Request): Promise<Response> {
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
   const allowed = await authorize(admin, kind, actor, recipient);
   if (!allowed) return json(403, { error: 'not_authorized' });
+
+  // 3b. PREFERENCE — the recipient may have switched this category off. Checked after
+  // authorization (so an unauthorized actor still learns nothing) and before the token
+  // lookup and FCM call, which is the point of doing it server-side: a muted category
+  // costs no send and never wakes the device. Android channels cannot do this — the OS
+  // suppresses display only after delivery, and gives iOS nothing at all.
+  if (await isCategoryMuted(admin, recipient, kind)) {
+    return json(200, { ok: true, sent: 0, reason: 'category_muted' });
+  }
 
   // 4. Look up the recipient's device tokens.
   const { data: tokenRows, error: tokErr } = await admin

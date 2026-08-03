@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-158 TypeScript file(s) under `src/`, 44,918 lines.
+158 TypeScript file(s) under `src/`, 45,112 lines.
 
 ## Size hotspots
 
@@ -90,7 +90,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-39 file(s), 18,426 lines.
+39 file(s), 18,550 lines.
 
 | File | Lines |
 |---|---:|
@@ -115,11 +115,12 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 348 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
+| `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/SettingsScreen.tsx` | 271 |
+| `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PlaylistScreen.tsx` | 260 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 255 |
-| `src/screens/main/NotificationSettingsScreen.tsx` | 238 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
 | `src/screens/main/FollowingScreen.tsx` | 221 |
@@ -128,7 +129,6 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 200 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 197 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 193 |
-| `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 191 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 181 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
@@ -198,13 +198,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-26 file(s), 6,981 lines.
+26 file(s), 7,051 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 806 |
 | `src/services/tracks.ts` | 708 |
-| `src/services/pushNotifications.ts` | 545 |
+| `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |

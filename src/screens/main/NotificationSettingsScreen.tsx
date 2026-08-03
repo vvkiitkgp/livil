@@ -14,12 +14,16 @@ import { SettingsHeader } from '../../components/SettingsHeader';
 import { FLOATING_PLAYER_HEIGHT } from '../../constants/layout';
 import { useToast } from '../../contexts/ToastContext';
 import {
+  ALL_CATEGORIES_ON,
   NOTIFICATION_CHANNELS,
   disablePushForUser,
   getBlockedChannelIds,
+  getNotificationPreferences,
   isPushEnabled,
   openOsNotificationSettings,
   requestPushPermissionInteractive,
+  updateNotificationPreference,
+  type NotificationCategoryPrefs,
 } from '../../services/pushNotifications';
 import { supabase } from '../../../lib/supabase';
 
@@ -31,8 +35,11 @@ export default function NotificationSettingsScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [blockedChannels, setBlockedChannels] = useState<Set<string>>(new Set());
+  const [prefs, setPrefs] = useState<NotificationCategoryPrefs>(ALL_CATEGORIES_ON);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Per-category, so toggling Messages does not freeze the Jam switch.
+  const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -45,13 +52,29 @@ export default function NotificationSettingsScreen() {
   const refresh = useCallback(async () => {
     try {
       const { data } = await supabase.auth.getUser();
-      const [on, blocked] = await Promise.all([isPushEnabled(), getBlockedChannelIds()]);
+      const uid = data.user?.id ?? null;
+      if (mounted.current) {
+        setUserId(uid);
+      }
+      // Settled independently: a failure in any one of these must not blank the
+      // others or leave the switches gated on a userId that never got set.
+      const [on, blocked, categoryPrefs] = await Promise.allSettled([
+        isPushEnabled(),
+        getBlockedChannelIds(),
+        uid ? getNotificationPreferences(uid) : Promise.resolve(ALL_CATEGORIES_ON),
+      ]);
       if (!mounted.current) {
         return;
       }
-      setUserId(data.user?.id ?? null);
-      setEnabled(on);
-      setBlockedChannels(blocked);
+      if (on.status === 'fulfilled') {
+        setEnabled(on.value);
+      }
+      if (blocked.status === 'fulfilled') {
+        setBlockedChannels(blocked.value);
+      }
+      if (categoryPrefs.status === 'fulfilled') {
+        setPrefs(categoryPrefs.value);
+      }
     } finally {
       if (mounted.current) {
         setLoading(false);
@@ -130,6 +153,29 @@ export default function NotificationSettingsScreen() {
     [showToast],
   );
 
+  const onToggleCategory = useCallback(
+    async (category: keyof NotificationCategoryPrefs, next: boolean) => {
+      if (!userId || savingCategory) {
+        return;
+      }
+      setSavingCategory(category);
+      setPrefs(prev => ({ ...prev, [category]: next }));
+      try {
+        await updateNotificationPreference(userId, category, next);
+      } catch {
+        if (mounted.current) {
+          setPrefs(prev => ({ ...prev, [category]: !next }));
+          showToast('Could not update that notification setting.', { kind: 'error' });
+        }
+      } finally {
+        if (mounted.current) {
+          setSavingCategory(null);
+        }
+      }
+    },
+    [savingCategory, showToast, userId],
+  );
+
   const isAndroid = Platform.OS === 'android';
 
   return (
@@ -156,46 +202,54 @@ export default function NotificationSettingsScreen() {
           />
         </SettingsSection>
 
-        {isAndroid ? (
-          <>
-            <SettingsSection title="Categories">
-              {NOTIFICATION_CHANNELS.map(channel => {
-                const blocked = blockedChannels.has(channel.id);
-                return (
-                  <SettingsRow
-                    key={channel.id}
-                    icon={blocked ? 'bellOff' : 'bell'}
-                    iconColor={blocked ? COLORS.textMuted : undefined}
-                    iconBackground={blocked ? COLORS.inputBg : undefined}
-                    label={channel.name}
-                    subtitle={channel.description}
-                    // The state is Android's, read back via getChannels() — we
-                    // report it rather than storing our own copy that could
-                    // disagree with what the OS actually does.
-                    value={loading ? undefined : blocked ? 'Off' : 'On'}
-                    external
-                    disabled={!enabled}
-                    onPress={() => void openChannel(channel.id)}
-                  />
-                );
-              })}
-            </SettingsSection>
-            <Text style={styles.note}>
-              Sound, vibration and importance for each category are controlled by
-              Android. Tapping a category opens its system settings.
-            </Text>
-          </>
-        ) : (
-          <SettingsSection title="Categories">
-            <SettingsRow
-              icon="settings"
-              label="Open system settings"
-              subtitle="Manage Livil notifications in iOS Settings"
-              external
-              onPress={() => void openChannel()}
-            />
-          </SettingsSection>
-        )}
+        {/* The switch is OUR preference — whether the server sends this category
+            at all. That is the only mechanism that works on iOS, and the only one
+            that avoids waking the device for something the user muted. Android's
+            own channel state is separate and OS-owned: an app cannot change a
+            channel once created, so it is reported in the subtitle and fixed
+            through the link below, never silently mirrored into our switch. */}
+        <SettingsSection title="Categories">
+          {NOTIFICATION_CHANNELS.map(channel => {
+            const category = channel.id as keyof NotificationCategoryPrefs;
+            const on = prefs[category];
+            // Only worth surfacing when we WOULD send but Android will not show
+            // it — otherwise the user's own switch already explains the silence.
+            const silencedByOs = isAndroid && on && blockedChannels.has(channel.id);
+            return (
+              <SettingsRow
+                key={channel.id}
+                icon={on ? 'bell' : 'bellOff'}
+                iconColor={silencedByOs ? COLORS.warning : undefined}
+                iconBackground={silencedByOs ? COLORS.warningBg : undefined}
+                label={channel.name}
+                subtitle={
+                  silencedByOs
+                    ? "Silenced in Android settings — these won't appear"
+                    : channel.description
+                }
+                toggle={{
+                  value: on,
+                  onValueChange: next => void onToggleCategory(category, next),
+                  disabled: loading || !userId || savingCategory === channel.id,
+                }}
+              />
+            );
+          })}
+        </SettingsSection>
+
+        <SettingsSection>
+          <SettingsRow
+            icon="settings"
+            label={isAndroid ? 'Android notification settings' : 'iOS notification settings'}
+            subtitle={
+              isAndroid
+                ? 'Sound, vibration and importance for each category'
+                : 'Sound, banners and badges for Livil'
+            }
+            external
+            onPress={() => void openChannel()}
+          />
+        </SettingsSection>
 
         {!enabled && !loading ? (
           <View style={styles.blockedNote}>
@@ -213,14 +267,6 @@ export default function NotificationSettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   body: { paddingTop: 8 },
-  note: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-    paddingHorizontal: SETTINGS_PAGE_INSET + 4,
-    marginTop: -12,
-    marginBottom: 22,
-  },
   blockedNote: {
     marginHorizontal: SETTINGS_PAGE_INSET,
     padding: 14,

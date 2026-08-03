@@ -210,6 +210,76 @@ export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
   },
 ];
 
+/** One flag per notifee channel id. Mirrors the notification_preferences columns. */
+export type NotificationCategoryPrefs = {
+  social: boolean;
+  activity: boolean;
+  messages: boolean;
+  jam: boolean;
+};
+
+/** Every category on, which is what an absent row means server-side. */
+export const ALL_CATEGORIES_ON: NotificationCategoryPrefs = {
+  social: true,
+  activity: true,
+  messages: true,
+  jam: true,
+};
+
+/**
+ * The user's per-category send preferences.
+ *
+ * This is OUR state, not Android's: it decides whether send-push sends at all, which
+ * is the only mechanism that works on iOS and the only one that avoids waking the
+ * device for a category the user muted. Android channel state is separate, OS-owned,
+ * and read via `getBlockedChannelIds` — never mirrored here.
+ *
+ * No row means all-on, matching the server's reading, so a user who has never opened
+ * this screen behaves exactly as before. Defaults to all-on if the read fails too —
+ * showing someone their notifications are off when we simply could not check would be
+ * a lie in the alarming direction.
+ */
+export async function getNotificationPreferences(
+  userId: string,
+): Promise<NotificationCategoryPrefs> {
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .select('social, activity, messages, jam')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error || !data) {
+    return { ...ALL_CATEGORIES_ON };
+  }
+  const row = data as Partial<NotificationCategoryPrefs>;
+  return {
+    social: row.social ?? true,
+    activity: row.activity ?? true,
+    messages: row.messages ?? true,
+    jam: row.jam ?? true,
+  };
+}
+
+/**
+ * Turn one category on or off.
+ *
+ * Upsert, not update: the row does not exist until the first toggle, and creating it
+ * lazily keeps the migration from having to backfill every user. The other three
+ * columns take their `true` defaults on insert, which is the correct starting point.
+ */
+export async function updateNotificationPreference(
+  userId: string,
+  category: keyof NotificationCategoryPrefs,
+  enabled: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('notification_preferences')
+    .upsert(
+      { user_id: userId, [category]: enabled, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+  if (error) {throw error;}
+}
+
 /**
  * Whether to render the pre-prompt modal. Returns true only when:
  *  - the user has never resolved the prompt before ('pending'), AND

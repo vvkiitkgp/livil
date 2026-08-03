@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 50 migration(s) in `supabase/migrations/`.
+Reconstructed from 51 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-32 table(s).
+33 table(s).
 
 ### `activity_notifications`
 
@@ -341,6 +341,19 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 - `after_message_insert` — after insert (`20260528000000_chat_jam.sql`)
 - `trg_messages_freeze_identity` — before update (`20260729000000_liv78_msg_update_with_check.sql`)
 - `after_message_delete` — after delete (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
+
+### `notification_preferences`
+
+RLS enabled · defined in `20260803120000_notification_preferences.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid primary key references auth.users(id) on delete cascade` |
+| `social` | `boolean not null default true` |
+| `activity` | `boolean not null default true` |
+| `messages` | `boolean not null default true` |
+| `jam` | `boolean not null default true` |
+| `updated_at` | `timestamptz not null default now()` |
 
 ### `playlist_posts`
 
