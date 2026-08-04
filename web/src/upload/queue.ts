@@ -8,7 +8,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import type { PublishProgress } from '@shared/services/publishTrack';
-import { startPublish } from './publish';
+import { readDuration, startPublish } from './publish';
 import type { PairedItem } from './files';
 
 /**
@@ -35,6 +35,10 @@ export type QueueItem = {
   stage: PublishProgress['stage'] | null;
   error: string | null;
   postId: string | null;
+  /** Filled in asynchronously once the browser has read the file's metadata. */
+  duration: number | null;
+  /** Absolute full-track seconds. Null publishes the whole track. */
+  clip: { start: number; end: number } | null;
 };
 
 let seq = 0;
@@ -58,6 +62,8 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     stage: null,
     error: null,
     postId: null,
+    duration: null,
+    clip: null,
   }));
 }
 
@@ -70,9 +76,23 @@ export function useUploadQueue() {
     setItems(prev => prev.map(it => (it.id === id ? { ...it, ...changes } : it)));
   }, []);
 
-  const add = useCallback((incoming: QueueItem[]) => {
-    setItems(prev => [...prev, ...incoming]);
-  }, []);
+  const add = useCallback(
+    (incoming: QueueItem[]) => {
+      setItems(prev => [...prev, ...incoming]);
+      // Durations arrive asynchronously and are needed before a clip window can be set.
+      // Read them per item so one unreadable file does not hold up the rest of the batch.
+      for (const item of incoming) {
+        readDuration(item.media)
+          .then(duration => {
+            if (duration !== null) patch(item.id, { duration });
+          })
+          .catch(() => {
+            /* duration is optional — it backfills on first play */
+          });
+      }
+    },
+    [patch],
+  );
 
   const remove = useCallback((id: string) => {
     abortsRef.current.get(id)?.();
@@ -99,6 +119,7 @@ export function useUploadQueue() {
           image: item.image,
           title: item.title,
           description: item.description,
+          clip: item.clip ? { startSec: item.clip.start, endSec: item.clip.end } : null,
         },
         (p: PublishProgress) => patch(item.id, { stage: p.stage, fraction: p.fraction }),
       );

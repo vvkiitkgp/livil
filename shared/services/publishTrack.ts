@@ -46,11 +46,53 @@ export type PublishAsset = {
   sizeBytes: number | null;
 };
 
+/** Absolute full-track seconds. Null means the whole track. */
+export type ClipWindow = { startSec: number; endSec: number };
+
+/**
+ * Shortest publishable clip, matching `minClipSeconds` in the mobile ClipRangeSlider.
+ * Anything shorter is not a clip, it is a click.
+ */
+export const MIN_CLIP_SECONDS = 1;
+
+/**
+ * Clamp a requested clip into something the player can honour, or null for the full track.
+ *
+ * Clip bounds are ABSOLUTE full-track seconds everywhere in the product — the player always
+ * loads the full track and the lock screen translates to clip-relative at the very edge, so
+ * writing anything else here desynchronises the app from the notification.
+ */
+export function clampClip(
+  clip: ClipWindow | null | undefined,
+  durationSeconds: number | null | undefined,
+): ClipWindow | null {
+  if (!clip) return null;
+  const { startSec, endSec } = clip;
+  if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return null;
+
+  const limit =
+    typeof durationSeconds === 'number' && Number.isFinite(durationSeconds) && durationSeconds > 0
+      ? durationSeconds
+      : null;
+
+  const start = Math.max(0, limit === null ? startSec : Math.min(startSec, limit));
+  const end = limit === null ? endSec : Math.min(endSec, limit);
+  if (end - start < MIN_CLIP_SECONDS) return null;
+
+  // A clip spanning the whole track is not a clip; storing it would make every consumer
+  // translate coordinates for no reason.
+  if (limit !== null && start <= 0 && end >= limit) return null;
+
+  return { startSec: start, endSec: end };
+}
+
 export type PublishTrackInput = {
   mode: 'audio' | 'video';
   title: string;
   description?: string | null;
   durationSeconds?: number | null;
+  /** Optional excerpt to feature. Null/omitted publishes the full track. */
+  clip?: ClipWindow | null;
   assets: PublishAsset[];
 };
 
@@ -198,9 +240,18 @@ export async function publishTrack(
 
     if (updateError) throw new Error(`Failed to finalize track: ${updateError.message}`);
 
+    const clip = clampClip(input.clip, duration ?? input.durationSeconds);
+
     const { data: postRow, error: postError } = await db
       .from('posts')
-      .insert({ author_id: user.id, kind: 'upload', track_id: trackId, caption: description })
+      .insert({
+        author_id: user.id,
+        kind: 'upload',
+        track_id: trackId,
+        caption: description,
+        clip_start_sec: clip?.startSec ?? null,
+        clip_end_sec: clip?.endSec ?? null,
+      })
       .select('id')
       .single();
 
