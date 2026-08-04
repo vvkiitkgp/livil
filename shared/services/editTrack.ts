@@ -41,21 +41,38 @@ export async function updateTrackMetadata(edit: TrackEdit): Promise<void> {
   const description = edit.description.trim() ? edit.description.trim() : null;
   const db = livil();
 
-  const { error: trackError } = await db
+  // `.select('id')` is load-bearing, not decoration. Without it supabase-js sends
+  // `Prefer: return=minimal` and PostgREST answers 204 with no error for an update that
+  // matched ZERO rows — so an RLS denial is indistinguishable from a successful write. For
+  // this function that is worse than a silent failure: the two updates are independent, so
+  // a denied track update paired with a permitted caption update produces exactly the
+  // description/caption divergence this file exists to make impossible. Found by security
+  // review.
+  const { data: trackRows, error: trackError } = await db
     .from('tracks')
     .update({ title, description })
-    .eq('id', edit.trackId);
+    .eq('id', edit.trackId)
+    .select('id');
 
   if (trackError) throw new Error(trackError.message);
+  if (!trackRows || trackRows.length !== 1) {
+    throw new Error('That track could not be updated — it may not be yours.');
+  }
 
-  const { error: postError } = await db
+  const { data: postRows, error: postError } = await db
     .from('posts')
     .update({ caption: description })
-    .eq('id', edit.postId);
+    .eq('id', edit.postId)
+    .select('id');
 
   if (postError) {
     throw new Error(
       `Saved the track, but the post caption did not update: ${postError.message}`,
+    );
+  }
+  if (!postRows || postRows.length !== 1) {
+    throw new Error(
+      'Saved the track, but the post caption did not update — the two are now out of step.',
     );
   }
 }

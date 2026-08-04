@@ -107,7 +107,10 @@ export function useAuthState(): AuthState {
  * what the network does, so there is nothing to report and nothing to retry.
  */
 export function signOut(): void {
-  supabase.auth.signOut().catch(() => {
-    /* local session is cleared either way */
+  // `scope: 'global'` revokes the refresh token server-side, not just locally. Without it a
+  // failed network call leaves the session valid on the server — which is exactly the case
+  // on the shared studio machine you most wanted to sign out of. Found by security review.
+  supabase.auth.signOut({ scope: 'global' }).catch(() => {
+    /* the local session is cleared regardless; the server token may outlive it */
   });
 }

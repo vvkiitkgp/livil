@@ -1502,3 +1502,7 @@ a {
 .confirm__actions {
   margin-top: var(--space-2);
 }
+
+.table .muted {
+  color: var(--text-muted);
+}

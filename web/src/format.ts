@@ -42,3 +42,32 @@ export function formatDate(iso: string): string {
     year: 'numeric',
   });
 }
+
+/** Bytes -> "7.4 MB". Em dash for unknown, never "0 B" — a zero here would be a lie. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return '—';
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+  if (mb >= 10) return `${Math.round(mb)} MB`;
+  if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/**
+ * Average bitrate, derived rather than stored: size * 8 / duration.
+ *
+ * "Average" is the honest word — a VBR mp3 has no single bitrate, and for a VIDEO this is the
+ * whole container including the picture, so it is not an audio bitrate at all. Both are why
+ * the label says kbps and the number is rounded rather than presented as a spec.
+ */
+export function bitrateKbps(
+  bytes: number | null | undefined,
+  seconds: number | null | undefined,
+): number | null {
+  if (!bytes || !seconds || bytes <= 0 || seconds <= 0) return null;
+  return Math.round((bytes * 8) / seconds / 1000);
+}
+
+export function formatBitrate(kbps: number | null): string {
+  return kbps === null ? '—' : `${kbps} kbps`;
+}

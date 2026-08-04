@@ -23,6 +23,13 @@ if (!url || !anonKey) {
 
 export const supabase: LivilClient = createClient<Database>(url, anonKey, {
   auth: {
+    // PKCE, not the library default of implicit. Implicit returns the access AND refresh
+    // token in the URL FRAGMENT, which lands in session-restore state, in-page scripts and
+    // any extension with page access. PKCE keeps the exchange in a POST and the token never
+    // enters a URL. Mobile uses implicit for a documented reason — PKCE did not work under
+    // React Native — and that reason does not transfer to a browser. Found by security
+    // review; decided now rather than retrofitted after tokens have been in URLs for months.
+    flowType: 'pkce',
     // Browser defaults: localStorage-backed session, refreshed in the background.
     persistSession: true,
     autoRefreshToken: true,

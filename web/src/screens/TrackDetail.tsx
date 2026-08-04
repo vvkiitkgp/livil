@@ -12,7 +12,14 @@ import {
   type CreatorProfile,
   type PostDetail,
 } from '../data/creator';
-import { formatCount, formatDate, formatDuration } from '../format';
+import {
+  bitrateKbps,
+  formatBitrate,
+  formatBytes,
+  formatCount,
+  formatDate,
+  formatDuration,
+} from '../format';
 
 type Ctx = { session: Session; profile: CreatorProfile | null };
 
@@ -25,7 +32,7 @@ type Ctx = { session: Session; profile: CreatorProfile | null };
  */
 export function TrackDetail() {
   const { postId } = useParams<{ postId: string }>();
-  const { profile } = useOutletContext<Ctx>();
+  const { session, profile } = useOutletContext<Ctx>();
   const navigate = useNavigate();
 
   const [post, setPost] = useState<PostDetail | null | 'missing'>(null);
@@ -40,7 +47,7 @@ export function TrackDetail() {
   useEffect(() => {
     if (!postId) return;
     let cancelled = false;
-    fetchPostDetail(postId)
+    fetchPostDetail(postId, session.user.id)
       .then(p => {
         if (cancelled) return;
         if (!p) {
@@ -59,7 +66,7 @@ export function TrackDetail() {
     return () => {
       cancelled = true;
     };
-  }, [postId]);
+  }, [postId, session.user.id]);
 
   if (post === 'missing') {
     return (
@@ -132,7 +139,9 @@ export function TrackDetail() {
           </p>
           <h1 className="display page__title">{post.title}</h1>
           <p className="hint">
-            {post.mediaKind} · {formatDuration(post.durationSeconds)} · published{' '}
+            {post.mediaKind} · {formatDuration(post.durationSeconds)} ·{' '}
+            {formatBytes(post.sizeBytes)} ·{' '}
+            {formatBitrate(bitrateKbps(post.sizeBytes, post.durationSeconds))} · published{' '}
             {formatDate(post.publishedAt)}
           </p>
         </div>
@@ -168,6 +177,36 @@ export function TrackDetail() {
             <Stat label="Likes" value={post.likes} />
             <Stat label="Comments" value={post.comments} />
             <Stat label="Reposts" value={post.reposts} />
+          </div>
+
+          <div className="panel">
+            <div className="panel__head">
+              <h2 className="panel__title">The file</h2>
+            </div>
+            <div className="pass__specs">
+              <div className="spec">
+                <span className="spec__label">Format</span>
+                <span className="spec__leader" />
+                <span className="spec__value">{post.mediaKind}</span>
+              </div>
+              <div className="spec">
+                <span className="spec__label">Length</span>
+                <span className="spec__leader" />
+                <span className="spec__value">{formatDuration(post.durationSeconds)}</span>
+              </div>
+              <div className="spec">
+                <span className="spec__label">Size</span>
+                <span className="spec__leader" />
+                <span className="spec__value">{formatBytes(post.sizeBytes)}</span>
+              </div>
+              <div className="spec">
+                <span className="spec__label">Bitrate</span>
+                <span className="spec__leader" />
+                <span className="spec__value spec__value--accent">
+                  {formatBitrate(bitrateKbps(post.sizeBytes, post.durationSeconds))}
+                </span>
+              </div>
+            </div>
           </div>
 
           {post.mediaUrl && (

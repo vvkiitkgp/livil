@@ -27,6 +27,8 @@ export type CreatorPost = {
   mediaKind: 'audio' | 'video';
   durationSeconds: number | null;
   publishedAt: string;
+  /** Primary media object size. Null for tracks published before the column existed. */
+  sizeBytes: number | null;
   plays: number;
   likes: number;
   reposts: number;
@@ -74,12 +76,14 @@ type PostRow = {
     thumbnail_url: string | null;
     media_kind: string;
     duration_seconds: number | null;
+    file_size_bytes: number | null;
   } | null;
 };
 
 const POST_SELECT = `
   id, track_id, created_at, views_count, likes_count, reposts_count, comments_count,
-  tracks!inner ( id, title, cover_art_url, thumbnail_url, media_kind, duration_seconds )
+  tracks!inner ( id, title, cover_art_url, thumbnail_url, media_kind, duration_seconds,
+                 file_size_bytes )
 `;
 
 function toCreatorPost(row: PostRow): CreatorPost {
@@ -92,6 +96,7 @@ function toCreatorPost(row: PostRow): CreatorPost {
     coverUrl: track?.cover_art_url ?? track?.thumbnail_url ?? null,
     mediaKind: track?.media_kind === 'video' ? 'video' : 'audio',
     durationSeconds: track?.duration_seconds ?? null,
+    sizeBytes: track?.file_size_bytes ?? null,
     publishedAt: row.created_at,
     plays: row.views_count ?? 0,
     likes: row.likes_count ?? 0,
@@ -172,16 +177,23 @@ type DetailRow = PostRow & {
     | null;
 };
 
-export async function fetchPostDetail(postId: string): Promise<PostDetail | null> {
+export async function fetchPostDetail(
+  postId: string,
+  authorId: string,
+): Promise<PostDetail | null> {
   const { data, error } = await supabase
     .from('posts')
     .select(
       `id, track_id, author_id, caption, created_at, views_count, likes_count,
        reposts_count, comments_count,
        tracks!inner ( id, title, description, cover_art_url, thumbnail_url, media_kind,
-                      duration_seconds, audio_url, video_url )`,
+                      duration_seconds, file_size_bytes, audio_url, video_url )`,
     )
     .eq('id', postId)
+    // Author-scoped. The writes fail at RLS anyway, but without this the screen renders an
+    // edit form and an Unpublish button for a post you do not own — offering destructive
+    // actions that can only error. Found by security review.
+    .eq('author_id', authorId)
     .maybeSingle();
 
   if (error || !data) return null;

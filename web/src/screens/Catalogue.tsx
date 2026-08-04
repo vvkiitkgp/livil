@@ -3,10 +3,24 @@ import { Link, useOutletContext } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Button } from '../components/Button';
 import { fetchCreatorPosts, type CreatorPost } from '../data/creator';
-import { formatCount, formatDate, formatDuration } from '../format';
+import {
+  bitrateKbps,
+  formatBitrate,
+  formatBytes,
+  formatCount,
+  formatDate,
+  formatDuration,
+} from '../format';
 
 type Ctx = { session: Session };
-type SortKey = 'publishedAt' | 'title' | 'plays' | 'likes' | 'comments' | 'reposts';
+type SortKey =
+  | 'publishedAt'
+  | 'title'
+  | 'plays'
+  | 'likes'
+  | 'comments'
+  | 'reposts'
+  | 'sizeBytes';
 type Filter = 'all' | 'audio' | 'video';
 
 /**
@@ -45,6 +59,16 @@ export function Catalogue() {
       if (sort === 'title') return a.title.localeCompare(b.title) * dir;
       if (sort === 'publishedAt') {
         return (Date.parse(a.publishedAt) - Date.parse(b.publishedAt)) * dir;
+      }
+      if (sort === 'sizeBytes') {
+        // Unknown sizes sort last in either direction rather than pretending to be 0 —
+        // an old track without a size is not the smallest track.
+        const av = a.sizeBytes ?? -1;
+        const bv = b.sizeBytes ?? -1;
+        if (av < 0 && bv < 0) return 0;
+        if (av < 0) return 1;
+        if (bv < 0) return -1;
+        return (av - bv) * dir;
       }
       return (a[sort] - b[sort]) * dir;
     });
@@ -120,6 +144,8 @@ export function Catalogue() {
                 {header('title', 'Title')}
                 <th>Kind</th>
                 <th className="num">Length</th>
+                {header('sizeBytes', 'Size', true)}
+                <th className="num">Bitrate</th>
                 {header('publishedAt', 'Published')}
                 {header('plays', 'Plays', true)}
                 {header('likes', 'Likes', true)}
@@ -148,6 +174,10 @@ export function Catalogue() {
                     </span>
                   </td>
                   <td className="num">{formatDuration(p.durationSeconds)}</td>
+                  <td className="num">{formatBytes(p.sizeBytes)}</td>
+                  <td className="num muted">
+                    {formatBitrate(bitrateKbps(p.sizeBytes, p.durationSeconds))}
+                  </td>
                   <td>{formatDate(p.publishedAt)}</td>
                   <td className="num num--strong">{formatCount(p.plays)}</td>
                   <td className="num">{formatCount(p.likes)}</td>
