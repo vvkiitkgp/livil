@@ -119,6 +119,20 @@ a {
   font-size: 13px;
 }
 
+/* The consent line under the signup button — centred and quiet, and the links have to be
+   visibly links. `purple-light` rather than `purple`: #8B3DFF on this background measures
+   below 4.5:1, which 13px text has no allowance for. */
+.hint--center {
+  text-align: center;
+  line-height: 1.5;
+}
+
+.hint--center a {
+  color: var(--purple-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .card__title {
   margin: 0;
   font-size: 17px;

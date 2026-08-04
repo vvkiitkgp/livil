@@ -1,21 +1,19 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { signOut } from '../auth/session';
 import { supabase } from '../supabase';
-
-/** Mirrors the database check in `enforce_username_reservation` exactly. */
-const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
-
-type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'invalid';
+import { useUsernameAvailability, usernameHint } from '../auth/useUsernameAvailability';
 
 /**
  * Claim a permanent username.
  *
- * This screen replaces the one that used to sign these accounts out and send them to the
- * mobile app. It exists because web signup exists: `signUp` and `signInWithOAuth` both create
- * an account with a `user_xxxxxxxx` placeholder and `username_set = false`, and an account
- * left in that state is unusable — it has a handle its owner never chose.
+ * THE OAUTH PATH ONLY, now. Password signups collect the handle on the signup form itself
+ * and pass it in the signUp metadata, where `handle_new_user()` claims it — so they arrive
+ * with `username_set = true` and never reach this screen. What is left here is exactly the
+ * case that cannot be handled up front: `signInWithOAuth` creates the account during a
+ * redirect to Google, with no opportunity to ask for anything, so it lands with a
+ * `user_xxxxxxxx` placeholder and `username_set = false`.
  *
  * PERMANENT, AND THE COPY SAYS SO BEFORE THE FACT. A database trigger refuses any later
  * change, so "you can fix it later" would be a lie the user only discovers when they try.
@@ -27,43 +25,12 @@ type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'invalid';
 export function ChooseUsername({ onClaimed }: { onClaimed: () => void }) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [status, setStatus] = useState<Availability>('idle');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cleaned = username.trim().toLowerCase().replace(/^@/, '');
-
-  // Debounced, because this fires per keystroke and each one is a round trip. 400ms is long
-  // enough that typing a whole handle costs one check, short enough to feel immediate.
-  useEffect(() => {
-    if (!cleaned) {
-      setStatus('idle');
-      return;
-    }
-    if (!USERNAME_RE.test(cleaned)) {
-      setStatus('invalid');
-      return;
-    }
-
-    setStatus('checking');
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      supabase
-        .rpc('is_username_available', { p_username: cleaned })
-        .then(({ data, error: rpcError }) => {
-          if (cancelled) return;
-          // A failed check must not read as "free" — that would send the user into a claim
-          // that then fails at the database with a worse message.
-          if (rpcError) setStatus('idle');
-          else setStatus(data ? 'free' : 'taken');
-        });
-    }, 400);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [cleaned]);
+  // Shared with the signup form: both screens claim a permanent handle, so they must agree
+  // on what a valid one is.
+  const { cleaned, status } = useUsernameAvailability(username);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -108,11 +75,7 @@ export function ChooseUsername({ onClaimed }: { onClaimed: () => void }) {
           onChange={e => setUsername(e.target.value)}
         />
         <p className="hint" data-status={status}>
-          {status === 'invalid' && '3–30 characters: lowercase letters, numbers, underscore.'}
-          {status === 'checking' && 'Checking…'}
-          {status === 'free' && `@${cleaned} is yours.`}
-          {status === 'taken' && 'That one is taken.'}
-          {status === 'idle' && 'Lowercase letters, numbers and underscore.'}
+          {usernameHint(status, cleaned)}
         </p>
 
         <TextField

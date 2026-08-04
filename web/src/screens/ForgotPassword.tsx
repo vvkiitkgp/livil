@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
+import { ResendButton } from '../components/ResendButton';
 import { TextField } from '../components/TextField';
 import { supabase } from '../supabase';
 import { studioUrl } from '../basePath';
@@ -22,18 +23,22 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-
-    const { error: sendError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+  async function send() {
+    return supabase.auth.resetPasswordForEmail(email.trim(), {
       // Base-prefixed, NOT `${origin}/reset`. The app is served under `/studio/`, so an
       // origin-relative link lands outside it — and because the recovery token is consumed
       // by Supabase's /verify BEFORE the redirect, that first dead click burns the link and
       // the next one reports `otp_expired`. See basePath.ts.
       redirectTo: studioUrl('/reset'),
     });
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+
+    const { error: sendError } = await send();
 
     setBusy(false);
 
@@ -58,9 +63,11 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
         </header>
         <section className="card">
           <p className="hint">
-            The link opens back here and expires shortly. If nothing arrives, check spam
-            before trying again.
+            The link opens back here, works once, and expires in an hour.
           </p>
+          {/* Swallows the result: a resend that reported failure would distinguish a real
+              address from an unknown one, which is exactly what the copy above avoids. */}
+          <ResendButton onResend={() => send().then(() => undefined)} />
           <Button variant="secondary" onClick={onBack}>
             Back to sign in
           </Button>

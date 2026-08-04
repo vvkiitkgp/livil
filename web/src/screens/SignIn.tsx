@@ -1,21 +1,29 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
+import { ResendButton } from '../components/ResendButton';
 import { TextField } from '../components/TextField';
 import {
   PLAY_STORE_URL,
   joinWaitlist,
+  resendConfirmation,
   signInWithGoogle,
   signInWithPassword,
   signUpWithPassword,
 } from '../auth/signIn';
+import { useUsernameAvailability, usernameHint } from '../auth/useUsernameAvailability';
+
+/** Web-only. Mobile still accepts 6; see the note on the password field below. */
+const MIN_PASSWORD = 8;
 
 /**
- * Sign-in, plus the two exits for anyone without an account.
+ * Sign-in and sign-up, plus the two exits for anyone without an account.
  *
- * There is no signup form and no password-reset flow here. Reset is deliberately deferred
- * rather than half-built: it needs its own allow-listed redirect URL and a reset screen,
- * and shipping a "check your email" that lands on a route which does not exist is worse
- * than pointing at the app. Tracked as a Phase 1 follow-up.
+ * THE SIGNUP FORM MATCHES THE MOBILE ONE FIELD FOR FIELD — display name, handle, email,
+ * password — and that is not cosmetic. The handle is what makes an account usable and it is
+ * PERMANENT, so the two clients must agree on when it is chosen. Collecting it here puts it
+ * in the signUp metadata, where `handle_new_user()` claims it and flips `username_set`;
+ * `ChooseUsername` is then only what it was built for — the OAuth path, where the provider
+ * gives us no handle to use.
  */
 export function SignIn({
   mode,
@@ -29,8 +37,12 @@ export function SignIn({
   const signingUp = mode === 'signup';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
   const [busy, setBusy] = useState<null | 'password' | 'google'>(null);
   const [error, setError] = useState<string | null>(null);
+  const { cleaned: cleanedUsername, status: usernameStatus } =
+    useUsernameAvailability(username);
 
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistDone, setWaitlistDone] = useState(false);
@@ -43,7 +55,12 @@ export function SignIn({
     setBusy('password');
 
     if (signingUp) {
-      const created = await signUpWithPassword(email, password);
+      const created = await signUpWithPassword({
+        email,
+        password,
+        displayName,
+        username: cleanedUsername,
+      });
       setBusy(null);
       if (!created.ok) {
         setError(created.message);
@@ -89,13 +106,28 @@ export function SignIn({
         <header className="auth__head">
           <h1 className="wordmark">Check your email</h1>
           <p className="tagline">
-            Confirm {email.trim()} and you&apos;ll pick your handle next.
+            Confirm {email.trim()} and @{cleanedUsername} is yours.
           </p>
         </header>
         <section className="card">
           <p className="hint">
             The link brings you straight back here. Check spam if it doesn&apos;t arrive.
           </p>
+          {/* `resend`, not a second `signUp`: signing up again with the same address hits
+              Supabase's anti-enumeration path and returns a success that sends nothing. */}
+          <ResendButton onResend={() => resendConfirmation(email).then(() => undefined)} />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              // Clearing this is what actually leaves the screen — `confirmSent` is checked
+              // before `mode`, so flipping the mode alone would change nothing visible.
+              setConfirmSent(false);
+              onToggleMode();
+            }}
+          >
+            Back to sign in
+          </Button>
         </section>
       </main>
     );
@@ -109,6 +141,34 @@ export function SignIn({
       </header>
 
       <form className="card" onSubmit={onSubmit}>
+        {signingUp && (
+          <>
+            <TextField
+              label="Display name"
+              autoComplete="name"
+              required
+              placeholder="What people see"
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+            />
+            <TextField
+              label="Username"
+              autoComplete="off"
+              autoCapitalize="none"
+              required
+              placeholder="yourname"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+            />
+            {/* Permanence stated BEFORE the fact. A trigger refuses any later change, so
+                discovering it afterwards means discovering it too late. */}
+            <p className="hint" data-status={usernameStatus}>
+              {usernameStatus === 'idle'
+                ? 'Your permanent handle — it can’t be changed later.'
+                : usernameHint(usernameStatus, cleanedUsername)}
+            </p>
+          </>
+        )}
         <TextField
           label="Email"
           type="email"
@@ -122,10 +182,15 @@ export function SignIn({
           type="password"
           autoComplete={signingUp ? 'new-password' : 'current-password'}
           required
-          minLength={signingUp ? 8 : undefined}
+          minLength={signingUp ? MIN_PASSWORD : undefined}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
+        {/* Mobile still asks for 6. Deliberately NOT matched downward — this is the client
+            that holds unreleased masters, and loosening a password floor to make two forms
+            look alike is the wrong direction to resolve a mismatch. Raising mobile to 8 is
+            a separate change in propose-only code. */}
+        {signingUp && <p className="hint">At least {MIN_PASSWORD} characters.</p>}
 
         {error && (
           <p className="alert" role="alert">
@@ -133,9 +198,36 @@ export function SignIn({
           </p>
         )}
 
-        <Button type="submit" size="lg" busy={busy === 'password'}>
+        <Button
+          type="submit"
+          size="lg"
+          busy={busy === 'password'}
+          // Submitting mid-check would race the availability RPC; submitting on a known-bad
+          // handle wastes a round trip to be told what the field already says.
+          disabled={
+            signingUp &&
+            (usernameStatus === 'checking' ||
+              usernameStatus === 'taken' ||
+              usernameStatus === 'invalid')
+          }
+        >
           {signingUp ? 'Create account' : 'Sign in'}
         </Button>
+
+        {/* Privacy Policy only, and linked for real. Mobile's signup shows "Terms of
+            Service and Privacy Policy" as styled text with NO press handler, and there is
+            no terms.html in docs/ — so the mobile copy promises two documents, links
+            neither, and one of them does not exist. Naming only what we actually publish is
+            the honest version until a Terms page is written. */}
+        {signingUp && (
+          <p className="hint hint--center">
+            By creating an account you agree to our{' '}
+            <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </a>
+            .
+          </p>
+        )}
 
         <div className="divider">
           <span>or</span>
