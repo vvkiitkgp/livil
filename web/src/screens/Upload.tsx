@@ -1,109 +1,60 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Button } from '../components/Button';
-import { TextField } from '../components/TextField';
-import { startPublish } from '../upload/publish';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
-
-type Phase =
-  | { name: 'idle' }
-  | { name: 'working'; stage: string; fraction: number }
-  | { name: 'done'; postId: string }
-  | { name: 'failed'; message: string };
+import { filesFromDataTransfer, pairAssets } from '../upload/files';
+import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
 
 const GB = 1024 * 1024 * 1024;
+const MB = 1024 * 1024;
 const formatSize = (bytes: number) =>
-  bytes >= GB
-    ? `${(bytes / GB).toFixed(2)} GB`
-    : `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
+  bytes >= GB ? `${(bytes / GB).toFixed(2)} GB` : `${Math.max(1, Math.round(bytes / MB))} MB`;
 
 /**
- * Single-track upload.
- *
- * Batch/folder upload, artwork cropping and the clip window are the next slice; this one
- * proves the resumable path end to end.
+ * Batch upload. A single track is just a queue of one, so there is no separate code path
+ * for it — the case that used to be "the" upload screen is now the degenerate case.
  */
 export function Upload() {
-  const [media, setMedia] = useState<File | null>(null);
-  const [image, setImage] = useState<File | null>(null);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [phase, setPhase] = useState<Phase>({ name: 'idle' });
+  const queue = useUploadQueue();
   const [dragging, setDragging] = useState(false);
+  const [busyReadingDrop, setBusyReadingDrop] = useState(false);
 
-  const abortRef = useRef<(() => void) | null>(null);
-  const mediaInput = useRef<HTMLInputElement>(null);
-  const imageInput = useRef<HTMLInputElement>(null);
+  const filesInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const coverForId = useRef<string | null>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
 
-  const mode: 'audio' | 'video' | null = media
-    ? media.type.startsWith('video')
-      ? 'video'
-      : 'audio'
-    : null;
-
-  const oversize = media !== null && media.size > MAX_WEB_UPLOAD_BYTES;
-  const busy = phase.name === 'working';
-  const canPublish =
-    media !== null && image !== null && title.trim() !== '' && !oversize && !busy;
-
-  function acceptFiles(list: FileList | null) {
-    if (!list) return;
-    for (const file of Array.from(list)) {
-      if (file.type.startsWith('image/')) setImage(file);
-      else if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
-        setMedia(file);
-        // A title is almost always the filename; prefill it rather than making the
-        // artist retype what they already named the file.
-        if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''));
-      }
-    }
+  function accept(files: File[]) {
+    const { items } = pairAssets(files);
+    if (items.length > 0) queue.add(itemsFromPaired(items));
   }
 
-  function onDrop(event: DragEvent) {
+  async function onDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    acceptFiles(event.dataTransfer.files);
-  }
-
-  async function onPublish() {
-    if (!media || !image || !mode) return;
-    setPhase({ name: 'working', stage: 'preparing', fraction: 0 });
-
-    const handle = startPublish(
-      { mode, media, image, title, description },
-      p => setPhase({ name: 'working', stage: p.stage, fraction: p.fraction }),
-    );
-    abortRef.current = handle.abort;
-
+    setBusyReadingDrop(true);
     try {
-      const result = await handle.result;
-      setPhase({ name: 'done', postId: result.postId });
-      setMedia(null);
-      setImage(null);
-      setTitle('');
-      setDescription('');
-    } catch (err) {
-      setPhase({
-        name: 'failed',
-        message: err instanceof Error ? err.message : 'Upload failed.',
-      });
+      // Walks directory entries — a dropped folder yields no `files` without this.
+      accept(await filesFromDataTransfer(event.dataTransfer));
     } finally {
-      abortRef.current = null;
+      setBusyReadingDrop(false);
     }
   }
 
-  if (phase.name === 'done') {
-    return (
-      <section className="card card--center">
-        <h2 className="card__title">Published</h2>
-        <p className="hint">It's live in the feed now.</p>
-        <Button onClick={() => setPhase({ name: 'idle' })}>Upload another</Button>
-      </section>
-    );
-  }
+  const pending = queue.items.filter(i => i.status === 'pending' || i.status === 'failed');
+  const done = queue.items.filter(i => i.status === 'done');
+  const missingArt = pending.filter(i => !i.image).length;
+  const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
   return (
     <section className="card card--wide">
-      <h2 className="card__title">New upload</h2>
+      <div className="rowbetween">
+        <h2 className="card__title">New upload</h2>
+        {done.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={queue.clearFinished}>
+            Clear {done.length} published
+          </Button>
+        )}
+      </div>
 
       <div
         className="dropzone"
@@ -115,97 +66,167 @@ export function Upload() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
       >
-        <p className="dropzone__title">Drop your audio or video here</p>
-        <p className="hint">Up to {formatSize(MAX_WEB_UPLOAD_BYTES)} — uploads resume if your connection drops</p>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={() => mediaInput.current?.click()}
-        >
-          Choose file
-        </Button>
-        <input
-          ref={mediaInput}
-          type="file"
-          accept="audio/*,video/*"
-          hidden
-          onChange={e => acceptFiles(e.target.files)}
-        />
-      </div>
-
-      {media && (
-        <p className="filerow">
-          <strong>{media.name}</strong>
-          <span className="hint">
-            {formatSize(media.size)} · {mode}
-          </span>
+        <p className="dropzone__title">
+          {busyReadingDrop ? 'Reading folder…' : 'Drop tracks or a whole folder here'}
         </p>
-      )}
-
-      {oversize && (
-        <p className="alert" role="alert">
-          That file is over the {formatSize(MAX_WEB_UPLOAD_BYTES)} limit.
+        <p className="hint">
+          Up to {formatSize(MAX_WEB_UPLOAD_BYTES)} each · uploads resume if your connection
+          drops · cover art matched by filename
         </p>
-      )}
-
-      <div className="filerow">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={() => imageInput.current?.click()}
-        >
-          {mode === 'video' ? 'Choose thumbnail' : 'Choose cover art'}
-        </Button>
-        <span className="hint">{image ? image.name : 'Required'}</span>
-        <input
-          ref={imageInput}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={e => acceptFiles(e.target.files)}
-        />
-      </div>
-
-      <TextField
-        label="Title"
-        value={title}
-        onChange={e => setTitle(e.target.value)}
-        disabled={busy}
-      />
-      <TextField
-        label="Description (optional)"
-        value={description}
-        onChange={e => setDescription(e.target.value)}
-        disabled={busy}
-      />
-
-      {phase.name === 'failed' && (
-        <p className="alert" role="alert">
-          {phase.message}
-        </p>
-      )}
-
-      {busy && (
-        <div className="progress" aria-label="Upload progress">
-          <div className="progress__fill" style={{ width: `${phase.fraction * 100}%` }} />
-          <span className="hint">
-            {phase.stage} · {Math.round(phase.fraction * 100)}%
-          </span>
+        <div className="filerow">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => filesInput.current?.click()}
+          >
+            Choose files
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => folderInput.current?.click()}
+          >
+            Choose folder
+          </Button>
         </div>
+        <input
+          ref={filesInput}
+          type="file"
+          multiple
+          accept="audio/*,video/*,image/*"
+          hidden
+          onChange={e => accept(Array.from(e.target.files ?? []))}
+        />
+        <input
+          ref={folderInput}
+          type="file"
+          multiple
+          webkitdirectory=""
+          hidden
+          onChange={e => accept(Array.from(e.target.files ?? []))}
+        />
+      </div>
+
+      {queue.items.length > 0 && (
+        <ul className="queue">
+          {queue.items.map(item => (
+            <QueueRow
+              key={item.id}
+              item={item}
+              onTitle={title => queue.patch(item.id, { title })}
+              onRemove={() => queue.remove(item.id)}
+              onPickCover={() => {
+                coverForId.current = item.id;
+                coverInput.current?.click();
+              }}
+            />
+          ))}
+        </ul>
+      )}
+
+      <input
+        ref={coverInput}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={e => {
+          const file = e.target.files?.[0];
+          const id = coverForId.current;
+          if (file && id) queue.patch(id, { image: file, error: null });
+          coverForId.current = null;
+        }}
+      />
+
+      {missingArt > 0 && (
+        <p className="alert" role="alert">
+          {missingArt} {missingArt === 1 ? 'track needs' : 'tracks need'} cover art before
+          publishing.
+        </p>
+      )}
+      {oversize > 0 && (
+        <p className="alert" role="alert">
+          {oversize} file{oversize === 1 ? ' is' : 's are'} over the{' '}
+          {formatSize(MAX_WEB_UPLOAD_BYTES)} limit.
+        </p>
       )}
 
       <div className="filerow">
-        <Button size="lg" disabled={!canPublish} busy={busy} onClick={onPublish}>
-          Publish
+        <Button
+          size="lg"
+          disabled={pending.length === 0 || missingArt > 0 || oversize > 0 || queue.running}
+          busy={queue.running}
+          onClick={() => {
+            // Every failure is already captured per item; nothing escapes to handle here.
+            queue.start().catch(() => {});
+          }}
+        >
+          {pending.length > 1 ? `Publish ${pending.length} tracks` : 'Publish'}
         </Button>
-        {busy && (
-          <Button variant="ghost" onClick={() => abortRef.current?.()}>
+        {queue.running && (
+          <Button variant="ghost" onClick={queue.cancelAll}>
             Cancel
           </Button>
         )}
       </div>
     </section>
+  );
+}
+
+function QueueRow({
+  item,
+  onTitle,
+  onRemove,
+  onPickCover,
+}: {
+  item: QueueItem;
+  onTitle: (value: string) => void;
+  onRemove: () => void;
+  onPickCover: () => void;
+}) {
+  const locked = item.status === 'uploading' || item.status === 'done';
+
+  return (
+    <li className="queue__row" data-status={item.status}>
+      <div className="queue__main">
+        <input
+          className="queue__title"
+          value={item.title}
+          onChange={e => onTitle(e.target.value)}
+          disabled={locked}
+          aria-label="Track title"
+        />
+        <span className="hint">
+          {item.media.name} · {formatSize(item.media.size)} · {item.mode}
+        </span>
+        {item.error && <span className="queue__error">{item.error}</span>}
+      </div>
+
+      <div className="queue__side">
+        {item.status === 'done' ? (
+          <span className="hint">Published</span>
+        ) : item.status === 'uploading' ? (
+          <span className="hint">
+            {item.stage} · {Math.round(item.fraction * 100)}%
+          </span>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={onPickCover}>
+            {item.image ? 'Change art' : 'Add art'}
+          </Button>
+        )}
+        {!locked && (
+          <Button variant="ghost" size="sm" onClick={onRemove} aria-label="Remove">
+            ✕
+          </Button>
+        )}
+      </div>
+
+      {item.status === 'uploading' && (
+        <div className="queue__bar">
+          <div className="queue__barfill" style={{ width: `${item.fraction * 100}%` }} />
+        </div>
+      )}
+    </li>
   );
 }

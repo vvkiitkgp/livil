@@ -179,6 +179,113 @@ a {
   margin: 0;
 }
 
+.rowbetween {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ── Upload queue ────────────────────────────────────────────────────────── */
+
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.queue__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.queue__row[data-status='done'] {
+  border-color: var(--purple-deep);
+}
+
+.queue__row[data-status='failed'] {
+  border-color: var(--error-border);
+  background: var(--error-bg);
+}
+
+.queue__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.queue__main > .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Borderless until focused: a dozen boxed inputs stacked reads as a form to fill in,
+   when in practice the prefilled filename is usually already right. */
+.queue__title {
+  font: inherit;
+  font-weight: 650;
+  color: var(--white);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  outline: none;
+}
+
+.queue__title:focus {
+  border-color: var(--purple);
+  background: var(--input-bg);
+}
+
+.queue__title:disabled {
+  opacity: 0.7;
+}
+
+.queue__side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.queue__error {
+  font-size: 12px;
+  color: var(--error);
+}
+
+.queue__bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--input-bg);
+  overflow: hidden;
+}
+
+.queue__barfill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--purple-royal), var(--purple-neon));
+  transition: width 180ms ease;
+}
+
 /*
  * Progress fill uses the same deep->neon ramp as the button outlines, for the same reason
  * the mobile app uses GradientFill: a flat purple slab reads as a leftover block. The

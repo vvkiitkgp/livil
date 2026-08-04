@@ -14,7 +14,10 @@
     "skipLibCheck": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["vite/client"],
+    // `jest` is here because tests under web/src are run by the ROOT Jest (only
+    // web/node_modules is ignored, not web/src). Without it, web's own typecheck fails on
+    // `describe`/`expect` — the test files are real source and must be checked somewhere.
+    "types": ["vite/client", "jest"],
     "paths": {
       "@shared/*": ["../shared/*"],
       // `shared/` lives outside this root, so Node resolution walks UP from it and finds
