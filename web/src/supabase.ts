@@ -33,3 +33,20 @@ export const supabase: LivilClient = createClient<Database>(url, anonKey, {
 });
 
 configureLivilClient(supabase);
+
+/**
+ * Escape hatch for schema that exists in the database but not in the generated types.
+ *
+ * `lib/database.types.ts` is stale: it is missing `profiles.username_set` (migration
+ * 20260628000000) and the `waitlist` table (20260718000000) entirely. The mobile app
+ * already works around this with `supabase as any` in three places in
+ * `src/services/profileService.ts`; this mirrors that precedent rather than inventing a
+ * second one.
+ *
+ * The real fix is to regenerate the types, which would also delete those three mobile
+ * casts. Until then, keep uses of this narrow and always alongside a hand-written result
+ * type, so the value is still checked at the call site.
+ */
+export const dbUntyped = supabase as unknown as {
+  from: (table: string) => any;
+};

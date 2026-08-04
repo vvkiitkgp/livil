@@ -1,7 +1,10 @@
 /*
- * Base styles. Colour values are NOT written here — they are injected as CSS custom
- * properties from the shared design tokens at startup (see `theme.ts`), so the dashboard
- * and the mobile app cannot drift on brand colour.
+ * Base styles.
+ *
+ * Colour values are NOT written here — they are injected as CSS custom properties from the
+ * shared design tokens at startup (see `theme.ts`), so the dashboard and the mobile app
+ * cannot drift on brand colour. If you need a colour that isn't a var, add the token to
+ * `src/theme/colors.ts` instead of hard-coding a hex.
  */
 
 *,
@@ -14,6 +17,11 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+:root {
+  /* Dark theme only, by design — Livil has no light mode. */
+  color-scheme: dark;
 }
 
 body {
@@ -31,24 +39,62 @@ a {
   color: var(--purple-neon);
 }
 
-/* Dark theme only, by design — Livil has no light mode. */
-:root {
-  color-scheme: dark;
-}
+/* ── Layout ──────────────────────────────────────────────────────────────── */
 
-.shell {
+.auth {
   min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 20px;
-  padding: 32px;
-  text-align: center;
+  padding: 40px 20px;
 }
 
+.auth__head {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.topbar__mark {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Type ────────────────────────────────────────────────────────────────── */
+
 .wordmark {
-  font-size: 34px;
+  font-size: clamp(26px, 5vw, 34px);
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
@@ -58,35 +104,192 @@ a {
   color: transparent;
 }
 
-.tagline {
+.tagline,
+.hint {
   margin: 0;
   color: var(--text-secondary);
 }
 
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-secondary);
+.hint {
   font-size: 13px;
 }
 
-.status[data-state='error'] {
-  border-color: var(--error-border);
-  background: var(--error-bg);
+.card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+/* ── Surfaces ────────────────────────────────────────────────────────────── */
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.card--muted {
+  background: transparent;
+}
+
+.card--center {
+  text-align: center;
+  max-width: 460px;
+}
+
+.alert {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
   color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 10px;
 }
 
-.dot {
-  width: 7px;
-  height: 7px;
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.waitlist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.field__input {
+  width: 100%;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--white);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.field__input::placeholder {
+  color: var(--text-muted);
+}
+
+.field__input:focus {
+  border-color: var(--purple);
+  /* The mobile app animates a purple focus border; this is the same idea as a glow ring.
+     It is a focus ring, not elevation — the no-shadow rule is about `elevation` on
+     Android painting a grey smudge under a dark outlined control. */
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/*
+ * Purple NEVER fills a button. `primary` is a transparent surface with a purple gradient
+ * outline; the label is `--purple-neon` (#A855F7), never `--purple` (#8B3DFF), which fails
+ * WCAG AA on this background. `destructive` is the single exception.
+ *
+ * The outline is a two-layer background clipped to the padding box and the border box —
+ * no SVG, no measured geometry, so none of the mobile GradientBorder traps apply.
+ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-weight: 650;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: currentColor;
+  cursor: pointer;
+  transition: opacity 120ms ease, filter 120ms ease;
+  /* Never `elevation`/box-shadow here — glow comes from the outline. */
 }
 
-.status[data-state='ok'] .dot {
-  background: var(--purple-neon);
+.btn--sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.btn--md {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+.btn--lg {
+  padding: 13px 22px;
+  font-size: 15px;
+}
+
+.btn--primary {
+  color: var(--purple-neon);
+  background-image: linear-gradient(var(--surface), var(--surface)),
+    linear-gradient(135deg, var(--purple-deep), var(--purple), var(--purple-neon));
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.btn--secondary {
+  color: var(--white);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.btn--ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.btn--destructive {
+  color: var(--white);
+  background: var(--error);
+}
+
+.btn:hover:not([disabled]) {
+  filter: brightness(1.12);
+}
+
+.btn:active:not([disabled]) {
+  opacity: 0.8;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--purple-neon);
+  outline-offset: 2px;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
