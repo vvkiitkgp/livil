@@ -26,6 +26,7 @@ import {
   resolveContentType,
   resolveExtension,
   storagePathFor,
+  TRACKS_MEDIA_BUCKET,
   type TrackMediaKind,
 } from './media';
 
@@ -114,6 +115,28 @@ async function safeDeleteTrack(trackId: string): Promise<void> {
   }
 }
 
+/**
+ * Remove objects uploaded by a publish that then failed.
+ *
+ * Without this the row is deleted and the FILES stay — a full audio master sitting in a
+ * public bucket with nothing referencing it. The artist cannot see it (no row), no cleanup
+ * path touches it, and it survives until the account is deleted. For an unreleased master
+ * that is the worst kind of leak: silent, permanent, and produced by an ordinary error.
+ *
+ * Best-effort by design. This runs while already handling a failure, so it must not throw
+ * and mask the real error. Removing a path that was never written is a no-op, so the
+ * planned paths can be passed without tracking which uploads actually completed — and a
+ * partial TUS upload leaves an object too, which is exactly what needs removing.
+ */
+async function safeRemoveObjects(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  try {
+    await livil().storage.from(TRACKS_MEDIA_BUCKET).remove(paths);
+  } catch {
+    /* best-effort; account deletion is the backstop */
+  }
+}
+
 export async function publishTrack(
   input: PublishTrackInput,
   uploadAsset: AssetUploader,
@@ -150,6 +173,9 @@ export async function publishTrack(
   }
 
   const trackId = inserted.id;
+  // Recorded as each upload starts, so the catch below can remove whatever reached
+  // storage — including a partially written object from an upload that failed midway.
+  const uploadedPaths: string[] = [];
 
   try {
     const weights = weightsFor(input.assets);
@@ -167,6 +193,7 @@ export async function publishTrack(
         const ext = resolveExtension(asset.kind, asset.fileName, asset.contentType);
         const path = storagePathFor(user.id, trackId, asset.kind, ext);
         const contentType = resolveContentType(asset.kind, ext, asset.contentType);
+        uploadedPaths.push(path);
         const url = await uploadAsset(asset, { path, contentType }, fraction => {
           progressByKind.set(asset.kind, fraction);
           report();
@@ -213,6 +240,9 @@ export async function publishTrack(
 
     return { trackId, postId: postRow.id, urls };
   } catch (err) {
+    // Objects first, then the row. If only the row went and the objects stayed, the files
+    // would be unreachable AND unreferenced — the exact orphan this exists to prevent.
+    await safeRemoveObjects(uploadedPaths);
     await safeDeleteTrack(trackId);
     throw err;
   }
