@@ -109,6 +109,21 @@ export function useUploadQueue() {
     [patch],
   );
 
+  /**
+   * Apply the same change to every item that has not started yet.
+   *
+   * Scoped to pending/failed on purpose: an item already uploading has its files captured,
+   * and one already published is a row of history — changing either would be a lie about
+   * what was actually sent.
+   */
+  const patchPending = useCallback((changes: Partial<QueueItem>) => {
+    setItems(prev =>
+      prev.map(it =>
+        it.status === 'pending' || it.status === 'failed' ? { ...it, ...changes } : it,
+      ),
+    );
+  }, []);
+
   const remove = useCallback((id: string) => {
     abortsRef.current.get(id)?.();
     abortsRef.current.delete(id);
@@ -194,5 +209,15 @@ export function useUploadQueue() {
     abortsRef.current.clear();
   }, []);
 
-  return { items, running, add, patch, remove, clearFinished, start, cancelAll };
+  return {
+    items,
+    running,
+    add,
+    patch,
+    patchPending,
+    remove,
+    clearFinished,
+    start,
+    cancelAll,
+  };
 }

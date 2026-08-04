@@ -30,10 +30,11 @@ export function Upload() {
 
   const filesInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
-  const coverForId = useRef<string | null>(null);
+  // 'ALL' applies the chosen art to every not-yet-started row.
+  const coverForId = useRef<string | 'ALL' | null>(null);
   const coverInput = useRef<HTMLInputElement>(null);
   // The cropper is modal, so at most one is open at a time.
-  const [cropping, setCropping] = useState<{ id: string; file: File } | null>(null);
+  const [cropping, setCropping] = useState<{ id: string | 'ALL'; file: File } | null>(null);
 
   function accept(files: File[]) {
     const { items } = pairAssets(files);
@@ -61,11 +62,25 @@ export function Upload() {
     <section className="card card--wide">
       <div className="rowbetween">
         <h2 className="card__title">New upload</h2>
-        {done.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={queue.clearFinished}>
-            Clear {done.length} published
-          </Button>
-        )}
+        <div className="filerow">
+          {pending.length > 1 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                coverForId.current = 'ALL';
+                coverInput.current?.click();
+              }}
+            >
+              Cover art for all {pending.length}
+            </Button>
+          )}
+          {done.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={queue.clearFinished}>
+              Clear {done.length} published
+            </Button>
+          )}
+        </div>
       </div>
 
       <div
@@ -168,7 +183,13 @@ export function Upload() {
           file={cropping.file}
           onCancel={() => setCropping(null)}
           onDone={cropped => {
-            queue.patch(cropping.id, { image: cropped, error: null });
+            if (cropping.id === 'ALL') {
+              // Overwrites art already matched from filenames or read from tags. That is
+              // the point of the action — it is only reachable by explicitly asking for it.
+              queue.patchPending({ image: cropped, artFromTag: false, error: null });
+            } else {
+              queue.patch(cropping.id, { image: cropped, artFromTag: false, error: null });
+            }
             setCropping(null);
           }}
         />
