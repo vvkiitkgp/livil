@@ -1610,3 +1610,9 @@ a {
   margin-top: var(--space-6);
   max-width: 620px;
 }
+
+/* A single narrow column inside a wide page reads as abandoned in the corner unless it is
+   centred. Only the upload form needs this — every other screen fills its width. */
+.card--centred {
+  margin-inline: auto;
+}

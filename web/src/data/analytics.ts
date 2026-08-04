@@ -9,21 +9,6 @@
  */
 import { supabase } from '../supabase';
 
-/**
- * The analytics RPCs are newer than `lib/database.types.ts`, so `supabase.rpc()` rejects
- * their names and mistypes their results.
- *
- * Narrow on purpose: only the `rpc` surface is loosened, and every call below still asserts
- * the row shape it expects, so the values remain checked at the point of use. Regenerating
- * the types removes this entirely — that file is not agent-writable, which is why it is a
- * cast rather than a fix.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const rpc = (supabase as any).rpc.bind(supabase) as (
-  fn: string,
-  args: Record<string, unknown>,
-) => Promise<{ data: unknown; error: unknown }>;
-
 export type DayPoint = { day: string; plays: number; listeners: number };
 export type HourPoint = { hour: number; plays: number };
 export type TopTrack = {
@@ -61,7 +46,7 @@ export function windowForDays(days: number): Window {
 type Args = { window: Window; excludeSelf: boolean };
 
 export async function fetchPlaysByDay({ window, excludeSelf }: Args): Promise<DayPoint[]> {
-  const { data, error } = await rpc('creator_plays_by_day', {
+  const { data, error } = await supabase.rpc('creator_plays_by_day', {
     p_from: window.from,
     p_to: window.to,
     p_tz: localTimeZone(),
@@ -76,7 +61,7 @@ export async function fetchPlaysByDay({ window, excludeSelf }: Args): Promise<Da
 }
 
 export async function fetchPlaysByHour({ window, excludeSelf }: Args): Promise<HourPoint[]> {
-  const { data, error } = await rpc('creator_plays_by_hour', {
+  const { data, error } = await supabase.rpc('creator_plays_by_hour', {
     p_from: window.from,
     p_to: window.to,
     p_tz: localTimeZone(),
@@ -90,7 +75,7 @@ export async function fetchPlaysByHour({ window, excludeSelf }: Args): Promise<H
 }
 
 export async function fetchTopTracks({ window, excludeSelf }: Args): Promise<TopTrack[]> {
-  const { data, error } = await rpc('creator_top_tracks', {
+  const { data, error } = await supabase.rpc('creator_top_tracks', {
     p_from: window.from,
     p_to: window.to,
     p_limit: 10,

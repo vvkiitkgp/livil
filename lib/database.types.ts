@@ -1264,6 +1264,7 @@ export type Database = {
           created_at: string
           description: string | null
           duration_seconds: number | null
+          file_size_bytes: number | null
           id: string
           media_kind: string
           thumbnail_url: string | null
@@ -1278,6 +1279,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
+          file_size_bytes?: number | null
           id?: string
           media_kind: string
           thumbnail_url?: string | null
@@ -1292,6 +1294,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
+          file_size_bytes?: number | null
           id?: string
           media_kind?: string
           thumbnail_url?: string | null
@@ -1429,6 +1432,10 @@ export type Database = {
       }
       activity_unread_count: { Args: never; Returns: number }
       add_star: { Args: { target_user_id: string }; Returns: undefined }
+      assert_analytics_window: {
+        Args: { p_from: string; p_to: string }
+        Returns: undefined
+      }
       assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
       broadcast_jam_state: {
         Args: { p_jam_room_id: string; p_payload: Json }
@@ -1448,6 +1455,48 @@ export type Database = {
         Returns: string
       }
       create_jam_room: { Args: { p_conversation_id: string }; Returns: string }
+      creator_plays_by_day: {
+        Args: {
+          p_exclude_self?: boolean
+          p_from: string
+          p_to: string
+          p_tz?: string
+        }
+        Returns: {
+          day: string
+          listeners: number
+          plays: number
+        }[]
+      }
+      creator_plays_by_hour: {
+        Args: {
+          p_exclude_self?: boolean
+          p_from: string
+          p_to: string
+          p_tz?: string
+        }
+        Returns: {
+          hour: number
+          plays: number
+        }[]
+      }
+      creator_top_tracks: {
+        Args: {
+          p_exclude_self?: boolean
+          p_from: string
+          p_limit?: number
+          p_to: string
+          p_tz?: string
+        }
+        Returns: {
+          cover_art_url: string
+          listeners: number
+          plays: number
+          post_id: string
+          title: string
+          track_id: string
+        }[]
+      }
       delete_my_account: { Args: never; Returns: undefined }
       fetch_home_feed: {
         Args: {
@@ -1537,6 +1586,7 @@ export type Database = {
         Args: { p_body: string; p_kind: string }
         Returns: string
       }
+      profile_links_ok: { Args: { p_links: string[] }; Returns: boolean }
       reject_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined

@@ -62,9 +62,17 @@ export function Upload() {
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
   return (
-    <section className="card card--wide">
-      <div className="rowbetween">
-        <h2 className="card__title">New upload</h2>
+    <div className="page fade-up">
+      <header className="page__head">
+        <div>
+          <p className="kicker">Loading dock</p>
+          <h1 className="display page__title">Upload</h1>
+        </div>
+      </header>
+
+      <section className="card card--wide card--centred">
+        <div className="rowbetween">
+          <h2 className="card__title">New upload</h2>
         <div className="filerow">
           {pending.length > 1 && (
             <Button
@@ -253,8 +261,9 @@ export function Upload() {
             Cancel
           </Button>
         )}
-      </div>
-    </section>
+        </div>
+      </section>
+    </div>
   );
 }
 

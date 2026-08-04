@@ -231,7 +231,7 @@ export async function publishTrack(
         thumbnail_url: urls.thumbnail ?? null,
         ...(duration !== null ? { duration_seconds: duration } : {}),
         ...(sizeBytes !== null ? { file_size_bytes: sizeBytes } : {}),
-      } as never)
+      })
       .eq('id', trackId);
 
     if (updateError) throw new Error(`Failed to finalize track: ${updateError.message}`);
