@@ -6,6 +6,7 @@ import { SignIn } from './screens/SignIn';
 import { FinishInApp } from './screens/FinishInApp';
 import { Overview } from './screens/Overview';
 import { Catalogue } from './screens/Catalogue';
+import { TrackDetail } from './screens/TrackDetail';
 import { Upload } from './screens/Upload';
 import { Profile } from './screens/Profile';
 import type { Session } from '@supabase/supabase-js';
@@ -34,6 +35,7 @@ function routerFor(session: Session) {
       children: [
         { index: true, element: <Overview /> },
         { path: 'tracks', element: <Catalogue /> },
+        { path: 'tracks/:postId', element: <TrackDetail /> },
         { path: 'upload', element: <Upload /> },
         { path: 'profile', element: <Profile /> },
         { path: '*', element: <Navigate to="/" replace /> },

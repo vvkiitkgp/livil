@@ -151,3 +151,62 @@ export async function fetchCreatorTotals(userId: string): Promise<CreatorTotals>
     { plays: 0, tracks: 0, likes: 0, reposts: 0 },
   );
 }
+
+/** One post, with everything the detail screen needs. */
+export type PostDetail = CreatorPost & {
+  description: string | null;
+  caption: string | null;
+  /** The playable file — audio for audio posts, the video for video posts. */
+  mediaUrl: string | null;
+};
+
+type DetailRow = PostRow & {
+  caption: string | null;
+  author_id: string;
+  tracks:
+    | (NonNullable<PostRow['tracks']> & {
+        description: string | null;
+        audio_url: string | null;
+        video_url: string | null;
+      })
+    | null;
+};
+
+export async function fetchPostDetail(postId: string): Promise<PostDetail | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(
+      `id, track_id, author_id, caption, created_at, views_count, likes_count,
+       reposts_count, comments_count,
+       tracks!inner ( id, title, description, cover_art_url, thumbnail_url, media_kind,
+                      duration_seconds, audio_url, video_url )`,
+    )
+    .eq('id', postId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  const row = data as unknown as DetailRow;
+  const base = toCreatorPost(row);
+  const track = row.tracks;
+
+  return {
+    ...base,
+    description: track?.description ?? null,
+    caption: row.caption,
+    // A video post's picture and its audio are the same file; audio posts play audio_url.
+    mediaUrl: base.mediaKind === 'video' ? track?.video_url ?? null : track?.audio_url ?? null,
+  };
+}
+
+/**
+ * Remove a post.
+ *
+ * Deletes the POST, not the track. The distinction matters: the track row and its storage
+ * objects survive, so this is "unpublish" rather than "destroy my master". Deleting the track
+ * as well would need the storage cleanup that account deletion already owns, and
+ * reimplementing that here is exactly the duplication to avoid.
+ */
+export async function unpublishPost(postId: string): Promise<void> {
+  const { error } = await supabase.from('posts').delete().eq('id', postId);
+  if (error) throw new Error(error.message);
+}

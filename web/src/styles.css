@@ -1281,3 +1281,224 @@ a {
   font-size: var(--text-display);
   margin: var(--space-2) 0 var(--space-2);
 }
+
+
+/* ── Track detail ───────────────────────────────────────────────────────── */
+
+.detail {
+  display: grid;
+  grid-template-columns: 390px 1fr;
+  gap: var(--space-10);
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detail__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--space-6));
+}
+
+.detail__previewnote {
+  max-width: 340px;
+}
+
+.detail__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.metrics--four .metric {
+  padding: var(--space-4);
+}
+
+.metric__value[data-strong] {
+  color: var(--purple-light);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.player {
+  width: 100%;
+  height: 40px;
+}
+
+.panel--danger {
+  border-color: var(--error-border);
+}
+
+/* ── Phone frame ────────────────────────────────────────────────────────── */
+/*
+ * 390px is the real thing, not a design choice: it is where PostCard's title and caption
+ * clamps actually bite. The bezel exists to say "this is an approximation of the phone".
+ */
+.phone {
+  width: 390px;
+  max-width: 100%;
+  border-radius: 34px;
+  padding: 10px;
+  background: linear-gradient(160deg, #2a2438, #12121c);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.phone__screen {
+  border-radius: 26px;
+  background: var(--bg);
+  padding: 16px 0;
+  min-height: 420px;
+}
+
+/* PostCard: radius 20, padding 14, margin 16 horizontal. */
+.pc {
+  margin: 0 16px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pc__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pc__avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 21px;
+  background: var(--purple-dim);
+  border: 1px solid var(--purple);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  color: var(--purple-light);
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+
+.pc__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pc__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pc__name {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc__meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pc__art {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.pc__art img,
+.pc__art-empty {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pc__kind {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(10, 10, 15, 0.75);
+  color: var(--info);
+}
+
+/* Title clamps to 1 line in the app; caption to 4. Reproduced exactly — the clipping IS
+   the information this preview exists to give. */
+.pc__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc__caption {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pc__stats {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-top: 4px;
+}
+
+.pc__plays {
+  margin-left: auto;
+  color: var(--purple-light);
+}
+
+/* ── Confirm dialog ─────────────────────────────────────────────────────── */
+
+.confirm {
+  max-width: 380px;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.confirm__title {
+  margin: 0;
+  font-size: var(--text-display-sm);
+}
+
+.confirm__actions {
+  margin-top: var(--space-2);
+}
