@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -30,6 +31,16 @@ import { Icon } from '../../components/Icon';
 import AddToAlbumSheet from '../../components/AddToAlbumSheet';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
+
+/**
+ * Where the desktop studio lives.
+ *
+ * Points at the marketing site rather than `studio.livil-music.com` because the dashboard is
+ * not deployed yet and shipping a link to a 404 is worse than shipping no link. Change this
+ * to the studio subdomain the day it goes live — the marketing page carries the "sign in"
+ * entry in the meantime.
+ */
+const STUDIO_URL = 'https://livil-music.com';
 
 type FileSlot = {
   kind: TrackMediaKind;
@@ -326,6 +337,25 @@ export default function UploadScreen() {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+
+          {/* Deliberately quiet and above the form rather than interrupting it: the artist
+              came here to upload, and a phone upload is a perfectly good outcome. This is
+              for the case where they are on a phone because they did not know there was
+              anywhere else to be. */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => { Linking.openURL(STUDIO_URL).catch(() => {}); }}
+            style={styles.studioCard}
+          >
+            <Text style={styles.studioTitle}>Got a laptop nearby?</Text>
+            <Text style={styles.studioBody}>
+              Livil for Creators publishes from your desktop — masters up to 2&nbsp;GB,
+              uploads that resume if the connection drops, and a whole folder at once with
+              cover art read straight from your files. You can edit titles and artwork after
+              publishing there too, and see plays per track.
+            </Text>
+            <Text style={styles.studioLink}>livil-music.com →</Text>
+          </TouchableOpacity>
 
           <Text style={styles.sectionLabel}>Post type</Text>
           <View style={styles.modeSegment}>
@@ -716,6 +746,33 @@ export default function UploadScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  studioCard: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  studioTitle: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
+  studioBody: {
+    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  studioLink: {
+    color: COLORS.purpleNeon,
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    marginTop: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
