@@ -1,7 +1,7 @@
 /**
  * Sign-in actions. No sign-up path exists here by design (ADR-0015 decision 3).
  */
-import { dbUntyped, supabase } from '../supabase';
+import { supabase } from '../supabase';
 
 /** The public listing. In closed testing this resolves only for enrolled testers. */
 export const PLAY_STORE_URL =
@@ -64,10 +64,7 @@ export async function signInWithGoogle(): Promise<SignInResult> {
  * outcome to the visitor, and distinguishing them would leak membership.
  */
 export async function joinWaitlist(email: string): Promise<SignInResult> {
-  // `waitlist` is absent from the generated types — see `dbUntyped` in ../supabase.
-  const { error } = (await dbUntyped
-    .from('waitlist')
-    .insert({ email: email.trim() })) as { error: { code?: string } | null };
+  const { error } = await supabase.from('waitlist').insert({ email: email.trim() });
 
   if (!error) return { ok: true };
   if (error.code === '23505') return { ok: true };

@@ -28,7 +28,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { dbUntyped, supabase } from '../supabase';
+import { supabase } from '../supabase';
 
 export type AuthState =
   | { status: 'loading' }
@@ -39,19 +39,12 @@ export type AuthState =
 
 type OnboardingCheck = 'onboarded' | 'not-onboarded' | 'unknown';
 
-/**
- * `profiles.username_set` is missing from the generated types (see `dbUntyped`), so the
- * result shape is asserted by hand and every branch is still explicit.
- */
 async function checkOnboarding(userId: string): Promise<OnboardingCheck> {
-  const { data, error } = (await dbUntyped
+  const { data, error } = await supabase
     .from('profiles')
     .select('username_set')
     .eq('id', userId)
-    .maybeSingle()) as {
-    data: { username_set: boolean | null } | null;
-    error: unknown | null;
-  };
+    .maybeSingle();
 
   if (error) return 'unknown';
   // No row is not a read failure — the trigger creates a profile for every auth user, so

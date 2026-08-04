@@ -68,9 +68,7 @@ export type PrivateProfilePatch = {
  * the username screen.
  */
 export async function getUsernameSet(userId: string): Promise<boolean> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { data, error } = await db
+  const { data, error } = await supabase
     .from('profiles')
     .select('username_set')
     .eq('id', userId)
@@ -89,11 +87,12 @@ export async function claimUsername(
   username: string,
   displayName?: string | null,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { error } = await db.rpc('claim_username', {
+  const { error } = await supabase.rpc('claim_username', {
     p_username: username.trim().toLowerCase(),
-    p_display_name: displayName?.trim() || null,
+    // The generated signature types this arg as optional, not nullable, so the key is
+    // omitted rather than sent as null. Same result: the function declares
+    // `p_display_name text DEFAULT NULL`, so an absent key resolves to NULL server-side.
+    p_display_name: displayName?.trim() || undefined,
   });
   if (error) {throw new Error(error.message);}
 }
@@ -365,9 +364,7 @@ export async function deleteMyAccount(): Promise<void> {
     await removeOwnedPaths(bucket, await listOwnedPaths(bucket, userId));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { error: rpcError } = await db.rpc('delete_my_account');
+  const { error: rpcError } = await supabase.rpc('delete_my_account');
   if (rpcError) {
     throw new Error(rpcError.message);
   }
