@@ -1,0 +1,238 @@
+/*
+ * The Backstage Pass design language, as reusable primitives.
+ *
+ * Livil's visual identity was specified end to end exactly once — in the "Backstage Pass"
+ * onboarding handoff, now shipped as src/screens/auth/BackstagePassOnboarding.tsx. Joining
+ * the app is getting a laminate pass. This file carries that world into the dashboard so the
+ * creator tool reads as the same product rather than a dark admin panel that happens to be
+ * purple.
+ *
+ * Four things do the work:
+ *   · the radial gradient ground, straight from the handoff
+ *   · spec rows with dot leaders — ACCESS ..... ALL AREAS
+ *   · the animated holo ramp, used sparingly on things that matter
+ *   · a barcode strip
+ *
+ * Restraint is the point. A dashboard is read for hours, not swiped through once; the pass
+ * motifs mark identity and headline numbers, and everything else stays quiet.
+ */
+
+/* ── Ground ─────────────────────────────────────────────────────────────── */
+
+.bg-stage {
+  /* Verbatim from the handoff. Fixed so it does not slide under long tables. */
+  background:
+    radial-gradient(140% 90% at 50% -10%, #1e1040 0%, var(--bg) 55%) fixed;
+}
+
+/* ── Type ───────────────────────────────────────────────────────────────── */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.kicker {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--purple-neon);
+  margin: 0;
+}
+
+/* Big numbers want Anton — it is what makes a metric read as a headline. */
+.metric__value {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  line-height: 1;
+  color: var(--white);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Spec row — the signature ───────────────────────────────────────────── */
+/*
+ * ACCESS ..... ALL AREAS
+ *
+ * The leader is a repeating-gradient on a flexed spacer rather than literal dots, so it
+ * fills whatever width is left without the label and value having to know about each other.
+ */
+.spec {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.7;
+}
+
+.spec__label {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-cta);
+  white-space: nowrap;
+}
+
+.spec__leader {
+  flex: 1;
+  min-width: var(--space-6);
+  height: 1em;
+  background-image: radial-gradient(circle, var(--text-muted) 1px, transparent 1px);
+  background-position: 0 0.72em;
+  background-size: 5px 5px;
+  background-repeat: repeat-x;
+}
+
+.spec__value {
+  color: var(--white);
+  white-space: nowrap;
+}
+
+.spec__value--accent {
+  color: var(--purple);
+}
+
+.spec__value--info {
+  color: var(--info);
+}
+
+/* ── Holo ───────────────────────────────────────────────────────────────── */
+/*
+ * The animated foil ramp. Used on the pass strip and the holo sticker only — it draws the
+ * eye hard, so more than one or two per screen and it stops meaning anything.
+ */
+@keyframes holo-drift {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 300% 50%;
+  }
+}
+
+.holo {
+  background-image: linear-gradient(
+    90deg,
+    var(--purple-neon),
+    var(--info),
+    var(--purple),
+    var(--purple-light),
+    var(--purple-neon)
+  );
+  background-size: 300% 100%;
+  animation: holo-drift 4s linear infinite;
+}
+
+.holo-strip {
+  height: 10px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holo {
+    animation: none;
+  }
+}
+
+/* ── Barcode ────────────────────────────────────────────────────────────── */
+
+.barcode {
+  height: 34px;
+  border-radius: 2px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--purple-light) 0 2px,
+    transparent 2px 5px,
+    var(--purple-light) 5px 6px,
+    transparent 6px 9px
+  );
+  opacity: 0.85;
+}
+
+.barcode--sm {
+  height: 22px;
+}
+
+/* ── The pass ───────────────────────────────────────────────────────────── */
+
+.pass {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.pass__body {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Punched lanyard hole, centred at the top. Reads as a physical object. */
+.pass__punch {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.pass__sticker {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  color: var(--bg);
+  text-align: center;
+  line-height: 1.1;
+  box-shadow: 0 0 12px rgba(139, 61, 255, 0.5);
+}
+
+/* Diagonal-stripe placeholder, used where artwork or an avatar is missing. */
+.stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--card) 0 10px,
+    var(--surface) 10px 20px
+  );
+}
+
+/* ── Screen entry — the handoff's 450ms fade-up ─────────────────────────── */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-up {
+  animation: fade-up var(--dur-screen) ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation: none;
+  }
+}

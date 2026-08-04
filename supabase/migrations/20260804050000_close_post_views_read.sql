@@ -1,0 +1,57 @@
+-- ============================================================================
+-- post_views: stop every account from reading every user's listening history
+-- ============================================================================
+--
+-- THE DEFECT. `post_views (id, post_id, user_id, played_at)` has exactly one policy,
+-- unchanged since the baseline schema (00000000000000_baseline_schema.sql:343-345):
+--
+--   create policy "post_views_select_authenticated" on public.post_views
+--     for select to authenticated using (true);
+--
+-- Any signed-in account can read every row. Joined to `profiles`, `posts` and `tracks` —
+-- all of which are also `select ... using (true)` — that yields, for any named user:
+--
+--   every track they played, in order, to the second, for all time
+--
+-- conveniently indexed by `(user_id, played_at desc)` (20260607000005:36). That is a sleep
+-- schedule, a work schedule, a taste profile and a co-listening graph. On a platform whose
+-- entire social surface is who-is-listening-to-what, it is the most sensitive dataset in the
+-- product after direct messages.
+--
+-- It survived the `anon`-scoping pass (20260720192324) because that pass scoped policies
+-- granted to `anon`, and this one is granted to `authenticated`.
+--
+-- WHY NOW, AND WHY BEFORE ANY ANALYTICS UI. The raw exposure does not change either way — it
+-- is already maximal. Three other things do:
+--
+--   · Discovery. An analytics screen documents this table as THE listening-history table and
+--     makes "can I just query it directly?" the obvious next thought for anyone who opens
+--     devtools on their own dashboard.
+--   · Detection. Bulk reads from a browser session become indistinguishable from the
+--     dashboard doing its job. Today they would be anomalous — and anomaly is the only
+--     detection available, since there is no crash reporting or error signal.
+--   · Cost of the fix. Today this is a two-line drop with ZERO callers. After a screen reads
+--     it, the same fix is a breaking change with a UI to rewrite — which is precisely how
+--     this policy survived from the baseline in the first place.
+--
+-- VERIFIED NOTHING BREAKS. `grep -rn "post_views" src/ web/src/ shared/ supabase/functions/`
+-- returns three hits, all COMMENTS (src/services/posts.ts:612, 623, 747). No client reads
+-- this table. The dashboard's play numbers come from `posts.views_count`, not from here.
+--
+-- Writes are unaffected: the insert policy was already dropped (20260722000000:660) and rows
+-- arrive only through `activity_record_play`, which is SECURITY DEFINER and therefore not
+-- subject to RLS. `tg_post_views_count` — which maintains `posts.views_count` — is DEFINER
+-- too (20260722120000:163-173).
+--
+-- NO REPLACEMENT POLICY. With RLS enabled and no SELECT policy, reads are denied by default,
+-- which is the correct end state: nothing should read this table directly. A listener-facing
+-- "your listening history" feature can add `using (user_id = auth.uid())` the day it exists.
+-- Creator analytics gets a SECURITY DEFINER RPC returning author-scoped AGGREGATES, whose
+-- body proves `posts.author_id = auth.uid()` structurally — in the FROM clause, so the
+-- authorization predicate is the same predicate the query needs to be fast.
+--
+-- DELIBERATELY NOT A REVOKE. `ci.yml` re-runs `grant all on all tables to authenticated`
+-- after migrations, so a grant-based control is silently undone and the test then passes for
+-- the wrong reason — the same trap 20260722000000:186-190 records. The policy is the control.
+
+drop policy if exists "post_views_select_authenticated" on public.post_views;

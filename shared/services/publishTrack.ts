@@ -212,6 +212,16 @@ export async function publishTrack(
         ? Math.round(input.durationSeconds)
         : null;
 
+    // The primary media object's size — audio or video, never the artwork. We already hold
+    // it on the file handle, so storing it costs nothing and saves the dashboard a
+    // per-row storage round trip later. Conditional like duration: unknown stays null
+    // rather than being written as a misleading 0.
+    const primary = input.assets.find(a => a.kind === input.mode);
+    const sizeBytes =
+      primary && typeof primary.sizeBytes === 'number' && primary.sizeBytes > 0
+        ? primary.sizeBytes
+        : null;
+
     const { error: updateError } = await db
       .from('tracks')
       .update({
@@ -220,6 +230,7 @@ export async function publishTrack(
         cover_art_url: urls.cover ?? null,
         thumbnail_url: urls.thumbnail ?? null,
         ...(duration !== null ? { duration_seconds: duration } : {}),
+        ...(sizeBytes !== null ? { file_size_bytes: sizeBytes } : {}),
       })
       .eq('id', trackId);
 

@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Button } from '../components/Button';
 import { CoverCropper } from '../components/CoverCropper';
+import { VideoPreview } from '../components/VideoPreview';
 import { CoverThumb } from '../components/CoverThumb';
 import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
@@ -35,6 +36,9 @@ export function Upload() {
   const coverInput = useRef<HTMLInputElement>(null);
   // The cropper is modal, so at most one is open at a time.
   const [cropping, setCropping] = useState<{ id: string | 'ALL'; file: File } | null>(null);
+  // Video cannot share the audio preview element — you would hear the clip and never see
+  // it, which is not what "check what I'm uploading" means for a video.
+  const [watching, setWatching] = useState<{ file: File; title: string } | null>(null);
 
   function accept(files: File[]) {
     const { items } = pairAssets(files);
@@ -62,9 +66,17 @@ export function Upload() {
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
   return (
-    <section className="card card--wide">
-      <div className="rowbetween">
-        <h2 className="card__title">New upload</h2>
+    <div className="page fade-up">
+      <header className="page__head">
+        <div>
+          <p className="kicker">Loading dock</p>
+          <h1 className="display page__title">Upload</h1>
+        </div>
+      </header>
+
+      <section className="card card--wide card--centred">
+        <div className="rowbetween">
+          <h2 className="card__title">New upload</h2>
         <div className="filerow">
           {pending.length > 1 && (
             <Button
@@ -145,6 +157,7 @@ export function Upload() {
             <QueueRow
               key={item.id}
               item={item}
+              onWatch={() => setWatching({ file: item.media, title: item.title })}
               playing={preview.playingId === item.id}
               position={preview.playingId === item.id ? preview.position : 0}
               previewDuration={preview.playingId === item.id ? preview.duration : 0}
@@ -180,6 +193,14 @@ export function Upload() {
           e.target.value = '';
         }}
       />
+
+      {watching && (
+        <VideoPreview
+          file={watching.file}
+          title={watching.title}
+          onClose={() => setWatching(null)}
+        />
+      )}
 
       {cropping && (
         <CoverCropper
@@ -253,13 +274,15 @@ export function Upload() {
             Cancel
           </Button>
         )}
-      </div>
-    </section>
+        </div>
+      </section>
+    </div>
   );
 }
 
 function QueueRow({
   item,
+  onWatch,
   playing,
   position,
   previewDuration,
@@ -271,6 +294,7 @@ function QueueRow({
   onPickCover,
 }: {
   item: QueueItem;
+  onWatch: () => void;
   playing: boolean;
   position: number;
   previewDuration: number;
@@ -332,15 +356,27 @@ function QueueRow({
       </div>
 
       <div className="queue__side">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onPreview}
-          aria-label={playing ? 'Pause preview' : 'Play preview'}
-          title={playing ? 'Pause' : 'Play to check this file'}
-        >
-          {playing ? '❚❚' : '▶'}
-        </Button>
+        {item.mode === 'video' ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onWatch}
+            aria-label="Watch preview"
+            title="Watch this file before publishing"
+          >
+            ▶
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onPreview}
+            aria-label={playing ? 'Pause preview' : 'Play preview'}
+            title={playing ? 'Pause' : 'Play to check this file'}
+          >
+            {playing ? '❚❚' : '▶'}
+          </Button>
+        )}
 
         {item.status === 'done' ? (
           <span className="hint">Published</span>
