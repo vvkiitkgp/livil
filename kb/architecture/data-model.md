@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 56 migration(s) in `supabase/migrations/`.
+Reconstructed from 63 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -528,6 +528,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `post_views_post_id_idx` `(post_id)`
 - `post_views_user_id_played_at_idx` `(user_id, played_at desc)`
+- `post_views_post_id_played_at_idx` `(post_id, played_at desc)`
 
 **Triggers**
 
@@ -743,6 +744,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | Column | Definition | Migration |
 |---|---|---|
 | `waveform_peaks` | `jsonb` | `20260611000000_tracks_waveform_peaks.sql` |
+| `file_size_bytes` | `bigint` | `20260804040000_tracks_file_size.sql` |
 
 **Indexes**
 
