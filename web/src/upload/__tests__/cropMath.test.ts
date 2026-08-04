@@ -1,110 +1,149 @@
 /**
  * Cover-crop geometry.
  *
- * The failure this pins is blank canvas: if a pan is allowed past the point where the
- * scaled image still covers the frame, the exported cover has an empty band down one edge —
- * and nobody re-checks artwork after publishing.
+ * Two failures worth pinning, both silent:
+ *   - at FILL, a pan allowed one step too far exports a cover with an empty band down one
+ *     edge, and nobody re-checks artwork after publishing;
+ *   - at FIT, the whole image must actually be inside the square, or "fit" quietly crops.
  */
 import {
   clampPan,
   clampZoom,
   coverScale,
+  drawRect,
+  fitScale,
   MAX_ZOOM,
-  MIN_ZOOM,
-  sourceRect,
+  minZoom,
 } from '../cropMath';
 
 const FRAME = 280;
+const WIDE = { width: 1600, height: 900 };
+const TALL = { width: 900, height: 1600 };
+const SQUARE = { width: 1000, height: 1000 };
 
-describe('coverScale', () => {
-  it('fills the frame from the short side of a wide image', () => {
-    // 800x400 → height is the short side, so scale is driven by it.
-    expect(coverScale({ width: 800, height: 400 }, FRAME)).toBeCloseTo(FRAME / 400);
+describe('coverScale / fitScale', () => {
+  it('covers from the short side, fits from the long side', () => {
+    expect(coverScale(WIDE, FRAME)).toBeCloseTo(FRAME / 900);
+    expect(fitScale(WIDE, FRAME)).toBeCloseTo(FRAME / 1600);
   });
 
-  it('fills the frame from the short side of a tall image', () => {
-    expect(coverScale({ width: 400, height: 800 }, FRAME)).toBeCloseTo(FRAME / 400);
+  it('agrees for a square image — nothing to zoom out to', () => {
+    expect(coverScale(SQUARE, FRAME)).toBeCloseTo(fitScale(SQUARE, FRAME));
+    expect(minZoom(SQUARE, FRAME)).toBe(1);
   });
 
   it('handles a degenerate image without dividing by zero', () => {
     expect(coverScale({ width: 0, height: 0 }, FRAME)).toBe(1);
+    expect(fitScale({ width: 0, height: 0 }, FRAME)).toBe(1);
+  });
+});
+
+describe('minZoom', () => {
+  it('is below 1 for a non-square image, so the whole thing can be shown', () => {
+    expect(minZoom(WIDE, FRAME)).toBeLessThan(1);
+    expect(minZoom(TALL, FRAME)).toBeLessThan(1);
+  });
+
+  it('is the ratio of the short side to the long side', () => {
+    expect(minZoom(WIDE, FRAME)).toBeCloseTo(900 / 1600);
+  });
+
+  it('never exceeds 1', () => {
+    expect(minZoom(SQUARE, FRAME)).toBe(1);
   });
 });
 
 describe('clampZoom', () => {
-  it('bounds zoom to the allowed range', () => {
-    expect(clampZoom(0.1)).toBe(MIN_ZOOM);
-    expect(clampZoom(99)).toBe(MAX_ZOOM);
-    expect(clampZoom(2)).toBe(2);
+  it('bounds zoom between the given floor and the maximum', () => {
+    expect(clampZoom(0.01, 0.5)).toBe(0.5);
+    expect(clampZoom(99, 0.5)).toBe(MAX_ZOOM);
+    expect(clampZoom(2, 0.5)).toBe(2);
   });
 
-  it('falls back to the minimum for non-finite input', () => {
-    expect(clampZoom(NaN)).toBe(MIN_ZOOM);
+  it('falls back to the floor for non-finite input', () => {
+    expect(clampZoom(NaN, 0.5)).toBe(0.5);
   });
 });
 
-describe('clampPan — never lets empty space into the frame', () => {
-  const wide = { width: 800, height: 400 };
-
-  it('pins the short axis at zoom 1', () => {
-    // A wide image at zoom 1 exactly covers vertically: no vertical slack at all.
-    // toBeCloseTo, not toBe: clamping a negative pan against zero slack yields -0, which
-    // Object.is separates from 0 while nothing downstream can tell the difference.
-    expect(clampPan({ x: 0, y: 500 }, wide, FRAME, 1).y).toBeCloseTo(0);
-    expect(clampPan({ x: 0, y: -500 }, wide, FRAME, 1).y).toBeCloseTo(0);
+describe('clampPan', () => {
+  it('pins the short axis at fill, where there is no slack', () => {
+    // toBeCloseTo, not toBe: clamping against zero slack can yield -0.
+    expect(clampPan({ x: 0, y: 1e6 }, WIDE, FRAME, 1).y).toBeCloseTo(0);
+    expect(clampPan({ x: 0, y: -1e6 }, WIDE, FRAME, 1).y).toBeCloseTo(0);
   });
 
-  it('allows movement along the long axis', () => {
-    const panned = clampPan({ x: 1e6, y: 0 }, wide, FRAME, 1);
-    expect(panned.x).toBeGreaterThan(0);
-    // ...but no further than the overhang.
-    const slackX = (wide.width * coverScale(wide, FRAME) - FRAME) / 2;
-    expect(panned.x).toBeCloseTo(slackX);
+  it('allows movement along the long axis, up to the overhang', () => {
+    const slackX = (WIDE.width * coverScale(WIDE, FRAME) - FRAME) / 2;
+    expect(clampPan({ x: 1e6, y: 0 }, WIDE, FRAME, 1).x).toBeCloseTo(slackX);
   });
 
-  it('frees the short axis once zoomed in', () => {
-    expect(clampPan({ x: 0, y: 1e6 }, wide, FRAME, 2).y).toBeGreaterThan(0);
+  it('pins BOTH axes when zoomed out to fit', () => {
+    // The image is smaller than the frame, so padding must sit symmetrically around it
+    // rather than being shoved against an edge.
+    const at = minZoom(WIDE, FRAME);
+    expect(clampPan({ x: 1e6, y: 1e6 }, WIDE, FRAME, at).x).toBeCloseTo(0);
+    expect(clampPan({ x: 1e6, y: 1e6 }, WIDE, FRAME, at).y).toBeCloseTo(0);
   });
 
   it('treats non-finite pan as centred', () => {
-    expect(clampPan({ x: NaN, y: NaN }, wide, FRAME, 1)).toEqual({ x: 0, y: 0 });
+    expect(clampPan({ x: NaN, y: NaN }, WIDE, FRAME, 1)).toEqual({ x: 0, y: 0 });
   });
 });
 
-describe('sourceRect — stays inside the original image', () => {
-  const cases = [
-    { name: 'wide', image: { width: 1600, height: 900 } },
-    { name: 'tall', image: { width: 900, height: 1600 } },
-    { name: 'square', image: { width: 1000, height: 1000 } },
-  ];
-
-  for (const { name, image } of cases) {
-    it(`never reads outside a ${name} image, at any zoom or pan`, () => {
+describe('drawRect — at FILL, the square is fully covered', () => {
+  for (const [name, image] of [
+    ['wide', WIDE],
+    ['tall', TALL],
+    ['square', SQUARE],
+  ] as const) {
+    it(`leaves no empty space for a ${name} image, at any zoom >= 1 or pan`, () => {
       for (const zoom of [1, 1.5, 2.5, MAX_ZOOM]) {
         for (const pan of [
           { x: 0, y: 0 },
           { x: 1e6, y: 1e6 },
           { x: -1e6, y: -1e6 },
         ]) {
-          const { sx, sy, size } = sourceRect(image, FRAME, zoom, pan);
-          expect(sx).toBeGreaterThanOrEqual(0);
-          expect(sy).toBeGreaterThanOrEqual(0);
-          expect(sx + size).toBeLessThanOrEqual(image.width + 1e-6);
-          expect(sy + size).toBeLessThanOrEqual(image.height + 1e-6);
+          const { dx, dy, dw, dh } = drawRect(image, FRAME, zoom, pan);
+          expect(dx).toBeLessThanOrEqual(1e-6);
+          expect(dy).toBeLessThanOrEqual(1e-6);
+          expect(dx + dw).toBeGreaterThanOrEqual(FRAME - 1e-6);
+          expect(dy + dh).toBeGreaterThanOrEqual(FRAME - 1e-6);
         }
       }
     });
   }
+});
 
-  it('reads a smaller source region as zoom increases', () => {
-    const image = { width: 1600, height: 900 };
-    const wideShot = sourceRect(image, FRAME, 1, { x: 0, y: 0 });
-    const closeUp = sourceRect(image, FRAME, 3, { x: 0, y: 0 });
-    expect(closeUp.size).toBeLessThan(wideShot.size);
+describe('drawRect — at FIT, the whole image is inside the square', () => {
+  for (const [name, image] of [
+    ['wide', WIDE],
+    ['tall', TALL],
+  ] as const) {
+    it(`shows all of a ${name} image`, () => {
+      const { dx, dy, dw, dh } = drawRect(image, FRAME, minZoom(image, FRAME), {
+        x: 0,
+        y: 0,
+      });
+      expect(dx).toBeGreaterThanOrEqual(-1e-6);
+      expect(dy).toBeGreaterThanOrEqual(-1e-6);
+      expect(dx + dw).toBeLessThanOrEqual(FRAME + 1e-6);
+      expect(dy + dh).toBeLessThanOrEqual(FRAME + 1e-6);
+    });
+  }
+
+  it('keeps the aspect ratio of the original', () => {
+    const { dw, dh } = drawRect(WIDE, FRAME, minZoom(WIDE, FRAME), { x: 0, y: 0 });
+    expect(dw / dh).toBeCloseTo(WIDE.width / WIDE.height);
   });
 
-  it('crops the short side exactly at zoom 1', () => {
-    const image = { width: 1600, height: 900 };
-    expect(sourceRect(image, FRAME, 1, { x: 0, y: 0 }).size).toBeCloseTo(900);
+  it('centres the padding on the short axis', () => {
+    const { dy, dh } = drawRect(WIDE, FRAME, minZoom(WIDE, FRAME), { x: 0, y: 0 });
+    expect(dy).toBeCloseTo(FRAME - (dy + dh));
+  });
+
+  it('draws a larger image as zoom increases', () => {
+    const fitted = drawRect(WIDE, FRAME, minZoom(WIDE, FRAME), { x: 0, y: 0 });
+    const filled = drawRect(WIDE, FRAME, 1, { x: 0, y: 0 });
+    expect(filled.dw).toBeGreaterThan(fitted.dw);
   });
 });

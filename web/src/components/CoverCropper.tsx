@@ -4,9 +4,9 @@ import {
   clampPan,
   clampZoom,
   coverScale,
+  drawRect,
   MAX_ZOOM,
-  MIN_ZOOM,
-  sourceRect,
+  minZoom,
   type Pan,
 } from '../upload/cropMath';
 
@@ -20,10 +20,16 @@ import {
  * Output is 1024 px JPEG. Larger than the mobile avatar path's 512 because this is artwork
  * shown full-width in a player, and JPEG rather than WebP because the bucket's MIME
  * allowlist accepts both but every existing stored cover is JPEG or PNG.
+ *
+ * Zoom goes below 1 for a non-square image, down to the point where the whole thing fits
+ * and the square is padded. The pad colour is the app background, so a fitted cover reads
+ * as intentional rather than as a rendering error.
  */
 const OUTPUT_PX = 1024;
 const FRAME_PX = 280;
 const JPEG_QUALITY = 0.9;
+/** COLORS.bg — matched to the app background so padding is invisible in the feed. */
+const PAD_COLOR = '#0A0A0F';
 
 export function CoverCropper({
   file,
@@ -56,6 +62,9 @@ export function CoverCropper({
     [image],
   );
 
+  const zoomFloor = size ? minZoom(size, FRAME_PX) : 1;
+  const canFit = zoomFloor < 1;
+
   const setPanClamped = useCallback(
     (next: Pan) => {
       if (!size) return;
@@ -73,16 +82,23 @@ export function CoverCropper({
     if (!image || !size) return;
     setBusy(true);
     try {
-      const { sx, sy, size: srcSize } = sourceRect(size, FRAME_PX, zoom, pan);
       const canvas = document.createElement('canvas');
       canvas.width = OUTPUT_PX;
       canvas.height = OUTPUT_PX;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Canvas unavailable');
       ctx.imageSmoothingQuality = 'high';
-      // Drawn from the ORIGINAL pixels straight to the output size — one resample, so a
-      // large photo keeps its detail.
-      ctx.drawImage(image, sx, sy, srcSize, srcSize, 0, 0, OUTPUT_PX, OUTPUT_PX);
+
+      // Filled first so a fitted (zoomed-out) crop has a background rather than JPEG's
+      // undefined-alpha garbage in the padding.
+      ctx.fillStyle = PAD_COLOR;
+      ctx.fillRect(0, 0, OUTPUT_PX, OUTPUT_PX);
+
+      const k = OUTPUT_PX / FRAME_PX;
+      const { dx, dy, dw, dh } = drawRect(size, FRAME_PX, zoom, pan);
+      // Drawn from the ORIGINAL pixels straight to output scale — one resample, so a large
+      // photo keeps its detail. The canvas clips whatever falls outside.
+      ctx.drawImage(image, dx * k, dy * k, dw * k, dh * k);
 
       const blob = await new Promise<Blob | null>(resolve =>
         canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY),
@@ -100,13 +116,16 @@ export function CoverCropper({
     }
   }
 
-  const scale = size ? coverScale(size, FRAME_PX) * clampZoom(zoom) : 1;
+  const scale = size ? coverScale(size, FRAME_PX) * clampZoom(zoom, zoomFloor) : 1;
 
   return (
     <div className="modal" role="dialog" aria-label="Crop cover art">
       <div className="modal__panel">
         <h3 className="card__title">Crop cover art</h3>
-        <p className="hint">Drag to reposition, and zoom to fill the square.</p>
+        <p className="hint">
+          Drag to reposition, zoom to fill.
+          {canFit && ' Zoom out to fit the whole image.'}
+        </p>
 
         <div
           className="cropframe"
@@ -144,13 +163,24 @@ export function CoverCropper({
 
         <input
           type="range"
-          min={MIN_ZOOM}
+          min={zoomFloor}
           max={MAX_ZOOM}
           step={0.01}
           value={zoom}
           aria-label="Zoom"
-          onChange={e => setZoom(clampZoom(Number(e.target.value)))}
+          onChange={e => setZoom(clampZoom(Number(e.target.value), zoomFloor))}
         />
+
+        {canFit && (
+          <div className="filerow">
+            <Button variant="ghost" size="sm" onClick={() => setZoom(zoomFloor)}>
+              Fit whole image
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setZoom(1)}>
+              Fill square
+            </Button>
+          </div>
+        )}
 
         <div className="filerow">
           <Button onClick={exportCrop} busy={busy} disabled={!image}>
