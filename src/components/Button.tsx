@@ -53,6 +53,17 @@ export type ButtonProps = {
   /** Shows a spinner in place of the label and blocks presses. */
   busy?: boolean;
   icon?: IconName;
+  /**
+   * An arbitrary node rendered before the label, for marks the `Icon` registry
+   * cannot express — third-party brand logos in particular. Google's "G" is
+   * multi-colour and is not a Phosphor or Lucide glyph, and its colours must not
+   * be altered, so it cannot take `color` the way `icon` does.
+   *
+   * Prefer `icon` for anything in the registry. This exists so a brand button
+   * doesn't have to be hand-rolled, which is how the app accumulated ~40
+   * divergent button styles before Button was centralized.
+   */
+  leading?: React.ReactNode;
   /** Stretch to fill the parent's cross-axis. */
   fullWidth?: boolean;
   /**
@@ -125,6 +136,7 @@ export function Button({
   disabled = false,
   busy = false,
   icon,
+  leading,
   fullWidth = false,
   onMedia = false,
   style,
@@ -171,6 +183,7 @@ export function Button({
         <ActivityIndicator color={labelColor} />
       ) : (
         <View style={[styles.content, { gap: s.gap }]}>
+          {leading}
           {icon ? <Icon name={icon} size={s.icon} color={labelColor} /> : null}
           <Text
             style={[
