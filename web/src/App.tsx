@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { useAuthState } from './auth/session';
 import { Button } from './components/Button';
 import { AppShell } from './components/AppShell';
 import { SignIn } from './screens/SignIn';
+import { ForgotPassword } from './screens/ForgotPassword';
+import { ResetPassword } from './screens/ResetPassword';
 import { FinishInApp } from './screens/FinishInApp';
 import { Overview } from './screens/Overview';
 import { Catalogue } from './screens/Catalogue';
@@ -48,6 +51,31 @@ function routerFor(session: Session) {
 
 export function App() {
   const state = useAuthState();
+  const [forgot, setForgot] = useState(false);
+  const [path, setPath] = useState(() => window.location.pathname);
+
+  /**
+   * `/reset` is handled BEFORE the auth gate, and that ordering is the whole point.
+   *
+   * Following a recovery link SIGNS YOU IN — Supabase exchanges the code and emits a
+   * session. So the gate would see `signed-in` and drop the user into the dashboard with
+   * their old password still set and no sign the reset never happened. Checking the path
+   * first is what keeps them on the screen they came for.
+   *
+   * Read from `window.location` rather than the router because the router only exists once
+   * signed in, and this has to work before that.
+   */
+  if (path === '/reset') {
+    return (
+      <ResetPassword
+        onDone={() => {
+          window.history.replaceState({}, '', '/');
+          setPath('/');
+          setForgot(false);
+        }}
+      />
+    );
+  }
 
   switch (state.status) {
     case 'loading':
@@ -55,7 +83,11 @@ export function App() {
       // and a flashed spinner reads worse than a beat of nothing.
       return <main className="auth bg-stage" aria-busy="true" />;
     case 'signed-out':
-      return <SignIn />;
+      return forgot ? (
+        <ForgotPassword onBack={() => setForgot(false)} />
+      ) : (
+        <SignIn onForgotPassword={() => setForgot(true)} />
+      );
     case 'needs-onboarding':
       return <FinishInApp />;
     case 'signed-in':

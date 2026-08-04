@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
-import { updateTrackImage, updateTrackMetadata } from '@shared/services/editTrack';
+import {
+  updateTrackImage,
+  updateTrackLyrics,
+  updateTrackMetadata,
+} from '@shared/services/editTrack';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CoverCropper } from '../components/CoverCropper';
+import { LyricsPanel } from '../components/LyricsPanel';
 import { uploadTrackImage } from '../upload/images';
 import { PostPreview } from '../components/PostPreview';
 import {
@@ -47,6 +52,7 @@ export function TrackDetail() {
   const [removing, setRemoving] = useState(false);
   const [croppingCover, setCroppingCover] = useState<File | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [lyricsBusy, setLyricsBusy] = useState(false);
 
   useEffect(() => {
     if (!postId) return;
@@ -132,6 +138,20 @@ export function TrackDetail() {
       setError(err instanceof Error ? err.message : 'Could not update the artwork.');
     } finally {
       setCoverBusy(false);
+    }
+  }
+
+  async function onLyrics(next: { raw: string; format: 'lrc' | 'plain' } | null) {
+    if (post === null || post === 'missing') return;
+    setLyricsBusy(true);
+    setError(null);
+    try {
+      await updateTrackLyrics(post.trackId, next);
+      setPost({ ...post, lyrics: next?.raw ?? null, lyricsFormat: next?.format ?? null });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the lyrics.');
+    } finally {
+      setLyricsBusy(false);
     }
   }
 
@@ -331,6 +351,14 @@ export function TrackDetail() {
               </div>
             </div>
           </div>
+
+          <LyricsPanel
+            lyrics={post.lyrics}
+            format={post.lyricsFormat}
+            busy={lyricsBusy}
+            onSave={(raw, format) => onLyrics({ raw, format })}
+            onRemove={() => onLyrics(null)}
+          />
 
           <div className="panel panel--danger">
             <div className="panel__head">

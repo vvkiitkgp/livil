@@ -352,10 +352,10 @@ export default function UploadScreen() {
           >
             <Text style={styles.studioTitle}>Got a laptop nearby?</Text>
             <Text style={styles.studioBody}>
-              Livil for Creators publishes from your desktop — masters up to 2&nbsp;GB,
-              uploads that resume if the connection drops, and a whole folder at once with
-              cover art read straight from your files. You can edit titles and artwork after
-              publishing there too, and see plays per track.
+              Livil for Creators publishes from your desktop — masters up to 2 GB, uploads
+              that resume if the connection drops, and a whole folder at once with cover art
+              read straight from your files. It&apos;s also the only place to attach lyrics,
+              edit a track after publishing, and see how each one is doing.
             </Text>
             <Text style={styles.studioLink}>livil-music.com →</Text>
           </TouchableOpacity>

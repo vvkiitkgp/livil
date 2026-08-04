@@ -1266,6 +1266,8 @@ export type Database = {
           duration_seconds: number | null
           file_size_bytes: number | null
           id: string
+          lyrics: string | null
+          lyrics_format: string | null
           media_kind: string
           thumbnail_url: string | null
           title: string
@@ -1281,6 +1283,8 @@ export type Database = {
           duration_seconds?: number | null
           file_size_bytes?: number | null
           id?: string
+          lyrics?: string | null
+          lyrics_format?: string | null
           media_kind: string
           thumbnail_url?: string | null
           title: string
@@ -1296,6 +1300,8 @@ export type Database = {
           duration_seconds?: number | null
           file_size_bytes?: number | null
           id?: string
+          lyrics?: string | null
+          lyrics_format?: string | null
           media_kind?: string
           thumbnail_url?: string | null
           title?: string

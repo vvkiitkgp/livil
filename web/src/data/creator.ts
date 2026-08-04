@@ -161,6 +161,8 @@ export async function fetchCreatorTotals(userId: string): Promise<CreatorTotals>
 export type PostDetail = CreatorPost & {
   description: string | null;
   caption: string | null;
+  lyrics: string | null;
+  lyricsFormat: 'lrc' | 'plain' | null;
   /** The playable file — audio for audio posts, the video for video posts. */
   mediaUrl: string | null;
 };
@@ -171,6 +173,8 @@ type DetailRow = PostRow & {
   tracks:
     | (NonNullable<PostRow['tracks']> & {
         description: string | null;
+        lyrics: string | null;
+        lyrics_format: string | null;
         audio_url: string | null;
         video_url: string | null;
       })
@@ -187,7 +191,8 @@ export async function fetchPostDetail(
       `id, track_id, author_id, caption, created_at, views_count, likes_count,
        reposts_count, comments_count,
        tracks!inner ( id, title, description, cover_art_url, thumbnail_url, media_kind,
-                      duration_seconds, file_size_bytes, audio_url, video_url )`,
+                      duration_seconds, file_size_bytes, lyrics, lyrics_format,
+                      audio_url, video_url )`,
     )
     .eq('id', postId)
     // Author-scoped. The writes fail at RLS anyway, but without this the screen renders an
@@ -205,6 +210,11 @@ export async function fetchPostDetail(
     ...base,
     description: track?.description ?? null,
     caption: row.caption,
+    lyrics: track?.lyrics ?? null,
+    lyricsFormat:
+      track?.lyrics_format === 'lrc' || track?.lyrics_format === 'plain'
+        ? track.lyrics_format
+        : null,
     // A video post's picture and its audio are the same file; audio posts play audio_url.
     mediaUrl: base.mediaKind === 'video' ? track?.video_url ?? null : track?.audio_url ?? null,
   };

@@ -107,3 +107,37 @@ export async function updateTrackImage(
     throw new Error('That track could not be updated — it may not be yours.');
   }
 }
+
+/**
+ * Attach, replace or clear a track's lyrics.
+ *
+ * WEB ONLY by product decision — an .lrc is a desktop artifact, produced by a DAW or a
+ * syncing tool, and not something an artist attaches from a phone. Mobile READS lyrics
+ * (LIV-90) but never writes them.
+ *
+ * The raw file is stored, never a parsed structure: parsing lives in `shared/services/lyrics.ts`
+ * so both clients derive the same lines, and improving the parser stays a code change rather
+ * than a data migration.
+ *
+ * Format and text move together — a database constraint enforces that neither can be set
+ * without the other, because lyrics with no format cannot be rendered and a format with no
+ * lyrics is a claim about nothing.
+ */
+export async function updateTrackLyrics(
+  trackId: string,
+  lyrics: { raw: string; format: 'lrc' | 'plain' } | null,
+): Promise<void> {
+  const { data, error } = await livil()
+    .from('tracks')
+    .update({
+      lyrics: lyrics?.raw ?? null,
+      lyrics_format: lyrics?.format ?? null,
+    })
+    .eq('id', trackId)
+    .select('id');
+
+  if (error) throw new Error(error.message);
+  if (!data || data.length !== 1) {
+    throw new Error('That track could not be updated — it may not be yours.');
+  }
+}

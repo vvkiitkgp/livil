@@ -16,7 +16,7 @@ import {
  * and shipping a "check your email" that lands on a route which does not exist is worse
  * than pointing at the app. Tracked as a Phase 1 follow-up.
  */
-export function SignIn() {
+export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<null | 'password' | 'google'>(null);
@@ -107,10 +107,9 @@ export function SignIn() {
           Continue with Google
         </Button>
 
-        <p className="hint">
-          Forgot your password? Reset it in the Livil app — password reset isn't on the
-          web yet.
-        </p>
+        <button type="button" className="linkbtn" onClick={onForgotPassword}>
+          Forgot your password?
+        </button>
       </form>
 
       <section className="card card--muted">
