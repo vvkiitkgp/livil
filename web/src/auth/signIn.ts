@@ -11,6 +11,28 @@ export const PLAY_STORE_URL =
 export type SignInResult = { ok: true } | { ok: false; message: string };
 
 /**
+ * Did this request fail to REACH the server, as opposed to being answered by it?
+ *
+ * supabase-js does not throw on a network failure — it returns an `AuthRetryableFetchError`
+ * with `status` 0. That is easy to mistake for a normal error object and, in a flow whose
+ * default is "report success regardless", easy to swallow entirely. A screen that says
+ * "check your email" for a request the server never received leaves someone waiting for mail
+ * nobody ever asked for.
+ *
+ * Kept separate from `humanize()` because the two answer different questions: humanize asks
+ * "is this message fit to show", this asks "did anything happen at all".
+ */
+export function isTransportFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { name?: string; status?: number; message?: string };
+  return (
+    e.name === 'AuthRetryableFetchError' ||
+    e.status === 0 ||
+    /failed to fetch|network ?error|load failed/i.test(e.message ?? '')
+  );
+}
+
+/**
  * Turn whatever came back into something a person can act on.
  *
  * Passing `error.message` straight to the UI assumes Supabase always returns a sentence.
@@ -27,6 +49,11 @@ export type SignInResult = { ok: true } | { ok: false; message: string };
 function humanize(error: { message?: string; status?: number }): string {
   const raw = (error.message ?? '').trim();
   console.error('[auth]', error);
+  // Blaming "our end" for the user's dropped connection sends them to support instead of to
+  // their wifi. Checked before the 5xx branch, since a transport failure has status 0.
+  if (isTransportFailure(error)) {
+    return "Couldn't reach Livil. Check your connection and try again.";
+  }
   if (!raw || raw === '{}' || raw === '[object Object]' || (error.status ?? 0) >= 500) {
     return 'Something went wrong on our end. Nothing was changed — try again in a moment.';
   }

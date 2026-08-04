@@ -4,6 +4,7 @@ import { ResendButton } from '../components/ResendButton';
 import { TextField } from '../components/TextField';
 import { supabase } from '../supabase';
 import { studioUrl } from '../basePath';
+import { isTransportFailure } from '../auth/signIn';
 
 /**
  * Ask for a reset link.
@@ -43,11 +44,25 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
     setBusy(false);
 
     // Rate limiting is the one thing worth surfacing, because the user CAN act on it —
-    // waiting is a real instruction. Everything else reports as sent.
+    // waiting is a real instruction.
     if (sendError && /rate|too many/i.test(sendError.message)) {
       setError('Too many attempts. Wait a minute and try again.');
       return;
     }
+
+    // A TRANSPORT FAILURE IS NOT A RESULT. supabase-js does not throw when the request never
+    // reaches the server — it RETURNS an AuthRetryableFetchError. Treating that as "sent"
+    // showed "Check your email" for a request the server never saw, which is the worst
+    // possible answer: the user waits for mail that was never asked for.
+    //
+    // This does not weaken the anti-enumeration posture. "We couldn't reach Livil" says
+    // nothing about whether an address has an account — only that the network failed. The
+    // vagueness exists to hide the SERVER's answer, and here there isn't one.
+    if (isTransportFailure(sendError)) {
+      setError("Couldn't reach Livil. Check your connection and try again.");
+      return;
+    }
+
     setSent(true);
   }
 
