@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
-import { updateTrackMetadata } from '@shared/services/editTrack';
+import { updateTrackImage, updateTrackMetadata } from '@shared/services/editTrack';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { CoverCropper } from '../components/CoverCropper';
+import { uploadTrackImage } from '../upload/images';
 import { PostPreview } from '../components/PostPreview';
 import {
   fetchPostDetail,
@@ -43,6 +45,8 @@ export function TrackDetail() {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [croppingCover, setCroppingCover] = useState<File | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
 
   useEffect(() => {
     if (!postId) return;
@@ -113,6 +117,24 @@ export function TrackDetail() {
     }
   }
 
+  async function onNewCover(cropped: File) {
+    if (post === null || post === 'missing') return;
+    setCroppingCover(null);
+    setCoverBusy(true);
+    setError(null);
+    try {
+      const url = await uploadTrackImage(session.user.id, post.trackId, cropped);
+      // Persisted immediately rather than waiting for Save: the bytes are already in the
+      // bucket, so an unsaved artwork change is an orphaned object the artist cannot see.
+      await updateTrackImage(post.trackId, post.mediaKind, url);
+      setPost({ ...post, coverUrl: url });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the artwork.');
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+
   async function onUnpublish() {
     if (!postId) return;
     setRemoving(true);
@@ -164,9 +186,30 @@ export function TrackDetail() {
             comments={post.comments}
             reposts={post.reposts}
           />
+          <div className="filerow">
+            <Button
+              variant="secondary"
+              size="sm"
+              busy={coverBusy}
+              onClick={() => document.getElementById('cover-input')?.click()}
+            >
+              {post.mediaKind === 'video' ? 'Change thumbnail' : 'Change cover art'}
+            </Button>
+          </div>
+          <input
+            id="cover-input"
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) setCroppingCover(file);
+              e.target.value = '';
+            }}
+          />
           <p className="hint detail__previewnote">
             Live preview at true phone width — the title and caption clip here exactly as they
-            will in the feed.
+            will in the feed, and new artwork appears above as soon as it saves.
           </p>
         </section>
 
@@ -290,6 +333,15 @@ export function TrackDetail() {
           </div>
         </section>
       </div>
+
+      {croppingCover && (
+        <CoverCropper
+          file={croppingCover}
+          title={post.mediaKind === 'video' ? 'Crop thumbnail' : 'Crop cover art'}
+          onCancel={() => setCroppingCover(null)}
+          onDone={onNewCover}
+        />
+      )}
 
       {confirming && (
         <ConfirmDialog

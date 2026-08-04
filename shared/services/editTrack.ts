@@ -76,3 +76,34 @@ export async function updateTrackMetadata(edit: TrackEdit): Promise<void> {
     );
   }
 }
+
+/**
+ * Point a track at new artwork.
+ *
+ * Which column depends on the kind: audio posts render `cover_art_url`, video posts render
+ * `thumbnail_url` (see `toCreatorPost` and PostCard). Writing the wrong one silently leaves
+ * the feed showing the old picture, so the caller passes the kind rather than this guessing.
+ *
+ * Separate from `updateTrackMetadata` because it is a different action with a different
+ * failure mode: an artwork upload has already put bytes in a bucket by the time this runs.
+ */
+export async function updateTrackImage(
+  trackId: string,
+  mediaKind: 'audio' | 'video',
+  url: string,
+): Promise<void> {
+  // Written as two literals rather than a computed key: a computed key widens the payload
+  // to `{ [x: string]: string }`, which loses the column typing that would catch a typo here.
+  const patch = mediaKind === 'video' ? { thumbnail_url: url } : { cover_art_url: url };
+
+  const { data, error } = await livil()
+    .from('tracks')
+    .update(patch)
+    .eq('id', trackId)
+    .select('id');
+
+  if (error) throw new Error(error.message);
+  if (!data || data.length !== 1) {
+    throw new Error('That track could not be updated — it may not be yours.');
+  }
+}

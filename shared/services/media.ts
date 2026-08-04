@@ -166,3 +166,15 @@ export const AVATARS_BUCKET = 'avatars';
 export function avatarPath(userId: string): string {
   return `${userId}/avatar_${Date.now()}.jpg`;
 }
+
+/**
+ * Path for REPLACEMENT track artwork: `${userId}/${trackId}/cover_${timestamp}.jpg`.
+ *
+ * Timestamped for the same reason avatars are: the URL is stored in the database and
+ * rendered by the mobile app, so overwriting `cover.jpg` in place would serve a stale CDN
+ * copy with no way to bust it. The original publish keeps the plain `cover.ext` name —
+ * there is nothing to invalidate the first time.
+ */
+export function trackImagePath(userId: string, trackId: string): string {
+  return `${userId}/${trackId}/cover_${Date.now()}.jpg`;
+}

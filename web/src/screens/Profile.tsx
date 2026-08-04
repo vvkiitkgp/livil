@@ -12,7 +12,7 @@ import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { CoverCropper } from '../components/CoverCropper';
-import { uploadAvatar } from '../upload/avatar';
+import { uploadAvatar } from '../upload/images';
 import { fetchProfileLinks, type CreatorProfile } from '../data/creator';
 
 type Ctx = { session: Session; profile: CreatorProfile | null };
