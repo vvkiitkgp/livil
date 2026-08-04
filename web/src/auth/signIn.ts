@@ -2,6 +2,7 @@
  * Sign-in actions. No sign-up path exists here by design (ADR-0015 decision 3).
  */
 import { supabase } from '../supabase';
+import { studioUrl } from '../basePath';
 
 /** The public listing. In closed testing this resolves only for enrolled testers. */
 export const PLAY_STORE_URL =
@@ -66,7 +67,9 @@ export async function signUpWithPassword(
   const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
-    options: { emailRedirectTo: `${window.location.origin}/` },
+    // Base-prefixed — the app is served under `/studio/`, and a confirmation link that
+    // lands on the apex hits the marketing page instead of the dashboard.
+    options: { emailRedirectTo: studioUrl('/') },
   });
 
   if (error) {
@@ -85,7 +88,7 @@ export async function signUpWithPassword(
 export async function signInWithGoogle(): Promise<SignInResult> {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: `${window.location.origin}/` },
+    options: { redirectTo: studioUrl('/') },
   });
   return error ? { ok: false, message: error.message } : { ok: true };
 }

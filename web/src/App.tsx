@@ -15,14 +15,7 @@ import { Upload } from './screens/Upload';
 import { Profile } from './screens/Profile';
 import type { Session } from '@supabase/supabase-js';
 
-/**
- * The dashboard is served under a subpath so the marketing page can own the apex.
- *
- * Read from Vite's `BASE_URL` rather than hard-coded, so the dev server (which serves at `/`)
- * and production (`/studio/`) cannot disagree. Trailing slash trimmed — React Router wants
- * `/studio`, Vite gives `/studio/`.
- */
-const STUDIO_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+import { STUDIO_BASE, studioPath } from './basePath';
 
 /**
  * Routing.
@@ -81,13 +74,13 @@ export function App() {
    * Read from `window.location` rather than the router because the router only exists once
    * signed in, and this has to work before that.
    */
-  // Compared against the base-prefixed path: in production the recovery link lands on
-  // `/studio/reset`, in dev on `/reset`.
-  if (path === `${STUDIO_BASE === '/' ? '' : STUDIO_BASE}/reset`) {
+  // Compared against the base-prefixed path. Vite serves under `base` in dev too, so this
+  // is `/studio/reset` in both — the emailed link must match (see basePath.ts).
+  if (path === studioPath('/reset')) {
     return (
       <ResetPassword
         onDone={() => {
-          const home = STUDIO_BASE === '/' ? '/' : `${STUDIO_BASE}/`;
+          const home = studioPath('/');
           window.history.replaceState({}, '', home);
           setPath(home);
           setForgot(false);
@@ -114,7 +107,9 @@ export function App() {
       // Signed in, but the account has never claimed a username — the state every signup
       // passes through. Previously this signed the user out and sent them to the mobile app,
       // which was correct when web signup did not exist.
-      return <ChooseUsername onClaimed={() => window.location.replace('/')} />;
+      // Base-prefixed: a bare '/' would reload onto the marketing page at the apex, not
+      // the dashboard the artist just finished signing up for.
+      return <ChooseUsername onClaimed={() => window.location.replace(studioPath('/'))} />;
     case 'signed-in':
       return <RouterProvider router={routerFor(state.session)} />;
     case 'error':

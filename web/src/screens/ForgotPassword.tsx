@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { supabase } from '../supabase';
+import { studioUrl } from '../basePath';
 
 /**
  * Ask for a reset link.
@@ -27,9 +28,11 @@ export function ForgotPassword({ onBack }: { onBack: () => void }) {
     setError(null);
 
     const { error: sendError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      // Must be allow-listed in Supabase → Auth → URL Configuration. The wildcard entries
-      // already cover it.
-      redirectTo: `${window.location.origin}/reset`,
+      // Base-prefixed, NOT `${origin}/reset`. The app is served under `/studio/`, so an
+      // origin-relative link lands outside it — and because the recovery token is consumed
+      // by Supabase's /verify BEFORE the redirect, that first dead click burns the link and
+      // the next one reports `otp_expired`. See basePath.ts.
+      redirectTo: studioUrl('/reset'),
     });
 
     setBusy(false);
