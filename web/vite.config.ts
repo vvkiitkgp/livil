@@ -30,12 +30,24 @@ export default defineConfig({
     alias: {
       '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
     },
-    // `shared/` sits above this root, so bare imports inside it resolve against the REPO
-    // root node_modules while `web/src` resolves against web's own. Without deduping,
-    // the bundle would ship two copies of supabase-js — two auth instances racing over
-    // the same localStorage session — and TypeScript rejects the two class identities
-    // outright. Mirrored by `paths` in tsconfig.json for the type-level view.
-    dedupe: ['@supabase/supabase-js', 'react', 'react-dom'],
+    /**
+     * `shared/` sits above this root, so bare imports inside it resolve against the REPO
+     * root node_modules while `web/src` resolves against web's own. Deduping forces both to
+     * web's copy.
+     *
+     * TWO SEPARATE FAILURES, and the second one hides until deploy. Locally it is a
+     * correctness problem: without this the bundle ships two copies of supabase-js — two
+     * auth instances racing over one localStorage session — and TypeScript rejects the two
+     * class identities outright. On Vercel it is a hard build error: the Root Directory is
+     * `web`, so ONLY web's dependencies are installed and the repo-root `node_modules` that
+     * makes local resolution work does not exist at all. Anything imported from `shared/`
+     * and missing here fails with "Rollup failed to resolve import".
+     *
+     * So: every bare specifier imported anywhere under `shared/` belongs on this list, not
+     * merely the ones with a duplicate-instance problem. `fft.js` was added after exactly
+     * that build failure. Mirrored by `paths` in tsconfig.json for the type-level view.
+     */
+    dedupe: ['@supabase/supabase-js', 'fft.js', 'react', 'react-dom'],
   },
   server: {
     fs: {
