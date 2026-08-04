@@ -1,0 +1,648 @@
+/*
+ * Base styles.
+ *
+ * Colour values are NOT written here — they are injected as CSS custom properties from the
+ * shared design tokens at startup (see `theme.ts`), so the dashboard and the mobile app
+ * cannot drift on brand colour. If you need a colour that isn't a var, add the token to
+ * `src/theme/colors.ts` instead of hard-coding a hex.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+:root {
+  /* Dark theme only, by design — Livil has no light mode. */
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--white);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--purple-neon);
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.auth {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px 20px;
+}
+
+.auth__head {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.topbar__mark {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Type ────────────────────────────────────────────────────────────────── */
+
+.wordmark {
+  font-size: clamp(26px, 5vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  background: linear-gradient(90deg, var(--purple-royal), var(--purple-neon));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tagline,
+.hint {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.hint {
+  font-size: 13px;
+}
+
+.card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+/* ── Surfaces ────────────────────────────────────────────────────────────── */
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.card--muted {
+  background: transparent;
+}
+
+.card--center {
+  text-align: center;
+  max-width: 460px;
+}
+
+.card--wide {
+  max-width: 560px;
+}
+
+/* ── Upload ──────────────────────────────────────────────────────────────── */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.dropzone[data-dragging] {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+
+.dropzone__title {
+  margin: 0;
+  font-weight: 650;
+}
+
+.filerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.rowbetween {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ── Upload queue ────────────────────────────────────────────────────────── */
+
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.queue__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.queue__row[data-status='done'] {
+  border-color: var(--purple-deep);
+}
+
+.queue__row[data-status='failed'] {
+  border-color: var(--error-border);
+  background: var(--error-bg);
+}
+
+/* Square, matching how cover art renders everywhere else in the product. */
+.thumb {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  cursor: pointer;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb__empty {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.thumb:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.queue__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.queue__main > .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Borderless until focused: a dozen boxed inputs stacked reads as a form to fill in,
+   when in practice the prefilled filename is usually already right. */
+.queue__title {
+  font: inherit;
+  font-weight: 650;
+  color: var(--white);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  outline: none;
+}
+
+.queue__title:focus {
+  border-color: var(--purple);
+  background: var(--input-bg);
+}
+
+.queue__title:disabled {
+  opacity: 0.7;
+}
+
+/* Preview scrubber. Shown only on the row currently previewing, so twelve rows do not
+   each carry a control that does nothing. */
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.seek__input {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  cursor: pointer;
+}
+
+.seek__input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--input-bg);
+}
+
+.seek__input::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--input-bg);
+}
+
+.seek__input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-top: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--purple-neon);
+  border: 2px solid var(--bg);
+}
+
+.seek__input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--purple-neon);
+  border: 2px solid var(--bg);
+}
+
+.seek__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue__side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.queue__error {
+  font-size: 12px;
+  color: var(--error);
+}
+
+.queue__desc {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 2px 6px;
+  margin: 0 -6px;
+  outline: none;
+}
+
+.queue__desc::placeholder {
+  color: var(--text-muted);
+}
+
+.queue__desc:focus {
+  border-color: var(--purple);
+  background: var(--input-bg);
+  color: var(--white);
+}
+
+.queue__desc:disabled {
+  opacity: 0.7;
+}
+
+/* Completion state. Purple rather than a green — the palette has no success token, and
+   inventing one for a single banner is how design systems drift. */
+.done {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--purple-dim);
+  border: 1px solid var(--purple-deep);
+  border-radius: 12px;
+}
+
+.done__title {
+  margin: 0;
+  font-weight: 650;
+  color: var(--purple-light);
+}
+
+/* ── Modal / cropper ─────────────────────────────────────────────────────── */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(10, 10, 15, 0.8);
+}
+
+.modal__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.cropframe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  touch-action: none;
+  cursor: grab;
+}
+
+.cropframe__img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.queue__bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--input-bg);
+  overflow: hidden;
+}
+
+.queue__barfill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--purple-royal), var(--purple-neon));
+  transition: width 180ms ease;
+}
+
+/*
+ * Progress fill uses the same deep->neon ramp as the button outlines, for the same reason
+ * the mobile app uses GradientFill: a flat purple slab reads as a leftover block. The
+ * gradient is sized to the FULL track and clipped by the parent's width, so the colours do
+ * not stretch and shift as the upload advances.
+ */
+.progress {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress::before {
+  content: '';
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--input-bg);
+}
+
+.progress__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--purple-deep),
+    var(--purple),
+    var(--purple-neon)
+  );
+  background-size: 560px 100%;
+  transition: width 180ms ease;
+}
+
+.alert {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 10px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.waitlist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.field__input {
+  width: 100%;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--white);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.field__input::placeholder {
+  color: var(--text-muted);
+}
+
+.field__input:focus {
+  border-color: var(--purple);
+  /* The mobile app animates a purple focus border; this is the same idea as a glow ring.
+     It is a focus ring, not elevation — the no-shadow rule is about `elevation` on
+     Android painting a grey smudge under a dark outlined control. */
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/*
+ * Purple NEVER fills a button. `primary` is a transparent surface with a purple gradient
+ * outline; the label is `--purple-neon` (#A855F7), never `--purple` (#8B3DFF), which fails
+ * WCAG AA on this background. `destructive` is the single exception.
+ *
+ * The outline is a two-layer background clipped to the padding box and the border box —
+ * no SVG, no measured geometry, so none of the mobile GradientBorder traps apply.
+ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-weight: 650;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: opacity 120ms ease, filter 120ms ease;
+  /* Never `elevation`/box-shadow here — glow comes from the outline. */
+}
+
+.btn--sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.btn--md {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+.btn--lg {
+  padding: 13px 22px;
+  font-size: 15px;
+}
+
+.btn--primary {
+  color: var(--purple-neon);
+  background-image: linear-gradient(var(--surface), var(--surface)),
+    linear-gradient(135deg, var(--purple-deep), var(--purple), var(--purple-neon));
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.btn--secondary {
+  color: var(--white);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.btn--ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.btn--destructive {
+  color: var(--white);
+  background: var(--error);
+}
+
+.btn:hover:not([disabled]) {
+  filter: brightness(1.12);
+}
+
+.btn:active:not([disabled]) {
+  opacity: 0.8;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--purple-neon);
+  outline-offset: 2px;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,31 @@
+{
+  "name": "livil-web",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Livil creator dashboard — see kb/decisions/0015-web-creator-dashboard.md",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.3",
+    "fft.js": "4.0.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tus-js-client": "^4.3.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22.11.0"
+  }
+}

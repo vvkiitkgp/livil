@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -231,6 +231,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      deleted_accounts: {
+        Row: {
+          deleted_at: string
+          email_sha256: string | null
+          id: number
+          username: string | null
+        }
+        Insert: {
+          deleted_at?: string
+          email_sha256?: string | null
+          id?: never
+          username?: string | null
+        }
+        Update: {
+          deleted_at?: string
+          email_sha256?: string | null
+          id?: never
+          username?: string | null
+        }
+        Relationships: []
       }
       device_tokens: {
         Row: {
@@ -1038,7 +1059,6 @@ export type Database = {
           comments_friends_only: boolean
           created_at: string | null
           display_name: string | null
-          fans_seen_at: string | null
           followers_count: number | null
           following_count: number | null
           id: string
@@ -1046,6 +1066,7 @@ export type Database = {
           links: string[]
           show_activity: boolean | null
           username: string
+          username_set: boolean
         }
         Insert: {
           avatar_url?: string | null
@@ -1053,7 +1074,6 @@ export type Database = {
           comments_friends_only?: boolean
           created_at?: string | null
           display_name?: string | null
-          fans_seen_at?: string | null
           followers_count?: number | null
           following_count?: number | null
           id: string
@@ -1061,6 +1081,7 @@ export type Database = {
           links?: string[]
           show_activity?: boolean | null
           username: string
+          username_set?: boolean
         }
         Update: {
           avatar_url?: string | null
@@ -1068,7 +1089,6 @@ export type Database = {
           comments_friends_only?: boolean
           created_at?: string | null
           display_name?: string | null
-          fans_seen_at?: string | null
           followers_count?: number | null
           following_count?: number | null
           id?: string
@@ -1076,6 +1096,7 @@ export type Database = {
           links?: string[]
           show_activity?: boolean | null
           username?: string
+          username_set?: boolean
         }
         Relationships: []
       }
@@ -1322,6 +1343,24 @@ export type Database = {
           },
         ]
       }
+      waitlist: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1338,6 +1377,7 @@ export type Database = {
         Args: { other_user_id: string }
         Returns: undefined
       }
+      account_email_hash: { Args: { p_email: string }; Returns: string }
       activity_list: {
         Args: { p_before?: string; p_limit?: number }
         Returns: {
@@ -1364,32 +1404,21 @@ export type Database = {
         Returns: string
       }
       activity_notify_new_fan: { Args: { p_target: string }; Returns: string }
-      activity_notify_post:
-        | {
-            Args: { p_post_id: string; p_type: string }
-            Returns: {
-              actor_display_name: string
-              agg_count: number
-              notification_id: string
-              recipient_id: string
-              recipient_should_push: boolean
-            }[]
-          }
-        | {
-            Args: {
-              p_comment_id?: string
-              p_comment_text?: string
-              p_post_id: string
-              p_type: string
-            }
-            Returns: {
-              actor_display_name: string
-              agg_count: number
-              notification_id: string
-              recipient_id: string
-              recipient_should_push: boolean
-            }[]
-          }
+      activity_notify_post: {
+        Args: {
+          p_comment_id?: string
+          p_comment_text?: string
+          p_post_id: string
+          p_type: string
+        }
+        Returns: {
+          actor_display_name: string
+          agg_count: number
+          notification_id: string
+          recipient_id: string
+          recipient_should_push: boolean
+        }[]
+      }
       activity_record_play: {
         Args: { p_post_id: string }
         Returns: {
@@ -1405,8 +1434,13 @@ export type Database = {
         Args: { p_jam_room_id: string; p_payload: Json }
         Returns: undefined
       }
+      can_comment_on_post: { Args: { p_post_id: string }; Returns: boolean }
       cancel_friend_request: {
         Args: { other_user_id: string }
+        Returns: undefined
+      }
+      claim_username: {
+        Args: { p_display_name?: string; p_username: string }
         Returns: undefined
       }
       create_group: {
@@ -1414,6 +1448,7 @@ export type Database = {
         Returns: string
       }
       create_jam_room: { Args: { p_conversation_id: string }; Returns: string }
+      delete_my_account: { Args: never; Returns: undefined }
       fetch_home_feed: {
         Args: {
           p_cursor_bucket?: number
@@ -1423,24 +1458,13 @@ export type Database = {
         }
         Returns: {
           feed_bucket: number
+          post: Json
           post_id: string
           sort_key: number
-          viewer_has_liked: boolean
         }[]
       }
       get_email_for_username: { Args: { p_username: string }; Returns: string }
       get_jam_snapshot: { Args: { p_jam_room_id: string }; Returns: Json }
-      get_new_fans_summary: {
-        Args: never
-        Returns: {
-          avatar_url: string
-          created_at: string
-          display_name: string
-          recent_user_id: string
-          total_count: number
-          username: string
-        }[]
-      }
       get_or_create_dm: {
         Args: { user_a: string; user_b: string }
         Returns: string
@@ -1509,7 +1533,10 @@ export type Database = {
           unread_count: number
         }[]
       }
-      mark_fans_seen: { Args: never; Returns: undefined }
+      message_preview: {
+        Args: { p_body: string; p_kind: string }
+        Returns: string
+      }
       reject_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined
