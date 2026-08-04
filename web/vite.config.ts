@@ -15,6 +15,16 @@ import { fileURLToPath, URL } from 'node:url';
  * root by default.
  */
 export default defineConfig({
+  /**
+   * The dashboard lives at `livil-music.com/studio`, not the apex.
+   *
+   * The apex is what you hand to a stranger, so a static marketing page belongs there — and
+   * keeping it static means it cannot be broken by a JavaScript bundle. The base path is what
+   * makes asset URLs resolve under the subpath; React Router's `basename` is the matching
+   * half for routes. Change one without the other and the app loads with no styles, or
+   * routes 404 with the assets fine.
+   */
+  base: '/studio/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -56,7 +66,10 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    // Under dist/studio/ so the marketing page can own dist/index.html without a collision.
+    // `copy-marketing.mjs` fills the rest of dist/ from docs/.
+    outDir: 'dist/studio',
+    emptyOutDir: true,
     sourcemap: true,
   },
 });

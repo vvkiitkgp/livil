@@ -16,6 +16,15 @@ import { Profile } from './screens/Profile';
 import type { Session } from '@supabase/supabase-js';
 
 /**
+ * The dashboard is served under a subpath so the marketing page can own the apex.
+ *
+ * Read from Vite's `BASE_URL` rather than hard-coded, so the dev server (which serves at `/`)
+ * and production (`/studio/`) cannot disagree. Trailing slash trimmed — React Router wants
+ * `/studio`, Vite gives `/studio/`.
+ */
+const STUDIO_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
+/**
  * Routing.
  *
  * The auth gate sits OUTSIDE the router on purpose. The four signed-out states in
@@ -32,21 +41,27 @@ import type { Session } from '@supabase/supabase-js';
  * That is a deploy-time concern and is on the checklist.
  */
 function routerFor(session: Session) {
-  return createBrowserRouter([
-    {
-      path: '/',
-      element: <AppShell session={session} />,
-      children: [
-        { index: true, element: <Overview /> },
-        { path: 'tracks', element: <Catalogue /> },
-        { path: 'tracks/:postId', element: <TrackDetail /> },
-        { path: 'analytics', element: <Analytics /> },
-        { path: 'upload', element: <Upload /> },
-        { path: 'profile', element: <Profile /> },
-        { path: '*', element: <Navigate to="/" replace /> },
-      ],
-    },
-  ]);
+  return createBrowserRouter(
+    [
+      {
+        path: '/',
+        element: <AppShell session={session} />,
+        children: [
+          { index: true, element: <Overview /> },
+          { path: 'tracks', element: <Catalogue /> },
+          { path: 'tracks/:postId', element: <TrackDetail /> },
+          { path: 'analytics', element: <Analytics /> },
+          { path: 'upload', element: <Upload /> },
+          { path: 'profile', element: <Profile /> },
+          { path: '*', element: <Navigate to="/" replace /> },
+        ],
+      },
+    ],
+    // Matching half of `base: '/studio/'` in vite.config.ts. Routes stay written as `/tracks`
+    // and resolve to `/studio/tracks` — change one without the other and either the app loads
+    // with no styles, or every route 404s with the assets fine.
+    { basename: STUDIO_BASE },
+  );
 }
 
 export function App() {
@@ -66,12 +81,15 @@ export function App() {
    * Read from `window.location` rather than the router because the router only exists once
    * signed in, and this has to work before that.
    */
-  if (path === '/reset') {
+  // Compared against the base-prefixed path: in production the recovery link lands on
+  // `/studio/reset`, in dev on `/reset`.
+  if (path === `${STUDIO_BASE === '/' ? '' : STUDIO_BASE}/reset`) {
     return (
       <ResetPassword
         onDone={() => {
-          window.history.replaceState({}, '', '/');
-          setPath('/');
+          const home = STUDIO_BASE === '/' ? '/' : `${STUDIO_BASE}/`;
+          window.history.replaceState({}, '', home);
+          setPath(home);
           setForgot(false);
         }}
       />
