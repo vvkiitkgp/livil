@@ -35,10 +35,13 @@ type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
 /**
  * Where the desktop studio lives.
  *
- * Points at the marketing site rather than `studio.livil-music.com` because the dashboard is
- * not deployed yet and shipping a link to a 404 is worse than shipping no link. Change this
- * to the studio subdomain the day it goes live — the marketing page carries the "sign in"
- * entry in the meantime.
+ * The apex, not a subdomain: ADR-0015 decision 6 folds the marketing page into the same
+ * Vercel app and puts the dashboard at `/studio`. One origin means the session, the branding
+ * and the future public track pages all share it, and there is no second migration later.
+ *
+ * So this URL is already correct and does not change at deploy — before the cutover it lands
+ * on the about page, which carries the sign-in entry; after it, the studio is a path on the
+ * same site.
  */
 const STUDIO_URL = 'https://livil-music.com';
 
