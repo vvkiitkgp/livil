@@ -128,7 +128,10 @@ export function Upload() {
               key={item.id}
               item={item}
               playing={preview.playingId === item.id}
+              position={preview.playingId === item.id ? preview.position : 0}
+              previewDuration={preview.playingId === item.id ? preview.duration : 0}
               onPreview={() => preview.toggle(item.id, item.media)}
+              onSeek={preview.seek}
               onTitle={title => queue.patch(item.id, { title })}
               onDescription={description => queue.patch(item.id, { description })}
               onRemove={() => {
@@ -209,7 +212,10 @@ export function Upload() {
 function QueueRow({
   item,
   playing,
+  position,
+  previewDuration,
   onPreview,
+  onSeek,
   onTitle,
   onDescription,
   onRemove,
@@ -217,7 +223,10 @@ function QueueRow({
 }: {
   item: QueueItem;
   playing: boolean;
+  position: number;
+  previewDuration: number;
   onPreview: () => void;
+  onSeek: (seconds: number) => void;
   onTitle: (value: string) => void;
   onDescription: (value: string) => void;
   onRemove: () => void;
@@ -251,6 +260,26 @@ function QueueRow({
           {item.artFromTag && ' · art from file'}
         </span>
         {item.error && <span className="queue__error">{item.error}</span>}
+
+        {playing && (
+          <div className="seek">
+            <input
+              type="range"
+              className="seek__input"
+              min={0}
+              // Fall back to the metadata duration until the preview reports its own, so
+              // the thumb is not pinned at the far left for the first moment of playback.
+              max={previewDuration || item.duration || 0}
+              step={0.1}
+              value={position}
+              aria-label="Seek preview"
+              onChange={e => onSeek(Number(e.target.value))}
+            />
+            <span className="hint seek__time">
+              {formatTime(position)} / {formatTime(previewDuration || item.duration || 0)}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="queue__side">

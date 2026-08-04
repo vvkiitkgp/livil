@@ -286,6 +286,62 @@ a {
   opacity: 0.7;
 }
 
+/* Preview scrubber. Shown only on the row currently previewing, so twelve rows do not
+   each carry a control that does nothing. */
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.seek__input {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  cursor: pointer;
+}
+
+.seek__input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--input-bg);
+}
+
+.seek__input::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--input-bg);
+}
+
+.seek__input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-top: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--purple-neon);
+  border: 2px solid var(--bg);
+}
+
+.seek__input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--purple-neon);
+  border: 2px solid var(--bg);
+}
+
+.seek__time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .queue__side {
   display: flex;
   align-items: center;
