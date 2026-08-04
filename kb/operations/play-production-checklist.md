@@ -1,3 +1,15 @@
+---
+tier: 3
+owner: principal-platform
+consumers: [DO, P-PF]
+last_verified: 2026-08-04
+verify_every: 90d
+verified_by: manual
+visibility: public
+supersedes: []
+related_adrs: []
+---
+
 # Play Store — Pre-Production Checklist
 
 Status as of **2026-08-04**: closed-testing criteria met (12+ testers, 14+ days),
