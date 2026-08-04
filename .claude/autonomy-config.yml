@@ -73,6 +73,27 @@ writable:
       nothing about the gate. Widened anyway, deliberately, to unblock LIV-73/LIV-74.
       Revert by deleting this entry once the client work has landed.
 
+  - path: web/**
+    why: >
+      Web creator dashboard (ADR-0015); maintainer-authorised 2026-08-04, AHEAD OF TESTS,
+      at the owner's explicit request. Greenfield — the path does not exist yet, so the
+      graduation criteria below cannot be met by definition rather than by neglect.
+      What makes this less exposed than the src/** widenings: nothing here ships to the
+      Play Store, a break is visible on the next Vercel preview deploy rather than
+      silently in production, and it cannot affect the Android build (web/ carries its
+      own node_modules and is deliberately NOT an npm workspace — see ADR-0015).
+      Tighten to propose_only once the upload path has tests, and record the evidence.
+  - path: shared/**
+    why: >
+      Database types and the client-injected portable services extracted from
+      src/services/** (ADR-0015); maintainer-authorised 2026-08-04, AHEAD OF TESTS.
+      Consistent with src/services/** above, which is already writable on the same
+      maintainer-authorised basis and is where this code comes from. NOTE: this path is
+      consumed by BOTH clients, so a defect here has mobile blast radius that
+      src/services/** alone did not — it is the first path an agent may write that the
+      Play Store build depends on via a second consumer. Graduate it properly, or revert
+      this entry, before the extraction covers anything beyond tracks/posts/albums.
+
 # ── Tier 1: propose only ────────────────────────────────────────────────────
 # Listed explicitly rather than left as a default, so the reason is visible.
 propose_only:
