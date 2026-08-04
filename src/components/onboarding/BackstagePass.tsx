@@ -34,6 +34,13 @@ const CARD_W = 252;
 const CARD_H = 352;
 const SWAY_DEG = 2.4;
 
+/**
+ * Duration of ONE half-swing. `withRepeat(..., reverse: true)` plays it out and
+ * back, so the full pendulum period is twice this — the handoff's 5.5s spec
+ * meant an 11s round trip, which read as static rather than hanging.
+ */
+const SWAY_MS = 1000;
+
 export type PassRole = 'ARTIST' | 'FAN' | 'CREW';
 
 /** Dot-leader rows are the pass's typographic signature — keep the widths. */
@@ -58,7 +65,7 @@ export function BackstagePass({ flipped, onFlip, role }: BackstagePassProps) {
 
   useEffect(() => {
     sway.value = withRepeat(
-      withTiming(1, { duration: 5500, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: SWAY_MS, easing: Easing.inOut(Easing.ease) }),
       -1,
       true,
     );
