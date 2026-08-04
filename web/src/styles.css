@@ -119,6 +119,20 @@ a {
   font-size: 13px;
 }
 
+/* The consent line under the signup button — centred and quiet, and the links have to be
+   visibly links. `purple-light` rather than `purple`: #8B3DFF on this background measures
+   below 4.5:1, which 13px text has no allowance for. */
+.hint--center {
+  text-align: center;
+  line-height: 1.5;
+}
+
+.hint--center a {
+  color: var(--purple-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .card__title {
   margin: 0;
   font-size: 17px;
@@ -557,6 +571,44 @@ a {
   border-radius: 10px;
   outline: none;
   transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.field__wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Room for the reveal control so a long password never slides under it. */
+.field__input--trailing {
+  padding-right: 64px;
+}
+
+.field__trailing {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.field__reveal {
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  background: none;
+  /* No border and no fill: it sits inside another control's outline, and a second border
+     there reads as a nested input rather than a button. */
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.field__reveal:hover,
+.field__reveal:focus-visible {
+  color: var(--purple-light);
 }
 
 .field__input::placeholder {
@@ -1639,4 +1691,50 @@ a {
   border-radius: var(--radius-md);
   background: #000;
   display: block;
+}
+
+.linkbtn {
+  align-self: flex-start;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--purple-neon);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── Lyrics ─────────────────────────────────────────────────────────────── */
+
+.lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.lyrics__line {
+  display: flex;
+  gap: var(--space-3);
+}
+
+/* Tabular so the cues form a straight column — a ragged left edge makes a timing that is
+   out of order much harder to spot, which is the whole reason the cues are shown. */
+.lyrics__at {
+  flex-shrink: 0;
+  width: 44px;
+  color: var(--purple-neon);
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics__gap {
+  color: var(--text-muted);
 }

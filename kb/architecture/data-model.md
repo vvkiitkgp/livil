@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 63 migration(s) in `supabase/migrations/`.
+Reconstructed from 66 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -619,6 +619,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `username_set` | `boolean NOT NULL DEFAULT false` | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 | `comments_friends_only` | `boolean not null default false` | `20260803000000_profiles_comments_friends_only.sql` |
 
+**Indexes**
+
+- **unique** `profiles_username_lower_key` `(lower(username))`
+
 **Triggers**
 
 - `trg_enforce_username_immutable` — BEFORE UPDATE (`20260628000000_profiles_username_set_and_oauth_onboarding.sql`)
@@ -745,6 +749,8 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 |---|---|---|
 | `waveform_peaks` | `jsonb` | `20260611000000_tracks_waveform_peaks.sql` |
 | `file_size_bytes` | `bigint` | `20260804040000_tracks_file_size.sql` |
+| `lyrics` | `text` | `20260805030000_track_lyrics.sql` |
+| `lyrics_format` | `text` | `20260805030000_track_lyrics.sql` |
 
 **Indexes**
 

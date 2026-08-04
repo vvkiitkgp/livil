@@ -6,20 +6,69 @@
  * exist in a browser — this component is here for visual parity, not to work around it, so
  * focus styling is pure CSS with no React state at all.
  */
-import { useId, type InputHTMLAttributes } from 'react';
+import { useId, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
   label: string;
+  /** Control rendered inside the field's right edge — the reveal toggle, today. */
+  trailing?: ReactNode;
 };
 
-export function TextField({ label, className, ...rest }: Props) {
+export function TextField({ label, className, trailing, ...rest }: Props) {
   const id = useId();
   return (
     <div className={['field', className].filter(Boolean).join(' ')}>
       <label className="field__label" htmlFor={id}>
         {label}
       </label>
-      <input id={id} className="field__input" {...rest} />
+      <div className="field__wrap">
+        <input
+          id={id}
+          className={['field__input', trailing && 'field__input--trailing']
+            .filter(Boolean)
+            .join(' ')}
+          {...rest}
+        />
+        {trailing && <div className="field__trailing">{trailing}</div>}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Password field with a reveal toggle — mobile's `FormInput` has one, web did not.
+ *
+ * It earns its place beyond parity: this is a desktop app used at a desk, where the shoulder-
+ * surfing risk that justifies masking is lowest and a mistyped password is most expensive —
+ * with email confirmation on, a typo means confirming your address and then being unable to
+ * sign in at all.
+ *
+ * `type` is swapped rather than the value being re-rendered, so password managers still see
+ * a password field and offer to fill and save it.
+ */
+export function PasswordField({
+  label,
+  ...rest
+}: Omit<Props, 'type' | 'trailing'> & { label: string }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <TextField
+      {...rest}
+      label={label}
+      type={shown ? 'text' : 'password'}
+      trailing={
+        <button
+          type="button"
+          className="field__reveal"
+          // The control's own name has to say which state it is IN, not what it shows —
+          // a screen reader user cannot see the icon that would disambiguate it.
+          aria-label={shown ? 'Hide password' : 'Show password'}
+          aria-pressed={shown}
+          onClick={() => setShown(v => !v)}
+        >
+          {shown ? 'Hide' : 'Show'}
+        </button>
+      }
+    />
   );
 }

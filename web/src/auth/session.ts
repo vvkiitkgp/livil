@@ -107,10 +107,15 @@ export function useAuthState(): AuthState {
  * what the network does, so there is nothing to report and nothing to retry.
  */
 export function signOut(): void {
-  // `scope: 'global'` revokes the refresh token server-side, not just locally. Without it a
-  // failed network call leaves the session valid on the server — which is exactly the case
-  // on the shared studio machine you most wanted to sign out of. Found by security review.
-  supabase.auth.signOut({ scope: 'global' }).catch(() => {
-    /* the local session is cleared regardless; the server token may outlive it */
+  // LOCAL scope, deliberately. An earlier version used 'global' to make sure the refresh
+  // token died server-side — correct instinct, wrong blast radius: global revokes EVERY
+  // session, so signing out of the dashboard would silently sign the artist out of their
+  // phone too. Sessions are per-device by design and signing out of one device should mean
+  // one device.
+  //
+  // Global revocation still happens where it is actually warranted: after a password reset,
+  // where the whole point is that other sessions may not belong to you.
+  supabase.auth.signOut({ scope: 'local' }).catch(() => {
+    /* the local session is cleared regardless */
   });
 }
