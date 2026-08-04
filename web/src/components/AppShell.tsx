@@ -69,6 +69,9 @@ export function AppShell({ session }: { session: Session }) {
             <NavLink to="/tracks" className="navlink">
               Catalogue
             </NavLink>
+            <NavLink to="/analytics" className="navlink">
+              Analytics
+            </NavLink>
           </nav>
 
           <div className="topbar__right">

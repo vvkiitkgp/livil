@@ -6,6 +6,7 @@ import { SignIn } from './screens/SignIn';
 import { FinishInApp } from './screens/FinishInApp';
 import { Overview } from './screens/Overview';
 import { Catalogue } from './screens/Catalogue';
+import { Analytics } from './screens/Analytics';
 import { TrackDetail } from './screens/TrackDetail';
 import { Upload } from './screens/Upload';
 import { Profile } from './screens/Profile';
@@ -36,6 +37,7 @@ function routerFor(session: Session) {
         { index: true, element: <Overview /> },
         { path: 'tracks', element: <Catalogue /> },
         { path: 'tracks/:postId', element: <TrackDetail /> },
+        { path: 'analytics', element: <Analytics /> },
         { path: 'upload', element: <Upload /> },
         { path: 'profile', element: <Profile /> },
         { path: '*', element: <Navigate to="/" replace /> },
