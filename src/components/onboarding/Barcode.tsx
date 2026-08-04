@@ -1,14 +1,16 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
+import Svg, { Rect } from 'react-native-svg';
 import { COLORS } from '../../theme/colors';
 
 /**
  * The barcode strip along the bottom of the backstage pass.
  *
- * The design specifies a 9px repeating pattern: 2px bar, 3px gap, 1px bar, 3px
- * gap. That is a `repeating-linear-gradient` in CSS; here it is a row of Views,
- * which is cheaper than an SVG for something this regular and stays crisp at any
- * pixel density.
+ * 9px repeating pattern: 2px bar, 3px gap, 1px bar, 3px gap.
+ *
+ * This was originally a row of Views — one per bar AND one per gap — which cost
+ * ~120 native views for the full pass's 212px strip and another ~84 for the mini
+ * pass. Two hundred views for a decorative stripe is enough to make a step feel
+ * sluggish on Android. One SVG of ~48 rects is a single native view.
  */
 
 const PERIOD = 9;
@@ -19,26 +21,20 @@ export type BarcodeProps = {
 };
 
 export function Barcode({ width, height }: BarcodeProps) {
-  const periods = Math.ceil(width / PERIOD);
+  const bars = useMemo(() => {
+    const out: Array<{ x: number; w: number }> = [];
+    for (let x = 0; x < width; x += PERIOD) {
+      out.push({ x, w: Math.min(2, width - x) });
+      if (x + 5 < width) { out.push({ x: x + 5, w: Math.min(1, width - x - 5) }); }
+    }
+    return out;
+  }, [width]);
 
   return (
-    <View style={[styles.strip, { width, height }]}>
-      {Array.from({ length: periods }, (_, i) => (
-        <View key={i} style={styles.period}>
-          <View style={[styles.wide, { height }]} />
-          <View style={[styles.gap, { height }]} />
-          <View style={[styles.thin, { height }]} />
-          <View style={[styles.gap, { height }]} />
-        </View>
+    <Svg width={width} height={height}>
+      {bars.map(b => (
+        <Rect key={b.x} x={b.x} y={0} width={b.w} height={height} fill={COLORS.purpleLight} />
       ))}
-    </View>
+    </Svg>
   );
 }
-
-const styles = StyleSheet.create({
-  strip: { flexDirection: 'row', overflow: 'hidden' },
-  period: { flexDirection: 'row' },
-  wide: { width: 2, backgroundColor: COLORS.purpleLight },
-  thin: { width: 1, backgroundColor: COLORS.purpleLight },
-  gap: { width: 3 },
-});

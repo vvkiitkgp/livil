@@ -2,12 +2,14 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Reanimated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
 
 /**
  * The holographic foil on the backstage pass — the animated strip along the top
@@ -59,14 +61,25 @@ export function HoloShimmer({
   const shift = useSharedValue(0);
   const gradientId = useMemo(nextShimmerId, []);
 
+  // Onboarding pushes SignIn/SignUp on top of itself, so this screen stays
+  // mounted underneath. Without the focus gate the shimmer keeps repeating
+  // forever — animating frames nobody can see, through the push transition and
+  // for as long as the user is on the screen above.
+  const isFocused = useIsFocused();
+
   React.useEffect(() => {
+    if (!isFocused) {
+      cancelAnimation(shift);
+      return;
+    }
     shift.value = 0;
     shift.value = withRepeat(
       withTiming(1, { duration: durationSec * 1000, easing: Easing.linear }),
       -1,
       false,
     );
-  }, [shift, durationSec]);
+    return () => cancelAnimation(shift);
+  }, [shift, durationSec, isFocused]);
 
   const slide = useAnimatedStyle(() => ({
     transform: [{ translateX: -shift.value * width }],

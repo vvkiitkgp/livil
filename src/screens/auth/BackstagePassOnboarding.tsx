@@ -501,20 +501,9 @@ function GuestList({
           style={styles.authBtn}
           labelStyle={styles.authLabel}
         />
-        {/* A bare <Text> inside a Pressable is only ~16dp tall, well under the
-            44–48dp minimum touch target — it looked right and was almost
-            unhittable. The padding does the work; hitSlop is belt-and-braces
-            for the gap between this and the Email button above. */}
-        <Pressable
-          onPress={onSignIn}
-          accessibilityRole="link"
-          hitSlop={{ top: 10, bottom: 10, left: 24, right: 24 }}>
-          {({ pressed }) => (
-            <Text style={[styles.signInLink, pressed && styles.signInPressed]}>
-              Already have a pass? Sign in
-            </Text>
-          )}
-        </Pressable>
+        <Text style={styles.signInLink} onPress={onSignIn} suppressHighlighting>
+          Already have a pass? Sign in
+        </Text>
         <Text style={styles.legal}>
           By continuing you agree to soundcheck the Terms &amp; Privacy.
         </Text>
@@ -673,7 +662,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 14,
   },
-  signInPressed: { opacity: 0.6 },
   legal: {
     fontFamily: FONTS.mono,
     fontSize: 10,
