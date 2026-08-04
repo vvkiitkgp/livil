@@ -16,26 +16,44 @@ export type TrackMediaKind = 'audio' | 'video' | 'cover' | 'thumbnail';
 export const TRACKS_MEDIA_BUCKET = 'tracks-media';
 
 /**
- * Ceiling on a single uploaded file from the WEB client: 2 GB (ADR-0015).
+ * Ceiling on a single uploaded file from the WEB client.
  *
- * Four times the mobile cap, which exists because React Native has no workable resumable
- * upload — `tus-js-client` buffers the whole file into memory there and OOM-crashes. A
- * browser has neither constraint, which is the entire reason this client exists.
+ * ADR-0015 decision 5 sets this at 2 GB, and that remains the target — a browser has no
+ * equivalent of the constraint that caps mobile at 500 MB (React Native has no workable
+ * resumable upload; `tus-js-client` buffers the whole file into memory there and
+ * OOM-crashes). Raising it is the entire reason this client exists.
  *
- * The project-wide "Global file size limit" in Supabase Storage Settings must be >= this
- * value, or the server rejects everything between the two limits.
+ * It is deliberately still 500 MB, because the SERVER is still 500 MB. Two limits govern
+ * an upload and only one of them is in this repository:
+ *
+ *   1. the `tracks-media` bucket's own `file_size_limit` — currently exactly 524288000
+ *   2. the project-wide "Global file size limit", which caps (1)
+ *
+ * Both are console settings (storage config is unversioned — ADR-0007). Promising 2 GB
+ * here while the bucket rejects anything past 500 MB would be worse than the current cap:
+ * the artist picks a 900 MB master, watches it upload, and gets an opaque server error at
+ * the end. A client-side limit fails in a second, with copy that names the number.
+ *
+ * TO RAISE: move both console settings first, then change this constant to
+ * `2 * 1024 * 1024 * 1024`. Nothing else needs to change — the resumable path,
+ * the progress weighting, and the error handling are already sized for it.
  */
-export const MAX_WEB_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_WEB_UPLOAD_BYTES = 500 * 1024 * 1024;
+
+function formatLimit(bytes: number): string {
+  const gb = bytes / (1024 * 1024 * 1024);
+  return gb >= 1 ? `${Math.round(gb)} GB` : `${Math.round(bytes / (1024 * 1024))} MB`;
+}
 
 export function tooLargeMessage(kind: TrackMediaKind): string {
-  const limitGb = Math.round(MAX_WEB_UPLOAD_BYTES / (1024 * 1024 * 1024));
+  const limit = formatLimit(MAX_WEB_UPLOAD_BYTES);
   if (kind === 'video') {
-    return `This video is over the ${limitGb} GB upload limit. Try a shorter clip or a lower resolution.`;
+    return `This video is over the ${limit} upload limit. Try a shorter clip or a lower resolution.`;
   }
   if (kind === 'audio') {
-    return `This audio file is over the ${limitGb} GB upload limit. Try a shorter or more compressed file.`;
+    return `This audio file is over the ${limit} upload limit. Try a shorter or more compressed file.`;
   }
-  return `This image is over the ${limitGb} GB upload limit. Try a smaller image.`;
+  return `This image is over the ${limit} upload limit. Try a smaller image.`;
 }
 
 function extensionFromName(name: string | null, fallback: string): string {

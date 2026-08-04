@@ -9,8 +9,9 @@
  *
  * "More headroom" is not "unlimited", and this is the honest limit: Web Audio's
  * `decodeAudioData` requires the ENTIRE file as one ArrayBuffer. There is no streaming
- * decode. So a 2 GB master — which this client explicitly accepts for upload — cannot be
- * analysed, and is skipped rather than risking a tab crash mid-publish.
+ * decode. So the largest files this client accepts for UPLOAD cannot all be ANALYSED —
+ * anything past the cap below is skipped rather than risking a tab crash mid-publish. That
+ * gap widens when the upload ceiling moves to its 2 GB target (ADR-0015 decision 5).
  *
  * The DSP itself is `shared/services/waveformDsp.ts`, the same code the phone runs. Only
  * the decode differs.
