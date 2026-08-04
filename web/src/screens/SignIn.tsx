@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
 import { ResendButton } from '../components/ResendButton';
-import { TextField } from '../components/TextField';
+import { PasswordField, TextField } from '../components/TextField';
 import {
   PLAY_STORE_URL,
   joinWaitlist,
@@ -37,12 +37,17 @@ export function SignIn({
   const signingUp = mode === 'signup';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState<null | 'password' | 'google'>(null);
   const [error, setError] = useState<string | null>(null);
   const { cleaned: cleanedUsername, status: usernameStatus } =
     useUsernameAvailability(username);
+
+  // Only once the second field has something in it — flagging a mismatch against an empty
+  // box means shouting at someone who is still typing.
+  const mismatch = signingUp && confirm.length > 0 && password !== confirm;
 
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistDone, setWaitlistDone] = useState(false);
@@ -55,6 +60,14 @@ export function SignIn({
     setBusy('password');
 
     if (signingUp) {
+      // Checked here as well as on the button: the browser can submit a form with Enter
+      // before a disabled state has been re-rendered, and creating the account with the
+      // wrong password is unrecoverable without a reset.
+      if (password !== confirm) {
+        setBusy(null);
+        setError('Those two passwords don’t match.');
+        return;
+      }
       const created = await signUpWithPassword({
         email,
         password,
@@ -177,20 +190,32 @@ export function SignIn({
           value={email}
           onChange={e => setEmail(e.target.value)}
         />
-        <TextField
+        <PasswordField
           label="Password"
-          type="password"
           autoComplete={signingUp ? 'new-password' : 'current-password'}
           required
           minLength={signingUp ? MIN_PASSWORD : undefined}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
+        {signingUp && (
+          <PasswordField
+            label="Confirm password"
+            autoComplete="new-password"
+            required
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+          />
+        )}
         {/* Mobile still asks for 6. Deliberately NOT matched downward — this is the client
             that holds unreleased masters, and loosening a password floor to make two forms
             look alike is the wrong direction to resolve a mismatch. Raising mobile to 8 is
             a separate change in propose-only code. */}
-        {signingUp && <p className="hint">At least {MIN_PASSWORD} characters.</p>}
+        {signingUp && (
+          <p className="hint" data-status={mismatch ? 'taken' : undefined}>
+            {mismatch ? 'Those two don’t match.' : `At least ${MIN_PASSWORD} characters.`}
+          </p>
+        )}
 
         {error && (
           <p className="alert" role="alert">
@@ -206,7 +231,8 @@ export function SignIn({
           // handle wastes a round trip to be told what the field already says.
           disabled={
             signingUp &&
-            (usernameStatus === 'checking' ||
+            (mismatch ||
+              usernameStatus === 'checking' ||
               usernameStatus === 'taken' ||
               usernameStatus === 'invalid')
           }

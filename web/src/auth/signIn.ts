@@ -11,6 +11,29 @@ export const PLAY_STORE_URL =
 export type SignInResult = { ok: true } | { ok: false; message: string };
 
 /**
+ * Turn whatever came back into something a person can act on.
+ *
+ * Passing `error.message` straight to the UI assumes Supabase always returns a sentence.
+ * It does not: when the confirmation email fails to send — wrong SMTP credentials, provider
+ * refusing the sender — auth answers 500 with an opaque body and the message arrives as the
+ * literal string `{}`. That rendered as a red box containing `{}`, which tells the artist
+ * nothing and tells us nothing either.
+ *
+ * So: anything 5xx or empty becomes a plain "our end, try again", and the raw error goes to
+ * the console where it can actually be read. Deliberately does NOT name email sending as the
+ * cause — a 500 is not proof of which subsystem failed, and a confidently wrong explanation
+ * is worse than an honest vague one.
+ */
+function humanize(error: { message?: string; status?: number }): string {
+  const raw = (error.message ?? '').trim();
+  console.error('[auth]', error);
+  if (!raw || raw === '{}' || raw === '[object Object]' || (error.status ?? 0) >= 500) {
+    return 'Something went wrong on our end. Nothing was changed — try again in a moment.';
+  }
+  return raw;
+}
+
+/**
  * Supabase returns a deliberately vague "Invalid login credentials" for both a wrong
  * password and an unknown email, so an attacker cannot enumerate accounts. That is the
  * right behaviour and it is passed through unchanged — but it reads as a dead end on a
@@ -38,7 +61,7 @@ export async function signInWithPassword(
   if (/email not confirmed/i.test(error.message)) {
     return { ok: false, message: 'Confirm your email address first — check your inbox.' };
   }
-  return { ok: false, message: error.message };
+  return { ok: false, message: humanize(error) };
 }
 
 /**
@@ -99,7 +122,7 @@ export async function signUpWithPassword({
     if (/rate limit|too many/i.test(error.message)) {
       return { ok: false, message: 'Too many attempts. Wait a minute and try again.' };
     }
-    return { ok: false, message: error.message };
+    return { ok: false, message: humanize(error) };
   }
 
   // Supabase's anti-enumeration behaviour: signing up with an email that is ALREADY

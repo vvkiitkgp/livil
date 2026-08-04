@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
-import { TextField } from '../components/TextField';
+import { PasswordField } from '../components/TextField';
 import { supabase } from '../supabase';
 
 const MIN_LENGTH = 8;
@@ -92,17 +92,15 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
       </header>
 
       <form className="card" onSubmit={onSubmit}>
-        <TextField
+        <PasswordField
           label="New password"
-          type="password"
           autoComplete="new-password"
           required
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
-        <TextField
+        <PasswordField
           label="Confirm password"
-          type="password"
           autoComplete="new-password"
           required
           value={confirm}

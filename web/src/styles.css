@@ -573,6 +573,44 @@ a {
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.field__wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Room for the reveal control so a long password never slides under it. */
+.field__input--trailing {
+  padding-right: 64px;
+}
+
+.field__trailing {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.field__reveal {
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  background: none;
+  /* No border and no fill: it sits inside another control's outline, and a second border
+     there reads as a nested input rather than a button. */
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.field__reveal:hover,
+.field__reveal:focus-visible {
+  color: var(--purple-light);
+}
+
 .field__input::placeholder {
   color: var(--text-muted);
 }
