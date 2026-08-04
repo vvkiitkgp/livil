@@ -11,8 +11,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * One element is reused for every row rather than one per row, which is what makes "starting
  * a second track stops the first" fall out for free instead of needing coordination.
  *
- * An `<audio>` element plays the audio track of a video file too, which is enough to confirm
- * the right file is queued. Seeing the picture is not.
+ * AUDIO ONLY. An `<audio>` element will happily play an mp4's soundtrack, which is exactly
+ * why this gap was easy to miss — pressing play on a video appeared to work while showing
+ * nothing. Video rows route to `VideoPreview` instead; this element is for audio.
  */
 export type PreviewState = {
   playingId: string | null;

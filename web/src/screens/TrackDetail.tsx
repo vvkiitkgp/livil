@@ -255,11 +255,26 @@ export function TrackDetail() {
           {post.mediaUrl && (
             <div className="panel">
               <div className="panel__head">
-                <h2 className="panel__title">Listen to what shipped</h2>
+                <h2 className="panel__title">
+                  {post.mediaKind === 'video' ? 'Watch what shipped' : 'Listen to what shipped'}
+                </h2>
               </div>
-              {/* The published file, not the local one — this answers "did the upload
-                  actually work", which the preview structurally cannot. */}
-              <audio className="player" controls preload="none" src={post.mediaUrl} />
+              {/* The PUBLISHED file, not the local one — this answers "did the upload
+                  actually work", which the phone preview structurally cannot.
+                  A <video> for video posts: an <audio> element will happily play an mp4's
+                  soundtrack, which is why this looked fine and was quietly useless — you
+                  could hear the upload but never see it. */}
+              {post.mediaKind === 'video' ? (
+                <video
+                  className="player player--video"
+                  controls
+                  preload="metadata"
+                  poster={post.coverUrl ?? undefined}
+                  src={post.mediaUrl}
+                />
+              ) : (
+                <audio className="player" controls preload="none" src={post.mediaUrl} />
+              )}
             </div>
           )}
 

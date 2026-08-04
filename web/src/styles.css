@@ -1616,3 +1616,27 @@ a {
 .card--centred {
   margin-inline: auto;
 }
+
+/* ── Video preview ──────────────────────────────────────────────────────── */
+
+.player--video {
+  width: 100%;
+  height: auto;
+  max-height: 420px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  display: block;
+}
+
+.videopreview {
+  max-width: min(880px, 90vw);
+  align-items: stretch;
+}
+
+.videopreview__el {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius-md);
+  background: #000;
+  display: block;
+}

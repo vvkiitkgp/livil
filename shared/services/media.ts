@@ -70,6 +70,7 @@ function defaultExtensionFor(kind: TrackMediaKind, mime: string | null): string 
     if (mime.includes('wav')) return 'wav';
     if (mime.includes('ogg')) return 'ogg';
     if (mime.includes('flac')) return 'flac';
+    if (mime.includes('aiff')) return 'aiff';
     if (mime.includes('mp4') && kind === 'audio') return 'm4a';
     if (mime.includes('mp4')) return 'mp4';
     if (mime.includes('quicktime')) return 'mov';
@@ -111,6 +112,13 @@ const MIME_BY_EXT: Record<string, string> = {
   wav: 'audio/wav',
   ogg: 'audio/ogg',
   flac: 'audio/flac',
+  // Both spellings exist in the wild: audio/aiff is what most tools emit, audio/x-aiff is
+  // the older registration macOS still uses. The bucket accepts both. Without this entry an
+  // AIFF whose File.type the browser left empty would be stored declaring audio/mpeg —
+  // accepted, but permanently mislabelled as an MP3.
+  aiff: 'audio/aiff',
+  aif: 'audio/aiff',
+  aifc: 'audio/aiff',
   mp4: 'video/mp4',
   mov: 'video/quicktime',
   mkv: 'video/x-matroska',
