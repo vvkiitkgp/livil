@@ -11,7 +11,9 @@ import {
   type PublishTrackResult,
 } from '@shared/services/publishTrack';
 import type { TrackMediaKind } from '@shared/services/media';
+import { backfillWaveformPeaks } from '@shared/services/waveformStore';
 import { uploadFileResumable } from './tusUpload';
+import { analyzeLocalFile } from './waveform';
 
 export type PickedMedia = {
   mode: 'audio' | 'video';
@@ -70,7 +72,12 @@ export function startPublish(
   const result = (async () => {
     const durationSeconds = await readDuration(picked.media);
 
-    return publishTrack(
+    // Started here, not awaited, so the CPU-bound decode+FFT overlaps the network-bound
+    // upload instead of adding to it. Analysis runs for VIDEO too, unlike mobile — see
+    // `analyzeLocalFile`.
+    const analysis = analyzeLocalFile(picked.media).catch(() => null);
+
+    const published = await publishTrack(
       {
         mode: picked.mode,
         title: picked.title,
@@ -92,6 +99,18 @@ export function startPublish(
       },
       onProgress,
     );
+
+    // Fire-and-forget: the track is already published and playable. A missing envelope
+    // means the decorative wave, never a failed upload. The shared writer is idempotent
+    // (`.is('waveform_peaks', null)`), so this cannot clobber a lazy backfill that landed
+    // first from a phone.
+    analysis
+      .then(data => backfillWaveformPeaks(published.trackId, data))
+      .catch(() => {
+        /* already best-effort inside the writer */
+      });
+
+    return published;
   })();
 
   return {
