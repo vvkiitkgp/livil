@@ -1,0 +1,8 @@
+# Scoped to web/ rather than the repo root, because the root .gitignore is not an
+# agent-writable path (.claude/autonomy-config.yml, rule 2b).
+node_modules/
+dist/
+.env.local
+.env.*.local
+*.local
+.vite/

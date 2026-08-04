@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@shared/*": ["../shared/*"],
+      // `shared/` lives outside this root, so Node resolution walks UP from it and finds
+      // the repo-root copy of supabase-js, while `web/src` finds web's own copy. Two
+      // copies means two nominal class identities, and `SupabaseClient` has a protected
+      // member — so the two are mutually unassignable and the error names `supabaseUrl`
+      // rather than the actual cause. Pin every consumer of the web compile to one copy.
+      // Mirrored by `resolve.dedupe` in vite.config.ts for the runtime bundle.
+      "@supabase/supabase-js": ["./node_modules/@supabase/supabase-js"]
+    }
+  },
+  "include": ["src", "vite.config.ts", "../shared"]
+}

@@ -1,0 +1,92 @@
+/*
+ * Base styles. Colour values are NOT written here — they are injected as CSS custom
+ * properties from the shared design tokens at startup (see `theme.ts`), so the dashboard
+ * and the mobile app cannot drift on brand colour.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--white);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--purple-neon);
+}
+
+/* Dark theme only, by design — Livil has no light mode. */
+:root {
+  color-scheme: dark;
+}
+
+.shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px;
+  text-align: center;
+}
+
+.wordmark {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  background: linear-gradient(90deg, var(--purple-royal), var(--purple-neon));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.status[data-state='error'] {
+  border-color: var(--error-border);
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.status[data-state='ok'] .dot {
+  background: var(--purple-neon);
+}
