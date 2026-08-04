@@ -215,29 +215,6 @@
   .founder .sig .rl{font-size:13px;color:var(--muted);letter-spacing:.02em}
   .founder .pulse-sig{width:120px;height:34px;margin:0 auto 26px;color:var(--purple-light);opacity:.9}
 
-  /* ---------------- INVITE ---------------- */
-  .invite{padding:16vh 0 12vh}
-  .invite .box{max-width:620px;margin:0 auto;text-align:center}
-  .invite h2{font-weight:800;letter-spacing:-.03em;line-height:1.03;font-size:clamp(40px,7vw,84px)}
-  .invite p{margin-top:24px;font-size:clamp(17px,2.1vw,20px);color:var(--secondary);line-height:1.55}
-  form.join{margin-top:40px;display:flex;gap:10px;background:rgba(20,20,32,0.7);border:1px solid var(--border);
-    border-radius:100px;padding:7px 7px 7px 22px;align-items:center;transition:border-color .2s,box-shadow .2s}
-  form.join:focus-within{border-color:rgba(124,58,237,0.6);box-shadow:0 0 0 4px rgba(124,58,237,0.12)}
-  form.join input{flex:1;background:transparent;border:none;outline:none;color:#fff;font-family:var(--sans);font-size:16px}
-  form.join input::placeholder{color:var(--muted)}
-  form.join button{flex:none}
-  .invite .err{min-height:20px;margin-top:14px;color:#FF6B8A;font-size:13.5px;font-weight:500}
-  .invite .note{margin-top:6px;font-size:13.5px;color:var(--muted)}
-  .invite .success{display:none;flex-direction:column;align-items:center;gap:16px;margin-top:14px}
-  .invite .success.show{display:flex}
-  .invite .success .pulse-sig{margin:0}
-  .invite .success h3{font-size:clamp(24px,3.4vw,32px);font-weight:800;letter-spacing:-.02em}
-  .invite .success p{margin-top:0;color:var(--secondary)}
-  @media(max-width:560px){
-    form.join{flex-direction:column;border-radius:22px;padding:16px;gap:12px;align-items:stretch}
-    form.join input{text-align:center;padding:6px}
-    form.join button{justify-content:center}
-  }
 
   /* ---------------- FOOTER ---------------- */
   footer{border-top:1px solid var(--border);padding:70px 0 46px;text-align:center}
@@ -354,7 +331,7 @@
       <a href="#believe" class="link">Manifesto</a>
       <a href="#makers" class="link">For creators</a>
       <a href="/studio" class="link">Sign in</a>
-      <a href="#join" class="btn" data-magnetic>Join early</a>
+      <a href="/studio" class="btn" data-magnetic>Create account</a>
     </div>
   </div>
 </header>
@@ -372,7 +349,7 @@
   </h1>
   <p class="sub r d2">A place to listen <em>with</em> people — not beside them. Livil turns music back into something you share.</p>
   <div class="cta r d3">
-    <a href="#join" class="btn lg" data-magnetic>Join early</a>
+    <a href="/studio" class="btn lg" data-magnetic>Create your account</a>
     <a href="#believe" class="btn ghost lg">Read the manifesto</a>
   </div>
   <div class="scrollcue"><span class="rail"></span>Scroll</div>
@@ -457,9 +434,9 @@
     </div>
   </div>
   <div class="cta r">
-    <a href="#join" class="btn lg" data-magnetic>Become a founding artist</a>
+    <a href="/studio" class="btn lg" data-magnetic>Become a founding artist</a>
     <p style="margin-top:18px;font-size:14px;opacity:.62">
-      Already on Livil? <a href="/studio" style="color:inherit;text-decoration:underline;text-underline-offset:3px">Upload from your desktop &rarr;</a>
+      Upload from the machine you made it on. Free while we're in early access.
     </p>
   </div>
 </section>
@@ -477,24 +454,6 @@
 </section>
 
 <!-- ============ INVITE ============ -->
-<section class="invite wrap" id="join">
-  <div class="box">
-    <span class="eyebrow r" style="display:inline-flex;justify-content:center">Early access</span>
-    <h2 class="r d1" style="margin-top:22px">Be one of the <span class="serif grad">first</span>.</h2>
-    <p class="r d2">Livil is in closed testing now. Leave your email and join the first circle of people shaping what it becomes.</p>
-    <form class="join r d3" id="joinForm" novalidate>
-      <input type="email" id="email" placeholder="you@example.com" autocomplete="email" aria-label="Email address" required />
-      <button type="submit" class="btn" data-magnetic>Join early</button>
-    </form>
-    <div class="err" id="err" role="alert"></div>
-    <div class="note r d3">No spam. Just a note when there's something real to see.</div>
-    <div class="success" id="success">
-      <svg class="pulse-sig" viewBox="0 0 120 34" fill="none" aria-hidden="true"><path d="M2 17 H26 L33 6 L42 30 L49 12 L54 17 H72 L79 9 L86 25 L92 17 H118" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <h3>You're in the first circle.</h3>
-      <p>Welcome early. We'll be in touch soon.</p>
-    </div>
-  </div>
-</section>
 </main>
 
 <!-- ============ FOOTER ============ -->
@@ -585,7 +544,6 @@
     <div class="flinks">
       <a href="#believe">Manifesto</a>
       <a href="#makers">For creators</a>
-      <a href="#join">Join early</a>
       <a href="/studio">Creator studio</a>
       <a href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">Google Play</a>
     </div>
@@ -598,9 +556,6 @@
 </footer>
 
 <script>
-/* ============ WAITLIST ENDPOINT (leave blank to just show success) ============ */
-var WAITLIST_ENDPOINT = "https://fqzrmqnlgjeuxzinbqvs.supabase.co/rest/v1/waitlist";
-var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxenJtcW5sZ2pldXh6aW5icXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MjQwNDYsImV4cCI6MjA5OTAwMDA0Nn0.lM3_oFmNmNL9vyjI1bAuBON_P1rAJolgocB0HWmDCmo";
 
 (function(){
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -746,27 +701,6 @@ var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
     else if(!reduce){ drawNet(); drawWave(); }
   });
 
-  /* ---------- form ---------- */
-  var form=document.getElementById('joinForm'), success=document.getElementById('success'),
-      err=document.getElementById('err'), emailEl=document.getElementById('email');
-  var isEmail=function(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); };
-  form.addEventListener('submit', function(e){
-    e.preventDefault(); err.textContent='';
-    var email=emailEl.value.trim();
-    if(!isEmail(email)){ err.textContent='That email doesn’t look right — mind checking it?'; emailEl.focus(); return; }
-    var done=function(){ form.style.display='none'; document.querySelector('.invite .note').style.display='none'; success.classList.add('show'); };
-    if(WAITLIST_ENDPOINT){
-      var btn=form.querySelector('button'); btn.disabled=true; btn.style.opacity=.6;
-      fetch(WAITLIST_ENDPOINT,{method:'POST',headers:{
-          'Content-Type':'application/json',
-          'apikey':SUPABASE_ANON_KEY,
-          'Authorization':'Bearer '+SUPABASE_ANON_KEY,
-          'Prefer':'return=minimal'
-        },body:JSON.stringify({email:email})})
-        .then(function(r){ if(!r.ok && r.status!==409) throw 0; done(); }) // 409 = already on the list, treat as success
-        .catch(function(){ btn.disabled=false; btn.style.opacity=1; err.textContent='Something went wrong — try again in a moment.'; });
-    } else { done(); }
-  });
 })();
 </script>
 </body>
