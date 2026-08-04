@@ -1,6 +1,8 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Button } from '../components/Button';
 import { CoverCropper } from '../components/CoverCropper';
+import { CoverThumb } from '../components/CoverThumb';
+import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
 import { filesFromDataTransfer, pairAssets } from '../upload/files';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
@@ -22,6 +24,7 @@ const formatSize = (bytes: number) =>
  */
 export function Upload() {
   const queue = useUploadQueue();
+  const preview = usePreviewPlayer();
   const [dragging, setDragging] = useState(false);
   const [busyReadingDrop, setBusyReadingDrop] = useState(false);
 
@@ -124,9 +127,14 @@ export function Upload() {
             <QueueRow
               key={item.id}
               item={item}
+              playing={preview.playingId === item.id}
+              onPreview={() => preview.toggle(item.id, item.media)}
               onTitle={title => queue.patch(item.id, { title })}
               onDescription={description => queue.patch(item.id, { description })}
-              onRemove={() => queue.remove(item.id)}
+              onRemove={() => {
+                if (preview.playingId === item.id) preview.stop();
+                queue.remove(item.id);
+              }}
               onPickCover={() => {
                 coverForId.current = item.id;
                 coverInput.current?.click();
@@ -200,12 +208,16 @@ export function Upload() {
 
 function QueueRow({
   item,
+  playing,
+  onPreview,
   onTitle,
   onDescription,
   onRemove,
   onPickCover,
 }: {
   item: QueueItem;
+  playing: boolean;
+  onPreview: () => void;
   onTitle: (value: string) => void;
   onDescription: (value: string) => void;
   onRemove: () => void;
@@ -215,6 +227,8 @@ function QueueRow({
 
   return (
     <li className="queue__row" data-status={item.status}>
+      <CoverThumb file={item.image} onClick={onPickCover} disabled={locked} />
+
       <div className="queue__main">
         <input
           className="queue__title"
@@ -240,17 +254,24 @@ function QueueRow({
       </div>
 
       <div className="queue__side">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onPreview}
+          aria-label={playing ? 'Pause preview' : 'Play preview'}
+          title={playing ? 'Pause' : 'Play to check this file'}
+        >
+          {playing ? '❚❚' : '▶'}
+        </Button>
+
         {item.status === 'done' ? (
           <span className="hint">Published</span>
         ) : item.status === 'uploading' ? (
           <span className="hint">
             {item.stage} · {Math.round(item.fraction * 100)}%
           </span>
-        ) : (
-          <Button variant="ghost" size="sm" onClick={onPickCover}>
-            {item.image ? 'Change art' : 'Add art'}
-          </Button>
-        )}
+        ) : null}
+
         {!locked && (
           <Button variant="ghost" size="sm" onClick={onRemove} aria-label="Remove">
             ✕
