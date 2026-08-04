@@ -23,8 +23,6 @@ export type PickedMedia = {
   image: File;
   title: string;
   description: string;
-  /** Absolute full-track seconds; null publishes the whole track. */
-  clip?: { startSec: number; endSec: number } | null;
 };
 
 /**
@@ -85,8 +83,6 @@ export function startPublish(
         title: picked.title,
         description: picked.description,
         durationSeconds,
-        // `publishTrack` clamps this against the duration and drops a full-track window.
-        clip: picked.clip ?? null,
         assets: [...files.entries()].map(([kind, file]) => ({
           kind,
           fileName: file.name,

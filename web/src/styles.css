@@ -268,95 +268,30 @@ a {
   color: var(--error);
 }
 
-.linkbtn {
-  align-self: flex-start;
-  padding: 0;
-  margin-top: 4px;
+.queue__desc {
   font: inherit;
-  font-size: 12px;
-  color: var(--purple-neon);
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-decoration: underline;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 2px 6px;
+  margin: 0 -6px;
+  outline: none;
 }
 
-.queue__clip {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
+.queue__desc::placeholder {
+  color: var(--text-muted);
 }
 
-/* ── Clip window ─────────────────────────────────────────────────────────── */
-
-.clip {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.clip__track {
-  position: relative;
-  height: 24px;
-}
-
-.clip__track::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 10px;
-  height: 4px;
-  border-radius: 999px;
+.queue__desc:focus {
+  border-color: var(--purple);
   background: var(--input-bg);
+  color: var(--white);
 }
 
-.clip__window {
-  position: absolute;
-  top: 10px;
-  height: 4px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--purple-royal), var(--purple-neon));
-}
-
-/*
- * Two range inputs stacked over one track. The inputs themselves ignore pointer events so
- * they do not block each other where the handles overlap; only the thumbs take input, which
- * is what keeps both grabbable at the ends of a narrow window.
- */
-.clip__input {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  margin: 0;
-  height: 24px;
-  background: none;
-  appearance: none;
-  -webkit-appearance: none;
-  pointer-events: none;
-}
-
-.clip__input::-webkit-slider-thumb {
-  appearance: none;
-  -webkit-appearance: none;
-  pointer-events: auto;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--purple-neon);
-  border: 2px solid var(--bg);
-  cursor: grab;
-}
-
-.clip__input::-moz-range-thumb {
-  pointer-events: auto;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--purple-neon);
-  border: 2px solid var(--bg);
-  cursor: grab;
+.queue__desc:disabled {
+  opacity: 0.7;
 }
 
 /* ── Modal / cropper ─────────────────────────────────────────────────────── */

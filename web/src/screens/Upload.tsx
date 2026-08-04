@@ -1,6 +1,5 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Button } from '../components/Button';
-import { ClipRange, formatTime } from '../components/ClipRange';
 import { CoverCropper } from '../components/CoverCropper';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
 import { filesFromDataTransfer, pairAssets } from '../upload/files';
@@ -8,6 +7,12 @@ import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.round(seconds);
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, '0')}`;
+}
+
 const formatSize = (bytes: number) =>
   bytes >= GB ? `${(bytes / GB).toFixed(2)} GB` : `${Math.max(1, Math.round(bytes / MB))} MB`;
 
@@ -26,7 +31,6 @@ export function Upload() {
   const coverInput = useRef<HTMLInputElement>(null);
   // The cropper is modal, so at most one is open at a time.
   const [cropping, setCropping] = useState<{ id: string; file: File } | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   function accept(files: File[]) {
     const { items } = pairAssets(files);
@@ -120,10 +124,8 @@ export function Upload() {
             <QueueRow
               key={item.id}
               item={item}
-              expanded={expanded === item.id}
-              onToggle={() => setExpanded(prev => (prev === item.id ? null : item.id))}
               onTitle={title => queue.patch(item.id, { title })}
-              onClip={clip => queue.patch(item.id, { clip })}
+              onDescription={description => queue.patch(item.id, { description })}
               onRemove={() => queue.remove(item.id)}
               onPickCover={() => {
                 coverForId.current = item.id;
@@ -198,23 +200,18 @@ export function Upload() {
 
 function QueueRow({
   item,
-  expanded,
-  onToggle,
   onTitle,
-  onClip,
+  onDescription,
   onRemove,
   onPickCover,
 }: {
   item: QueueItem;
-  expanded: boolean;
-  onToggle: () => void;
   onTitle: (value: string) => void;
-  onClip: (clip: { start: number; end: number } | null) => void;
+  onDescription: (value: string) => void;
   onRemove: () => void;
   onPickCover: () => void;
 }) {
   const locked = item.status === 'uploading' || item.status === 'done';
-  const canClip = item.duration !== null && item.duration > 1 && !locked;
 
   return (
     <li className="queue__row" data-status={item.status}>
@@ -226,34 +223,20 @@ function QueueRow({
           disabled={locked}
           aria-label="Track title"
         />
+        <input
+          className="queue__desc"
+          value={item.description}
+          onChange={e => onDescription(e.target.value)}
+          disabled={locked}
+          placeholder="Add a description"
+          aria-label="Track description"
+        />
         <span className="hint">
           {item.media.name} · {formatSize(item.media.size)} · {item.mode}
           {item.duration !== null && ` · ${formatTime(item.duration)}`}
-          {item.clip && ` · clip ${formatTime(item.clip.start)}–${formatTime(item.clip.end)}`}
+          {item.artFromTag && ' · art from file'}
         </span>
         {item.error && <span className="queue__error">{item.error}</span>}
-
-        {canClip && (
-          <button type="button" className="linkbtn" onClick={onToggle}>
-            {expanded ? 'Hide clip' : item.clip ? 'Edit clip' : 'Set clip'}
-          </button>
-        )}
-
-        {expanded && canClip && (
-          <div className="queue__clip">
-            <ClipRange
-              duration={item.duration!}
-              start={item.clip?.start ?? 0}
-              end={item.clip?.end ?? item.duration!}
-              onChange={next => onClip(next)}
-            />
-            {item.clip && (
-              <Button variant="ghost" size="sm" onClick={() => onClip(null)}>
-                Use full track
-              </Button>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="queue__side">
