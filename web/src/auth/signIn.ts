@@ -47,6 +47,41 @@ export async function signInWithPassword(
  * uses the custom scheme `livil://auth`, which a browser cannot use, so this is a second
  * entry rather than a replacement.
  */
+/**
+ * Create an account.
+ *
+ * Reverses ADR-0015 decision 3, which made the dashboard sign-in only. That decision existed
+ * because `signInWithOAuth` creates accounts and a half-created one — signed in with a
+ * `user_xxxxxxxx` placeholder and no claimed username — is unrecoverable for its owner. The
+ * answer now is not to forbid signup but to finish it: `ChooseUsername` handles the second
+ * half, for password and OAuth signups alike.
+ *
+ * `emailRedirectTo` must be allow-listed in Supabase → Auth → URL Configuration; the existing
+ * wildcards cover it.
+ */
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+): Promise<SignInResult & { needsConfirmation?: boolean }> {
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+    options: { emailRedirectTo: `${window.location.origin}/` },
+  });
+
+  if (error) {
+    if (/already registered|already exists/i.test(error.message)) {
+      return { ok: false, message: 'There is already an account with that email. Sign in instead.' };
+    }
+    return { ok: false, message: error.message };
+  }
+
+  // With email confirmation on, signUp returns a user but NO session — the account exists and
+  // is unusable until the link is followed. Reporting success here would leave the artist
+  // waiting on a dashboard that never loads.
+  return { ok: true, needsConfirmation: data.session === null };
+}
+
 export async function signInWithGoogle(): Promise<SignInResult> {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',

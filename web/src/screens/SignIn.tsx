@@ -6,6 +6,7 @@ import {
   joinWaitlist,
   signInWithGoogle,
   signInWithPassword,
+  signUpWithPassword,
 } from '../auth/signIn';
 
 /**
@@ -16,7 +17,16 @@ import {
  * and shipping a "check your email" that lands on a route which does not exist is worse
  * than pointing at the app. Tracked as a Phase 1 follow-up.
  */
-export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
+export function SignIn({
+  mode,
+  onToggleMode,
+  onForgotPassword,
+}: {
+  mode: 'signin' | 'signup';
+  onToggleMode: () => void;
+  onForgotPassword: () => void;
+}) {
+  const signingUp = mode === 'signup';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<null | 'password' | 'google'>(null);
@@ -25,11 +35,26 @@ export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistDone, setWaitlistDone] = useState(false);
   const [waitlistBusy, setWaitlistBusy] = useState(false);
+  const [confirmSent, setConfirmSent] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setBusy('password');
+
+    if (signingUp) {
+      const created = await signUpWithPassword(email, password);
+      setBusy(null);
+      if (!created.ok) {
+        setError(created.message);
+        return;
+      }
+      // With email confirmation on, the account exists but has no session. Saying "done"
+      // would leave the artist waiting on a dashboard that never loads.
+      if (created.needsConfirmation) setConfirmSent(true);
+      return;
+    }
+
     const result = await signInWithPassword(email, password);
     // On success the auth listener swaps the screen out; leaving `busy` set avoids a
     // flash of the enabled form during that handover.
@@ -58,6 +83,24 @@ export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
     else setError(result.message);
   }
 
+  if (confirmSent) {
+    return (
+      <main className="auth bg-stage">
+        <header className="auth__head">
+          <h1 className="wordmark">Check your email</h1>
+          <p className="tagline">
+            Confirm {email.trim()} and you&apos;ll pick your handle next.
+          </p>
+        </header>
+        <section className="card">
+          <p className="hint">
+            The link brings you straight back here. Check spam if it doesn&apos;t arrive.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="auth">
       <header className="auth__head">
@@ -77,8 +120,9 @@ export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
         <TextField
           label="Password"
           type="password"
-          autoComplete="current-password"
+          autoComplete={signingUp ? 'new-password' : 'current-password'}
           required
+          minLength={signingUp ? 8 : undefined}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
@@ -90,7 +134,7 @@ export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
         )}
 
         <Button type="submit" size="lg" busy={busy === 'password'}>
-          Sign in
+          {signingUp ? 'Create account' : 'Sign in'}
         </Button>
 
         <div className="divider">
@@ -107,16 +151,20 @@ export function SignIn({ onForgotPassword }: { onForgotPassword: () => void }) {
           Continue with Google
         </Button>
 
-        <button type="button" className="linkbtn" onClick={onForgotPassword}>
-          Forgot your password?
+        {!signingUp && (
+          <button type="button" className="linkbtn" onClick={onForgotPassword}>
+            Forgot your password?
+          </button>
+        )}
+        <button type="button" className="linkbtn" onClick={onToggleMode}>
+          {signingUp ? 'Already have an account? Sign in' : 'New here? Create an account'}
         </button>
       </form>
 
       <section className="card card--muted">
-        <h2 className="card__title">New to Livil?</h2>
+        <h2 className="card__title">Prefer the phone?</h2>
         <p className="hint">
-          Accounts are created in the app. Once you've signed up there, sign in here to
-          upload.
+          The app is where you listen, follow and message. The studio is for publishing.
         </p>
         <Button
           type="button"

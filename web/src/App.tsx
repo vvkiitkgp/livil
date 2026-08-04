@@ -6,7 +6,7 @@ import { AppShell } from './components/AppShell';
 import { SignIn } from './screens/SignIn';
 import { ForgotPassword } from './screens/ForgotPassword';
 import { ResetPassword } from './screens/ResetPassword';
-import { FinishInApp } from './screens/FinishInApp';
+import { ChooseUsername } from './screens/ChooseUsername';
 import { Overview } from './screens/Overview';
 import { Catalogue } from './screens/Catalogue';
 import { Analytics } from './screens/Analytics';
@@ -52,6 +52,7 @@ function routerFor(session: Session) {
 export function App() {
   const state = useAuthState();
   const [forgot, setForgot] = useState(false);
+  const [signingUp, setSigningUp] = useState(false);
   const [path, setPath] = useState(() => window.location.pathname);
 
   /**
@@ -83,13 +84,19 @@ export function App() {
       // and a flashed spinner reads worse than a beat of nothing.
       return <main className="auth bg-stage" aria-busy="true" />;
     case 'signed-out':
-      return forgot ? (
-        <ForgotPassword onBack={() => setForgot(false)} />
-      ) : (
-        <SignIn onForgotPassword={() => setForgot(true)} />
+      if (forgot) return <ForgotPassword onBack={() => setForgot(false)} />;
+      return (
+        <SignIn
+          mode={signingUp ? 'signup' : 'signin'}
+          onToggleMode={() => setSigningUp(v => !v)}
+          onForgotPassword={() => setForgot(true)}
+        />
       );
     case 'needs-onboarding':
-      return <FinishInApp />;
+      // Signed in, but the account has never claimed a username — the state every signup
+      // passes through. Previously this signed the user out and sent them to the mobile app,
+      // which was correct when web signup did not exist.
+      return <ChooseUsername onClaimed={() => window.location.replace('/')} />;
     case 'signed-in':
       return <RouterProvider router={routerFor(state.session)} />;
     case 'error':
