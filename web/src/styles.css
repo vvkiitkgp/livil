@@ -1506,3 +1506,42 @@ a {
 .table .muted {
   color: var(--text-muted);
 }
+
+/* Avatars crop square but READ round, so the mask has to match where the photo will
+   actually be clipped — otherwise you frame a face that the app then cuts the ears off. */
+.cropframe[data-round] {
+  border-radius: var(--radius-pill);
+}
+
+.profile__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 520px;
+}
+
+.linkrow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.linkrow .field {
+  flex: 1;
+}
+
+.counter {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.counter[data-over] {
+  color: var(--error);
+}
+
+.avatarpick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}

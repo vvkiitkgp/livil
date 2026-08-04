@@ -222,3 +222,20 @@ export async function unpublishPost(postId: string): Promise<void> {
   const { error } = await supabase.from('posts').delete().eq('id', postId);
   if (error) throw new Error(error.message);
 }
+
+/**
+ * A profile's links.
+ *
+ * Separate from `fetchCreatorProfile` because the shell loads that on every page and `links`
+ * is only ever needed by the editor — no reason to carry an array through every render of
+ * every screen for one form.
+ */
+export async function fetchProfileLinks(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('links')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error || !data) return [];
+  return (data.links as string[] | null) ?? [];
+}

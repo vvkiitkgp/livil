@@ -149,3 +149,20 @@ export function storagePathFor(
 ): string {
   return `${userId}/${trackId}/${kind}.${ext}`;
 }
+
+
+/** Avatars live in their own bucket, owner-scoped, 10 MB, images only. */
+export const AVATARS_BUCKET = 'avatars';
+
+/**
+ * `${userId}/avatar_${timestamp}.jpg`, matching what the mobile client writes.
+ *
+ * The timestamp is a deliberate CDN cache-bust: each upload is a NEW URL, so a changed
+ * avatar shows up immediately without a query-string hack or a cache purge. A fixed
+ * `avatar.jpg` would be simpler and would reintroduce exactly the staleness this avoids.
+ *
+ * The leading user id is what the owner-scoped storage policy matches on.
+ */
+export function avatarPath(userId: string): string {
+  return `${userId}/avatar_${Date.now()}.jpg`;
+}

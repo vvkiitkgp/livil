@@ -35,10 +35,18 @@ export function CoverCropper({
   file,
   onCancel,
   onDone,
+  outputPx = OUTPUT_PX,
+  round,
+  title = 'Crop cover art',
 }: {
   file: File;
   onCancel: () => void;
   onDone: (cropped: File) => void;
+  /** Avatars want 512; cover art wants the full 1024. */
+  outputPx?: number;
+  /** Round preview mask for avatars — the crop itself is still square. */
+  round?: boolean;
+  title?: string;
 }) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -83,8 +91,8 @@ export function CoverCropper({
     setBusy(true);
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = OUTPUT_PX;
-      canvas.height = OUTPUT_PX;
+      canvas.width = outputPx;
+      canvas.height = outputPx;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Canvas unavailable');
       ctx.imageSmoothingQuality = 'high';
@@ -92,9 +100,9 @@ export function CoverCropper({
       // Filled first so a fitted (zoomed-out) crop has a background rather than JPEG's
       // undefined-alpha garbage in the padding.
       ctx.fillStyle = PAD_COLOR;
-      ctx.fillRect(0, 0, OUTPUT_PX, OUTPUT_PX);
+      ctx.fillRect(0, 0, outputPx, outputPx);
 
-      const k = OUTPUT_PX / FRAME_PX;
+      const k = outputPx / FRAME_PX;
       const { dx, dy, dw, dh } = drawRect(size, FRAME_PX, zoom, pan);
       // Drawn from the ORIGINAL pixels straight to output scale — one resample, so a large
       // photo keeps its detail. The canvas clips whatever falls outside.
@@ -121,7 +129,7 @@ export function CoverCropper({
   return (
     <div className="modal" role="dialog" aria-label="Crop cover art">
       <div className="modal__panel">
-        <h3 className="card__title">Crop cover art</h3>
+        <h3 className="card__title">{title}</h3>
         <p className="hint">
           Drag to reposition, zoom to fill.
           {canFit && ' Zoom out to fit the whole image.'}
@@ -129,6 +137,7 @@ export function CoverCropper({
 
         <div
           className="cropframe"
+          data-round={round || undefined}
           style={{ width: FRAME_PX, height: FRAME_PX }}
           onPointerDown={e => {
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
