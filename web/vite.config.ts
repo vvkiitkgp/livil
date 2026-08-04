@@ -29,8 +29,30 @@ export default defineConfig({
   },
   server: {
     fs: {
-      // shared/ (and the lib/ + src/theme/ files it re-exports) live above this root.
-      allow: [fileURLToPath(new URL('..', import.meta.url))],
+      /**
+       * Exactly the three directories above this root that are actually imported — NOT the
+       * repo root.
+       *
+       * Allowing the root meant the dev server would serve any file in the repository over
+       * `/@fs/…`, including `android/app/livil-release.keystore`. Vite's default `fs.deny`
+       * covers `.env*` and `*.pem` but not `.keystore`. Localhost-only, so it needs
+       * `--host` or a local attacker to reach — but the upload keystore is the one artifact
+       * whose compromise permanently ends Play Store updates, so "narrow and also denied"
+       * is the right posture rather than "narrow enough".
+       *
+       * Derived from what `shared/` re-exports: `types/database.ts` -> `lib/`,
+       * `theme/colors.ts` -> `src/theme/`. Adding a re-export from elsewhere in `src/`
+       * means adding it here, and the dev server will say so loudly on the first request.
+       */
+      allow: [
+        fileURLToPath(new URL('../shared', import.meta.url)),
+        fileURLToPath(new URL('../lib', import.meta.url)),
+        fileURLToPath(new URL('../src/theme', import.meta.url)),
+        fileURLToPath(new URL('.', import.meta.url)),
+      ],
+      // Belt and braces: even if `allow` is widened later by someone chasing a resolution
+      // error, signing material stays unreachable.
+      deny: ['**/*.keystore', '**/*.jks', '**/*.p12', '**/gradle.properties'],
     },
   },
   build: {
