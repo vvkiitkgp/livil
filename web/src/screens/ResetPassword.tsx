@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '../components/Button';
 import { PasswordField } from '../components/TextField';
 import { supabase } from '../supabase';
+import { ARRIVED_FROM_RECOVERY_LINK } from '../auth/recoveryEntry';
 
 const MIN_LENGTH = 8;
 
@@ -24,15 +25,45 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
   const [ready, setReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // The code exchange happens asynchronously after the redirect, so a session may not exist
-  // on first render. Waiting for it distinguishes "link still processing" from "link dead".
+  /**
+   * A SESSION IS NOT ENOUGH. An earlier version accepted any session at all, which meant
+   * anyone at an already-signed-in browser could navigate here and set a new password
+   * without knowing the current one — and the global sign-out below would then lock the real
+   * owner out everywhere. What authorises this form is evidence of arriving from a recovery
+   * LINK, not evidence of being signed in.
+   *
+   * Two accepted proofs, because the code may be consumed before or after this mounts:
+   * the URL snapshot taken at module load (see recoveryEntry.ts), or a `PASSWORD_RECOVERY`
+   * event — the discriminator the previous version discarded as `_e`.
+   *
+   * The code exchange is still asynchronous, so the session may lag; waiting distinguishes
+   * "link still processing" from "link dead".
+   */
   useEffect(() => {
     let cancelled = false;
-    const check = () =>
-      supabase.auth.getSession().then(({ data }) => {
-        if (!cancelled) setReady(data.session !== null);
+
+    if (!ARRIVED_FROM_RECOVERY_LINK) {
+      // Wait briefly for a PASSWORD_RECOVERY event before refusing — an implicit-flow link
+      // can emit one without ever showing a code we could snapshot.
+      const deadline = setTimeout(() => {
+        if (!cancelled) setReady(false);
+      }, 2000);
+      const { data: sub } = supabase.auth.onAuthStateChange(event => {
+        if (!cancelled && event === 'PASSWORD_RECOVERY') {
+          clearTimeout(deadline);
+          setReady(true);
+        }
       });
-    check();
+      return () => {
+        cancelled = true;
+        clearTimeout(deadline);
+        sub.subscription.unsubscribe();
+      };
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setReady(data.session !== null);
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       if (!cancelled && session) setReady(true);
     });

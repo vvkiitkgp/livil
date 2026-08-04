@@ -70,6 +70,16 @@ export default defineConfig({
     // `copy-marketing.mjs` fills the rest of dist/ from docs/.
     outDir: 'dist/studio',
     emptyOutDir: true,
-    sourcemap: true,
+    /**
+     * 'hidden', not true: maps are still GENERATED (so they can be uploaded to an error
+     * tracker) but no `//# sourceMappingURL` comment is emitted, so browsers do not fetch
+     * them and `copy-marketing` does not advertise them at a public URL.
+     *
+     * No secret is at stake — the anon key is public by design. What full sourcemaps publish
+     * is the unminified source and its commentary: which RPC enforces what, where the ledger
+     * checks live, which paths are deliberately vague. That is a map of the security model,
+     * handed to anyone who opens devtools. Raised by security review of PR #127.
+     */
+    sourcemap: 'hidden',
   },
 });

@@ -160,6 +160,10 @@ export function SignIn({
               label="Display name"
               autoComplete="name"
               required
+              // Matches `profiles_display_name_len`. Without it the constraint fires inside
+              // handle_new_user(), which aborts the whole signup transaction and surfaces as
+              // an opaque 500 — a dead end with no clue which field caused it.
+              maxLength={80}
               placeholder="What people see"
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
@@ -169,6 +173,7 @@ export function SignIn({
               autoComplete="off"
               autoCapitalize="none"
               required
+              maxLength={30}
               placeholder="yourname"
               value={username}
               onChange={e => setUsername(e.target.value)}
