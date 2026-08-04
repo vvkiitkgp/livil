@@ -65,16 +65,35 @@ insert into storage.buckets (id, name, public)
 values ('tracks-media', 'tracks-media', true)
 on conflict (id) do nothing;
 
-update storage.buckets
-   set public = true,
-       file_size_limit = 524288000,
-       allowed_mime_types = array[
-         'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/wav', 'audio/x-wav',
-         'audio/ogg', 'audio/flac', 'audio/x-m4a', 'audio/webm',
-         'video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska',
-         'image/jpeg', 'image/png', 'image/webp', 'image/heic'
-       ]
- where id = 'tracks-media';
+-- `file_size_limit` and `allowed_mime_types` are guarded on column existence because CI
+-- applies these migrations against a SHIM of the storage schema, not a real Storage
+-- install, and the shim has neither column. Production has both. Without the guard the
+-- whole migration aborts in CI on a difference that says nothing about correctness.
+--
+-- This is also the seam where the 2 GB ceiling (ADR-0015 decision 5) gets raised: change
+-- the number here, not in the dashboard.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'storage'
+       and table_name   = 'buckets'
+       and column_name  = 'file_size_limit'
+  ) then
+    update storage.buckets
+       set public = true,
+           file_size_limit = 524288000,
+           allowed_mime_types = array[
+             'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/wav', 'audio/x-wav',
+             'audio/ogg', 'audio/flac', 'audio/x-m4a', 'audio/webm',
+             'video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska',
+             'image/jpeg', 'image/png', 'image/webp', 'image/heic'
+           ]
+     where id = 'tracks-media';
+  else
+    update storage.buckets set public = true where id = 'tracks-media';
+  end if;
+end $$;
 
 -- avatars carries no size limit and no MIME allowlist in production. Reflected as-is
 -- rather than tightened: adding either here would be an unreviewed behaviour change
