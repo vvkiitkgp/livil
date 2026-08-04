@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { Button } from '../components/Button';
 import { signOut } from '../auth/session';
 import { supabase } from '../supabase';
+import { Upload } from './Upload';
 
 /**
  * Signed-in shell. The uploader lands here in Phase 2 (ADR-0015).
@@ -42,13 +43,7 @@ export function Dashboard({ session }: { session: Session }) {
       </header>
 
       <main className="app__body">
-        <section className="card card--center">
-          <h2 className="card__title">Uploads land here next</h2>
-          <p className="hint">
-            Resumable uploads up to 2&nbsp;GB, whole-folder batches, artwork and metadata.
-            You're signed in and the dashboard is wired — Phase 2 fills this panel.
-          </p>
-        </section>
+        <Upload />
       </main>
     </div>
   );
