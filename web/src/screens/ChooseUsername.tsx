@@ -3,7 +3,11 @@ import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { signOut } from '../auth/session';
 import { supabase } from '../supabase';
-import { useUsernameAvailability, usernameHint } from '../auth/useUsernameAvailability';
+import {
+  normalizeUsername,
+  useUsernameAvailability,
+  usernameHint,
+} from '../auth/useUsernameAvailability';
 
 /**
  * Claim a permanent username.
@@ -71,8 +75,11 @@ export function ChooseUsername({ onClaimed }: { onClaimed: () => void }) {
           value={username}
           autoFocus
           autoComplete="off"
+          maxLength={30}
           placeholder="yourname"
-          onChange={e => setUsername(e.target.value)}
+          // Normalised on the way in — the field must never show a handle that differs from
+          // the one the database will store.
+          onChange={e => setUsername(normalizeUsername(e.target.value))}
         />
         <p className="hint" data-status={status}>
           {usernameHint(status, cleaned)}

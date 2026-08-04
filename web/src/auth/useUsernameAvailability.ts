@@ -4,6 +4,21 @@ import { supabase } from '../supabase';
 /** Mirrors `claim_username`'s check in the database exactly. */
 export const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
 
+/**
+ * The single normalisation, applied on every keystroke so the field shows exactly what will
+ * be stored.
+ *
+ * Handles are lowercase-only, and that is settled in the database, not here — the
+ * `enforce_username_reservation` trigger assigns `lower(btrim(...))` and
+ * `profiles_username_lower_key` is a unique index on `lower(username)`, so `@Vamsi` and
+ * `@vamsi` cannot coexist however a client behaves. This function exists so the UI stops
+ * disagreeing with that: typing `Vamsi` used to leave `Vamsi` sitting in the box while the
+ * account you actually got was `@vamsi`.
+ */
+export function normalizeUsername(raw: string): string {
+  return raw.trim().toLowerCase().replace(/^@/, '');
+}
+
 export type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'invalid' | 'error';
 
 /**
@@ -23,7 +38,9 @@ export function useUsernameAvailability(raw: string): {
   cleaned: string;
   status: Availability;
 } {
-  const cleaned = useMemo(() => raw.trim().toLowerCase().replace(/^@/, ''), [raw]);
+  // Still normalised here, not just at the input: callers may seed the field from elsewhere,
+  // and the check must never run against something the database would store differently.
+  const cleaned = useMemo(() => normalizeUsername(raw), [raw]);
   const [status, setStatus] = useState<Availability>('idle');
 
   useEffect(() => {

@@ -10,7 +10,11 @@ import {
   signInWithPassword,
   signUpWithPassword,
 } from '../auth/signIn';
-import { useUsernameAvailability, usernameHint } from '../auth/useUsernameAvailability';
+import {
+  normalizeUsername,
+  useUsernameAvailability,
+  usernameHint,
+} from '../auth/useUsernameAvailability';
 
 /** Web-only. Mobile still accepts 6; see the note on the password field below. */
 const MIN_PASSWORD = 8;
@@ -176,7 +180,9 @@ export function SignIn({
               maxLength={30}
               placeholder="yourname"
               value={username}
-              onChange={e => setUsername(e.target.value)}
+              // Normalised on the way in, so the field can never show a handle that differs
+              // from the one the database will store.
+              onChange={e => setUsername(normalizeUsername(e.target.value))}
             />
             {/* Permanence stated BEFORE the fact. A trigger refuses any later change, so
                 discovering it afterwards means discovering it too late. */}
