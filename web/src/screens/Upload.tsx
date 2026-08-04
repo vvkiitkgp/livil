@@ -55,6 +55,9 @@ export function Upload() {
 
   const pending = queue.items.filter(i => i.status === 'pending' || i.status === 'failed');
   const done = queue.items.filter(i => i.status === 'done');
+  const failed = queue.items.filter(i => i.status === 'failed');
+  // Nothing left to do: the run is over and something actually published.
+  const finished = !queue.running && done.length > 0 && pending.length === 0;
   const missingArt = pending.filter(i => !i.image).length;
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
@@ -193,6 +196,31 @@ export function Upload() {
             setCropping(null);
           }}
         />
+      )}
+
+      {finished && (
+        <div className="done" role="status">
+          <p className="done__title">
+            {done.length === 1 ? 'Track published' : `${done.length} tracks published`}
+          </p>
+          <p className="hint">
+            They're live in the Livil app now — on your profile and in your followers'
+            feeds. There's no player here yet, so open the app to hear them in place.
+          </p>
+          <div className="filerow">
+            <Button variant="secondary" size="sm" onClick={queue.clearFinished}>
+              Upload more
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {failed.length > 0 && !queue.running && (
+        <p className="alert" role="alert">
+          {failed.length} {failed.length === 1 ? 'track' : 'tracks'} didn't publish. Fix
+          what's flagged on {failed.length === 1 ? 'that row' : 'those rows'} and press
+          Publish again — the ones that already succeeded won't be re-uploaded.
+        </p>
       )}
 
       {missingArt > 0 && (

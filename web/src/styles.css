@@ -380,6 +380,24 @@ a {
   opacity: 0.7;
 }
 
+/* Completion state. Purple rather than a green — the palette has no success token, and
+   inventing one for a single banner is how design systems drift. */
+.done {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--purple-dim);
+  border: 1px solid var(--purple-deep);
+  border-radius: 12px;
+}
+
+.done__title {
+  margin: 0;
+  font-weight: 650;
+  color: var(--purple-light);
+}
+
 /* ── Modal / cropper ─────────────────────────────────────────────────────── */
 
 .modal {
