@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 54 migration(s) in `supabase/migrations/`.
+Reconstructed from 56 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
