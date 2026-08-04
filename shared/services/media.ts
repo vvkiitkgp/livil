@@ -16,29 +16,29 @@ export type TrackMediaKind = 'audio' | 'video' | 'cover' | 'thumbnail';
 export const TRACKS_MEDIA_BUCKET = 'tracks-media';
 
 /**
- * Ceiling on a single uploaded file from the WEB client.
+ * Ceiling on a single uploaded file from the WEB client: 2 GB (ADR-0015 decision 5).
  *
- * ADR-0015 decision 5 sets this at 2 GB, and that remains the target — a browser has no
- * equivalent of the constraint that caps mobile at 500 MB (React Native has no workable
- * resumable upload; `tus-js-client` buffers the whole file into memory there and
- * OOM-crashes). Raising it is the entire reason this client exists.
+ * Four times the mobile cap, and the reason this client exists. React Native has no workable
+ * resumable upload — `tus-js-client` buffers the whole file into memory there and
+ * OOM-crashes — so mobile ships a single non-resumable request and caps at 500 MB to keep
+ * that survivable on cellular. A browser streams a File slice by slice.
  *
- * It is deliberately still 500 MB, because the SERVER is still 500 MB. Two limits govern
- * an upload and only one of them is in this repository:
+ * TWO LIMITS GOVERN AN UPLOAD and they must move together, or the artist watches a 900 MB
+ * master upload and gets an opaque server error at the end:
  *
- *   1. the `tracks-media` bucket's own `file_size_limit` — currently exactly 524288000
- *   2. the project-wide "Global file size limit", which caps (1)
+ *   1. `tracks-media`.file_size_limit — now 2147483648, set by
+ *      20260805020000_raise_tracks_media_to_2gb.sql
+ *   2. the project-wide "Global file size limit" in Storage Settings, which CAPS (1) and is
+ *      console-only config with no migration (ADR-0007)
  *
- * Both are console settings (storage config is unversioned — ADR-0007). Promising 2 GB
- * here while the bucket rejects anything past 500 MB would be worse than the current cap:
- * the artist picks a 900 MB master, watches it upload, and gets an opaque server error at
- * the end. A client-side limit fails in a second, with copy that names the number.
+ * If large uploads start failing at the server, (2) is the first thing to check — a bucket
+ * limit above the global one is silently ineffective.
  *
- * TO RAISE: move both console settings first, then change this constant to
- * `2 * 1024 * 1024 * 1024`. Nothing else needs to change — the resumable path,
- * the progress weighting, and the error handling are already sized for it.
+ * WHAT THIS COSTS: nothing by itself. A ceiling is not a commitment; billing follows the
+ * bytes actually stored and — far more so — the bytes actually SERVED. One 2 GB video played
+ * a hundred times is 200 GB of egress. See kb/operations/scaling-assumptions.md.
  */
-export const MAX_WEB_UPLOAD_BYTES = 500 * 1024 * 1024;
+export const MAX_WEB_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 function formatLimit(bytes: number): string {
   const gb = bytes / (1024 * 1024 * 1024);
