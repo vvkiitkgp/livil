@@ -541,10 +541,39 @@ a {
   background: var(--border);
 }
 
+/* Set apart from the store link above it with a rule and a step up in contrast.
+   This is the only path that works for a visitor who is not already a tester, so it
+   has to read as a real option rather than fine print under the Play button. */
 .waitlist {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.waitlist__lede {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* `strong` carries the emphasis rather than the whole paragraph — the question is the
+   hook, the explanation behind it is support and stays quieter. */
+.waitlist__lede strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 16px;
+  color: var(--white);
+}
+
+/* `purpleLight` is the token commented "accent text on dark" — there is no `success`
+   token in src/theme/colors.ts, and that file's rule is to add a token rather than
+   hard-code a hex, which a one-off confirmation colour does not justify. */
+.waitlist--done .waitlist__lede strong {
+  color: var(--purple-light);
 }
 
 /* ── Fields ──────────────────────────────────────────────────────────────── */
@@ -1737,4 +1766,56 @@ a {
 
 .lyrics__gap {
   color: var(--text-muted);
+}
+
+/* ── Early access prompt ─────────────────────────────────────────────────────
+   Shown in the studio to creators who have no route into the app yet. Sits above
+   the fold and is dismissible: it is genuinely useful once and clutter forever
+   after, so it must be closable rather than merely quiet. */
+
+.early-access {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 22px;
+  border-left: 3px solid var(--purple);
+}
+
+.early-access__title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--white);
+}
+
+.early-access .hint {
+  max-width: 62ch;
+}
+
+/* The done state uses an <a> wearing button classes, because it navigates off-site rather
+   than acting. `.btn` never needed a text-decoration reset before — every other use is a
+   real <button> — so the anchor would inherit the browser's underline without this. */
+.early-access a.btn {
+  text-decoration: none;
+}
+
+.early-access__close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.early-access__close:hover {
+  opacity: 1;
 }

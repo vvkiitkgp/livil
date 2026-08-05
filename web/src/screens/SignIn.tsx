@@ -303,22 +303,35 @@ export function SignIn({
           Get the Android app
         </Button>
 
+        {/* Livil is in closed testing, so the Play listing above resolves ONLY for enrolled
+            testers — for everyone else it reads "app not available". That makes this the
+            only working path for a new visitor, which is why it is set apart and carries a
+            primary button rather than sitting as a ghost-weight afterthought under the
+            store link. The loud control must not be the one that dead-ends. */}
         {waitlistDone ? (
-          <p className="hint">You're on the list — we'll email you when a spot opens.</p>
+          <div className="waitlist waitlist--done">
+            <p className="waitlist__lede">
+              <strong>You're on the list.</strong> The invite is already on its way — check
+              your inbox, and spam if it isn't there in a minute.
+            </p>
+          </div>
         ) : (
           <form className="waitlist" onSubmit={onWaitlist}>
-            {/* Livil is in closed testing, so the Play listing resolves only for enrolled
-                testers. Until it opens, this is the only working path for a new visitor. */}
+            <p className="waitlist__lede">
+              <strong>Not a tester yet?</strong> Livil is in closed testing, so the store
+              link above only opens for enrolled testers. Leave your email and the invite
+              lands in your inbox straight away.
+            </p>
             <TextField
-              label="Not a tester yet? Join the waitlist"
+              label="Email"
               type="email"
               required
               placeholder="you@example.com"
               value={waitlistEmail}
               onChange={e => setWaitlistEmail(e.target.value)}
             />
-            <Button type="submit" variant="ghost" busy={waitlistBusy}>
-              Join waitlist
+            <Button type="submit" busy={waitlistBusy}>
+              Join the waitlist
             </Button>
           </form>
         )}
