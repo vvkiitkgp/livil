@@ -19,6 +19,7 @@ import {
   ArrowSquareOut,
   ArrowUp,
   ArrowsClockwise,
+  ArrowsInSimple,
   Bell,
   BellSlash,
   Broadcast,
@@ -46,6 +47,7 @@ import {
   Globe,
   Guitar,
   Handshake,
+  HandTap,
   HandWaving,
   Heart,
   House,
@@ -112,7 +114,7 @@ export type IconName =
   | 'public' | 'friends' | 'lock'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
-  | 'star' | 'handshake' | 'wave'
+  | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
   | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
@@ -194,6 +196,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   note: [Note, 'fill'],
   star: [Star, 'fill'],
   handshake: [Handshake, 'fill'],
+  handTap: [HandTap, 'regular'],
+  zoomOut: [ArrowsInSimple, 'bold'],
   wave: [HandWaving, 'fill'],
   // settings — `regular` throughout: these sit inside a tinted tile in
   // SettingsRow, where a filled glyph reads as a solid blob at 20px.

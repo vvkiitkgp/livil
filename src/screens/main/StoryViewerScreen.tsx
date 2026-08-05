@@ -25,6 +25,7 @@ import Reanimated, {
   withTiming,
   withSpring,
   withRepeat,
+  cancelAnimation,
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
@@ -48,6 +49,8 @@ import { flattenClusters, flatStartIndex } from '../../utils/groupStoriesByAutho
 import type { RootStackParamList } from '../../navigation/types';
 import { Icon } from '../../components/Icon';
 import Scrim from '../../components/Scrim';
+import ArtGlow from '../../components/ArtGlow';
+import { useImageAspect } from '../../hooks/useImageAspect';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { GradientBorder } from '../../components/GradientBorder';
 
@@ -81,6 +84,32 @@ const MENU_SCALE = Math.max(
 );
 const MENU_LIFT = -MENU_SHEET_H / 2;
 const MENU_CARD_RADIUS = 26;
+/**
+ * Audio cover card. It is scaled up to whichever of these limits it reaches
+ * first, keeping the artwork's own proportions. The height cap leaves the top
+ * and bottom scrims (150 / 230) clear of it.
+ */
+const ART_MAX_W = SCREEN_W * 0.76;
+const ART_MAX_H = SCREEN_H * 0.5;
+/**
+ * The card sits this far above the stage's centre, clearing the comment + song
+ * bar stack. Because the stage centres its content, the card's own centre ends
+ * up at (SCREEN_H - ART_LIFT) / 2 whatever the card's height — which is what the
+ * halo is positioned against.
+ */
+const ART_LIFT = 56;
+const ART_RADIUS = 22;
+
+/**
+ * Scales the artwork up until it hits whichever limit binds first: a wide cover
+ * runs out of width, a tall one runs out of the band between the chrome. Whole
+ * dp so the rounded corners and the 1px rim land on pixel boundaries.
+ */
+function fitArt(aspect: number | null): { w: number; h: number } {
+  const ar = aspect ?? 1;
+  const w = Math.floor(Math.min(ART_MAX_W, ART_MAX_H * ar));
+  return { w, h: Math.floor(w / ar) };
+}
 /** Drag distance (dp) / fling velocity past which a downward swipe dismisses. */
 const DISMISS_DISTANCE = 120;
 const DISMISS_VELOCITY = 850;
@@ -117,10 +146,34 @@ type ViewerItem = { story: Story; authorIndex: number };
  */
 function AuthorFacePreview({ item }: { item: ViewerItem }) {
   const s = item.story;
+  // An AUDIO face has to mirror the landed view — full-bleed here would snap to
+  // the floating card the instant the swipe settles. Video keeps the full-bleed
+  // cover: that IS what its frame looks like. Unlike the live stage this draws
+  // at the square default while the intrinsic size resolves rather than holding
+  // back — a transient face mid-swipe is better than a black one, and it is gone
+  // before a late resize could register.
+  const isAudio = s.track.mediaKind !== 'video';
+  const previewAR = useImageAspect(isAudio ? s.track.coverArtUrl : null);
+  const { w: pW, h: pH } = fitArt(previewAR);
   return (
     <View style={styles.previewRoot}>
       {s.track.coverArtUrl ? (
-        <Image source={{ uri: s.track.coverArtUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        isAudio ? (
+          <View style={styles.audioStage}>
+            <ArtGlow centerY={(SCREEN_H - ART_LIFT) / 2} width={pW} height={pH} />
+            <View style={[styles.audioCoverWrap, { width: pW, height: pH }]}>
+              <View style={styles.audioCoverClip}>
+                <Image
+                  source={{ uri: s.track.coverArtUrl }}
+                  style={styles.audioCover}
+                  resizeMode="cover"
+                />
+              </View>
+            </View>
+          </View>
+        ) : (
+          <Image source={{ uri: s.track.coverArtUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        )
       ) : (
         <View style={styles.previewFallback} />
       )}
@@ -607,6 +660,39 @@ export default function StoryViewerScreen() {
     return null;
   }, [story]);
 
+  // ── Audio cover card: intrinsic size + float ──────────────────────────────
+  // Matches the full-screen player: the card takes the ARTWORK'S OWN
+  // proportions, sits on plain black lit by a purple halo, and drifts while the
+  // story is playing.
+  const artAR = useImageAspect(story?.track.coverArtUrl);
+  const { w: artW, h: artH } = fitArt(artAR);
+
+  // Slow rise-and-settle while the story plays, stopped (and eased back) when
+  // held/paused. Long and shallow on purpose — anything faster reads as a
+  // glitch. Lives on the UI thread, so it keeps cadence while JS is busy.
+  const artFloat = useSharedValue(0);
+  const artFloating = !paused && media?.kind === 'audio';
+  useEffect(() => {
+    if (artFloating) {
+      artFloat.value = withRepeat(
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.quad) }),
+        -1,
+        true,
+      );
+    } else {
+      // Cancel BEFORE retargeting: withRepeat keeps driving the value otherwise,
+      // and the settle would be overwritten on the next frame.
+      cancelAnimation(artFloat);
+      artFloat.value = withTiming(0, { duration: 420, easing: Easing.out(Easing.quad) });
+    }
+  }, [artFloating, artFloat]);
+  const artFloatStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -7 * artFloat.value },
+      { scale: 1 + 0.018 * artFloat.value },
+    ],
+  }));
+
   // A gentle continuous glow pulse on the "open the song's post" bar — it draws
   // the eye to the CTA (and replaces the removed visualizer as the live element).
   const songGlow = useSharedValue(1);
@@ -929,30 +1015,52 @@ export default function StoryViewerScreen() {
                 ) : null}
               </>
             ) : (
-              // AUDIO — show the cover as a centered SQUARE (proper aspect ratio),
-              // over a soft blurred version of itself, NOT stretched full-screen.
+              // AUDIO — the whole cover on a card cut to its own proportions,
+              // floating on plain black over a purple halo + cast shadow, and
+              // drifting while the story plays. Same treatment as the
+              // full-screen player, so the two surfaces read as one app.
               <View style={styles.audioStage}>
                 {story.track.coverArtUrl ? (
-                  <>
-                    <Image
-                      source={{ uri: story.track.coverArtUrl }}
-                      style={StyleSheet.absoluteFill}
-                      resizeMode="cover"
-                      blurRadius={28}
-                    />
-                    <View style={styles.audioBgTint} />
-                    <View style={styles.audioCoverWrap}>
-                      <Image
-                        source={{ uri: story.track.coverArtUrl }}
-                        style={styles.audioCover}
-                        resizeMode="cover"
+                  // Nothing until the intrinsic size resolves — a guessed
+                  // rectangle would visibly snap to the real shape.
+                  artAR === null ? null : (
+                    <>
+                      <ArtGlow
+                        centerY={(SCREEN_H - ART_LIFT) / 2}
+                        width={artW}
+                        height={artH}
                       />
-                    </View>
-                  </>
+                      <Reanimated.View
+                        style={[
+                          styles.audioCoverWrap,
+                          { width: artW, height: artH },
+                          artFloatStyle,
+                        ]}
+                      >
+                        <View style={styles.audioCoverClip}>
+                          <Image
+                            source={{ uri: story.track.coverArtUrl }}
+                            style={styles.audioCover}
+                            // The frame already matches the artwork's ratio, so
+                            // this crops nothing — it just guarantees the picture
+                            // reaches the rounded edge despite dp rounding.
+                            resizeMode="cover"
+                          />
+                        </View>
+                      </Reanimated.View>
+                    </>
+                  )
                 ) : (
-                  <View style={styles.audioFallback}>
-                    <Icon name="musicNotes" size={64} color={COLORS.purpleLight} />
-                  </View>
+                  <>
+                    <ArtGlow
+                      centerY={(SCREEN_H - ART_LIFT) / 2}
+                      width={ART_MAX_W}
+                      height={ART_MAX_W}
+                    />
+                    <Reanimated.View style={[styles.audioFallback, artFloatStyle]}>
+                      <Icon name="musicNotes" size={64} color={COLORS.purpleLight} />
+                    </Reanimated.View>
+                  </>
                 )}
               </View>
             )}
@@ -1178,36 +1286,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  audioBgTint: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(10,10,15,0.5)',
-  },
+  // The lifted card. Carries the shadow and the fill, and must NOT clip — iOS
+  // clips a view's own shadow when overflow is hidden, so the rounding lives on
+  // the inner surface instead.
   audioCoverWrap: {
-    width: SCREEN_W * 0.72,
-    aspectRatio: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
+    borderRadius: ART_RADIUS,
     backgroundColor: COLORS.surface,
+    marginBottom: ART_LIFT,
+    // iOS: a soft, slightly-offset cast shadow. Near-black on a near-black page
+    // is subtle by nature — most of the lift comes from the halo pooling below.
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    // Android ignores shadowColor and draws its own. CLAUDE.md bans elevation on
+    // BUTTONS, where the grey smudge lands on a visible surface — here the card
+    // sits on pure black, so the shadow only darkens the halo directly beneath
+    // it, which is the seam that sells the lift.
+    elevation: 12,
+  },
+  // Rounds the picture. Clipping on a parent (rather than borderRadius on the
+  // Image) is the reliable path on Android. The hairline rim catches the glow
+  // and keeps the card's edge legible where artwork is dark.
+  audioCoverClip: {
+    flex: 1,
+    borderRadius: ART_RADIUS,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 56,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   audioCover: {
     width: '100%',
     height: '100%',
   },
   audioFallback: {
-    width: SCREEN_W * 0.72,
+    width: ART_MAX_W,
     aspectRatio: 1,
-    borderRadius: 20,
+    borderRadius: ART_RADIUS,
     backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 56,
+    marginBottom: ART_LIFT,
+    elevation: 12,
   },
   videoPosterDark: {
     position: 'absolute',

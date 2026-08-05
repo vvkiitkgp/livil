@@ -10,7 +10,6 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -64,11 +63,17 @@ const RATE_FORWARD  = 2.0;
 const OPEN_MORPH_DELAY = 220;
 
 // ─── "It's draggable" wiggle (onboarding discovery) ─────────────────────────────
-// A gentle shimmy of the floating circle that teaches a NEW user the center is
-// movable. Shown only to users who haven't dragged it yet, a few times, then it
-// stops forever once they drag (persisted). It's a pure visual transform — it
-// dispatches NO gesture, so it can never trigger play/pause/seek/next.
-const WIGGLE_LEARNED_KEY  = 'fmp_drag_learned';
+// A gentle shimmy of the floating circle that teaches the user the centre is
+// movable. Shown a few times per app run, and it stops as soon as they drag.
+// It's a pure visual transform — it dispatches NO gesture, so it can never
+// trigger play/pause/seek/next.
+/**
+ * Set once the user drags the circle. Module scope, NOT persisted: the hint is
+ * session-scoped, so it retires for this app run and returns on the next cold
+ * start (the module is re-evaluated). At module scope rather than in a ref so a
+ * component remount cannot re-arm it mid-session.
+ */
+let wiggleLearnedThisSession = false;
 const WIGGLE_MAX_PER_SESS = 3;     // cap so it never nags
 const WIGGLE_FIRST_MS     = 2600;  // after the player settles in
 const WIGGLE_INTERVAL_MS  = 14000; // spacing between hints if still not dragged
@@ -399,23 +404,15 @@ export default function FloatingPlayer() {
   }, [isJamOnly, narrowAnim]);
 
   // ─── "It's draggable" wiggle ──────────────────────────────────────────────────
-  const learnedRef     = useRef(false);  // user has dragged → never wiggle again
+  // SESSION-SCOPED: dragging stops the wiggle for the rest of this app run, and
+  // the next cold start offers it again. It used to be persisted forever, which
+  // meant a hint that could only ever teach once — after a reinstall-free year
+  // the gesture was undiscoverable again for anyone who had merely brushed past
+  // it. `learnedThisSession` lives at module scope so a component remount (Fast
+  // Refresh, a nav swap) can't quietly re-arm it mid-session.
   const wiggleCountRef = useRef(0);      // per-session cap
   const wiggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [wiggleEligible, setWiggleEligible] = useState(false); // only for not-yet-learned users
-
-  // Load the persisted "has dragged" flag once.
-  useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem(WIGGLE_LEARNED_KEY)
-      .then(v => {
-        if (cancelled) { return; }
-        if (v === 'true') { learnedRef.current = true; }
-        else { setWiggleEligible(true); }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  const [wiggleEligible, setWiggleEligible] = useState(!wiggleLearnedThisSession);
 
   // Pure-visual shimmy: a quick damped horizontal sway + a tiny scale breath. It
   // animates the SAME values a drag uses (circleX / scaleAnim), so an incoming
@@ -435,13 +432,12 @@ export default function FloatingPlayer() {
     ]).start();
   }, [circleX, scaleAnim]);
 
-  // First real drag → mark discovered, stop wiggling now and forever (persisted).
+  // First real drag → discovered; stop wiggling for the rest of this session.
   const markDragLearned = useCallback(() => {
-    if (learnedRef.current) { return; }
-    learnedRef.current = true;
+    if (wiggleLearnedThisSession) { return; }
+    wiggleLearnedThisSession = true;
     setWiggleEligible(false);
     if (wiggleTimerRef.current) { clearTimeout(wiggleTimerRef.current); wiggleTimerRef.current = null; }
-    AsyncStorage.setItem(WIGGLE_LEARNED_KEY, 'true').catch(() => {});
   }, []);
 
   // Schedule the hint only while the circle is the resting floating dot (not
@@ -449,13 +445,13 @@ export default function FloatingPlayer() {
   // users, capped per session and spaced out so it never nags.
   useEffect(() => {
     const eligible =
-      wiggleEligible && !learnedRef.current &&
+      wiggleEligible && !wiggleLearnedThisSession &&
       shouldShow && !isExpanded && !jamLocked && !!nowPlaying;
     if (!eligible) { return; }
     let cancelled = false;
     const schedule = (ms: number) => {
       wiggleTimerRef.current = setTimeout(() => {
-        if (cancelled || learnedRef.current || wiggleCountRef.current >= WIGGLE_MAX_PER_SESS) { return; }
+        if (cancelled || wiggleLearnedThisSession || wiggleCountRef.current >= WIGGLE_MAX_PER_SESS) { return; }
         doWiggle();
         wiggleCountRef.current += 1;
         if (wiggleCountRef.current < WIGGLE_MAX_PER_SESS) { schedule(WIGGLE_INTERVAL_MS); }
