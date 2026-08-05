@@ -15,10 +15,21 @@ import {
   ActivityIndicator,
   InteractionManager,
   AppState,
+  BackHandler,
 } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Reanimated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
+import ArtGlow from './ArtGlow';
+import { useImageAspect } from '../hooks/useImageAspect';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  runOnJS,
+  withTiming,
+  withRepeat,
+  cancelAnimation,
+  Easing as REasing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -46,6 +57,28 @@ import type { RootStackParamList } from '../navigation/types';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const FLOAT_D = 60;
+// First-render estimate for the bottom title/artist/stats block, replaced by the
+// real onLayout height. Only used to size the audio cover-art gap, so a slightly
+// wrong guess costs at most one silent re-layout on the very first frame.
+const BOTTOM_INFO_EST_H = 92;
+// Corner rounding of the lifted cover-art card.
+const ART_RADIUS = 22;
+/**
+ * Set once the user taps into clean view. Module scope, NOT persisted: the hint
+ * is session-scoped, so it retires for this app run and returns on the next cold
+ * start (the module is re-evaluated). At module scope rather than in a ref so a
+ * component remount cannot re-arm it mid-session.
+ */
+let zoomHintLearnedThisSession = false;
+/**
+ * Delay before the hint shows — just long enough to clear the open burst so the
+ * pill doesn't ride the scale-up animation.
+ */
+const ZOOM_HINT_DELAY = 500;
+// Breathing room between the cover art and the header / title block.
+const ART_GAP_TOP = 12;
+const ART_GAP_BOTTOM = 16;
+const ART_SIDE_PAD = 24;
 // PLAYER_BOTTOM and CONVERGE_Y are intentionally NOT defined at module level.
 // They depend on insets.bottom (the real Android nav bar height) which is only
 // available inside the component via useSafeAreaInsets().  See playerBottom /
@@ -256,96 +289,124 @@ const seekSt = StyleSheet.create({
 });
 
 /**
- * Left-side credits column shown on the main player view.
- * Big author avatar at top, then one row per collaborator role.
- * All avatars are tappable — calls onNavigateToUser(userId).
+ * One-line credit under the song title: a stack of faces + "X · with A & B".
+ * Tapping it opens the Info panel, which carries the full role-by-role
+ * breakdown — this line is the teaser, not the whole story.
+ *
+ * Replaces the old left-side CreditsWidget column, which drew the same people
+ * over the artwork.
  */
-function CreditsWidget({
+function CreditLine({
   nowPlaying,
-  onNavigateToUser,
+  onPress,
 }: {
   nowPlaying: NowPlayingInfo;
-  onNavigateToUser: (userId: string) => void;
+  onPress: () => void;
 }) {
-  const [groups, setGroups] = useState<{ role: string; members: TrackCollaboratorInfo[] }[]>([]);
+  const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    // Clear on track change so the previous song's collaborators can't sit
+    // under the new title for the length of the fetch.
+    setCollabs([]);
     fetchTrackCollaborators(nowPlaying.trackId)
-      .then(data => {
-        if (cancelled) { return; }
-        const map = new Map<string, TrackCollaboratorInfo[]>();
-        for (const c of data) {
-          if (!map.has(c.role)) { map.set(c.role, []); }
-          map.get(c.role)!.push(c);
-        }
-        setGroups([...map.entries()].map(([role, members]) => ({ role, members })));
-      })
+      .then(data => { if (!cancelled) { setCollabs(data); } })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [nowPlaying.trackId]);
 
-  return (
-    <View style={cwSt.col}>
-      {/* Author — bigger tappable circle */}
-      <TouchableOpacity
-        onPress={() => onNavigateToUser(nowPlaying.authorId)}
-        activeOpacity={0.75}
-        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-      >
-        <CollabAvatar
-          uri={nowPlaying.authorAvatarUrl}
-          display={resolveAuthorDisplay({ displayName: nowPlaying.artistName })}
-          size={52}
-        />
-      </TouchableOpacity>
+  const author = resolveAuthorDisplay({ displayName: nowPlaying.artistName });
 
-      {/* One row per role */}
-      {groups.map(g => (
-        <View key={g.role} style={cwSt.roleRow}>
-          <View style={cwSt.emoji}>
-            <Icon name={roleIcon(g.role)} size={16} color={COLORS.textSecondary} />
+  // One person can hold several roles (singer AND producer) and the uploader is
+  // usually credited on their own track — dedupe both, or the line reads
+  // "Vvk · with Vvk & Vvk".
+  //
+  // Dropped entirely (face AND the "& N others" count):
+  //  • DELETED accounts — `(user_id null, custom_name null)` resolves to the
+  //    "[deleted]" placeholder, which has no business in a credit line.
+  //  • Nameless rows — a live collaborator whose profile join missed; the name
+  //    is '' and a blank chip is worse than an absent one.
+  const others = useMemo(() => {
+    const seen = new Set<string>([nowPlaying.authorId]);
+    const out: TrackCollaboratorInfo[] = [];
+    for (const c of collabs) {
+      if (c.display.isDeleted || !c.display.name.trim()) { continue; }
+      const key = c.userId ?? `name:${c.display.name.trim().toLowerCase()}`;
+      if (seen.has(key)) { continue; }
+      seen.add(key);
+      out.push(c);
+    }
+    return out;
+  }, [collabs, nowPlaying.authorId]);
+
+  // 1 → "Ravi" · 2 → "Ravi & Arjun" · 3+ → "Ravi & 4 others"
+  const withNames =
+    others.length === 0 ? null
+    : others.length === 1 ? others[0]!.display.name
+    : others.length === 2 ? `${others[0]!.display.name} & ${others[1]!.display.name}`
+    : `${others[0]!.display.name} & ${others.length - 1} others`;
+
+  const faces = [
+    { key: 'author', uri: nowPlaying.authorAvatarUrl, display: author },
+    ...others.slice(0, 2).map((c, i) => ({
+      key: c.userId ?? `c${i}`,
+      uri: c.avatarUrl,
+      display: c.display,
+    })),
+  ];
+
+  return (
+    <TouchableOpacity
+      style={clSt.row}
+      onPress={onPress}
+      activeOpacity={0.75}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={
+        withNames
+          ? `${author.name}, with ${withNames}. Open info.`
+          : `${author.name}. Open info.`
+      }
+    >
+      {/* Rendered REVERSED inside a row-reverse stack. Visual order is unchanged
+          (uploader leftmost), but siblings paint in child order — so reversing
+          makes each face sit ON TOP of the one to its right, with the uploader
+          highest. Doing it this way instead of zIndex keeps the paint order a
+          property of the layout, which Android honours without elevation (which
+          would paint a grey smudge behind each circle). */}
+      <View style={clSt.stack}>
+        {faces.slice().reverse().map((f, i, arr) => (
+          <View key={f.key} style={i < arr.length - 1 ? clSt.overlap : undefined}>
+            <CollabAvatar uri={f.uri} display={f.display} size={26} />
           </View>
-          <View style={cwSt.avRow}>
-            {g.members.slice(0, 3).map((m, i) =>
-              m.userId ? (
-                <TouchableOpacity
-                  key={m.userId}
-                  style={i > 0 ? cwSt.overlap : undefined}
-                  onPress={() => onNavigateToUser(m.userId!)}
-                  activeOpacity={0.75}
-                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                >
-                  <CollabAvatar
-                    uri={m.avatarUrl}
-                    display={m.display}
-                    size={28}
-                  />
-                </TouchableOpacity>
-              ) : (
-                // Custom-name collaborators have no profile to navigate to
-                <View key={`c${i}`} style={i > 0 ? cwSt.overlap : undefined}>
-                  <CollabAvatar
-                    uri={m.avatarUrl}
-                    display={m.display}
-                    size={28}
-                  />
-                </View>
-              ),
-            )}
-          </View>
-        </View>
-      ))}
-    </View>
+        ))}
+      </View>
+      <Text style={clSt.text} numberOfLines={1}>
+        {author.name}
+        {withNames ? (
+          <>
+            <Text style={clSt.muted}> · with </Text>
+            {withNames}
+          </>
+        ) : null}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
-const cwSt = StyleSheet.create({
-  col: { width: 88, gap: 10, paddingTop: 2, alignItems: 'flex-start' },
-  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  emoji: { width: 22, alignItems: 'center' },
-  avRow: { flexDirection: 'row', alignItems: 'center' },
-  overlap: { marginLeft: -8 },
+const clSt = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  // row-reverse + a reversed children array — see the comment at the call site.
+  stack: { flexDirection: 'row-reverse', alignItems: 'center' },
+  // Applied to every face except the visually-leftmost (the uploader), so each
+  // circle tucks 10dp under its left-hand neighbour.
+  overlap: { marginLeft: -10 },
+  text: {
+    flex: 1, color: COLORS.white, fontSize: 13, fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
+  },
+  muted: { color: COLORS.textSecondary, fontWeight: '600' },
 });
 
 /** Info tab: artist + collaborators by role + engagement stats. */
@@ -911,16 +972,16 @@ export default function FullScreenPlayer() {
     return () => sub.remove();
   }, [isFullScreenOpen, nowPlaying?.mediaKind, closeFullScreenPlayer]);
 
-  const handleNavigateToUser = useCallback((userId: string) => {
-    // Minimize full-screen player — floating player stays visible, music keeps playing.
-    closeFullScreenPlayer();
-    // dispatch(StackActions.push) always creates a fresh UserProfile screen even if
-    // one already exists in the stack. navigate() would reuse the existing screen
-    // (showing stale profile data). dispatch() works on the root navigation object
-    // that useNavigation() returns from outside the Stack.Navigator tree — push()
-    // would be undefined there, but dispatch() is available everywhere.
-    navigation.dispatch(StackActions.push('UserProfile', { userId }));
-  }, [closeFullScreenPlayer, navigation]);
+  // NOTE: the player surface no longer navigates to a profile directly — the
+  // credit line under the title opens the Info panel, whose artist and
+  // collaborator rows own that navigation (they push UserProfile themselves).
+
+  // The card is drawn at the artwork's OWN proportions, so we need its intrinsic
+  // size. `null` until known — the render holds off rather than laying out a
+  // guessed rectangle that pops to the real shape a frame later.
+  const artAR = useImageAspect(
+    nowPlaying ? (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl) : null,
+  );
 
   // NOTE: lock-screen / notification / headset play-pause sync used to live here.
   // It now belongs to GlobalAudioPlayer (the single MediaSession owner) — its
@@ -938,6 +999,10 @@ export default function FullScreenPlayer() {
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  // Measured height of the bottom title/artist/stats block. Audio cover art is
+  // centered in the gap ABOVE it, so the gap can only be computed once we know
+  // how tall that block actually rendered (a 2-line title makes it taller).
+  const [bottomInfoH, setBottomInfoH] = useState(BOTTOM_INFO_EST_H);
   // Buffering spinner for the video frame. ExoPlayer/AVPlayer fire onBuffer
   // while loading and onReadyForDisplay once the first frame is decodable.
   const [fsBuffering, setFsBuffering] = useState(false);
@@ -1013,12 +1078,97 @@ export default function FullScreenPlayer() {
     }).start();
   }, [isImmersive, controlsAnim]);
 
+  // ── "Tap and pinch" hint ──────────────────────────────────────────────────
+  // Zoom is discoverable only by accident: pinch does nothing until clean view
+  // is on, and clean view is itself an undocumented tap. So every time a VIDEO
+  // opens full-screen, a pill flashes at the centre naming both. Audio has no
+  // zoom, so it never shows there.
+  //
+  // SESSION-SCOPED: entering clean view retires it for the rest of this app run
+  // and the next cold start offers it again — see zoomHintLearnedThisSession.
+  const [zoomHintOn, setZoomHintOn] = useState(false);
+  const zoomHintAnim = useRef(new Animated.Value(0)).current;
+
+  // At most ONE showing per open — the pill greets you, it doesn't loop. Reset
+  // on open/close and on a track change, so the next video gets its own.
+  const zoomHintShownThisOpenRef = useRef(false);
+  useEffect(() => {
+    zoomHintShownThisOpenRef.current = false;
+  }, [isFullScreenOpen, nowPlaying?.postId]);
+
+  // Delayed past the open burst so the pill doesn't ride the scale-up animation.
+  useEffect(() => {
+    if (zoomHintLearnedThisSession) { return; }
+    if (!isFullScreenOpen || nowPlaying?.mediaKind !== 'video') { return; }
+    if (zoomHintShownThisOpenRef.current) { return; }
+    const t = setTimeout(() => {
+      zoomHintShownThisOpenRef.current = true;
+      setZoomHintOn(true);
+    }, ZOOM_HINT_DELAY);
+    return () => clearTimeout(t);
+  }, [isFullScreenOpen, nowPlaying?.mediaKind, nowPlaying?.postId]);
+
+  // Found clean view → they know. Pull the pill down now and stay quiet for the
+  // rest of this run.
+  useEffect(() => {
+    if (!isImmersive) { return; }
+    zoomHintLearnedThisSession = true;
+    setZoomHintOn(false);
+    zoomHintAnim.setValue(0);
+  }, [isImmersive, zoomHintAnim]);
+
+  useEffect(() => {
+    if (!zoomHintOn) { return; }
+    const anim = Animated.sequence([
+      Animated.timing(zoomHintAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.delay(1000),
+      Animated.timing(zoomHintAnim, { toValue: 0, duration: 320, useNativeDriver: true }),
+    ]);
+    anim.start(({ finished }) => { if (finished) { setZoomHintOn(false); } });
+    return () => anim.stop();
+  }, [zoomHintOn, zoomHintAnim]);
+
   // Animated style for the muted video wrapper (Reanimated, UI thread).
   const videoZoomStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: panX.value },
       { translateY: panY.value },
       { scale: zoomScale.value },
+    ],
+  }));
+
+  // ── Cover-art float (audio, while playing) ────────────────────────────────
+  // A slow rise-and-settle, 0 → 1 → 0 forever. Deliberately long and shallow: at
+  // this size anything faster or bigger stops reading as "floating" and starts
+  // reading as a glitch. Runs entirely on the UI thread, so it keeps its cadence
+  // while JS is busy with a feed fetch or an artwork decode.
+  const artFloat = useSharedValue(0);
+  // Playing == the engine is actively on THIS post (activePostId is null when
+  // paused). Gated on the player being open so a backgrounded/minimized player
+  // isn't animating a view nobody can see.
+  const artFloating =
+    isFullScreenOpen &&
+    nowPlaying?.mediaKind !== 'video' &&
+    activePostId === nowPlaying?.postId;
+  useEffect(() => {
+    if (artFloating) {
+      artFloat.value = withRepeat(
+        withTiming(1, { duration: 2000, easing: REasing.inOut(REasing.quad) }),
+        -1,   // forever
+        true, // reverse — the way back down is the same curve, so no snap
+      );
+    } else {
+      // Cancel BEFORE retargeting: withRepeat keeps driving the value otherwise,
+      // and the settle would be overwritten on the next frame.
+      cancelAnimation(artFloat);
+      artFloat.value = withTiming(0, { duration: 420, easing: REasing.out(REasing.quad) });
+    }
+  }, [artFloating, artFloat]);
+
+  const artFloatStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -7 * artFloat.value },
+      { scale: 1 + 0.018 * artFloat.value },
     ],
   }));
 
@@ -1187,6 +1337,33 @@ export default function FullScreenPlayer() {
   const handleTabPress = useCallback((tab: TabId) => {
     if (activeTab === tab) { closePanel(); } else { openTab(tab); }
   }, [activeTab, openTab, closePanel]);
+
+  // ── Android back ──────────────────────────────────────────────────────────
+  // This player is an OVERLAY, not a navigation screen — nothing in the stack
+  // represents it, so an unhandled back went straight to the navigator, found it
+  // already at the root, and dropped the user out of the app. Back must peel one
+  // layer at a time instead: innermost sheet → content panel → the player.
+  //
+  // Only registered while open, so a closed player never eats a back press. The
+  // sheet/modal cases are belt-and-braces: RN's <Modal> owns a Dialog that
+  // normally consumes the key event before it reaches any BackHandler — but if
+  // one ever renders inline instead, back would otherwise close the whole player
+  // out from under it.
+  useEffect(() => {
+    if (!isFullScreenOpen) { return; }
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showPlaylistModal) { setShowPlaylistModal(false); return true; }
+      if (likersPostId !== null) { setLikersPostId(null); return true; }
+      if (commentsOpen) { setCommentsOpen(false); return true; }
+      if (activeTab !== null) { closePanel(); return true; }
+      closeFullScreenPlayer();
+      return true;
+    });
+    return () => sub.remove();
+  }, [
+    isFullScreenOpen, showPlaylistModal, likersPostId, commentsOpen,
+    activeTab, closePanel, closeFullScreenPlayer,
+  ]);
 
   // ── Media-background gesture tree (built ONCE — stable identity) ───────────
   // Race( tap , Simultaneous(pinch, pan) ):
@@ -1389,6 +1566,23 @@ export default function FullScreenPlayer() {
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 44;
   const seekRowBottom = playerBottom + FLOAT_D + 24;
+  // ── Audio cover-art card ──────────────────────────────────────────────────
+  // Audio has no picture to fill the screen with, so a full-bleed crop just
+  // hides the edges of the artwork. Instead the card takes the ARTWORK'S OWN
+  // proportions and is scaled up until it hits the band between the header and
+  // the title block, or the side padding — whichever it reaches first. Video is
+  // untouched: it keeps the full-bleed frame and its pinch/pan clean view.
+  const artTop = safeTop + HEADER_H + ART_GAP_TOP;
+  const artBottomEdge = seekRowBottom + 56 + bottomInfoH + ART_GAP_BOTTOM;
+  const artBandH = Math.max(160, SCREEN_H - artTop - artBottomEdge);
+  const artMaxW = SCREEN_W - ART_SIDE_PAD * 2;
+  // The min() picks whichever limit binds: a wide image runs out of width first,
+  // a tall one runs out of band height. Whole dp so the rounded corners and the
+  // 1px rim land on pixel boundaries.
+  const artW = Math.floor(Math.min(artMaxW, artBandH * (artAR ?? 1)));
+  const artH = Math.floor(artW / (artAR ?? 1));
+  // The no-artwork placeholder has no intrinsic shape of its own — square it.
+  const artSide = Math.min(artMaxW, artBandH);
   // Clean-view control hide: top group (header/credits) slides fully above the
   // status bar, bottom group (info/seek/actions) slides down off-screen; both
   // fade via controlsAnim (opacity). pointerEvents is flipped to 'none' on each
@@ -1555,18 +1749,89 @@ export default function FullScreenPlayer() {
           // to cover (FS minimized / backgrounded) falls back to its thumbnail so
           // the picture-to-cover transition matches the floating player instead of
           // flashing the gradient placeholder.
-          <Image
-            source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
-            style={styles.albumArt}
-            resizeMode="cover"
-          />
-        ) : (
+          //
+          // AUDIO shows the whole artwork on a card cut to its own proportions,
+          // centered between the header and the title block, lit by a purple halo
+          // and its cast shadow, drifting while the song plays. A demoted VIDEO
+          // keeps the full-bleed crop — its thumbnail is a frame of the picture,
+          // and shrinking it would make minimize/background visibly jump.
+          nowPlaying.mediaKind === 'video' ? (
+            <Image
+              source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+              style={styles.albumArt}
+              resizeMode="cover"
+            />
+          ) : artAR === null ? (
+            // Intrinsic size not resolved yet — draw nothing rather than a
+            // guessed rectangle that would visibly snap to the real shape.
+            null
+          ) : (
+            <>
+              <ArtGlow centerY={artTop + artBandH / 2} width={artW} height={artH} />
+              <View
+                style={[styles.artBox, { top: artTop, height: artBandH }]}
+                pointerEvents="none"
+              >
+                <Reanimated.View
+                  style={[styles.artCard, { width: artW, height: artH }, artFloatStyle]}
+                >
+                  <View style={styles.artClip}>
+                    <Image
+                      source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+                      style={styles.artCentered}
+                      // The frame already matches the artwork's ratio, so this
+                      // crops nothing — it just guarantees the picture reaches
+                      // the rounded edge even if the dp rounding is off by one.
+                      resizeMode="cover"
+                    />
+                  </View>
+                </Reanimated.View>
+              </View>
+            </>
+          )
+        ) : nowPlaying.mediaKind === 'video' ? (
           <View style={styles.albumArtFallback}>
             <View style={styles.fallbackBlobA} />
             <View style={styles.fallbackBlobB} />
           </View>
+        ) : (
+          // No artwork on an audio post — the gradient placeholder becomes the
+          // "artwork", drawn in the same centered box (halo included) so the
+          // layout doesn't change shape between a post that has cover art and
+          // one that doesn't.
+          <>
+            <ArtGlow centerY={artTop + artBandH / 2} width={artSide} height={artSide} />
+            <View style={[styles.artBox, { top: artTop, height: artBandH }]} pointerEvents="none">
+              <Reanimated.View
+                style={[styles.artCard, { width: artSide, height: artSide }, artFloatStyle]}
+              >
+                <View style={styles.artClip}>
+                  <View style={styles.fallbackBlobA} />
+                  <View style={styles.fallbackBlobB} />
+                </View>
+              </Reanimated.View>
+            </View>
+          </>
         )}
       </View>
+
+      {/* "Tap and pinch" — flashes at the centre on every full-screen VIDEO
+          open. pointerEvents none so it never eats the very tap it asks for. */}
+      {zoomHintOn ? (
+        <Animated.View
+          style={[styles.zoomHintWrap, { opacity: zoomHintAnim }]}
+          pointerEvents="none"
+        >
+          {/* Icons sit as siblings in the row, never nested in the <Text> —
+              they are SVGs, not inline glyphs (CLAUDE.md). The inward arrows
+              after the label say which way the pinch goes. */}
+          <View style={styles.zoomHintPill}>
+            <Icon name="handTap" size={16} color={COLORS.purpleLight} />
+            <Text style={styles.zoomHintText}>Tap and pinch</Text>
+            <Icon name="zoomOut" size={16} color={COLORS.purpleLight} />
+          </View>
+        </Animated.View>
+      ) : null}
 
       {/* Buffering spinner — shown while the active media loads / rebuffers. */}
       {showSpinner ? (
@@ -1597,7 +1862,10 @@ export default function FullScreenPlayer() {
         >
           <Icon name="collapse" size={28} color={COLORS.white} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
+        {/* No title here — it already reads large in the bottom info block, and
+            repeating it over the artwork was the only thing in the way. The
+            spacer keeps Repost/Add pinned right. */}
+        <View style={styles.headerSpacer} />
         <TouchableOpacity
           style={styles.repostBtn}
           activeOpacity={0.85}
@@ -1635,21 +1903,19 @@ export default function FullScreenPlayer() {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* ── Credits widget (outside GestureDetector) ── */}
-      <Animated.View
-        style={[styles.creditsPos, { top: safeTop + HEADER_H, opacity: controlsAnim, transform: [{ translateY: controlsTopHide }] }]}
-        pointerEvents={isImmersive ? 'none' : 'box-none'}
-      >
-        <CreditsWidget nowPlaying={nowPlaying} onNavigateToUser={handleNavigateToUser} />
-      </Animated.View>
-
-      {/* ── Track title + artist + engagement stats ── */}
+      {/* ── Track title + credit line + engagement stats ── */}
       <Animated.View
         style={[styles.bottomInfo, { bottom: seekRowBottom + 56, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
         pointerEvents={isImmersive ? 'none' : 'box-none'}
+        // Feeds the audio cover-art box its bottom boundary. Guarded so a
+        // sub-pixel re-measure of the same layout can't loop re-renders.
+        onLayout={e => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          setBottomInfoH(prev => (Math.abs(prev - h) > 1 ? h : prev));
+        }}
       >
         <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
-        <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+        <CreditLine nowPlaying={nowPlaying} onPress={() => handleTabPress('info')} />
         <CompactStats
           nowPlaying={nowPlaying}
           onCommentsPress={() => setCommentsOpen(true)}
@@ -1915,6 +2181,45 @@ const styles = StyleSheet.create({
   // Full-bleed media fills entire container
   albumArt: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   albumArtFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.card, overflow: 'hidden' },
+
+  // Audio artwork: the whole image, centered on the black container.
+  artBox: {
+    position: 'absolute', left: ART_SIDE_PAD, right: ART_SIDE_PAD,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // The lifted card. Carries the shadow and the fill, and must NOT clip — iOS
+  // clips a view's own shadow when overflow is hidden, so the rounding lives on
+  // the inner surface instead.
+  artCard: {
+    borderRadius: ART_RADIUS,
+    backgroundColor: COLORS.card,
+    // iOS: a soft, slightly-offset cast shadow. Near-black on a near-black page
+    // is subtle by nature — most of the lift comes from the halo pooling below.
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    // Android ignores shadowColor and draws its own. CLAUDE.md bans elevation on
+    // BUTTONS, where the grey smudge lands on a visible surface — here the card
+    // sits on pure #0A0A0F, so the shadow only darkens the halo directly beneath
+    // it, which is exactly the seam that sells the lift. Drop this line if it
+    // ever reads as a smudge; the rim + offset glow carry the effect alone.
+    elevation: 12,
+  },
+  // Rounds the picture. Clipping on a parent (rather than borderRadius on the
+  // Image) is the reliable path on Android, where a `contain` Image rounds its
+  // view box inconsistently. The hairline rim catches the glow and keeps the
+  // card's edge legible where artwork is dark.
+  artClip: {
+    flex: 1,
+    borderRadius: ART_RADIUS,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  // The card is cut to the artwork's own ratio, so the picture fills it edge to
+  // edge — no letterbox, and nothing of the image is cropped away.
+  artCentered: { flex: 1 },
   fallbackBlobA: {
     position: 'absolute', width: SCREEN_W * 0.8, height: SCREEN_W * 0.8,
     borderRadius: SCREEN_W * 0.4, backgroundColor: COLORS.purple, opacity: 0.4,
@@ -1930,6 +2235,17 @@ const styles = StyleSheet.create({
   mediaClip: { overflow: 'hidden' },
   bufferOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
 
+  // Centred hint pill. Matches the action-row chrome (same translucent dark +
+  // border) so it reads as part of the player, not a system toast.
+  zoomHintWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  zoomHintPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+    backgroundColor: 'rgba(10,10,15,0.9)',
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  zoomHintText: { color: COLORS.white, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+
   // Gradient scrims — dark top and bottom bands so text is readable over media
 
   // Header overlay — absolutely positioned at top
@@ -1938,11 +2254,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
   },
   closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    flex: 1, color: COLORS.white, fontSize: 13, fontWeight: '600',
-    letterSpacing: 0.3, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
+  headerSpacer: { flex: 1 },
   addBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   repostBtn: {
     flexDirection: 'row',
@@ -1962,17 +2274,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Credits column — top-left below header
-  creditsPos: { position: 'absolute', left: 20, paddingTop: 8 },
-
-  // Bottom overlay — track title + artist + stats
+  // Bottom overlay — track title + credit line + stats
   bottomInfo: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24 },
   trackTitle: {
     color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5,
-    textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
-  artistName: {
-    color: COLORS.white, fontSize: 15, fontWeight: '500', marginTop: 3,
     textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
 

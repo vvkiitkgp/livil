@@ -36,6 +36,10 @@ export type MediaPlayerProps = {
    *  so the bar updates smoothly without ping-ponging React. */
   onProgress?: (positionSeconds: number) => void;
   onLoaded?: (durationSeconds: number) => void;
+  /** The media's intrinsic width/height, once the player reports it. Surfaced so
+   *  a parent can reason about how the frame will be cropped elsewhere (the
+   *  repost screen previews the story crop with it). */
+  onNaturalAspect?: (aspect: number) => void;
   onEnded?: () => void;
   /** Fired when the native surface has painted a frame (onReadyForDisplay). The
    *  story viewer uses this to hide its clip-start poster deterministically. */
@@ -98,6 +102,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     onTogglePaused,
     onProgress,
     onLoaded,
+    onNaturalAspect,
     onEnded,
     onReadyForDisplay,
     seekTo,
@@ -208,9 +213,10 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       const ns = (data as any).naturalSize;
       if (ns && ns.width > 0 && ns.height > 0) {
         setNaturalAspect(ns.width / ns.height);
+        onNaturalAspect?.(ns.width / ns.height);
       }
     },
-    [onLoaded],
+    [onLoaded, onNaturalAspect],
   );
 
   const handleProgress = useCallback(

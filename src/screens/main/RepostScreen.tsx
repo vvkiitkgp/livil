@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -25,6 +26,8 @@ import { createRepost } from '../../services/posts';
 import { createStory } from '../../services/stories';
 import type { FeedPost } from '../../services/posts';
 import type { RootStackParamList } from '../../navigation/types';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 type RepostRoute = RouteProp<RootStackParamList, 'Repost'>;
 type RepostNav = NativeStackNavigationProp<RootStackParamList, 'Repost'>;
@@ -47,6 +50,80 @@ function formatTime(seconds: number): string {
 
 const MAX_STORY_CLIP = 10;
 
+/** A story fills the screen, so that is the shape a video gets cropped to. */
+const STORY_AR = SCREEN_W / SCREEN_H;
+/** Below this, the crop is a sliver — flagging it would be noise, not warning. */
+const CROP_NOTICE_THRESHOLD = 0.02;
+
+/**
+ * Viewfinder over the repost preview showing what a STORY will actually keep.
+ *
+ * A story plays video full-screen (`cover`), so anything that doesn't match the
+ * screen's shape gets trimmed — usually the sides of a landscape clip. The
+ * preview here shows the WHOLE frame, so without this the trim is invisible
+ * until the story is already live.
+ *
+ * Rather than say it in words, it dims what will be cut and brackets what will
+ * survive — the same language a camera's crop UI uses. Percentage-based, so it
+ * needs no measurement: the preview box is already the video's own aspect, and
+ * the kept fraction is the ratio between the two aspects.
+ *
+ * AUDIO never gets here — a story shows its cover as a centered card, whole.
+ */
+function StoryCropFrame({ aspect }: { aspect: number }) {
+  // Wider than the screen → the sides go. Taller → the top and bottom go.
+  const cropsWidth = aspect > STORY_AR;
+  const keep = cropsWidth ? STORY_AR / aspect : aspect / STORY_AR;
+  if (1 - keep < CROP_NOTICE_THRESHOLD) { return null; }
+  const band = `${((1 - keep) / 2) * 100}%` as const;
+  const kept = `${keep * 100}%` as const;
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {cropsWidth ? (
+        <>
+          <View style={[cropSt.cut, cropSt.cutLeft, { width: band }]} />
+          <View style={[cropSt.cut, cropSt.cutRight, { width: band }]} />
+          <View style={[cropSt.keep, cropSt.keepFullHeight, { left: band, width: kept }]}>
+            <View style={[cropSt.corner, cropSt.cornerTL]} />
+            <View style={[cropSt.corner, cropSt.cornerTR]} />
+            <View style={[cropSt.corner, cropSt.cornerBL]} />
+            <View style={[cropSt.corner, cropSt.cornerBR]} />
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={[cropSt.cut, cropSt.cutTop, { height: band }]} />
+          <View style={[cropSt.cut, cropSt.cutBottom, { height: band }]} />
+          <View style={[cropSt.keep, cropSt.keepFullWidth, { top: band, height: kept }]}>
+            <View style={[cropSt.corner, cropSt.cornerTL]} />
+            <View style={[cropSt.corner, cropSt.cornerTR]} />
+            <View style={[cropSt.corner, cropSt.cornerBL]} />
+            <View style={[cropSt.corner, cropSt.cornerBR]} />
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const CORNER = 20;
+const CORNER_W = 3;
+const cropSt = StyleSheet.create({
+  cut: { position: 'absolute', backgroundColor: 'rgba(6,6,10,0.72)' },
+  cutLeft: { top: 0, bottom: 0, left: 0 },
+  cutRight: { top: 0, bottom: 0, right: 0 },
+  cutTop: { left: 0, right: 0, top: 0 },
+  cutBottom: { left: 0, right: 0, bottom: 0 },
+  keep: { position: 'absolute', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  keepFullHeight: { top: 0, bottom: 0 },
+  keepFullWidth: { left: 0, right: 0 },
+  corner: { position: 'absolute', width: CORNER, height: CORNER, borderColor: COLORS.purpleNeon },
+  cornerTL: { top: -1, left: -1, borderTopWidth: CORNER_W, borderLeftWidth: CORNER_W },
+  cornerTR: { top: -1, right: -1, borderTopWidth: CORNER_W, borderRightWidth: CORNER_W },
+  cornerBL: { bottom: -1, left: -1, borderBottomWidth: CORNER_W, borderLeftWidth: CORNER_W },
+  cornerBR: { bottom: -1, right: -1, borderBottomWidth: CORNER_W, borderRightWidth: CORNER_W },
+});
+
 export default function RepostScreen() {
   const route = useRoute<RepostRoute>();
   const navigation = useNavigation<RepostNav>();
@@ -56,6 +133,9 @@ export default function RepostScreen() {
   const playerRef = useRef<MediaPlayerHandle>(null);
 
   const [mode, setMode] = useState<PostMode>('post');
+  // Intrinsic shape of the video, reported by the preview player on load. Drives
+  // the story crop viewfinder; null until known (and always null for audio).
+  const [videoAspect, setVideoAspect] = useState<number | null>(null);
   const [originalPost, setOriginalPost] = useState<FeedPost | null>(null);
   const [playsTotal, setPlaysTotal] = useState(0);
   const [loadError, setLoadError] = useState('');
@@ -368,10 +448,16 @@ export default function RepostScreen() {
                       onTogglePaused={() => setPaused(p => !p)}
                       onProgress={handleProgress}
                       onLoaded={handleLoaded}
+                      onNaturalAspect={setVideoAspect}
                       seekTo={seekTo}
                       visible
                       pauseWhenOffScreen={false}
                     />
+                    {/* What a story would actually keep. Video only — a story
+                        shows audio cover art whole, on a card, never cropped. */}
+                    {mode === 'story' && media.kind === 'video' && videoAspect ? (
+                      <StoryCropFrame aspect={videoAspect} />
+                    ) : null}
                     {/* Cumulative plays badge */}
                     {playsTotal > 0 ? (
                       <View style={styles.playsBadge} pointerEvents="none">
