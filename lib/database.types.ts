@@ -1377,6 +1377,7 @@ export type Database = {
           email_attempts: number
           email_error: string | null
           email_sent_at: string | null
+          email_source: string | null
           id: string
         }
         Insert: {
@@ -1385,6 +1386,7 @@ export type Database = {
           email_attempts?: number
           email_error?: string | null
           email_sent_at?: string | null
+          email_source?: string | null
           id?: string
         }
         Update: {
@@ -1393,6 +1395,7 @@ export type Database = {
           email_attempts?: number
           email_error?: string | null
           email_sent_at?: string | null
+          email_source?: string | null
           id?: string
         }
         Relationships: []
@@ -1631,6 +1634,11 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      waitlist_mark_emailed: {
+        Args: { p_error?: string; p_id: string }
+        Returns: undefined
+      }
+      waitlist_request: { Args: { p_email: string }; Returns: string }
     }
     Enums: {
       playlist_visibility: "public" | "friends" | "private"

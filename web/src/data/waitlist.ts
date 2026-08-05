@@ -21,6 +21,16 @@ export type WaitlistEntry = {
   /** Last failure text, cleared on a later success. */
   emailError: string | null;
   emailAttempts: number;
+  /**
+   * Who triggered the send. 'auto' = fired by `waitlist-join` at signup; 'ops' = sent
+   * by hand from this dashboard; null = never sent.
+   *
+   * Worth surfacing rather than collapsing into a single "sent" badge: once invites go
+   * out automatically, a silently-broken automation is indistinguishable from a working
+   * one for as long as someone keeps clicking Send. This column is what makes that
+   * failure visible.
+   */
+  emailSource: 'auto' | 'ops' | null;
 };
 
 /**
@@ -33,7 +43,7 @@ export type WaitlistEntry = {
 export async function fetchWaitlist(): Promise<WaitlistEntry[]> {
   const { data, error } = await supabase
     .from('waitlist')
-    .select('id, email, created_at, email_sent_at, email_error, email_attempts')
+    .select('id, email, created_at, email_sent_at, email_error, email_attempts, email_source')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -45,6 +55,7 @@ export async function fetchWaitlist(): Promise<WaitlistEntry[]> {
     emailSentAt: row.email_sent_at,
     emailError: row.email_error,
     emailAttempts: row.email_attempts,
+    emailSource: row.email_source as 'auto' | 'ops' | null,
   }));
 }
 
@@ -66,6 +77,10 @@ export async function recordSendResult(
     ? {
         email_sent_at: new Date().toISOString(),
         email_error: null,
+        // Stamped 'ops' here and only here. `waitlist_mark_emailed` hardcodes 'auto' and
+        // will not accept a caller-supplied value, so the two paths cannot impersonate
+        // each other — which is the whole point of recording it.
+        email_source: 'ops' as const,
         email_attempts: entry.emailAttempts + 1,
       }
     : {
@@ -77,7 +92,7 @@ export async function recordSendResult(
     .from('waitlist')
     .update(patch)
     .eq('id', entry.id)
-    .select('id, email, created_at, email_sent_at, email_error, email_attempts')
+    .select('id, email, created_at, email_sent_at, email_error, email_attempts, email_source')
     .single();
 
   if (error) throw error;
@@ -89,5 +104,6 @@ export async function recordSendResult(
     emailSentAt: data.email_sent_at,
     emailError: data.email_error,
     emailAttempts: data.email_attempts,
+    emailSource: data.email_source as 'auto' | 'ops' | null,
   };
 }

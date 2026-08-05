@@ -44,6 +44,7 @@ export function Ops() {
     return {
       total: list.length,
       sent: list.filter(e => e.emailSentAt).length,
+      auto: list.filter(e => e.emailSource === 'auto').length,
       failed: list.filter(e => !e.emailSentAt && e.emailError).length,
     };
   }, [entries]);
@@ -83,6 +84,7 @@ export function Ops() {
             {stats.total} total
           </span>
           <span className="chip">{stats.sent} emailed</span>
+          {stats.auto > 0 && <span className="chip">{stats.auto} auto</span>}
           {stats.failed > 0 && <span className="chip">{stats.failed} failed</span>}
         </div>
       </header>
@@ -127,8 +129,18 @@ export function Ops() {
                   <td>{formatDate(e.createdAt)}</td>
                   <td>
                     {e.emailSentAt ? (
-                      <span className="badge" data-kind="audio">
-                        sent {formatDate(e.emailSentAt)}
+                      <span
+                        className="badge"
+                        data-kind="audio"
+                        title={
+                          e.emailSource === 'auto'
+                            ? 'Sent automatically when they signed up'
+                            : e.emailSource === 'ops'
+                              ? 'Sent by hand from this dashboard'
+                              : 'Sent before send-source was recorded'
+                        }
+                      >
+                        {e.emailSource === 'auto' ? 'auto' : 'sent'} {formatDate(e.emailSentAt)}
                       </span>
                     ) : e.emailError ? (
                       <span className="badge" data-kind="video" title={e.emailError}>

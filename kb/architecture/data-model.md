@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 67 migration(s) in `supabase/migrations/`.
+Reconstructed from 68 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -801,6 +801,7 @@ RLS enabled · defined in `20260718000000_waitlist_table.sql`
 | `email_sent_at` | `timestamptz` | `20260805000000_waitlist_ops_dashboard.sql` |
 | `email_error` | `text` | `20260805000000_waitlist_ops_dashboard.sql` |
 | `email_attempts` | `integer NOT NULL DEFAULT 0` | `20260805000000_waitlist_ops_dashboard.sql` |
+| `email_source` | `text CONSTRAINT waitlist_email_source_check CHECK (email_source IN ('auto'` | `20260806000000_waitlist_self_serve_invite.sql` |
 
 **Indexes**
 
