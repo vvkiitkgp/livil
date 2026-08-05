@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Vibration, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { Icon } from './Icon';
 
 // Per-row bidirectional swipe-to-reply, modelled on Instagram / iMessage.
@@ -35,16 +36,11 @@ const ICON_GUTTER = 48;
 const PAN_ACTIVATION_X = 12;
 const PAN_FAIL_Y = 10;
 const SPRING_CFG = { damping: 22, stiffness: 240, mass: 0.6 };
-// 10ms was too short to feel on modern Android — devices like OnePlus on
-// OxygenOS clamp very short vibrations down to nothing. 35ms reads as a
-// crisp single tap without feeling like a buzz. iOS treats this as a
-// short system vibration (no Taptic Engine without a native module).
-const HAPTIC_MS = 35;
-
 function tick() {
-  // JS-side helper so the worklet can runOnJS it. Requires the VIBRATE
-  // permission in AndroidManifest.xml — without it the API silently no-ops.
-  Vibration.vibrate(HAPTIC_MS);
+  // JS-side helper so the worklet can runOnJS it. `impact` is the shared
+  // "engaged under the finger" intent — see utils/haptics for why the duration
+  // lives there and not here.
+  haptics.impact();
 }
 
 export default function SwipeReplyRow({

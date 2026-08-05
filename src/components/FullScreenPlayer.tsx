@@ -21,6 +21,7 @@ import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'reac
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import ArtGlow from './ArtGlow';
 import { useImageAspect } from '../hooks/useImageAspect';
+import { haptics } from '../utils/haptics';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -462,6 +463,7 @@ function InfoContent({
     const prev = liked;
     const prevCount = likesCount;
     const next = !prev;
+    if (next) { haptics.toggleOn(); }
     setLiked(next);
     setLikesCount(prevCount + (next ? 1 : -1));
     try {
@@ -735,6 +737,7 @@ function AddToPlaylistModal({
 
   const handleToggleLiked = useCallback(async () => {
     const next = !liked;
+    if (next) { haptics.toggleOn(); }
     setLiked(next);
     try {
       const serverLiked = await toggleLike(nowPlaying.postId);
@@ -1335,6 +1338,10 @@ export default function FullScreenPlayer() {
   }, [panelAnim]);
 
   const handleTabPress = useCallback((tab: TabId) => {
+    // Covers the Lyrics/Queue/Info row AND the credit line under the title,
+    // which routes through here to open Info. `select` because the panel is a
+    // view change, not a committed action.
+    haptics.select();
     if (activeTab === tab) { closePanel(); } else { openTab(tab); }
   }, [activeTab, openTab, closePanel]);
 
@@ -2077,6 +2084,7 @@ function CompactStats({
     const prev = liked;
     const prevCount = count;
     const next = !prev;
+    if (next) { haptics.toggleOn(); }
     setLiked(next);
     setCount(prevCount + (next ? 1 : -1));
     try {

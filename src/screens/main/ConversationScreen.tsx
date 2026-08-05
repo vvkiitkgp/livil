@@ -15,7 +15,6 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollViewProps,
-  Vibration,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -53,6 +52,7 @@ import { createJamRoom, bulkAddToQueue, isJamRoomEnded } from '../../services/ja
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
+import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import { Button } from '../../components/Button';
@@ -748,10 +748,9 @@ export default function ConversationScreen() {
   }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast]);
 
   const handleLongPress = useCallback((msg: ChatMessage) => {
-    // Firm tap when the picker opens — same duration as the swipe-to-reply
-    // tick so the activation feel is consistent across gestures. Requires
-    // the VIBRATE permission in AndroidManifest.xml.
-    Vibration.vibrate(35);
+    // Firm tick when the picker opens — the same intent swipe-to-reply uses at
+    // its threshold, so activation feels consistent across gestures.
+    haptics.impact();
     setReactionTarget(msg);
   }, []);
 
@@ -796,9 +795,9 @@ export default function ConversationScreen() {
 
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
-    // Lighter confirmation tick for the selection itself — distinct from
-    // the firmer "picker opened" haptic so the two events feel different.
-    Vibration.vibrate(20);
+    // Lighter tick for the selection itself, so choosing an emoji doesn't feel
+    // like opening the picker again.
+    haptics.select();
     const msg = reactionTarget;
     setReactionTarget(null);
     await handleReactionToggle(msg, emoji);

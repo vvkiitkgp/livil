@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
 
@@ -75,6 +76,15 @@ export type ButtonProps = {
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
   accessibilityLabel?: string;
+  /**
+   * Haptic fired on press. Defaults to `tap` for real controls and `none` for
+   * `ghost`, which is a text link ("Cancel") rather than a button — buzzing it
+   * makes dismissing feel as weighty as confirming.
+   *
+   * Pass `warning` on a destructive confirm, or `none` where a screen fires its
+   * own haptic on the resulting state change and would otherwise double-buzz.
+   */
+  haptic?: 'tap' | 'select' | 'impact' | 'warning' | 'none';
 };
 
 const SIZES: Record<ButtonSize, { padV: number; padH: number; radius: number; font: number; icon: number; gap: number }> = {
@@ -142,6 +152,7 @@ export function Button({
   style,
   labelStyle,
   accessibilityLabel,
+  haptic,
 }: ButtonProps) {
   const s = SIZES[size];
   const inactive = disabled || busy;
@@ -156,9 +167,18 @@ export function Button({
   const labelColor = disabled ? COLORS.textMuted : paint.label;
   const showGradient = paint.gradient && !disabled;
 
+  // Every button in the app gets its press acknowledged from here, so no screen
+  // has to remember to. `disabled`/`busy` presses never reach onPress, so they
+  // can't buzz either.
+  const hapticIntent = haptic ?? (variant === 'ghost' ? 'none' : 'tap');
+  const handlePress = () => {
+    if (hapticIntent !== 'none') { haptics[hapticIntent](); }
+    onPress();
+  };
+
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={handlePress}
       disabled={inactive}
       activeOpacity={0.85}
       accessibilityRole="button"

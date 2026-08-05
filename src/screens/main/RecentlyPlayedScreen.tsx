@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
 import { Icon } from '../../components/Icon';
 
@@ -79,6 +80,9 @@ export default function RecentlyPlayedScreen() {
   useEffect(() => { void load(); }, [load]);
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     setRefreshing(true);
     await load();
     setRefreshing(false);

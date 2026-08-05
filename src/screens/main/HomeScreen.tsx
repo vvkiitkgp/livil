@@ -20,6 +20,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
@@ -627,6 +628,9 @@ export default function HomeScreen() {
   }, [appendFeedPage, setStories]);
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     playback.pauseAll();
     // The fixed top bar sits above the list at the same spot the pull-to-refresh
     // spinner draws in — slide it out of the way for the duration of the refresh

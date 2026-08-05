@@ -14,6 +14,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
@@ -329,6 +330,9 @@ export default function RepostScreen() {
       } else {
         await createStory(originalPostId, text, clipStart, clipEnd);
       }
+      // Fires with the success modal, not with the network call finishing —
+      // the buzz and the confirmation land together.
+      haptics.success();
       setShowSuccess(true);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong.');

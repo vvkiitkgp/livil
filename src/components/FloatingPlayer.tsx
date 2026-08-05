@@ -24,6 +24,7 @@ import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { getOrAnalyzeWaveform } from '../services/tracks';
 import type { WaveformData } from '../services/waveform';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
 import WaveVisualizer from './WaveVisualizer';
@@ -551,6 +552,10 @@ export default function FloatingPlayer() {
     .onEnd((_e, ok) => {
       if (!ok || jamLocked) { return; }
       const hasHandlers = !!handlersRef.current;
+      // Acknowledge the tap here, not at the top of the handler: a tap while
+      // jam-locked or mid-recognition does nothing, and buzzing for it would
+      // promise an action that never happens.
+      haptics.tap();
       console.log(`[LIVIL][FP] tap: activePostId=${activePostId} hasHandlers=${hasHandlers} nowPlaying=${!!nowPlaying}`);
       if (!nowPlaying) {
         // No track loaded — auto-play user's posts
@@ -618,6 +623,9 @@ export default function FloatingPlayer() {
         // Quick horizontal SNAP → prev/next. A slow drag-and-hold (low velocity)
         // was a fast-forward/rewind scrub (done live in onUpdate) → no track change.
         if (avx > SNAP_VELOCITY) {
+          // Only on a committed snap — the slow drag-scrub above is a different
+          // gesture and buzzing it would fire mid-rewind.
+          haptics.select();
           if (e.velocityX > 0) { console.log('[LIVIL][FP] snap → playNext'); playNext(); }
           else { console.log('[LIVIL][FP] snap ← playPrev'); playPrev(); }
         }
@@ -678,7 +686,10 @@ export default function FloatingPlayer() {
           <View style={styles.pillLeft}>
             {/* Shuffle — fullscreen only (state 1 & 2) */}
             {isFullScreenOpen && (
-              <TouchableOpacity onPress={toggleShuffle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => { haptics.select(); toggleShuffle(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <ShuffleGlyph active={shuffleEnabled} />
               </TouchableOpacity>
             )}
@@ -716,7 +727,10 @@ export default function FloatingPlayer() {
             )}
             {/* Repeat — fullscreen only (state 1 & 2) */}
             {isFullScreenOpen && (
-              <TouchableOpacity onPress={cycleRepeatMode} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => { haptics.select(); cycleRepeatMode(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <RepeatGlyph mode={repeatMode} />
               </TouchableOpacity>
             )}

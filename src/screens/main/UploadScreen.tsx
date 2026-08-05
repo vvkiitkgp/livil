@@ -19,6 +19,7 @@ import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../comp
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import type { RootStackParamList } from '../../navigation/types';
 import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
@@ -305,6 +306,9 @@ export default function UploadScreen() {
       if (selectedAlbum && result?.trackId) {
         addTrackToAlbum(selectedAlbum.id, result.trackId).catch(() => {});
       }
+      // Fires with the success modal, not with the upload finishing — the
+      // buzz and the confirmation land together.
+      haptics.success();
       setShowSuccess(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
