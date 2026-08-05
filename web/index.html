@@ -10,6 +10,27 @@
       content="Upload and publish your music to Livil from your desktop."
     />
     <!--
+      ICONS MUST BE DECLARED HERE, and the paths must be ROOT-ABSOLUTE.
+
+      Without a <link rel="icon">, the browser falls back to guessing `favicon.ico`
+      relative to the page — `/studio/favicon.ico`. The SPA rewrite in vercel.json maps
+      `/studio/:path*` to `/studio/index.html`, so that request returns this HTML page
+      with a 200 and `content-type: text/html`. The browser cannot decode it as an image
+      and shows a blank tab icon. A 404 would have been more honest and equally useless.
+
+      Leading slash, not relative: these files live at the apex, copied from `docs/` by
+      web/scripts/copy-marketing.mjs, NOT under /studio/. A relative path would be
+      swallowed by the same rewrite.
+
+      Same files the marketing page uses, so the tab icon is identical whether someone is
+      on livil-music.com or livil-music.com/studio.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon-96.png" sizes="96x96" />
+    <link rel="icon" type="image/png" href="/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!--
       Anton (display) and Courier Prime (everything else) are the two families the
       Backstage Pass design established, and they are already bundled in the mobile app
       (src/theme/fonts.ts). Loading the same two here is what keeps the web dashboard
