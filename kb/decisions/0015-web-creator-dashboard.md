@@ -2,7 +2,7 @@
 tier: 4
 owner: chief-architect
 consumers: [ALL]
-last_verified: 2026-08-04
+last_verified: 2026-08-05
 verify_every: 9999d
 verified_by: manual
 visibility: public
@@ -176,6 +176,47 @@ first.
 - iOS ships ([ADR-0005](0005-ios-platform-status.md)) — a second store link and a second
   set of redirect URLs.
 - The apex cutover proves harder than expected — fall back to `studio.livil-music.com`.
+
+---
+
+## Outcome — 2026-08-05
+
+Appended, not edited: the decisions above stand as recorded. This is what happened when they
+met production.
+
+**Shipped as decided.** The dashboard is live at `livil-music.com/studio`, deployed from a
+single Vercel project with root directory `web/`; the marketing page is served at the apex from
+the same build via `web/scripts/copy-marketing.mjs`. DNS moved off GitHub Pages the same day
+(apex `A` → Vercel). The apex cutover in decision 6 did **not** prove difficult, so the
+`studio.livil-music.com` fallback was never needed.
+
+**Decision 3 was reversed before deployment, not after.** Sign-in-only lasted days. The
+"Revisit when" entry expected the waitlist to retire once the Play listing left closed testing;
+what actually retired it was shipping web signup, which made the apex's "join early" form a
+description of a product that no longer existed. The dissent recorded against decision 3 was
+right, and for the reason given: an account you cannot create is not a smaller product, it is a
+closed door.
+
+**Three things the analysis did not anticipate.**
+
+1. **`shared/` bare imports do not resolve under a subdirectory root.** Vercel installs only
+   `web/`'s dependencies, so the repo-root `node_modules` that makes local builds work does not
+   exist there. `resolve.dedupe` — added for duplicate-instance correctness — turned out to be
+   what makes `shared/` importable at all. Every bare specifier used under `shared/` must be
+   listed. Cost: one failed deploy.
+2. **Every outbound auth URL had to carry the base.** `redirectTo`, `emailRedirectTo` and the
+   OAuth redirect were all built from `window.location.origin` alone and predated
+   `base: '/studio/'`. The reset link bites hardest: Supabase consumes the single-use token
+   *before* redirecting, so a link outside the base burns itself on the first click and reports
+   `otp_expired` on the second — which reads as a mail problem and is not.
+3. **The apex was occupied by more than a web page.** Decision 4 framed GitHub Pages as serving
+   a static site. It was also serving three URLs registered in the **Play Console** — privacy
+   policy, child safety and account deletion — via the custom-domain redirect. Retiring Pages
+   was therefore gated on a Play review cycle, not on DNS. Pages was deliberately left running
+   through the cutover so both URL sets stayed live; there was no outage window.
+
+**Still open at time of writing:** GitHub Pages remains published until the Play policy-URL
+changes clear review, and `www.livil-music.com` still points at `vvkiitkgp.github.io`.
 
 ---
 

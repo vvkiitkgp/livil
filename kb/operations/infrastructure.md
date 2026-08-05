@@ -47,9 +47,10 @@ Also **not** present, despite appearing in older documentation as plans:
    │  Realtime · Edge  │
    └───────────────────┘
              ▲
-             │ (marketing site is independent)
+             │ the dashboard talks to Supabase directly, same as the app
    ┌───────────────────┐
-   │  GitHub Pages     │  livil-music.com — static, from docs/
+   │  Vercel           │  livil-music.com        — marketing, static, from docs/
+   │                   │  livil-music.com/studio — creator dashboard, from web/
    └───────────────────┘
 ```
 
@@ -86,9 +87,14 @@ certificate in the cloud console.
 | `vvkiitkgp/livil` | **public** | The application |
 | `vvkiitkgp/livil-kb-private` | private | Sensitive knowledge base content |
 
-**GitHub Pages serves `livil-music.com` from `main/docs`.** That directory is a published
-website — engineering documentation must never go there. It is why the knowledge base lives at
-`kb/`.
+**`docs/` is a published website.** Engineering documentation must never go there — it is why
+the knowledge base lives at `kb/`. Since 2026-08-05 it is published by **Vercel** rather than
+GitHub Pages ([deployment.md](deployment.md)); the directory's status as public did not change,
+only who serves it.
+
+**GitHub Pages is still enabled**, serving the redirect that keeps three Play-registered policy
+URLs alive until the listing points at `livil-music.com`. It is a retirement in progress, not a
+second hosting strategy.
 
 **There is no CI.** No Actions, no automation of any kind. Nothing runs tests, lint, or type
 checking on any commit.
