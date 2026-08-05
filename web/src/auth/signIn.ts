@@ -203,9 +203,27 @@ export async function signInWithGoogle(): Promise<SignInResult> {
  * outcome to the visitor, and distinguishing them would leak membership.
  */
 export async function joinWaitlist(email: string): Promise<SignInResult> {
-  const { error } = await supabase.from('waitlist').insert({ email: email.trim() });
+  // Routed through the `waitlist-join` edge function rather than inserting directly,
+  // because signing up now SENDS the invite in the same breath — and the Resend key
+  // that requires can never be in a browser bundle.
+  //
+  // The function still reports success for an address already on the list, without
+  // saying so. That was true of the direct insert too (a 23505 was reported as ok) and
+  // it is deliberate: "you're on the list" and "you were already on the list" are the
+  // same outcome to the visitor, and telling them apart would leak membership to
+  // anyone probing addresses.
+  const { data, error } = await supabase.functions.invoke('waitlist-join', {
+    body: { email: email.trim() },
+  });
 
-  if (!error) return { ok: true };
-  if (error.code === '23505') return { ok: true };
-  return { ok: false, message: 'Could not add you just now. Try again in a moment.' };
+  if (error) return { ok: false, message: 'Could not add you just now. Try again in a moment.' };
+
+  // The function returns 200 with `{ ok: true }` even when the mail provider failed —
+  // the visitor genuinely joined, and a delivery problem is ours to fix from /ops, not
+  // theirs to retry. Only a transport-level failure reaches the branch above.
+  if (data && typeof data === 'object' && 'error' in data) {
+    return { ok: false, message: 'Could not add you just now. Try again in a moment.' };
+  }
+
+  return { ok: true };
 }

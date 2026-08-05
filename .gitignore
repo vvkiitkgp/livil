@@ -102,3 +102,6 @@ kb/private/
 # organization is reviewable and versioned. Personal/local overrides are not.
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Supabase CLI local state (project link, not config)
+supabase/.temp/

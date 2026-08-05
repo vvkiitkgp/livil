@@ -670,6 +670,24 @@ export type Database = {
         }
         Relationships: []
       }
+      ops_users: {
+        Row: {
+          created_at: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       playlist_posts: {
         Row: {
           added_at: string
@@ -1356,16 +1374,28 @@ export type Database = {
         Row: {
           created_at: string
           email: string
+          email_attempts: number
+          email_error: string | null
+          email_sent_at: string | null
+          email_source: string | null
           id: string
         }
         Insert: {
           created_at?: string
           email: string
+          email_attempts?: number
+          email_error?: string | null
+          email_sent_at?: string | null
+          email_source?: string | null
           id?: string
         }
         Update: {
           created_at?: string
           email?: string
+          email_attempts?: number
+          email_error?: string | null
+          email_sent_at?: string | null
+          email_source?: string | null
           id?: string
         }
         Relationships: []
@@ -1525,6 +1555,7 @@ export type Database = {
         Returns: string
       }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
+      is_ops: { Args: never; Returns: boolean }
       is_username_available: { Args: { p_username: string }; Returns: boolean }
       list_active_stories: {
         Args: never
@@ -1603,6 +1634,11 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      waitlist_mark_emailed: {
+        Args: { p_error?: string; p_id: string }
+        Returns: undefined
+      }
+      waitlist_request: { Args: { p_email: string }; Returns: string }
     }
     Enums: {
       playlist_visibility: "public" | "friends" | "private"
