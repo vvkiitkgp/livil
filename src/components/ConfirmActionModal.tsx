@@ -87,6 +87,10 @@ export default function ConfirmActionModal({
             size="md"
             busy={busy}
             fullWidth
+            // Committing something irreversible should not feel like any other
+            // tap. Cancel stays silent — it is a ghost button, and backing out
+            // safely needs no acknowledgement.
+            haptic={tone === 'destructive' ? 'warning' : 'tap'}
           />
 
           {cancelLabel === null ? null : (

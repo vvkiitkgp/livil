@@ -12,6 +12,7 @@ import SearchScreen from '../screens/main/SearchScreen';
 import LibraryScreen from '../screens/main/LibraryScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { AppTabParamList } from './types';
 import { Icon } from '../components/Icon';
 
@@ -63,6 +64,10 @@ export default function AppNavigator() {
     <Tab.Navigator
       initialRouteName="Home"
       tabBar={props => <AnimatedTabBar {...props} />}
+      // Light tick on every tab press. A listener rather than a custom
+      // tabBarButton so the navigator keeps owning the press — it still decides
+      // navigate vs re-select-and-scroll-to-top; this only observes.
+      screenListeners={{ tabPress: () => haptics.select() }}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,

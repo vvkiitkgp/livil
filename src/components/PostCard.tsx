@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import ClipRangeSlider from './ClipRangeSlider';
@@ -303,6 +304,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   //     wouldn't restart GAP since postId is unchanged).
   //   - otherwise → setNowPlaying + requestPlay; GAP picks it up.
   const handleVideoTogglePlay = useCallback(() => {
+    haptics.tap();
     if (isThisActive) {
       playback.handlersRef.current?.pause();
       return;
@@ -324,6 +326,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   // resume) playback and open FullScreenPlayer, which mounts the muted video
   // frame for this track (rule 2: opening FS shows the picture).
   const handleVideoOpenFs = useCallback(() => {
+    haptics.tap();
     if (isThisActive) {
       // Already playing this track — just maximize.
       playback.openFullScreenPlayer();
@@ -353,6 +356,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   //   - otherwise → setNowPlaying (with audioUrl) + requestPlay; GlobalAudioPlayer
   //     picks it up and becomes the source.
   const handleAudioTogglePlay = useCallback(() => {
+    haptics.tap();
     if (isThisActive) {
       playback.handlersRef.current?.pause();
       return;
@@ -375,6 +379,9 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     const prevLiked = liked;
     const prevCount = likesCount;
     const nextLiked = !prevLiked;
+    // Only on the way ON — unliking is not an achievement, and buzzing both
+    // directions turns an accidental double-tap into a rattle.
+    if (nextLiked) { haptics.toggleOn(); }
     setLiked(nextLiked);
     setLikesCount(prevCount + (nextLiked ? 1 : -1));
     try {

@@ -5,6 +5,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import { fetchAlbumDetail, type AlbumDetail } from '../../services/albums';
 import { usePlayback, type NowPlayingInfo } from '../../contexts/PlaybackContext';
@@ -56,6 +57,9 @@ export default function AlbumDetailScreen({ route }: Props) {
   );
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     setRefreshing(true);
     await load();
     setRefreshing(false);
