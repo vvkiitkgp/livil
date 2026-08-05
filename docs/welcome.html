@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <!-- Not indexed: this page is only meaningful to someone holding an invite, and a
+         stray search result would send strangers into a closed testing track. -->
+    <meta name="robots" content="noindex,nofollow" />
+    <title>You're in · Livil</title>
+    <meta name="description" content="Getting started with your Livil early access." />
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: #14141c;
+        --surface-2: #1b1b26;
+        --border: #232330;
+        --text: #f5f5fa;
+        --text-secondary: #b8b8c8;
+        --text-muted: #7a7a8c;
+        --purple: #7c3aed;
+        --purple-light: #a78bfa;
+        --purple-glow: rgba(124, 58, 237, 0.35);
+        --success: #00c853;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        height: 800px;
+        background: radial-gradient(circle at center, var(--purple-glow) 0%, transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      main {
+        position: relative;
+        z-index: 1;
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 56px 20px 80px;
+      }
+
+      .kicker {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        color: var(--purple-light);
+        margin: 0 0 12px;
+      }
+
+      h1 { font-size: 40px; line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em; }
+      .lede { color: var(--text-secondary); margin: 0 0 8px; }
+
+      .note {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--purple);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin: 28px 0 36px;
+        font-size: 14.5px;
+        color: var(--text-secondary);
+      }
+      .note strong { color: var(--text); }
+
+      ol.steps { list-style: none; margin: 0; padding: 0; }
+
+      li.step {
+        position: relative;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 22px 22px 22px 66px;
+        margin-bottom: 16px;
+        transition: border-color 0.2s;
+      }
+      li.step[data-done="1"] { border-color: rgba(0, 200, 83, 0.45); }
+
+      .num {
+        position: absolute;
+        left: 20px;
+        top: 22px;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--purple-light);
+        font-size: 14px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      li.step[data-done="1"] .num {
+        background: rgba(0, 200, 83, 0.14);
+        border-color: rgba(0, 200, 83, 0.5);
+        color: var(--success);
+      }
+      li.step[data-done="1"] .num::after { content: "✓"; }
+      li.step[data-done="1"] .num span { display: none; }
+
+      h2 { font-size: 18px; margin: 0 0 6px; letter-spacing: -0.01em; }
+      .step p { margin: 0 0 14px; color: var(--text-secondary); font-size: 15px; }
+      .step p:last-child { margin-bottom: 0; }
+
+      .heads-up {
+        display: block;
+        margin-top: 10px;
+        padding: 10px 12px;
+        background: var(--surface-2);
+        border-radius: 8px;
+        font-size: 13.5px;
+        color: var(--text-muted);
+        line-height: 1.55;
+      }
+
+      a.btn {
+        display: inline-block;
+        padding: 11px 20px;
+        border-radius: 100px;
+        background: transparent;
+        border: 1px solid var(--purple);
+        color: var(--purple-light);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 15px;
+        transition: background 0.18s, box-shadow 0.25s;
+      }
+      a.btn:hover {
+        background: rgba(124, 58, 237, 0.12);
+        box-shadow: 0 0 28px rgba(124, 58, 237, 0.35);
+      }
+
+      .footer {
+        margin-top: 40px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border);
+        font-size: 14.5px;
+        color: var(--text-muted);
+      }
+      .footer a { color: var(--purple-light); }
+
+      @media (max-width: 520px) {
+        h1 { font-size: 32px; }
+        main { padding: 40px 16px 64px; }
+        li.step { padding: 20px 18px 20px 60px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="kicker">Early access</p>
+      <h1>You're in.</h1>
+      <p class="lede">
+        Livil is a social music platform — a place to listen with people, not beside them.
+        Four short steps and you're listening.
+      </p>
+
+      <div class="note">
+        <strong>Use the same Google account for every step.</strong> Play checks your
+        testing access against the account you join with, so mixing two accounts is the one
+        thing that reliably breaks this.
+      </div>
+
+      <ol class="steps">
+        <li class="step" data-step="group">
+          <div class="num"><span>1</span></div>
+          <h2>Join the testers group</h2>
+          <p>This is what authorises your Google account for the test build.</p>
+          <a class="btn" href="https://groups.google.com/g/livil-testers" target="_blank" rel="noopener">
+            Join the group
+          </a>
+          <span class="heads-up">
+            Tap <strong>Join group</strong> at the top of that page. Two things you'll see
+            that look wrong but aren't:<br /><br />
+            &middot; “You don't have permission to access this content” under the button —
+            ignore it. That's the group's message board, closed on purpose.<br />
+            &middot; A <strong>Subscription</strong> dropdown — set it to
+            <strong>No email</strong>. Nobody can post to this group, so it's just a roster;
+            you'll never get mail from it.
+          </span>
+        </li>
+
+        <li class="step" data-step="optin">
+          <div class="num"><span>2</span></div>
+          <h2>Accept the test invite</h2>
+          <p>Confirms you as a tester. Do this after step 1, or the page won't recognise you.</p>
+          <a class="btn" href="https://play.google.com/apps/testing/com.livil" target="_blank" rel="noopener">
+            Become a tester
+          </a>
+          <span class="heads-up">
+            Look for “Become a tester”. Once accepted, it'll say you're a tester and give you
+            a download link.
+          </span>
+        </li>
+
+        <li class="step" data-step="install">
+          <div class="num"><span>3</span></div>
+          <h2>Install Livil</h2>
+          <p>Android only for now — an iOS build isn't out yet.</p>
+          <a class="btn" href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">
+            Open in Play Store
+          </a>
+          <span class="heads-up">
+            If it says the app isn't available, steps 1 and 2 haven't gone through yet. Play
+            can take a few minutes to catch up — wait a bit and reload before worrying.
+          </span>
+        </li>
+
+        <li class="step" data-step="account">
+          <div class="num"><span>4</span></div>
+          <h2>Create your account</h2>
+          <p>
+            Open the app and sign up. You'll pick a handle — choose carefully, it's permanent.
+            Confirm the email we send and you're in.
+          </p>
+          <span class="heads-up">
+            Check spam if the confirmation doesn't arrive within a minute or two.
+          </span>
+        </li>
+      </ol>
+
+      <p class="footer">
+        Make music yourself? The <a href="/studio">creator studio</a> runs in this browser
+        right now — upload masters straight from your desktop, no phone needed.<br /><br />
+        Stuck on any step, just reply to the invite email. — Vamsi
+      </p>
+    </main>
+
+    <script>
+      // Progress is remembered per-device so someone who bounces between Google, Play and
+      // their inbox can see where they left off. Purely cosmetic: it records that a link was
+      // TAPPED, which is all a static page can observe — Play and Groups expose nothing back
+      // to us. So it must never be presented as "verified", only as a breadcrumb.
+      (function () {
+        var KEY = "livil.welcome.progress";
+        var done = {};
+        try {
+          done = JSON.parse(localStorage.getItem(KEY) || "{}") || {};
+        } catch (e) {
+          done = {};
+        }
+
+        var steps = document.querySelectorAll("li.step");
+        steps.forEach(function (li) {
+          var id = li.getAttribute("data-step");
+          if (done[id]) li.setAttribute("data-done", "1");
+
+          var link = li.querySelector("a.btn");
+          if (!link) return;
+          link.addEventListener("click", function () {
+            done[id] = true;
+            li.setAttribute("data-done", "1");
+            try {
+              localStorage.setItem(KEY, JSON.stringify(done));
+            } catch (e) {
+              /* private mode — the page still works, it just won't remember */
+            }
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

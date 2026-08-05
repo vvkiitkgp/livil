@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 66 migration(s) in `supabase/migrations/`.
+Reconstructed from 67 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-33 table(s).
+34 table(s).
 
 ### `activity_notifications`
 
@@ -354,6 +354,16 @@ RLS enabled · defined in `20260803120000_notification_preferences.sql`
 | `messages` | `boolean not null default true` |
 | `jam` | `boolean not null default true` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `ops_users`
+
+RLS enabled · defined in `20260805000000_waitlist_ops_dashboard.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE` |
+| `note` | `text` |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` |
 
 ### `playlist_posts`
 
@@ -783,6 +793,18 @@ RLS enabled · defined in `20260718000000_waitlist_table.sql`
 | `id` | `uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
 | `email` | `text NOT NULL UNIQUE` |
 | `created_at` | `timestamptz NOT NULL DEFAULT now()` |
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `email_sent_at` | `timestamptz` | `20260805000000_waitlist_ops_dashboard.sql` |
+| `email_error` | `text` | `20260805000000_waitlist_ops_dashboard.sql` |
+| `email_attempts` | `integer NOT NULL DEFAULT 0` | `20260805000000_waitlist_ops_dashboard.sql` |
+
+**Indexes**
+
+- `waitlist_created_at_desc_idx` `(created_at DESC)`
 
 ## Realtime publication
 
