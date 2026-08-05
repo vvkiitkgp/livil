@@ -459,7 +459,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 
 - **Developer**: Livil Labs (`vvk.iitkgp@gmail.com`)
 - **Package**: `com.livil`
-- **Status**: Closed testing (versionName `1.1.16`, versionCode `62` — bump both before each release)
+- **Status**: Closed testing (versionName `1.1.17`, versionCode `63` — bump both before each release)
 - **GitHub**: https://github.com/vvkiitkgp/livil
 
 ---
