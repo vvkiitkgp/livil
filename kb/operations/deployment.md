@@ -135,8 +135,12 @@ review. **Do not press "Remove" on the custom domain** — that is what generate
 
 Recorded so the gap is deliberate rather than invisible:
 
-- **No CI.** Nothing verifies a commit.
-- **No release automation.** Every step is manual, on one machine.
+- **CI verifies commits but does not ship anything.** Eight jobs run on every push
+  ([infrastructure.md](infrastructure.md)) — typecheck, lint, tests, migrations, schema parity
+  against production, knowledge-base drift and the agent-scope gates. None of them builds an
+  AAB, signs it, or uploads to Play. The **web** deploy is the exception and is fully
+  automated: a push to `main` publishes both surfaces via Vercel.
+- **No Android release automation.** Every step is manual, on one machine.
 - **No staged rollout or release health monitoring.** With no crash reporting, a bad release is
   discovered from user reports.
 - **No rollback path.** Play can halt a rollout, but there is no automated revert.
