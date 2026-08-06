@@ -44,6 +44,7 @@ import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
+import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
 import { COLORS } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
 import { updatePresenceHeartbeat } from '../services/conversations';
@@ -190,6 +191,21 @@ export default function RootNavigator() {
       clearTimeout(t);
     };
   }, [session?.user?.id]);
+
+  // One welcome email per account, on the first CONFIRMED session rather than at signup
+  // — at signup the address is unverified, and the confirmation email is the one that
+  // has to be acted on. Only a nudge: the edge function takes no input and the database
+  // decides, atomically and once, whether this call is the one that sends, so firing on
+  // every session change (including token refresh) is harmless.
+  //
+  // Gated on `needsUsername === false` so a new Google account is greeted by the name it
+  // chose, not by the `user_xxxxxxxx` placeholder it holds while ChooseUsernameScreen is
+  // still up. `passwordRecoveryPending` is excluded for the same reason in reverse: that
+  // session belongs to someone mid-password-reset, not to a new arrival.
+  useEffect(() => {
+    if (needsUsername !== false || passwordRecoveryPending) return;
+    void nudgeWelcomeEmail(supabase, session);
+  }, [session, needsUsername, passwordRecoveryPending]);
 
   const handleEnableNotifications = async () => {
     const uid = session?.user?.id;

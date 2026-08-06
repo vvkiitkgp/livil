@@ -45,8 +45,19 @@ const PROJECT_REF = 'fqzrmqnlgjeuxzinbqvs';
 
 // The edge functions the client hard-depends on. Add a slug here when the app starts
 // invoking a new function, so its absence in prod fails CI instead of failing users.
-//   send-push — push fan-out, invoked by src/services/pushDispatch.ts (LIV-9 / D-54).
-const REQUIRED_FUNCTIONS = ['send-push'];
+//   send-push    — push fan-out, invoked by src/services/pushDispatch.ts (LIV-9 / D-54).
+//   welcome-email — the one-per-account welcome, invoked by shared/services/welcomeEmail.ts
+//                   from BOTH clients on the first confirmed session. Belongs here for the
+//                   same reason send-push does: `nudgeWelcomeEmail` deliberately swallows
+//                   the invoke result (a missing welcome is not worth interrupting a
+//                   sign-in over), so if this function vanished from prod, every new
+//                   account would silently go ungreeted with nothing anywhere reporting
+//                   it. That is the D-54 shape exactly, and this list is the only thing
+//                   that would notice.
+//
+// The waitlist functions are deliberately NOT here: they are invoked from the marketing
+// page, not from either client, and their failure is visible to the operator in /ops.
+const REQUIRED_FUNCTIONS = ['send-push', 'welcome-email'];
 
 const MANAGEMENT_API = 'https://api.supabase.com';
 
@@ -147,19 +158,33 @@ function selfTest() {
   const present = [
     { id: 'a', slug: 'send-push', name: 'send-push', status: 'ACTIVE', version: 3 },
     { id: 'b', slug: 'some-other-fn', name: 'some-other-fn', status: 'ACTIVE', version: 1 },
+    { id: 'c', slug: 'welcome-email', name: 'welcome-email', status: 'ACTIVE', version: 1 },
   ];
   const absent = [
     { id: 'b', slug: 'some-other-fn', name: 'some-other-fn', status: 'ACTIVE', version: 1 },
   ];
+  // One required function deployed, the other not. This is the realistic regression now
+  // that the list has more than one entry: a partial answer must name exactly the missing
+  // one, not report "all present" because something was found.
+  const partial = [
+    { id: 'a', slug: 'send-push', name: 'send-push', status: 'ACTIVE', version: 3 },
+  ];
   const slugMissing = [{ id: 'a', name: 'send-push', status: 'ACTIVE' }]; // no `slug` field
 
-  // The guardrail must PASS when the function is deployed …
+  // The guardrail must PASS when every required function is deployed …
   check('present → nothing missing', missingFunctions(present, REQUIRED_FUNCTIONS).length === 0);
 
-  // … and must FAIL (report the missing slug) when it is not — this is the outage shape.
+  // … and must FAIL (report the missing slugs) when they are not — the outage shape.
   check(
-    'absent → reports send-push missing',
-    JSON.stringify(missingFunctions(absent, REQUIRED_FUNCTIONS)) === JSON.stringify(['send-push']),
+    'absent → reports every required slug missing',
+    JSON.stringify(missingFunctions(absent, REQUIRED_FUNCTIONS)) ===
+      JSON.stringify(['send-push', 'welcome-email']),
+  );
+
+  check(
+    'partial → reports only the one that is missing',
+    JSON.stringify(missingFunctions(partial, REQUIRED_FUNCTIONS)) ===
+      JSON.stringify(['welcome-email']),
   );
 
   // Empty project (exactly the D-54 state: list_edge_functions returned []).

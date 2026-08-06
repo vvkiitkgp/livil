@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 74 migration(s) in `supabase/migrations/`.
+Reconstructed from 75 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-35 table(s).
+36 table(s).
 
 ### `activity_notifications`
 
@@ -822,6 +822,19 @@ RLS enabled · defined in `20260718000000_waitlist_table.sql`
 **Indexes**
 
 - `waitlist_created_at_desc_idx` `(created_at DESC)`
+
+### `welcome_emails`
+
+RLS enabled · defined in `20260807000000_welcome_email_on_signup.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid primary key references auth.users(id) on delete cascade` |
+| `claimed_at` | `timestamptz not null default now()` |
+| `attempts` | `integer not null default 0` |
+| `sent_at` | `timestamptz` |
+| `suppressed_at` | `timestamptz` |
+| `error` | `text` |
 
 ## Realtime publication
 
