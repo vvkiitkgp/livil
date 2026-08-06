@@ -1,0 +1,41 @@
+-- Remove the anon EXECUTE grants that four earlier migrations believed they had removed.
+--
+-- WHY THEY WERE STILL THERE. Each of those migrations wrote
+--
+--     REVOKE ALL ON FUNCTION public.<fn>() FROM public;
+--     GRANT EXECUTE ON FUNCTION public.<fn>() TO authenticated;
+--
+-- which revokes the PUBLIC pseudo-role grant only. Supabase's default privileges ALSO issue a
+-- DIRECT grant to `anon` and `authenticated` on every new function created in `public`, and a
+-- direct grant is untouched by revoking from PUBLIC. The line read as a guard and was not one.
+-- `REVOKE ... FROM anon` is the statement that actually does it.
+--
+-- NONE OF THIS WAS EXPLOITABLE. Every function re-checks authorization in its own body:
+-- is_ops() resolves false when auth.uid() is null, and claim_username raises
+-- 'Not authenticated'. The reason to fix it anyway is that "it happens to return nothing" is a
+-- property of today's body, not of the grant — and the next person editing a body should not
+-- be able to widen anonymous access without noticing.
+--
+-- ── is_username_available IS DELIBERATELY LEFT ALONE ────────────────────────
+--
+-- It is called from the SIGNED-OUT signup form on both clients:
+--
+--   src/screens/auth/SignUpScreen.tsx:69         (mobile, before an account exists)
+--   web/src/auth/useUsernameAvailability.ts:61   (web signup, same)
+--
+-- so anon EXECUTE there is load-bearing. Revoking it would break username availability
+-- checking during signup on both platforms. Its own migration's `REVOKE ... FROM public` was
+-- therefore wrong in intent as well as ineffective in fact; the intent is corrected here by
+-- leaving the grant in place on purpose rather than by accident.
+--
+-- ── verified before applying ────────────────────────────────────────────────
+--
+-- In a rolled-back transaction with these three revoked:
+--   * `set local role anon; insert into waitlist ...` still succeeded — the only
+--     anon-applicable policy on that table is the INSERT one, which does not call is_ops().
+--     Every policy that DOES call is_ops() is scoped `TO authenticated`.
+--   * is_username_available still answered for anon.
+
+REVOKE EXECUTE ON FUNCTION public.is_ops()                   FROM anon;
+REVOKE EXECUTE ON FUNCTION public.claim_username(text, text) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.account_email_hash(text)   FROM anon;
