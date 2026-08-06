@@ -91,6 +91,7 @@ type RawPostRow = {
     cover_art_url: string | null;
     thumbnail_url: string | null;
     duration_seconds: number | null;
+    uploader_id?: string | null;
     collaborators?: Array<{
       user_id: string | null;
       status: string | null;
@@ -136,6 +137,7 @@ const POST_SELECT = `
     cover_art_url,
     thumbnail_url,
     duration_seconds,
+    uploader_id,
     collaborators:track_collaborators (
       user_id,
       status,
@@ -168,10 +170,15 @@ function toAuthor(row: RawPostRow['author']): AuthorRef {
  * Declined rows are dropped — the named artist said this is not them. Typed-in names are
  * dropped too, but for a different reason: they have no avatar and no profile to open, so
  * a face row would be initials that go nowhere. They still appear in full on the Info tab.
+ *
+ * The UPLOADER is dropped as well: their avatar is already at the top of the card, and
+ * "with <the person whose post this is>" is not a sentence. Matched on the TRACK's
+ * uploader rather than the post's author, so a repost still hides the original uploader
+ * (who is credited) and not the reposter (who is not).
  */
 function toCreditFaces(row: RawPostRow['track']): CreditFace[] {
   return (row?.collaborators ?? [])
-    .filter(c => c.user_id && c.status !== 'declined')
+    .filter(c => c.user_id && c.status !== 'declined' && c.user_id !== row?.uploader_id)
     .map(c => ({
       userId: c.user_id,
       avatarUrl: c.profile?.avatar_url ?? null,

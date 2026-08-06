@@ -433,6 +433,12 @@ function InfoContent({
   const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [album, setAlbum] = useState<AlbumForTrack | null>(null);
+
+  // The uploader's own credit is a `track_collaborators` row like any other, so it arrives
+  // in this list. It is split out here: the header shows it, and CREDITS shows everyone
+  // else, rather than putting the same person on screen twice.
+  const uploaderCredit = collabs.find(c => c.userId === nowPlaying.authorId) ?? null;
+  const otherCredits = collabs.filter(c => c.userId !== nowPlaying.authorId);
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(nowPlaying.likesCount);
 
@@ -503,6 +509,8 @@ function InfoContent({
       showsVerticalScrollIndicator={false}
     >
       {/* ── Artist row — tap minimizes the player then pushes UserProfile. ── */}
+      {/* The uploader's credit is rendered in the header above, not in the list below:
+          showing it in both put the same person on screen twice on every track. */}
       <TouchableOpacity
         style={infoSt.artistRow}
         activeOpacity={0.75}
@@ -518,7 +526,13 @@ function InfoContent({
         />
         <View style={infoSt.artistMeta}>
           <Text style={infoSt.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
-          <Text style={infoSt.artistHandle} numberOfLines={1}>@{nowPlaying.authorUsername}</Text>
+          {/* What they did, in place of the handle — the artist is already named on the
+              line above, so the handle was repeating it in a second alphabet. Falls back
+              to the handle for tracks uploaded before uploader roles existed, because a
+              blank line there would read as missing data. */}
+          <Text style={infoSt.artistHandle} numberOfLines={1}>
+            {uploaderCredit ? uploaderCredit.role : `@${nowPlaying.authorUsername}`}
+          </Text>
         </View>
       </TouchableOpacity>
 
@@ -549,13 +563,13 @@ function InfoContent({
       {/* ── Collaborators ── */}
       {loading ? (
         <ActivityIndicator size="small" color={COLORS.purpleLight} style={{ marginTop: 20 }} />
-      ) : collabs.length > 0 ? (
+      ) : otherCredits.length > 0 ? (
         <View style={infoSt.creditsBlock}>
           <Text style={infoSt.creditsLabel}>CREDITS</Text>
           {/* One row per credit, not per role. Grouping by role collapsed the people into
               an anonymous avatar stack — a credit is somebody's NAME, and a list of faces
               with a job title next to them is not a credit list. */}
-          {collabs.map((c, i) => {
+          {otherCredits.map((c, i) => {
             const tappable = Boolean(c.userId) && !c.display.isDeleted;
             return (
               <TouchableOpacity
