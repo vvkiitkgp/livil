@@ -155,9 +155,6 @@ export function composeWelcome(
     '  Credit everyone who worked on it. They get asked, and can accept or decline',
     '  — so a credit on Livil means they agreed to it.',
     '',
-    '  Add your lyrics, artwork and a clip, and see how the track is actually',
-    '  doing once it is out.',
-    '',
     'No label, no gatekeeping, no minimum follower count. Upload and it is live.',
     '',
     'That is where the name comes from. Live, Vibe, Link.',
@@ -265,8 +262,7 @@ ${bullet('Playlists you build with other people,', "and chat that sits right nex
               And if you ever want to make music rather than only listen to it, Livil is built for that side too.
             </p>
 ${bullet('Upload from the app or from a browser.', 'Audio or video, either works.')}
-${bullet('Credit everyone who worked on it.', 'They get asked, and they accept or decline — so a credit on Livil means they agreed to it.')}
-${bullet('Add lyrics, artwork and a clip,', 'then see how the track is actually doing once it is out.')}
+${bullet('Credit everyone who worked on it.', 'They get asked, and can accept or decline — so a credit on Livil means they agreed to it.')}
 
             <p class="l-body" style="margin:0 0 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
               No label, no gatekeeping, no minimum follower count. Upload and it's live.

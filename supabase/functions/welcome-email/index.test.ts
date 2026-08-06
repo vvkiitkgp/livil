@@ -158,14 +158,13 @@ Deno.test('composeWelcome explains what the product actually is', () => {
 });
 
 // Every listener is a potential uploader, so the email says so — but only claims things
-// that actually ship today: upload from either client, credits the collaborator must
-// accept, lyrics/artwork/clip, and post-release numbers.
+// that actually ship today: upload from either client, and credits the collaborator must
+// accept before they appear.
 Deno.test('composeWelcome pitches the creator side in both parts', () => {
   const { text, html } = composeWelcome('Vamsi', 'vvk');
   for (const part of [text, html]) {
     assertStringIncludes(part, 'if you ever want to make music');
     assertStringIncludes(part, 'accept or decline');
-    assertStringIncludes(part, 'lyrics');
     assertStringIncludes(part, 'No label, no gatekeeping');
   }
 });
