@@ -28,6 +28,9 @@ type PickerNavigation = NativeStackNavigationProp<RootStackParamList, 'Collabora
 
 type Mode = 'user' | 'custom';
 
+/** Results shown before asking the artist to narrow the search — see the page ScrollView. */
+const RESULT_LIMIT = 6;
+
 function clientIdFor(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -145,7 +148,22 @@ export default function CollaboratorPickerScreen() {
         <View style={styles.headerSide} />
       </View>
 
-      <View style={styles.flex}>
+      {/*
+        * One scroll surface for the whole page.
+        *
+        * The results used to be their own ScrollView inside a flex:1 column, which worked
+        * only while the role picker was short. Adding the AI group pushed the role section
+        * past the fold and squeezed the results down to a single half-visible row — a list
+        * you cannot see is a picker you cannot use. Nesting a second vertical ScrollView
+        * would fight this one for the gesture, so the results are plain rows now and the
+        * page scrolls as a whole.
+        */}
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.pageContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.modeToggle}>
           <TouchableOpacity
             style={styles.modePill}
@@ -179,12 +197,7 @@ export default function CollaboratorPickerScreen() {
               autoCorrect={false}
             />
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            <ScrollView
-              style={styles.resultsList}
-              contentContainerStyle={styles.resultsContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
+            <View style={styles.resultsContent}>
               {searching ? (
                 <View style={styles.resultsLoading}>
                   <ActivityIndicator color={COLORS.purpleLight} />
@@ -196,7 +209,10 @@ export default function CollaboratorPickerScreen() {
                     : 'No matching users yet — try searching above.'}
                 </Text>
               ) : (
-                results.map(p => {
+                // Capped: the page scrolls, so an unbounded list would bury the role
+                // picker again. Narrowing the search is the way to reach someone further
+                // down, which is what the search box is for.
+                results.slice(0, RESULT_LIMIT).map(p => {
                   const selected = selectedUser?.id === p.id;
                   return (
                     <TouchableOpacity
@@ -230,7 +246,12 @@ export default function CollaboratorPickerScreen() {
                   );
                 })
               )}
-            </ScrollView>
+              {!searching && results.length > RESULT_LIMIT ? (
+                <Text style={styles.emptyText}>
+                  {results.length - RESULT_LIMIT} more — keep typing to narrow it down.
+                </Text>
+              ) : null}
+            </View>
           </View>
         ) : (
           <View style={styles.customSection}>
@@ -310,16 +331,17 @@ export default function CollaboratorPickerScreen() {
           </View>
         </View>
 
-        <View style={styles.footer}>
-          <Button
-            label="Add to track"
-            onPress={handleConfirm}
-            variant="primary"
-            size="lg"
-            fullWidth
-            disabled={!canConfirm}
-          />
-        </View>
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Button
+          label="Add to track"
+          onPress={handleConfirm}
+          variant="primary"
+          size="lg"
+          fullWidth
+          disabled={!canConfirm}
+        />
       </View>
     </SafeAreaView>
   );
@@ -381,16 +403,13 @@ const styles = StyleSheet.create({
   modePillTextActive: {
     color: COLORS.purpleNeon,
   },
+  pageContent: { paddingBottom: 16 },
   searchSection: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    flex: 1,
-  },
-  resultsList: {
-    flex: 1,
-    marginTop: 12,
   },
   resultsContent: {
+    marginTop: 12,
     paddingBottom: 12,
     gap: 8,
   },

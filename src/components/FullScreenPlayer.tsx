@@ -150,6 +150,11 @@ function roleIcon(role: string): IconName {
     'Songwriting': 'pencilLine', 'Lyrics': 'note',
     'Featured': 'star',
   };
+  // Every AI_ROLES entry, without restating the list: one glyph for the group, because the
+  // point of the mark is "a tool did this".
+  if (role.startsWith('AI ')) {return 'ai';}
+  // A typed-in role — 'Tabla', 'Additional production' — has no glyph of its own, and
+  // inventing a wrong one would say more than nothing does.
   return map[role] ?? 'musicNote';
 }
 
@@ -490,14 +495,6 @@ function InfoContent({
     }
   }, [liked, likesCount, effective.postId, effective.isOriginal, nowPlaying, setNowPlaying]);
 
-  // Group collaborators by role for display
-  type RoleGroup = { role: string; members: TrackCollaboratorInfo[] };
-  const groups: RoleGroup[] = [];
-  for (const c of collabs) {
-    const existing = groups.find(g => g.role === c.role);
-    if (existing) { existing.members.push(c); }
-    else { groups.push({ role: c.role, members: [c] }); }
-  }
 
   return (
     <ScrollView
@@ -552,39 +549,47 @@ function InfoContent({
       {/* ── Collaborators ── */}
       {loading ? (
         <ActivityIndicator size="small" color={COLORS.purpleLight} style={{ marginTop: 20 }} />
-      ) : groups.length > 0 ? (
+      ) : collabs.length > 0 ? (
         <View style={infoSt.creditsBlock}>
           <Text style={infoSt.creditsLabel}>CREDITS</Text>
-          {groups.map(g => (
-            <View key={g.role} style={infoSt.roleRow}>
-              <View style={infoSt.roleEmoji}>
-                <Icon name={roleIcon(g.role)} size={24} color={COLORS.textSecondary} />
-              </View>
-              <View style={infoSt.avatarStack}>
-                {g.members.map((m, i) => (
-                  <View
-                    key={m.userId ?? `custom-${i}`}
-                    style={[infoSt.stackedAvatar, i > 0 && { marginLeft: -10 }]}
-                  >
-                    <CollabAvatar
-                      uri={m.avatarUrl}
-                      display={m.display}
-                      size={36}
-                      pending={m.status === 'pending'}
-                    />
-                  </View>
-                ))}
-              </View>
-              <View style={infoSt.roleNameCol}>
-                <Text style={infoSt.roleName}>{g.role}</Text>
-                {/* Says what the dashed ring means. An unexplained marker on somebody's
-                    avatar reads as a problem with them rather than as a pending answer. */}
-                {g.members.some(m => m.status === 'pending') ? (
-                  <Text style={infoSt.roleUnconfirmed}>awaiting confirmation</Text>
+          {/* One row per credit, not per role. Grouping by role collapsed the people into
+              an anonymous avatar stack — a credit is somebody's NAME, and a list of faces
+              with a job title next to them is not a credit list. */}
+          {collabs.map((c, i) => {
+            const tappable = Boolean(c.userId) && !c.display.isDeleted;
+            return (
+              <TouchableOpacity
+                key={c.userId ?? `custom-${i}`}
+                style={infoSt.roleRow}
+                activeOpacity={tappable ? 0.75 : 1}
+                disabled={!tappable}
+                onPress={() => {
+                  closeFullScreenPlayer();
+                  navigation.dispatch(StackActions.push('UserProfile', { userId: c.userId! }));
+                }}
+              >
+                <View style={infoSt.roleEmoji}>
+                  <Icon name={roleIcon(c.role)} size={24} color={COLORS.textSecondary} />
+                </View>
+                <CollabAvatar
+                  uri={c.avatarUrl}
+                  display={c.display}
+                  size={36}
+                  pending={c.status === 'pending'}
+                />
+                <View style={infoSt.roleNameCol}>
+                  <Text style={infoSt.collabName} numberOfLines={1}>{c.display.name}</Text>
+                  <Text style={infoSt.roleName} numberOfLines={1}>{c.role}</Text>
+                </View>
+                {/* A clock, not the words "awaiting confirmation": the row already carries
+                    a name and a role, and a third line of amber text turned every
+                    unanswered credit into the loudest thing on the screen. */}
+                {c.status === 'pending' ? (
+                  <Icon name="pending" size={16} color={COLORS.warning} />
                 ) : null}
-              </View>
-            </View>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       ) : null}
 
@@ -670,11 +675,9 @@ const infoSt = StyleSheet.create({
     gap: 12, marginBottom: 12,
   },
   roleEmoji: { width: 32, alignItems: 'center' },
-  avatarStack: { flexDirection: 'row', alignItems: 'center' },
-  stackedAvatar: { zIndex: 1 },
   roleNameCol: { flex: 1 },
-  roleName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  roleUnconfirmed: { color: COLORS.warning, fontSize: 11, fontWeight: '600' },
+  collabName: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  roleName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
 
   statsRow: {
     flexDirection: 'row',
