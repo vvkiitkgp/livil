@@ -954,6 +954,19 @@ a {
   .overview {
     grid-template-columns: 1fr;
   }
+
+  /* COLLAPSING THE GRID IS NOT ENOUGH. In two columns the pass is a sticky
+     sidebar and that reads correctly. Stacked, it becomes the first block in a
+     single column — so it stays pinned while every panel after it scrolls
+     underneath, which is what "the card overlays the content" looks like.
+     Sticky only makes sense beside something, never above it. */
+  .overview__pass {
+    position: static;
+    /* The tilt is charm at 300px wide. Full-bleed on a phone it pushes the
+       corners past the viewport and adds horizontal scroll to the whole page. */
+    transform: none;
+    max-width: 420px;
+  }
 }
 
 .overview__pass {
@@ -1376,6 +1389,12 @@ a {
 @media (max-width: 1000px) {
   .detail {
     grid-template-columns: 1fr;
+  }
+
+  /* Same fault as .overview__pass — a sticky sidebar with nothing beside it
+     left to be sticky against. */
+  .detail__preview {
+    position: static;
   }
 }
 
@@ -1818,4 +1837,65 @@ a {
 
 .early-access__close:hover {
   opacity: 1;
+}
+
+/* ── Small screens ───────────────────────────────────────────────────────── */
+/*
+   The dashboard is a desktop tool by design (ADR-0015) — nobody masters a track
+   on a phone. But the sign-in link is on the marketing page, so artists DO open
+   it on a phone, and "made for desktop" is not a licence to overflow the
+   viewport.
+
+   Component-local breakpoints live next to their components above. This block is
+   for the shell, which has no single owner.
+*/
+@media (max-width: 720px) {
+  /* The top bar was one unwrapping flex row: brand + three nav links + Upload +
+     avatar, inside a fixed 60px height. Below roughly 600px that is wider than
+     the screen, so it ran off the edge and took the page's horizontal scroll
+     with it. It now wraps to two rows — identity and actions, then navigation. */
+  .topbar__inner {
+    height: auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .topbar__right {
+    /* Keeps Upload and the avatar hard right once the nav has wrapped away. */
+    margin-left: auto;
+  }
+
+  .topbar__nav {
+    order: 3;
+    flex-basis: 100%;
+    /* Scroll the links rather than wrapping them into a ragged second block —
+       three today, and this is where a fourth would otherwise break the layout. */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar__nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navlink {
+    white-space: nowrap;
+  }
+
+  /* Title and its controls stop competing for one line. */
+  .page__head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .filters {
+    flex-wrap: wrap;
+  }
+
+  .page {
+    padding: var(--space-6) var(--space-4) var(--space-12);
+  }
 }
