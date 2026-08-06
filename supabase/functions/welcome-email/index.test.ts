@@ -1,0 +1,152 @@
+// Unit tests for the pure logic in welcome-email.
+//
+//     cd supabase/functions/welcome-email && deno test --no-config
+//
+// `--no-config` because Deno otherwise picks up the repo's root tsconfig.json, whose
+// `"jsx": "react-native"` it does not understand. Same for send-push.
+//
+// SCOPE: `greetingParts` and `composeWelcome` — the two places a wrong change is silently
+// wrong rather than loudly broken. Everything else in this function is a straight line
+// through JWT verification, one RPC and one fetch, all of which need a deployed function
+// (or a mocked network) to exercise meaningfully.
+//
+// The name and the handle are the ONLY caller-influenced values in the message, so most
+// of these tests are about what `greetingParts` refuses.
+
+import { assertEquals, assertMatch, assertStringIncludes } from 'jsr:@std/assert@1';
+import { composeWelcome, greetingParts } from './app.ts';
+
+// ── greetingParts: the name ─────────────────────────────────────────────────
+Deno.test('greetingParts takes the name from display_name only', () => {
+  assertEquals(greetingParts('Vamsi', 'vvk').name, 'Vamsi');
+  // NOT the username: the handle has its own line, and "Hey vvk, you're @vvk" reads
+  // like a bug.
+  assertEquals(greetingParts(null, 'vvk').name, null);
+  assertEquals(greetingParts('', 'vvk').name, null);
+  assertEquals(greetingParts('   ', 'vvk').name, null);
+});
+
+Deno.test('greetingParts trims surrounding whitespace from the name', () => {
+  assertEquals(greetingParts('  Vamsi  ', null).name, 'Vamsi');
+});
+
+// The load-bearing one: display_name is user-supplied and lands in an HTML document.
+Deno.test('greetingParts refuses a name that could open a tag or an entity', () => {
+  assertEquals(greetingParts('<script>alert(1)</script>', null).name, null);
+  assertEquals(greetingParts('a"onmouseover="x', null).name, null);
+  assertEquals(greetingParts("O'Brien", null).name, null);
+  assertEquals(greetingParts('Tom & Jerry', null).name, null);
+  // A newline in a subject line is header injection, not just ugly.
+  assertEquals(greetingParts('Vamsi\r\nBcc: someone@example.com', null).name, null);
+});
+
+Deno.test('greetingParts rejects a name too long for a subject line', () => {
+  assertEquals(greetingParts('V'.repeat(41), null).name, null);
+  assertEquals(greetingParts('V'.repeat(40), null).name, 'V'.repeat(40));
+});
+
+// ── greetingParts: the handle ───────────────────────────────────────────────
+Deno.test('greetingParts accepts a handle matching the claim_username rule', () => {
+  assertEquals(greetingParts(null, 'vvk').handle, 'vvk');
+  assertEquals(greetingParts(null, 'vvk_iitkgp').handle, 'vvk_iitkgp');
+  assertEquals(greetingParts(null, 'a'.repeat(30)).handle, 'a'.repeat(30));
+});
+
+Deno.test('greetingParts tolerates a leading @ and surrounding space', () => {
+  assertEquals(greetingParts(null, ' @vvk ').handle, 'vvk');
+});
+
+Deno.test('greetingParts drops a handle the username rule would never have allowed', () => {
+  // `claim_username` enforces ^[a-z0-9_]{3,30}$ — anything else is legacy or junk.
+  assertEquals(greetingParts(null, 'ab').handle, null);
+  assertEquals(greetingParts(null, 'a'.repeat(31)).handle, null);
+  assertEquals(greetingParts(null, 'Vamsi').handle, null); // uppercase: never stored
+  assertEquals(greetingParts(null, 'vv k').handle, null);
+  assertEquals(greetingParts(null, '<b>vvk</b>').handle, null);
+  assertEquals(greetingParts(null, 'vvk\r\nBcc: x@y.z').handle, null);
+  assertEquals(greetingParts(null, 42).handle, null);
+});
+
+Deno.test('greetingParts skips the unclaimed OAuth placeholder handle', () => {
+  assertEquals(greetingParts(null, 'user_a1b2c3d4').handle, null);
+  assertEquals(greetingParts('user_a1b2c3d4', null).name, null);
+  // A real handle that merely starts with "user" is fine.
+  assertEquals(greetingParts(null, 'usernamehero').handle, 'usernamehero');
+});
+
+Deno.test('greetingParts resolves name and handle independently', () => {
+  assertEquals(greetingParts('<b>', 'vvk'), { name: null, handle: 'vvk' });
+  assertEquals(greetingParts('Vamsi', 'NOPE'), { name: 'Vamsi', handle: null });
+  assertEquals(greetingParts(null, null), { name: null, handle: null });
+});
+
+// ── composeWelcome ──────────────────────────────────────────────────────────
+Deno.test('composeWelcome thanks the reader for signing up', () => {
+  const { text, html } = composeWelcome('Vamsi', 'vvk');
+  assertStringIncludes(text, 'Thank you for signing up');
+  assertStringIncludes(html, 'Thanks for signing up.');
+});
+
+Deno.test('composeWelcome greets by name and states the handle', () => {
+  const { subject, text, html } = composeWelcome('Vamsi', 'vvk');
+  assertEquals(subject, 'Welcome to Livil, Vamsi');
+  assertStringIncludes(text, 'Hey Vamsi,');
+  assertStringIncludes(text, "You're @vvk on Livil");
+  assertStringIncludes(html, 'Hey Vamsi,');
+  assertStringIncludes(html, '<strong>@vvk</strong>');
+});
+
+Deno.test('composeWelcome falls back to the handle in the subject when there is no name', () => {
+  assertEquals(composeWelcome(null, 'vvk').subject, 'Welcome to Livil, @vvk');
+  assertEquals(composeWelcome(null, null).subject, 'Welcome to Livil');
+});
+
+Deno.test('composeWelcome omits the handle sentence entirely when there is no handle', () => {
+  const { text, html } = composeWelcome('Vamsi', null);
+  assertEquals(text.includes('@'), false);
+  assertEquals(html.includes('@'), false);
+  // and still greets by name
+  assertStringIncludes(text, 'Hey Vamsi,');
+});
+
+Deno.test('composeWelcome degrades to a generic greeting with neither', () => {
+  const { text, html } = composeWelcome(null, null);
+  assertStringIncludes(text, 'Hey there,');
+  assertStringIncludes(html, 'Hey there,');
+});
+
+Deno.test('composeWelcome explains what the product actually is', () => {
+  const { text, html } = composeWelcome('Vamsi', 'vvk');
+  for (const part of [text, html]) {
+    assertStringIncludes(part, 'social music platform');
+    assertStringIncludes(part, 'Jam');
+    assertStringIncludes(part, 'Live, Vibe, Link');
+  }
+});
+
+// The requirement is "no links", so it is asserted rather than left to review. This fails
+// on a bare URL as well as on an anchor, in either part of the message.
+Deno.test('composeWelcome contains NO links, in either part, in every variant', () => {
+  const variants: Array<[string | null, string | null]> = [
+    ['Vamsi', 'vvk'],
+    ['Vamsi', null],
+    [null, 'vvk'],
+    [null, null],
+  ];
+  for (const [name, handle] of variants) {
+    const { text, html } = composeWelcome(name, handle);
+    for (const part of [text, html]) {
+      assertEquals(/<a\b/i.test(part), false, 'anchor tag found');
+      assertEquals(/href\s*=/i.test(part), false, 'href found');
+      assertEquals(/https?:\/\//i.test(part), false, 'bare URL found');
+      assertEquals(/\bwww\./i.test(part), false, 'www. found');
+      assertEquals(/livil-music\.com/i.test(part), false, 'domain found');
+    }
+  }
+});
+
+Deno.test('composeWelcome produces a text part that is not HTML', () => {
+  const { text } = composeWelcome('Vamsi', 'vvk');
+  assertEquals(text.includes('<'), false);
+  assertMatch(text, /Vamsi — Livil$/);
+});

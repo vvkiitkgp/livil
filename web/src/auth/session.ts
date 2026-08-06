@@ -28,6 +28,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { nudgeWelcomeEmail } from '@shared/services/welcomeEmail';
 import { supabase } from '../supabase';
 
 export type AuthState =
@@ -71,6 +72,15 @@ export function useAuthState(): AuthState {
       const check = await checkOnboarding(session.user.id);
       if (check === 'unknown') return { status: 'error', retry };
       if (check === 'not-onboarded') return { status: 'needs-onboarding' };
+
+      // One welcome email per account, on the first CONFIRMED session. Only a nudge —
+      // the edge function takes no input and the database decides, once, whether this
+      // call is the one that sends. Placed after the onboarding check on purpose: a
+      // first-time OAuth account is signed back out and pointed at the app (see the
+      // header), so its welcome belongs to that first mobile session, not to a dashboard
+      // visit it is about to be ejected from.
+      void nudgeWelcomeEmail(supabase, session);
+
       return { status: 'signed-in', session };
     };
 
