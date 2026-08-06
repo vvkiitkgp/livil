@@ -1672,7 +1672,6 @@ export type Database = {
           friends_count: number
           id: string
           last_seen_at: string
-          likes_received: number
           posts_count: number
           stars_count: number
           tracks_count: number

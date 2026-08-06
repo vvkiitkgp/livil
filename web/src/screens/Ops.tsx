@@ -292,7 +292,6 @@ export function Ops() {
                     kind='star', so they are the same relationship under a different word. */}
                 <th className="num">Stars</th>
                 <th className="num">Friends</th>
-                <th className="num">Likes</th>
               </tr>
             </thead>
             <tbody>
@@ -315,7 +314,6 @@ export function Ops() {
                   <td className="num">{u.tracksCount}</td>
                   <td className="num">{u.starsCount}</td>
                   <td className="num">{u.friendsCount}</td>
-                  <td className="num">{u.likesReceived}</td>
                 </tr>
               ))}
             </tbody>

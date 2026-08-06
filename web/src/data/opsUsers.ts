@@ -30,8 +30,6 @@ export type OpsUser = {
   starsCount: number;
   /** Accepted friendships only. A pending request is not a friend. */
   friendsCount: number;
-  /** Likes received across everything they have posted. */
-  likesReceived: number;
 };
 
 export async function fetchOpsUsers(): Promise<OpsUser[]> {
@@ -51,6 +49,5 @@ export async function fetchOpsUsers(): Promise<OpsUser[]> {
     postsCount: Number(r.posts_count ?? 0),
     starsCount: Number(r.stars_count ?? 0),
     friendsCount: Number(r.friends_count ?? 0),
-    likesReceived: Number(r.likes_received ?? 0),
   }));
 }
