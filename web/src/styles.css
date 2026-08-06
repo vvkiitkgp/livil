@@ -1914,3 +1914,45 @@ a {
     position: static;
   }
 }
+
+/* ── Team messages (ops) ─────────────────────────────────────────────────── */
+
+.msglist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.msg + .msg {
+  padding-top: var(--space-5);
+  border-top: 1px dashed var(--border);
+}
+
+.msg__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.msg__when {
+  margin-left: auto;
+}
+
+/* pre-wrap, not pre: honour the paragraphs someone typed without also honouring the line
+   width their window happened to be. `white-space: pre` would force horizontal scrolling on
+   a long line. */
+.msg__body {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--white);
+}
+
+/* The multi-line field. Height is set by `rows`; this only stops the browser's default
+   resize handle dragging it outside the panel. */
+.field__input--area {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}

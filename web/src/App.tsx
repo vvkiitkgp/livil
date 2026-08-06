@@ -14,6 +14,7 @@ import { TrackDetail } from './screens/TrackDetail';
 import { Upload } from './screens/Upload';
 import { Profile } from './screens/Profile';
 import { Ops } from './screens/Ops';
+import { Contact } from './screens/Contact';
 import type { Session } from '@supabase/supabase-js';
 
 import { STUDIO_BASE, studioPath } from './basePath';
@@ -47,6 +48,7 @@ function routerFor(session: Session) {
           { path: 'analytics', element: <Analytics /> },
           { path: 'upload', element: <Upload /> },
           { path: 'profile', element: <Profile /> },
+          { path: 'contact', element: <Contact /> },
           // No route guard, deliberately. Access is the `is_ops()` RLS policy on `waitlist`
           // (migration 20260805000000): a non-ops visitor who finds this URL loads an empty
           // table. Guarding in the router would only hide a link, and would invite the

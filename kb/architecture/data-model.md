@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-08-05
+last_verified: 2026-08-06
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 68 migration(s) in `supabase/migrations/`.
+Reconstructed from 69 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-34 table(s).
+35 table(s).
 
 ### `activity_notifications`
 
@@ -695,6 +695,21 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 **Table constraints**
 
 - `primary key (story_id, viewer_id)`
+
+### `team_messages`
+
+RLS enabled · defined in `20260806000000_team_messages.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
+| `sender_id` | `uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE` |
+| `body` | `text NOT NULL CHECK (char_length(btrim(body)) BETWEEN 1 AND 4000)` |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` |
+
+**Indexes**
+
+- `team_messages_created_at_desc_idx` `(created_at DESC)`
 
 ### `track_collaborators`
 

@@ -3,6 +3,7 @@ import { Button } from '../components/Button';
 import { fetchWaitlist, recordSendResult, type WaitlistEntry } from '../data/waitlist';
 import { sendInvite } from '../data/invite';
 import { formatDate } from '../format';
+import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
 
 /**
  * Waitlist ops.
@@ -26,6 +27,8 @@ export function Ops() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<TeamMessage[] | null>(null);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -38,6 +41,17 @@ export function Ops() {
   }, []);
 
   useEffect(load, [load]);
+
+  // Loaded independently of the waitlist: a failure in one should not blank the other, and
+  // the same is_ops() gate covers both, so there is nothing to sequence.
+  useEffect(() => {
+    fetchTeamMessages()
+      .then(setMessages)
+      .catch(e => {
+        setMessages([]);
+        setMessagesError(e?.message ?? 'Could not load messages.');
+      });
+  }, []);
 
   const stats = useMemo(() => {
     const list = entries ?? [];
@@ -177,6 +191,51 @@ export function Ops() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
+        <div>
+          <p className="kicker">The backstage door</p>
+          <h1 className="display page__title">Messages</h1>
+        </div>
+      </header>
+
+      {messagesError && (
+        <div className="empty panel">
+          <p className="empty__title">Could not load messages</p>
+          <p className="hint">{messagesError}</p>
+        </div>
+      )}
+
+      {messages === null && !messagesError && <div className="skeleton skeleton--rows" />}
+
+      {messages !== null && messages.length === 0 && !messagesError && (
+        <div className="empty panel">
+          <p className="empty__title">Nothing yet</p>
+          <p className="hint">
+            Artists can write in from the studio — the avatar menu, &ldquo;Message the
+            team&rdquo;.
+          </p>
+        </div>
+      )}
+
+      {messages !== null && messages.length > 0 && (
+        <div className="panel msglist">
+          {messages.map(m => (
+            <article className="msg" key={m.id}>
+              <div className="msg__head">
+                <span className="table__title">
+                  {m.senderName ?? m.senderUsername ?? 'Deleted account'}
+                </span>
+                {m.senderUsername && <span className="hint">@{m.senderUsername}</span>}
+                <span className="hint msg__when">{formatDate(m.createdAt)}</span>
+              </div>
+              {/* Whitespace preserved: people write in paragraphs, and collapsing them turns
+                  a considered message into a wall. */}
+              <p className="msg__body">{m.body}</p>
+            </article>
+          ))}
         </div>
       )}
     </div>
