@@ -1,45 +1,32 @@
+/**
+ * Credit roles, for the mobile app.
+ *
+ * The lists and the collaborator shapes now live in `shared/constants/roles.ts` so the two
+ * clients cannot drift into writing "Mixing", "mix" and "Mixed by" as three different
+ * credits in one column. They are re-exported here rather than imported from `shared/`
+ * across every screen, so existing imports of this path keep working and a future move
+ * touches one file.
+ *
+ * Only `getChipStyle` is defined here, and deliberately: it returns React Native colour
+ * values for inline styles, which is the one thing in this module the web client cannot
+ * use. The shared half stops at `getChipTone` and each client paints the tone its own way.
+ */
 import { COLORS } from '../theme/colors';
+import type { ChipTone } from '../../shared/constants/roles';
 
-export const ROLES: readonly string[] = [
-  'Vocals',
-  'Lead Vocals',
-  'Backing Vocals',
-  'Drums',
-  'Piano',
-  'Keys',
-  'Guitar',
-  'Bass',
-  'Production',
-  'Mixing',
-  'Mastering',
-  'Songwriting',
-  'Lyrics',
-  'Featured',
-];
+export {
+  ROLES,
+  AI_ROLES,
+  isPresetRole,
+  getChipTone,
+} from '../../shared/constants/roles';
 
-export type CollaboratorKind = 'user' | 'custom';
-
-export type CollaboratorStatus = 'pending' | 'accepted' | 'declined';
-
-export type PendingCollaborator = {
-  clientId: string;
-  kind: CollaboratorKind;
-  userId?: string;
-  name: string;
-  username?: string;
-  avatarUrl?: string;
-  role: string;
-};
-
-export type ChipTone = 'accepted' | 'pending' | 'custom';
-
-export function getChipTone(
-  kind: CollaboratorKind,
-  status: CollaboratorStatus = 'pending',
-): ChipTone {
-  if (kind === 'custom') {return 'custom';}
-  return status === 'accepted' ? 'accepted' : 'pending';
-}
+export type {
+  ChipTone,
+  CollaboratorKind,
+  CollaboratorStatus,
+  PendingCollaborator,
+} from '../../shared/constants/roles';
 
 export function getChipStyle(tone: ChipTone): {
   bg: string;
