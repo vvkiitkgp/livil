@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-176 TypeScript file(s) under `src/`, 48,815 lines.
+176 TypeScript file(s) under `src/`, 48,959 lines.
 
 ## Size hotspots
 
@@ -30,7 +30,7 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/components/PostCard.tsx` | 1266 |
-| `src/screens/main/UploadScreen.tsx` | 1164 |
+| `src/screens/main/UploadScreen.tsx` | 1230 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/components/FloatingPlayer.tsx` | 945 |
@@ -41,8 +41,9 @@ reading alone (Constitution P28).
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
+| `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 
-> 15 file(s) over the threshold against **2 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 16 file(s) over the threshold against **2 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -91,13 +92,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,696 lines.
+40 file(s), 19,789 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
-| `src/screens/main/UploadScreen.tsx` | 1164 |
+| `src/screens/main/UploadScreen.tsx` | 1230 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
@@ -106,8 +107,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
+| `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
-| `src/screens/main/CollaboratorPickerScreen.tsx` | 578 |
 | `src/screens/main/SearchScreen.tsx` | 520 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
@@ -210,12 +211,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-30 file(s), 7,743 lines.
+30 file(s), 7,794 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 919 |
-| `src/services/tracks.ts` | 785 |
+| `src/services/tracks.ts` | 800 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
@@ -227,14 +228,14 @@ case the call fails silently wherever its result is discarded.
 | `src/services/conversations.ts` | 291 |
 | `src/services/jamRealtime.ts` | 251 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
+| `src/services/__tests__/publishTrackCredits.test.ts` | 227 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
-| `src/services/__tests__/publishTrackCredits.test.ts` | 192 |
 | `src/services/stories.ts` | 179 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
-| `src/services/__tests__/publishTrackCleanup.test.ts` | 156 |
+| `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
