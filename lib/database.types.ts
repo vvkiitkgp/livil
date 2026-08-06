@@ -1663,6 +1663,22 @@ export type Database = {
           sender_username: string
         }[]
       }
+      ops_users_overview: {
+        Args: never
+        Returns: {
+          created_at: string
+          display_name: string
+          email: string
+          friends_count: number
+          id: string
+          last_seen_at: string
+          likes_received: number
+          posts_count: number
+          stars_count: number
+          tracks_count: number
+          username: string
+        }[]
+      }
       profile_links_ok: { Args: { p_links: string[] }; Returns: boolean }
       reject_friend_request: {
         Args: { other_user_id: string }
