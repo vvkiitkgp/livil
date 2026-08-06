@@ -25,31 +25,56 @@ export type PickedMedia = {
   description: string;
 };
 
+export type MediaMeta = {
+  duration: number | null;
+  /** Video only — null for audio and for anything the browser could not decode. */
+  width: number | null;
+  height: number | null;
+};
+
+const NO_META: MediaMeta = { duration: null, width: null, height: null };
+
 /**
- * Reads a media file's duration in the browser, without uploading it.
+ * Reads a media file's duration — and, for video, its frame size — in the browser, without
+ * uploading it.
  *
  * Mobile captures this from the upload preview's `onLoad`; here a detached element does the
- * same job. Resolves null rather than rejecting — duration is optional on the row and
- * backfills on first play, so a file the browser cannot probe must not block publishing.
+ * same job. Resolves nulls rather than rejecting — every field is optional on the row and
+ * duration backfills on first play, so a file the browser cannot probe must not block
+ * publishing.
+ *
+ * One probe for both facts: `loadedmetadata` is the event that carries `videoWidth`, so
+ * asking separately would mean loading the file's header twice.
  */
-export function readDuration(file: File): Promise<number | null> {
+export function readMediaMeta(file: File): Promise<MediaMeta> {
   return new Promise(resolve => {
     const url = URL.createObjectURL(file);
-    const el = document.createElement(file.type.startsWith('video') ? 'video' : 'audio');
+    const isVideo = file.type.startsWith('video');
+    const el = document.createElement(isVideo ? 'video' : 'audio');
     const cleanup = () => URL.revokeObjectURL(url);
 
     el.preload = 'metadata';
     el.onloadedmetadata = () => {
-      const value = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+      const duration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+      const video = isVideo ? (el as HTMLVideoElement) : null;
       cleanup();
-      resolve(value);
+      resolve({
+        duration,
+        width: video?.videoWidth || null,
+        height: video?.videoHeight || null,
+      });
     };
     el.onerror = () => {
       cleanup();
-      resolve(null);
+      resolve(NO_META);
     };
     el.src = url;
   });
+}
+
+/** Duration alone, for callers that do not care about frame size. */
+export function readDuration(file: File): Promise<number | null> {
+  return readMediaMeta(file).then(m => m.duration);
 }
 
 export type PublishHandle = {

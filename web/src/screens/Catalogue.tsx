@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Button } from '../components/Button';
 import { fetchCreatorPosts, type CreatorPost } from '../data/creator';
@@ -32,6 +32,7 @@ type Filter = 'all' | 'audio' | 'video';
  */
 export function Catalogue() {
   const { session } = useOutletContext<Ctx>();
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<CreatorPost[] | null>(null);
   const [sort, setSort] = useState<SortKey>('publishedAt');
   const [asc, setAsc] = useState(false);
@@ -130,7 +131,9 @@ export function Catalogue() {
               : 'Try a different filter.'}
           </p>
           {filter === 'all' && (
-            <Button onClick={() => (window.location.href = '/upload')}>Upload music</Button>
+            /* Router navigation, not `window.location`: the app is served under the
+               `/studio` basename, so a raw href lands on the marketing apex instead. */
+            <Button onClick={() => navigate('/upload')}>Upload music</Button>
           )}
         </div>
       )}

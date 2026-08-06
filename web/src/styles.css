@@ -219,14 +219,18 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 320px;
+  /* Raised with the row: captioned fields made each row ~110px, and the old 320px cap left
+     less than three of them visible before the list started scrolling. */
+  max-height: 440px;
   overflow-y: auto;
 }
 
 .queue__row {
   position: relative;
   display: flex;
-  align-items: center;
+  /* Top-aligned since the fields became captioned boxes: centring a 44px thumb against a
+     three-line stack leaves it floating in the middle of nothing. */
+  align-items: flex-start;
   gap: 12px;
   padding: 10px 12px 12px;
   background: var(--card);
@@ -278,7 +282,7 @@ a {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 
 .queue__main > .hint {
@@ -287,27 +291,62 @@ a {
   white-space: nowrap;
 }
 
-/* Borderless until focused: a dozen boxed inputs stacked reads as a form to fill in,
-   when in practice the prefilled filename is usually already right. */
-.queue__title {
+/* These read as fields at rest — filled, outlined, and captioned.
+   They were borderless-until-focus on the theory that a prefilled filename is usually
+   already right, so a stack of boxes would look like a form to fill in. In practice the
+   opposite failed: the title looked like a heading and the description like helper text,
+   so nobody discovered they were editable at all. Discoverability wins; the fill is kept
+   quiet so the row still reads as a row. */
+.queue__field {
+  width: 100%;
   font: inherit;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  cursor: text;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease,
+    background-color var(--dur-fast) ease;
+}
+
+.queue__field:hover:not(:disabled) {
+  border-color: var(--purple-deep);
+}
+
+.queue__field:focus {
+  border-color: var(--purple);
+  /* Same focus ring as `.field__input` — one focus language across the studio. */
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+.queue__field:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* The caption that says which field is which. Without it two identical boxes are a guess. */
+.queue__label {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.queue__labelled {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.queue__title {
   font-weight: 650;
   color: var(--white);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 3px 6px;
-  margin: -3px -6px;
-  outline: none;
+  padding: 6px 8px;
 }
 
-.queue__title:focus {
-  border-color: var(--purple);
-  background: var(--input-bg);
-}
-
-.queue__title:disabled {
-  opacity: 0.7;
+.queue__title::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 /* Preview scrubber. Shown only on the row currently previewing, so twelve rows do not
@@ -379,29 +418,13 @@ a {
 }
 
 .queue__desc {
-  font: inherit;
-  font-size: 13px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 2px 6px;
-  margin: 0 -6px;
-  outline: none;
+  font-size: var(--text-base);
+  color: var(--white);
+  padding: 6px 8px;
 }
 
 .queue__desc::placeholder {
   color: var(--text-muted);
-}
-
-.queue__desc:focus {
-  border-color: var(--purple);
-  background: var(--input-bg);
-  color: var(--white);
-}
-
-.queue__desc:disabled {
-  opacity: 0.7;
 }
 
 /* Completion state. Purple rather than a green — the palette has no success token, and
@@ -427,15 +450,22 @@ a {
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  /* Above the sticky top bar (z-index 10), which was painting over the panel's title. */
+  z-index: 40;
   display: flex;
-  align-items: center;
+  /* NOT `align-items: center`. A panel taller than the viewport centred with alignment
+     overflows in BOTH directions and the top half becomes unreachable — no scrolling gets
+     you to it. `margin: auto` on the child centres when it fits and scrolls when it does
+     not, which is the behaviour a portrait 9:16 preview needs. */
   justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   background: rgba(10, 10, 15, 0.8);
 }
 
 .modal__panel {
+  margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1703,6 +1733,384 @@ a {
   margin-inline: auto;
 }
 
+/* ── Level meter ─────────────────────────────────────────────────────────── */
+
+/*
+ * The pill that reads the preview's loudness.
+ *
+ * The SIDE-ON layout is the base — pill in one column, readings stacked in the other —
+ * because it is the one that works everywhere: phone, tablet, and inside the video preview
+ * modal, where the meter shares a panel with the picture and a tall column would fight the
+ * video for height. The tall gutter column is the special case, and it is scoped to
+ * `.stage .meter` so it applies to the upload card's meter and nothing else.
+ *
+ * Written this way round deliberately. With the column as the base, the modal's meter would
+ * need the side-on rules restated for it, and two copies of a layout drift.
+ */
+.stage {
+  position: relative;
+}
+
+.meter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  /* Compact rows plus centred content: without this the two text rows stretch to fill the
+     taller pill's column and open a gap between the title and the reading. */
+  grid-template-rows: min-content min-content;
+  align-content: center;
+  column-gap: 16px;
+  row-gap: 10px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  animation: fade-up var(--dur-base) var(--ease) both;
+}
+
+.meter__body {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.meter__head,
+.meter__foot {
+  grid-column: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter {
+    animation: none;
+  }
+}
+
+.meter__head,
+.meter__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.meter__kicker {
+  margin: 0;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--purple-light);
+}
+
+.meter__track {
+  margin: 0;
+  max-width: 100%;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The file's own quality, above the level reading: one is what you exported, the other is
+   how it sounds, and they are fixed by different actions. */
+.meter__quality {
+  margin: 2px 0 0;
+  padding: 3px 10px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  text-align: center;
+}
+
+.meter__quality-value {
+  color: var(--white);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Below par — a lossy export or an upscaled frame size. Amber, not red: it is still
+   publishable, and red is reserved for the level that actually clipped. */
+.meter__quality[data-poor] {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.meter__quality[data-poor] .meter__quality-value {
+  color: var(--warning);
+}
+
+.meter__body {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+/* The three words that make the ladder mean something. Absolute, at the dB they describe —
+   a flex column would space them evenly and quietly lie about where the bands start. */
+.meter__scale {
+  position: relative;
+  width: 46px;
+  height: 150px;
+}
+
+.meter__zone {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The dB scale. Numbers, because "near the top" is not an answer to "how loud is it". */
+.meter__ticks {
+  position: relative;
+  width: 30px;
+  height: 150px;
+}
+
+.meter__tick {
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.meter__pill {
+  position: relative;
+  width: 48px;
+  height: 150px;
+  padding: 6px 7px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  /* The tall pill. `overflow: hidden` is right here — the hold marker is a full-width bar
+     and would otherwise poke out past the curve at the very top of the scale. */
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.meter__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.meter__ladders {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  height: 100%;
+}
+
+.ladder {
+  display: flex;
+  /* Built bottom-up so segment 0 is the quietest. Reversing here rather than in the array
+     keeps `light()`'s index arithmetic the same as the dB arithmetic. */
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  width: 12px;
+  height: 100%;
+}
+
+.ladder__seg {
+  height: 3px;
+  border-radius: 1px;
+  /* Unlit: present but nearly out. A ladder that vanishes when quiet reads as broken. */
+  background: var(--border);
+  opacity: 0.55;
+  transition: opacity 60ms linear;
+}
+
+.ladder__seg[data-on='1'] {
+  opacity: 1;
+}
+
+/* Purple for normal rather than the usual green: this palette has no green, and inventing
+   one for a single control is how two clients drift apart on colour. Amber and red are
+   already tokens, and they are the two the artist must not miss. */
+.ladder__seg[data-zone='low'][data-on='1'] {
+  background: var(--purple-royal);
+}
+
+.ladder__seg[data-zone='normal'][data-on='1'] {
+  background: var(--purple-neon);
+}
+
+.ladder__seg[data-zone='loud'][data-on='1'] {
+  background: var(--warning);
+}
+
+.ladder__seg[data-zone='clip'][data-on='1'] {
+  background: var(--error);
+}
+
+.meter__hold {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--purple-light);
+  /* Positioned every frame from JS; no transition, or the marker lags the transient it is
+     supposed to be marking. */
+}
+
+/* The marker is a ceiling reading, so it stays neutral until something actually clipped —
+   a master peaking at -0.3 dB is normal, and a permanently red line would train the eye to
+   ignore the one case that matters. */
+.meter__hold[data-zone='peak'] {
+  background: var(--purple-light);
+}
+
+.meter__hold[data-zone='clip'] {
+  background: var(--error);
+}
+
+.meter__peakline {
+  margin: -2px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.meter__readout {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--white);
+}
+
+.meter__unit {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.meter__verdict {
+  margin: 0;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-cta);
+  text-transform: uppercase;
+  color: var(--purple-neon);
+}
+
+.meter[data-verdict='low'] .meter__verdict {
+  color: var(--text-secondary);
+}
+
+.meter[data-verdict='loud'] .meter__verdict {
+  color: var(--warning);
+}
+
+.meter[data-verdict='clipping'] .meter__verdict {
+  color: var(--error);
+}
+
+.meter__detail {
+  margin: 0;
+}
+
+/* A chip that stretched to the column width would read as a bar, not a chip. */
+.meter__quality {
+  align-self: flex-start;
+}
+
+/*
+ * The gutter column — the upload card's meter on a wide screen only.
+ *
+ * Absolute so that appearing the moment playback starts cannot shove the form sideways, and
+ * `.stage >` so it never reaches the meter inside the video modal, which stays side-on at
+ * every width.
+ */
+@media (min-width: 1081px) {
+  .stage .meter {
+    position: absolute;
+    top: 0;
+    /* Into the gutter to the right of the centred card. */
+    left: calc(50% + 280px + var(--space-6));
+    width: 176px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 12px 18px;
+    text-align: center;
+  }
+
+  .stage .meter .meter__head,
+  .stage .meter .meter__foot {
+    align-items: center;
+    text-align: center;
+  }
+
+  .stage .meter .meter__quality {
+    align-self: center;
+  }
+
+  .stage .meter .meter__body {
+    margin: 6px 0 2px;
+  }
+
+  /* The gutter column has the height to spare, so the ladder gets its full run. */
+  .stage .meter .meter__pill,
+  .stage .meter .meter__scale,
+  .stage .meter .meter__ticks {
+    height: 220px;
+  }
+}
+
+/* Narrower than the gutter: the meter is a block above the card. Below the card would be
+   worse — it would sit under a queue that is already scrolling. */
+@media (max-width: 1080px) {
+  .stage .meter {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto var(--space-4);
+  }
+}
+
+/* Phone: the ticks are the first thing to go — the words carry the meaning, and 30px of
+   numbers is 30px the verdict sentence needs more. */
+@media (max-width: 560px) {
+  .meter {
+    column-gap: 12px;
+    padding: 14px;
+  }
+
+  .meter__ticks {
+    display: none;
+  }
+
+  .meter__scale {
+    width: 40px;
+  }
+}
+
+/*
+ * The queue row at phone width. The fields drop to their own full-width line under the art
+ * and the controls; sharing a line with a 44px thumb and two buttons left the description
+ * about 120px wide, which is a field you cannot read what you typed in.
+ */
+@media (max-width: 620px) {
+  .queue__row {
+    flex-wrap: wrap;
+  }
+
+  .queue__side {
+    /* Pushed to the far end of the first line, opposite the artwork. */
+    margin-left: auto;
+  }
+
+  .queue__main {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
 /* ── Video preview ──────────────────────────────────────────────────────── */
 
 .player--video {
@@ -1715,16 +2123,77 @@ a {
 }
 
 .videopreview {
-  max-width: min(880px, 90vw);
+  max-width: min(1180px, 94vw);
   align-items: stretch;
+  /* Flex children default to `min-width: auto` and will happily push past the panel. */
+  min-width: 0;
+}
+
+/* Picture and meter, side by side. The meter is the same component the upload card uses;
+   only the surroundings differ. */
+.videopreview__stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Takes whatever width the meter leaves, and — via `min-width: 0` — is allowed to go
+   narrower than the video's intrinsic size. This is the piece that makes a 2880-wide
+   landscape clip and a 540-wide portrait one both fit the same panel. */
+.videopreview__frame {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .videopreview__el {
-  width: 100%;
-  max-height: 70vh;
+  /* Both dimensions capped, neither fixed: `width: 100%` letterboxed portrait clips inside
+     a wide black box, and a fixed height overflowed landscape ones. Caps on both and auto
+     sizing lets the aspect ratio decide which one binds. */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(62vh, 560px);
   border-radius: var(--radius-md);
   background: #000;
   display: block;
+}
+
+/* Inside the modal the meter is the compact side-on layout at every width — the panel is
+   never the full page, so the tall column would fight the video for height. */
+/*
+ * Wide enough that the verdict sentence is not a five-line ribbon: the ladder, its words
+ * and the tick scale already spend ~140px before any text is set.
+ *
+ * `position: static` is not redundant. The modal is rendered outside `.stage` so the gutter
+ * rule should never reach it — but that rule positions absolutely, and if this modal is
+ * ever moved back inside the stage the meter would fly into the page margin behind the
+ * overlay. Cheap insurance against a very confusing bug.
+ */
+.videopreview__stage .meter {
+  position: static;
+  flex-shrink: 0;
+  width: 330px;
+}
+
+@media (max-width: 760px) {
+  .videopreview__stage {
+    flex-direction: column;
+  }
+
+  .videopreview__frame,
+  .videopreview__stage .meter {
+    width: 100%;
+  }
+
+  /* Stacked, the picture and the meter share the height, so the picture takes less of it. */
+  .videopreview__el {
+    max-height: 46vh;
+  }
 }
 
 .linkbtn {

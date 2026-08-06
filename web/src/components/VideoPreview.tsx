@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from './Button';
+import { LevelMeter } from './LevelMeter';
+import { levelTapFor, type LevelTap } from '../upload/levels';
+import type { Quality } from '../upload/quality';
 
 /**
  * Watch a local video before publishing it.
@@ -12,19 +15,38 @@ import { Button } from './Button';
  * A modal rather than an inline player, because a video in a table row is either too small
  * to judge or it wrecks the row height for every other item in the queue.
  *
+ * The level meter rides along INSIDE the modal. It cannot live beside the upload card the
+ * way the audio one does — the modal covers that — and a video's soundtrack is exactly as
+ * publishable, and exactly as easy to export quiet, as an audio track's.
+ *
  * Nothing is uploaded or fetched: this plays an object URL over the local file, revoked on
  * close so a long batch session does not pin every video the artist previewed.
  */
 export function VideoPreview({
   file,
   title,
+  quality,
   onClose,
 }: {
   file: File;
   title: string;
+  /** Frame size for this file, from the queue's metadata probe. Null while it is pending. */
+  quality: Quality | null;
   onClose: () => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [tap, setTap] = useState<LevelTap | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  // A ref callback rather than an effect: the tap must be attached to the element itself,
+  // and this fires with the node the moment React has one. `levelTapFor` is idempotent per
+  // element, so a re-render that hands back the same node costs nothing.
+  const attach = useCallback((el: HTMLVideoElement | null) => {
+    if (!el) return;
+    const next = levelTapFor(el);
+    next?.reset();
+    setTap(next);
+  }, []);
 
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
@@ -52,11 +74,32 @@ export function VideoPreview({
     >
       <div className="modal__panel videopreview">
         <h3 className="card__title">{title}</h3>
-        {url && (
-          // autoPlay because the artist explicitly asked to watch this one; controls so they
-          // can scrub to the moment they actually care about.
-          <video className="videopreview__el" src={url} controls autoPlay playsInline />
-        )}
+
+        <div className="videopreview__stage">
+          {/* The frame exists to be shrinkable. A `<video>` is a replaced element, so its
+              min-content width is its intrinsic width — as a flex item directly it refuses
+              to shrink, and a 2880-wide landscape clip shoved the meter clean out of the
+              panel. The wrapper takes `min-width: 0` and the video scales inside it. */}
+          <div className="videopreview__frame">
+            {url && (
+              // autoPlay because the artist explicitly asked to watch this one; controls so
+              // they can scrub to the moment they actually care about.
+              <video
+                ref={attach}
+                className="videopreview__el"
+                src={url}
+                controls
+                autoPlay
+                playsInline
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+              />
+            )}
+          </div>
+          <LevelMeter tap={tap} title={title} quality={quality} active={playing} />
+        </div>
+
         <p className="hint">
           Playing from your machine — nothing is uploaded until you publish.
         </p>

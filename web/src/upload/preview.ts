@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { levelTapFor, type LevelTap } from './levels';
 
 /**
  * Local preview playback, so an artist can check what they are about to publish.
@@ -24,11 +25,18 @@ export type PreviewState = {
   toggle: (id: string, file: File) => void;
   seek: (seconds: number) => void;
   stop: () => void;
+  /**
+   * The loudness tap on this element, or null where Web Audio is unavailable. Handed out
+   * rather than read here: the meter samples it every animation frame, and routing that
+   * through React state would re-render the whole upload screen sixty times a second.
+   */
+  tap: LevelTap | null;
 };
 
 export function usePreviewPlayer(): PreviewState {
   const elementRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
+  const [tap, setTap] = useState<LevelTap | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -77,6 +85,12 @@ export function usePreviewPlayer(): PreviewState {
 
       const next = el ?? new Audio();
       elementRef.current = next;
+      // Tapped on first play and never again — `levelTapFor` is idempotent per element, and
+      // this call sits inside the click that started playback, which is what lets the
+      // AudioContext start unsuspended. Each new track restarts the integration.
+      const levelTap = levelTapFor(next);
+      levelTap?.reset();
+      setTap(levelTap);
       const url = URL.createObjectURL(file);
       urlRef.current = url;
       next.src = url;
@@ -115,5 +129,5 @@ export function usePreviewPlayer(): PreviewState {
   // Leaving the page mid-preview must not leave audio playing or an object URL pinned.
   useEffect(() => release, [release]);
 
-  return { playingId, position, duration, toggle, seek, stop };
+  return { playingId, position, duration, toggle, seek, stop, tap };
 }

@@ -3,9 +3,11 @@ import { Button } from '../components/Button';
 import { CoverCropper } from '../components/CoverCropper';
 import { VideoPreview } from '../components/VideoPreview';
 import { CoverThumb } from '../components/CoverThumb';
+import { LevelMeter } from '../components/LevelMeter';
 import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
 import { filesFromDataTransfer, pairAssets } from '../upload/files';
+import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
 
 const GB = 1024 * 1024 * 1024;
@@ -15,6 +17,10 @@ function formatTime(seconds: number): string {
   const total = Math.round(seconds);
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, '0')}`;
 }
+
+/** The quality reading for a queued item — bitrate for audio, frame size for video. */
+const qualityOf = (item: QueueItem) =>
+  describeQuality({ ...item, name: item.media.name, size: item.media.size });
 
 const formatSize = (bytes: number) =>
   bytes >= GB ? `${(bytes / GB).toFixed(2)} GB` : `${Math.max(1, Math.round(bytes / MB))} MB`;
@@ -37,8 +43,9 @@ export function Upload() {
   // The cropper is modal, so at most one is open at a time.
   const [cropping, setCropping] = useState<{ id: string | 'ALL'; file: File } | null>(null);
   // Video cannot share the audio preview element — you would hear the clip and never see
-  // it, which is not what "check what I'm uploading" means for a video.
-  const [watching, setWatching] = useState<{ file: File; title: string } | null>(null);
+  // it, which is not what "check what I'm uploading" means for a video. Held by id so the
+  // modal keeps up with a title edit and with the metadata probe landing.
+  const [watchingId, setWatchingId] = useState<string | null>(null);
 
   function accept(files: File[]) {
     const { items } = pairAssets(files);
@@ -65,6 +72,13 @@ export function Upload() {
   const missingArt = pending.filter(i => !i.image).length;
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
+  // The meter outlives playback on purpose: pausing, or a track running out, is exactly
+  // when the artist wants to read the verdict. It goes away when the row it measured does.
+  const [meteredId, setMeteredId] = useState<string | null>(null);
+  if (preview.playingId && preview.playingId !== meteredId) setMeteredId(preview.playingId);
+  const metered = queue.items.find(i => i.id === meteredId) ?? null;
+  const watching = queue.items.find(i => i.id === watchingId) ?? null;
+
   return (
     <div className="page fade-up">
       <header className="page__head">
@@ -73,6 +87,20 @@ export function Upload() {
           <h1 className="display page__title">Upload</h1>
         </div>
       </header>
+
+      {/* The meter is a sibling of the card, not a child: it is a read-out on playback, and
+          the card is a form. On a wide screen it floats in the margin beside the card
+          (absolute, so appearing mid-preview cannot shove the form sideways); narrower, it
+          drops underneath. */}
+      <div className="stage">
+      {metered && (
+        <LevelMeter
+          tap={preview.tap}
+          title={metered.title}
+          quality={qualityOf(metered)}
+          active={preview.playingId === metered.id}
+        />
+      )}
 
       <section className="card card--wide card--centred">
         <div className="rowbetween">
@@ -157,7 +185,7 @@ export function Upload() {
             <QueueRow
               key={item.id}
               item={item}
-              onWatch={() => setWatching({ file: item.media, title: item.title })}
+              onWatch={() => setWatchingId(item.id)}
               playing={preview.playingId === item.id}
               position={preview.playingId === item.id ? preview.position : 0}
               previewDuration={preview.playingId === item.id ? preview.duration : 0}
@@ -193,14 +221,6 @@ export function Upload() {
           e.target.value = '';
         }}
       />
-
-      {watching && (
-        <VideoPreview
-          file={watching.file}
-          title={watching.title}
-          onClose={() => setWatching(null)}
-        />
-      )}
 
       {cropping && (
         <CoverCropper
@@ -276,6 +296,19 @@ export function Upload() {
         )}
         </div>
       </section>
+      </div>
+
+      {/* Outside `.stage`, and that placement is load-bearing: the stage owns the gutter
+          layout for the meter beside the card, and a modal nested inside it would inherit
+          that positioning for its own meter. A modal is not part of the stage anyway. */}
+      {watching && (
+        <VideoPreview
+          file={watching.media}
+          title={watching.title}
+          quality={qualityOf(watching)}
+          onClose={() => setWatchingId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -312,21 +345,31 @@ function QueueRow({
       <CoverThumb file={item.image} onClick={onPickCover} disabled={locked} />
 
       <div className="queue__main">
-        <input
-          className="queue__title"
-          value={item.title}
-          onChange={e => onTitle(e.target.value)}
-          disabled={locked}
-          aria-label="Track title"
-        />
-        <input
-          className="queue__desc"
-          value={item.description}
-          onChange={e => onDescription(e.target.value)}
-          disabled={locked}
-          placeholder="Add a description"
-          aria-label="Track description"
-        />
+        {/* Captioned rather than bare: two unlabelled boxes in a row leave the artist
+            guessing which is which, and the title arrives prefilled from the filename so
+            nothing in the value itself says what it is. */}
+        <label className="queue__labelled">
+          <span className="queue__label">Title</span>
+          <input
+            className="queue__field queue__title"
+            value={item.title}
+            onChange={e => onTitle(e.target.value)}
+            disabled={locked}
+            placeholder="Track title"
+          />
+        </label>
+        {/* "Description" asked for metadata and got blank fields. The caption asks the
+            artist for the one thing only they can write — what the track is to them. */}
+        <label className="queue__labelled">
+          <span className="queue__label">How you feel about it</span>
+          <input
+            className="queue__field queue__desc"
+            value={item.description}
+            onChange={e => onDescription(e.target.value)}
+            disabled={locked}
+            placeholder="Optional — what this one means to you"
+          />
+        </label>
         <span className="hint">
           {item.media.name} · {formatSize(item.media.size)} · {item.mode}
           {item.duration !== null && ` · ${formatTime(item.duration)}`}
