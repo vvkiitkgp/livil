@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -57,6 +58,8 @@ export default function CollaboratorPickerScreen() {
   const [role, setRole] = useState<string>('');
 
   const pageRef = useRef<ScrollView>(null);
+  /** Ref, not state: the keyboard listener must not resubscribe on every focus change. */
+  const customRoleFocused = useRef(false);
   const [results, setResults] = useState<ProfileSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
@@ -96,6 +99,25 @@ export default function CollaboratorPickerScreen() {
     (r: string) => (subjectKey ? takenRoleKeys.has(`${subjectKey}|${r}`) : false),
     [subjectKey, takenRoleKeys],
   );
+
+  /*
+   * Lift the custom-role field clear of the keyboard.
+   *
+   * It sits at the very bottom of a long page, so the keyboard opens straight over it and
+   * you cannot see what you are typing. Driven by `keyboardDidShow` rather than the
+   * field's own `onFocus`: `adjustResize` re-lays-out the page when the keyboard appears,
+   * and a scroll issued on focus is computed against the PRE-keyboard height and then
+   * clamped, which is why the timed version still left the field hidden. `didShow` fires
+   * after the resize, so the scroll target is real.
+   */
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      if (customRoleFocused.current) {
+        pageRef.current?.scrollToEnd({ animated: true });
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const canConfirm = useMemo(() => {
     const hasTarget =
@@ -329,11 +351,8 @@ export default function CollaboratorPickerScreen() {
               placeholder="e.g. Tabla, Saxophone"
               maxLength={40}
               autoCapitalize="words"
-              // This field sits at the very bottom of a long page, so the keyboard opens
-              // straight over it and you cannot see what you are typing. `adjustResize`
-              // shrinks the page but will not scroll it — the delay lets that resize land
-              // first, otherwise the scroll targets the pre-keyboard height and stops short.
-              onFocus={() => setTimeout(() => pageRef.current?.scrollToEnd({ animated: true }), 120)}
+              onFocus={() => { customRoleFocused.current = true; }}
+              onBlur={() => { customRoleFocused.current = false; }}
             />
           </View>
         </View>
