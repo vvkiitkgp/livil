@@ -84,7 +84,7 @@ Deno.test('greetingParts resolves name and handle independently', () => {
 Deno.test('composeWelcome thanks the reader for signing up', () => {
   const { text, html } = composeWelcome('Vamsi', 'vvk');
   assertStringIncludes(text, 'Thank you for signing up');
-  assertStringIncludes(html, 'Thanks for signing up.');
+  assertStringIncludes(html, 'Thanks for signing up');
 });
 
 Deno.test('composeWelcome greets by name and states the handle', () => {
@@ -93,7 +93,32 @@ Deno.test('composeWelcome greets by name and states the handle', () => {
   assertStringIncludes(text, 'Hey Vamsi,');
   assertStringIncludes(text, "You're @vvk on Livil");
   assertStringIncludes(html, 'Hey Vamsi,');
-  assertStringIncludes(html, '<strong>@vvk</strong>');
+  assertStringIncludes(html, '@vvk');
+});
+
+// The shell is shared with the Supabase Auth templates (Confirm your Livil account). If
+// one drifts the two stop looking like the same product, and nothing else would catch it.
+Deno.test('composeWelcome renders the dark backstage shell', () => {
+  const { html } = composeWelcome('Vamsi', 'vvk');
+  assertStringIncludes(html, '<!doctype html>');
+  assertStringIncludes(html, 'color-scheme');
+  assertStringIncludes(html, 'bgcolor="#0A0A0F"'); // page, per the auth templates
+  assertStringIncludes(html, 'bgcolor="#12121C"'); // card
+  assertStringIncludes(html, '#252545'); // card border
+  assertStringIncludes(html, 'letter-spacing:3px'); // LIVIL wordmark
+  // Outlook.com inverts dark-mode colours unless the override hangs off these attributes.
+  assertStringIncludes(html, '[data-ogsc]');
+  assertStringIncludes(html, '[data-ogsb]');
+  // Tables, not divs — Outlook's Word renderer ignores div backgrounds.
+  assertEquals(html.includes('<table'), true);
+});
+
+// The design system's hardest rule: purple outlines and letters, it never fills. A solid
+// #8B3DFF block is the thing this email must never grow.
+Deno.test('composeWelcome never paints a solid purple fill', () => {
+  const { html } = composeWelcome('Vamsi', 'vvk');
+  assertEquals(/background:\s*#8B3DFF/i.test(html), false);
+  assertEquals(/bgcolor="#8B3DFF"/i.test(html), false);
 });
 
 Deno.test('composeWelcome falls back to the handle in the subject when there is no name', () => {
@@ -104,7 +129,12 @@ Deno.test('composeWelcome falls back to the handle in the subject when there is 
 Deno.test('composeWelcome omits the handle sentence entirely when there is no handle', () => {
   const { text, html } = composeWelcome('Vamsi', null);
   assertEquals(text.includes('@'), false);
-  assertEquals(html.includes('@'), false);
+  // Not a bare '@' check on the HTML, and not a loose regex either: the shell's `@media`
+  // rule contains an '@' followed by letters, which an earlier version of this test
+  // matched. A RENDERED handle is always the first thing inside its span, so `>@` is the
+  // precise signature; the framing sentence is checked alongside it.
+  assertEquals(html.includes('>@'), false);
+  assertEquals(html.includes('on Livil. That handle'), false);
   // and still greets by name
   assertStringIncludes(text, 'Hey Vamsi,');
 });
@@ -120,7 +150,23 @@ Deno.test('composeWelcome explains what the product actually is', () => {
   for (const part of [text, html]) {
     assertStringIncludes(part, 'social music platform');
     assertStringIncludes(part, 'Jam');
-    assertStringIncludes(part, 'Live, Vibe, Link');
+  }
+  // The tagline is punctuated for prose in the text part and with entities in the shell,
+  // matching how the auth templates write it.
+  assertStringIncludes(text, 'Live, Vibe, Link');
+  assertStringIncludes(html, 'Live &middot; Vibe &middot; Link');
+});
+
+// Every listener is a potential uploader, so the email says so — but only claims things
+// that actually ship today: upload from either client, credits the collaborator must
+// accept, lyrics/artwork/clip, and post-release numbers.
+Deno.test('composeWelcome pitches the creator side in both parts', () => {
+  const { text, html } = composeWelcome('Vamsi', 'vvk');
+  for (const part of [text, html]) {
+    assertStringIncludes(part, 'if you ever want to make music');
+    assertStringIncludes(part, 'accept or decline');
+    assertStringIncludes(part, 'lyrics');
+    assertStringIncludes(part, 'No label, no gatekeeping');
   }
 });
 

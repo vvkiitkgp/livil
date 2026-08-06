@@ -147,6 +147,19 @@ export function composeWelcome(
     '  Playlists you build with other people, and chat that sits right next to',
     '  whatever you are both hearing.',
     '',
+    'And if you ever want to make music rather than only listen to it, Livil is',
+    'built for that side too:',
+    '',
+    '  Upload from the app or from a browser. Audio or video, either works.',
+    '',
+    '  Credit everyone who worked on it. They get asked, and can accept or decline',
+    '  — so a credit on Livil means they agreed to it.',
+    '',
+    '  Add your lyrics, artwork and a clip, and see how the track is actually',
+    '  doing once it is out.',
+    '',
+    'No label, no gatekeeping, no minimum follower count. Upload and it is live.',
+    '',
     'That is where the name comes from. Live, Vibe, Link.',
     '',
     'Reply to this email if something is broken or confusing. It reaches a person.',
@@ -154,26 +167,140 @@ export function composeWelcome(
     'Vamsi — Livil',
   ].join('\n');
 
+  // ── the dark "backstage" shell ────────────────────────────────────────────
+  //
+  // Structurally identical to the Supabase Auth templates (Confirm your Livil account,
+  // password reset): full document, `color-scheme: dark`, nested tables rather than divs,
+  // every colour repeated inline AND in a `[data-ogsc]` rule. Those bracket selectors are
+  // not decoration — Outlook.com rewrites colours on dark-mode mail and only honours
+  // overrides hung off `[data-ogsc]`/`[data-ogsb]`, so a colour set only inline gets
+  // inverted into something unreadable.
+  //
+  // Tables, `bgcolor` attributes and `!important` backgrounds are likewise deliberate:
+  // Outlook's Word renderer ignores `div` backgrounds and CSS positioning outright. This
+  // is the one place in the codebase where 2003-era markup is correct.
+  //
+  // NOTE the button that ISN'T here. The auth templates need one because their whole job
+  // is a click; this email asks nothing, so the pill is absent rather than pointed
+  // somewhere invented. If one is ever added, it takes the same outlined form — dark fill,
+  // `#8B3DFF` border, `#A855F7` label — never a solid purple slab, per the design system.
+  const bullet = (lead: string, rest: string) => `
+            <p class="l-body" style="margin:0 0 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
+              <span class="l-lead" style="color:#FFFFFF;font-weight:700;">${lead}</span> ${rest}
+            </p>`;
+
   const handleHtml = handle
-    ? `  <p style="margin:0 0 16px">You're <strong>@${handle}</strong> on Livil. That handle is yours for good — it's how people find you, and it can't be taken or changed later.</p>\n`
+    ? `
+            <p class="l-body" style="margin:0 0 20px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
+              You're <span class="l-handle" style="font-family:'Courier New',Courier,monospace;font-weight:700;color:#A855F7;">@${handle}</span> on Livil. That handle is yours for good — it's how people find you, and it can't be taken or changed later.
+            </p>`
     : '';
 
-  const html = `
-<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:520px;color:#0A0A0F;line-height:1.6">
-  <h1 style="font-size:24px;margin:0 0 16px">Thanks for signing up.</h1>
-  <p style="margin:0 0 16px">${hey} welcome to Livil — your account is ready.</p>
-${handleHtml}  <p style="margin:0 0 20px">Livil is a social music platform. The short version: music is better with people, and most apps make you listen alone.</p>
-  <p style="margin:0 0 10px;font-weight:600">What that means in practice</p>
-  <ul style="margin:0 0 20px;padding-left:20px">
-    <li style="margin:0 0 10px"><strong>Listening together, actually together.</strong> Start a Jam and everyone in the room hears the same second of the same song. You can talk over it while it plays.</li>
-    <li style="margin:0 0 10px"><strong>A feed of people, not an algorithm.</strong> You see what the people you follow are playing, posting and reposting.</li>
-    <li style="margin:0 0 10px"><strong>Your own music, if you make it.</strong> Upload a track or a video, credit the people who worked on it, and it lands on your profile.</li>
-    <li style="margin:0 0 10px"><strong>Playlists you build with other people</strong>, and chat that sits right next to whatever you're both hearing.</li>
-  </ul>
-  <p style="margin:0 0 20px;color:#4C1D95;font-weight:600">That's where the name comes from. Live, Vibe, Link.</p>
-  <p style="margin:0 0 16px;font-size:14px;color:#555">Reply to this email if something is broken or confusing. It reaches a person.</p>
-  <p style="margin:0">Vamsi — Livil</p>
-</div>`.trim();
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title>Welcome to Livil</title>
+<style>
+  :root { color-scheme: dark; supported-color-schemes: dark; }
+  [data-ogsc] .l-page, [data-ogsb] .l-page { background: #0A0A0F !important; }
+  [data-ogsc] .l-card, [data-ogsb] .l-card { background: #12121C !important; }
+  [data-ogsc] .l-title { color: #FFFFFF !important; }
+  [data-ogsc] .l-body  { color: #8B90A7 !important; }
+  [data-ogsc] .l-kicker{ color: #8B90A7 !important; }
+  [data-ogsc] .l-foot  { color: #4B5268 !important; }
+  [data-ogsc] .l-mark  { color: #FFFFFF !important; }
+  [data-ogsc] .l-lead  { color: #FFFFFF !important; }
+  [data-ogsc] .l-handle{ color: #A855F7 !important; }
+  [data-ogsc] .l-name  { color: #C9B6FF !important; }
+  @media (max-width: 480px) {
+    .l-card { padding: 28px 22px !important; }
+    .l-title { font-size: 23px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#0A0A0F;">
+<table class="l-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0A0A0F" style="background:#0A0A0F !important;margin:0;padding:32px 12px;">
+  <tr>
+    <td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+
+        <tr>
+          <td align="center" style="padding:0 0 28px;">
+            <span class="l-mark" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:22px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#FFFFFF;">Livil</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="l-card" bgcolor="#12121C" style="background:#12121C !important;border:1px solid #252545;border-radius:16px;padding:36px 32px;">
+
+            <p class="l-kicker" style="margin:0 0 8px;font-family:'Courier New',Courier,monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8B90A7;">Backstage pass</p>
+
+            <h1 class="l-title" style="margin:0 0 14px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;color:#FFFFFF;">Thanks for signing up</h1>
+
+            <p class="l-body" style="margin:0 0 20px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
+              ${hey} welcome to Livil. Your account is ready.
+            </p>${handleHtml}
+
+            <p class="l-body" style="margin:0 0 24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
+              Livil is a social music platform. The short version: music is better with people, and most apps make you listen alone.
+            </p>
+
+            <p class="l-kicker" style="margin:0 0 14px;font-family:'Courier New',Courier,monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8B90A7;">What that means</p>
+${bullet('Listening together, actually together.', 'Start a Jam and everyone in the room hears the same second of the same song. You can talk over it while it plays.')}
+${bullet('A feed of people, not an algorithm.', 'You see what the people you follow are playing, posting and reposting.')}
+${bullet('Your own music, if you make it.', 'Upload a track or a video, credit the people who worked on it, and it lands on your profile.')}
+${bullet('Playlists you build with other people,', "and chat that sits right next to whatever you're both hearing.")}
+
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:8px 0 24px;">
+              <tr><td style="border-top:1px solid #252545;font-size:0;line-height:0;">&nbsp;</td></tr>
+            </table>
+
+            <p class="l-kicker" style="margin:0 0 8px;font-family:'Courier New',Courier,monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8B90A7;">If you make music</p>
+
+            <p class="l-body" style="margin:0 0 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
+              And if you ever want to make music rather than only listen to it, Livil is built for that side too.
+            </p>
+${bullet('Upload from the app or from a browser.', 'Audio or video, either works.')}
+${bullet('Credit everyone who worked on it.', 'They get asked, and they accept or decline — so a credit on Livil means they agreed to it.')}
+${bullet('Add lyrics, artwork and a clip,', 'then see how the track is actually doing once it is out.')}
+
+            <p class="l-body" style="margin:0 0 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#8B90A7;">
+              No label, no gatekeeping, no minimum follower count. Upload and it's live.
+            </p>
+
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:10px 0 0;">
+              <tr><td style="border-top:1px solid #252545;font-size:0;line-height:0;">&nbsp;</td></tr>
+            </table>
+
+            <p class="l-kicker" style="margin:20px 0 0;font-family:'Courier New',Courier,monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8B90A7;">Live &middot; Vibe &middot; Link</p>
+            <p class="l-foot" style="margin:6px 0 0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#4B5268;">
+              That's where the name comes from.
+            </p>
+
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:24px 8px 0;">
+            <p class="l-foot" style="margin:0 0 10px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#4B5268;">
+              Reply to this email if something is broken or confusing. It reaches a person.
+            </p>
+            <p class="l-foot" style="margin:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#4B5268;">
+              Vamsi &middot; Livil
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>`;
 
   const subject = name
     ? `Welcome to Livil, ${name}`
