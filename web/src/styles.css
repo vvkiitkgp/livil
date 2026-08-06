@@ -1733,6 +1733,256 @@ a {
   margin-inline: auto;
 }
 
+/* ── Credits ─────────────────────────────────────────────────────────────── */
+
+.credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * A credit chip. Three tones, matching the mobile app's `getChipTone` exactly so the same
+ * credit does not change colour between the phone and the dashboard:
+ *   pending  — amber; tagged, not yet confirmed by that person
+ *   accepted — purple; confirmed (never seen on this screen, since nothing here is)
+ *   custom   — blue; a typed name, so there is nobody to confirm
+ */
+.credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: var(--text-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  max-width: 100%;
+}
+
+.credit__name {
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit__role {
+  opacity: 0.85;
+}
+
+.credit[data-tone='pending'] {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.credit[data-tone='pending'] .credit__role {
+  color: var(--warning);
+}
+
+.credit[data-tone='accepted'] {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+
+.credit[data-tone='accepted'] .credit__role {
+  color: var(--purple-light);
+}
+
+.credit[data-tone='custom'] {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+}
+
+.credit[data-tone='custom'] .credit__role {
+  color: var(--info);
+}
+
+.credit__remove {
+  padding: 0 2px;
+  font: inherit;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.credit__remove:hover {
+  color: var(--white);
+}
+
+/* The add control is a chip too, so the row reads as one list with a gap at the end
+   rather than a list and a button that happen to be adjacent. */
+.credit--add {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--purple-neon);
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.credit--add:hover {
+  border-color: var(--purple);
+  border-style: solid;
+}
+
+/* ── Collaborator picker ─────────────────────────────────────────────────── */
+
+.picker {
+  width: min(460px, 92vw);
+  align-items: stretch;
+  text-align: left;
+}
+
+.picker__tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.picker__tab {
+  flex: 1;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.picker__tab[data-active] {
+  border-color: var(--purple);
+  color: var(--purple-neon);
+  background: var(--purple-dim);
+}
+
+.picker__results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Capped rather than growing: twenty results would push the role chips and the confirm
+     button below the fold of a laptop screen, and the button is the point of the modal. */
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.picker__person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.picker__person:hover {
+  background: var(--input-bg);
+}
+
+.picker__person[data-selected] {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+
+.picker__person-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.picker__person-name {
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker__label {
+  margin: 0 0 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.picker__label--sub {
+  margin-top: 10px;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.picker__other {
+  margin-top: 10px;
+  align-items: center;
+}
+
+.chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rolechip {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.rolechip:hover {
+  border-color: var(--purple-deep);
+}
+
+.rolechip[data-active] {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+  color: var(--purple-neon);
+}
+
+/* AI roles read as their own group at a glance, so one is never picked by accident in
+   place of the human role directly above it. Info blue, matching the tone a typed-in
+   credit already carries. */
+.rolechip[data-ai] {
+  border-color: var(--info-border);
+}
+
+.rolechip[data-ai][data-active] {
+  border-color: var(--info);
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+/* The typed role sits in the chip row and looks like the chips around it — it is the same
+   choice, made in words. */
+.rolechip--input {
+  min-width: 190px;
+  color: var(--white);
+  cursor: text;
+}
+
+.rolechip--input:focus {
+  outline: none;
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+.picker__actions {
+  justify-content: flex-end;
+}
+
 /* ── Level meter ─────────────────────────────────────────────────────────── */
 
 /*

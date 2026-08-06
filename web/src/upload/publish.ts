@@ -7,6 +7,7 @@
  */
 import {
   publishTrack,
+  type PublishCollaborator,
   type PublishProgress,
   type PublishTrackResult,
 } from '@shared/services/publishTrack';
@@ -23,6 +24,8 @@ export type PickedMedia = {
   image: File;
   title: string;
   description: string;
+  /** Credits, already flattened to the shape the table stores. */
+  collaborators: PublishCollaborator[];
 };
 
 export type MediaMeta = {
@@ -108,6 +111,7 @@ export function startPublish(
         title: picked.title,
         description: picked.description,
         durationSeconds,
+        collaborators: picked.collaborators,
         assets: [...files.entries()].map(([kind, file]) => ({
           kind,
           fileName: file.name,
