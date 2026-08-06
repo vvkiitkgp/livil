@@ -38,6 +38,11 @@ body {
   font-size: var(--text-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* A single long token — a pasted profile link, a track title with no spaces, an email in a
+     spec row — is enough to widen the whole page and give every screen a horizontal scrollbar.
+     `break-word` only breaks when the alternative is overflowing, so ordinary text is
+     untouched. Cheaper than finding every container that could one day hold user text. */
+  overflow-wrap: break-word;
 }
 
 a {
@@ -1818,4 +1823,136 @@ a {
 
 .early-access__close:hover {
   opacity: 1;
+}
+
+/* ── Small screens ───────────────────────────────────────────────────────── */
+/*
+   The dashboard is a desktop tool by design (ADR-0015) — nobody masters a track
+   on a phone. But the sign-in link is on the marketing page, so artists DO open
+   it on a phone, and "made for desktop" is not a licence to overflow the
+   viewport.
+
+   Component-local breakpoints live next to their components above. This block is
+   for the shell, which has no single owner.
+*/
+@media (max-width: 720px) {
+  /* The top bar was one unwrapping flex row: brand + three nav links + Upload +
+     avatar, inside a fixed 60px height. Below roughly 600px that is wider than
+     the screen, so it ran off the edge and took the page's horizontal scroll
+     with it. It now wraps to two rows — identity and actions, then navigation. */
+  .topbar__inner {
+    height: auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .topbar__right {
+    /* Keeps Upload and the avatar hard right once the nav has wrapped away. */
+    margin-left: auto;
+  }
+
+  .topbar__nav {
+    order: 3;
+    flex-basis: 100%;
+    /* Scroll the links rather than wrapping them into a ragged second block —
+       three today, and this is where a fourth would otherwise break the layout. */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar__nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navlink {
+    white-space: nowrap;
+  }
+
+  /* Title and its controls stop competing for one line. */
+  .page__head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .filters {
+    flex-wrap: wrap;
+  }
+
+  .page {
+    padding: var(--space-6) var(--space-4) var(--space-12);
+  }
+}
+
+/*
+ * Unsticking the two sidebars.
+ *
+ * These MUST live at the end of the file, not in the media queries that collapse their
+ * grids. Those blocks sit ABOVE `.overview__pass` and `.detail__preview` in the source, and
+ * a media query carries no extra specificity — so the later base rule won, `position: sticky`
+ * survived, and the card went on overlaying the page. A rule that loses the cascade looks
+ * exactly like a rule that was never written.
+ */
+@media (max-width: 900px) {
+  /* In two columns the pass is a sticky sidebar and reads correctly. Stacked, it becomes the
+     first block in a single column — pinned while everything after it scrolls underneath.
+     Sticky only makes sense beside something, never above it. */
+  .overview__pass {
+    position: static;
+    /* The tilt is charm at 300px wide. Full-bleed on a phone it pushes the rotated corners
+       past the viewport and gives the whole page a horizontal scrollbar. */
+    transform: none;
+    max-width: 420px;
+  }
+}
+
+@media (max-width: 1000px) {
+  /* Same fault, different breakpoint — a sticky sidebar with nothing left beside it. */
+  .detail__preview {
+    position: static;
+  }
+}
+
+/* ── Team messages (ops) ─────────────────────────────────────────────────── */
+
+.msglist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.msg + .msg {
+  padding-top: var(--space-5);
+  border-top: 1px dashed var(--border);
+}
+
+.msg__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.msg__when {
+  margin-left: auto;
+}
+
+/* pre-wrap, not pre: honour the paragraphs someone typed without also honouring the line
+   width their window happened to be. `white-space: pre` would force horizontal scrolling on
+   a long line. */
+.msg__body {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--white);
+}
+
+/* The multi-line field. Height is set by `rows`; this only stops the browser's default
+   resize handle dragging it outside the panel. */
+.field__input--area {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
 }

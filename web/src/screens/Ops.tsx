@@ -3,6 +3,8 @@ import { Button } from '../components/Button';
 import { fetchWaitlist, recordSendResult, type WaitlistEntry } from '../data/waitlist';
 import { sendInvite } from '../data/invite';
 import { formatDate } from '../format';
+import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
+import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 
 /**
  * Waitlist ops.
@@ -26,6 +28,10 @@ export function Ops() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<TeamMessage[] | null>(null);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [users, setUsers] = useState<OpsUser[] | null>(null);
+  const [usersError, setUsersError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -38,6 +44,26 @@ export function Ops() {
   }, []);
 
   useEffect(load, [load]);
+
+  // Loaded independently of the waitlist: a failure in one should not blank the other, and
+  // the same is_ops() gate covers both, so there is nothing to sequence.
+  useEffect(() => {
+    fetchOpsUsers()
+      .then(setUsers)
+      .catch(e => {
+        setUsers([]);
+        setUsersError(e?.message ?? 'Could not load users.');
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchTeamMessages()
+      .then(setMessages)
+      .catch(e => {
+        setMessages([]);
+        setMessagesError(e?.message ?? 'Could not load messages.');
+      });
+  }, []);
 
   const stats = useMemo(() => {
     const list = entries ?? [];
@@ -173,6 +199,121 @@ export function Ops() {
                       </Button>
                     </div>
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
+        <div>
+          <p className="kicker">The backstage door</p>
+          <h1 className="display page__title">Messages</h1>
+        </div>
+      </header>
+
+      {messagesError && (
+        <div className="empty panel">
+          <p className="empty__title">Could not load messages</p>
+          <p className="hint">{messagesError}</p>
+        </div>
+      )}
+
+      {messages === null && !messagesError && <div className="skeleton skeleton--rows" />}
+
+      {messages !== null && messages.length === 0 && !messagesError && (
+        <div className="empty panel">
+          <p className="empty__title">Nothing yet</p>
+          <p className="hint">
+            Artists can write in from the studio — the avatar menu, &ldquo;Message the
+            team&rdquo;.
+          </p>
+        </div>
+      )}
+
+      {messages !== null && messages.length > 0 && (
+        <div className="panel msglist">
+          {messages.map(m => (
+            <article className="msg" key={m.id}>
+              <div className="msg__head">
+                <span className="table__title">
+                  {m.senderName ?? m.senderUsername ?? 'Deleted account'}
+                </span>
+                {m.senderUsername && <span className="hint">@{m.senderUsername}</span>}
+                {m.senderEmail && (
+                  /* mailto, because replying IS the workflow — there is no reply path in the
+                     product by design, so the address has to be one click from the message. */
+                  <a className="hint" href={`mailto:${m.senderEmail}?subject=Re: your message to Livil`}>
+                    {m.senderEmail}
+                  </a>
+                )}
+                <span className="hint msg__when">{formatDate(m.createdAt)}</span>
+              </div>
+              {/* Whitespace preserved: people write in paragraphs, and collapsing them turns
+                  a considered message into a wall. */}
+              <p className="msg__body">{m.body}</p>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
+        <div>
+          <p className="kicker">Everyone on Livil</p>
+          <h1 className="display page__title">Users</h1>
+        </div>
+        {users !== null && users.length > 0 && (
+          <p className="hint">
+            {users.length} account{users.length === 1 ? '' : 's'}
+          </p>
+        )}
+      </header>
+
+      {usersError && (
+        <div className="empty panel">
+          <p className="empty__title">Could not load users</p>
+          <p className="hint">{usersError}</p>
+        </div>
+      )}
+
+      {users === null && !usersError && <div className="skeleton skeleton--rows" />}
+
+      {users !== null && users.length > 0 && (
+        <div className="tablewrap panel">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Artist</th>
+                <th>Email</th>
+                <th>Joined</th>
+                <th className="num">Tracks</th>
+                {/* One column, not "fans" and "stars" — follows_kind_check permits only
+                    kind='star', so they are the same relationship under a different word. */}
+                <th className="num">Stars</th>
+                <th className="num">Friends</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id}>
+                  <td>
+                    <span className="table__title">{u.displayName ?? 'No name'}</span>
+                    {u.username && <div className="hint">@{u.username}</div>}
+                  </td>
+                  <td>
+                    {u.email ? (
+                      <a className="hint" href={`mailto:${u.email}`}>
+                        {u.email}
+                      </a>
+                    ) : (
+                      <span className="hint">—</span>
+                    )}
+                  </td>
+                  <td>{formatDate(u.createdAt)}</td>
+                  <td className="num">{u.tracksCount}</td>
+                  <td className="num">{u.starsCount}</td>
+                  <td className="num">{u.friendsCount}</td>
                 </tr>
               ))}
             </tbody>

@@ -114,6 +114,17 @@ export function AppShell({ session }: { session: Session }) {
                     type="button"
                     role="menuitem"
                     className="menu__item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate('/contact');
+                    }}
+                  >
+                    Message the team
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu__item"
                     onClick={signOut}
                   >
                     Sign out

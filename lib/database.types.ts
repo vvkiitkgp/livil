@@ -1230,6 +1230,35 @@ export type Database = {
           },
         ]
       }
+      team_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          sender_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          sender_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       track_collaborators: {
         Row: {
           created_at: string
@@ -1622,6 +1651,32 @@ export type Database = {
       message_preview: {
         Args: { p_body: string; p_kind: string }
         Returns: string
+      }
+      ops_team_messages: {
+        Args: never
+        Returns: {
+          body: string
+          created_at: string
+          id: string
+          sender_email: string
+          sender_name: string
+          sender_username: string
+        }[]
+      }
+      ops_users_overview: {
+        Args: never
+        Returns: {
+          created_at: string
+          display_name: string
+          email: string
+          friends_count: number
+          id: string
+          last_seen_at: string
+          posts_count: number
+          stars_count: number
+          tracks_count: number
+          username: string
+        }[]
       }
       profile_links_ok: { Args: { p_links: string[] }; Returns: boolean }
       reject_friend_request: {

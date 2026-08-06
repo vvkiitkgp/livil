@@ -6,7 +6,13 @@
  * exist in a browser — this component is here for visual parity, not to work around it, so
  * focus styling is pure CSS with no React state at all.
  */
-import { useId, useState, type InputHTMLAttributes, type ReactNode } from 'react';
+import {
+  useId,
+  useState,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
+} from 'react';
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
   label: string;
@@ -31,6 +37,29 @@ export function TextField({ label, className, trailing, ...rest }: Props) {
         />
         {trailing && <div className="field__trailing">{trailing}</div>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Multi-line variant, sharing the field chrome so it cannot drift from `TextField`.
+ *
+ * The dashboard had no textarea until now — bio is a single-line `TextField`, which is fine
+ * for 160 characters. A message to the team is the first field where someone writes a
+ * paragraph, and a single-line input for that makes people write less than they meant to.
+ */
+export function TextArea({
+  label,
+  className,
+  ...rest
+}: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'id'> & { label: string }) {
+  const id = useId();
+  return (
+    <div className={['field', className].filter(Boolean).join(' ')}>
+      <label className="field__label" htmlFor={id}>
+        {label}
+      </label>
+      <textarea id={id} className="field__input field__input--area" {...rest} />
     </div>
   );
 }
