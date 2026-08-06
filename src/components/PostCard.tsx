@@ -7,6 +7,8 @@ import { haptics } from '../utils/haptics';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import ClipRangeSlider from './ClipRangeSlider';
+import CollabAvatar from './CollabAvatar';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import TrackContextMenu from './TrackContextMenu';
 import AddToAlbumSheet from './AddToAlbumSheet';
 import type { FeedPost } from '../services/posts';
@@ -84,6 +86,18 @@ function avatarInitials(author: { displayName: string | null; username: string }
 // Memoized: feed items keep a stable identity (useCommentsCountDeltas.withDelta
 // returns the same object when there's no delta), so React.memo lets a like /
 // comment / pagination on ONE card skip re-rendering every other mounted card.
+/** Faces before the row starts counting instead. Four fits a phone without crowding. */
+const CREDIT_FACES_SHOWN = 4;
+
+/** "with Ana" / "with Ana and 2 others" — a name is worth more than a face count. */
+function creditsSummary(credits: FeedPost['credits']): string {
+  const first = credits[0]?.name?.trim();
+  if (!first) {return credits.length === 1 ? 'with 1 other' : `with ${credits.length} others`;}
+  if (credits.length === 1) {return `with ${first}`;}
+  const rest = credits.length - 1;
+  return `with ${first} and ${rest} other${rest === 1 ? '' : 's'}`;
+}
+
 function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -345,6 +359,20 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     }
     playback.openFullScreenPlayer();
   }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback]);
+
+  /**
+   * Open the player on the Info tab, where the credits actually live.
+   *
+   * Reuses the same open-and-play path as the artwork rather than a bespoke one, so a card
+   * whose track is not loaded yet still lands on the right track's info.
+   */
+  const handleOpenCredits = useCallback(() => {
+    haptics.tap();
+    if (!isThisActive) {
+      playback.setNowPlaying(buildNowPlayingForThis());
+    }
+    playback.openFullScreenPlayer('info');
+  }, [isThisActive, buildNowPlayingForThis, playback]);
 
   // Audio play/pause (action-row button + cover tap). Drives the GLOBAL audio
   // player, never an inline <Video>, so playback is independent of whether this
@@ -635,6 +663,37 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <Text style={styles.caption} numberOfLines={4}>
           {post.caption}
         </Text>
+      ) : null}
+
+      {/* Credits — faces only. A track's collaborators are part of what the post IS, and
+          the card showed no sign of them at all; you had to open the player to find out
+          anyone else played on it. Tapping opens the player's Info tab, where the names,
+          roles and glyphs live, rather than repeating them here. */}
+      {post.credits.length > 0 ? (
+        <TouchableOpacity
+          style={styles.creditsRow}
+          activeOpacity={0.75}
+          onPress={handleOpenCredits}
+          accessibilityRole="button"
+          accessibilityLabel={`${post.credits.length} credited on this track. Opens track info.`}
+        >
+          {post.credits.slice(0, CREDIT_FACES_SHOWN).map((c, i) => (
+            <View key={c.userId ?? i} style={[styles.creditFace, i > 0 && styles.creditFaceStacked]}>
+              <CollabAvatar
+                uri={c.avatarUrl}
+                display={resolveAuthorDisplay({ displayName: c.name })}
+                size={22}
+                pending={c.pending}
+              />
+            </View>
+          ))}
+          {post.credits.length > CREDIT_FACES_SHOWN ? (
+            <Text style={styles.creditsMore}>+{post.credits.length - CREDIT_FACES_SHOWN}</Text>
+          ) : null}
+          <Text style={styles.creditsLabel} numberOfLines={1}>
+            {creditsSummary(post.credits)}
+          </Text>
+        </TouchableOpacity>
       ) : null}
 
       {/* Media */}
@@ -1021,6 +1080,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  creditsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 },
+  creditFace: {},
+  // Overlapped, so a row of credits reads as one group rather than a queue of avatars.
+  creditFaceStacked: { marginLeft: -10 },
+  creditsMore: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', marginLeft: 2 },
+  creditsLabel: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
   caption: {
     color: COLORS.textSecondary,
     fontSize: 14,

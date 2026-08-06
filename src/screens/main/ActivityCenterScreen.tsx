@@ -157,7 +157,12 @@ export default function ActivityCenterScreen() {
       });
       return;
     }
-    navigation.navigate('UserProfile', { userId: meId, focusPostId: postId });
+    // WHOSE profile the post lives on. Every other notification is about something that
+    // happened TO my post, so my profile is right — but a credit is about somebody ELSE's
+    // upload, and routing that to me opened my profile hunting for a post that was never
+    // there. The uploader is the actor on a 'credited' row.
+    const ownerId = item.type === 'credited' ? item.actor.id || meId : meId;
+    navigation.navigate('UserProfile', { userId: ownerId, focusPostId: postId });
   }, [navigation, meId]);
 
   /**

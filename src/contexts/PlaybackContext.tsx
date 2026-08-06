@@ -159,7 +159,15 @@ type PlaybackContextValue = {
 
   // --- full-screen player ---
   isFullScreenOpen: boolean;
-  openFullScreenPlayer: () => void;
+  /**
+   * `tab` lands the player on a panel instead of the bare artwork — the credits row on a
+   * post card opens 'info'. Cleared once the player has consumed it, so reopening by any
+   * other route starts clean.
+   */
+  openFullScreenPlayer: (tab?: 'lyrics' | 'queue' | 'info') => void;
+  /** Panel the next open should land on, or null. Read and cleared by FullScreenPlayer. */
+  pendingTab: 'lyrics' | 'queue' | 'info' | null;
+  clearPendingTab: () => void;
   closeFullScreenPlayer: () => void;
   /**
    * Clean / immersive view — the FS video with EVERY control + the floating
@@ -631,9 +639,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setPendingPlayId(null);
   }, []);
 
-  const openFullScreenPlayer = useCallback(() => {
+  const [pendingTab, setPendingTab] = useState<'lyrics' | 'queue' | 'info' | null>(null);
+
+  const openFullScreenPlayer = useCallback((tab?: 'lyrics' | 'queue' | 'info') => {
+    setPendingTab(tab ?? null);
     setIsFullScreenOpen(true);
   }, []);
+
+  const clearPendingTab = useCallback(() => setPendingTab(null), []);
 
   const closeFullScreenPlayer = useCallback(() => {
     setIsFullScreenOpen(false);
@@ -823,6 +836,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       queueVersion,
       isFullScreenOpen,
       openFullScreenPlayer,
+      pendingTab,
+      clearPendingTab,
       closeFullScreenPlayer,
       isImmersive,
       setImmersive,
@@ -883,6 +898,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       queueVersion,
       isFullScreenOpen,
       openFullScreenPlayer,
+      pendingTab,
+      clearPendingTab,
       closeFullScreenPlayer,
       isImmersive,
       setImmersive,

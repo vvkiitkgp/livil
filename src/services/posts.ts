@@ -26,6 +26,20 @@ export type TrackMedia = {
   durationSeconds: number | null;
 };
 
+/**
+ * Just enough of a credit to draw a face on the card.
+ *
+ * Deliberately NOT the full `TrackCollaboratorInfo`: the card shows an avatar row that
+ * opens the player's Info tab, and the names, roles and role glyphs live there. Carrying
+ * roles in every feed row would pay for data the card never renders.
+ */
+export type CreditFace = {
+  userId: string | null;
+  avatarUrl: string | null;
+  name: string | null;
+  pending: boolean;
+};
+
 export type FeedPost = {
   id: string;
   kind: 'upload' | 'repost';
@@ -46,6 +60,8 @@ export type FeedPost = {
   /** Optional clip window selected during repost (seconds). */
   clipStartSec: number | null;
   clipEndSec: number | null;
+  /** Credited artists, for the avatar row on the card. Empty for an uncredited track. */
+  credits: CreditFace[];
 };
 
 export type ProfileStats = {
@@ -75,6 +91,15 @@ type RawPostRow = {
     cover_art_url: string | null;
     thumbnail_url: string | null;
     duration_seconds: number | null;
+    collaborators?: Array<{
+      user_id: string | null;
+      status: string | null;
+      profile: {
+        avatar_url: string | null;
+        display_name: string | null;
+        username: string | null;
+      } | null;
+    }> | null;
   } | null;
   author: {
     id: string;
@@ -110,7 +135,12 @@ const POST_SELECT = `
     video_url,
     cover_art_url,
     thumbnail_url,
-    duration_seconds
+    duration_seconds,
+    collaborators:track_collaborators (
+      user_id,
+      status,
+      profile:profiles ( avatar_url, display_name, username )
+    )
   ),
   author:profiles!posts_author_id_fkey (
     id,
@@ -130,6 +160,24 @@ function toAuthor(row: RawPostRow['author']): AuthorRef {
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
   };
+}
+
+/**
+ * Credits reduced to faces.
+ *
+ * Declined rows are dropped — the named artist said this is not them. Typed-in names are
+ * dropped too, but for a different reason: they have no avatar and no profile to open, so
+ * a face row would be initials that go nowhere. They still appear in full on the Info tab.
+ */
+function toCreditFaces(row: RawPostRow['track']): CreditFace[] {
+  return (row?.collaborators ?? [])
+    .filter(c => c.user_id && c.status !== 'declined')
+    .map(c => ({
+      userId: c.user_id,
+      avatarUrl: c.profile?.avatar_url ?? null,
+      name: c.profile?.display_name ?? c.profile?.username ?? null,
+      pending: c.status !== 'accepted',
+    }));
 }
 
 function toTrack(row: RawPostRow['track']): TrackMedia {
@@ -228,6 +276,7 @@ async function hydrateRawPostRows(
     viewerHasLiked: forced ? Boolean(forced.get(r.id)) : likedSet.has(r.id),
     clipStartSec: r.clip_start_sec ?? null,
     clipEndSec: r.clip_end_sec ?? null,
+    credits: toCreditFaces(r.track),
   }));
 }
 
@@ -261,6 +310,7 @@ function mapRpcFeedPost(raw: RpcFeedPostJson): FeedPost {
     viewerHasLiked: Boolean(raw.viewer_has_liked),
     clipStartSec: raw.clip_start_sec ?? null,
     clipEndSec: raw.clip_end_sec ?? null,
+    credits: toCreditFaces(raw.track),
   };
 }
 
