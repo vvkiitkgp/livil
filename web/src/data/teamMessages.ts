@@ -25,6 +25,12 @@ export type TeamMessage = {
    */
   senderName: string | null;
   senderUsername: string | null;
+  /**
+   * Read from `auth.users` by the ops RPC, not stored on the row. Storing it at insert time
+   * would mean trusting an address the sender's browser supplied — RLS constrains which rows
+   * may be written, not what a column contains.
+   */
+  senderEmail: string | null;
 };
 
 /**
@@ -57,27 +63,20 @@ export async function sendTeamMessage(body: string): Promise<void> {
  * small. Add a range when scrolling it becomes a chore — not before.
  */
 export async function fetchTeamMessages(): Promise<TeamMessage[]> {
-  const { data, error } = await supabase
-    .from('team_messages')
-    .select('id, body, created_at, profiles:sender_id (display_name, username)')
-    .order('created_at', { ascending: false });
+  // An RPC rather than a table select, because the sender's email lives in `auth.users`,
+  // which no client may read. `ops_team_messages` is SECURITY DEFINER and checks `is_ops()`
+  // itself — it returns an empty set to anyone else rather than raising, matching how the
+  // RLS-gated reads behave and keeping /ops guard-free.
+  const { data, error } = await supabase.rpc('ops_team_messages');
 
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map(row => {
-    // PostgREST types an embedded to-one as an object or an array depending on how it
-    // resolves the relationship; normalise rather than trusting one shape.
-    const p = row.profiles as
-      | { display_name: string | null; username: string | null }
-      | { display_name: string | null; username: string | null }[]
-      | null;
-    const profile = Array.isArray(p) ? (p[0] ?? null) : p;
-    return {
-      id: row.id,
-      body: row.body,
-      createdAt: row.created_at,
-      senderName: profile?.display_name ?? null,
-      senderUsername: profile?.username ?? null,
-    };
-  });
+  return (data ?? []).map(row => ({
+    id: row.id,
+    body: row.body,
+    createdAt: row.created_at,
+    senderName: row.sender_name,
+    senderUsername: row.sender_username,
+    senderEmail: row.sender_email,
+  }));
 }

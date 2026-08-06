@@ -1652,6 +1652,17 @@ export type Database = {
         Args: { p_body: string; p_kind: string }
         Returns: string
       }
+      ops_team_messages: {
+        Args: never
+        Returns: {
+          body: string
+          created_at: string
+          id: string
+          sender_email: string
+          sender_name: string
+          sender_username: string
+        }[]
+      }
       profile_links_ok: { Args: { p_links: string[] }; Returns: boolean }
       reject_friend_request: {
         Args: { other_user_id: string }

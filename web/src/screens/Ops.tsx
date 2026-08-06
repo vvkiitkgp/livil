@@ -229,6 +229,13 @@ export function Ops() {
                   {m.senderName ?? m.senderUsername ?? 'Deleted account'}
                 </span>
                 {m.senderUsername && <span className="hint">@{m.senderUsername}</span>}
+                {m.senderEmail && (
+                  /* mailto, because replying IS the workflow — there is no reply path in the
+                     product by design, so the address has to be one click from the message. */
+                  <a className="hint" href={`mailto:${m.senderEmail}?subject=Re: your message to Livil`}>
+                    {m.senderEmail}
+                  </a>
+                )}
                 <span className="hint msg__when">{formatDate(m.createdAt)}</span>
               </div>
               {/* Whitespace preserved: people write in paragraphs, and collapsing them turns
