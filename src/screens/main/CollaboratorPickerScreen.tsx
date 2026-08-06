@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,7 @@ export default function CollaboratorPickerScreen() {
   const [selectedUser, setSelectedUser] = useState<ProfileSearchResult | null>(null);
   const [role, setRole] = useState<string>('');
 
+  const pageRef = useRef<ScrollView>(null);
   const [results, setResults] = useState<ProfileSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
@@ -159,6 +160,7 @@ export default function CollaboratorPickerScreen() {
         * page scrolls as a whole.
         */}
       <ScrollView
+        ref={pageRef}
         style={styles.flex}
         contentContainerStyle={styles.pageContent}
         keyboardShouldPersistTaps="handled"
@@ -327,6 +329,11 @@ export default function CollaboratorPickerScreen() {
               placeholder="e.g. Tabla, Saxophone"
               maxLength={40}
               autoCapitalize="words"
+              // This field sits at the very bottom of a long page, so the keyboard opens
+              // straight over it and you cannot see what you are typing. `adjustResize`
+              // shrinks the page but will not scroll it — the delay lets that resize land
+              // first, otherwise the scroll targets the pre-keyboard height and stops short.
+              onFocus={() => setTimeout(() => pageRef.current?.scrollToEnd({ animated: true }), 120)}
             />
           </View>
         </View>
@@ -403,7 +410,8 @@ const styles = StyleSheet.create({
   modePillTextActive: {
     color: COLORS.purpleNeon,
   },
-  pageContent: { paddingBottom: 16 },
+  // Room to lift the custom-role field clear of the keyboard when it is focused.
+  pageContent: { paddingBottom: 96 },
   searchSection: {
     paddingHorizontal: 20,
     paddingTop: 16,

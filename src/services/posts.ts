@@ -376,11 +376,37 @@ export type ListPostsOptions = {
 };
 
 /**
+ * Track ids this user is a CONFIRMED collaborator on.
+ *
+ * Accepted only, deliberately. A pending credit is somebody else's claim about you that
+ * you have not answered — putting the track on your profile would publish the claim on
+ * your behalf, which is the exact thing confirmation exists to prevent.
+ */
+async function acceptedCreditTrackIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('track_collaborators')
+    .select('track_id')
+    .eq('user_id', userId)
+    .eq('status', 'accepted');
+  if (error) {throw new Error(error.message);}
+  return [...new Set(((data ?? []) as Array<{ track_id: string }>).map(r => r.track_id))];
+}
+
+/**
  * Fetch posts authored by a user, newest first. When `kind` is set we
  * filter to that kind only (e.g. `upload` for the Uploads tab, `repost` for
  * the Reposts tab). Otherwise we return all posts (uploads + reposts).
  * For reposts we also resolve the original uploader's profile so the UI can
  * show a "Creator" tag.
+ *
+ * UPLOADS ALSO INCLUDE TRACKS THIS USER WAS CREDITED ON. A credit is co-authorship of
+ * that upload, not a separate kind of thing, so the drummer's profile lists the record
+ * they drummed on rather than hiding it behind its own tab. The post still belongs to
+ * whoever uploaded it — this is a second place it is listed, not a copy.
+ *
+ * Two queries rather than one: PostgREST cannot express "author_id = me OR track_id in
+ * (subquery)" without an RPC, and a merge here keeps the shape honest at the cost of one
+ * extra round trip on a profile.
  */
 export async function listPostsForUser(
   userId: string,
@@ -388,24 +414,45 @@ export async function listPostsForUser(
 ): Promise<FeedPost[]> {
   const limit = options.limit ?? 10;
 
-  let query = supabase
-    .from('posts')
-    .select(POST_SELECT)
-    .eq('author_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const build = () => {
+    let q = supabase
+      .from('posts')
+      .select(POST_SELECT)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (options.kind) {q = q.eq('kind', options.kind);}
+    if (options.before) {q = q.lt('created_at', options.before);}
+    return q;
+  };
 
-  if (options.kind) {
-    query = query.eq('kind', options.kind);
+  // Credits only ever attach to uploads, so the Reposts tab has nothing to gain from the
+  // second query and should not pay for it.
+  const wantsCredits = options.kind !== 'repost';
+  const creditTrackIds = wantsCredits ? await acceptedCreditTrackIds(userId) : [];
+
+  const [own, credited] = await Promise.all([
+    build().eq('author_id', userId),
+    creditTrackIds.length > 0
+      ? build().eq('kind', 'upload').in('track_id', creditTrackIds).neq('author_id', userId)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (own.error) {throw new Error(own.error.message);}
+  if (credited.error) {throw new Error(credited.error.message);}
+
+  // Merged, deduped by post id, and re-sorted: two newest-first pages interleave, and the
+  // limit applies to the combined result so a page is the size the caller asked for.
+  const byId = new Map<string, RawPostRow>();
+  for (const row of [
+    ...((own.data ?? []) as unknown as RawPostRow[]),
+    ...((credited.data ?? []) as unknown as RawPostRow[]),
+  ]) {
+    byId.set(row.id, row);
   }
-  if (options.before) {
-    query = query.lt('created_at', options.before);
-  }
+  const rows = [...byId.values()]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+    .slice(0, limit);
 
-  const { data, error } = await query;
-  if (error) {throw new Error(error.message);}
-
-  const rows = (data ?? []) as unknown as RawPostRow[];
   return hydrateRawPostRows(rows);
 }
 
@@ -474,24 +521,40 @@ export async function searchPosts(
 }
 
 export async function getProfileStats(userId: string): Promise<ProfileStats> {
-  // Two head:true count queries — cheap and accurate.
-  const [{ count: total, error: totalError }, { count: uploads, error: uploadsError }] =
-    await Promise.all([
-      supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('author_id', userId),
-      supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('author_id', userId)
-        .eq('kind', 'upload'),
-    ]);
+  // Credited uploads count toward `uploads`, because they are listed in that tab — a tab
+  // whose number disagrees with its contents reads as a bug in the number.
+  const creditTrackIds = await acceptedCreditTrackIds(userId);
+
+  const [
+    { count: total, error: totalError },
+    { count: uploads, error: uploadsError },
+    { count: credited, error: creditedError },
+  ] = await Promise.all([
+    supabase
+      .from('posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('author_id', userId),
+    supabase
+      .from('posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('author_id', userId)
+      .eq('kind', 'upload'),
+    creditTrackIds.length > 0
+      ? supabase
+          .from('posts')
+          .select('id', { count: 'exact', head: true })
+          .eq('kind', 'upload')
+          .in('track_id', creditTrackIds)
+          .neq('author_id', userId)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
 
   if (totalError) {throw new Error(totalError.message);}
   if (uploadsError) {throw new Error(uploadsError.message);}
+  if (creditedError) {throw new Error(creditedError.message);}
 
-  return { posts: total ?? 0, uploads: uploads ?? 0 };
+  const credits = credited ?? 0;
+  return { posts: (total ?? 0) + credits, uploads: (uploads ?? 0) + credits };
 }
 
 /**
