@@ -24,7 +24,9 @@ export type PickedMedia = {
   image: File;
   title: string;
   description: string;
-  /** Credits, already flattened to the shape the table stores. */
+  /** What the uploader did on this track. Required — see `PublishTrackInput`. */
+  uploaderRole: string;
+  /** Credits for everyone else, already flattened to the shape the table stores. */
   collaborators: PublishCollaborator[];
 };
 
@@ -111,6 +113,7 @@ export function startPublish(
         title: picked.title,
         description: picked.description,
         durationSeconds,
+        uploaderRole: picked.uploaderRole,
         collaborators: picked.collaborators,
         assets: [...files.entries()].map(([kind, file]) => ({
           kind,

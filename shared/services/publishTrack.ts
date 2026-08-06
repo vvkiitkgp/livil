@@ -68,7 +68,16 @@ export type PublishTrackInput = {
   description?: string | null;
   durationSeconds?: number | null;
   assets: PublishAsset[];
-  /** Credits, written as part of publishing. Omitted or empty means an uncredited track. */
+  /**
+   * What the UPLOADER did on their own track. Required.
+   *
+   * A credit list that names the guitarist and the mixer but not the person who made the
+   * record is not a credit list. It is stored as an ordinary `track_collaborators` row
+   * pointing at the uploader, so it renders, sorts and reads exactly like any other credit
+   * — and lands `accepted`, because you do not confirm your own credit.
+   */
+  uploaderRole: string;
+  /** Credits for everyone else. Omitted or empty means the uploader worked alone. */
   collaborators?: PublishCollaborator[];
 };
 
@@ -95,6 +104,11 @@ export const ROLE_MAX_LENGTH = 40;
 
 function validate(input: PublishTrackInput): string | null {
   if (!input.title.trim()) return 'Title is required.';
+  const own = input.uploaderRole?.trim() ?? '';
+  if (!own) return 'Choose what you did on this track.';
+  if (own.length > ROLE_MAX_LENGTH) {
+    return `A role must be ${ROLE_MAX_LENGTH} characters or fewer.`;
+  }
   const kinds = new Set(input.assets.map(a => a.kind));
   if (input.mode === 'audio') {
     if (!kinds.has('audio')) return 'Audio file is required.';
@@ -278,18 +292,29 @@ export async function publishTrack(
      * Every row lands as `pending`. The tagged artist accepts in the app — the uploader
      * does not get to assert someone else's involvement on their behalf.
      */
-    const collaborators = input.collaborators ?? [];
-    if (collaborators.length > 0) {
-      const { error: collabError } = await db.from('track_collaborators').insert(
-        collaborators.map(c => ({
-          track_id: trackId,
-          user_id: c.userId,
-          custom_name: c.userId ? null : c.customName?.trim() ?? null,
-          role: c.role.trim(),
-        })),
-      );
-      if (collabError) throw new Error(`Failed to save credits: ${collabError.message}`);
-    }
+    // The uploader's own credit goes in with everybody else's, in one insert, so a
+    // half-credited track is not a state that can exist. `accepted` because it is
+    // self-declared — nobody has to confirm what you say you did on your own record, and
+    // the notification trigger already skips self-credits.
+    const rows = [
+      {
+        track_id: trackId,
+        user_id: user.id,
+        custom_name: null,
+        role: input.uploaderRole.trim(),
+        status: 'accepted',
+      },
+      ...(input.collaborators ?? []).map(c => ({
+        track_id: trackId,
+        user_id: c.userId,
+        custom_name: c.userId ? null : c.customName?.trim() ?? null,
+        role: c.role.trim(),
+        status: 'pending',
+      })),
+    ];
+
+    const { error: collabError } = await db.from('track_collaborators').insert(rows);
+    if (collabError) throw new Error(`Failed to save credits: ${collabError.message}`);
 
     // No clip window is written: the dashboard has no player, and choosing an excerpt you
     // cannot hear is guesswork. The columns stay null, which means "play the full track" —

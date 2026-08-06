@@ -11,7 +11,7 @@ import { filesFromDataTransfer, pairAssets } from '../upload/files';
 import { mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
-import { getChipTone } from '@shared/constants/roles';
+import { AI_ROLES, ROLES, getChipTone } from '@shared/constants/roles';
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
@@ -76,6 +76,7 @@ export function Upload() {
   // Nothing left to do: the run is over and something actually published.
   const finished = !queue.running && done.length > 0 && pending.length === 0;
   const missingArt = pending.filter(i => !i.image).length;
+  const missingRole = pending.filter(i => !i.uploaderRole.trim()).length;
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
   // The meter outlives playback on purpose: pausing, or a track running out, is exactly
@@ -211,6 +212,7 @@ export function Upload() {
               onTitle={title => queue.patch(item.id, { title })}
               onDescription={description => queue.patch(item.id, { description })}
               onAddCredit={() => setCreditingId(item.id)}
+              onUploaderRole={role => queue.patch(item.id, { uploaderRole: role })}
               onRemoveCredit={clientId =>
                 queue.patch(item.id, {
                   collaborators: item.collaborators.filter(c => c.clientId !== clientId),
@@ -287,6 +289,14 @@ export function Upload() {
         </p>
       )}
 
+      {missingRole > 0 && (
+        <p className="alert" role="alert">
+          {missingRole === 1 ? 'One track needs' : `${missingRole} tracks need`} your own role.
+          A credit list that names everyone except the person who made the record is not a
+          credit list.
+        </p>
+      )}
+
       {missingArt > 0 && (
         <p className="alert" role="alert">
           {missingArt} {missingArt === 1 ? 'track needs' : 'tracks need'} cover art before
@@ -303,7 +313,13 @@ export function Upload() {
       <div className="filerow">
         <Button
           size="lg"
-          disabled={pending.length === 0 || missingArt > 0 || oversize > 0 || queue.running}
+          disabled={
+            pending.length === 0 ||
+            missingArt > 0 ||
+            missingRole > 0 ||
+            oversize > 0 ||
+            queue.running
+          }
           busy={queue.running}
           onClick={() => {
             // Every failure is already captured per item; nothing escapes to handle here.
@@ -375,6 +391,7 @@ function QueueRow({
   onDescription,
   onAddCredit,
   onRemoveCredit,
+  onUploaderRole,
   onRemove,
   onPickCover,
 }: {
@@ -389,6 +406,7 @@ function QueueRow({
   onDescription: (value: string) => void;
   onAddCredit: () => void;
   onRemoveCredit: (clientId: string) => void;
+  onUploaderRole: (role: string) => void;
   onRemove: () => void;
   onPickCover: () => void;
 }) {
@@ -428,6 +446,30 @@ function QueueRow({
             the failure this feature exists to prevent, and a collapsed section is how it
             keeps happening. */}
         <div className="credits">
+          {/* The uploader's own credit, first — it is the one credit every track has. */}
+          <label className="credit credit--self">
+            <span className="credit__name">You</span>
+            <select
+              className="credit__role-select"
+              value={item.uploaderRole}
+              disabled={locked}
+              aria-label="Your role on this track"
+              onChange={e => onUploaderRole(e.target.value)}
+            >
+              <option value="">what did you do?</option>
+              {ROLES.map(r => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+              {AI_ROLES.map(r => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+
           {item.collaborators.map(c => (
             <span key={c.clientId} className="credit" data-tone={getChipTone(c.kind)}>
               <span className="credit__name">{c.name}</span>

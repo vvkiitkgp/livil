@@ -14,6 +14,8 @@ export type CreateTrackInput =
       description?: string;
       audio: PickedFile;
       cover: PickedFile;
+      /** What the uploader did on their own track. Required — see the insert below. */
+      uploaderRole: string;
       collaborators: PendingCollaborator[];
       /** Track length in seconds, captured from the upload preview's onLoad.
        *  Saved to duration_seconds so feed/profile cards show the length before
@@ -24,6 +26,8 @@ export type CreateTrackInput =
       mode: 'video';
       title: string;
       description?: string;
+      /** What the uploader did on their own track. Required — see the insert below. */
+      uploaderRole: string;
       video: PickedFile;
       cover?: PickedFile;
       /** Required for video uploads — the thumbnail shown in the feed PostCard
@@ -435,21 +439,32 @@ export async function createTrack(
       kickoffWaveformAnalysisFromLocalFile(trackId, input.audio);
     }
 
-    if (input.collaborators.length > 0) {
-      const rows = input.collaborators.map(c => ({
+    // The uploader's own credit goes in with everybody else's. `accepted` because it is
+    // self-declared — nobody confirms what you say you did on your own record, and the
+    // notification trigger skips self-credits anyway.
+    const collabRows = [
+      {
+        track_id: trackId,
+        user_id: user.id,
+        custom_name: null,
+        role: input.uploaderRole.trim(),
+        status: 'accepted',
+      },
+      ...input.collaborators.map(c => ({
         track_id: trackId,
         user_id: c.kind === 'user' ? c.userId ?? null : null,
         custom_name: c.kind === 'custom' ? c.name : null,
         role: c.role,
-      }));
+        status: 'pending',
+      })),
+    ];
 
-      const { error: collabError } = await supabase
-        .from('track_collaborators')
-        .insert(rows);
+    const { error: collabError } = await supabase
+      .from('track_collaborators')
+      .insert(collabRows);
 
-      if (collabError) {
-        throw new Error(`Failed to save collaborators: ${collabError.message}`);
-      }
+    if (collabError) {
+      throw new Error(`Failed to save collaborators: ${collabError.message}`);
     }
 
     // Create the matching upload-kind post. The post's caption mirrors the description so
