@@ -23,10 +23,10 @@ import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import type { RootStackParamList } from '../../navigation/types';
 import {
-  AI_ROLES,
   ROLES,
   getChipStyle,
   getChipTone,
+  isPresetRole,
   type PendingCollaborator,
 } from '../../constants/roles';
 import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
@@ -598,7 +598,10 @@ export default function UploadScreen() {
               is not a credit list. */}
           <Text style={styles.sectionLabel}>Your role</Text>
           <View style={styles.ownRoleWrap}>
-            {[...ROLES, ...AI_ROLES].map(r => {
+            {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
+                credited as a collaborator in its own right — "AI vocals" is never an
+                answer to what the person uploading did. */}
+            {ROLES.map(r => {
               const active = uploaderRole === r;
               return (
                 <TouchableOpacity
@@ -616,6 +619,17 @@ export default function UploadScreen() {
               );
             })}
           </View>
+
+          {/* The list will always be missing somebody's instrument. A closed list here
+              would mean the wrong credit or, since this field is required, no upload. */}
+          <FormInput
+            value={isPresetRole(uploaderRole) ? '' : uploaderRole}
+            onChangeText={setUploaderRole}
+            placeholder="Or type your own — e.g. Tabla, Additional production"
+            maxLength={40}
+            autoCapitalize="words"
+            editable={!submitting}
+          />
 
           <View style={styles.collabHeader}>
             <Text style={styles.sectionLabel}>Collaborators</Text>

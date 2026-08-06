@@ -1822,6 +1822,16 @@ a {
   cursor: pointer;
 }
 
+.credit__role-input {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--white);
+  background: none;
+  border: none;
+  outline: none;
+  width: 120px;
+}
+
 .credit__role-select {
   font: inherit;
   font-size: var(--text-xs);
@@ -1833,8 +1843,10 @@ a {
   max-width: 160px;
 }
 
-/* The unset state has to look unfinished — publishing is blocked on it. */
-.credit--self:has(.credit__role-select[value='']) {
+/* The unset state has to look unfinished — publishing is blocked on it. `:has()` on a
+   select's value does not work (the attribute is not the live value), so the row is
+   flagged from the DOM instead, via data-unset on the label. */
+.credit--self[data-unset] {
   border-color: var(--warning-border);
   background: var(--warning-bg);
 }

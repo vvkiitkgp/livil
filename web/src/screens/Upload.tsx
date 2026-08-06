@@ -11,7 +11,11 @@ import { filesFromDataTransfer, pairAssets } from '../upload/files';
 import { mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
-import { AI_ROLES, ROLES, getChipTone } from '@shared/constants/roles';
+import { ROLES, getChipTone, isPresetRole } from '@shared/constants/roles';
+import { ROLE_MAX_LENGTH } from '@shared/services/publishTrack';
+
+/** Sentinel for the dropdown's "type your own" entry — never a stored role. */
+const CUSTOM_ROLE = '__custom__';
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
@@ -411,6 +415,11 @@ function QueueRow({
   onPickCover: () => void;
 }) {
   const locked = item.status === 'uploading' || item.status === 'done';
+  // Typing rather than picking. Sticky once chosen, and true on load for a role that is
+  // not in the list — otherwise re-rendering would snap a typed role back to the dropdown.
+  const [ownRoleCustom, setOwnRoleCustom] = useState(false);
+  const ownRoleIsCustom =
+    ownRoleCustom || (item.uploaderRole !== '' && !isPresetRole(item.uploaderRole));
 
   return (
     <li className="queue__row" data-status={item.status}>
@@ -447,27 +456,49 @@ function QueueRow({
             keeps happening. */}
         <div className="credits">
           {/* The uploader's own credit, first — it is the one credit every track has. */}
-          <label className="credit credit--self">
+          <label className="credit credit--self" data-unset={!item.uploaderRole.trim() || undefined}>
             <span className="credit__name">You</span>
-            <select
-              className="credit__role-select"
-              value={item.uploaderRole}
-              disabled={locked}
-              aria-label="Your role on this track"
-              onChange={e => onUploaderRole(e.target.value)}
-            >
-              <option value="">what did you do?</option>
-              {ROLES.map(r => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-              {AI_ROLES.map(r => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
+            {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
+                credited as a collaborator in its own right — "AI vocals" is never an
+                answer to what the person uploading did. */}
+            {ownRoleIsCustom ? (
+              <input
+                className="credit__role-input"
+                value={item.uploaderRole}
+                disabled={locked}
+                autoFocus
+                maxLength={ROLE_MAX_LENGTH}
+                placeholder="e.g. Tabla"
+                aria-label="Your role on this track"
+                onChange={e => onUploaderRole(e.target.value)}
+              />
+            ) : (
+              <select
+                className="credit__role-select"
+                value={item.uploaderRole}
+                disabled={locked}
+                aria-label="Your role on this track"
+                onChange={e => {
+                  if (e.target.value === CUSTOM_ROLE) {
+                    setOwnRoleCustom(true);
+                    // Cleared, not carried over: the preset that was showing is not a
+                    // sensible starting point for typing a different role, and an empty
+                    // value keeps Publish blocked until they actually write one.
+                    onUploaderRole('');
+                    return;
+                  }
+                  onUploaderRole(e.target.value);
+                }}
+              >
+                <option value="">what did you do?</option>
+                {ROLES.map(r => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+                <option value={CUSTOM_ROLE}>Something else…</option>
+              </select>
+            )}
           </label>
 
           {item.collaborators.map(c => (
