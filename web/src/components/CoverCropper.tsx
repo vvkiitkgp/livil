@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ModalLayer } from './ModalLayer';
 import { Button } from './Button';
 import {
   clampPan,
@@ -127,79 +128,81 @@ export function CoverCropper({
   const scale = size ? coverScale(size, FRAME_PX) * clampZoom(zoom, zoomFloor) : 1;
 
   return (
-    <div className="modal" role="dialog" aria-label="Crop cover art">
-      <div className="modal__panel">
-        <h3 className="card__title">{title}</h3>
-        <p className="hint">
-          Drag to reposition, zoom to fill.
-          {canFit && ' Zoom out to fit the whole image.'}
-        </p>
+    <ModalLayer>
+      <div className="modal" role="dialog" aria-label="Crop cover art">
+        <div className="modal__panel">
+          <h3 className="card__title">{title}</h3>
+          <p className="hint">
+            Drag to reposition, zoom to fill.
+            {canFit && ' Zoom out to fit the whole image.'}
+          </p>
 
-        <div
-          className="cropframe"
-          data-round={round || undefined}
-          style={{ width: FRAME_PX, height: FRAME_PX }}
-          onPointerDown={e => {
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            dragFrom.current = { x: e.clientX, y: e.clientY, pan };
-          }}
-          onPointerMove={e => {
-            const from = dragFrom.current;
-            if (!from) return;
-            setPanClamped({
-              x: from.pan.x + (e.clientX - from.x),
-              y: from.pan.y + (e.clientY - from.y),
-            });
-          }}
-          onPointerUp={() => {
-            dragFrom.current = null;
-          }}
-        >
-          {image && (
-            <img
-              className="cropframe__img"
-              src={image.src}
-              alt=""
-              draggable={false}
-              style={{
-                width: image.naturalWidth * scale,
-                height: image.naturalHeight * scale,
-                transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
-              }}
-            />
+          <div
+            className="cropframe"
+            data-round={round || undefined}
+            style={{ width: FRAME_PX, height: FRAME_PX }}
+            onPointerDown={e => {
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              dragFrom.current = { x: e.clientX, y: e.clientY, pan };
+            }}
+            onPointerMove={e => {
+              const from = dragFrom.current;
+              if (!from) return;
+              setPanClamped({
+                x: from.pan.x + (e.clientX - from.x),
+                y: from.pan.y + (e.clientY - from.y),
+              });
+            }}
+            onPointerUp={() => {
+              dragFrom.current = null;
+            }}
+          >
+            {image && (
+              <img
+                className="cropframe__img"
+                src={image.src}
+                alt=""
+                draggable={false}
+                style={{
+                  width: image.naturalWidth * scale,
+                  height: image.naturalHeight * scale,
+                  transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
+                }}
+              />
+            )}
+          </div>
+
+          <input
+            type="range"
+            min={zoomFloor}
+            max={MAX_ZOOM}
+            step={0.01}
+            value={zoom}
+            aria-label="Zoom"
+            onChange={e => setZoom(clampZoom(Number(e.target.value), zoomFloor))}
+          />
+
+          {canFit && (
+            <div className="filerow">
+              <Button variant="ghost" size="sm" onClick={() => setZoom(zoomFloor)}>
+                Fit whole image
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setZoom(1)}>
+                Fill square
+              </Button>
+            </div>
           )}
-        </div>
 
-        <input
-          type="range"
-          min={zoomFloor}
-          max={MAX_ZOOM}
-          step={0.01}
-          value={zoom}
-          aria-label="Zoom"
-          onChange={e => setZoom(clampZoom(Number(e.target.value), zoomFloor))}
-        />
-
-        {canFit && (
           <div className="filerow">
-            <Button variant="ghost" size="sm" onClick={() => setZoom(zoomFloor)}>
-              Fit whole image
+            <Button onClick={exportCrop} busy={busy} disabled={!image}>
+              Use this crop
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setZoom(1)}>
-              Fill square
+            <Button variant="ghost" onClick={onCancel}>
+              Cancel
             </Button>
           </div>
-        )}
-
-        <div className="filerow">
-          <Button onClick={exportCrop} busy={busy} disabled={!image}>
-            Use this crop
-          </Button>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }
