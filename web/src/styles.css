@@ -1874,9 +1874,31 @@ a {
 /* ── Collaborator picker ─────────────────────────────────────────────────── */
 
 .picker {
-  width: min(460px, 92vw);
+  width: min(780px, 94vw);
   align-items: stretch;
   text-align: left;
+}
+
+/* Who on the left, what they did on the right. Falls back to one column on a narrow
+   screen, where the stacked height is not the problem the two columns solve. */
+.picker__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.picker__col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .picker__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .picker__tabs {
@@ -1906,9 +1928,9 @@ a {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  /* Capped rather than growing: twenty results would push the role chips and the confirm
-     button below the fold of a laptop screen, and the button is the point of the modal. */
-  max-height: 210px;
+  /* Capped rather than growing: twenty results would push the confirm button below the
+     fold of a laptop screen, and the button is the point of the modal. */
+  max-height: 260px;
   overflow-y: auto;
 }
 

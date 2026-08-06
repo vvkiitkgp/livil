@@ -155,6 +155,12 @@ export function CollaboratorPicker({
         <h3 className="card__title">{heading}</h3>
         <p className="hint">{scope.label}</p>
 
+        {/* Two columns: WHO on the left, WHAT on the right.
+            Stacked, this modal was the sum of a search list and twenty-odd role chips —
+            taller than a laptop viewport, with the confirm button below the fold. Side by
+            side its height is the taller of the two halves rather than their total. */}
+        <div className="picker__cols">
+        <div className="picker__col">
         <div className="picker__tabs" role="tablist">
           <button
             type="button"
@@ -228,6 +234,9 @@ export function CollaboratorPicker({
           />
         )}
 
+        </div>
+
+        <div className="picker__col">
         <div className="picker__roles">
           <p className="picker__label">Role</p>
           <div className="chiprow">
@@ -300,6 +309,9 @@ export function CollaboratorPicker({
               />
             )}
           </div>
+        </div>
+
+        </div>
         </div>
 
         {error && (

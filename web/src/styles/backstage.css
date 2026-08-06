@@ -227,8 +227,24 @@
   }
 }
 
+/*
+ * `backwards`, NOT `both`.
+ *
+ * `both` retains the final keyframe after the animation ends, and that keyframe sets
+ * `transform`. A retained `transform: none` computes as the identity matrix rather than
+ * `none` — and ANY transform value except `none` makes an element a containing block for
+ * `position: fixed` descendants. Every modal in the studio is rendered inside a `.page`,
+ * so `inset: 0` was resolving to the page's box instead of the viewport: the overlay
+ * stopped short of the top bar, and a panel taller than that box was clipped at both ends
+ * with no way to scroll to its heading.
+ *
+ * `backwards` still applies the from-state before the animation starts (which is what
+ * prevents the flash), and drops it afterwards — so the finished element is untransformed
+ * and fixed positioning works again. Visually identical: the final keyframe is
+ * `transform: none; opacity: 1`, which is what the element has anyway.
+ */
 .fade-up {
-  animation: fade-up var(--dur-screen) ease both;
+  animation: fade-up var(--dur-screen) ease backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
