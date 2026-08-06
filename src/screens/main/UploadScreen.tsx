@@ -223,10 +223,14 @@ export default function UploadScreen() {
   }, []);
 
   const handleAddCollaborator = useCallback(() => {
-    const excludeUserIds = collaborators
-      .filter(c => c.kind === 'user' && c.userId)
-      .map(c => c.userId!) as string[];
-    navigation.navigate('CollaboratorPicker', { excludeUserIds });
+    // Person AND role. Hiding the person outright — what this used to do — meant the
+    // guitarist who also wrote the song could only ever be credited once.
+    const takenRoleKeys = collaborators.map(c =>
+      c.kind === 'user' && c.userId
+        ? `${c.userId}|${c.role}`
+        : `custom:${c.name.trim().toLowerCase()}|${c.role}`,
+    );
+    navigation.navigate('CollaboratorPicker', { takenRoleKeys });
   }, [collaborators, navigation]);
 
   const handleRemoveCollaborator = useCallback((clientId: string) => {

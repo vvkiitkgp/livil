@@ -8,7 +8,7 @@ import { LevelMeter } from '../components/LevelMeter';
 import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
 import { filesFromDataTransfer, pairAssets } from '../upload/files';
-import { creditedUserIds, mergeCredits } from '../upload/credits';
+import { mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
 import { getChipTone } from '@shared/constants/roles';
@@ -328,7 +328,7 @@ export function Upload() {
               ? { label: `Everything in the queue that hasn't started`, trackCount: pending.length }
               : { label: crediting.title, trackCount: 1 }
           }
-          excludeUserIds={creditedUserIds(crediting.collaborators)}
+          existing={crediting.collaborators}
           onAdd={collaborator => {
             if (creditingId === 'ALL') {
               // Appends rather than replaces, unlike "cover art for all": art is one slot

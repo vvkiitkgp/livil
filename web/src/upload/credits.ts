@@ -17,6 +17,11 @@ import type { PendingCollaborator } from '@shared/constants/roles';
  *
  * Appends rather than replaces. The cover-art batch control overwrites, because art is one
  * slot; credits are a list, and overwriting would throw away work already done on a row.
+ *
+ * One person holding several roles is the normal case, not an edge case — the guitarist who
+ * also wrote it. The picker briefly hid an already-credited person from its search, which
+ * made the second credit impossible to add; it now greys out only the roles they already
+ * hold.
  */
 export function mergeCredits(
   existing: PendingCollaborator[],
@@ -24,11 +29,4 @@ export function mergeCredits(
 ): PendingCollaborator[] {
   if (existing.some(c => c.clientId === incoming.clientId)) return existing;
   return [...existing, incoming];
-}
-
-/** Everyone already credited on a row, for excluding them from the picker's search. */
-export function creditedUserIds(collaborators: PendingCollaborator[]): string[] {
-  return collaborators
-    .map(c => c.userId)
-    .filter((id): id is string => Boolean(id));
 }

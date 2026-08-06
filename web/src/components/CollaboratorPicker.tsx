@@ -30,14 +30,20 @@ import { ROLE_MAX_LENGTH } from '@shared/services/publishTrack';
  */
 export function CollaboratorPicker({
   scope,
-  excludeUserIds,
+  existing,
   onAdd,
   onClose,
 }: {
   /** What the credit will be attached to, so the button can say it. */
   scope: { label: string; trackCount: number };
-  /** Already credited on this row — a profile cannot be credited twice for one track. */
-  excludeUserIds: string[];
+  /**
+   * Already credited here.
+   *
+   * Used to grey out the ROLES a person already holds, not to hide the person. One artist
+   * is routinely two credits — the guitarist who also wrote it — and filtering them out of
+   * the search after the first credit made the second credit impossible to add.
+   */
+  existing: PendingCollaborator[];
   onAdd: (collaborator: PendingCollaborator) => void;
   onClose: () => void;
 }) {
@@ -67,7 +73,7 @@ export function CollaboratorPicker({
     // Debounced: a query per keystroke is a query per keystroke against a table every
     // authenticated user can read.
     const timer = setTimeout(() => {
-      searchProfiles(query, { excludeUserIds })
+      searchProfiles(query)
         .then(found => {
           if (cancelled) return;
           setResults(found);
@@ -84,12 +90,26 @@ export function CollaboratorPicker({
       cancelled = true;
       clearTimeout(timer);
     };
-    // `excludeUserIds` is a fresh array each render; its CONTENT is what matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, mode, excludeUserIds.join(',')]);
+  }, [query, mode]);
+
+  /** Roles this person already holds here, so the same credit cannot be added twice. */
+  const takenRoles = useMemo(() => {
+    const who = mode === 'user' ? selected?.id : null;
+    const typed = customName.trim().toLowerCase();
+    return new Set(
+      existing
+        .filter(c =>
+          mode === 'user'
+            ? Boolean(who) && c.kind === 'user' && c.userId === who
+            : c.kind === 'custom' && c.name.trim().toLowerCase() === typed,
+        )
+        .map(c => c.role),
+    );
+  }, [existing, mode, selected, customName]);
 
   const named = mode === 'user' ? selected !== null : customName.trim().length > 0;
-  const ready = named && role.trim().length > 0;
+  const duplicate = role.trim().length > 0 && takenRoles.has(role.trim());
+  const ready = named && role.trim().length > 0 && !duplicate;
 
   const heading = useMemo(
     () => (scope.trackCount > 1 ? `Credit on all ${scope.trackCount} tracks` : 'Add a credit'),
@@ -216,7 +236,9 @@ export function CollaboratorPicker({
                 type="button"
                 key={r}
                 className="rolechip"
-                data-active={!custom && role === r || undefined}
+                disabled={takenRoles.has(r)}
+                title={takenRoles.has(r) ? 'Already credited for this' : undefined}
+                data-active={(!custom && role === r) || undefined}
                 onClick={() => {
                   setCustom(false);
                   setRole(r);
@@ -238,7 +260,9 @@ export function CollaboratorPicker({
                 key={r}
                 className="rolechip"
                 data-ai
-                data-active={!custom && role === r || undefined}
+                disabled={takenRoles.has(r)}
+                title={takenRoles.has(r) ? 'Already credited for this' : undefined}
+                data-active={(!custom && role === r) || undefined}
                 onClick={() => {
                   setCustom(false);
                   setRole(r);

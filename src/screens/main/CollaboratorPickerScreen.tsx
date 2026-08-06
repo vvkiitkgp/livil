@@ -42,9 +42,9 @@ function initialsFor(name: string): string {
 export default function CollaboratorPickerScreen() {
   const navigation = useNavigation<PickerNavigation>();
   const route = useRoute<PickerRoute>();
-  const excludeUserIds = useMemo(
-    () => route.params?.excludeUserIds ?? [],
-    [route.params?.excludeUserIds],
+  const takenRoleKeys = useMemo(
+    () => new Set(route.params?.takenRoleKeys ?? []),
+    [route.params?.takenRoleKeys],
   );
 
   const [mode, setMode] = useState<Mode>('user');
@@ -64,7 +64,7 @@ export default function CollaboratorPickerScreen() {
     setError('');
     const t = setTimeout(async () => {
       try {
-        const data = await searchProfiles(query, { excludeUserIds });
+        const data = await searchProfiles(query);
         if (!cancelled) {setResults(data);}
       } catch (err) {
         if (!cancelled) {
@@ -78,14 +78,27 @@ export default function CollaboratorPickerScreen() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, mode, excludeUserIds]);
+  }, [query, mode]);
+
+  /** Key for the person currently being credited, matching what UploadScreen sent. */
+  const subjectKey = useMemo(() => {
+    if (mode === 'user') {return selectedUser ? selectedUser.id : null;}
+    const typed = customName.trim().toLowerCase();
+    return typed ? `custom:${typed}` : null;
+  }, [mode, selectedUser, customName]);
+
+  /** Roles this person already holds on the track — greyed out, not hidden. */
+  const isRoleTaken = useCallback(
+    (r: string) => (subjectKey ? takenRoleKeys.has(`${subjectKey}|${r}`) : false),
+    [subjectKey, takenRoleKeys],
+  );
 
   const canConfirm = useMemo(() => {
     const hasTarget =
       (mode === 'user' && !!selectedUser) ||
       (mode === 'custom' && customName.trim().length > 0);
-    return hasTarget && role.trim().length > 0;
-  }, [mode, selectedUser, customName, role]);
+    return hasTarget && role.trim().length > 0 && !isRoleTaken(role.trim());
+  }, [mode, selectedUser, customName, role, isRoleTaken]);
 
   const handleConfirm = useCallback(() => {
     if (!canConfirm) {return;}
@@ -241,12 +254,14 @@ export default function CollaboratorPickerScreen() {
           <View style={styles.roleWrap}>
             {ROLES.map(r => {
               const active = role === r;
+              const taken = isRoleTaken(r);
               return (
                 <TouchableOpacity
                   key={r}
                   activeOpacity={0.85}
+                  disabled={taken}
                   onPress={() => setRole(r)}
-                  style={[styles.roleChip, active && styles.roleChipActive]}
+                  style={[styles.roleChip, active && styles.roleChipActive, taken && styles.roleChipTaken]}
                 >
                   {active ? <GradientBorder borderRadius={999} /> : null}
                   <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
@@ -263,12 +278,14 @@ export default function CollaboratorPickerScreen() {
           <View style={styles.roleWrap}>
             {AI_ROLES.map(r => {
               const active = role === r;
+              const taken = isRoleTaken(r);
               return (
                 <TouchableOpacity
                   key={r}
                   activeOpacity={0.85}
+                  disabled={taken}
                   onPress={() => setRole(r)}
-                  style={[styles.roleChip, styles.aiChip, active && styles.aiChipActive]}
+                  style={[styles.roleChip, styles.aiChip, active && styles.aiChipActive, taken && styles.roleChipTaken]}
                 >
                   <Text style={[styles.roleChipText, active && styles.aiChipTextActive]}>
                     {r}
@@ -489,6 +506,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  // Already credited in this role. Dimmed rather than removed, so it reads as "you already
+  // did this" rather than as a role that does not exist.
+  roleChipTaken: { opacity: 0.35 },
   roleChipTextActive: {
     color: COLORS.purpleNeon,
     fontWeight: '700',
