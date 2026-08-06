@@ -47,12 +47,29 @@ export type PublishAsset = {
   sizeBytes: number | null;
 };
 
+/**
+ * One credit, in the shape the table stores rather than the shape the picker holds.
+ *
+ * `userId` XOR `customName` — the database enforces it (`collab_user_xor_custom`), and a
+ * violation here surfaces as a constraint error after the media has already uploaded, so
+ * it is checked before any of that happens.
+ */
+export type PublishCollaborator = {
+  /** A real profile, or null for a name typed by hand. */
+  userId: string | null;
+  /** A name typed by hand, or null when a profile was picked. */
+  customName: string | null;
+  role: string;
+};
+
 export type PublishTrackInput = {
   mode: 'audio' | 'video';
   title: string;
   description?: string | null;
   durationSeconds?: number | null;
   assets: PublishAsset[];
+  /** Credits, written as part of publishing. Omitted or empty means an uncredited track. */
+  collaborators?: PublishCollaborator[];
 };
 
 /**
@@ -73,6 +90,9 @@ export type PublishTrackResult = {
   urls: Partial<Record<TrackMediaKind, string>>;
 };
 
+/** Mirrors `track_collaborators_role_check`. */
+export const ROLE_MAX_LENGTH = 40;
+
 function validate(input: PublishTrackInput): string | null {
   if (!input.title.trim()) return 'Title is required.';
   const kinds = new Set(input.assets.map(a => a.kind));
@@ -82,6 +102,16 @@ function validate(input: PublishTrackInput): string | null {
   } else {
     if (!kinds.has('video')) return 'Video file is required.';
     if (!kinds.has('thumbnail')) return 'Thumbnail image is required for video posts.';
+  }
+  // Checked up front, not at insert time. Every one of these is a constraint the database
+  // will reject — and by then a full master has uploaded and the rollback throws it away,
+  // which is an expensive way to learn that a role string was blank.
+  for (const c of input.collaborators ?? []) {
+    const named = Boolean(c.userId) !== Boolean(c.customName?.trim());
+    if (!named) return 'Each credit needs either a Livil profile or a name, not both.';
+    const role = c.role?.trim() ?? '';
+    if (!role) return 'Every credit needs a role.';
+    if (role.length > ROLE_MAX_LENGTH) return `A role must be ${ROLE_MAX_LENGTH} characters or fewer.`;
   }
   return null;
 }
@@ -235,6 +265,31 @@ export async function publishTrack(
       .eq('id', trackId);
 
     if (updateError) throw new Error(`Failed to finalize track: ${updateError.message}`);
+
+    /*
+     * Credits go in BEFORE the post row, and that ordering is the point.
+     *
+     * `createTrack` on mobile writes them after the post is already live, so a failed
+     * insert leaves a published, uncredited track and an error on screen with nothing to
+     * retry. Here the post does not exist yet, so a failure falls into the same catch as
+     * everything else: objects removed, track row deleted, nothing ever reached a feed.
+     * Publishing a track and crediting the people on it is one operation or neither.
+     *
+     * Every row lands as `pending`. The tagged artist accepts in the app — the uploader
+     * does not get to assert someone else's involvement on their behalf.
+     */
+    const collaborators = input.collaborators ?? [];
+    if (collaborators.length > 0) {
+      const { error: collabError } = await db.from('track_collaborators').insert(
+        collaborators.map(c => ({
+          track_id: trackId,
+          user_id: c.userId,
+          custom_name: c.userId ? null : c.customName?.trim() ?? null,
+          role: c.role.trim(),
+        })),
+      );
+      if (collabError) throw new Error(`Failed to save credits: ${collabError.message}`);
+    }
 
     // No clip window is written: the dashboard has no player, and choosing an excerpt you
     // cannot hear is guesswork. The columns stay null, which means "play the full track" —

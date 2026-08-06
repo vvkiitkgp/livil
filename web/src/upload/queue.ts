@@ -9,6 +9,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { PublishProgress } from '@shared/services/publishTrack';
 import { readMediaMeta, startPublish } from './publish';
+import type { PendingCollaborator } from '@shared/constants/roles';
 import { embeddedCoverFrom } from './embeddedArt';
 import type { PairedItem } from './files';
 
@@ -41,6 +42,8 @@ export type QueueItem = {
   /** Frame size, video only. Null for audio and for files the browser cannot probe. */
   width: number | null;
   height: number | null;
+  /** Credits, in picker shape. Flattened to rows by `publishTrack` at publish time. */
+  collaborators: PendingCollaborator[];
   /** True when the cover came out of the file's own tag rather than the folder. */
   artFromTag: boolean;
 };
@@ -69,6 +72,7 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     duration: null,
     width: null,
     height: null,
+    collaborators: [],
     artFromTag: false,
   }));
 }
@@ -131,6 +135,24 @@ export function useUploadQueue() {
     );
   }, []);
 
+  /**
+   * The same, but where the change depends on the item it is applied to.
+   *
+   * Credits need this and cover art does not: art is one slot to overwrite, while a credit
+   * is appended to a list that already differs per row. A flat `patchPending` would write
+   * one row's list over every other row's.
+   */
+  const patchPendingWith = useCallback(
+    (compute: (item: QueueItem) => Partial<QueueItem>) => {
+      setItems(prev =>
+        prev.map(it =>
+          it.status === 'pending' || it.status === 'failed' ? { ...it, ...compute(it) } : it,
+        ),
+      );
+    },
+    [],
+  );
+
   const remove = useCallback((id: string) => {
     abortsRef.current.get(id)?.();
     abortsRef.current.delete(id);
@@ -156,6 +178,13 @@ export function useUploadQueue() {
           image: item.image,
           title: item.title,
           description: item.description,
+          // Picker shape -> row shape. The XOR the table enforces is decided here: a
+          // credit that names a profile never also carries a typed name.
+          collaborators: item.collaborators.map(c => ({
+            userId: c.kind === 'user' ? c.userId ?? null : null,
+            customName: c.kind === 'custom' ? c.name : null,
+            role: c.role,
+          })),
         },
         (p: PublishProgress) => patch(item.id, { stage: p.stage, fraction: p.fraction }),
       );
@@ -222,6 +251,7 @@ export function useUploadQueue() {
     add,
     patch,
     patchPending,
+    patchPendingWith,
     remove,
     clearFinished,
     start,

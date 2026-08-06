@@ -3,12 +3,15 @@ import { Button } from '../components/Button';
 import { CoverCropper } from '../components/CoverCropper';
 import { VideoPreview } from '../components/VideoPreview';
 import { CoverThumb } from '../components/CoverThumb';
+import { CollaboratorPicker } from '../components/CollaboratorPicker';
 import { LevelMeter } from '../components/LevelMeter';
 import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
 import { filesFromDataTransfer, pairAssets } from '../upload/files';
+import { creditedUserIds, mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
+import { getChipTone } from '@shared/constants/roles';
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
@@ -46,6 +49,9 @@ export function Upload() {
   // it, which is not what "check what I'm uploading" means for a video. Held by id so the
   // modal keeps up with a title edit and with the metadata probe landing.
   const [watchingId, setWatchingId] = useState<string | null>(null);
+  // 'ALL' credits every not-yet-started row at once — the same scope as the cover-art
+  // control above it, and for the same reason: an album is the same people twelve times.
+  const [creditingId, setCreditingId] = useState<string | 'ALL' | null>(null);
 
   function accept(files: File[]) {
     const { items } = pairAssets(files);
@@ -78,6 +84,12 @@ export function Upload() {
   if (preview.playingId && preview.playingId !== meteredId) setMeteredId(preview.playingId);
   const metered = queue.items.find(i => i.id === meteredId) ?? null;
   const watching = queue.items.find(i => i.id === watchingId) ?? null;
+  // For 'ALL' the picker still needs a row to read already-credited people from, so it
+  // excludes them from search; the first pending row stands in for the batch.
+  const crediting =
+    creditingId === 'ALL'
+      ? pending[0] ?? null
+      : queue.items.find(i => i.id === creditingId) ?? null;
 
   return (
     <div className="page fade-up">
@@ -116,6 +128,11 @@ export function Upload() {
               }}
             >
               Cover art for all {pending.length}
+            </Button>
+          )}
+          {pending.length > 1 && (
+            <Button variant="secondary" size="sm" onClick={() => setCreditingId('ALL')}>
+              Credits for all {pending.length}
             </Button>
           )}
           {done.length > 0 && (
@@ -193,6 +210,12 @@ export function Upload() {
               onSeek={preview.seek}
               onTitle={title => queue.patch(item.id, { title })}
               onDescription={description => queue.patch(item.id, { description })}
+              onAddCredit={() => setCreditingId(item.id)}
+              onRemoveCredit={clientId =>
+                queue.patch(item.id, {
+                  collaborators: item.collaborators.filter(c => c.clientId !== clientId),
+                })
+              }
               onRemove={() => {
                 if (preview.playingId === item.id) preview.stop();
                 queue.remove(item.id);
@@ -298,6 +321,33 @@ export function Upload() {
       </section>
       </div>
 
+      {crediting && (
+        <CollaboratorPicker
+          scope={
+            creditingId === 'ALL'
+              ? { label: `Everything in the queue that hasn't started`, trackCount: pending.length }
+              : { label: crediting.title, trackCount: 1 }
+          }
+          excludeUserIds={creditedUserIds(crediting.collaborators)}
+          onAdd={collaborator => {
+            if (creditingId === 'ALL') {
+              // Appends rather than replaces, unlike "cover art for all": art is one slot
+              // and credits are a list, so overwriting would silently drop a per-row credit
+              // somebody had already added. Deduped by clientId, which is derived from the
+              // person and the role.
+              queue.patchPendingWith(item => ({
+                collaborators: mergeCredits(item.collaborators, collaborator),
+              }));
+            } else {
+              queue.patch(creditingId!, {
+                collaborators: mergeCredits(crediting.collaborators, collaborator),
+              });
+            }
+          }}
+          onClose={() => setCreditingId(null)}
+        />
+      )}
+
       {/* Outside `.stage`, and that placement is load-bearing: the stage owns the gutter
           layout for the meter beside the card, and a modal nested inside it would inherit
           that positioning for its own meter. A modal is not part of the stage anyway. */}
@@ -323,6 +373,8 @@ function QueueRow({
   onSeek,
   onTitle,
   onDescription,
+  onAddCredit,
+  onRemoveCredit,
   onRemove,
   onPickCover,
 }: {
@@ -335,6 +387,8 @@ function QueueRow({
   onSeek: (seconds: number) => void;
   onTitle: (value: string) => void;
   onDescription: (value: string) => void;
+  onAddCredit: () => void;
+  onRemoveCredit: (clientId: string) => void;
   onRemove: () => void;
   onPickCover: () => void;
 }) {
@@ -370,6 +424,33 @@ function QueueRow({
             placeholder="Optional — what this one means to you"
           />
         </label>
+        {/* Credits sit with the fields, not behind a disclosure: an uncredited track is
+            the failure this feature exists to prevent, and a collapsed section is how it
+            keeps happening. */}
+        <div className="credits">
+          {item.collaborators.map(c => (
+            <span key={c.clientId} className="credit" data-tone={getChipTone(c.kind)}>
+              <span className="credit__name">{c.name}</span>
+              <span className="credit__role">{c.role}</span>
+              {!locked && (
+                <button
+                  type="button"
+                  className="credit__remove"
+                  aria-label={`Remove ${c.name} as ${c.role}`}
+                  onClick={() => onRemoveCredit(c.clientId)}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+          {!locked && (
+            <button type="button" className="credit credit--add" onClick={onAddCredit}>
+              {item.collaborators.length === 0 ? '＋ Add credits' : '＋'}
+            </button>
+          )}
+        </div>
+
         <span className="hint">
           {item.media.name} · {formatSize(item.media.size)} · {item.mode}
           {item.duration !== null && ` · ${formatTime(item.duration)}`}

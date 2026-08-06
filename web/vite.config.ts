@@ -96,13 +96,15 @@ export default defineConfig({
        * is the right posture rather than "narrow enough".
        *
        * Derived from what `shared/` re-exports: `types/database.ts` -> `lib/`,
-       * `theme/colors.ts` -> `src/theme/`. Adding a re-export from elsewhere in `src/`
-       * means adding it here, and the dev server will say so loudly on the first request.
+       * `theme/colors.ts` -> `src/theme/`, `constants/roles.ts` -> `src/constants/`.
+       * Adding a re-export from elsewhere in `src/` means adding it here, and the dev
+       * server will say so loudly on the first request.
        */
       allow: [
         fileURLToPath(new URL('../shared', import.meta.url)),
         fileURLToPath(new URL('../lib', import.meta.url)),
         fileURLToPath(new URL('../src/theme', import.meta.url)),
+        fileURLToPath(new URL('../src/constants', import.meta.url)),
         fileURLToPath(new URL('.', import.meta.url)),
       ],
       // Belt and braces: even if `allow` is widened later by someone chasing a resolution
