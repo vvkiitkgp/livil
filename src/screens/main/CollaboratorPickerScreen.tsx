@@ -429,8 +429,16 @@ const styles = StyleSheet.create({
   modePillTextActive: {
     color: COLORS.purpleNeon,
   },
-  // Room to lift the custom-role field clear of the keyboard when it is focused.
-  pageContent: { paddingBottom: 96 },
+  /*
+   * Deliberately taller than a keyboard.
+   *
+   * The custom-role field is the last thing on the page, so without slack beneath it there
+   * is simply nowhere to scroll TO — the content ends where the field ends, and both the
+   * automatic scroll and a manual drag stop with it still behind the keys. ~340dp clears a
+   * tall Android keyboard, so the field can always be lifted into the open, by the
+   * keyboardDidShow handler or by hand.
+   */
+  pageContent: { paddingBottom: 340 },
   searchSection: {
     paddingHorizontal: 20,
     paddingTop: 16,
