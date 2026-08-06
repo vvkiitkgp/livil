@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-176 TypeScript file(s) under `src/`, 48,959 lines.
+176 TypeScript file(s) under `src/`, 48,980 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2348 |
+| `src/components/FullScreenPlayer.tsx` | 2362 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/components/PostCard.tsx` | 1266 |
@@ -139,11 +139,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-65 file(s), 15,821 lines.
+65 file(s), 15,835 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2348 |
+| `src/components/FullScreenPlayer.tsx` | 2362 |
 | `src/components/PostCard.tsx` | 1266 |
 | `src/components/FloatingPlayer.tsx` | 945 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -211,11 +211,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-30 file(s), 7,794 lines.
+30 file(s), 7,801 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 919 |
+| `src/services/posts.ts` | 926 |
 | `src/services/tracks.ts` | 800 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 430 |
