@@ -25,7 +25,40 @@ export default defineConfig({
    * routes 404 with the assets fine.
    */
   base: '/studio/',
-  plugins: [react()],
+  plugins: [
+    react(),
+    /**
+     * Send `/` to `/studio/` on the DEV SERVER ONLY.
+     *
+     * `base` applies in dev as well as in production, so the app is served at
+     * `localhost:5173/studio/` and anything landing on the bare root — a bookmark, browser
+     * autocomplete, a restored tab — gets Vite's "the server is configured with a public base
+     * URL" placeholder instead of the app.
+     *
+     * Fixed by redirecting rather than by making `base` dev-only, deliberately. Dev disagreeing
+     * with production about the base path is precisely what produced the `otp_expired` bug: the
+     * reset link was built from the origin alone, worked at `localhost:5173/reset`, and broke
+     * under `/studio/`. Dev should keep exercising the same subpath production uses.
+     *
+     * `apply: 'serve'` — never part of a build.
+     */
+    {
+      name: 'livil-dev-root-redirect',
+      apply: 'serve',
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          // Exact root only. Anything else is a real request — an asset, an HMR socket, or a
+          // deep link — and rewriting those would hide genuine 404s.
+          if (req.url === '/' || req.url === '') {
+            res.writeHead(302, { Location: '/studio/' });
+            res.end();
+            return;
+          }
+          next();
+        });
+      },
+    },
+  ],
   resolve: {
     alias: {
       '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
