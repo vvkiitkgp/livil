@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/Button';
@@ -28,6 +28,7 @@ type Ctx = { session: Session; profile: CreatorProfile | null };
  */
 export function Overview() {
   const { session, profile } = useOutletContext<Ctx>();
+  const navigate = useNavigate();
   const [totals, setTotals] = useState<CreatorTotals | null>(null);
   const [recent, setRecent] = useState<CreatorPost[] | null>(null);
 
@@ -151,9 +152,9 @@ export function Overview() {
                   Drop a folder of tracks in and they&apos;ll appear here with their play
                   counts.
                 </p>
-                <Button onClick={() => (window.location.href = '/upload')}>
-                  Upload your first track
-                </Button>
+                {/* Router navigation, not `window.location`: the app is served under the
+                    `/studio` basename, so a raw href lands on the marketing apex instead. */}
+                <Button onClick={() => navigate('/upload')}>Upload your first track</Button>
               </div>
             )}
 

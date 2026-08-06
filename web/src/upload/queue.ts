@@ -8,7 +8,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import type { PublishProgress } from '@shared/services/publishTrack';
-import { readDuration, startPublish } from './publish';
+import { readMediaMeta, startPublish } from './publish';
 import { embeddedCoverFrom } from './embeddedArt';
 import type { PairedItem } from './files';
 
@@ -38,6 +38,9 @@ export type QueueItem = {
   postId: string | null;
   /** Filled in asynchronously once the browser has read the file's metadata. */
   duration: number | null;
+  /** Frame size, video only. Null for audio and for files the browser cannot probe. */
+  width: number | null;
+  height: number | null;
   /** True when the cover came out of the file's own tag rather than the folder. */
   artFromTag: boolean;
 };
@@ -64,6 +67,8 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     error: null,
     postId: null,
     duration: null,
+    width: null,
+    height: null,
     artFromTag: false,
   }));
 }
@@ -84,9 +89,11 @@ export function useUploadQueue() {
       // length before the post is ever played. Read per item so one unreadable file does
       // not hold up the rest of the batch.
       for (const item of incoming) {
-        readDuration(item.media)
-          .then(duration => {
-            if (duration !== null) patch(item.id, { duration });
+        readMediaMeta(item.media)
+          .then(({ duration, width, height }) => {
+            // Frame size rides along: it is the quality reading for a video, and it comes
+            // from the same `loadedmetadata` event the duration does.
+            if (duration !== null || width !== null) patch(item.id, { duration, width, height });
           })
           .catch(() => {
             /* duration is optional — it backfills on first play */
