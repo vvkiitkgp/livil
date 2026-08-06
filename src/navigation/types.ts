@@ -17,7 +17,14 @@ export type RootStackParamList = {
   App: undefined;
   Upload: undefined;
   CollaboratorPicker: {
-    excludeUserIds?: string[];
+    /**
+     * Roles already credited here, as `${userId}|${role}` (or `custom:${name}|${role}`).
+     *
+     * NOT a list of people to hide. One artist is routinely two credits — the guitarist who
+     * also wrote it — and excluding them from the search after their first credit made the
+     * second one impossible to add.
+     */
+    takenRoleKeys?: string[];
   } | undefined;
   UserProfile: {
     userId: string;

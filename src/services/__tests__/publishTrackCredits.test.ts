@@ -99,6 +99,7 @@ const inputWith = (collaborators: PublishCollaborator[]) => ({
   mode: 'audio' as const,
   title: 'Probe',
   assets: ASSETS,
+  uploaderRole: 'Production',
   collaborators,
 });
 
@@ -126,16 +127,41 @@ describe('publishTrack — credits', () => {
   it('stores a profile credit and a typed credit as different columns', async () => {
     rec = stubClient('none');
     await publishTrack(inputWith([PROFILE, TYPED]), uploader);
-    expect(rec.collaboratorRows).toEqual([
-      { track_id: TRACK_ID, user_id: USER_ID, custom_name: null, role: 'Mixing' },
-      { track_id: TRACK_ID, user_id: null, custom_name: 'Session drummer', role: 'Drums' },
+    // The uploader's own credit leads; everybody else follows in order.
+    expect(rec.collaboratorRows.slice(1)).toEqual([
+      { track_id: TRACK_ID, user_id: USER_ID, custom_name: null, role: 'Mixing', status: 'pending' },
+      {
+        track_id: TRACK_ID, user_id: null, custom_name: 'Session drummer',
+        role: 'Drums', status: 'pending',
+      },
     ]);
   });
 
-  it('never inserts an empty credits row set', async () => {
+  it('always credits the uploader, even when nobody else is on the track', async () => {
+    // A credit list that names the guitarist and the mixer but not the person who made
+    // the record is not a credit list. There is no such thing as an uncredited upload.
     rec = stubClient('none');
     await publishTrack(inputWith([]), uploader);
-    expect(rec.inserts).toEqual(['tracks', 'posts']);
+    expect(rec.inserts).toEqual(['tracks', 'track_collaborators', 'posts']);
+    expect(rec.collaboratorRows).toEqual([
+      {
+        track_id: TRACK_ID, user_id: USER_ID, custom_name: null,
+        role: 'Production', status: 'accepted',
+      },
+    ]);
+  });
+
+  it("lands the uploader's own credit accepted, and everyone else's pending", async () => {
+    // Nobody confirms what you say you did on your own record; everybody else does.
+    rec = stubClient('none');
+    await publishTrack(inputWith([PROFILE]), uploader);
+    expect(rec.collaboratorRows.map(r => r.status)).toEqual(['accepted', 'pending']);
+  });
+
+  it('writes every credit in ONE insert, so a half-credited track cannot exist', async () => {
+    rec = stubClient('none');
+    await publishTrack(inputWith([PROFILE, TYPED]), uploader);
+    expect(rec.inserts.filter(t => t === 'track_collaborators')).toHaveLength(1);
   });
 
   it('rolls the whole publish back when the credits insert fails', async () => {
@@ -156,7 +182,7 @@ describe('publishTrack — credits', () => {
       inputWith([{ userId: null, customName: '  Ana  ', role: '  Vocals  ' }]),
       uploader,
     );
-    expect(rec.collaboratorRows[0]).toMatchObject({ custom_name: 'Ana', role: 'Vocals' });
+    expect(rec.collaboratorRows[1]).toMatchObject({ custom_name: 'Ana', role: 'Vocals' });
   });
 
   it('drops a stray customName when a profile is credited', async () => {
@@ -164,7 +190,7 @@ describe('publishTrack — credits', () => {
     // that, what reaches the table must still satisfy `collab_user_xor_custom`.
     rec = stubClient('none');
     await publishTrack(inputWith([{ ...PROFILE }]), uploader);
-    expect(rec.collaboratorRows[0]!.custom_name).toBeNull();
+    expect(rec.collaboratorRows[1]!.custom_name).toBeNull();
   });
 });
 
@@ -188,4 +214,13 @@ describe('publishTrack — credit validation happens before anything uploads', (
 
   it('rejects a role longer than the column allows', () =>
     rejects([{ userId: USER_ID, customName: null, role: 'x'.repeat(41) }], /40 characters/));
+
+  it("rejects a publish with no role for the uploader", async () => {
+    rec = stubClient('none');
+    await expect(
+      publishTrack({ ...inputWith([]), uploaderRole: '  ' }, uploader),
+    ).rejects.toThrow(/what you did/);
+    expect(rec.inserts).toEqual([]);
+    expect(rec.uploads).toBe(0);
+  });
 });

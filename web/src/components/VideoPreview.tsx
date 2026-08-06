@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ModalLayer } from './ModalLayer';
 import { Button } from './Button';
 import { LevelMeter } from './LevelMeter';
 import { levelTapFor, type LevelTap } from '../upload/levels';
@@ -63,50 +64,52 @@ export function VideoPreview({
   }, [onClose]);
 
   return (
-    <div
-      className="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Preview ${title}`}
-      onMouseDown={e => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal__panel videopreview">
-        <h3 className="card__title">{title}</h3>
+    <ModalLayer>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Preview ${title}`}
+        onMouseDown={e => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div className="modal__panel videopreview">
+          <h3 className="card__title">{title}</h3>
 
-        <div className="videopreview__stage">
-          {/* The frame exists to be shrinkable. A `<video>` is a replaced element, so its
-              min-content width is its intrinsic width — as a flex item directly it refuses
-              to shrink, and a 2880-wide landscape clip shoved the meter clean out of the
-              panel. The wrapper takes `min-width: 0` and the video scales inside it. */}
-          <div className="videopreview__frame">
-            {url && (
-              // autoPlay because the artist explicitly asked to watch this one; controls so
-              // they can scrub to the moment they actually care about.
-              <video
-                ref={attach}
-                className="videopreview__el"
-                src={url}
-                controls
-                autoPlay
-                playsInline
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onEnded={() => setPlaying(false)}
-              />
-            )}
+          <div className="videopreview__stage">
+            {/* The frame exists to be shrinkable. A `<video>` is a replaced element, so its
+                min-content width is its intrinsic width — as a flex item directly it refuses
+                to shrink, and a 2880-wide landscape clip shoved the meter clean out of the
+                panel. The wrapper takes `min-width: 0` and the video scales inside it. */}
+            <div className="videopreview__frame">
+              {url && (
+                // autoPlay because the artist explicitly asked to watch this one; controls so
+                // they can scrub to the moment they actually care about.
+                <video
+                  ref={attach}
+                  className="videopreview__el"
+                  src={url}
+                  controls
+                  autoPlay
+                  playsInline
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onEnded={() => setPlaying(false)}
+                />
+              )}
+            </div>
+            <LevelMeter tap={tap} title={title} quality={quality} active={playing} />
           </div>
-          <LevelMeter tap={tap} title={title} quality={quality} active={playing} />
-        </div>
 
-        <p className="hint">
-          Playing from your machine — nothing is uploaded until you publish.
-        </p>
-        <Button variant="ghost" onClick={onClose}>
-          Close
-        </Button>
+          <p className="hint">
+            Playing from your machine — nothing is uploaded until you publish.
+          </p>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

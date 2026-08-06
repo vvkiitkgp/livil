@@ -15,10 +15,19 @@ import { toConversationDetails } from '../conversations';
 
 describe('toCollaboratorInfo', () => {
   const role = 'Producer';
+  // Rows come back from the table with a status; 'pending' is the default every credit
+  // starts at, so it is the honest default for a fixture.
+  const row = (over: Partial<Parameters<typeof toCollaboratorInfo>[0]>) => ({
+    user_id: null,
+    custom_name: null,
+    role,
+    status: 'pending',
+    ...over,
+  });
 
   it('shows the profile display name for a live collaborator', () => {
     const c = toCollaboratorInfo(
-      { user_id: 'u1', custom_name: null, role },
+      row({ user_id: 'u1' }),
       { username: 'vvk', display_name: 'Vamsi', avatar_url: 'https://a/1.png' },
     );
     expect(c.userId).toBe('u1');
@@ -29,7 +38,7 @@ describe('toCollaboratorInfo', () => {
 
   it('falls back to the username when the profile has no display name', () => {
     const c = toCollaboratorInfo(
-      { user_id: 'u1', custom_name: null, role },
+      row({ user_id: 'u1' }),
       { username: 'vvk', display_name: null, avatar_url: null },
     );
     expect(c.display.name).toBe('vvk');
@@ -38,7 +47,7 @@ describe('toCollaboratorInfo', () => {
   });
 
   it('shows [deleted] for a credit whose account was deleted', () => {
-    const c = toCollaboratorInfo({ user_id: null, custom_name: null, role }, undefined);
+    const c = toCollaboratorInfo(row({}), undefined);
     expect(c.userId).toBeNull();
     expect(c.display.name).toBe('[deleted]');
     expect(c.display.isDeleted).toBe(true);
@@ -46,12 +55,12 @@ describe('toCollaboratorInfo', () => {
   });
 
   it('never derives the avatar initial from the deleted placeholder', () => {
-    const c = toCollaboratorInfo({ user_id: null, custom_name: null, role }, undefined);
+    const c = toCollaboratorInfo(row({}), undefined);
     expect(c.display.initial).not.toBe('[');
   });
 
   it('keeps a custom-name credit as a real name, not deleted', () => {
-    const c = toCollaboratorInfo({ user_id: null, custom_name: 'DJ Snake', role }, undefined);
+    const c = toCollaboratorInfo(row({ custom_name: 'DJ Snake' }), undefined);
     expect(c.display.name).toBe('DJ Snake');
     expect(c.display.isDeleted).toBe(false);
     expect(c.userId).toBeNull();
@@ -61,15 +70,30 @@ describe('toCollaboratorInfo', () => {
   // fetchTrackCollaborators discards its profile-query error, so a missing profile
   // for a linked credit means the join missed — not that the account is gone.
   it('does not call a linked credit deleted when the profile join returned nothing', () => {
-    const c = toCollaboratorInfo({ user_id: 'u9', custom_name: null, role }, undefined);
+    const c = toCollaboratorInfo(row({ user_id: 'u9' }), undefined);
     expect(c.userId).toBe('u9');
     expect(c.display.isDeleted).toBe(false);
     expect(c.display.name).not.toBe('[deleted]');
     expect(c.display.initial).toBe('?');
   });
 
+  it('marks an unanswered credit as pending, and a confirmed one as accepted', () => {
+    // The product rule: a pending credit still shows, marked. So the status has to survive
+    // the mapping — dropping it would silently present every credit as confirmed.
+    expect(toCollaboratorInfo(row({ user_id: 'u1' }), undefined).status).toBe('pending');
+    expect(
+      toCollaboratorInfo(row({ user_id: 'u1', status: 'accepted' }), undefined).status,
+    ).toBe('accepted');
+  });
+
+  it('never marks a typed-in name as awaiting confirmation', () => {
+    // There is no account behind it, so nobody can ever confirm — showing it as pending
+    // would be a question addressed to nobody.
+    expect(toCollaboratorInfo(row({ custom_name: 'DJ Snake' }), undefined).status).toBe('accepted');
+  });
+
   it('carries the role through unchanged', () => {
-    expect(toCollaboratorInfo({ user_id: null, custom_name: null, role: 'Mixing' }, undefined).role)
+    expect(toCollaboratorInfo(row({ role: 'Mixing' }), undefined).role)
       .toBe('Mixing');
   });
 });

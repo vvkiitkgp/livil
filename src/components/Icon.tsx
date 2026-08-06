@@ -19,6 +19,7 @@ import {
   ArrowSquareOut,
   ArrowUp,
   ArrowsClockwise,
+  Clock,
   ArrowsInSimple,
   Bell,
   BellSlash,
@@ -81,6 +82,7 @@ import {
   Shuffle,
   SignOut,
   SkipBack,
+  Sparkle,
   SkipForward,
   Star,
   Trash,
@@ -105,7 +107,7 @@ export type IconName =
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
   | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
-  | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email'
+  | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email' | 'pending'
   // tab bar
   | 'home' | 'search' | 'library' | 'profile'
   // music notes & albums
@@ -114,7 +116,7 @@ export type IconName =
   | 'public' | 'friends' | 'lock'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
-  | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave'
+  | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
   | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
@@ -199,6 +201,12 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   handTap: [HandTap, 'regular'],
   zoomOut: [ArrowsInSimple, 'bold'],
   wave: [HandWaving, 'fill'],
+  // A credit the named artist has not answered yet. `regular` — this sits next to a name
+  // at 13px, where a filled clock reads as a dot.
+  pending: [Clock, 'regular'],
+  // Any of the AI_ROLES. One glyph for the whole group on purpose: the point of the mark
+  // is "a tool did this", and six different machine icons would say less, not more.
+  ai: [Sparkle, 'fill'],
   // settings — `regular` throughout: these sit inside a tinted tile in
   // SettingsRow, where a filled glyph reads as a solid blob at 20px.
   bell: [Bell, 'regular'],

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { ModalLayer } from './ModalLayer';
 import { Button } from './Button';
 
 /**
@@ -36,31 +37,33 @@ export function ConfirmDialog({
   }, [onCancel, busy]);
 
   return (
-    <div
-      className="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onMouseDown={e => {
-        if (e.target === e.currentTarget && !busy) onCancel();
-      }}
-    >
-      <div className="modal__panel confirm">
-        <h3 className="confirm__title display">{title}</h3>
-        <p className="hint">{body}</p>
-        <div className="filerow confirm__actions">
-          <Button
-            variant={destructive ? 'destructive' : 'primary'}
-            busy={busy}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </Button>
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
+    <ModalLayer>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={e => {
+          if (e.target === e.currentTarget && !busy) onCancel();
+        }}
+      >
+        <div className="modal__panel confirm">
+          <h3 className="confirm__title display">{title}</h3>
+          <p className="hint">{body}</p>
+          <div className="filerow confirm__actions">
+            <Button
+              variant={destructive ? 'destructive' : 'primary'}
+              busy={busy}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </Button>
+            <Button variant="ghost" onClick={onCancel} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

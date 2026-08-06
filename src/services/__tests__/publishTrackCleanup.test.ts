@@ -89,6 +89,7 @@ function stubClient(failAt: 'none' | 'update' | 'post') {
 const INPUT = {
   mode: 'audio' as const,
   title: 'Probe',
+  uploaderRole: 'Production',
   assets: [
     { kind: 'audio' as const, fileName: 'a.mp3', contentType: 'audio/mpeg', sizeBytes: 100 },
     { kind: 'cover' as const, fileName: 'c.jpg', contentType: 'image/jpeg', sizeBytes: 10 },

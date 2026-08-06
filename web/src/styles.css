@@ -1814,6 +1814,48 @@ a {
   color: var(--white);
 }
 
+/* The uploader's own credit. Purple rather than the amber/blue tones the others carry:
+   it is the one credit that is never awaiting anybody's confirmation. */
+.credit--self {
+  border-color: var(--purple-deep);
+  background: var(--purple-dim);
+  cursor: pointer;
+}
+
+.credit__role-input {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--white);
+  background: none;
+  border: none;
+  outline: none;
+  width: 120px;
+}
+
+.credit__role-select {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--purple-neon);
+  background: none;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  max-width: 160px;
+}
+
+/* The unset state has to look unfinished — publishing is blocked on it. `:has()` on a
+   select's value does not work (the attribute is not the live value), so the row is
+   flagged from the DOM instead, via data-unset on the label. */
+.credit--self[data-unset] {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.credit__role-select option {
+  background: var(--surface);
+  color: var(--white);
+}
+
 /* The add control is a chip too, so the row reads as one list with a gap at the end
    rather than a list and a button that happen to be adjacent. */
 .credit--add {
@@ -1832,9 +1874,31 @@ a {
 /* ── Collaborator picker ─────────────────────────────────────────────────── */
 
 .picker {
-  width: min(460px, 92vw);
+  width: min(780px, 94vw);
   align-items: stretch;
   text-align: left;
+}
+
+/* Who on the left, what they did on the right. Falls back to one column on a narrow
+   screen, where the stacked height is not the problem the two columns solve. */
+.picker__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.picker__col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .picker__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .picker__tabs {
@@ -1864,9 +1928,9 @@ a {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  /* Capped rather than growing: twenty results would push the role chips and the confirm
-     button below the fold of a laptop screen, and the button is the point of the modal. */
-  max-height: 210px;
+  /* Capped rather than growing: twenty results would push the confirm button below the
+     fold of a laptop screen, and the button is the point of the modal. */
+  max-height: 260px;
   overflow-y: auto;
 }
 

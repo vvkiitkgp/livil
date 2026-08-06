@@ -22,7 +22,13 @@ import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import type { RootStackParamList } from '../../navigation/types';
-import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
+import {
+  ROLES,
+  getChipStyle,
+  getChipTone,
+  isPresetRole,
+  type PendingCollaborator,
+} from '../../constants/roles';
 import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
@@ -108,6 +114,7 @@ export default function UploadScreen() {
   const [description, setDescription] = useState('');
 
   const [collaborators, setCollaborators] = useState<PendingCollaborator[]>([]);
+  const [uploaderRole, setUploaderRole] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<{ id: string; title: string } | null>(null);
@@ -223,10 +230,14 @@ export default function UploadScreen() {
   }, []);
 
   const handleAddCollaborator = useCallback(() => {
-    const excludeUserIds = collaborators
-      .filter(c => c.kind === 'user' && c.userId)
-      .map(c => c.userId!) as string[];
-    navigation.navigate('CollaboratorPicker', { excludeUserIds });
+    // Person AND role. Hiding the person outright — what this used to do — meant the
+    // guitarist who also wrote the song could only ever be credited once.
+    const takenRoleKeys = collaborators.map(c =>
+      c.kind === 'user' && c.userId
+        ? `${c.userId}|${c.role}`
+        : `custom:${c.name.trim().toLowerCase()}|${c.role}`,
+    );
+    navigation.navigate('CollaboratorPicker', { takenRoleKeys });
   }, [collaborators, navigation]);
 
   const handleRemoveCollaborator = useCallback((clientId: string) => {
@@ -245,14 +256,20 @@ export default function UploadScreen() {
 
   const canSubmit = useMemo(() => {
     if (submitting || title.trim().length === 0) {return false;}
+    // Your own role is required — see the Your role section.
+    if (uploaderRole.trim().length === 0) {return false;}
     if (mode === 'audio') {return Boolean(audio && cover);}
     return Boolean(video && thumbnail);
-  }, [mode, audio, cover, video, thumbnail, title, submitting]);
+  }, [mode, audio, cover, video, thumbnail, title, uploaderRole, submitting]);
 
   const handleSubmit = useCallback(async () => {
     setPreviewPaused(true);
     if (!title.trim()) {
       setError('Add a title to continue.');
+      return;
+    }
+    if (!uploaderRole.trim()) {
+      setError('Choose what you did on this track.');
       return;
     }
     if (mode === 'audio') {
@@ -283,6 +300,7 @@ export default function UploadScreen() {
               description,
               audio: audio!,
               cover: cover!,
+              uploaderRole,
               collaborators,
               durationSeconds: previewDurationSec,
             }
@@ -293,6 +311,7 @@ export default function UploadScreen() {
               video: video!,
               cover: cover ?? undefined,
               thumbnail: thumbnail!,
+              uploaderRole,
               collaborators,
               durationSeconds: previewDurationSec,
             },
@@ -316,7 +335,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, collaborators, previewDurationSec, selectedAlbum]);
+  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, previewDurationSec, selectedAlbum]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -573,6 +592,44 @@ export default function UploadScreen() {
               )}
             </TouchableOpacity>
           </View>
+
+          {/* The uploader's own credit. Above Collaborators, and required: a credit list
+              that names the guitarist and the mixer but not the person who made the record
+              is not a credit list. */}
+          <Text style={styles.sectionLabel}>Your role</Text>
+          <View style={styles.ownRoleWrap}>
+            {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
+                credited as a collaborator in its own right — "AI vocals" is never an
+                answer to what the person uploading did. */}
+            {ROLES.map(r => {
+              const active = uploaderRole === r;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  activeOpacity={0.85}
+                  disabled={submitting}
+                  onPress={() => setUploaderRole(active ? '' : r)}
+                  style={[styles.roleChip, active && styles.roleChipActive]}
+                >
+                  {active ? <GradientBorder borderRadius={999} /> : null}
+                  <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* The list will always be missing somebody's instrument. A closed list here
+              would mean the wrong credit or, since this field is required, no upload. */}
+          <FormInput
+            value={isPresetRole(uploaderRole) ? '' : uploaderRole}
+            onChangeText={setUploaderRole}
+            placeholder="Or type your own — e.g. Tabla, Additional production"
+            maxLength={40}
+            autoCapitalize="words"
+            editable={!submitting}
+          />
 
           <View style={styles.collabHeader}>
             <Text style={styles.sectionLabel}>Collaborators</Text>
@@ -975,6 +1032,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
   },
+  ownRoleWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 4 },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  // Selected state is the gradient outline; no fill — same as the collaborator picker.
+  roleChipActive: { borderColor: 'transparent' },
+  roleChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  roleChipTextActive: { color: COLORS.purpleNeon, fontWeight: '700' },
   addCollabButton: {
     borderRadius: 999,
     paddingHorizontal: 14,

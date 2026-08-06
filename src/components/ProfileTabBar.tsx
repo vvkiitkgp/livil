@@ -21,6 +21,9 @@ const ORDER: TabSpec[] = [
   { key: 'playlists', label: 'Playlists' },
 ];
 
+/** The two tabs that swap places by weight. Albums and Playlists keep their positions. */
+const WEIGHTED: ProfileTab[] = ['reposts', 'uploads'];
+
 /**
  * Tab visibility rule (locked in during design):
  *   Reposts + Playlists  → always render (they're universal affordances).
@@ -30,12 +33,26 @@ const ORDER: TabSpec[] = [
  * show an in-tab empty state. This keeps the navigation predictable: a tab
  * doesn't appear and disappear as you fill it. Uploads/Albums are creator
  * concepts so showing them with "0" would be noise on a listener profile.
+ *
+ * ORDER, on the other hand, follows the counts: whichever of Reposts and Uploads holds
+ * more comes first, so a profile leads with whatever that person actually does. A curator
+ * opens on their reposts and an artist on their records, without either being a special
+ * case in the code. Ties keep the declared order, so the bar does not jitter between two
+ * equal numbers. Albums and Playlists are deliberately left where they are — they are
+ * collections rather than activity, and moving them would make the bar unlearnable.
  */
 export function visibleTabsFor(counts: TabCounts): TabSpec[] {
-  return ORDER.filter(t => {
+  const visible = ORDER.filter(t => {
     if (t.key === 'reposts' || t.key === 'playlists') { return true; }
     return counts[t.key] > 0;
   });
+
+  const weighted = visible
+    .filter(t => WEIGHTED.includes(t.key))
+    .sort((a, b) => counts[b.key] - counts[a.key]);
+
+  let next = 0;
+  return visible.map(t => (WEIGHTED.includes(t.key) ? weighted[next++]! : t));
 }
 
 export default function ProfileTabBar({

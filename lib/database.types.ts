@@ -1520,6 +1520,10 @@ export type Database = {
         Returns: string
       }
       create_jam_room: { Args: { p_conversation_id: string }; Returns: string }
+      credit_respond: {
+        Args: { p_accept: boolean; p_credit_id: string }
+        Returns: string
+      }
       creator_plays_by_day: {
         Args: {
           p_exclude_self?: boolean
@@ -1629,6 +1633,20 @@ export type Database = {
           display_name: string
           other_user_id: string
           username: string
+        }[]
+      }
+      list_pending_credits: {
+        Args: never
+        Returns: {
+          cover_art_url: string
+          created_at: string
+          credit_id: string
+          role: string
+          track_id: string
+          track_title: string
+          uploader_avatar: string
+          uploader_id: string
+          uploader_name: string
         }[]
       }
       list_my_conversations: {

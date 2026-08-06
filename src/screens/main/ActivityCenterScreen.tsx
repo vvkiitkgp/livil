@@ -26,6 +26,8 @@ import {
   type ActivityItem,
 } from '../../services/activity';
 import { Icon } from '../../components/Icon';
+import { respondToCredit } from '../../services/tracks';
+import { useToast } from '../../contexts/ToastContext';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../../assets/livil-logo.png');
@@ -46,6 +48,9 @@ export default function ActivityCenterScreen() {
   // they're reading older notifications.
   const didInitialScrollRef = useRef(false);
   const [items, setItems] = useState<ActivityItem[]>([]);
+  // Credit ids with an answer in flight, so a double tap cannot send two answers.
+  const [answering, setAnswering] = useState<Set<string>>(new Set());
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [meId, setMeId] = useState<string | null>(null);
 
@@ -152,8 +157,53 @@ export default function ActivityCenterScreen() {
       });
       return;
     }
-    navigation.navigate('UserProfile', { userId: meId, focusPostId: postId });
+    // WHOSE profile the post lives on. Every other notification is about something that
+    // happened TO my post, so my profile is right — but a credit is about somebody ELSE's
+    // upload, and routing that to me opened my profile hunting for a post that was never
+    // there. The uploader is the actor on a 'credited' row.
+    const ownerId = item.type === 'credited' ? item.actor.id || meId : meId;
+    navigation.navigate('UserProfile', { userId: ownerId, focusPostId: postId });
   }, [navigation, meId]);
+
+  /**
+   * Answer a credit from the message that asked.
+   *
+   * The row is updated locally rather than refetched: the answer is recorded on the
+   * notification server-side, so a refetch would return the same thing one round trip
+   * later, and the buttons should stop being tappable the instant they are pressed.
+   */
+  const handleRespondToCredit = useCallback(
+    async (creditId: string, accept: boolean) => {
+      if (answering.has(creditId)) { return; }
+      setAnswering(prev => new Set(prev).add(creditId));
+      try {
+        const status = await respondToCredit(creditId, accept);
+        if (status === null) {
+          // Not yours, already answered, or gone — indistinguishable by design. Re-reading
+          // is the honest response: whatever the truth is, the server has it.
+          setItems(await listActivity());
+          return;
+        }
+        setItems(prev =>
+          prev.map(it =>
+            it.type === 'credited' && it.creditId === creditId
+              ? { ...it, answered: status }
+              : it,
+          ),
+        );
+        showToast(accept ? 'Credit confirmed' : 'Credit declined', { kind: 'success' });
+      } catch {
+        showToast("Couldn't save that. Try again.", { kind: 'error' });
+      } finally {
+        setAnswering(prev => {
+          const next = new Set(prev);
+          next.delete(creditId);
+          return next;
+        });
+      }
+    },
+    [answering, showToast],
+  );
 
   const renderItem = useCallback(
     ({ item, index }: { item: ActivityItem; index: number }) => {
@@ -166,12 +216,20 @@ export default function ActivityCenterScreen() {
         <>
           {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
           <SwipeRevealRow timestamp={formatChatTimestamp(item.createdAt)}>
-            <ActivityBubble item={item} onActorPress={handleActorPress} onPostPress={handlePostPress} />
+            <ActivityBubble
+              item={item}
+              onActorPress={handleActorPress}
+              onPostPress={handlePostPress}
+              onRespondToCredit={handleRespondToCredit}
+              responding={item.type === 'credited' && item.creditId
+                ? answering.has(item.creditId)
+                : false}
+            />
           </SwipeRevealRow>
         </>
       );
     },
-    [handleActorPress, handlePostPress, orderedItems],
+    [handleActorPress, handlePostPress, handleRespondToCredit, answering, orderedItems],
   );
 
   return (

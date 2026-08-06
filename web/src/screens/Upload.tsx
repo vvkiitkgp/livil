@@ -8,10 +8,14 @@ import { LevelMeter } from '../components/LevelMeter';
 import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
 import { filesFromDataTransfer, pairAssets } from '../upload/files';
-import { creditedUserIds, mergeCredits } from '../upload/credits';
+import { mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
-import { getChipTone } from '@shared/constants/roles';
+import { ROLES, getChipTone, isPresetRole } from '@shared/constants/roles';
+import { ROLE_MAX_LENGTH } from '@shared/services/publishTrack';
+
+/** Sentinel for the dropdown's "type your own" entry — never a stored role. */
+const CUSTOM_ROLE = '__custom__';
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
@@ -76,6 +80,7 @@ export function Upload() {
   // Nothing left to do: the run is over and something actually published.
   const finished = !queue.running && done.length > 0 && pending.length === 0;
   const missingArt = pending.filter(i => !i.image).length;
+  const missingRole = pending.filter(i => !i.uploaderRole.trim()).length;
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
 
   // The meter outlives playback on purpose: pausing, or a track running out, is exactly
@@ -211,6 +216,7 @@ export function Upload() {
               onTitle={title => queue.patch(item.id, { title })}
               onDescription={description => queue.patch(item.id, { description })}
               onAddCredit={() => setCreditingId(item.id)}
+              onUploaderRole={role => queue.patch(item.id, { uploaderRole: role })}
               onRemoveCredit={clientId =>
                 queue.patch(item.id, {
                   collaborators: item.collaborators.filter(c => c.clientId !== clientId),
@@ -287,6 +293,14 @@ export function Upload() {
         </p>
       )}
 
+      {missingRole > 0 && (
+        <p className="alert" role="alert">
+          {missingRole === 1 ? 'One track needs' : `${missingRole} tracks need`} your own role.
+          A credit list that names everyone except the person who made the record is not a
+          credit list.
+        </p>
+      )}
+
       {missingArt > 0 && (
         <p className="alert" role="alert">
           {missingArt} {missingArt === 1 ? 'track needs' : 'tracks need'} cover art before
@@ -303,7 +317,13 @@ export function Upload() {
       <div className="filerow">
         <Button
           size="lg"
-          disabled={pending.length === 0 || missingArt > 0 || oversize > 0 || queue.running}
+          disabled={
+            pending.length === 0 ||
+            missingArt > 0 ||
+            missingRole > 0 ||
+            oversize > 0 ||
+            queue.running
+          }
           busy={queue.running}
           onClick={() => {
             // Every failure is already captured per item; nothing escapes to handle here.
@@ -328,7 +348,7 @@ export function Upload() {
               ? { label: `Everything in the queue that hasn't started`, trackCount: pending.length }
               : { label: crediting.title, trackCount: 1 }
           }
-          excludeUserIds={creditedUserIds(crediting.collaborators)}
+          existing={crediting.collaborators}
           onAdd={collaborator => {
             if (creditingId === 'ALL') {
               // Appends rather than replaces, unlike "cover art for all": art is one slot
@@ -375,6 +395,7 @@ function QueueRow({
   onDescription,
   onAddCredit,
   onRemoveCredit,
+  onUploaderRole,
   onRemove,
   onPickCover,
 }: {
@@ -389,10 +410,16 @@ function QueueRow({
   onDescription: (value: string) => void;
   onAddCredit: () => void;
   onRemoveCredit: (clientId: string) => void;
+  onUploaderRole: (role: string) => void;
   onRemove: () => void;
   onPickCover: () => void;
 }) {
   const locked = item.status === 'uploading' || item.status === 'done';
+  // Typing rather than picking. Sticky once chosen, and true on load for a role that is
+  // not in the list — otherwise re-rendering would snap a typed role back to the dropdown.
+  const [ownRoleCustom, setOwnRoleCustom] = useState(false);
+  const ownRoleIsCustom =
+    ownRoleCustom || (item.uploaderRole !== '' && !isPresetRole(item.uploaderRole));
 
   return (
     <li className="queue__row" data-status={item.status}>
@@ -428,6 +455,52 @@ function QueueRow({
             the failure this feature exists to prevent, and a collapsed section is how it
             keeps happening. */}
         <div className="credits">
+          {/* The uploader's own credit, first — it is the one credit every track has. */}
+          <label className="credit credit--self" data-unset={!item.uploaderRole.trim() || undefined}>
+            <span className="credit__name">You</span>
+            {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
+                credited as a collaborator in its own right — "AI vocals" is never an
+                answer to what the person uploading did. */}
+            {ownRoleIsCustom ? (
+              <input
+                className="credit__role-input"
+                value={item.uploaderRole}
+                disabled={locked}
+                autoFocus
+                maxLength={ROLE_MAX_LENGTH}
+                placeholder="e.g. Tabla"
+                aria-label="Your role on this track"
+                onChange={e => onUploaderRole(e.target.value)}
+              />
+            ) : (
+              <select
+                className="credit__role-select"
+                value={item.uploaderRole}
+                disabled={locked}
+                aria-label="Your role on this track"
+                onChange={e => {
+                  if (e.target.value === CUSTOM_ROLE) {
+                    setOwnRoleCustom(true);
+                    // Cleared, not carried over: the preset that was showing is not a
+                    // sensible starting point for typing a different role, and an empty
+                    // value keeps Publish blocked until they actually write one.
+                    onUploaderRole('');
+                    return;
+                  }
+                  onUploaderRole(e.target.value);
+                }}
+              >
+                <option value="">what did you do?</option>
+                {ROLES.map(r => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+                <option value={CUSTOM_ROLE}>Something else…</option>
+              </select>
+            )}
+          </label>
+
           {item.collaborators.map(c => (
             <span key={c.clientId} className="credit" data-tone={getChipTone(c.kind)}>
               <span className="credit__name">{c.name}</span>

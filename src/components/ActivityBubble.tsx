@@ -22,7 +22,17 @@ const LIVIL_LOGO = require('../assets/livil-logo.png');
 type RenderFormat =
   | { format: 'text'; icon: IconName }           // new_fan, friend outcomes
   | { format: 'post'; post: ActivityPostRef }   // like, comment, repost, milestone
-  | { format: 'track'; post: ActivityPostRef }; // reserved for a future music card
+  | { format: 'track'; post: ActivityPostRef }  // reserved for a future music card
+  // A credit ASKS something, which no other activity does. `answered` is null while the
+  // question stands and the answer afterwards, so the bubble never offers buttons on a
+  // credit that is already settled — including after a reload, because the answer is
+  // recorded on the row itself rather than held in screen state.
+  | {
+      format: 'actions';
+      post: ActivityPostRef;
+      creditId: string | null;
+      answered: 'accepted' | 'declined' | null;
+    };
 
 function toRenderFormat(item: ActivityItem): RenderFormat {
   switch (item.type) {
@@ -37,6 +47,18 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
       return { format: 'text', icon: 'handshake' };
     case 'friend_rejected':
       return { format: 'text', icon: 'wave' };
+    case 'credited':
+      return {
+        format: 'actions',
+        post: item.post,
+        creditId: item.creditId,
+        answered: item.answered,
+      };
+    // The uploader's side of the answer is just news; it needs no buttons.
+    case 'credit_accepted':
+      return { format: 'post', post: item.post };
+    case 'credit_declined':
+      return { format: 'post', post: item.post };
   }
 }
 
@@ -44,13 +66,23 @@ export default function ActivityBubble({
   item,
   onActorPress,
   onPostPress,
+  onRespondToCredit,
+  responding = false,
 }: {
   item: ActivityItem;
   onActorPress?: (actorId: string) => void;
   onPostPress?: (item: ActivityItem) => void;
+  /** Answering a credit. Absent on surfaces that only preview activity. */
+  onRespondToCredit?: (creditId: string, accept: boolean) => void;
+  /** An answer is in flight for this item — both buttons lock, so a double tap cannot
+      send two answers to a function that only honours the first. */
+  responding?: boolean;
 }) {
   const body = toRenderFormat(item);
-  const post = body.format === 'post' || body.format === 'track' ? body.post : null;
+  const post =
+    body.format === 'post' || body.format === 'track' || body.format === 'actions'
+      ? body.post
+      : null;
   const parts = activityBubbleParts(item);
   const actor = parts.actor;
   const name = actor ? (actor.displayName?.trim() || `@${actor.username}`) : null;
@@ -107,6 +139,27 @@ export default function ActivityBubble({
               </View>
             </TouchableOpacity>
           )}
+
+          {body.format === 'actions' && body.creditId && !body.answered && (
+            <View style={styles.creditActions}>
+              <TouchableOpacity
+                style={[styles.creditBtn, styles.creditBtnPrimary]}
+                activeOpacity={0.85}
+                disabled={responding}
+                onPress={() => onRespondToCredit?.(body.creditId!, true)}
+              >
+                <Text style={styles.creditBtnPrimaryText}>Confirm</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.creditBtn}
+                activeOpacity={0.85}
+                disabled={responding}
+                onPress={() => onRespondToCredit?.(body.creditId!, false)}
+              >
+                <Text style={styles.creditBtnText}>Not me</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -135,6 +188,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderBottomLeftRadius: 4,
   },
+  // Outlined, never filled — a confirm here is a normal choice, not a destructive one, and
+  // purple outlines rather than fills throughout the app.
+  creditActions: { flexDirection: 'row', gap: 8 },
+  creditBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  creditBtnPrimary: { borderColor: COLORS.purple },
+  creditBtnText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  creditBtnPrimaryText: { color: COLORS.purpleNeon, fontSize: 14, fontWeight: '700' },
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
   bubbleTextRow: { flexDirection: 'row', alignItems: 'flex-start' },
   bubbleIcon: { marginRight: 5, marginTop: 3 },

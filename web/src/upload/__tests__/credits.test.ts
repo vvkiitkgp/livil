@@ -6,7 +6,7 @@
  * credit that gets dropped looks exactly like a credit nobody added, and the person it
  * belonged to is simply never tagged.
  */
-import { creditedUserIds, mergeCredits } from '../credits';
+import { mergeCredits } from '../credits';
 import type { PendingCollaborator } from '@shared/constants/roles';
 
 const user = (id: string, role: string, name = id): PendingCollaborator => ({
@@ -55,12 +55,20 @@ describe('mergeCredits', () => {
   });
 });
 
-describe('creditedUserIds', () => {
-  it('returns only real profiles — a typed name cannot be excluded from a search', () => {
-    expect(creditedUserIds([user('u1', 'Drums'), custom('Ana', 'Vocals')])).toEqual(['u1']);
+describe('one person, several roles', () => {
+  // The guitarist who also wrote it. The picker used to hide an already-credited person
+  // from its search, which made this impossible to express at all.
+  it('accumulates every role a person holds', () => {
+    let credits = mergeCredits([], user('u1', 'Guitar'));
+    credits = mergeCredits(credits, user('u1', 'Songwriting'));
+    credits = mergeCredits(credits, user('u1', 'Backing Vocals'));
+    expect(credits).toHaveLength(3);
+    expect(credits.every(c => c.userId === 'u1')).toBe(true);
+    expect(credits.map(c => c.role)).toEqual(['Guitar', 'Songwriting', 'Backing Vocals']);
   });
 
-  it('is empty for an uncredited row', () => {
-    expect(creditedUserIds([])).toEqual([]);
+  it('still refuses the same person in the same role twice', () => {
+    const once = mergeCredits([], user('u1', 'Guitar'));
+    expect(mergeCredits(once, user('u1', 'Guitar'))).toHaveLength(1);
   });
 });

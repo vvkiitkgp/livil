@@ -16,7 +16,10 @@ export type ActivityType =
   | 'play_milestone'
   | 'new_fan'
   | 'friend_accepted'
-  | 'friend_rejected';
+  | 'friend_rejected'
+  | 'credited'
+  | 'credit_accepted'
+  | 'credit_declined';
 
 export type ActivityActor = {
   id: string;
@@ -47,6 +50,19 @@ export type ActivityItem = ActivityBase &
     | { type: 'new_fan'; actor: ActivityActor }
     | { type: 'friend_accepted'; actor: ActivityActor }
     | { type: 'friend_rejected'; actor: ActivityActor }
+    // Somebody credited you on their track. This is the one activity item that ASKS
+    // something: it carries the credit id so the bubble can answer in place, and the
+    // answer once given, so a reloaded inbox does not offer the buttons again.
+    | {
+        type: 'credited';
+        actor: ActivityActor;
+        post: ActivityPostRef;
+        role: string;
+        creditId: string | null;
+        answered: 'accepted' | 'declined' | null;
+      }
+    | { type: 'credit_accepted'; actor: ActivityActor; post: ActivityPostRef; role: string }
+    | { type: 'credit_declined'; actor: ActivityActor; post: ActivityPostRef; role: string }
   );
 
 type RawActivityRow = {
@@ -58,7 +74,14 @@ type RawActivityRow = {
   is_read: boolean;
   created_at: string;
   updated_at: string;
-  payload: { threshold?: number; comment_text?: string; comment_id?: string } | null;
+  payload: {
+    threshold?: number;
+    comment_text?: string;
+    comment_id?: string;
+    role?: string;
+    credit_id?: string;
+    answered?: 'accepted' | 'declined';
+  } | null;
   actor_username: string | null;
   actor_display_name: string | null;
   actor_avatar_url: string | null;
@@ -112,6 +135,26 @@ function rowToItem(row: RawActivityRow): ActivityItem {
       return { ...base, type: 'friend_accepted', actor: rowToActor(row) };
     case 'friend_rejected':
       return { ...base, type: 'friend_rejected', actor: rowToActor(row) };
+    case 'credited':
+      return {
+        ...base,
+        type: 'credited',
+        actor: rowToActor(row),
+        post: rowToPost(row),
+        role: row.payload?.role ?? '',
+        creditId: row.payload?.credit_id ?? null,
+        answered: row.payload?.answered ?? null,
+      };
+    case 'credit_accepted':
+      return {
+        ...base, type: 'credit_accepted', actor: rowToActor(row),
+        post: rowToPost(row), role: row.payload?.role ?? '',
+      };
+    case 'credit_declined':
+      return {
+        ...base, type: 'credit_declined', actor: rowToActor(row),
+        post: rowToPost(row), role: row.payload?.role ?? '',
+      };
   }
 }
 
@@ -169,6 +212,21 @@ export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
       return { actor: item.actor, text: ' accepted your friend request' };
     case 'friend_rejected':
       return { actor: item.actor, text: ' declined your friend request' };
+    case 'credited': {
+      const forRole = item.role ? ` for ${item.role}` : '';
+      // Past tense once answered: the message stops being a question and becomes a record.
+      if (item.answered === 'accepted') {
+        return { actor: item.actor, text: ` credited you${forRole} — you confirmed it` };
+      }
+      if (item.answered === 'declined') {
+        return { actor: item.actor, text: ` credited you${forRole} — you declined` };
+      }
+      return { actor: item.actor, text: ` credited you${forRole} on a track` };
+    }
+    case 'credit_accepted':
+      return { actor: item.actor, text: ` confirmed the ${item.role || 'credit'} credit` };
+    case 'credit_declined':
+      return { actor: item.actor, text: ` declined the ${item.role || 'credit'} credit` };
   }
 }
 

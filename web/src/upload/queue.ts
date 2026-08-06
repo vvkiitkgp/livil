@@ -42,7 +42,9 @@ export type QueueItem = {
   /** Frame size, video only. Null for audio and for files the browser cannot probe. */
   width: number | null;
   height: number | null;
-  /** Credits, in picker shape. Flattened to rows by `publishTrack` at publish time. */
+  /** What the uploader did on this track. Publishing is blocked until it is set. */
+  uploaderRole: string;
+  /** Credits for everyone else. Flattened to rows by `publishTrack` at publish time. */
   collaborators: PendingCollaborator[];
   /** True when the cover came out of the file's own tag rather than the folder. */
   artFromTag: boolean;
@@ -72,6 +74,7 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     duration: null,
     width: null,
     height: null,
+    uploaderRole: '',
     collaborators: [],
     artFromTag: false,
   }));
@@ -169,6 +172,10 @@ export function useUploadQueue() {
         patch(item.id, { status: 'failed', error: 'Cover art is required.' });
         return;
       }
+      if (!item.uploaderRole.trim()) {
+        patch(item.id, { status: 'failed', error: 'Choose what you did on this track.' });
+        return;
+      }
       patch(item.id, { status: 'uploading', error: null, fraction: 0 });
 
       const handle = startPublish(
@@ -178,6 +185,7 @@ export function useUploadQueue() {
           image: item.image,
           title: item.title,
           description: item.description,
+          uploaderRole: item.uploaderRole,
           // Picker shape -> row shape. The XOR the table enforces is decided here: a
           // credit that names a profile never also carries a typed name.
           collaborators: item.collaborators.map(c => ({

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -28,6 +29,9 @@ type PickerNavigation = NativeStackNavigationProp<RootStackParamList, 'Collabora
 
 type Mode = 'user' | 'custom';
 
+/** Results shown before asking the artist to narrow the search — see the page ScrollView. */
+const RESULT_LIMIT = 6;
+
 function clientIdFor(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -42,9 +46,9 @@ function initialsFor(name: string): string {
 export default function CollaboratorPickerScreen() {
   const navigation = useNavigation<PickerNavigation>();
   const route = useRoute<PickerRoute>();
-  const excludeUserIds = useMemo(
-    () => route.params?.excludeUserIds ?? [],
-    [route.params?.excludeUserIds],
+  const takenRoleKeys = useMemo(
+    () => new Set(route.params?.takenRoleKeys ?? []),
+    [route.params?.takenRoleKeys],
   );
 
   const [mode, setMode] = useState<Mode>('user');
@@ -53,6 +57,9 @@ export default function CollaboratorPickerScreen() {
   const [selectedUser, setSelectedUser] = useState<ProfileSearchResult | null>(null);
   const [role, setRole] = useState<string>('');
 
+  const pageRef = useRef<ScrollView>(null);
+  /** Ref, not state: the keyboard listener must not resubscribe on every focus change. */
+  const customRoleFocused = useRef(false);
   const [results, setResults] = useState<ProfileSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
@@ -64,7 +71,7 @@ export default function CollaboratorPickerScreen() {
     setError('');
     const t = setTimeout(async () => {
       try {
-        const data = await searchProfiles(query, { excludeUserIds });
+        const data = await searchProfiles(query);
         if (!cancelled) {setResults(data);}
       } catch (err) {
         if (!cancelled) {
@@ -78,14 +85,46 @@ export default function CollaboratorPickerScreen() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, mode, excludeUserIds]);
+  }, [query, mode]);
+
+  /** Key for the person currently being credited, matching what UploadScreen sent. */
+  const subjectKey = useMemo(() => {
+    if (mode === 'user') {return selectedUser ? selectedUser.id : null;}
+    const typed = customName.trim().toLowerCase();
+    return typed ? `custom:${typed}` : null;
+  }, [mode, selectedUser, customName]);
+
+  /** Roles this person already holds on the track — greyed out, not hidden. */
+  const isRoleTaken = useCallback(
+    (r: string) => (subjectKey ? takenRoleKeys.has(`${subjectKey}|${r}`) : false),
+    [subjectKey, takenRoleKeys],
+  );
+
+  /*
+   * Lift the custom-role field clear of the keyboard.
+   *
+   * It sits at the very bottom of a long page, so the keyboard opens straight over it and
+   * you cannot see what you are typing. Driven by `keyboardDidShow` rather than the
+   * field's own `onFocus`: `adjustResize` re-lays-out the page when the keyboard appears,
+   * and a scroll issued on focus is computed against the PRE-keyboard height and then
+   * clamped, which is why the timed version still left the field hidden. `didShow` fires
+   * after the resize, so the scroll target is real.
+   */
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      if (customRoleFocused.current) {
+        pageRef.current?.scrollToEnd({ animated: true });
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const canConfirm = useMemo(() => {
     const hasTarget =
       (mode === 'user' && !!selectedUser) ||
       (mode === 'custom' && customName.trim().length > 0);
-    return hasTarget && role.trim().length > 0;
-  }, [mode, selectedUser, customName, role]);
+    return hasTarget && role.trim().length > 0 && !isRoleTaken(role.trim());
+  }, [mode, selectedUser, customName, role, isRoleTaken]);
 
   const handleConfirm = useCallback(() => {
     if (!canConfirm) {return;}
@@ -132,7 +171,23 @@ export default function CollaboratorPickerScreen() {
         <View style={styles.headerSide} />
       </View>
 
-      <View style={styles.flex}>
+      {/*
+        * One scroll surface for the whole page.
+        *
+        * The results used to be their own ScrollView inside a flex:1 column, which worked
+        * only while the role picker was short. Adding the AI group pushed the role section
+        * past the fold and squeezed the results down to a single half-visible row — a list
+        * you cannot see is a picker you cannot use. Nesting a second vertical ScrollView
+        * would fight this one for the gesture, so the results are plain rows now and the
+        * page scrolls as a whole.
+        */}
+      <ScrollView
+        ref={pageRef}
+        style={styles.flex}
+        contentContainerStyle={styles.pageContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.modeToggle}>
           <TouchableOpacity
             style={styles.modePill}
@@ -166,12 +221,7 @@ export default function CollaboratorPickerScreen() {
               autoCorrect={false}
             />
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            <ScrollView
-              style={styles.resultsList}
-              contentContainerStyle={styles.resultsContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
+            <View style={styles.resultsContent}>
               {searching ? (
                 <View style={styles.resultsLoading}>
                   <ActivityIndicator color={COLORS.purpleLight} />
@@ -183,7 +233,10 @@ export default function CollaboratorPickerScreen() {
                     : 'No matching users yet — try searching above.'}
                 </Text>
               ) : (
-                results.map(p => {
+                // Capped: the page scrolls, so an unbounded list would bury the role
+                // picker again. Narrowing the search is the way to reach someone further
+                // down, which is what the search box is for.
+                results.slice(0, RESULT_LIMIT).map(p => {
                   const selected = selectedUser?.id === p.id;
                   return (
                     <TouchableOpacity
@@ -217,7 +270,12 @@ export default function CollaboratorPickerScreen() {
                   );
                 })
               )}
-            </ScrollView>
+              {!searching && results.length > RESULT_LIMIT ? (
+                <Text style={styles.emptyText}>
+                  {results.length - RESULT_LIMIT} more — keep typing to narrow it down.
+                </Text>
+              ) : null}
+            </View>
           </View>
         ) : (
           <View style={styles.customSection}>
@@ -241,12 +299,14 @@ export default function CollaboratorPickerScreen() {
           <View style={styles.roleWrap}>
             {ROLES.map(r => {
               const active = role === r;
+              const taken = isRoleTaken(r);
               return (
                 <TouchableOpacity
                   key={r}
                   activeOpacity={0.85}
+                  disabled={taken}
                   onPress={() => setRole(r)}
-                  style={[styles.roleChip, active && styles.roleChipActive]}
+                  style={[styles.roleChip, active && styles.roleChipActive, taken && styles.roleChipTaken]}
                 >
                   {active ? <GradientBorder borderRadius={999} /> : null}
                   <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
@@ -263,12 +323,14 @@ export default function CollaboratorPickerScreen() {
           <View style={styles.roleWrap}>
             {AI_ROLES.map(r => {
               const active = role === r;
+              const taken = isRoleTaken(r);
               return (
                 <TouchableOpacity
                   key={r}
                   activeOpacity={0.85}
+                  disabled={taken}
                   onPress={() => setRole(r)}
-                  style={[styles.roleChip, styles.aiChip, active && styles.aiChipActive]}
+                  style={[styles.roleChip, styles.aiChip, active && styles.aiChipActive, taken && styles.roleChipTaken]}
                 >
                   <Text style={[styles.roleChipText, active && styles.aiChipTextActive]}>
                     {r}
@@ -289,20 +351,23 @@ export default function CollaboratorPickerScreen() {
               placeholder="e.g. Tabla, Saxophone"
               maxLength={40}
               autoCapitalize="words"
+              onFocus={() => { customRoleFocused.current = true; }}
+              onBlur={() => { customRoleFocused.current = false; }}
             />
           </View>
         </View>
 
-        <View style={styles.footer}>
-          <Button
-            label="Add to track"
-            onPress={handleConfirm}
-            variant="primary"
-            size="lg"
-            fullWidth
-            disabled={!canConfirm}
-          />
-        </View>
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Button
+          label="Add to track"
+          onPress={handleConfirm}
+          variant="primary"
+          size="lg"
+          fullWidth
+          disabled={!canConfirm}
+        />
       </View>
     </SafeAreaView>
   );
@@ -364,16 +429,22 @@ const styles = StyleSheet.create({
   modePillTextActive: {
     color: COLORS.purpleNeon,
   },
+  /*
+   * Deliberately taller than a keyboard.
+   *
+   * The custom-role field is the last thing on the page, so without slack beneath it there
+   * is simply nowhere to scroll TO — the content ends where the field ends, and both the
+   * automatic scroll and a manual drag stop with it still behind the keys. ~340dp clears a
+   * tall Android keyboard, so the field can always be lifted into the open, by the
+   * keyboardDidShow handler or by hand.
+   */
+  pageContent: { paddingBottom: 340 },
   searchSection: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    flex: 1,
-  },
-  resultsList: {
-    flex: 1,
-    marginTop: 12,
   },
   resultsContent: {
+    marginTop: 12,
     paddingBottom: 12,
     gap: 8,
   },
@@ -489,6 +560,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  // Already credited in this role. Dimmed rather than removed, so it reads as "you already
+  // did this" rather than as a role that does not exist.
+  roleChipTaken: { opacity: 0.35 },
   roleChipTextActive: {
     color: COLORS.purpleNeon,
     fontWeight: '700',

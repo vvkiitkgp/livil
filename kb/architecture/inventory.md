@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-175 TypeScript file(s) under `src/`, 48,153 lines.
+176 TypeScript file(s) under `src/`, 48,959 lines.
 
 ## Size hotspots
 
@@ -26,11 +26,11 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2335 |
+| `src/components/FullScreenPlayer.tsx` | 2348 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
-| `src/components/PostCard.tsx` | 1201 |
-| `src/screens/main/UploadScreen.tsx` | 1160 |
+| `src/components/PostCard.tsx` | 1266 |
+| `src/screens/main/UploadScreen.tsx` | 1230 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/components/FloatingPlayer.tsx` | 945 |
@@ -41,8 +41,9 @@ reading alone (Constitution P28).
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
+| `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 
-> 15 file(s) over the threshold against **2 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 16 file(s) over the threshold against **2 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -60,7 +61,7 @@ case the call fails silently wherever its result is discarded.
 | `Auth` | `undefined` |
 | `App` | `undefined` |
 | `Upload` | `undefined` |
-| `CollaboratorPicker` | `{ excludeUserIds?: string[]` |
+| `CollaboratorPicker` | `{ /** * Roles already credited here, as `${userId}|${role}` (or `custom:${name}|${role}`). * * NOT a list of people to hide. One artist is routinely two credits — the guitarist who * also wrote it — and excluding them from the search after their first credit made the * second one impossible to add. */ takenRoleKeys?: string[]` |
 | `UserProfile` | `{ userId: string` |
 | `PlaylistDetail` | `{ playlistId: string` |
 | `EditPlaylist` | `{ playlistId: string }` |
@@ -91,13 +92,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,587 lines.
+40 file(s), 19,789 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
-| `src/screens/main/UploadScreen.tsx` | 1160 |
+| `src/screens/main/UploadScreen.tsx` | 1230 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
@@ -106,8 +107,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
+| `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
-| `src/screens/main/CollaboratorPickerScreen.tsx` | 531 |
 | `src/screens/main/SearchScreen.tsx` | 520 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
@@ -117,11 +118,11 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 348 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
+| `src/screens/main/ActivityCenterScreen.tsx` | 318 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/SettingsScreen.tsx` | 271 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 264 |
-| `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 255 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
@@ -138,12 +139,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-64 file(s), 15,564 lines.
+65 file(s), 15,821 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2335 |
-| `src/components/PostCard.tsx` | 1201 |
+| `src/components/FullScreenPlayer.tsx` | 2348 |
+| `src/components/PostCard.tsx` | 1266 |
 | `src/components/FloatingPlayer.tsx` | 945 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 496 |
@@ -158,7 +159,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentItem.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
-| `src/components/Icon.tsx` | 239 |
+| `src/components/Icon.tsx` | 247 |
+| `src/components/ActivityBubble.tsx` | 229 |
 | `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
 | `src/components/PostReportModal.tsx` | 213 |
@@ -173,13 +175,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/SeekBar.tsx` | 174 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
-| `src/components/ActivityBubble.tsx` | 162 |
 | `src/components/MentionSuggestions.tsx` | 160 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
+| `src/components/ProfileTabBar.tsx` | 140 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
-| `src/components/ProfileTabBar.tsx` | 123 |
 | `src/components/onboarding/StageLamp.tsx` | 121 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
@@ -195,45 +196,46 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCardSkeleton.tsx` | 74 |
 | `src/components/SwipeRevealRow.tsx` | 74 |
 | `src/components/FeedEndMessage.tsx` | 73 |
+| `src/components/__tests__/ProfileTabBar.test.tsx` | 71 |
 | `src/components/FormInput.tsx` | 69 |
 | `src/components/onboarding/StripedFill.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
+| `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
-| `src/components/CollabAvatar.tsx` | 39 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/Logo.tsx` | 22 |
 
 ## Services
 
-30 file(s), 7,471 lines.
+30 file(s), 7,794 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 806 |
-| `src/services/tracks.ts` | 708 |
+| `src/services/posts.ts` | 919 |
+| `src/services/tracks.ts` | 800 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/profileService.ts` | 374 |
+| `src/services/activity.ts` | 364 |
 | `src/services/messages.ts` | 362 |
 | `src/services/jamRooms.ts` | 325 |
-| `src/services/activity.ts` | 306 |
 | `src/services/conversations.ts` | 291 |
 | `src/services/jamRealtime.ts` | 251 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
+| `src/services/__tests__/publishTrackCredits.test.ts` | 227 |
+| `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
-| `src/services/__tests__/authorMapping.test.ts` | 197 |
-| `src/services/__tests__/publishTrackCredits.test.ts` | 192 |
 | `src/services/stories.ts` | 179 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
-| `src/services/__tests__/publishTrackCleanup.test.ts` | 156 |
+| `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
@@ -246,11 +248,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-9 file(s), 2,208 lines.
+9 file(s), 2,225 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 916 |
+| `src/contexts/PlaybackContext.tsx` | 933 |
 | `src/contexts/JamRealtimeContext.tsx` | 389 |
 | `src/contexts/RelationshipContext.tsx` | 294 |
 | `src/contexts/ToastContext.tsx` | 190 |
