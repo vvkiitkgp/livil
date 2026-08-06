@@ -286,7 +286,7 @@ export function CollaboratorPicker({
 
         <p className="hint">
           {mode === 'user'
-            ? 'They confirm the credit in the Livil app before it shows publicly.'
+            ? 'The credit shows on the track right away, marked unconfirmed until they confirm it in the Livil app.'
             : 'Shown as a credit on the track. Nobody is notified.'}
         </p>
 

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-175 TypeScript file(s) under `src/`, 48,153 lines.
+175 TypeScript file(s) under `src/`, 48,458 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2335 |
+| `src/components/FullScreenPlayer.tsx` | 2345 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/components/PostCard.tsx` | 1201 |
@@ -91,7 +91,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,587 lines.
+40 file(s), 19,640 lines.
 
 | File | Lines |
 |---|---:|
@@ -117,11 +117,11 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 348 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
+| `src/screens/main/ActivityCenterScreen.tsx` | 313 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/SettingsScreen.tsx` | 271 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 264 |
-| `src/screens/main/ActivityCenterScreen.tsx` | 260 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 255 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
@@ -138,11 +138,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-64 file(s), 15,564 lines.
+64 file(s), 15,657 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2335 |
+| `src/components/FullScreenPlayer.tsx` | 2345 |
 | `src/components/PostCard.tsx` | 1201 |
 | `src/components/FloatingPlayer.tsx` | 945 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -159,6 +159,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
 | `src/components/Icon.tsx` | 239 |
+| `src/components/ActivityBubble.tsx` | 229 |
 | `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
 | `src/components/PostReportModal.tsx` | 213 |
@@ -173,7 +174,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/SeekBar.tsx` | 174 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
-| `src/components/ActivityBubble.tsx` | 162 |
 | `src/components/MentionSuggestions.tsx` | 160 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
@@ -201,33 +201,33 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
+| `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
-| `src/components/CollabAvatar.tsx` | 39 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/Logo.tsx` | 22 |
 
 ## Services
 
-30 file(s), 7,471 lines.
+30 file(s), 7,630 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 806 |
-| `src/services/tracks.ts` | 708 |
+| `src/services/tracks.ts` | 785 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/profileService.ts` | 374 |
+| `src/services/activity.ts` | 364 |
 | `src/services/messages.ts` | 362 |
 | `src/services/jamRooms.ts` | 325 |
-| `src/services/activity.ts` | 306 |
 | `src/services/conversations.ts` | 291 |
 | `src/services/jamRealtime.ts` | 251 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
+| `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
-| `src/services/__tests__/authorMapping.test.ts` | 197 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 192 |
 | `src/services/stories.ts` | 179 |
 | `src/services/__tests__/waveform.test.ts` | 173 |

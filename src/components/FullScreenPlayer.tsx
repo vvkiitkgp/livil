@@ -570,11 +570,19 @@ function InfoContent({
                       uri={m.avatarUrl}
                       display={m.display}
                       size={36}
+                      pending={m.status === 'pending'}
                     />
                   </View>
                 ))}
               </View>
-              <Text style={infoSt.roleName}>{g.role}</Text>
+              <View style={infoSt.roleNameCol}>
+                <Text style={infoSt.roleName}>{g.role}</Text>
+                {/* Says what the dashed ring means. An unexplained marker on somebody's
+                    avatar reads as a problem with them rather than as a pending answer. */}
+                {g.members.some(m => m.status === 'pending') ? (
+                  <Text style={infoSt.roleUnconfirmed}>awaiting confirmation</Text>
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
@@ -664,7 +672,9 @@ const infoSt = StyleSheet.create({
   roleEmoji: { width: 32, alignItems: 'center' },
   avatarStack: { flexDirection: 'row', alignItems: 'center' },
   stackedAvatar: { zIndex: 1 },
-  roleName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', flex: 1 },
+  roleNameCol: { flex: 1 },
+  roleName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  roleUnconfirmed: { color: COLORS.warning, fontSize: 11, fontWeight: '600' },
 
   statsRow: {
     flexDirection: 'row',

@@ -491,9 +491,23 @@ export type TrackCollaboratorInfo = {
   role: string;
   display: AuthorDisplay;
   avatarUrl: string | null;
+  /**
+   * Whether the named artist has confirmed the credit.
+   *
+   * A pending credit still SHOWS — hiding credits until they were answered would leave
+   * most tracks looking uncredited, because most people do not answer quickly. It is
+   * marked instead, and confirmation verifies it. A typed-in name has nobody to confirm
+   * it, so it is always 'pending' and the UI should not mark it as unconfirmed.
+   */
+  status: 'pending' | 'accepted';
 };
 
-type CollaboratorRow = { user_id: string | null; custom_name: string | null; role: string };
+type CollaboratorRow = {
+  user_id: string | null;
+  custom_name: string | null;
+  role: string;
+  status: string;
+};
 type CollaboratorProfile = { username: string; display_name: string | null; avatar_url: string | null };
 
 /**
@@ -514,6 +528,7 @@ export function toCollaboratorInfo(
         username: profile?.username,
       }),
       avatarUrl: profile?.avatar_url ?? null,
+      status: row.status === 'accepted' ? 'accepted' : 'pending',
     };
   }
   return {
@@ -521,7 +536,66 @@ export function toCollaboratorInfo(
     role: row.role,
     display: resolveAuthorDisplay({ displayName: row.custom_name }),
     avatarUrl: null,
+    // Nobody to confirm a typed-in name, so it is never shown as awaiting confirmation.
+    status: 'accepted',
   };
+}
+
+export type PendingCredit = {
+  creditId: string;
+  trackId: string;
+  trackTitle: string;
+  coverArtUrl: string | null;
+  role: string;
+  createdAt: string;
+  uploaderId: string | null;
+  uploaderName: string | null;
+  uploaderAvatarUrl: string | null;
+};
+
+/**
+ * Credits naming you that are still unanswered.
+ *
+ * The Livil-bot message in the activity centre is the primary place these get answered —
+ * this is for a list view, and for the case where the message has scrolled away.
+ */
+export async function listPendingCredits(): Promise<PendingCredit[]> {
+  const { data, error } = await supabase.rpc('list_pending_credits');
+  if (error) { throw new Error(error.message); }
+  return ((data ?? []) as Array<Record<string, unknown>>).map(r => ({
+    creditId: String(r.credit_id),
+    trackId: String(r.track_id),
+    trackTitle: String(r.track_title ?? ''),
+    coverArtUrl: (r.cover_art_url as string) ?? null,
+    role: String(r.role ?? ''),
+    createdAt: String(r.created_at),
+    uploaderId: (r.uploader_id as string) ?? null,
+    uploaderName: (r.uploader_name as string) ?? null,
+    uploaderAvatarUrl: (r.uploader_avatar as string) ?? null,
+  }));
+}
+
+/**
+ * Answer a credit naming you.
+ *
+ * Goes through an RPC rather than an update because the collaborator has no UPDATE on this
+ * table at all — the function writes `status` and nothing else. Before it existed, the
+ * self-update policy let a tagged user rewrite their own `role` on somebody else's track,
+ * since RLS is row-level and cannot restrict columns.
+ *
+ * Returns the new status, or null when the credit is not yours, already answered, or gone.
+ * Those are deliberately indistinguishable.
+ */
+export async function respondToCredit(
+  creditId: string,
+  accept: boolean,
+): Promise<'accepted' | 'declined' | null> {
+  const { data, error } = await supabase.rpc('credit_respond', {
+    p_credit_id: creditId,
+    p_accept: accept,
+  });
+  if (error) { throw new Error(error.message); }
+  return (data as 'accepted' | 'declined' | null) ?? null;
 }
 
 /**
@@ -534,8 +608,11 @@ export async function fetchTrackCollaborators(
 ): Promise<TrackCollaboratorInfo[]> {
   const { data: rows, error } = await supabase
     .from('track_collaborators')
-    .select('user_id, custom_name, role')
-    .eq('track_id', trackId);
+    .select('user_id, custom_name, role, status')
+    .eq('track_id', trackId)
+    // A declined credit is an answer: the named artist said this is not them, so it stops
+    // being shown. The uploader is told separately, so it does not vanish unexplained.
+    .neq('status', 'declined');
 
   if (error || !rows || rows.length === 0) { return []; }
 
