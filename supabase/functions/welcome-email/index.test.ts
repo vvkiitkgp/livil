@@ -14,7 +14,64 @@
 // of these tests are about what `greetingParts` refuses.
 
 import { assertEquals, assertMatch, assertStringIncludes } from 'jsr:@std/assert@1';
-import { composeWelcome, greetingParts } from './app.ts';
+import { composeWelcome, corsHeaders, greetingParts, handler } from './app.ts';
+
+// ── CORS ────────────────────────────────────────────────────────────────────
+//
+// These exist because the function shipped WITHOUT them and did nothing on web for its
+// first hours in production. `functions.invoke` sends an Authorization header, so every
+// browser preflights with OPTIONS; the original handler answered 405 with no
+// `Access-Control-Allow-Origin`, the browser therefore never sent the POST, and
+// `nudgeWelcomeEmail` swallowed the error by design. A signup produced no email, no
+// ledger row and no trace. The preflight test below is the one that would have caught it.
+const preflight = (origin = 'https://livil-music.com') =>
+  new Request('https://x.functions.supabase.co/welcome-email', {
+    method: 'OPTIONS',
+    headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' },
+  });
+
+Deno.test('OPTIONS preflight is answered 2xx, not 405', async () => {
+  const res = await handler(preflight());
+  assertEquals(res.ok, true);
+  assertEquals(res.headers.get('Access-Control-Allow-Origin'), 'https://livil-music.com');
+});
+
+Deno.test('preflight allows the header that forces it to exist', () => {
+  // `authorization` is exactly why the request is non-simple. Drop it from this list and
+  // the browser blocks the POST again.
+  const headers = corsHeaders(preflight());
+  assertStringIncludes(headers['Access-Control-Allow-Headers'], 'authorization');
+  assertStringIncludes(headers['Access-Control-Allow-Methods'], 'POST');
+});
+
+Deno.test('corsHeaders echoes an allowed origin and refuses to echo a foreign one', () => {
+  assertEquals(
+    corsHeaders(preflight('https://livil-music.com'))['Access-Control-Allow-Origin'],
+    'https://livil-music.com',
+  );
+  assertEquals(
+    corsHeaders(preflight('http://localhost:5173'))['Access-Control-Allow-Origin'],
+    'http://localhost:5173',
+  );
+  // An unrecognised origin gets prod echoed back rather than its own — so the browser
+  // blocks it, and we never reflect an arbitrary caller's origin.
+  assertEquals(
+    corsHeaders(preflight('https://evil.example'))['Access-Control-Allow-Origin'],
+    'https://livil-music.com',
+  );
+});
+
+Deno.test('every response carries CORS headers, including rejections', async () => {
+  const res = await handler(
+    new Request('https://x.functions.supabase.co/welcome-email', {
+      method: 'POST',
+      headers: { Origin: 'https://livil-music.com' },
+    }),
+  );
+  // No bearer → 401, but the browser must still be able to READ that 401.
+  assertEquals(res.status, 401);
+  assertEquals(res.headers.get('Access-Control-Allow-Origin'), 'https://livil-music.com');
+});
 
 // ── greetingParts: the name ─────────────────────────────────────────────────
 Deno.test('greetingParts takes the name from display_name only', () => {

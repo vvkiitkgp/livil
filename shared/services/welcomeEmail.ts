@@ -63,11 +63,22 @@ export async function nudgeWelcomeEmail(
   nudged.add(user.id);
 
   try {
-    await client.functions.invoke('welcome-email');
-  } catch {
-    // `functions.invoke` resolves with `{ error }` rather than throwing, so this catch
-    // is for the network layer beneath it. Either way the server keeps the ledger and
-    // the next launch retries; nothing here needs to know.
+    const { error } = await client.functions.invoke('welcome-email');
+    if (error) {
+      // WARN, don't throw. The caller is a sign-in path and a missing welcome is not
+      // worth interrupting it — but silence is not the same as swallowing.
+      //
+      // This line exists because of a real outage: the function shipped without CORS
+      // handling, so every browser preflight was rejected and the POST was never sent.
+      // `functions.invoke` RESOLVES with `{ error }` rather than throwing (D-54's exact
+      // shape, verified in FunctionsClient), so the original bare `catch` never ran and
+      // the failure produced no email, no ledger row and no console output. It took a
+      // database query and a hand-rolled preflight to find. One warn would have named it.
+      console.warn('[welcome-email] invoke failed; no welcome sent this session', error);
+    }
+  } catch (e) {
+    // The network layer beneath invoke. Same reasoning: report, never interrupt.
+    console.warn('[welcome-email] invoke threw', e);
   }
 }
 

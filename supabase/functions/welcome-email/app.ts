@@ -307,22 +307,57 @@ ${bullet('Credit everyone who worked on it.', 'They get asked, and can accept or
   return { subject, text, html };
 }
 
-const json = (status: number, body: unknown) =>
+// ── CORS ────────────────────────────────────────────────────────────────────
+//
+// REQUIRED, and its absence is why this function did nothing on web for its first
+// hours in production. `functions.invoke` sends an `Authorization` header, which makes
+// it a non-simple request, so every browser sends an OPTIONS preflight FIRST. Without a
+// 2xx + `Access-Control-Allow-Origin` on that preflight the browser never sends the POST
+// at all — the function is not slow or erroring, it is simply never reached, and
+// `nudgeWelcomeEmail` swallows the resulting error by design. The symptom is a signup
+// with no ledger row and no trace anywhere.
+//
+// The mistake worth naming: this was modelled on `send-push`, which has no CORS because
+// only the mobile app calls it and React Native does not enforce CORS. This function is
+// called from BOTH clients, so it needed the `waitlist-join` shape instead. When adding
+// an edge function, the question is not "what does the nearest function do" but "does a
+// browser call it".
+//
+// Origin is allow-listed rather than `*`: the response carries no secrets, but an
+// explicit origin keeps the surface honest and matches the waitlist functions.
+const PROD_ORIGIN = 'https://livil-music.com';
+const LOCALHOST_RE = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
+
+export function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') ?? '';
+  const allowed = origin === PROD_ORIGIN || LOCALHOST_RE.test(origin);
+  return {
+    'Access-Control-Allow-Origin': allowed ? origin : PROD_ORIGIN,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  };
+}
+
+const json = (status: number, body: unknown, req: Request) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...corsHeaders(req) },
   });
 
 export async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
+  // The preflight. Must be answered before anything else — including the method check,
+  // which would otherwise 405 it.
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
+  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, req);
 
   // 1. AUTHENTICATION. The caller is the recipient; there is no other way to name one.
   const authHeader = req.headers.get('Authorization') ?? '';
-  if (!authHeader.startsWith('Bearer ')) return json(401, { error: 'missing_bearer' });
+  if (!authHeader.startsWith('Bearer ')) return json(401, { error: 'missing_bearer' }, req);
 
   const url = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!url || !anonKey) return json(500, { error: 'missing_platform_env' });
+  if (!url || !anonKey) return json(500, { error: 'missing_platform_env' }, req);
 
   // Anon key + the caller's header: every read below is subject to the same RLS the
   // browser gets, and the two RPCs act on auth.uid().
@@ -333,17 +368,17 @@ export async function handler(req: Request): Promise<Response> {
 
   const { data: userData, error: authErr } = await db.auth.getUser();
   const user = userData?.user;
-  if (authErr || !user) return json(401, { error: 'invalid_token' });
+  if (authErr || !user) return json(401, { error: 'invalid_token' }, req);
 
   // 2. Never mail an address the account has not proven it controls. See the header.
   if (!user.email || !user.email_confirmed_at) {
-    return json(200, { ok: true, sent: false, reason: 'email_not_confirmed' });
+    return json(200, { ok: true, sent: false, reason: 'email_not_confirmed' }, req);
   }
 
   // 3. CLAIM. One caller wins; everyone else is told the truth and sends nothing.
   const { data: won, error: claimErr } = await db.rpc('welcome_email_claim');
-  if (claimErr) return json(500, { error: 'claim_failed' });
-  if (won !== true) return json(200, { ok: true, sent: false, reason: 'already_handled' });
+  if (claimErr) return json(500, { error: 'claim_failed' }, req);
+  if (won !== true) return json(200, { ok: true, sent: false, reason: 'already_handled' }, req);
 
   // 4. Name and handle. Read as the caller — `profiles_select_authenticated` covers it —
   //    and never taken from the request. A failed read costs the personalisation, not
@@ -361,7 +396,7 @@ export async function handler(req: Request): Promise<Response> {
     // Release the claim by recording the failure, so this is retried once the secret is
     // set rather than silently costing this account its only welcome.
     await db.rpc('welcome_email_mark', { p_error: 'RESEND_API_KEY is not set' });
-    return json(500, { error: 'missing_resend_key' });
+    return json(500, { error: 'missing_resend_key' }, req);
   }
 
   const { subject, text, html } = composeWelcome(name, handle);
@@ -387,6 +422,6 @@ export async function handler(req: Request): Promise<Response> {
   //    makes the next launch (after the cooldown) retry it.
   await db.rpc('welcome_email_mark', { p_error: sendError });
 
-  if (sendError) return json(502, { error: 'send_failed' });
-  return json(200, { ok: true, sent: true });
+  if (sendError) return json(502, { error: 'send_failed' }, req);
+  return json(200, { ok: true, sent: true }, req);
 }
