@@ -38,6 +38,11 @@ body {
   font-size: var(--text-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* A single long token — a pasted profile link, a track title with no spaces, an email in a
+     spec row — is enough to widen the whole page and give every screen a horizontal scrollbar.
+     `break-word` only breaks when the alternative is overflowing, so ordinary text is
+     untouched. Cheaper than finding every container that could one day hold user text. */
+  overflow-wrap: break-word;
 }
 
 a {
