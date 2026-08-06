@@ -16,7 +16,7 @@ import FormInput from '../../components/FormInput';
 import AddBadge from '../../components/AddBadge';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
-import { ROLES, type PendingCollaborator } from '../../constants/roles';
+import { AI_ROLES, ROLES, isPresetRole, type PendingCollaborator } from '../../constants/roles';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
 import { emitCollaboratorPicked } from '../../services/uploadEvents';
 import { Icon } from '../../components/Icon';
@@ -256,10 +256,35 @@ export default function CollaboratorPickerScreen() {
               );
             })}
           </View>
+          {/* A separate group from the instruments above, not six more chips in the same
+              wrap. A generated vocal is not "Vocals", and somebody picking their instrument
+              should not scroll past the AI entries to reach "Bass". */}
+          <Text style={styles.aiLabel}>Made with AI</Text>
+          <View style={styles.roleWrap}>
+            {AI_ROLES.map(r => {
+              const active = role === r;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  activeOpacity={0.85}
+                  onPress={() => setRole(r)}
+                  style={[styles.roleChip, styles.aiChip, active && styles.aiChipActive]}
+                >
+                  <Text style={[styles.roleChipText, active && styles.aiChipTextActive]}>
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           <View style={styles.customRoleRow}>
             <Text style={styles.label}>Or custom role</Text>
             <FormInput
-              value={ROLES.includes(role) ? '' : role}
+              // `isPresetRole`, not `ROLES.includes` — with the AI list added, checking only
+              // the human roles would echo "AI vocals" into the custom-role box the moment
+              // it was picked, so the credit would read as typed-in rather than chosen.
+              value={isPresetRole(role) ? '' : role}
               onChangeText={t => setRole(t)}
               placeholder="e.g. Tabla, Saxophone"
               maxLength={40}
@@ -466,6 +491,28 @@ const styles = StyleSheet.create({
   },
   roleChipTextActive: {
     color: COLORS.purpleNeon,
+    fontWeight: '700',
+  },
+  aiLabel: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 8,
+  },
+  // Info blue, the same tone a typed-in credit already carries — so an AI role is never
+  // picked by accident in place of the human role directly above it. A flat outline rather
+  // than the gradient the human chips use, for the same reason: they must not look alike.
+  aiChip: {
+    borderColor: COLORS.infoBorder,
+  },
+  aiChipActive: {
+    borderColor: COLORS.info,
+    backgroundColor: COLORS.infoBg,
+  },
+  aiChipTextActive: {
+    color: COLORS.info,
     fontWeight: '700',
   },
   customRoleRow: {

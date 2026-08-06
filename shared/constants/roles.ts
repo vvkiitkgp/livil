@@ -1,30 +1,39 @@
 /**
- * Credit roles and the collaborator shapes, re-exported for both clients.
+ * Credit roles and the collaborator shapes — the source of truth for both clients.
  *
- * `src/constants/roles.ts` remains the single source of truth. It is a plain module whose
- * only dependency is the colour tokens, so the web bundle can consume it directly — and it
- * MUST stay that way: the day it imports something from React Native, this shim stops
- * building and the dashboard's credit picker goes with it.
+ * This file used to be a shim re-exporting `src/constants/roles.ts`, in the same direction
+ * as `theme/colors.ts`. That direction cannot work once the shared file has anything of its
+ * OWN to say: mobile importing the AI roles from here while this file imported the human
+ * roles from there is a cycle. So the definitions moved and `src/constants/roles.ts` became
+ * the shim, which is the arrangement the two lists needed anyway.
  *
- * Re-exported rather than moved for the same two reasons as `theme/colors.ts`: `web/`
- * never reaches into `src/`, and `src/constants/**` is not an agent-writable path.
+ * Kept free of imports on purpose. Every value here is a plain string or a type, so the web
+ * bundle takes it directly and Metro resolves it by relative path — and the day something
+ * here reaches for a React Native module, one of the two clients stops building.
  *
- * The list itself is shared on purpose. Two clients writing free text into one
- * `track_collaborators.role` column would produce "Mixing", "mix" and "Mixed by" as three
- * different credits on the same track, and nothing downstream could tell they were one.
+ * The lists are shared because the alternative is drift with no error: two pickers writing
+ * free text into one `track_collaborators.role` column produce "Mixing", "mix" and "Mixed
+ * by" as three different credits on the same track, and nothing downstream can tell they
+ * were meant to be one.
  */
-export {
-  ROLES,
-  getChipTone,
-  type CollaboratorKind,
-  type CollaboratorStatus,
-  type PendingCollaborator,
-  type ChipTone,
-} from '../../src/constants/roles';
 
-// `getChipStyle` is deliberately NOT re-exported. It returns React Native colour values for
-// inline styles; the web client expresses the same three tones as CSS classes driven by
-// `getChipTone`, so the shared surface stops at the tone and each client paints it.
+/** What a person did. Ordered roughly by how often it is picked, not alphabetically. */
+export const ROLES: readonly string[] = [
+  'Vocals',
+  'Lead Vocals',
+  'Backing Vocals',
+  'Drums',
+  'Piano',
+  'Keys',
+  'Guitar',
+  'Bass',
+  'Production',
+  'Mixing',
+  'Mastering',
+  'Songwriting',
+  'Lyrics',
+  'Featured',
+];
 
 /**
  * What the AI did — a ROLE, not a kind of collaborator.
@@ -33,16 +42,11 @@ export {
  * else, so crediting one is the same two choices as crediting a person: tag @suno if they
  * are here, type "Suno" if they are not. Making AI a third way to name somebody would have
  * meant a tool could never be tagged, only ever typed — and a tagged profile is the thing
- * that makes a credit verifiable.
+ * that makes a credit verifiable rather than a claim.
  *
- * The roles are separate from `ROLES` because a generated vocal is not "Vocals", and an
- * artist held to a credit list later will care about the difference. Kept as a second group
- * rather than merged so somebody picking their instrument does not scroll past six AI
- * entries to reach "Bass".
- *
- * Defined here rather than in `src/constants/roles.ts` because that file is not an
- * agent-writable path. Mobile's picker should adopt this list when it is next touched —
- * until then it renders these credits fine (the column is free text) but cannot offer them.
+ * A separate list rather than more entries in `ROLES`, because a generated vocal is not
+ * "Vocals" — an artist held to a credit list later will care about the difference — and
+ * because nobody picking an instrument should scroll past six AI entries to reach "Bass".
  */
 export const AI_ROLES: readonly string[] = [
   'AI vocals',
@@ -52,3 +56,38 @@ export const AI_ROLES: readonly string[] = [
   'AI stem separation',
   'AI assisted',
 ];
+
+/** True when `role` came from a list rather than being typed in. */
+export const isPresetRole = (role: string): boolean =>
+  ROLES.includes(role) || AI_ROLES.includes(role);
+
+export type CollaboratorKind = 'user' | 'custom';
+
+export type CollaboratorStatus = 'pending' | 'accepted' | 'declined';
+
+export type PendingCollaborator = {
+  clientId: string;
+  kind: CollaboratorKind;
+  userId?: string;
+  name: string;
+  username?: string;
+  avatarUrl?: string;
+  role: string;
+};
+
+export type ChipTone = 'accepted' | 'pending' | 'custom';
+
+/**
+ * How a credit should read: confirmed, awaiting confirmation, or a name with nobody behind
+ * it to confirm. Shared so a credit does not change meaning between the phone and the
+ * dashboard; each client paints the tone in its own idiom.
+ */
+export function getChipTone(
+  kind: CollaboratorKind,
+  status: CollaboratorStatus = 'pending',
+): ChipTone {
+  if (kind === 'custom') {
+    return 'custom';
+  }
+  return status === 'accepted' ? 'accepted' : 'pending';
+}
