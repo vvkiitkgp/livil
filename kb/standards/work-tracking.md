@@ -21,7 +21,9 @@ Kanban.
 
 ## Tracker access is behind an adapter
 
-**Agents never call the tracker API directly.** All access goes through an adapter module, so
+**Agents never call the tracker API directly.** All access goes through
+[`scripts/tracker/`](../../scripts/tracker/README.md) — `cli.mjs` for the shell,
+`createTracker()` from `index.mjs` for code — so
 the tracker is a swappable dependency rather than a hard-coded assumption. Swapping trackers
 should touch one module and nothing else.
 
@@ -240,11 +242,22 @@ at the end that it may not write the file has wasted the work.
 | Branch and PR naming | `ADVISORY` — a CI check is cheap and planned |
 | Definition of ready | `ADVISORY` — triage agent will check it (Phase 7) |
 | Definition of done | `ADVISORY` — depends on CI existing |
-| Agent transition limits | **Not enforced** — the integration grants write access; this is currently a rule, not a control |
+| Agent transition limits | `PARTIAL` — no accidental path exists ([`scripts/tracker/`](../../scripts/tracker/README.md) exposes no close/done/delete and refuses `ai-ready`), but the credential still grants full write access |
 
-**The last row is the honest gap.** The credential in use can create and modify tickets, so the
-restriction on closing them is convention rather than a permission boundary. Tightening it
-means a scoped credential, and that is worth doing before autonomous operation.
+**The last row is the honest gap, and it is narrower than it was.** Until 2026-08-07 this
+document described an adapter that did not exist — `scripts/tracker/types.mjs` held shapes and
+constants, and there was no client to call — so "never call the tracker API directly" was a rule
+with no alternative, followed by nobody. The adapter is now real, tested, and wired into CI.
+
+What it changed: every *accidental* path to a forbidden action is gone. There is no `close()`,
+no `delete()`, no arbitrary transition, `moveTo` accepts only the three agent-settable statuses,
+`updateOwn` reads the reporter before writing, and `ai-ready` is refused wherever labels are
+accepted. "An agent must remember not to" became "an agent would have to deliberately go around
+the adapter to".
+
+What it did **not** change: the credential can still write anything, so this remains a boundary
+rather than a control. A scoped credential is still the fix, and `scripts/tracker/jira.mjs` is
+the single place it will be read from.
 
 ## Related
 

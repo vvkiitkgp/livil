@@ -43,6 +43,15 @@ export const NEEDS_RATIFICATION = 'needs-ratification';
  */
 export const READINESS_CHECKS = [
   {
+    // Was missing from this list while `kb/standards/work-tracking.md` had listed it as the
+    // FIRST of six — and `.claude/agents/triage-agent.md` points here for "the readiness
+    // checks in machine-readable form", so triage has been checking five of six and
+    // reporting a pass. Restored 2026-08-07 while building the adapter.
+    id: 'concern',
+    question: 'Is this ONE focused bug or feature, finishable and closable as a single unit?',
+    hint: 'If half can be done while the other half is still open, it is two tickets — or an Epic with children.',
+  },
+  {
     id: 'outcome',
     question: 'Does it state what is TRUE when this is done, observably?',
     hint: 'Not "improve the feed" — "the feed loads a second page when scrolled to 80%".',
