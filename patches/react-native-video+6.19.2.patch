@@ -342,7 +342,7 @@ index b10dfb5..4a2d164 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..2ee29e9 100644
+index 4760ea5..54b0c2a 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 @@ -11,28 +11,194 @@ import android.content.Intent
@@ -540,7 +540,7 @@ index 4760ea5..2ee29e9 100644
  
      @SuppressLint("PrivateResource")
      private val seekForwardBtn = CommandButton.Builder()
-@@ -48,37 +214,225 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -48,37 +214,240 @@ class VideoPlaybackService : MediaSessionService() {
          .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
          .build()
  
@@ -699,7 +699,22 @@ index 4760ea5..2ee29e9 100644
 +            currentClipEndMs = newEnd
 +            currentClipActive = obj.optBoolean("active", false)
 +            currentRepeatOne = obj.optBoolean("repeatOne", false)
-+            clipEndFired = false
++            // Livil patch: when the WINDOW moved, adopt it DISARMED.
++            //
++            // A track is uploaded once and can appear in many posts, so an original and its
++            // clipped reposts share one media URL. Tapping one while another is playing swaps
++            // the window from JS without reloading anything — and the playhead is still
++            // wherever the old clip left it, which can be far PAST the new clip's end. Arming
++            // here would let the very next 250ms poll read "position >= clipEnd", fire
++            // clip-end, and skip the post the user just tapped.
++            //
++            // Disarmed is safe, never sticky: checkClipEnd re-arms the moment the playhead is
++            // seen inside the window (pos < end - 500), which is immediate once the JS seek
++            // lands. A window change while playing normally re-arms on the very next poll.
++            //
++            // An unchanged window still arms, because that is the track-advance republish —
++            // nativeSkip has already seated the playhead at the new clip start.
++            clipEndFired = windowChanged
 +            // Force the MediaSession to republish PlaybackState so the notification
 +            // duration/scrubber reflect the new clip window. media3 only re-reads the
 +            // player on a player event, so nudge an in-place seek — but ONLY for a
@@ -769,7 +784,7 @@ index 4760ea5..2ee29e9 100644
      // Callbacks
  
      override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
-@@ -106,6 +460,16 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -106,6 +475,16 @@ class VideoPlaybackService : MediaSessionService() {
          super.onDestroy()
      }
  
@@ -786,7 +801,7 @@ index 4760ea5..2ee29e9 100644
      private fun createSessionNotification(session: MediaSession) {
          val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-@@ -118,14 +482,15 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -118,14 +497,15 @@ class VideoPlaybackService : MediaSessionService() {
              )
          }
  
@@ -804,7 +819,7 @@ index 4760ea5..2ee29e9 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +507,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,6 +522,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -815,7 +830,7 @@ index 4760ea5..2ee29e9 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -220,6 +589,7 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -220,6 +604,7 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      private fun cleanup() {
@@ -823,7 +838,7 @@ index 4760ea5..2ee29e9 100644
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -273,6 +643,167 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -273,6 +658,167 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -991,7 +1006,7 @@ index 4760ea5..2ee29e9 100644
          private const val SEEK_INTERVAL_MS = 10000L
          private const val TAG = "VideoPlaybackService"
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
-@@ -283,6 +814,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +829,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -1000,7 +1015,7 @@ index 4760ea5..2ee29e9 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +825,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +840,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -1009,7 +1024,7 @@ index 4760ea5..2ee29e9 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +838,13 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +853,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
