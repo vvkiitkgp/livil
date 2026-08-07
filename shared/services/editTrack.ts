@@ -16,12 +16,21 @@
  * it must use this, not a second pair of `.update()` calls.
  */
 import { livil } from '../client';
+import { MAX_TAGS_PER_TRACK, normalizeTags } from '../constants/tags';
 
 export type TrackEdit = {
   trackId: string;
   postId: string;
   title: string;
   description: string;
+  /**
+   * The complete tag list, not a delta.
+   *
+   * Editable at all because a tag is a discovery key: a typo'd one is not a cosmetic flaw,
+   * it is a track that cannot be found by the word its artist meant to file it under, and
+   * with no edit path that would be permanent.
+   */
+  tags: string[];
 };
 
 /**
@@ -39,6 +48,13 @@ export async function updateTrackMetadata(edit: TrackEdit): Promise<void> {
   if (!title) throw new Error('Title is required.');
 
   const description = edit.description.trim() ? edit.description.trim() : null;
+  // Re-normalized rather than trusted, exactly as at publish: whatever reaches the column
+  // has to be the string the search box will rebuild from the same typed text, whichever
+  // screen wrote it. Empty is NULL — the column allows one representation of "no tags".
+  const tags = normalizeTags(edit.tags);
+  if (tags.length > MAX_TAGS_PER_TRACK) {
+    throw new Error(`Up to ${MAX_TAGS_PER_TRACK} tags per track.`);
+  }
   const db = livil();
 
   // `.select('id')` is load-bearing, not decoration. Without it supabase-js sends
@@ -50,7 +66,7 @@ export async function updateTrackMetadata(edit: TrackEdit): Promise<void> {
   // review.
   const { data: trackRows, error: trackError } = await db
     .from('tracks')
-    .update({ title, description })
+    .update({ title, description, tags: tags.length > 0 ? tags : null })
     .eq('id', edit.trackId)
     .select('id');
 

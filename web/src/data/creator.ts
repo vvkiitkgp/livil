@@ -161,6 +161,7 @@ export async function fetchCreatorTotals(userId: string): Promise<CreatorTotals>
 export type PostDetail = CreatorPost & {
   description: string | null;
   caption: string | null;
+  tags: string[];
   lyrics: string | null;
   lyricsFormat: 'lrc' | 'plain' | null;
   /** The playable file — audio for audio posts, the video for video posts. */
@@ -173,6 +174,7 @@ type DetailRow = PostRow & {
   tracks:
     | (NonNullable<PostRow['tracks']> & {
         description: string | null;
+        tags: string[] | null;
         lyrics: string | null;
         lyrics_format: string | null;
         audio_url: string | null;
@@ -190,7 +192,7 @@ export async function fetchPostDetail(
     .select(
       `id, track_id, author_id, caption, created_at, views_count, likes_count,
        reposts_count, comments_count,
-       tracks!inner ( id, title, description, cover_art_url, thumbnail_url, media_kind,
+       tracks!inner ( id, title, description, tags, cover_art_url, thumbnail_url, media_kind,
                       duration_seconds, file_size_bytes, lyrics, lyrics_format,
                       audio_url, video_url )`,
     )
@@ -209,6 +211,9 @@ export async function fetchPostDetail(
   return {
     ...base,
     description: track?.description ?? null,
+    // NULL and "no tags" are the same thing to every reader; the column's one-representation
+    // rule lives at the write side, so this flattens rather than preserving the distinction.
+    tags: track?.tags ?? [],
     caption: row.caption,
     lyrics: track?.lyrics ?? null,
     lyricsFormat:

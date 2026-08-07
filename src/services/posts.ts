@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { normalizeTag } from '../../shared/constants/tags';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 import { notifyPostActivity } from './activity';
 import { sendPush } from './pushDispatch';
@@ -496,9 +497,23 @@ const SEARCH_POST_SELECT = `
 ` as const;
 
 /**
- * Search upload posts by track title or description (case-insensitive). Reposts
+ * Search upload posts by track title, description or tag (case-insensitive). Reposts
  * are intentionally excluded so each track appears once. Results are newest
  * first and capped at `limit` (default 20).
+ *
+ * Tags participate in two different ways, and the difference is the leading '#':
+ *
+ *   · `lofi`  — matches title OR description OR an exact tag. Prose search, widened.
+ *   · `#lofi` — matches the tag and nothing else. Typing the '#' is how someone says
+ *     they mean the tag rather than the word, and honouring that is the whole reason
+ *     the prefix is worth reading instead of stripping.
+ *
+ * The tag term goes through `normalizeTag`, the same function both upload screens use.
+ * That is not tidiness — a search box that normalizes differently from the writer cannot
+ * find what the writer stored, and nothing about the failure looks like a failure. It also
+ * means the term reaching the PostgREST filter contains only letters, digits and
+ * underscores, so it cannot carry the commas or parentheses that would break out of the
+ * `or=(...)` grouping.
  */
 export async function searchPosts(
   query: string,
@@ -511,11 +526,30 @@ export async function searchPosts(
   const limit = options.limit ?? 20;
   const pattern = `%${trimmed.replace(/[%_]/g, '\\$&')}%`;
 
+  const tagOnly = trimmed.startsWith('#');
+  const tag = normalizeTag(trimmed);
+
+  // A '#' query with nothing usable after it ("#", "#!") would otherwise fall through to a
+  // prose search for the literal text, which is not what was asked for and returns noise.
+  if (tagOnly && !tag) {
+    return [];
+  }
+
+  const terms = tagOnly
+    ? [`tags.cs.{${tag}}`]
+    : [
+        `title.ilike.${pattern}`,
+        `description.ilike.${pattern}`,
+        // Only when the query could BE a tag. A two-word query normalizes to one joined
+        // token that no honest tag would match, and adding it costs a GIN probe per search.
+        ...(tag ? [`tags.cs.{${tag}}`] : []),
+      ];
+
   const { data, error } = await supabase
     .from('posts')
     .select(SEARCH_POST_SELECT)
     .eq('kind', 'upload')
-    .or(`title.ilike.${pattern},description.ilike.${pattern}`, { foreignTable: 'tracks' })
+    .or(terms.join(','), { foreignTable: 'tracks' })
     .order('created_at', { ascending: false })
     .limit(limit);
 

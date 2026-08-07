@@ -11,6 +11,7 @@ import { TextField } from '../components/TextField';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CoverCropper } from '../components/CoverCropper';
 import { LyricsPanel } from '../components/LyricsPanel';
+import { TagField } from '../components/TagField';
 import { uploadTrackImage } from '../upload/images';
 import { PostPreview } from '../components/PostPreview';
 import {
@@ -45,6 +46,7 @@ export function TrackDetail() {
   const [post, setPost] = useState<PostDetail | null | 'missing'>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export function TrackDetail() {
         // The two columns are kept in step by `updateTrackMetadata`; either is a valid
         // starting value, and `description` is the one search reads.
         setDescription(p.description ?? p.caption ?? '');
+        setTags(p.tags);
       })
       .catch(() => {
         if (!cancelled) setPost('missing');
@@ -98,7 +101,12 @@ export function TrackDetail() {
     );
   }
 
-  const dirty = title !== post.title || description !== (post.description ?? post.caption ?? '');
+  // Tags compare as a joined string rather than by reference — `TagField` hands back a new
+  // array on every change, so identity would report dirty for an edit that undid itself.
+  const dirty =
+    title !== post.title ||
+    description !== (post.description ?? post.caption ?? '') ||
+    tags.join(' ') !== post.tags.join(' ');
   const canSave = dirty && title.trim() !== '' && !saving;
 
   async function onSave() {
@@ -112,9 +120,10 @@ export function TrackDetail() {
         postId: post.postId,
         title,
         description,
+        tags,
       });
       setPost({ ...post, title: title.trim(), description: description.trim() || null,
-        caption: description.trim() || null });
+        caption: description.trim() || null, tags });
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.');
@@ -325,6 +334,33 @@ export function TrackDetail() {
                 placeholder="What should listeners know about this?"
               />
 
+              {/* Editable after publishing, unlike anything else about how the track is
+                  found. A tag is a discovery key — a typo'd one means the track cannot be
+                  found under the word its artist filed it under, and without this it would
+                  stay that way for good. */}
+              {/* A div, not a label. A label wrapping the field would also wrap each chip's
+                  remove button, which makes clicking one ambiguous to assistive tech; the
+                  input inside carries its own `aria-label` instead. */}
+              <div className="field">
+                <span className="field__label">Tags</span>
+                <TagField
+                  tags={tags}
+                  onChange={next => {
+                    setTags(next);
+                    setSaved(false);
+                  }}
+                  disabled={saving}
+                  label="Tags for this track"
+                  placeholder="lofi, latenight — press space or enter"
+                />
+                {/* No seeding here, unlike the upload screen: these are the tags this track
+                    was published with, and re-adding the moods somebody already pruned would
+                    undo the one decision this field exists to record. */}
+                <span className="hint">
+                  Listeners never see these — they feed search and suggestions.
+                </span>
+              </div>
+
               {error && (
                 <p className="alert" role="alert">
                   {error}
@@ -342,6 +378,7 @@ export function TrackDetail() {
                     onClick={() => {
                       setTitle(post.title);
                       setDescription(post.description ?? post.caption ?? '');
+                      setTags(post.tags);
                       setError(null);
                     }}
                   >

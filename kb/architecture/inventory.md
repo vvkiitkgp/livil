@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-176 TypeScript file(s) under `src/`, 48,996 lines.
+178 TypeScript file(s) under `src/`, 49,436 lines.
 
 ## Size hotspots
 
@@ -26,11 +26,11 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2362 |
+| `src/components/FullScreenPlayer.tsx` | 2368 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/components/PostCard.tsx` | 1266 |
-| `src/screens/main/UploadScreen.tsx` | 1230 |
+| `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/components/FloatingPlayer.tsx` | 945 |
@@ -92,13 +92,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,789 lines.
+40 file(s), 19,820 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1564 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
-| `src/screens/main/UploadScreen.tsx` | 1230 |
+| `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
@@ -139,11 +139,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-65 file(s), 15,835 lines.
+66 file(s), 16,008 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2362 |
+| `src/components/FullScreenPlayer.tsx` | 2368 |
 | `src/components/PostCard.tsx` | 1266 |
 | `src/components/FloatingPlayer.tsx` | 945 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -175,6 +175,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/SeekBar.tsx` | 174 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
+| `src/components/TagInput.tsx` | 167 |
 | `src/components/MentionSuggestions.tsx` | 160 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
@@ -211,12 +212,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-30 file(s), 7,801 lines.
+31 file(s), 8,037 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 926 |
-| `src/services/tracks.ts` | 800 |
+| `src/services/posts.ts` | 960 |
+| `src/services/tracks.ts` | 822 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 430 |
 | `src/services/comments.ts` | 383 |
@@ -231,6 +232,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/publishTrackCredits.test.ts` | 227 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
+| `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/stories.ts` | 179 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |

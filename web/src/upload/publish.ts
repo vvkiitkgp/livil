@@ -28,6 +28,8 @@ export type PickedMedia = {
   uploaderRole: string;
   /** Credits for everyone else, already flattened to the shape the table stores. */
   collaborators: PublishCollaborator[];
+  /** Tags, already normalized by `TagField`. `publishTrack` normalizes again regardless. */
+  tags: string[];
 };
 
 export type MediaMeta = {
@@ -115,6 +117,7 @@ export function startPublish(
         durationSeconds,
         uploaderRole: picked.uploaderRole,
         collaborators: picked.collaborators,
+        tags: picked.tags,
         assets: [...files.entries()].map(([kind, file]) => ({
           kind,
           fileName: file.name,

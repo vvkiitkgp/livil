@@ -1871,6 +1871,73 @@ a {
   border-style: solid;
 }
 
+/* ── Tags ────────────────────────────────────────────────────────────────── */
+
+/* A tag chip is a credit chip with one slot instead of two, and it says so visually: same
+   pill, same removal affordance, no tone. Tones on a credit mean "confirmed / awaiting /
+   nobody to ask" — a tag has no such state, and borrowing a colour that carries that
+   meaning elsewhere would imply one. */
+.tags {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tags__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: var(--text-xs);
+  border: 1px solid var(--purple-deep);
+  border-radius: var(--radius-pill);
+  background: var(--purple-dim);
+  max-width: 100%;
+}
+
+.tag__text {
+  color: var(--purple-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sits in the chip row rather than beside it, so the caret lands where the next chip will
+   appear. Unbordered: a box around it would read as a second, separate field. */
+.tags__input {
+  flex: 1;
+  min-width: 120px;
+  padding: 3px 2px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--white);
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.tags__input::placeholder {
+  color: var(--text-muted);
+}
+
+.tags__error {
+  font-size: var(--text-2xs);
+  color: var(--warning);
+}
+
+/* The batch field sits between the card header and the dropzone, where the two "for all"
+   buttons above it set the expectation that this scope means the whole queue. */
+.batchtags {
+  margin-bottom: 12px;
+}
+
 /* ── Collaborator picker ─────────────────────────────────────────────────── */
 
 .picker {

@@ -22,6 +22,7 @@
  * a feed. Deletion is best-effort: an orphan row fails RLS for everyone but its uploader.
  */
 import { livil } from '../client';
+import { MAX_TAGS_PER_TRACK, normalizeTags } from '../constants/tags';
 import {
   resolveContentType,
   resolveExtension,
@@ -79,6 +80,16 @@ export type PublishTrackInput = {
   uploaderRole: string;
   /** Credits for everyone else. Omitted or empty means the uploader worked alone. */
   collaborators?: PublishCollaborator[];
+  /**
+   * Tags, in whatever shape the caller holds them.
+   *
+   * Re-normalized here rather than trusted. A caller that writes a tag without going through
+   * `shared/constants/tags.ts` stores something the search box can never reconstruct from the
+   * same typed text, and that failure is invisible — the tag is on the track, the query looks
+   * right, the results are empty. Empty means an untagged track and is written as NULL, so
+   * "no tags" has one representation rather than two.
+   */
+  tags?: string[];
 };
 
 /**
@@ -116,6 +127,11 @@ function validate(input: PublishTrackInput): string | null {
   } else {
     if (!kinds.has('video')) return 'Video file is required.';
     if (!kinds.has('thumbnail')) return 'Thumbnail image is required for video posts.';
+  }
+  // Only the cap can fail: `normalizeTags` drops anything unusable and de-duplicates, so
+  // every other rule is satisfied by construction rather than by checking.
+  if (normalizeTags(input.tags ?? []).length > MAX_TAGS_PER_TRACK) {
+    return `Up to ${MAX_TAGS_PER_TRACK} tags per track.`;
   }
   // Checked up front, not at insert time. Every one of these is a constraint the database
   // will reject — and by then a full master has uploaded and the rollback throws it away,
@@ -198,6 +214,7 @@ export async function publishTrack(
 
   const title = input.title.trim();
   const description = input.description?.trim() ? input.description.trim() : null;
+  const tags = normalizeTags(input.tags ?? []);
 
   const { data: inserted, error: insertError } = await db
     .from('tracks')
@@ -205,6 +222,10 @@ export async function publishTrack(
       uploader_id: user.id,
       title,
       description,
+      // Written with the row rather than in the finalize UPDATE: tags are metadata the
+      // artist typed, not something the upload discovers, so there is no reason for them to
+      // exist only after the bytes land.
+      tags: tags.length > 0 ? tags : null,
       media_kind: input.mode,
       audio_url: input.mode === 'audio' ? 'pending://placeholder' : null,
       video_url: input.mode === 'video' ? 'pending://placeholder' : null,

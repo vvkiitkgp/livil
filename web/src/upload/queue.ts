@@ -10,6 +10,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { PublishProgress } from '@shared/services/publishTrack';
 import { readMediaMeta, startPublish } from './publish';
 import type { PendingCollaborator } from '@shared/constants/roles';
+import { EMOTION_TAGS } from '@shared/constants/tags';
 import { embeddedCoverFrom } from './embeddedArt';
 import type { PairedItem } from './files';
 
@@ -46,6 +47,11 @@ export type QueueItem = {
   uploaderRole: string;
   /** Credits for everyone else. Flattened to rows by `publishTrack` at publish time. */
   collaborators: PendingCollaborator[];
+  /**
+   * Already-normalized tags — `TagField` normalizes at commit, so this is what gets stored.
+   * Seeded with `EMOTION_TAGS`, which the artist prunes rather than opts into.
+   */
+  tags: string[];
   /** True when the cover came out of the file's own tag rather than the folder. */
   artFromTag: boolean;
 };
@@ -76,6 +82,10 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     height: null,
     uploaderRole: '',
     collaborators: [],
+    // Pre-applied, not suggested: the artist removes the emotions this track is not. A fresh
+    // copy per row — one shared array would make removing a tag from one file remove it from
+    // every file in the batch.
+    tags: [...EMOTION_TAGS],
     artFromTag: false,
   }));
 }
@@ -186,6 +196,7 @@ export function useUploadQueue() {
           title: item.title,
           description: item.description,
           uploaderRole: item.uploaderRole,
+          tags: item.tags,
           // Picker shape -> row shape. The XOR the table enforces is decided here: a
           // credit that names a profile never also carries a typed name.
           collaborators: item.collaborators.map(c => ({

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 76 migration(s) in `supabase/migrations/`.
+Reconstructed from 77 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -777,10 +777,12 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `file_size_bytes` | `bigint` | `20260804040000_tracks_file_size.sql` |
 | `lyrics` | `text` | `20260805030000_track_lyrics.sql` |
 | `lyrics_format` | `text` | `20260805030000_track_lyrics.sql` |
+| `tags` | `text[]` | `20260807000000_track_tags.sql` |
 
 **Indexes**
 
 - `tracks_uploader_created_idx` `(uploader_id, created_at desc)`
+- `tracks_tags_gin` `using gin (tags)`
 
 ### `user_recent_tracks`
 

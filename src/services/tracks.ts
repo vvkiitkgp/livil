@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import type { Json } from '../../lib/database.types';
 import type { PendingCollaborator } from '../constants/roles';
+import { MAX_TAGS_PER_TRACK, normalizeTags } from '../../shared/constants/tags';
 import { uploadTrackFile, resolveReadableUri, type PickedFile } from './uploads';
 import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
 import { resolveAuthorById, resolveAuthorDisplay, type AuthorDisplay } from '../utils/authorDisplay';
@@ -17,6 +18,8 @@ export type CreateTrackInput =
       /** What the uploader did on their own track. Required — see the insert below. */
       uploaderRole: string;
       collaborators: PendingCollaborator[];
+      /** Tags. Normalized on the way in by `shared/constants/tags.ts` — see the insert. */
+      tags?: string[];
       /** Track length in seconds, captured from the upload preview's onLoad.
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
@@ -35,6 +38,8 @@ export type CreateTrackInput =
        *  remain readable. */
       thumbnail: PickedFile;
       collaborators: PendingCollaborator[];
+      /** Tags. Normalized on the way in by `shared/constants/tags.ts` — see the insert. */
+      tags?: string[];
       /** Track length in seconds, captured from the upload preview's onLoad.
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
@@ -129,6 +134,12 @@ function parseWaveformData(raw: unknown): WaveformData | null {
     centroid: aligned(obj.centroid),
   };
 }
+
+/*
+ * There is no `getTrackTags` here on purpose. Nothing on this client reads a track's tags:
+ * they are an input to search (`searchPosts` matches them server-side) and to the suggestion
+ * engine, never something a listener is shown. Mobile writes them at upload and stops.
+ */
 
 /** Read a track's stored envelope. Returns null when absent/unanalyzed/malformed. */
 export async function getWaveformPeaks(trackId: string): Promise<WaveformData | null> {
@@ -321,6 +332,14 @@ export async function createTrack(
     if (!input.thumbnail) {throw new Error('Thumbnail image is required for video posts.');}
   }
 
+  // Before anything uploads, like every other check here. `normalizeTags` guarantees the
+  // rest of `tracks_tags_valid` by construction, so the cap is the only rule the database
+  // could still reject — and rejecting it here costs a message instead of a whole upload.
+  const tags = normalizeTags(input.tags ?? []);
+  if (tags.length > MAX_TAGS_PER_TRACK) {
+    throw new Error(`Up to ${MAX_TAGS_PER_TRACK} tags per track.`);
+  }
+
   onProgress?.({ stage: 'preparing', fraction: 0 });
 
   const [
@@ -346,6 +365,9 @@ export async function createTrack(
       uploader_id: user.id,
       title,
       description,
+      // NULL rather than an empty array when untagged — `tracks_tags_valid` allows only one
+      // representation of "no tags", so every query downstream has one case to handle.
+      tags: tags.length > 0 ? tags : null,
       media_kind: input.mode,
       audio_url: input.mode === 'audio' ? 'pending://placeholder' : null,
       video_url: input.mode === 'video' ? 'pending://placeholder' : null,
