@@ -1139,6 +1139,38 @@ export type Database = {
         }
         Relationships: []
       }
+      search_result_taps: {
+        Row: {
+          created_at: string
+          entity_id: string
+          id: string
+          kind: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          id?: string
+          kind: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          id?: string
+          kind?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_result_taps_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stories: {
         Row: {
           author_id: string
@@ -1711,6 +1743,16 @@ export type Database = {
           sender_username: string
         }[]
       }
+      ops_top_search_results: {
+        Args: { p_days?: number; p_kind?: string; p_limit?: number }
+        Returns: {
+          entity_id: string
+          people: number
+          subtitle: string
+          taps: number
+          title: string
+        }[]
+      }
       ops_users_overview: {
         Args: never
         Returns: {
@@ -1733,6 +1775,13 @@ export type Database = {
       }
       remove_friend: { Args: { other_user_id: string }; Returns: undefined }
       remove_star: { Args: { target_user_id: string }; Returns: undefined }
+      search_result_popularity: {
+        Args: { p_ids: string[]; p_kind: string }
+        Returns: {
+          entity_id: string
+          people: number
+        }[]
+      }
       send_friend_request: {
         Args: { target_user_id: string }
         Returns: undefined

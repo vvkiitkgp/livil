@@ -5,6 +5,7 @@ import { sendInvite } from '../data/invite';
 import { formatDate } from '../format';
 import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
 import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
+import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
 
 /**
  * Waitlist ops.
@@ -32,6 +33,10 @@ export function Ops() {
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [users, setUsers] = useState<OpsUser[] | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [searchKind, setSearchKind] = useState<OpsSearchKind>('track');
+  const [searchDays, setSearchDays] = useState(30);
+  const [topSearched, setTopSearched] = useState<OpsSearchResult[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -55,6 +60,17 @@ export function Ops() {
         setUsersError(e?.message ?? 'Could not load users.');
       });
   }, []);
+
+  useEffect(() => {
+    setTopSearched(null);
+    setSearchError(null);
+    fetchTopSearchResults(searchKind, searchDays)
+      .then(setTopSearched)
+      .catch(e => {
+        setTopSearched([]);
+        setSearchError(e?.message ?? 'Could not load search analytics.');
+      });
+  }, [searchKind, searchDays]);
 
   useEffect(() => {
     fetchTeamMessages()
@@ -255,6 +271,84 @@ export function Ops() {
               <p className="msg__body">{m.body}</p>
             </article>
           ))}
+        </div>
+      )}
+
+      <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
+        <div>
+          <p className="kicker">What people open from search</p>
+          <h1 className="display page__title">Most searched</h1>
+        </div>
+        <div className="filerow">
+          {(['track', 'album', 'profile'] as OpsSearchKind[]).map(k => (
+            <Button
+              key={k}
+              variant={searchKind === k ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setSearchKind(k)}
+            >
+              {k === 'track' ? 'Songs' : k === 'album' ? 'Albums' : 'People'}
+            </Button>
+          ))}
+          {[7, 30, 365].map(d => (
+            <Button
+              key={d}
+              variant={searchDays === d ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setSearchDays(d)}
+            >
+              {d === 365 ? 'All time' : `${d}d`}
+            </Button>
+          ))}
+        </div>
+      </header>
+
+      {searchError && (
+        <div className="empty panel">
+          <p className="empty__title">Could not load search analytics</p>
+          <p className="hint">{searchError}</p>
+        </div>
+      )}
+
+      {topSearched === null && !searchError && <div className="skeleton skeleton--rows" />}
+
+      {topSearched !== null && topSearched.length === 0 && !searchError && (
+        <div className="empty panel">
+          <p className="empty__title">Nothing opened from search yet</p>
+          {/* Says which of the two possible reasons it is, because "no data" on a brand new
+              metric usually means nobody has shipped the client that records it. */}
+          <p className="hint">
+            Taps are recorded from the app&apos;s search screen. Nothing in this window yet.
+          </p>
+        </div>
+      )}
+
+      {topSearched !== null && topSearched.length > 0 && (
+        <div className="tablewrap panel">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{searchKind === 'profile' ? 'Person' : searchKind === 'album' ? 'Album' : 'Song'}</th>
+                {/* People first: it is the number this ranks by. Fifty people opening a song
+                    once beats one person opening it fifty times, and showing taps as the
+                    headline is how a chart gets read wrong. */}
+                <th className="num">People</th>
+                <th className="num">Opens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topSearched.map(r => (
+                <tr key={r.entityId}>
+                  <td>
+                    <span className="table__title">{r.title ?? 'Deleted'}</span>
+                    {r.subtitle && <div className="hint">{r.subtitle}</div>}
+                  </td>
+                  <td className="num">{r.people}</td>
+                  <td className="num">{r.taps}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

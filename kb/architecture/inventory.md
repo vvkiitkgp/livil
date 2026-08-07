@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-183 TypeScript file(s) under `src/`, 50,291 lines.
+184 TypeScript file(s) under `src/`, 50,475 lines.
 
 ## Size hotspots
 
@@ -40,7 +40,7 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
-| `src/screens/main/SearchScreen.tsx` | 611 |
+| `src/screens/main/SearchScreen.tsx` | 647 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 
@@ -93,7 +93,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,911 lines.
+40 file(s), 19,947 lines.
 
 | File | Lines |
 |---|---:|
@@ -107,7 +107,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 814 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
-| `src/screens/main/SearchScreen.tsx` | 611 |
+| `src/screens/main/SearchScreen.tsx` | 647 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
@@ -213,7 +213,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-31 file(s), 8,157 lines.
+32 file(s), 8,229 lines.
 
 | File | Lines |
 |---|---:|
@@ -242,6 +242,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
+| `src/services/searchAnalytics.ts` | 72 |
 | `src/services/waveform.ts` | 66 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
@@ -277,14 +278,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-19 file(s), 2,298 lines.
+19 file(s), 2,374 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/__tests__/playTracker.test.ts` | 226 |
+| `src/utils/searchRanking.ts` | 219 |
+| `src/utils/__tests__/searchRanking.test.ts` | 212 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
-| `src/utils/searchRanking.ts` | 179 |
-| `src/utils/__tests__/searchRanking.test.ts` | 176 |
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
 | `src/utils/__tests__/authorDisplay.test.ts` | 135 |

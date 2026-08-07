@@ -25,6 +25,9 @@ import { searchPosts, feedPostToNowPlaying, type FeedPost } from '../../services
 import { searchAlbums, type AlbumSearchResult } from '../../services/albums';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRecentSearches } from '../../hooks/useRecentSearches';
+import {
+  recordSearchTap, fetchSearchPopularity, type SearchTapKind,
+} from '../../services/searchAnalytics';
 import { rankSearchResults, type SearchResult } from '../../utils/searchRanking';
 import { supabase } from '../../../lib/supabase';
 import { Icon } from '../../components/Icon';
@@ -141,6 +144,8 @@ export default function SearchScreen() {
   const [meId, setMeId] = useState<string | null>(null);
   /** Bumped on every tab tap purely to remount the pills and replay their entrance. */
   const [replayKey, setReplayKey] = useState(0);
+  /** Distinct-people-who-opened-it, by entity id. Feeds the ranking; empty is simply zero. */
+  const [taps, setTaps] = useState<Record<string, number>>({});
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -224,9 +229,37 @@ export default function SearchScreen() {
   }, [query, meId]);
 
   const results = useMemo(
-    () => rankSearchResults({ posts, profiles, albums, query }),
-    [posts, profiles, albums, query],
+    () => rankSearchResults({ posts, profiles, albums, query, taps }),
+    [posts, profiles, albums, query, taps],
   );
+
+  /**
+   * Popularity for what is on screen, fetched AFTER the results.
+   *
+   * Deliberately a second pass rather than part of the debounce: the list renders on the
+   * search itself, and the counts re-order it a moment later. Blocking the results on an
+   * extra round trip would make every search feel slower to buy an ordering nicety.
+   */
+  useEffect(() => {
+    const trackIds = posts.map(p => p.track.id);
+    const albumIds = albums.map(a => a.id);
+    const profileIds = profiles.map(p => p.id);
+    if (trackIds.length + albumIds.length + profileIds.length === 0) {
+      setTaps({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      fetchSearchPopularity('track', trackIds),
+      fetchSearchPopularity('album', albumIds),
+      fetchSearchPopularity('profile', profileIds),
+    ]).then(([t, a, p]) => {
+      // One map across all three kinds: ids are uuids, so they cannot collide, and the
+      // ranking looks up by entity id without caring which kind it was.
+      if (!cancelled) { setTaps({ ...t, ...a, ...p }); }
+    });
+    return () => { cancelled = true; };
+  }, [posts, albums, profiles]);
 
   /**
    * Play a result immediately, replacing whatever was playing.
@@ -277,8 +310,11 @@ export default function SearchScreen() {
    * typing. Typing "vvk" would otherwise store "v", "vv" and "vvk" and fill all four slots
    * with prefixes of one search, which is the fastest way to make the list useless.
    */
-  const onResultOpened = useCallback(() => {
+  const onResultOpened = useCallback((kind: SearchTapKind, entityId: string) => {
     remember(query);
+    // What was OPENED, not what was typed — the signal behind "most searched". Fire and
+    // forget: it must not delay the navigation or the playback it is racing.
+    recordSearchTap(kind, entityId);
     // Dismiss on the way out. `keyboardShouldPersistTaps="handled"` is what lets a single tap
     // both open the result AND land here — with the default the first tap would be spent
     // closing the keyboard and the row would need tapping twice.
@@ -293,7 +329,7 @@ export default function SearchScreen() {
             post={item.post}
             index={index}
             isCurrent={nowPlaying?.postId === item.post.id}
-            onPress={() => { onResultOpened(); playTrack(item.post); }}
+            onPress={() => { onResultOpened('track', item.post.track.id); playTrack(item.post); }}
           />
         );
       }
@@ -304,7 +340,7 @@ export default function SearchScreen() {
         return (
           <Pressable
             onPress={() => {
-              onResultOpened();
+              onResultOpened('profile', person.id);
               navigation.navigate('UserProfile', { userId: person.id });
             }}
             style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -333,7 +369,7 @@ export default function SearchScreen() {
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
-            onResultOpened();
+            onResultOpened('album', release.id);
             navigation.navigate('AlbumDetail', { albumId: release.id, albumTitle: release.title });
           }}
         >
@@ -388,7 +424,7 @@ export default function SearchScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
-          onSubmitEditing={onResultOpened}
+          onSubmitEditing={() => { remember(query); Keyboard.dismiss(); }}
           trailing={
             query.length > 0 ? (
               // `FormInput` sets paddingRight:0 on the input whenever a trailing element is
