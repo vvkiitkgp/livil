@@ -33,6 +33,15 @@ export type CreatorPost = {
   likes: number;
   reposts: number;
   comments: number;
+  /**
+   * How many DISTINCT people opened this track from search.
+   *
+   * People, not opens: one listener finding the same song five times is one person who
+   * wanted it, and showing the bigger number would flatter the artist with their own
+   * repeat visits. Filled in by `attachSearchOpens` — zero until it resolves, which is the
+   * honest value for a track nobody has found yet.
+   */
+  searchOpens: number;
 };
 
 export type CreatorTotals = {
@@ -102,7 +111,38 @@ function toCreatorPost(row: PostRow): CreatorPost {
     likes: row.likes_count ?? 0,
     reposts: row.reposts_count ?? 0,
     comments: row.comments_count ?? 0,
+    searchOpens: 0,
   };
+}
+
+/**
+ * Fill in how many people found each track through search.
+ *
+ * A SEPARATE CALL, not a join. `search_result_taps` has no SELECT policy — no client reads
+ * its rows, by design — so the only way to a number is the aggregate function, which takes
+ * ids and returns counts. That also means this cannot leak anything: an artist asks about
+ * their own track ids and gets back totals, never who or when.
+ *
+ * Fail-safe. A catalogue that will not render because an analytics number was unavailable is
+ * a worse trade than a column of zeroes, so any error resolves to the posts unchanged.
+ */
+export async function attachSearchOpens(posts: CreatorPost[]): Promise<CreatorPost[]> {
+  const trackIds = [...new Set(posts.map(p => p.trackId))];
+  if (trackIds.length === 0) return posts;
+
+  try {
+    const { data, error } = await supabase.rpc('search_result_popularity', {
+      p_kind: 'track',
+      p_ids: trackIds,
+    });
+    if (error || !data) return posts;
+
+    const byTrack = new Map<string, number>();
+    for (const row of data) byTrack.set(row.entity_id, Number(row.people) || 0);
+    return posts.map(p => ({ ...p, searchOpens: byTrack.get(p.trackId) ?? 0 }));
+  } catch {
+    return posts;
+  }
 }
 
 /**

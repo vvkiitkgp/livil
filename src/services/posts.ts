@@ -510,6 +510,27 @@ const SEARCH_POST_BY_AUTHOR_SELECT = SEARCH_POST_SELECT.replace(
 );
 
 /**
+ * Same again, reaching through to the ALBUM so the search can filter on its title.
+ *
+ * Searching a record's name should return the record's songs. Only the title track usually
+ * carries the album's name — "Dhurandhar" is 11 tracks of which exactly one is called
+ * "Dhurandhar Title Track" — so matching track text finds the album and one song, and the
+ * other ten are invisible to somebody searching the only name they know.
+ *
+ * `!inner` at BOTH hops: a track with no album must not come back from this query, and an
+ * album whose title does not match must not drag its tracks in.
+ */
+const SEARCH_POST_BY_ALBUM_SELECT = SEARCH_POST_SELECT.replace(
+  `    duration_seconds
+  ),`,
+  `    duration_seconds,
+    album_tracks!inner (
+      albums!inner ( title )
+    )
+  ),`,
+);
+
+/**
  * Search upload posts by track title, description, tag, OR the uploader's name.
  * Reposts are intentionally excluded so each track appears once.
  *
@@ -589,7 +610,22 @@ export async function searchPosts(
         .order('created_at', { ascending: false })
         .limit(limit);
 
-  const [textResult, uploaderResult] = await Promise.all([byTrackText, byUploader]);
+  // Skipped for a '#tag' query for the same reason as the uploader path: a tag search means
+  // "tracks filed under this word", and an album whose name happens to be that word has not
+  // filed anything under it.
+  const byAlbum = tagOnly
+    ? null
+    : supabase
+        .from('posts')
+        .select(SEARCH_POST_BY_ALBUM_SELECT)
+        .eq('kind', 'upload')
+        .ilike('tracks.album_tracks.albums.title', pattern)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+  const [textResult, uploaderResult, albumResult] = await Promise.all([
+    byTrackText, byUploader, byAlbum,
+  ]);
 
   if (textResult.error) {
     throw new Error(textResult.error.message);
@@ -600,6 +636,9 @@ export async function searchPosts(
     ...((textResult.data ?? []) as unknown as RawPostRow[]),
     ...(uploaderResult && !uploaderResult.error
       ? ((uploaderResult.data ?? []) as unknown as RawPostRow[])
+      : []),
+    ...(albumResult && !albumResult.error
+      ? ((albumResult.data ?? []) as unknown as RawPostRow[])
       : []),
   ];
 
