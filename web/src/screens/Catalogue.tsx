@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Button } from '../components/Button';
-import { fetchCreatorPosts, type CreatorPost } from '../data/creator';
+import { fetchCreatorPosts, attachSearchOpens, type CreatorPost } from '../data/creator';
 import {
   bitrateKbps,
   formatBitrate,
@@ -17,6 +17,7 @@ type SortKey =
   | 'publishedAt'
   | 'title'
   | 'plays'
+  | 'searchOpens'
   | 'likes'
   | 'comments'
   | 'reposts'
@@ -43,6 +44,12 @@ export function Catalogue() {
     fetchCreatorPosts(session.user.id, 200)
       .then(p => {
         if (!cancelled) setPosts(p);
+        // Second pass: the catalogue renders on the tracks, and the search column fills in a
+        // moment later. Blocking the whole table on an analytics number would make the page
+        // feel slower to show something nobody is waiting on.
+        return attachSearchOpens(p).then(withOpens => {
+          if (!cancelled) setPosts(withOpens);
+        });
       })
       .catch(() => {
         if (!cancelled) setPosts([]);
@@ -151,6 +158,9 @@ export function Catalogue() {
                 <th className="num">Bitrate</th>
                 {header('publishedAt', 'Published')}
                 {header('plays', 'Plays', true)}
+                {/* Distinct PEOPLE who found this through search — not opens. One listener
+                    finding the same song five times is one person who wanted it. */}
+                {header('searchOpens', 'Searches', true)}
                 {header('likes', 'Likes', true)}
                 {header('comments', 'Comments', true)}
                 {header('reposts', 'Reposts', true)}
@@ -183,6 +193,7 @@ export function Catalogue() {
                   </td>
                   <td>{formatDate(p.publishedAt)}</td>
                   <td className="num num--strong">{formatCount(p.plays)}</td>
+                  <td className="num">{formatCount(p.searchOpens)}</td>
                   <td className="num">{formatCount(p.likes)}</td>
                   <td className="num">{formatCount(p.comments)}</td>
                   <td className="num">{formatCount(p.reposts)}</td>
