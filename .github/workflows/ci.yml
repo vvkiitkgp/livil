@@ -52,6 +52,14 @@ jobs:
       - name: Test
         run: npm test -- --ci
 
+      # The tracker adapter is .mjs outside the React Native jest project, so `npm test` does
+      # not reach it. Run explicitly rather than teaching that jest config an ESM transform to
+      # cover four files — and run it at all, because the tests worth having here are the
+      # permission refusals, and an untested refusal is a rule that only looks like a control
+      # (LIV-93 is the same lesson from the other direction).
+      - name: Tracker adapter tests
+        run: npm run test:tracker
+
   knowledge-base:
     name: knowledge base
     runs-on: ubuntu-latest
