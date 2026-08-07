@@ -497,9 +497,33 @@ const SEARCH_POST_SELECT = `
 ` as const;
 
 /**
- * Search upload posts by track title, description or tag (case-insensitive). Reposts
- * are intentionally excluded so each track appears once. Results are newest
- * first and capped at `limit` (default 20).
+ * Same again, but the AUTHOR is inner-joined so the search can filter on their name.
+ *
+ * A second select rather than a flag, because the two searches cannot be one query.
+ * PostgREST applies a `.or` to a single embedded resource, and filters on two different
+ * embedded tables are AND-ed together — so "the track matches OR its uploader matches" is
+ * not expressible, and asking for it in one query silently returns the intersection instead.
+ */
+const SEARCH_POST_BY_AUTHOR_SELECT = SEARCH_POST_SELECT.replace(
+  'author:profiles!posts_author_id_fkey (',
+  'author:profiles!posts_author_id_fkey!inner (',
+);
+
+/**
+ * Search upload posts by track title, description, tag, OR the uploader's name.
+ * Reposts are intentionally excluded so each track appears once.
+ *
+ * The uploader match is why this runs two queries. Searching an artist and getting only their
+ * profile — none of their music — is the obvious thing to expect and the obvious thing to be
+ * missing; "vvk" should find the person AND what they made. PostgREST cannot express it in
+ * one request (see `SEARCH_POST_BY_AUTHOR_SELECT`), so the two run in parallel and are merged
+ * here. A track matching both ways appears once.
+ *
+ * `limit` therefore caps each MATCH PATH, not the merged result: up to `limit` by track text
+ * and up to `limit` by uploader, so at most 2×. Capping the union instead would mean an exact
+ * title match could be cut by twenty newer tracks from an artist whose name also matched,
+ * which is the one result the searcher was most likely after. Ranking (see
+ * `src/utils/searchRanking.ts`) puts the merged set in order.
  *
  * Tags participate in two different ways, and the difference is the leading '#':
  *
@@ -545,7 +569,7 @@ export async function searchPosts(
         ...(tag ? [`tags.cs.{${tag}}`] : []),
       ];
 
-  const { data, error } = await supabase
+  const byTrackText = supabase
     .from('posts')
     .select(SEARCH_POST_SELECT)
     .eq('kind', 'upload')
@@ -553,12 +577,41 @@ export async function searchPosts(
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  // Skipped entirely for a '#tag' query: a tag search means "tracks filed under this word",
+  // and an artist whose handle happens to be that word has not filed anything under it.
+  const byUploader = tagOnly
+    ? null
+    : supabase
+        .from('posts')
+        .select(SEARCH_POST_BY_AUTHOR_SELECT)
+        .eq('kind', 'upload')
+        .or(`username.ilike.${pattern},display_name.ilike.${pattern}`, { foreignTable: 'author' })
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
-  const rows = (data ?? []) as unknown as RawPostRow[];
-  return hydrateRawPostRows(rows);
+  const [textResult, uploaderResult] = await Promise.all([byTrackText, byUploader]);
+
+  if (textResult.error) {
+    throw new Error(textResult.error.message);
+  }
+  // The uploader half is best-effort. It is an enhancement to a search that already works,
+  // so a failure there should narrow the results rather than replace them with an error.
+  const rows = [
+    ...((textResult.data ?? []) as unknown as RawPostRow[]),
+    ...(uploaderResult && !uploaderResult.error
+      ? ((uploaderResult.data ?? []) as unknown as RawPostRow[])
+      : []),
+  ];
+
+  // A track whose title AND uploader both match came back from both queries.
+  const seen = new Set<string>();
+  const deduped = rows.filter(row => {
+    if (seen.has(row.id)) { return false; }
+    seen.add(row.id);
+    return true;
+  });
+
+  return hydrateRawPostRows(deduped);
 }
 
 export async function getProfileStats(userId: string): Promise<ProfileStats> {

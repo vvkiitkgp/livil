@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-178 TypeScript file(s) under `src/`, 49,436 lines.
+183 TypeScript file(s) under `src/`, 50,291 lines.
 
 ## Size hotspots
 
@@ -33,17 +33,18 @@ reading alone (Constitution P28).
 | `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
-| `src/components/FloatingPlayer.tsx` | 945 |
+| `src/components/FloatingPlayer.tsx` | 927 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
 | `src/screens/main/UserProfileScreen.tsx` | 814 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
+| `src/screens/main/SearchScreen.tsx` | 611 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 
-> 16 file(s) over the threshold against **2 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 17 file(s) over the threshold against **3 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -92,7 +93,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,820 lines.
+40 file(s), 19,911 lines.
 
 | File | Lines |
 |---|---:|
@@ -106,10 +107,10 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 814 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
+| `src/screens/main/SearchScreen.tsx` | 611 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
-| `src/screens/main/SearchScreen.tsx` | 520 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
 | `src/screens/main/InboxScreen.tsx` | 408 |
@@ -139,15 +140,15 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-66 file(s), 16,008 lines.
+66 file(s), 16,040 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2368 |
 | `src/components/PostCard.tsx` | 1266 |
-| `src/components/FloatingPlayer.tsx` | 945 |
+| `src/components/FloatingPlayer.tsx` | 927 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/components/GlobalAudioPlayer.tsx` | 496 |
+| `src/components/GlobalAudioPlayer.tsx` | 541 |
 | `src/components/QueueList.tsx` | 475 |
 | `src/components/MediaPlayer.tsx` | 469 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
@@ -158,8 +159,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/CommentItem.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
+| `src/components/Icon.tsx` | 252 |
 | `src/components/Button.tsx` | 247 |
-| `src/components/Icon.tsx` | 247 |
 | `src/components/ActivityBubble.tsx` | 229 |
 | `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
@@ -212,14 +213,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-31 file(s), 8,037 lines.
+31 file(s), 8,157 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 960 |
+| `src/services/posts.ts` | 1013 |
 | `src/services/tracks.ts` | 822 |
 | `src/services/pushNotifications.ts` | 615 |
-| `src/services/albums.ts` | 430 |
+| `src/services/albums.ts` | 497 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/profileService.ts` | 374 |
@@ -250,11 +251,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-9 file(s), 2,225 lines.
+9 file(s), 2,247 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 933 |
+| `src/contexts/PlaybackContext.tsx` | 955 |
 | `src/contexts/JamRealtimeContext.tsx` | 389 |
 | `src/contexts/RelationshipContext.tsx` | 294 |
 | `src/contexts/ToastContext.tsx` | 190 |
@@ -266,21 +267,24 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-2 file(s), 83 lines.
+3 file(s), 168 lines.
 
 | File | Lines |
 |---|---:|
+| `src/hooks/useRecentSearches.ts` | 85 |
 | `src/hooks/useCommentsCountDeltas.ts` | 46 |
 | `src/hooks/useImageAspect.ts` | 37 |
 
 ## Utilities
 
-15 file(s), 1,793 lines.
+19 file(s), 2,298 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/__tests__/playTracker.test.ts` | 226 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
+| `src/utils/searchRanking.ts` | 179 |
+| `src/utils/__tests__/searchRanking.test.ts` | 176 |
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
 | `src/utils/__tests__/authorDisplay.test.ts` | 135 |
@@ -291,8 +295,10 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/playTracker.ts` | 90 |
 | `src/utils/haptics.ts` | 86 |
 | `src/utils/chatTime.ts` | 82 |
+| `src/utils/__tests__/recentSearches.test.ts` | 78 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
 | `src/utils/authorDisplay.ts` | 72 |
+| `src/utils/recentSearches.ts` | 72 |
 | `src/utils/errorMessages.ts` | 68 |
 
 ## Dependencies

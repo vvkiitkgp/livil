@@ -58,7 +58,6 @@ const OPEN_FS_DIST  = 80;
 const OPEN_FS_VEL   = 500;
 const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
-const RATE_FORWARD  = 2.0;
 // Delay (ms) before the pill morphs open, so the FS player opens first and the
 // pill then pops up. Close stays instant (matches the FS collapse).
 const OPEN_MORPH_DELAY = 220;
@@ -304,17 +303,6 @@ export default function FloatingPlayer() {
     Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
     Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
   ]).start();
-
-  const rewindTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stopRewind  = () => { if (rewindTimer.current !== null) { clearInterval(rewindTimer.current); rewindTimer.current = null; } };
-  const startRewind = () => {
-    stopRewind();
-    rewindTimer.current = setInterval(() => {
-      const p = Math.max(0, positionRef.current - 0.5);
-      positionRef.current = p;
-      handlersRef.current?.seek(p);
-    }, 250);
-  };
 
   // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
   const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
@@ -595,22 +583,17 @@ export default function FloatingPlayer() {
       // wiggle hint forever (also interrupts an in-flight wiggle via stopAnimation).
       markDragLearned();
       if (jamLocked) { return; }
-      circleX.stopAnimation(); circleY.stopAnimation(); stopRewind();
+      circleX.stopAnimation(); circleY.stopAnimation();
     })
     .onUpdate((e) => {
+      // Movement only. The drag used to also scrub — 2x while held right, a rewind timer
+      // while held left — which made one gesture mean two things and, because the rewind
+      // wrote positionRef on a 250ms timer, gave the playhead a second writer.
       circleX.setValue(Math.max(-MAX_DRAG,      Math.min(MAX_DRAG,       e.translationX)));
       circleY.setValue(Math.max(-MAX_DRAG_Y_UP, Math.min(MAX_DRAG_Y_DOWN, e.translationY)));
-      const isH = Math.abs(e.translationX) > Math.abs(e.translationY);
-      if (isH) {
-        if (e.translationX >= 0) { stopRewind(); console.log('[LIVIL][FP] dragging → forward 2x'); handlersRef.current?.setRate(RATE_FORWARD); }
-        else {
-          handlersRef.current?.setRate(1.0);
-          if (rewindTimer.current === null && activePostId !== null) { console.log('[LIVIL][FP] dragging ← rewind'); startRewind(); }
-        }
-      } else { stopRewind(); handlersRef.current?.setRate(1.0); }
     })
     .onEnd((e) => {
-      stopRewind(); handlersRef.current?.setRate(1.0); springBack();
+      springBack();
       // ── X-grid ── The swipe belongs to exactly ONE quadrant by its dominant
       // axis, so a left/right swipe can never also trigger open/close (the old
       // bug where a leftward "previous" swipe with a little downward drift would
@@ -620,11 +603,10 @@ export default function FloatingPlayer() {
       const avx = Math.abs(e.velocityX), avy = Math.abs(e.velocityY);
       const horizontalDominant = avx > avy ? true : avx < avy ? false : ax >= ay;
       if (horizontalDominant) {
-        // Quick horizontal SNAP → prev/next. A slow drag-and-hold (low velocity)
-        // was a fast-forward/rewind scrub (done live in onUpdate) → no track change.
+        // Quick horizontal SNAP → prev/next. A slow drag still does nothing: the velocity
+        // threshold keeps an idle fidget with the circle from changing track.
         if (avx > SNAP_VELOCITY) {
-          // Only on a committed snap — the slow drag-scrub above is a different
-          // gesture and buzzing it would fire mid-rewind.
+          // Only on a committed snap, so a slow fidget with the circle stays silent.
           haptics.select();
           if (e.velocityX > 0) { console.log('[LIVIL][FP] snap → playNext'); playNext(); }
           else { console.log('[LIVIL][FP] snap ← playPrev'); playPrev(); }
@@ -642,7 +624,7 @@ export default function FloatingPlayer() {
       }
     })
     .onFinalize(() => {
-      stopRewind(); handlersRef.current?.setRate(1.0); springBack();
+      springBack();
       scaleAnim.stopAnimation();
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
     });

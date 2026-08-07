@@ -50,6 +50,7 @@ export default function GlobalAudioPlayer() {
     setNowPlaying,
     updatePosition,
     updateDuration,
+    pendingStartRef,
     registerHandlers,
     positionRef,
     queueRef,
@@ -75,10 +76,6 @@ export default function GlobalAudioPlayer() {
 
   const videoRef = useRef<VideoRef>(null);
   const [paused, setPaused] = useState(true);
-  // Playback rate (FloatingPlayer drag-right "2x"). GAP is now the sole audio
-  // engine for audio AND video posts, so it owns rate too (was a no-op before,
-  // when FullScreenPlayer owned video playback).
-  const [rate, setPlaybackRate] = useState(1.0);
   // Mirror of `paused` readable synchronously inside native-event callbacks
   // (no stale closure) so we can tell an in-app pause from a lock-screen pause.
   const pausedRef = useRef(paused);
@@ -98,6 +95,15 @@ export default function GlobalAudioPlayer() {
 
   // Which postId this component is currently responsible for
   const myPostIdRef = useRef<string | null>(null);
+  /**
+   * The URL the engine is currently loaded with.
+   *
+   * Only used to tell "switched to a different track" (the source prop changes, so `onLoad`
+   * fires and seeks) apart from "switched to another post of the SAME track" (it does not,
+   * and nothing would seek). Held as a ref rather than derived from `nowPlaying` because the
+   * comparison needs the PREVIOUS value at the moment the new one arrives.
+   */
+  const prevSourceUrlRef = useRef<string | null>(null);
   // One-shot guard so clip-end fires once per play session (onProgress fires
   // several times in the final ~250ms of a clip).
   const clipEndFiredRef = useRef(false);
@@ -118,6 +124,34 @@ export default function GlobalAudioPlayer() {
     const url = nowPlaying?.audioUrl ?? nowPlaying?.videoUrl;
     if (url) {
       console.log(`[LIVIL][GAP] activating for postId=${nowPlaying!.postId} kind=${nowPlaying!.mediaKind} pos=${positionRef.current.toFixed(1)}`);
+
+      /*
+       * SAME MEDIA, DIFFERENT POST — seek by hand, because nothing else will.
+       *
+       * A track is uploaded once and can appear in many posts, so the original and every
+       * clipped repost of it share one URL. Switching between them changes `postId` but NOT
+       * the `source` prop, so react-native-video does not reload, `onLoad` never fires again
+       * — and `onLoad` is the only place that seeks. The result is that playing a repost
+       * clipped to 1:30 while the original is playing just carries on from wherever the
+       * playhead already was, silently ignoring the clip.
+       *
+       * `positionRef` rather than the clip start: the caller has already committed the
+       * intended position through `markSeekTarget` (clip start from a feed card, or a host's
+       * position when a jam listener is being synced), and honouring it keeps this correct
+       * for every caller rather than just the clipped-repost one.
+       */
+      const sameSource = prevSourceUrlRef.current === url;
+      prevSourceUrlRef.current = url;
+      if (sameSource && myPostIdRef.current !== nowPlaying!.postId) {
+        // The committed start wins over positionRef, which the OUTGOING track is still
+        // writing to via onProgress right up until it is torn down.
+        const target = pendingStartRef.current ?? positionRef.current;
+        pendingStartRef.current = null;
+        positionRef.current = target;
+        console.log(`[LIVIL][GAP] same media, new post → seek to ${target.toFixed(1)}s (no reload, so no onLoad)`);
+        videoRef.current?.seek(target);
+      }
+
       myPostIdRef.current = nowPlaying!.postId;
       clipEndFiredRef.current = false;
       setIsBuffering(true);
@@ -126,7 +160,6 @@ export default function GlobalAudioPlayer() {
       // isPlaying=false until the first frame is decodable).
       loadGuardUntilRef.current = Date.now() + 4000;
       setPaused(false);
-      setPlaybackRate(1.0); // a held 2x must not bleed into the next track
       registerHandlers({
         play:    () => {
           console.log('[LIVIL][GAP] handler PLAY');
@@ -141,12 +174,16 @@ export default function GlobalAudioPlayer() {
           clipEndFiredRef.current = false;
           videoRef.current?.seek(s);
         },
-        setRate: (r: number) => { console.log(`[LIVIL][GAP] setRate=${r}`); setPlaybackRate(r); },
       });
     } else {
       // Nothing playing — go silent.
       console.log('[LIVIL][GAP] deactivating (nothing playing)');
       myPostIdRef.current = null;
+      // Cleared with the post: after nowPlaying goes null the engine is torn down, so the
+      // next activation reloads and `onLoad` seeks. Leaving a stale URL here would make that
+      // reload look like a same-source switch and fire a redundant seek into an unloaded
+      // player.
+      prevSourceUrlRef.current = null;
       setPaused(true);
       setIsBuffering(false);
     }
@@ -213,14 +250,20 @@ export default function GlobalAudioPlayer() {
     console.log(`[LIVIL][GAP] onLoad duration=${dur.toFixed(1)}s seekTo=${positionRef.current.toFixed(1)}s`);
     updateDuration(dur);
     setIsBuffering(false);
-    const pos = positionRef.current;
+    // Committed start first. `positionRef` is shared with progress reporting, and the
+    // outgoing track keeps writing to it while the new one prepares — which is how a new
+    // track ended up starting at the previous track's playhead (and, when that exceeded the
+    // new track's length, immediately firing next and skipping it entirely).
+    const pos = pendingStartRef.current ?? positionRef.current;
+    pendingStartRef.current = null;
+    positionRef.current = pos;
     if (pos > 0) { videoRef.current?.seek(pos); }
     // Backfill the track's duration_seconds (null for older rows / uploads where
     // the preview length wasn't captured) so feed + profile cards show the
     // length even when the post isn't the active track. Idempotent + owner-only.
     const tId = nowPlaying?.trackId;
     if (tId && dur > 0) { backfillTrackDuration(tId, dur).catch(() => {}); }
-  }, [updateDuration, positionRef, setIsBuffering, nowPlaying?.trackId]);
+  }, [updateDuration, positionRef, pendingStartRef, setIsBuffering, nowPlaying?.trackId]);
 
   const handleProgress = useCallback((data: OnProgressData) => {
     const t = data.currentTime ?? 0;
@@ -407,7 +450,10 @@ export default function GlobalAudioPlayer() {
   // for a full play from 0:00, so non-clipped playback is unchanged. (Declared
   // before the early returns below to keep hook order stable.)
   const startPositionMs = useMemo(() => {
-    const p = positionRef.current;
+    // Same precedence as onLoad. Read, not consumed — the effect or onLoad clears it. This
+    // is computed during render, right after a queue advance commits, which is exactly when
+    // positionRef still holds the outgoing track's playhead.
+    const p = pendingStartRef.current ?? positionRef.current;
     return p > 0.05 ? Math.round(p * 1000) : undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
@@ -449,7 +495,6 @@ export default function GlobalAudioPlayer() {
         ...(startPositionMs !== undefined ? { startPosition: startPositionMs } : {}),
       }}
       paused={paused || videoBufferGate}
-      rate={rate}
       onLoad={handleLoad}
       onProgress={handleProgress}
       onBuffer={handleBuffer}
