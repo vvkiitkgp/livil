@@ -108,6 +108,7 @@ export type IconName =
   | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
   | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email' | 'pending'
+  | 'recent'
   // tab bar
   | 'home' | 'search' | 'library' | 'profile'
   // music notes & albums
@@ -204,6 +205,10 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   // A credit the named artist has not answered yet. `regular` — this sits next to a name
   // at 13px, where a filled clock reads as a dot.
   pending: [Clock, 'regular'],
+  // Same glyph as `pending`, deliberately named separately: `pending` means "awaiting an
+  // answer" (an unconfirmed credit), and a recent search is not waiting for anything. Sharing
+  // the name would make a later change to the pending clock silently restyle search history.
+  recent: [Clock, 'regular'],
   // Any of the AI_ROLES. One glyph for the whole group on purpose: the point of the mark
   // is "a tool did this", and six different machine icons would say less, not more.
   ai: [Sparkle, 'fill'],

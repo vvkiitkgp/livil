@@ -285,11 +285,7 @@ export type AlbumSearchResult = {
   uploaderDisplayName: string | null;
 };
 
-export async function searchAlbums(q: string, limit = 20): Promise<AlbumSearchResult[]> {
-  const trimmed = q.trim();
-  let query = supabase
-    .from('albums')
-    .select(`
+const ALBUM_SEARCH_SELECT = `
       id,
       title,
       cover_art_url,
@@ -297,15 +293,86 @@ export async function searchAlbums(q: string, limit = 20): Promise<AlbumSearchRe
       uploader_id,
       uploader:profiles!albums_uploader_id_fkey ( username, display_name ),
       album_tracks ( track_id, track:tracks ( cover_art_url ) )
-    `)
+    ` as const;
+
+/** The same, with the uploader inner-joined so the search can filter on their name. */
+const ALBUM_SEARCH_BY_UPLOADER_SELECT = ALBUM_SEARCH_SELECT.replace(
+  'uploader:profiles!albums_uploader_id_fkey (',
+  'uploader:profiles!albums_uploader_id_fkey!inner (',
+);
+
+/**
+ * The row both album searches return.
+ *
+ * Declared and cast rather than inferred: the select string for the uploader query is built
+ * with `.replace()`, so it is a plain `string` to the compiler and supabase-js widens the
+ * result to include `GenericStringError`. The shape is identical to the title query's, which
+ * IS inferred — so this is written from that inference, not guessed.
+ */
+type AlbumSearchRow = {
+  id: string;
+  title: string;
+  cover_art_url: string | null;
+  release_date: string | null;
+  uploader_id: string;
+  uploader: { username: string; display_name: string | null } | null;
+  album_tracks: Array<{ track_id: string; track: { cover_art_url: string | null } | null }>;
+};
+
+/**
+ * Search albums by title OR by the uploader's name.
+ *
+ * Two queries for the same reason `searchPosts` runs two: PostgREST AND-s filters on
+ * different embedded resources, so "title matches OR uploader matches" cannot be one request.
+ * Searching an artist should surface their releases, not just their profile.
+ *
+ * `limit` caps each match path, so the merged result can hold up to 2×. An album matching
+ * both ways appears once.
+ */
+export async function searchAlbums(q: string, limit = 20): Promise<AlbumSearchResult[]> {
+  const trimmed = q.trim();
+
+  // No query at all is the browse case — every album, newest first, uploader irrelevant.
+  const titleQuery = supabase
+    .from('albums')
+    .select(ALBUM_SEARCH_SELECT)
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (trimmed.length > 0) {
-    query = query.ilike('title', `%${trimmed}%`);
-  }
-  const { data, error } = await query;
-  if (error) { throw new Error(error.message); }
-  return (data ?? []).map(row => {
+  const byTitle =
+    trimmed.length > 0 ? titleQuery.ilike('title', `%${trimmed}%`) : titleQuery;
+
+  const byUploader =
+    trimmed.length > 0
+      ? supabase
+          .from('albums')
+          .select(ALBUM_SEARCH_BY_UPLOADER_SELECT)
+          .or(
+            `username.ilike.%${trimmed}%,display_name.ilike.%${trimmed}%`,
+            { foreignTable: 'uploader' },
+          )
+          .order('created_at', { ascending: false })
+          .limit(limit)
+      : null;
+
+  const [titleResult, uploaderResult] = await Promise.all([byTitle, byUploader]);
+  if (titleResult.error) { throw new Error(titleResult.error.message); }
+
+  // Best-effort, like the post search: the uploader half widens an already-working search,
+  // so its failure should cost results rather than the whole query.
+  const merged = [
+    ...((titleResult.data ?? []) as unknown as AlbumSearchRow[]),
+    ...(uploaderResult && !uploaderResult.error
+      ? ((uploaderResult.data ?? []) as unknown as AlbumSearchRow[])
+      : []),
+  ];
+  const seen = new Set<string>();
+  const rows = merged.filter(row => {
+    if (seen.has(row.id)) { return false; }
+    seen.add(row.id);
+    return true;
+  });
+
+  return rows.map(row => {
     const tracks = (row.album_tracks ?? []) as Array<{ track_id: string; track: { cover_art_url: string | null } | null }>;
     const firstCover = tracks.find(t => t.track?.cover_art_url)?.track?.cover_art_url ?? null;
     const uploader = (row.uploader ?? null) as { username: string; display_name: string | null } | null;
