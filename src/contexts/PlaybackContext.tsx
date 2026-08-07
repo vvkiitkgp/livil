@@ -65,7 +65,6 @@ export type PlayerHandlers = {
   play: () => void;
   pause: () => void;
   seek: (seconds: number) => void;
-  setRate: (rate: number) => void;
 };
 
 type PlaybackContextValue = {
@@ -91,6 +90,22 @@ type PlaybackContextValue = {
 
   // --- position / duration (refs — no re-renders) ---
   positionRef: React.MutableRefObject<number>;
+  /**
+   * Where the NEXT activation must start, committed by whoever changed the track.
+   *
+   * Separate from `positionRef` because that one has two writers: the code choosing a track,
+   * and `updatePosition` reporting progress from the engine. Between committing a queue
+   * advance and GlobalAudioPlayer reading it, the OUTGOING track keeps emitting progress —
+   * so the intended start gets overwritten by the old playhead, and the new track begins
+   * wherever the last one happened to be. `seekGuardRef` was meant to hold that off and
+   * demonstrably does not (no guard ever logged across a whole session of flicks).
+   *
+   * This ref has exactly one writer and one reader, and the reader clears it. Progress
+   * samples cannot touch it, so a start position cannot be raced. Null means "no explicit
+   * start" — resume wherever `positionRef` says, which is what a jam listener syncing to a
+   * host's position relies on.
+   */
+  pendingStartRef: React.MutableRefObject<number | null>;
   durationRef: React.MutableRefObject<number>;
   updatePosition: (seconds: number) => void;
   updateDuration: (seconds: number) => void;
@@ -268,6 +283,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const bumpClipVersion = useCallback(() => setClipVersion(v => v + 1), []);
 
   const positionRef = useRef<number>(0);
+  /** Single-writer start position for the next activation — see the type above. */
+  const pendingStartRef = useRef<number | null>(null);
   const durationRef = useRef<number>(0);
   const clipWindowRef = useRef<{ start: number; end: number } | null>(null);
   const handlersRef = useRef<PlayerHandlers | null>(null);
@@ -337,6 +354,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           ? info.clipStartSec : 0;
         console.log(`[LIVIL][CTX] setNowPlaying NEW postId=${info.postId} title="${info.title}" kind=${info.mediaKind} startAt=${clipStart}s clip=[${info.clipStartSec},${info.clipEndSec}] knownDur=${info.knownDurationSec ?? 0}`);
         positionRef.current = clipStart;
+        // Committed where progress samples cannot reach it — see pendingStartRef.
+        pendingStartRef.current = clipStart;
         durationRef.current = info.knownDurationSec ?? 0;
         clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
           ? { start: info.clipStartSec, end: info.clipEndSec }
@@ -470,6 +489,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     const startPos = (track.clipStartSec !== null && track.clipEndSec !== null)
       ? track.clipStartSec : 0;
     positionRef.current = startPos;
+    pendingStartRef.current = startPos;
     durationRef.current = track.knownDurationSec ?? 0;
     clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
       ? { start: track.clipStartSec, end: track.clipEndSec }
@@ -522,6 +542,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       const startPos = (track.clipStartSec !== null && track.clipEndSec !== null)
         ? track.clipStartSec : 0;
       positionRef.current = startPos;
+      pendingStartRef.current = startPos;
       durationRef.current = track.knownDurationSec ?? 0;
       clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
         ? { start: track.clipStartSec, end: track.clipEndSec }
@@ -799,6 +820,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       clearNowPlaying,
       bumpCommentsCount,
       positionRef,
+      pendingStartRef,
       durationRef,
       updatePosition,
       updateDuration,
