@@ -22,6 +22,9 @@
         --purple-light: #a78bfa;
         --purple-glow: rgba(124, 58, 237, 0.35);
         --success: #00c853;
+        /* Amber for the step-3 wait: it is not an error and not a success, it is a hold.
+           Same value as the app's warning token so the two surfaces agree. */
+        --amber: #f59e0b;
       }
 
       * { box-sizing: border-box; }
@@ -153,6 +156,59 @@
         box-shadow: 0 0 28px rgba(124, 58, 237, 0.35);
       }
 
+      /* ── The step-3 wait ──────────────────────────────────────────────────
+         Play needs time to publish access after step 2, and the button that
+         does nothing yet is the one that makes people think they broke it.
+         Waiting state: same pill, drained of the purple that says "press me". */
+      a.btn[data-waiting] {
+        border-color: var(--amber);
+        color: var(--amber);
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+      a.btn[data-waiting]:hover { background: transparent; box-shadow: none; }
+      /* An hourglass: two triangles meeting at a point, which is the shape people
+         read as "waiting" without needing a label. Drawn with borders rather than
+         an image or an icon font — this page is one self-contained file and stays
+         that way. */
+      .btn-pending {
+        position: relative;
+        display: inline-block;
+        width: 11px; height: 13px;
+        margin-right: 8px;
+        vertical-align: -2px;
+        animation: hourglass-turn 3s ease-in-out infinite;
+      }
+      .btn-pending::before,
+      .btn-pending::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        width: 0; height: 0;
+        border-left: 5.5px solid transparent;
+        border-right: 5.5px solid transparent;
+      }
+      .btn-pending::before { top: 0; border-top: 6.5px solid currentColor; }
+      .btn-pending::after { bottom: 0; border-bottom: 6.5px solid currentColor; }
+      /* Mostly still, then a turn — an hourglass that spun continuously would read
+         as a loading spinner, which is the thing it is deliberately not. */
+      @keyframes hourglass-turn {
+        0%, 72% { transform: rotate(0deg); }
+        88%, 100% { transform: rotate(180deg); }
+      }
+      /* Motion off: the hourglass still reads as waiting standing still, so only
+         the turn goes. */
+      @media (prefers-reduced-motion: reduce) {
+        .btn-pending { animation: none; }
+      }
+      .wait-note {
+        display: block;
+        margin-top: 10px;
+        font-size: 13.5px;
+        color: var(--text-muted);
+      }
+      .wait-note a { color: var(--text-secondary); }
+
       .footer {
         margin-top: 40px;
         padding-top: 24px;
@@ -225,9 +281,16 @@
           <div class="num"><span>3</span></div>
           <h2>Install Livil</h2>
           <p>Android only for now — an iOS build isn't out yet.</p>
-          <a class="btn" href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">
+          <a class="btn" data-install href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">
             Open in Play Store
           </a>
+          <!-- Shown only while the timer runs. The hour is Google's TYPICAL, not a rule:
+               access is sometimes live in ten minutes, and locking out somebody who could
+               already install is a worse failure than them seeing "not available" once. -->
+          <span class="wait-note" data-wait-note hidden>
+            Usually about an hour after step 2.
+            <a href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">Try it anyway →</a>
+          </span>
           <span class="heads-up">
             <strong>Don't search the Play Store for Livil — you won't find it.</strong> A
             test build is never listed publicly, so search comes up empty no matter how
@@ -282,13 +345,77 @@
           link.addEventListener("click", function () {
             done[id] = true;
             li.setAttribute("data-done", "1");
+            // Stamp when step 2 was taken — the step-3 countdown is measured from it.
+            if (id === "optin" && !done.optinAt) done.optinAt = Date.now();
             try {
               localStorage.setItem(KEY, JSON.stringify(done));
             } catch (e) {
               /* private mode — the page still works, it just won't remember */
             }
+            if (id === "optin") startWait();
           });
         });
+
+        // ── The step-3 wait ────────────────────────────────────────────────
+        //
+        // Play does not publish access the moment you accept the invite; it took
+        // about an hour in testing. The button worked the whole time and led to
+        // "App not available", which reads as a broken link rather than a queue —
+        // so people repeat step 1, or give up. A countdown says the same thing the
+        // heads-up text says, except it says it where the hand is going.
+        //
+        // MEASURED FROM STEP 2, not from page load: the wait is Google's, and it
+        // started when the invite was accepted, whether or not this page was open.
+        //
+        // ADVISORY, NOT ENFORCED. The hour is a typical, not a rule — access is
+        // sometimes live in ten minutes. So the escape hatch is always one tap
+        // away; being locked out when you could have installed is worse than one
+        // "not available".
+        var WAIT_MS = 60 * 60 * 1000;
+        var installBtn = document.querySelector("a.btn[data-install]");
+        var waitNote = document.querySelector("[data-wait-note]");
+        var installLabel = installBtn ? installBtn.textContent.trim() : "";
+        var ticker = null;
+
+        function twoDigits(n) { return n < 10 ? "0" + n : String(n); }
+
+        function release() {
+          if (ticker) { clearInterval(ticker); ticker = null; }
+          if (!installBtn) return;
+          installBtn.removeAttribute("data-waiting");
+          installBtn.removeAttribute("aria-disabled");
+          installBtn.textContent = installLabel;
+          if (waitNote) waitNote.hidden = true;
+        }
+
+        function tick() {
+          if (!installBtn || !done.optinAt) return release();
+          var left = done.optinAt + WAIT_MS - Date.now();
+          // `left > WAIT_MS` means the stamp is in the FUTURE — a device clock that is
+          // wrong, or a store somebody edited. Without this the page cheerfully counts
+          // down from "359:45" and blocks the install for six hours. Anything outside
+          // the real window releases: the wait is a hint, and a hint must never be the
+          // reason somebody cannot install the app. NaN falls through here too.
+          if (!(left > 0) || left > WAIT_MS) return release();
+
+          var mins = Math.floor(left / 60000);
+          var secs = Math.floor((left % 60000) / 1000);
+          installBtn.setAttribute("data-waiting", "1");
+          installBtn.setAttribute("aria-disabled", "true");
+          installBtn.innerHTML =
+            '<span class="btn-pending" aria-hidden="true"></span>Wait ' +
+            twoDigits(mins) + ":" + twoDigits(secs);
+          if (waitNote) waitNote.hidden = false;
+        }
+
+        function startWait() {
+          if (!installBtn || !done.optinAt) return;
+          if (done.optinAt + WAIT_MS - Date.now() <= 0) return release();
+          tick();
+          if (!ticker) ticker = setInterval(tick, 1000);
+        }
+
+        startWait();
       })();
     </script>
   </body>
