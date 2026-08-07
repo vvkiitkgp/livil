@@ -607,6 +607,12 @@ function InfoContent({
         </View>
       ) : null}
 
+      {/* Tags are deliberately NOT rendered here. They are an input to search and to the
+          suggestion engine, not a badge on the track — and since every upload starts with
+          the ten EMOTION_TAGS pre-applied, showing them would put "happy sad love angry" on
+          the face of any track whose artist did not prune. The artist manages them where
+          they are set: the upload screen, and the dashboard's track page. */}
+
       {/* ── Engagement stats ──
           Interactive (like + comments) on the left.
           Passive info pill on the right shows plays (cumulative track plays

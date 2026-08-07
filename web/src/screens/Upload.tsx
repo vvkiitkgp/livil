@@ -4,6 +4,7 @@ import { CoverCropper } from '../components/CoverCropper';
 import { VideoPreview } from '../components/VideoPreview';
 import { CoverThumb } from '../components/CoverThumb';
 import { CollaboratorPicker } from '../components/CollaboratorPicker';
+import { TagField } from '../components/TagField';
 import { LevelMeter } from '../components/LevelMeter';
 import { usePreviewPlayer } from '../upload/preview';
 import { MAX_WEB_UPLOAD_BYTES } from '@shared/services/media';
@@ -12,6 +13,7 @@ import { mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
 import { ROLES, getChipTone, isPresetRole } from '@shared/constants/roles';
+import { mergeTags } from '@shared/constants/tags';
 import { ROLE_MAX_LENGTH } from '@shared/services/publishTrack';
 
 /** Sentinel for the dropdown's "type your own" entry — never a stored role. */
@@ -56,6 +58,10 @@ export function Upload() {
   // 'ALL' credits every not-yet-started row at once — the same scope as the cover-art
   // control above it, and for the same reason: an album is the same people twelve times.
   const [creditingId, setCreditingId] = useState<string | 'ALL' | null>(null);
+  // What the batch tag field is showing. Not the truth about any row — each row owns its own
+  // list — just the record of what has been applied to the batch so far, so the field can
+  // tell a new tag from one already sent.
+  const [batchTags, setBatchTags] = useState<string[]>([]);
 
   function accept(files: File[]) {
     const { items } = pairAssets(files);
@@ -148,6 +154,32 @@ export function Upload() {
         </div>
       </div>
 
+      {/* Tags for the whole batch. A field rather than a button, unlike the two controls
+          above it, because there is nothing to open — the tags ARE the input. Appends on
+          every commit, like "credits for all" and for the same reason: a row may already
+          carry a tag set on it individually, and replacing would throw that away.
+
+          Removing a chip here removes it from this field only. Un-applying a tag from twelve
+          rows that have since been edited individually cannot be done correctly, so it is
+          not offered — the per-row field is where a tag comes off a track. */}
+      {pending.length > 1 && (
+        <div className="queue__labelled batchtags">
+          <span className="queue__label">Tags for all {pending.length}</span>
+          <TagField
+            tags={batchTags}
+            onChange={next => {
+              const added = next.filter(t => !batchTags.includes(t));
+              setBatchTags(next);
+              if (added.length > 0) {
+                queue.patchPendingWith(item => ({ tags: mergeTags(item.tags, added) }));
+              }
+            }}
+            label={`Tags applied to all ${pending.length} queued tracks`}
+            placeholder="lofi, latenight — press space or enter"
+          />
+        </div>
+      )}
+
       <div
         className="dropzone"
         data-dragging={dragging || undefined}
@@ -215,6 +247,7 @@ export function Upload() {
               onSeek={preview.seek}
               onTitle={title => queue.patch(item.id, { title })}
               onDescription={description => queue.patch(item.id, { description })}
+              onTags={tags => queue.patch(item.id, { tags })}
               onAddCredit={() => setCreditingId(item.id)}
               onUploaderRole={role => queue.patch(item.id, { uploaderRole: role })}
               onRemoveCredit={clientId =>
@@ -393,6 +426,7 @@ function QueueRow({
   onSeek,
   onTitle,
   onDescription,
+  onTags,
   onAddCredit,
   onRemoveCredit,
   onUploaderRole,
@@ -408,6 +442,7 @@ function QueueRow({
   onSeek: (seconds: number) => void;
   onTitle: (value: string) => void;
   onDescription: (value: string) => void;
+  onTags: (tags: string[]) => void;
   onAddCredit: () => void;
   onRemoveCredit: (clientId: string) => void;
   onUploaderRole: (role: string) => void;
@@ -521,6 +556,33 @@ function QueueRow({
             <button type="button" className="credit credit--add" onClick={onAddCredit}>
               {item.collaborators.length === 0 ? '＋ Add credits' : '＋'}
             </button>
+          )}
+        </div>
+
+        {/* Below the credits, above the file line: tags are metadata the artist writes, so
+            they belong with the fields rather than down with what the file itself says.
+            Captioned with what they DO — "Tags" alone gets left blank, because nothing on
+            screen says why anyone should bother filling it in. */}
+        {/* A div, not a label: a label here would also wrap each chip's remove button,
+            making a click on one ambiguous to assistive tech. The input carries its own
+            `aria-label`. */}
+        <div className="queue__labelled">
+          <span className="queue__label">How people find it</span>
+          <TagField
+            tags={item.tags}
+            onChange={onTags}
+            disabled={locked}
+            label="Tags for this track"
+            placeholder="lofi, latenight — press space or enter"
+          />
+          {/* Asks for a removal first, because that is the state the row opens in: the
+              moods are already applied. Says listeners never see them so nobody prunes for
+              the wrong reason — these are read by search, not printed on the post. */}
+          {!locked && (
+            <span className="hint">
+              Take off the moods this track isn't, and add your own. Listeners never see
+              these — they feed search.
+            </span>
           )}
         </div>
 

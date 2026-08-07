@@ -1316,6 +1316,7 @@ export type Database = {
           lyrics: string | null
           lyrics_format: string | null
           media_kind: string
+          tags: string[] | null
           thumbnail_url: string | null
           title: string
           uploader_id: string
@@ -1333,6 +1334,7 @@ export type Database = {
           lyrics?: string | null
           lyrics_format?: string | null
           media_kind: string
+          tags?: string[] | null
           thumbnail_url?: string | null
           title: string
           uploader_id: string
@@ -1350,6 +1352,7 @@ export type Database = {
           lyrics?: string | null
           lyrics_format?: string | null
           media_kind?: string
+          tags?: string[] | null
           thumbnail_url?: string | null
           title?: string
           uploader_id?: string
@@ -1426,6 +1429,33 @@ export type Database = {
           email_sent_at?: string | null
           email_source?: string | null
           id?: string
+        }
+        Relationships: []
+      }
+      welcome_emails: {
+        Row: {
+          attempts: number
+          claimed_at: string
+          error: string | null
+          sent_at: string | null
+          suppressed_at: string | null
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          claimed_at?: string
+          error?: string | null
+          sent_at?: string | null
+          suppressed_at?: string | null
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          claimed_at?: string
+          error?: string | null
+          sent_at?: string | null
+          suppressed_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -1520,10 +1550,6 @@ export type Database = {
         Returns: string
       }
       create_jam_room: { Args: { p_conversation_id: string }; Returns: string }
-      credit_respond: {
-        Args: { p_accept: boolean; p_credit_id: string }
-        Returns: string
-      }
       creator_plays_by_day: {
         Args: {
           p_exclude_self?: boolean
@@ -1565,6 +1591,10 @@ export type Database = {
           title: string
           track_id: string
         }[]
+      }
+      credit_respond: {
+        Args: { p_accept: boolean; p_credit_id: string }
+        Returns: string
       }
       delete_my_account: { Args: never; Returns: undefined }
       fetch_home_feed: {
@@ -1635,20 +1665,6 @@ export type Database = {
           username: string
         }[]
       }
-      list_pending_credits: {
-        Args: never
-        Returns: {
-          cover_art_url: string
-          created_at: string
-          credit_id: string
-          role: string
-          track_id: string
-          track_title: string
-          uploader_avatar: string
-          uploader_id: string
-          uploader_name: string
-        }[]
-      }
       list_my_conversations: {
         Args: never
         Returns: {
@@ -1664,6 +1680,20 @@ export type Database = {
           other_user_online: boolean
           other_user_username: string
           unread_count: number
+        }[]
+      }
+      list_pending_credits: {
+        Args: never
+        Returns: {
+          cover_art_url: string
+          created_at: string
+          credit_id: string
+          role: string
+          track_id: string
+          track_title: string
+          uploader_avatar: string
+          uploader_id: string
+          uploader_name: string
         }[]
       }
       message_preview: {
@@ -1707,11 +1737,14 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
       waitlist_mark_emailed: {
         Args: { p_error?: string; p_id: string }
         Returns: undefined
       }
       waitlist_request: { Args: { p_email: string }; Returns: string }
+      welcome_email_claim: { Args: never; Returns: boolean }
+      welcome_email_mark: { Args: { p_error?: string }; Returns: undefined }
     }
     Enums: {
       playlist_visibility: "public" | "friends" | "private"

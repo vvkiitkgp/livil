@@ -17,6 +17,8 @@ import { pick, types, errorCodes, isErrorWithCode } from '@react-native-document
 
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
 import FormInput from '../../components/FormInput';
+import TagInput from '../../components/TagInput';
+import { EMOTION_TAGS } from '../../../shared/constants/tags';
 import { Button } from '../../components/Button';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
@@ -114,6 +116,10 @@ export default function UploadScreen() {
   const [description, setDescription] = useState('');
 
   const [collaborators, setCollaborators] = useState<PendingCollaborator[]>([]);
+  // Already normalized — `TagInput` commits the stored form, never the typed form. Seeded
+  // with the emotions, pre-applied: the artist removes the ones this track is not, rather
+  // than opting in to the ones it is.
+  const [tags, setTags] = useState<string[]>(() => [...EMOTION_TAGS]);
   const [uploaderRole, setUploaderRole] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -302,6 +308,7 @@ export default function UploadScreen() {
               cover: cover!,
               uploaderRole,
               collaborators,
+              tags,
               durationSeconds: previewDurationSec,
             }
           : {
@@ -313,6 +320,7 @@ export default function UploadScreen() {
               thumbnail: thumbnail!,
               uploaderRole,
               collaborators,
+              tags,
               durationSeconds: previewDurationSec,
             },
         ({ stage, fraction }) => {
@@ -335,7 +343,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, previewDurationSec, selectedAlbum]);
+  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, tags, previewDurationSec, selectedAlbum]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -556,6 +564,22 @@ export default function UploadScreen() {
               wrapperStyle={styles.descriptionWrapper}
               style={styles.descriptionInput}
             />
+          </View>
+
+          {/* Tags sit with the description, not behind a disclosure. They are the only
+              metadata on this screen that decides whether anyone who is not already
+              following you ever finds the track, and a collapsed section is how a field
+              like that stays empty.
+
+              The hint asks for a removal, not an addition, because that is the action the
+              screen opens on: the emotions arrive already applied. */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Tags · how people find it</Text>
+            <Text style={styles.tagsHint}>
+              Take off the moods this track isn't, and add your own — genre, language,
+              whatever you'd search for. Listeners never see these.
+            </Text>
+            <TagInput tags={tags} onChange={setTags} editable={!submitting} />
           </View>
 
           {/* Add to album · optional — creators can group this upload with
@@ -1006,6 +1030,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  tagsHint: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: -4,
+    marginBottom: 10,
   },
   descriptionWrapper: {
     alignItems: 'flex-start',
