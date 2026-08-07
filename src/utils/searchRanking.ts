@@ -84,13 +84,28 @@ export function popularityScore(counts: {
   likesCount?: number;
   commentsCount?: number;
   repostsCount?: number;
+  /**
+   * Distinct people who opened this FROM SEARCH (`search_result_popularity`).
+   *
+   * The most on-topic signal there is for ordering search results: it is literally "people
+   * who searched, saw this among the options, and chose it". Weighted above a play and a
+   * like, below a repost.
+   *
+   * KNOWN FEEDBACK LOOP, named rather than hidden: ranking higher earns taps, and taps earn
+   * rank. The log scale is most of the answer — the tenth tap moves a track far less than
+   * the first — and match quality still dominates, so this only reorders results that were
+   * already equally good matches. Worth watching once there is enough traffic to see it;
+   * the fix, if it bites, is a time window rather than removing the signal.
+   */
+  searchTaps?: number;
 }): number {
   const safe = (n: number | undefined) => (typeof n === 'number' && n > 0 ? n : 0);
   return (
     1 * Math.log1p(safe(counts.viewsCount)) +
     2 * Math.log1p(safe(counts.likesCount)) +
     3 * Math.log1p(safe(counts.commentsCount)) +
-    4 * Math.log1p(safe(counts.repostsCount))
+    4 * Math.log1p(safe(counts.repostsCount)) +
+    3 * Math.log1p(safe(counts.searchTaps))
   );
 }
 
@@ -102,8 +117,30 @@ export function popularityScore(counts: {
  * profile, and inventing one from follower counts would rank people by a different currency
  * while presenting it as the same number.
  */
-function popularityOf(result: SearchResult): number {
-  return result.kind === 'track' ? popularityScore(result.post) : 0;
+function popularityOf(result: SearchResult, taps: TapCounts): number {
+  const searchTaps = taps[idOfEntity(result)] ?? 0;
+  // People and albums have no engagement counters, but they DO have taps — so a person
+  // everyone opens can now outrank one nobody does, which was impossible before.
+  return result.kind === 'track'
+    ? popularityScore({ ...result.post, searchTaps })
+    : popularityScore({ searchTaps });
+}
+
+/** Taps are counted per ENTITY (track/album/profile), not per post. */
+export type TapCounts = Record<string, number>;
+
+/**
+ * The id taps are recorded against.
+ *
+ * A track, not a post: two reposts of one song are two search results but one piece of
+ * music, and splitting their popularity between them would rank the song below itself.
+ */
+export function idOfEntity(result: SearchResult): string {
+  switch (result.kind) {
+    case 'track': return result.post.track.id;
+    case 'user': return result.profile.id;
+    case 'album': return result.album.id;
+  }
 }
 
 /**
@@ -142,11 +179,14 @@ export function rankSearchResults({
   profiles = [],
   albums = [],
   query,
+  taps = {},
 }: {
   posts?: FeedPost[];
   profiles?: ProfileSearchResult[];
   albums?: AlbumSearchResult[];
   query: string;
+  /** Distinct-people-who-opened-it, by entity id. Absent is simply zero. */
+  taps?: TapCounts;
 }): SearchResult[] {
   const results: SearchResult[] = [
     ...posts.map((post): SearchResult => ({ kind: 'track', id: post.id, post })),
@@ -162,7 +202,7 @@ export function rankSearchResults({
       result,
       index,
       score: scoreOf(result, query),
-      popularity: popularityOf(result),
+      popularity: popularityOf(result, taps),
     }))
     .sort(
       (a, b) =>

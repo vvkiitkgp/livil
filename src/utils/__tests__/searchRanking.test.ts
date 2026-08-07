@@ -15,7 +15,7 @@ const post = (
   id: string,
   title: string,
   counts: Partial<Pick<FeedPost, 'viewsCount' | 'likesCount' | 'commentsCount' | 'repostsCount'>> = {},
-): FeedPost => ({ id, track: { title }, ...counts } as unknown as FeedPost);
+): FeedPost => ({ id, track: { id, title }, ...counts } as unknown as FeedPost);
 
 const profile = (id: string, username: string, displayName: string | null = null): ProfileSearchResult =>
   ({ id, username, displayName, avatarUrl: null });
@@ -171,5 +171,41 @@ describe('rankSearchResults', () => {
       query: 'zzz',
     };
     expect(order(rankSearchResults(input))).toEqual(order(rankSearchResults(input)));
+  });
+});
+
+describe('search taps as a ranking signal', () => {
+  it('lets a much-opened song outrank an equally-matching quiet one', () => {
+    const ranked = rankSearchResults({
+      posts: [post('quiet', 'Gehra Hua'), post('opened', 'Gehra Hua')],
+      query: 'gehra hua',
+      // Keyed by TRACK id, which the stub sets equal to the post id here.
+      taps: { opened: 40 },
+    });
+    expect(order(ranked)).toEqual(['track:opened', 'track:quiet']);
+  });
+
+  it('gives people and albums a popularity they otherwise could not have', () => {
+    // Profiles and albums carry no engagement counters, so before taps they always tied and
+    // fell back to insertion order. Now the one people actually open leads.
+    const ranked = rankSearchResults({
+      profiles: [profile('ignored', 'love'), profile('sought', 'love')],
+      query: 'love',
+      taps: { sought: 12 },
+    });
+    expect(order(ranked)).toEqual(['user:sought', 'user:ignored']);
+  });
+
+  it('still never beats a better name match', () => {
+    const ranked = rankSearchResults({
+      posts: [post('famous', 'Gym Anthem Deluxe'), post('exact', 'Gym')],
+      query: 'gym',
+      taps: { famous: 5000 },
+    });
+    expect(order(ranked)).toEqual(['track:exact', 'track:famous']);
+  });
+
+  it('treats absent tap data as zero rather than breaking', () => {
+    expect(() => rankSearchResults({ posts: [post('p1', 'a')], query: 'a' })).not.toThrow();
   });
 });

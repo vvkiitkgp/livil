@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 78 migration(s) in `supabase/migrations/`.
+Reconstructed from 79 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-36 table(s).
+37 table(s).
 
 ### `activity_notifications`
 
@@ -650,6 +650,27 @@ RLS enabled · defined in `20260607000000_edit_profile_schema.sql`
 | `date_of_birth` | `date` |
 | `phone_number` | `text` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `search_result_taps`
+
+RLS enabled · defined in `20260808000000_search_result_taps.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `kind` | `text not null` |
+| `entity_id` | `uuid not null` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `constraint search_result_taps_kind_check check (kind in ('track', 'album', 'profile'))`
+
+**Indexes**
+
+- `search_result_taps_kind_created_idx` `(kind, created_at desc, entity_id)`
+- `search_result_taps_entity_user_idx` `(entity_id, user_id)`
 
 ### `stories`
 
