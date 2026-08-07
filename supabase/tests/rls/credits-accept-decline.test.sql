@@ -35,8 +35,16 @@ begin
   raise notice 'ok    %', label;
 end $$;
 
+-- SECURITY DEFINER so it works whatever role is currently assumed.
+--
+-- Replacing auth.uid() needs CREATE on schema auth, which `authenticated` does not have.
+-- Every section here switches user WITHOUT dropping back to the owner first — and there is
+-- no `reset role` anywhere in this file — so without this the first `set local role
+-- authenticated` poisons every later set_user with "permission denied for schema auth",
+-- which aborts the file. That is not a hypothetical: it is why this test only ever ran its
+-- first three assertions.
 create or replace function pg_temp.set_user(uid uuid)
-returns void language plpgsql as $$
+returns void language plpgsql security definer as $$
 begin
   execute format('create or replace function auth.uid() returns uuid language sql stable as $f$ select %L::uuid $f$', uid);
 end $$;
@@ -114,8 +122,8 @@ select pg_temp.assert(
   true);
 
 -- ── 2. The collaborator cannot edit the row directly ─────────────────────────
-set local role authenticated;
 select pg_temp.set_user('cc000000-0000-0000-0000-000000000002');
+set local role authenticated;
 
 -- The hole this migration closes. Before it, `..._or_self` let the tagged user update any
 -- column on their own row — including promoting the role they were given.
@@ -142,7 +150,7 @@ select pg_temp.assert(
 
 -- ── 3. Answering, through the function ───────────────────────────────────────
 select pg_temp.assert(
-  'a pending credit appears in the tagged artist\'s list',
+  'a pending credit appears in the tagged artist''s list',
   (select count(*) = 1 from list_pending_credits()),
   true);
 
@@ -175,12 +183,18 @@ select pg_temp.assert(
     where id = 'cc000000-0000-0000-0000-0000000000b1'),
   true);
 
+-- Asked of the DATABASE, not of the collaborator, so the role goes back to the owner first.
+-- `activity_notifications_select_own` is `using (recipient_id = auth.uid())`: read as user
+-- ...002, the uploader's notification is invisible BY DESIGN, and the assertion fails while
+-- describing the policy working correctly. The section resumes as ...002 afterwards.
+reset role;
 select pg_temp.assert(
   'the uploader is told the credit was accepted',
   (select count(*) = 1 from activity_notifications
     where recipient_id = 'cc000000-0000-0000-0000-000000000001'
       and type = 'credit_accepted'),
   true);
+set local role authenticated;
 
 -- The bot message that asked the question records the answer, so a reloaded bubble does
 -- not keep offering buttons on a credit that is already settled.
@@ -206,7 +220,10 @@ select pg_temp.assert(
 -- Nobody can answer for a typed-in name: there is no account behind it.
 select pg_temp.set_user('cc000000-0000-0000-0000-000000000001');
 select pg_temp.assert(
-  'the uploader cannot answer on a collaborator\'s behalf',
+  -- Doubled, not backslash-escaped: `standard_conforming_strings` is on, so `\'` does not
+  -- end-quote anything — it closes the literal early and psql reads the remainder as a
+  -- meta-command, aborting the file.
+  'the uploader cannot answer on a collaborator''s behalf',
   (select credit_respond('cc000000-0000-0000-0000-0000000000b1', true) is null),
   true);
 
@@ -222,12 +239,16 @@ select pg_temp.assert_eq(
   (select credit_respond('cc000000-0000-0000-0000-0000000000b3', false)),
   'declined');
 
+-- Owner again, for the same reason as the accepted case above: this asks what the database
+-- holds for the UPLOADER, and the session belongs to the collaborator who just declined.
+reset role;
 select pg_temp.assert(
   'the uploader is told it was declined, so they do not simply re-add it',
   (select count(*) = 1 from activity_notifications
     where recipient_id = 'cc000000-0000-0000-0000-000000000001'
       and type = 'credit_declined'),
   true);
+set local role authenticated;
 
 -- ── 6. The uploader keeps control of the list ────────────────────────────────
 select pg_temp.set_user('cc000000-0000-0000-0000-000000000001');
