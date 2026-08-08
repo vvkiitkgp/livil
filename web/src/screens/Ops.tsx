@@ -6,6 +6,7 @@ import { formatDate } from '../format';
 import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
 import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
+import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
 
 /**
  * Waitlist ops.
@@ -37,6 +38,10 @@ export function Ops() {
   const [searchDays, setSearchDays] = useState(30);
   const [topSearched, setTopSearched] = useState<OpsSearchResult[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [reports, setReports] = useState<OpsReport[] | null>(null);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [showReviewed, setShowReviewed] = useState(false);
+  const [reportBusyId, setReportBusyId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -60,6 +65,35 @@ export function Ops() {
         setUsersError(e?.message ?? 'Could not load users.');
       });
   }, []);
+
+  const loadReports = useCallback(() => {
+    setReportsError(null);
+    fetchOpsReports(showReviewed)
+      .then(setReports)
+      .catch(e => {
+        setReports([]);
+        setReportsError(e?.message ?? 'Could not load reports.');
+      });
+  }, [showReviewed]);
+
+  useEffect(loadReports, [loadReports]);
+
+  // Optimistic, then reload: the row must leave the open queue the instant it is
+  // actioned, or an operator working down a list re-reads rows they just cleared.
+  const handleReviewed = useCallback(
+    async (r: OpsReport) => {
+      setReportBusyId(r.id);
+      try {
+        await markReportReviewed(r.kind, r.id, r.reviewedAt === null);
+        loadReports();
+      } catch (e) {
+        setReportsError(e instanceof Error ? e.message : 'Could not update that report.');
+      } finally {
+        setReportBusyId(null);
+      }
+    },
+    [loadReports],
+  );
 
   useEffect(() => {
     setTopSearched(null);
@@ -219,6 +253,102 @@ export function Ops() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Reports ──
+          Above Messages on purpose. This is the only section with a clock on it:
+          Play's UGC policy expects reports to be acted on, and the queue that gets
+          scrolled past is the queue that rots — which is how post_reports sat
+          unread for two months. */}
+      <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
+        <div>
+          <p className="kicker">Needs a decision</p>
+          <h1 className="display page__title">Reports</h1>
+        </div>
+        <div className="filters">
+          {reports !== null && !showReviewed && (
+            <span className="chip" data-active>
+              {reports.length} open
+            </span>
+          )}
+          <Button
+            variant={showReviewed ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setShowReviewed(v => !v)}
+          >
+            {showReviewed ? 'Open only' : 'Show reviewed'}
+          </Button>
+        </div>
+      </header>
+
+      {reportsError && (
+        <div className="empty panel">
+          <p className="empty__title">Could not load reports</p>
+          <p className="hint">{reportsError}</p>
+        </div>
+      )}
+
+      {reports === null && !reportsError && <div className="skeleton skeleton--rows" />}
+
+      {reports !== null && reports.length === 0 && !reportsError && (
+        <div className="empty panel">
+          <p className="empty__title">{showReviewed ? 'No reports yet' : 'Nothing waiting'}</p>
+          <p className="hint">
+            Reports from posts, comments and stories all land here. Story reports are kept
+            even after the story expires.
+          </p>
+        </div>
+      )}
+
+      {reports !== null && reports.length > 0 && (
+        <div className="panel msglist">
+          {reports.map(r => (
+            <article className="msg" key={`${r.kind}-${r.id}`}>
+              <div className="msg__head">
+                <span className="badge" data-kind={r.kind}>{r.kind}</span>
+                <span className="table__title">{r.reason}</span>
+                {r.reportedUsername ? (
+                  <span className="hint">on @{r.reportedUsername}</span>
+                ) : (
+                  <span className="hint">on a deleted account</span>
+                )}
+                {/* The reported thing can be gone — a deleted post, or a story past
+                    its 24 hours — while the report and the reported USER remain. Say
+                    so rather than dropping the row. */}
+                {!r.targetExists && <span className="badge">content gone</span>}
+                <span className="hint msg__when">{formatDate(r.createdAt)}</span>
+              </div>
+
+              <p className="msg__body">
+                {r.targetExcerpt || '(nothing to show)'}
+              </p>
+
+              <div className="msg__head">
+                <span className="hint">
+                  reported by {r.reporterUsername ? `@${r.reporterUsername}` : 'a deleted account'}
+                </span>
+                {r.reviewedAt && (
+                  <span className="hint">
+                    reviewed {formatDate(r.reviewedAt)}
+                    {r.reviewerUsername ? ` by @${r.reviewerUsername}` : ''}
+                  </span>
+                )}
+                <div className="filters" style={{ marginLeft: 'auto' }}>
+                  <Button
+                    variant={r.reviewedAt ? 'secondary' : 'primary'}
+                    size="sm"
+                    disabled={reportBusyId === r.id}
+                    onClick={() => handleReviewed(r)}
+                  >
+                    {r.reviewedAt ? 'Reopen' : 'Mark reviewed'}
+                  </Button>
+                </div>
+              </div>
+
+              {r.details && <p className="hint">{r.details}</p>}
+            </article>
+          ))}
         </div>
       )}
 

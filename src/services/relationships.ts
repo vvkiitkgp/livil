@@ -18,6 +18,13 @@ export type ViewerRelationships = {
   stars: string[];
   pendingOutgoing: string[];
   pendingIncoming: string[];
+  /**
+   * People I have blocked. One-way: this can never contain someone who blocked
+   * ME, because blocked_users_select_own admits the blocker only. That asymmetry
+   * is deliberate — see the migration — so the UI must never try to render "you
+   * are blocked by this person".
+   */
+  blocked: string[];
 };
 
 /**
@@ -28,10 +35,10 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;
   if (!me) {
-    return { friends: [], stars: [], pendingOutgoing: [], pendingIncoming: [] };
+    return { friends: [], stars: [], pendingOutgoing: [], pendingIncoming: [], blocked: [] };
   }
 
-  const [friendshipsRes, starsRes] = await Promise.all([
+  const [friendshipsRes, starsRes, blockedRes] = await Promise.all([
     db
       .from('friendships')
       .select('user_a_id, user_b_id, requested_by, status')
@@ -41,10 +48,17 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
       .select('following_id')
       .eq('follower_id', me)
       .eq('kind', 'star'),
+    // No .eq('blocker_id', me) needed — RLS already scopes this to my own rows —
+    // but it is stated anyway so the query reads correctly against the table.
+    db
+      .from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', me),
   ]);
 
   if (friendshipsRes.error) { throw new Error(friendshipsRes.error.message); }
   if (starsRes.error) { throw new Error(starsRes.error.message); }
+  if (blockedRes.error) { throw new Error(blockedRes.error.message); }
 
   const friends: string[] = [];
   const pendingOutgoing: string[] = [];
@@ -69,7 +83,29 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
   const stars = ((starsRes.data ?? []) as Array<{ following_id: string }>)
     .map(r => r.following_id);
 
-  return { friends, stars, pendingOutgoing, pendingIncoming };
+  const blocked = ((blockedRes.data ?? []) as Array<{ blocked_id: string }>)
+    .map(r => r.blocked_id);
+
+  return { friends, stars, pendingOutgoing, pendingIncoming, blocked };
+}
+
+/**
+ * Blocks a user: severs the friendship (accepted or pending) and drops stars in
+ * both directions, atomically, inside block_user(). Their uploads, reposts,
+ * playlists and albums stay visible — blocking severs contact, not the catalogue.
+ */
+export async function blockUser(userId: string): Promise<void> {
+  const { error } = await db.rpc('block_user', { target_user_id: userId });
+  if (error) { throw new Error(error.message); }
+}
+
+/**
+ * Unblocks. Does NOT restore the friendship or the stars that blocking removed —
+ * the pair go back to strangers, not to friends.
+ */
+export async function unblockUser(userId: string): Promise<void> {
+  const { error } = await db.rpc('unblock_user', { target_user_id: userId });
+  if (error) { throw new Error(error.message); }
 }
 
 export async function sendFriendRequest(userId: string): Promise<void> {

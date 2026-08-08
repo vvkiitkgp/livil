@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-184 TypeScript file(s) under `src/`, 50,514 lines.
+185 TypeScript file(s) under `src/`, 51,137 lines.
 
 ## Size hotspots
 
@@ -26,17 +26,17 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2368 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1564 |
+| `src/components/FullScreenPlayer.tsx` | 2370 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/components/PostCard.tsx` | 1266 |
 | `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
+| `src/screens/main/UserProfileScreen.tsx` | 1009 |
 | `src/components/FloatingPlayer.tsx` | 927 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
-| `src/screens/main/UserProfileScreen.tsx` | 814 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
@@ -93,18 +93,18 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 19,947 lines.
+40 file(s), 20,182 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/StoryViewerScreen.tsx` | 1564 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
+| `src/screens/main/UserProfileScreen.tsx` | 1009 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
-| `src/screens/main/UserProfileScreen.tsx` | 814 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/SearchScreen.tsx` | 647 |
@@ -140,27 +140,28 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-66 file(s), 16,040 lines.
+67 file(s), 16,311 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2368 |
+| `src/components/FullScreenPlayer.tsx` | 2370 |
 | `src/components/PostCard.tsx` | 1266 |
 | `src/components/FloatingPlayer.tsx` | 927 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 541 |
 | `src/components/QueueList.tsx` | 475 |
 | `src/components/MediaPlayer.tsx` | 469 |
+| `src/components/AddUserSheet.tsx` | 401 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/DetailView.tsx` | 395 |
 | `src/components/ClipRangeSlider.tsx` | 387 |
-| `src/components/AddUserSheet.tsx` | 376 |
-| `src/components/PostLikersSheet.tsx` | 351 |
+| `src/components/PostLikersSheet.tsx` | 356 |
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/CommentItem.tsx` | 271 |
+| `src/components/Icon.tsx` | 255 |
 | `src/components/InboxBanner.tsx` | 254 |
-| `src/components/Icon.tsx` | 252 |
 | `src/components/Button.tsx` | 247 |
+| `src/components/StoryReportModal.tsx` | 236 |
 | `src/components/ActivityBubble.tsx` | 229 |
 | `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
@@ -213,7 +214,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-32 file(s), 8,268 lines.
+32 file(s), 8,334 lines.
 
 | File | Lines |
 |---|---:|
@@ -233,13 +234,13 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/publishTrackCredits.test.ts` | 227 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
+| `src/services/stories.ts` | 209 |
 | `src/services/__tests__/tags.test.ts` | 180 |
-| `src/services/stories.ts` | 179 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
+| `src/services/relationships.ts` | 168 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
-| `src/services/relationships.ts` | 132 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/searchAnalytics.ts` | 72 |
@@ -252,13 +253,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-9 file(s), 2,247 lines.
+9 file(s), 2,298 lines.
 
 | File | Lines |
 |---|---:|
 | `src/contexts/PlaybackContext.tsx` | 955 |
 | `src/contexts/JamRealtimeContext.tsx` | 389 |
-| `src/contexts/RelationshipContext.tsx` | 294 |
+| `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/ToastContext.tsx` | 190 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |

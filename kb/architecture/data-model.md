@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 79 migration(s) in `supabase/migrations/`.
+Reconstructed from 82 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-37 table(s).
+39 table(s).
 
 ### `activity_notifications`
 
@@ -95,6 +95,25 @@ RLS enabled · defined in `20260616000000_albums_and_playlist_visibility.sql`
 **Indexes**
 
 - `albums_uploader_idx` `(uploader_id, created_at desc)`
+
+### `blocked_users`
+
+RLS enabled · defined in `20260808100000_blocked_users.sql`
+
+| Column | Definition |
+|---|---|
+| `blocker_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `blocked_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (blocker_id, blocked_id)`
+- `constraint blocked_users_no_self check (blocker_id <> blocked_id)`
+
+**Indexes**
+
+- `blocked_users_blocked_idx` `(blocked_id)`
 
 ### `conversation_members`
 
@@ -438,9 +457,17 @@ RLS enabled · defined in `20260607000004_post_comments_likes_reports.sql`
 | `details` | `text` |
 | `created_at` | `timestamptz not null default now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
+| `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+
 **Indexes**
 
 - `post_comment_reports_reporter_idx` `(reporter_id)`
+- `post_comment_reports_open_idx` `(created_at desc) where reviewed_at is null`
 
 ### `post_comments`
 
@@ -512,10 +539,18 @@ RLS enabled · defined in `20260607000007_post_reports.sql`
 | `details` | `text` |
 | `created_at` | `timestamptz not null default now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
+| `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+
 **Indexes**
 
 - `post_reports_reporter_idx` `(reporter_id)`
 - `post_reports_post_idx` `(post_id)`
+- `post_reports_open_idx` `(created_at desc) where reviewed_at is null`
 
 ### `post_views`
 
@@ -703,6 +738,33 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 **Triggers**
 
 - `stories_pin_expiry_trg` — before insert or update (`20260724120000_prop0004_harden_stories.sql`)
+
+### `story_reports`
+
+RLS enabled · defined in `20260808110000_story_reports.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `story_id` | `uuid references public.stories(id) on delete set null` |
+| `reported_user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `reporter_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `reason` | `text not null check (reason in ('spam','harassment','hate','misinformation','other'))` |
+| `details` | `text` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
+| `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+
+**Indexes**
+
+- `story_reports_reporter_idx` `(reporter_id)`
+- `story_reports_reported_idx` `(reported_user_id)`
+- `story_reports_open_idx` `(created_at desc) where reviewed_at is null`
 
 ### `story_views`
 

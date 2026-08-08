@@ -152,6 +152,39 @@ export type Database = {
           },
         ]
       }
+      blocked_users: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blocked_users_blocked_id_fkey"
+            columns: ["blocked_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blocked_users_blocker_id_fkey"
+            columns: ["blocker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_members: {
         Row: {
           conversation_id: string
@@ -803,6 +836,8 @@ export type Database = {
           id: string
           reason: string
           reporter_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
         }
         Insert: {
           comment_id: string
@@ -811,6 +846,8 @@ export type Database = {
           id?: string
           reason: string
           reporter_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Update: {
           comment_id?: string
@@ -819,6 +856,8 @@ export type Database = {
           id?: string
           reason?: string
           reporter_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Relationships: [
           {
@@ -831,6 +870,13 @@ export type Database = {
           {
             foreignKeyName: "post_comment_reports_reporter_id_fkey"
             columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comment_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -930,6 +976,8 @@ export type Database = {
           post_id: string
           reason: string
           reporter_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
         }
         Insert: {
           created_at?: string
@@ -938,6 +986,8 @@ export type Database = {
           post_id: string
           reason: string
           reporter_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Update: {
           created_at?: string
@@ -946,6 +996,8 @@ export type Database = {
           post_id?: string
           reason?: string
           reporter_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Relationships: [
           {
@@ -958,6 +1010,13 @@ export type Database = {
           {
             foreignKeyName: "post_reports_reporter_id_fkey"
             columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1225,6 +1284,71 @@ export type Database = {
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      story_reports: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          story_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          story_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason?: string
+          reported_user_id?: string
+          reporter_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          story_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_reports_reported_user_id_fkey"
+            columns: ["reported_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_reports_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
             referencedColumns: ["id"]
           },
         ]
@@ -1564,6 +1688,7 @@ export type Database = {
         Returns: undefined
       }
       assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
+      block_user: { Args: { target_user_id: string }; Returns: undefined }
       broadcast_jam_state: {
         Args: { p_jam_room_id: string; p_payload: Json }
         Returns: undefined
@@ -1629,6 +1754,10 @@ export type Database = {
         Returns: string
       }
       delete_my_account: { Args: never; Returns: undefined }
+      dm_blocked_for_sender: {
+        Args: { p_conversation_id: string }
+        Returns: boolean
+      }
       fetch_home_feed: {
         Args: {
           p_cursor_bucket?: number
@@ -1649,6 +1778,7 @@ export type Database = {
         Args: { user_a: string; user_b: string }
         Returns: string
       }
+      is_blocked_between: { Args: { a: string; b: string }; Returns: boolean }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
       is_ops: { Args: never; Returns: boolean }
       is_username_available: { Args: { p_username: string }; Returns: boolean }
@@ -1732,6 +1862,30 @@ export type Database = {
         Args: { p_body: string; p_kind: string }
         Returns: string
       }
+      ops_mark_report_reviewed: {
+        Args: { p_id: string; p_kind: string; p_reviewed?: boolean }
+        Returns: undefined
+      }
+      ops_reports_overview: {
+        Args: { p_include_reviewed?: boolean }
+        Returns: {
+          created_at: string
+          details: string
+          id: string
+          kind: string
+          reason: string
+          reported_user_id: string
+          reported_username: string
+          reporter_id: string
+          reporter_username: string
+          reviewed_at: string
+          reviewed_by: string
+          reviewer_username: string
+          target_excerpt: string
+          target_exists: boolean
+          target_id: string
+        }[]
+      }
       ops_team_messages: {
         Args: never
         Returns: {
@@ -1775,6 +1929,10 @@ export type Database = {
       }
       remove_friend: { Args: { other_user_id: string }; Returns: undefined }
       remove_star: { Args: { target_user_id: string }; Returns: undefined }
+      report_story: {
+        Args: { p_details?: string; p_reason: string; p_story_id: string }
+        Returns: undefined
+      }
       search_result_popularity: {
         Args: { p_ids: string[]; p_kind: string }
         Returns: {
@@ -1787,6 +1945,7 @@ export type Database = {
         Returns: undefined
       }
       track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
+      unblock_user: { Args: { target_user_id: string }; Returns: undefined }
       waitlist_mark_emailed: {
         Args: { p_error?: string; p_id: string }
         Returns: undefined
