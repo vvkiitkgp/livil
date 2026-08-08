@@ -96,6 +96,19 @@ jobs:
       - name: CLAUDE.md must match build.gradle
         run: node scripts/check-version-sync.mjs
 
+  # Deliberately its own job, not a step inside `migrations`. That job builds a
+  # Postgres which does NOT carry Supabase's default privileges, so a function
+  # anon can execute in production has no anon grant there at all — a live
+  # assertion would pass while production stayed open. This reads the SQL, needs
+  # no database, and so runs on every PR in seconds.
+  definer-grants:
+    name: definer functions are not anon-callable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No SECURITY DEFINER function left executable by anon
+        run: node scripts/check-definer-anon-grants.mjs
+
   migrations:
     name: migrations apply cleanly
     runs-on: ubuntu-latest
