@@ -108,6 +108,62 @@ export async function unblockUser(userId: string): Promise<void> {
   if (error) { throw new Error(error.message); }
 }
 
+export type BlockedAccount = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  blockedAt: string;
+};
+
+/**
+ * The people I have blocked, with enough profile to recognise them.
+ *
+ * WHY THIS EXISTS AS ITS OWN CALL. RelationshipContext already holds the blocked
+ * ids, but ids are not a list a person can read. Blocking severs the friendship,
+ * so a blocked account is by definition no longer anywhere else in the app — not
+ * in friends, not in stars. Without this, the only route to unblock is finding
+ * their profile again, which requires remembering a username you deliberately
+ * pushed out of your life. That is a dead end, not a design.
+ *
+ * Ordered newest first: the block you most likely want to undo is the one you
+ * least meant.
+ *
+ * RLS does the scoping — `blocked_users_select_own` admits the blocker's rows and
+ * no one else's — so this cannot return another user's block list even if the
+ * filter below were wrong.
+ */
+export async function listBlockedAccounts(): Promise<BlockedAccount[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  if (!me) { return []; }
+
+  const { data, error } = await db
+    .from('blocked_users')
+    .select('blocked_id, created_at, profiles!blocked_users_blocked_id_fkey(username, display_name, avatar_url)')
+    .eq('blocker_id', me)
+    .order('created_at', { ascending: false });
+
+  if (error) { throw new Error(error.message); }
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map(row => {
+    // PostgREST returns an embedded one-to-one as an object, but older planners
+    // and some column shapes hand back a single-element array. Accept both rather
+    // than render "Unknown" for every row if that ever changes.
+    const raw = row.profiles;
+    const p = (Array.isArray(raw) ? raw[0] : raw) as
+      | { username?: string | null; display_name?: string | null; avatar_url?: string | null }
+      | undefined;
+    return {
+      userId: row.blocked_id as string,
+      username: p?.username ?? '',
+      displayName: p?.display_name ?? null,
+      avatarUrl: p?.avatar_url ?? null,
+      blockedAt: row.created_at as string,
+    };
+  });
+}
+
 export async function sendFriendRequest(userId: string): Promise<void> {
   const { error } = await db.rpc('send_friend_request', { target_user_id: userId });
   if (error) { throw new Error(error.message); }

@@ -163,9 +163,18 @@ describe('PrivacyDataScreen', () => {
     });
   });
 
-  it('offers no blocking control — reporting is the moderation path', async () => {
-    const shown = texts(await mount()).join(' ').toLowerCase();
-    expect(shown).not.toContain('block');
+  // REPLACES 'offers no blocking control — reporting is the moderation path',
+  // which asserted the opposite and failed the moment blocking shipped. It was
+  // right to fail: it encoded a product decision, that decision was reversed, and
+  // the assertion is what noticed. Inverted rather than deleted, because the
+  // route out of here is the part worth protecting — blocking severs the
+  // friendship, so this screen is the only reliable way back to a blocked
+  // account, and losing the row would quietly make blocking one-way.
+  it('routes to the blocked-accounts screen', async () => {
+    const tree = await mount();
+    expect(texts(tree).join(' ')).toContain('Blocked accounts');
+    act(() => { pressable(tree, 'Blocked accounts').props.onPress(); });
+    expect(mockNavigate).toHaveBeenCalledWith('BlockedAccounts');
   });
 
   it('routes to the delete-account screen', async () => {
