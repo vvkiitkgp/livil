@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-platform
 consumers: [DO, P-PF]
-last_verified: 2026-08-04
+last_verified: 2026-08-08
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -12,9 +12,9 @@ related_adrs: []
 
 # Play Store — Pre-Production Checklist
 
-Status as of **2026-08-04**: closed-testing criteria met (12+ testers, 14+ days),
-**Apply for production** unlocked in the Console, production track **Inactive**,
-`1.1.16 (62)` still **In review** on the closed track.
+Status as of **2026-08-08**: closed-testing criteria met (12+ testers, 14+ days),
+**Apply for production** unlocked in the Console, production track **Inactive**.
+`main` is at `1.1.19 (65)`.
 
 Applying for production is not the same as shipping to production. The application
 is a questionnaire Google reviews (typically days, occasionally weeks). Nothing below
@@ -24,30 +24,51 @@ rejection lands on the account.
 
 ---
 
-## 1. Blockers — user-generated content policy
+## 1. User-generated content policy — DONE 2026-08-08
 
 Livil is a social app with public UGC (tracks, video posts, stories, comments, DMs).
 Google's [UGC policy](https://support.google.com/googleplay/android-developer/answer/9876937)
 requires **all** of: in-app reporting, in-app blocking, and a moderation process that
-actually acts on reports. Livil currently has one of the three.
+actually acts on reports. Livil had one of the three. It now has all three, shipped on
+`feat/moderation-blocking-reports` with the migrations applied to production.
 
-- [ ] **User blocking does not exist.** No `blocked_users` table, no block action
-      anywhere in `src/`. This is an explicit, itemised UGC requirement — not a nice
-      to have. Needs a table + RLS, a block action on profiles/posts, and filtering
-      of blocked users out of the feed, stories, comments, search and DMs.
-- [ ] **Stories cannot be reported.** `PostReportModal` is wired to `PostCard` only.
-      `StoryViewerScreen` has no report affordance, and there is no `story_reports`
-      table. Stories are the highest-risk surface (ephemeral, full-screen, autoplay).
-- [ ] **Reports are write-only with no moderation tooling.** `post_reports` /
-      `post_comment_reports` have an insert policy and *no select policy* — by design,
-      per the migration comment: "Moderation reads happen via service role / admin
-      tooling later." Later is now. A report that nothing reads is not a moderation
-      process. Minimum viable: a service-role queue view + a documented human SLA for
-      reviewing and actioning it.
-- [ ] **Decide the stories ship posture.** The long-standing open question. Options:
-      ship stories with the moderation stack above, or gate stories off for the
-      production track and ship the rest. Either is defensible; drifting into launch
-      without deciding is not.
+- [x] **Blocking.** `blocked_users` (migration `20260808100000`), one-way and invisible
+      to the person blocked. Severs the friendship (accepted or pending), drops stars
+      both ways, and refuses friend requests, stars, comments and DMs from either side.
+      Guards sit on the RLS policies, not only the RPCs — PostgREST would otherwise be
+      an open bypass. UI is the 3-dots menu on `UserProfileScreen`; when blocked, the
+      Friend/Message row collapses to one **Blocked** control that leads to unblock.
+      **Content stays visible** — uploads, reposts, playlists and albums. Deliberate:
+      the policy asks that a user be able to stop unwanted *contact*, and a catalogue
+      with holes in it based on who fell out with whom is a worse product.
+- [x] **Stories are reportable.** `story_reports` (migration `20260808110000`) plus a
+      Report row in the existing `StoryViewerScreen` menu and `StoryReportModal`.
+      `story_id` is `on delete set null` and the reported user is denormalised, so a
+      report **outlives the story's 24-hour expiry** — cascading would have emptied the
+      queue of exactly the reports nobody had reached yet, every single day.
+- [x] **The queue is readable and actionable.** `ops_reports_overview()` /
+      `ops_mark_report_reviewed()` (migration `20260808120000`) and a Reports section in
+      `/studio/ops` covering all three surfaces with mark-reviewed. Same `is_ops()`
+      posture as the rest of the dashboard: the read fails soft, the write raises.
+- [x] **Stories ship posture: resolved — stories ship.** The question was only ever
+      "can a viewer do anything about a bad story", and now they can. No longer a gate.
+
+### What this left open
+
+- [ ] **Commit to a review turnaround, in writing.** The questionnaire asks what happens
+      when a user reports something. "It appears in a queue" is half an answer; the other
+      half is how fast someone looks. Pick a number you will actually honour (24h is
+      normal for an app this size) and use it in the answer.
+- [ ] **Add yourself to `ops_users`.** `is_ops()` reads that table, and it currently has
+      **one row** (`vvk_google_test`). Any other account sees an empty Reports section —
+      it fails soft by design, so this looks like "no reports", not like an error.
+- [ ] **Clear the backlog before you apply.** There is a real unreviewed report in
+      production from **2026-07-26** (a post, reason: misinformation). Applying while the
+      only report you have ever received sits untouched undercuts the answer above.
+- [ ] **Known gap — post and comment reports still cascade.** An author who deletes a
+      reported post erases the report with it. Stories are fixed; these two are not.
+      Same change applied to two more tables plus a `reported_user_id` backfill. Not a
+      launch blocker, but it is the same class of bug that motivated the story fix.
 
 > The production application questionnaire asks directly about safety and moderation.
 > Answers that don't match what the app actually does are the fastest route to a
@@ -65,8 +86,8 @@ actually acts on reports. Livil currently has one of the three.
 - [ ] Feature graphic (1024×500) reflects the purple rebrand, not the old blue.
 - [ ] Phone screenshots (min 2, 4–8 recommended) are from a current build — check
       none still show the old blue accent or pre-redesign stories.
-- [ ] Short (80 char) and full (4000 char) description are current; feature list
-      matches what actually ships if stories are gated off.
+- [ ] Short (80 char) and full (4000 char) description are current, and the feature
+      list matches what ships. Stories are in — see section 1.
 - [ ] App category, tags, and contact details (`vvk.iitkgp@gmail.com`).
 - [ ] Privacy policy URL set to `https://livil-music.com/privacy-policy.html`
       (matches `src/constants/links.ts` — these must not drift).
@@ -82,6 +103,11 @@ production, and several are new-ish requirements that closed testing did not enf
       views, play counts), and device IDs (FCM token via
       `@react-native-firebase/messaging`). Declare all of it as collected **and**
       stored, encrypted in transit, with deletion available.
+      *Since the moderation work:* blocks (`blocked_users`) and reports
+      (`post_reports`, `post_comment_reports`, `story_reports`, including free-text
+      details a reporter types) are also stored. These sit under "app activity" /
+      "other user-generated content" rather than needing a new category, but they are
+      user data and the declaration should not pretend otherwise.
 - [ ] **Account deletion.** Requirement is both in-app *and* a public web URL.
       Both exist — `DeleteAccountScreen` + `https://livil-music.com/delete-account.html`
       (`20260722200000_account_deletion.sql`). Just needs declaring.
@@ -90,9 +116,12 @@ production, and several are new-ish requirements that closed testing did not enf
       `READ_MEDIA_VIDEO` is **not** declared even though the app uploads video — if
       video selection uses the system photo picker that is correct and preferable;
       if it silently fails on Android 13+, that is a bug to fix first.
-- [ ] **Content rating questionnaire.** Answer honestly for a social app with
-      unmoderated UGC, user-to-user interaction, and content sharing. Expect Teen+.
-      A rating obtained by understating UGC is grounds for removal.
+- [ ] **Content rating questionnaire.** Answer honestly for a social app with public
+      UGC, user-to-user interaction, and content sharing. Expect Teen+. A rating
+      obtained by understating UGC is grounds for removal. Where it asks whether UGC
+      is moderated, the answer is now **yes** — reporting on every surface, blocking,
+      and a reviewed queue — but only say so once the turnaround in section 1 is
+      something you are actually doing.
 - [ ] **Target audience and content.** Choose 13+ or 18+. Anything including under-13
       pulls in Families policy and Play's designed-for-families requirements.
 - [ ] **Child safety standards.** Mandatory for social / UGC apps. `docs/child-safety.html`
@@ -105,8 +134,10 @@ production, and several are new-ish requirements that closed testing did not enf
 
 - [ ] `targetSdkVersion 36` / `compileSdkVersion 36` — current, comfortably inside the
       target-API window. `minSdkVersion 24`.
-- [ ] Bump `versionCode` (**62 → 63**) and `versionName` in
-      `android/app/build.gradle` for the production build.
+- [ ] Bump `versionCode` (**65 → 66**) and `versionName` in
+      `android/app/build.gradle` for the production build. Codes 63, 64 and 65 are
+      already spent — a reused code is rejected at upload, and a code is spent even
+      if the release it belonged to was discarded.
 - [ ] `cd android && ./gradlew bundleRelease` → upload
       `android/app/build/outputs/bundle/release/app-release.aab`.
 - [ ] Confirm the release build boots from a cold start on a clean device — the
