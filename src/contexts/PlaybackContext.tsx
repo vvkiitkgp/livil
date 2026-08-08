@@ -179,9 +179,9 @@ type PlaybackContextValue = {
    * post card opens 'info'. Cleared once the player has consumed it, so reopening by any
    * other route starts clean.
    */
-  openFullScreenPlayer: (tab?: 'lyrics' | 'queue' | 'info') => void;
+  openFullScreenPlayer: (tab?: 'queue' | 'info') => void;
   /** Panel the next open should land on, or null. Read and cleared by FullScreenPlayer. */
-  pendingTab: 'lyrics' | 'queue' | 'info' | null;
+  pendingTab: 'queue' | 'info' | null;
   clearPendingTab: () => void;
   closeFullScreenPlayer: () => void;
   /**
@@ -660,9 +660,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setPendingPlayId(null);
   }, []);
 
-  const [pendingTab, setPendingTab] = useState<'lyrics' | 'queue' | 'info' | null>(null);
+  const [pendingTab, setPendingTab] = useState<'queue' | 'info' | null>(null);
 
-  const openFullScreenPlayer = useCallback((tab?: 'lyrics' | 'queue' | 'info') => {
+  const openFullScreenPlayer = useCallback((tab?: 'queue' | 'info') => {
     setPendingTab(tab ?? null);
     setIsFullScreenOpen(true);
   }, []);

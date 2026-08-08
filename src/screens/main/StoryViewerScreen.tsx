@@ -52,6 +52,7 @@ import Scrim from '../../components/Scrim';
 import ArtGlow from '../../components/ArtGlow';
 import { useImageAspect } from '../../hooks/useImageAspect';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import StoryReportModal from '../../components/StoryReportModal';
 import { GradientBorder } from '../../components/GradientBorder';
 
 type StoryViewerRoute = RouteProp<RootStackParamList, 'StoryViewer'>;
@@ -243,6 +244,7 @@ export default function StoryViewerScreen() {
   // flashes before the clip start. Hidden once the frame is at the clip.
   const [posterVisible, setPosterVisible] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -1207,6 +1209,25 @@ export default function StoryViewerScreen() {
                   <Text style={styles.sheetRowText}>View @{story.author.username}</Text>
                 </TouchableOpacity>
               ) : null}
+              {!isOwner ? (
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // Same handoff as Delete below: collapse the sheet but keep
+                    // menuOpenRef TRUE so a clip finishing under the report modal
+                    // cannot advance the story out from under a half-filled form.
+                    // Closing the modal resolves it.
+                    menuProgress.value = withTiming(0, { duration: 150 });
+                    chromeOpacity.value = withTiming(1, { duration: 150 });
+                    setMenuOpen(false);
+                    setReportOpen(true);
+                  }}
+                >
+                  <Icon name="flag" size={20} color={COLORS.white} />
+                  <Text style={styles.sheetRowText}>Report story</Text>
+                </TouchableOpacity>
+              ) : null}
               {isOwner ? (
                 <TouchableOpacity
                   style={styles.sheetRow}
@@ -1249,6 +1270,25 @@ export default function StoryViewerScreen() {
           setPaused(false);
           // Same replay as finishCloseMenu: a clip that ended under the sheet /
           // confirm modal advances once the user is back on the story.
+          if (pendingAdvanceRef.current) {
+            pendingAdvanceRef.current = false;
+            goForward();
+          }
+        }}
+      />
+
+      {/* Resume path is identical to the delete confirm's onCancel — it runs on
+          BOTH submit and cancel, because either way the user is finished with the
+          modal and the story should start moving again. */}
+      <StoryReportModal
+        visible={reportOpen}
+        storyId={story?.id ?? null}
+        onClose={() => {
+          setReportOpen(false);
+          menuOpenRef.current = false;
+          menuOpenSv.value = false;
+          chromeOpacity.value = withTiming(1, { duration: 150 });
+          setPaused(false);
           if (pendingAdvanceRef.current) {
             pendingAdvanceRef.current = false;
             goForward();

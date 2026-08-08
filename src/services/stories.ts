@@ -145,6 +145,36 @@ export async function deleteStory(storyId: string): Promise<void> {
   if (error) {throw new Error(error.message);}
 }
 
+/** Same five reasons as posts and comments — one vocabulary across every surface. */
+export type StoryReportReason = 'spam' | 'harassment' | 'hate' | 'misinformation' | 'other';
+
+/**
+ * Report a story.
+ *
+ * UNLIKE `reportPost`/`reportComment`, which insert directly under an RLS policy,
+ * this goes through the `report_story` RPC. Two reasons:
+ *
+ *  - `story_reports.reported_user_id` is denormalised so the report outlives the
+ *    story's 24-hour expiry, and a client must not be able to assert who it is
+ *    reporting — the RPC derives it from the story.
+ *  - `story_reports` therefore has no INSERT policy at all; the RPC is the only
+ *    way in.
+ */
+export async function reportStory(
+  storyId: string,
+  reason: StoryReportReason,
+  details?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('report_story', {
+    p_story_id: storyId,
+    p_reason: reason,
+    // `undefined` rather than `null`: supabase-js omits the key entirely, so the
+    // function's own `default null` applies. The generated types decline null here.
+    p_details: details?.trim() || undefined,
+  });
+  if (error) {throw new Error(error.message);}
+}
+
 /**
  * Resolve the author (uploader) of a story's original upload post, so the viewer
  * can deep-link to that post via `UserProfile { userId, focusPostId }` (the app

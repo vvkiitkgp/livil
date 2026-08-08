@@ -8,6 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -33,12 +35,13 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useStories } from '../../contexts/StoriesContext';
 import AddUserSheet from '../../components/AddUserSheet';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -155,8 +158,9 @@ export default function UserProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
-  // Open on the tab that holds a deep-linked post (uploads for "go to song"),
-  // otherwise the default reposts tab.
+  // Provisional only — the real default is resolved from the tab counts in the
+  // initial-load effect, so that the selected pill is always the first pill.
+  // Deep-linked posts ("go to song") pin Uploads and skip that resolution.
   const [tab, setTab] = useState<ProfileTab>(
     focusPostKind === 'upload' ? 'uploads' : 'reposts',
   );
@@ -169,6 +173,10 @@ export default function UserProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 'block' | 'unblock' — which confirmation is showing, if any.
+  const [confirmBlock, setConfirmBlock] = useState<'block' | 'unblock' | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -258,38 +266,71 @@ export default function UserProfileScreen() {
     };
   }, []);
 
+  // Just the body of one tab. Split out of refresh() so the initial load can
+  // decide WHICH tab to open before it fetches anything — see the effect below.
+  const loadTabContent = useCallback(
+    async (currentTab: ProfileTab) => {
+      if (currentTab === 'reposts' || currentTab === 'uploads') {
+        const fresh = await fetchPosts(userId, currentTab);
+        setPosts(fresh);
+        setEndReached(fresh.length < PAGE_SIZE);
+      } else if (currentTab === 'albums') {
+        setAlbums(await fetchAlbumsByUser(userId));
+        setEndReached(true);
+      } else {
+        setPlaylists(await fetchPlaylistsForUser(userId));
+        setEndReached(true);
+      }
+    },
+    [userId, fetchPosts],
+  );
+
   const refresh = useCallback(
     async (currentTab: ProfileTab) => {
       setError('');
       try {
         await fetchProfileAndStats(userId);
-        const counts = await fetchTabCounts(userId);
-        setTabCounts(counts);
-
-        if (currentTab === 'reposts' || currentTab === 'uploads') {
-          const fresh = await fetchPosts(userId, currentTab);
-          setPosts(fresh);
-          setEndReached(fresh.length < PAGE_SIZE);
-        } else if (currentTab === 'albums') {
-          setAlbums(await fetchAlbumsByUser(userId));
-          setEndReached(true);
-        } else {
-          setPlaylists(await fetchPlaylistsForUser(userId));
-          setEndReached(true);
-        }
+        setTabCounts(await fetchTabCounts(userId));
+        await loadTabContent(currentTab);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load profile.');
       }
     },
-    [userId, fetchPosts, fetchProfileAndStats, fetchTabCounts],
+    [userId, fetchProfileAndStats, fetchTabCounts, loadTabContent],
   );
 
-  // Initial load
+  // Initial load.
+  //
+  // Counts are fetched BEFORE any tab content, because they decide which tab
+  // opens. ProfileTabBar orders Reposts/Uploads by weight, so initialising the
+  // selection independently left the two disagreeing: an artist with more
+  // uploads than reposts saw Uploads rendered as the first pill while Reposts
+  // was the selected one. Resolving the default from the same visibleTabsFor()
+  // the bar uses keeps them in lock-step by construction.
+  //
+  // A deep link still wins — arriving from "go to song" must land on Uploads
+  // whatever the counts say.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await refresh(tab);
+      setError('');
+      try {
+        await fetchProfileAndStats(userId);
+        const counts = await fetchTabCounts(userId);
+        if (cancelled) { return; }
+        setTabCounts(counts);
+
+        const initial: ProfileTab = focusPostKind === 'upload'
+          ? 'uploads'
+          : visibleTabsFor(counts)[0]?.key ?? 'reposts';
+        setTab(initial);
+        await loadTabContent(initial);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load profile.');
+        }
+      }
       if (!cancelled) { setLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -360,6 +401,32 @@ export default function UserProfileScreen() {
       setLoadingMore(false);
     }
   }, [endReached, fetchPosts, loadingMore, posts, tab, userId]);
+
+  // ── Block / unblock ──
+  // Both routed through ConfirmActionModal rather than acting on the tap: block
+  // is destructive (it silently drops the friendship and both stars) and unblock
+  // is the kind of thing a mis-tap should not undo.
+  const handleConfirmBlock = useCallback(async () => {
+    const unblocking = confirmBlock === 'unblock';
+    setBlockBusy(true);
+    try {
+      if (unblocking) {
+        await rel.unblockUser(userId);
+        showToast('Unblocked.', { kind: 'success' });
+      } else {
+        await rel.blockUser(userId);
+        showToast('Blocked. They can no longer contact you.', { kind: 'success' });
+      }
+      setConfirmBlock(null);
+    } catch {
+      showToast(
+        unblocking ? "Couldn't unblock. Please try again." : "Couldn't block. Please try again.",
+        { kind: 'error' },
+      );
+    } finally {
+      setBlockBusy(false);
+    }
+  }, [confirmBlock, rel, userId, showToast]);
 
   const handleMessage = useCallback(async () => {
     if (messagingBusy) { return; }
@@ -508,7 +575,18 @@ export default function UserProfileScreen() {
             <Icon name="backArrow" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={styles.screenTitle} numberOfLines={1}>{handle}</Text>
-          <View style={styles.backBtnSpacer} />
+          {relStatus === 'me' ? (
+            <View style={styles.backBtnSpacer} />
+          ) : (
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => setMenuOpen(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="More options"
+            >
+              <Icon name="overflow" size={22} color={COLORS.white} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.hero}>
@@ -550,7 +628,21 @@ export default function UserProfileScreen() {
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={3}>{profile.bio}</Text>
           ) : null}
-          {relStatus !== 'me' && (
+          {relStatus === 'blocked' ? (
+            // Replaces BOTH the relationship CTA and Message. Every action they
+            // offered is refused server-side for a blocked pair, so showing them
+            // would be showing buttons that can only fail. One control, and it
+            // leads to the only thing that can change: unblocking.
+            <View style={styles.heroActions}>
+              <Button
+                label="Blocked"
+                onPress={() => setConfirmBlock('unblock')}
+                variant="secondary"
+                size="md"
+                style={styles.ctaBtn}
+              />
+            </View>
+          ) : relStatus !== 'me' ? (
             <View style={styles.heroActions}>
               {renderCta(relStatus, () => setSheetOpen(true))}
               <TouchableOpacity
@@ -566,7 +658,7 @@ export default function UserProfileScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          )}
+          ) : null}
         </View>
 
         <View style={styles.socialPills}>
@@ -660,6 +752,75 @@ export default function UserProfileScreen() {
         />
       )}
 
+      {/* ── Overflow menu ── */}
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setMenuOpen(false)}>
+          <View style={styles.menuBackdrop}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.menuCard}>
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setMenuOpen(false);
+                    setConfirmBlock(rel.status(userId) === 'blocked' ? 'unblock' : 'block');
+                  }}
+                >
+                  <Icon
+                    name="block"
+                    size={20}
+                    color={rel.status(userId) === 'blocked' ? COLORS.white : COLORS.error}
+                  />
+                  <Text
+                    style={[
+                      styles.menuRowText,
+                      rel.status(userId) !== 'blocked' && styles.menuRowTextDanger,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {rel.status(userId) === 'blocked' ? 'Unblock' : 'Block'}
+                    {profile?.username ? ` @${profile.username}` : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <ConfirmActionModal
+        visible={confirmBlock !== null}
+        title={confirmBlock === 'unblock' ? 'Unblock this person?' : 'Block this person?'}
+        message={
+          confirmBlock === 'unblock'
+            ? 'They will be able to message you, send a friend request and comment again. Your friendship and stars are not restored.'
+            : 'They will not be able to message you, send a friend request, star you or comment on your posts.'
+        }
+        bullets={
+          confirmBlock === 'block'
+            // Stated plainly because both surprise people: blocking silently ends
+            // a friendship, and it does NOT hide their music.
+            ? [
+                'Any friendship or pending request is removed',
+                'Their music stays visible on Livil',
+                "They aren't told that you blocked them",
+              ]
+            : undefined
+        }
+        glyph={confirmBlock === 'unblock' ? '🔓' : '🚫'}
+        tone={confirmBlock === 'unblock' ? 'primary' : 'destructive'}
+        confirmLabel={confirmBlock === 'unblock' ? 'Unblock' : 'Block'}
+        cancelLabel="Cancel"
+        busy={blockBusy}
+        onConfirm={handleConfirmBlock}
+        onCancel={() => setConfirmBlock(null)}
+      />
+
       <CommentsSheet
         visible={comments.commentsPostId !== null}
         postId={comments.commentsPostId}
@@ -697,6 +858,40 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backBtnSpacer: { width: 40 },
+  // ── Overflow menu ──
+  // Anchored top-right under the 3-dots rather than centred: a centred card for
+  // a single row reads as a dialog demanding a decision, which a menu is not.
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 64,
+    paddingRight: 16,
+  },
+  menuCard: {
+    minWidth: 200,
+    maxWidth: 300,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 6,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  menuRowText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  menuRowTextDanger: { color: COLORS.error },
   screenTitle: {
     flex: 1, color: COLORS.white, fontSize: 16, fontWeight: '700',
     textAlign: 'center', letterSpacing: -0.2,

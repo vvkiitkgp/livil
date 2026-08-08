@@ -115,6 +115,10 @@ export default function AddUserSheet({
     () => run(() => rel.removeStar(userId)),
     [rel, run, userId],
   );
+  const handleUnblock = useCallback(
+    () => run(() => rel.unblockUser(userId)),
+    [rel, run, userId],
+  );
 
   const status = rel.status(userId);
   const handle = profile ? `@${profile.username}` : '';
@@ -183,6 +187,7 @@ export default function AddUserSheet({
             onRejectRequest: handleRejectRequest,
             onRemoveFriend: handleRemoveFriend,
             onRemoveStar: handleRemoveStar,
+            onUnblock: handleUnblock,
           })
         )}
 
@@ -203,11 +208,31 @@ type ActionsProps = {
   onRejectRequest: () => void;
   onRemoveFriend: () => void;
   onRemoveStar: () => void;
+  onUnblock: () => void;
 };
 
 function renderActions(p: ActionsProps) {
   if (p.status === 'me') {
     return <Text style={styles.muted}>This is you.</Text>;
+  }
+
+  // Must come before every other branch. Without it a blocked user falls through
+  // to the default "Add Friend / Star" actions, both of which the server refuses
+  // — the user would be offered a button that can only produce an error.
+  if (p.status === 'blocked') {
+    return (
+      <View style={styles.actionsCol}>
+        <Text style={styles.muted}>You blocked this person.</Text>
+        <Button
+          label="Unblock"
+          onPress={p.onUnblock}
+          variant="secondary"
+          size="md"
+          busy={p.busy}
+          fullWidth
+        />
+      </View>
+    );
   }
 
   if (p.status === 'pending_outgoing') {

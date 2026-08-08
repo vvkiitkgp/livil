@@ -101,7 +101,7 @@ export type IconName =
   | 'play' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
-  | 'share' | 'externalLink' | 'tombstone' | 'crown'
+  | 'share' | 'externalLink' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
@@ -146,6 +146,9 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   share: [ShareNetwork, 'regular'],
   externalLink: [ArrowSquareOut, 'regular'],
   tombstone: [Prohibit, 'regular'],
+  // Same glyph as `tombstone`, deliberately a separate name: one marks removed
+  // content, the other is the block action. They only happen to look alike.
+  block: [Prohibit, 'bold'],
   crown: [Crown, 'fill'],
   // navigation
   back: [CaretLeft, 'bold'],
