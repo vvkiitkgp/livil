@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-185 TypeScript file(s) under `src/`, 51,137 lines.
+186 TypeScript file(s) under `src/`, 51,432 lines.
 
 ## Size hotspots
 
@@ -72,6 +72,7 @@ case the call fails silently wherever its result is discarded.
 | `Settings` | `undefined` |
 | `NotificationSettings` | `undefined` |
 | `PrivacyData` | `undefined` |
+| `BlockedAccounts` | `undefined` |
 | `DeleteAccount` | `undefined` |
 | `CreatePlaylist` | `{ initialPost?: { postId: string` |
 | `title` | `string` |
@@ -93,7 +94,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-40 file(s), 20,182 lines.
+41 file(s), 20,412 lines.
 
 | File | Lines |
 |---|---:|
@@ -123,17 +124,18 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/SettingsScreen.tsx` | 271 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
+| `src/screens/main/PrivacyDataScreen.tsx` | 268 |
 | `src/screens/main/PlaylistScreen.tsx` | 264 |
-| `src/screens/main/PrivacyDataScreen.tsx` | 255 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
 | `src/screens/main/FollowingScreen.tsx` | 225 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 217 |
+| `src/screens/main/BlockedAccountsScreen.tsx` | 208 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 197 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 197 |
-| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 181 |
+| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 190 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 118 |
@@ -214,7 +216,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-32 file(s), 8,334 lines.
+32 file(s), 8,390 lines.
 
 | File | Lines |
 |---|---:|
@@ -232,12 +234,12 @@ case the call fails silently wherever its result is discarded.
 | `src/services/jamRealtime.ts` | 251 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 227 |
+| `src/services/relationships.ts` | 224 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
 | `src/services/stories.ts` | 209 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
-| `src/services/relationships.ts` | 168 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
