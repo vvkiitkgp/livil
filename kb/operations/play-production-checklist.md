@@ -59,9 +59,12 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
       when a user reports something. "It appears in a queue" is half an answer; the other
       half is how fast someone looks. Pick a number you will actually honour (24h is
       normal for an app this size) and use it in the answer.
-- [ ] **Add yourself to `ops_users`.** `is_ops()` reads that table, and it currently has
-      **one row** (`vvk_google_test`). Any other account sees an empty Reports section —
-      it fails soft by design, so this looks like "no reports", not like an error.
+- [x] **Ops access.** Confirmed 2026-08-08 — `ops_users` has one row,
+      `vvk_google_test`, and that is the operator account. Noted because the failure
+      mode is silent: `is_ops()` gates the queue and the read fails *soft*, so an
+      account without a row sees an empty Reports section that reads as "no reports"
+      rather than "you cannot see this". Anyone added as a second moderator needs a
+      row here before they can do the job.
 - [ ] **Clear the backlog before you apply.** There is a real unreviewed report in
       production from **2026-07-26** (a post, reason: misinformation). Applying while the
       only report you have ever received sits untouched undercuts the answer above.
