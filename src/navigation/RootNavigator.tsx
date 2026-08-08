@@ -33,6 +33,7 @@ import EditProfileScreen from '../screens/main/EditProfileScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationSettingsScreen from '../screens/main/NotificationSettingsScreen';
 import PrivacyDataScreen from '../screens/main/PrivacyDataScreen';
+import BlockedAccountsScreen from '../screens/main/BlockedAccountsScreen';
 import DeleteAccountScreen from '../screens/main/DeleteAccountScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
@@ -519,6 +520,13 @@ export default function RootNavigator() {
             <Stack.Screen
               name="PrivacyData"
               component={PrivacyDataScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="BlockedAccounts"
+              component={BlockedAccountsScreen}
               options={{
                 animation: 'slide_from_right',
               }}

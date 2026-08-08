@@ -176,9 +176,10 @@ export default function PrivacyDataScreen() {
           />
         </SettingsSection>
 
-        {/* Likes stay open to everyone by design and have no toggle — comments
-            are the only audience control, and blocking is deliberately not a
-            feature (reporting is the moderation path). */}
+        {/* Likes stay open to everyone by design and have no toggle. Comments are
+            the only AUDIENCE control — blocking is a different thing and lives in
+            its own section below: this decides who may comment on your posts,
+            that decides who may reach you at all. */}
         <SettingsSection title="Comments">
           <SettingsRow
             icon="comment"
@@ -189,6 +190,18 @@ export default function PrivacyDataScreen() {
               onValueChange: onToggleCommentsAudience,
               disabled: busy || loading || !userId,
             }}
+          />
+        </SettingsSection>
+
+        {/* Blocking is done from a person's profile, so this row is a way BACK to
+            the people you blocked — severing the friendship removes them from
+            every other list, which would otherwise make blocking one-way. */}
+        <SettingsSection title="Blocking">
+          <SettingsRow
+            icon="block"
+            label="Blocked accounts"
+            subtitle="People who can't contact you, and how to undo it"
+            onPress={() => navigation.navigate('BlockedAccounts')}
           />
         </SettingsSection>
 
