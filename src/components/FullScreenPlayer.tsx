@@ -85,7 +85,19 @@ const ART_SIDE_PAD = 24;
 // available inside the component via useSafeAreaInsets().  See playerBottom /
 // convergeY computed at the top of FullScreenPlayer().
 
-type TabId = 'lyrics' | 'queue' | 'info';
+type TabId = 'queue' | 'info';
+
+/**
+ * The panel tabs, in display order. Rendered in two places — the row inside the
+ * panel and the action-button row beneath the artwork — which must never drift
+ * apart, so both map this one list.
+ *
+ * Lyrics was removed here: it only ever rendered a "Lyrics coming soon"
+ * placeholder, and a tab that costs a tap to discover it does nothing is worse
+ * than no tab. Re-add it to this list (and restore the panel branch) when there
+ * is lyric data to show.
+ */
+const PANEL_TABS: TabId[] = ['queue', 'info'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1371,7 +1383,7 @@ export default function FullScreenPlayer() {
   }, [panelAnim]);
 
   const handleTabPress = useCallback((tab: TabId) => {
-    // Covers the Lyrics/Queue/Info row AND the credit line under the title,
+    // Covers the Queue/Info row AND the credit line under the title,
     // which routes through here to open Info. `select` because the panel is a
     // view change, not a committed action.
     haptics.select();
@@ -1634,11 +1646,11 @@ export default function FullScreenPlayer() {
     inputRange: [0, 1], outputRange: [seekRowBottom + 160, 0],
   });
   // Memoize the interpolation node + style array. Without this, every render
-  // (e.g. when activeTab changes from null → 'lyrics') creates a fresh
+  // (e.g. when activeTab changes from null → 'queue') creates a fresh
   // interpolation and a new style array; React Native re-binds the
   // Animated.Value to the native view, and during the re-bind the panel
   // briefly snaps to its non-animated rest position for one frame — that's
-  // the flicker the user sees when opening Lyrics / Queue / Info.
+  // the flicker the user sees when opening Queue / Info.
   const panelTranslateY = useMemo(
     () => panelAnim.interpolate({
       inputRange: [0, 1],
@@ -1986,7 +1998,7 @@ export default function FullScreenPlayer() {
         </GestureDetector>
 
         <View style={styles.panelTabs}>
-          {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
+          {PANEL_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.panelTab, activeTab === tab && styles.panelTabActive]}
@@ -1999,15 +2011,6 @@ export default function FullScreenPlayer() {
           ))}
         </View>
 
-        {activeTab === 'lyrics' && (
-          <ScrollView
-            style={styles.panelScroll}
-            contentContainerStyle={{ paddingBottom: panelScrollPad }}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.placeholderText}>Lyrics coming soon</Text>
-          </ScrollView>
-        )}
         {activeTab === 'queue' && (
           <View style={styles.panelScroll}>
             <QueueList paddingBottom={panelScrollPad} />
@@ -2030,7 +2033,7 @@ export default function FullScreenPlayer() {
         style={[styles.actionRow, { bottom: actionRowBottom, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
         pointerEvents={isImmersive ? 'none' : 'box-none'}
       >
-        {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
+        {PANEL_TABS.map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.actionBtn, activeTab === tab && styles.actionBtnActive]}
@@ -2343,7 +2346,6 @@ const styles = StyleSheet.create({
   panelTabTextActive: { color: COLORS.purpleNeon },
   panelScroll: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
 
-  placeholderText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 22 },
 
   actionRow: {
     position: 'absolute', left: 0, right: 0,
