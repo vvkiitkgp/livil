@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -36,11 +36,11 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-08-07 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-08-07 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-08-07 | 9999d |
-| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-08-07 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-08-07 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-08-08 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-08-08 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-08-08 | 9999d |
+| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-08-08 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-08-08 | 9999d |
 
 ## Tier 2 — Enforced
 
@@ -74,7 +74,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `operations/deployment.md` | principal-platform | DO, P-PF | 2026-07-21 | 90d |
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
-| `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-04 | 90d |
+| `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-08 | 90d |
 | `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
 | `operations/runbooks/incident-response.md` | principal-platform | DO, P-PF, P-SE, human | 2026-07-21 | 180d |
 | `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-22 | 180d |
