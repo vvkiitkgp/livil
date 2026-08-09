@@ -1934,6 +1934,15 @@ export type Database = {
         }[]
       }
       profile_links_ok: { Args: { p_links: string[] }; Returns: boolean }
+      profile_tab_counts: {
+        Args: { p_user_id: string }
+        Returns: {
+          albums: number
+          playlists: number
+          reposts: number
+          uploads: number
+        }[]
+      }
       reject_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined
