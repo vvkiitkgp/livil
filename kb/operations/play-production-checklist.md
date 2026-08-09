@@ -14,7 +14,11 @@ related_adrs: []
 
 Status as of **2026-08-09**: closed-testing criteria met (12+ testers, 14+ days),
 **Apply for production** unlocked in the Console, production track **Inactive**.
-`main` is at `2.0.2 (67)`. Codes 62–66 are spent.
+`main` is at `2.0.2 (67)`, submitted for closed-track review. Codes 62–66 are spent.
+
+**Two things stand between here and applying**, both in section 1: test 2.0.2 once
+it goes live to testers, and re-check the two App content declarations that today's
+work invalidated. Everything else on this list is either done or not a blocker.
 
 Applying for production is not the same as shipping to production. The application
 is a questionnaire Google reviews (typically days, occasionally weeks). Nothing below
@@ -77,6 +81,13 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
 
 ### What this left open
 
+- [ ] **Test 2.0.2 (67) once it goes live to testers.** Not ceremony: every defect in
+      this section was found by opening the app, and none by CI. Typecheck, lint, 453
+      tests and twelve checks were all green on the build that told users a blocked
+      person's music was still visible, showed "Reposts 0" for someone with reposts,
+      and let a non-friend message you. Nothing automated catches a screen that lies.
+      Highest-value paths: blocking an EXISTING DM thread, a non-friend's profile
+      (reposts/playlists hidden but counted), and Settings → Blocked accounts.
 - [ ] **Re-check the App content declarations you have ALREADY submitted.** Two
       answers changed on 2026-08-09 and a declaration that no longer matches the app
       is a rejection risk in its own right:
@@ -84,19 +95,30 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
       tables, including free text a reporter types;
       **Content rating** — the "is UGC moderated" answer flips from no to **yes**, but
       only say so once the turnaround below is real.
-- [ ] **Commit to a review turnaround, in writing.** The questionnaire asks what happens
-      when a user reports something. "It appears in a queue" is half an answer; the other
-      half is how fast someone looks. Pick a number you will actually honour (24h is
-      normal for an app this size) and use it in the answer.
+- [x] **Review turnaround: 24 HOURS.** Decided 2026-08-09. This is the commitment to
+      give when the questionnaire asks what happens after a user reports something —
+      "it appears in a queue" is half an answer; this is the other half.
+
+      > **Reports are reviewed within 24 hours.** Every report from a post, comment or
+      > story lands in one queue at `/studio/ops`, is read by the operator, and is
+      > marked reviewed with the reviewer and timestamp recorded.
+
+      It is a promise, not a slogan: `reviewed_at` / `reviewed_by` on all three report
+      tables make it auditable, so a queue left sitting is visible rather than
+      deniable. At current volume — two reports, ever — 24h is comfortable. Revisit it
+      the moment reports arrive faster than they are read, and lengthen the stated
+      figure rather than quietly miss it.
 - [x] **Ops access.** Confirmed 2026-08-08 — `ops_users` has one row,
       `vvk_google_test`, and that is the operator account. Noted because the failure
       mode is silent: `is_ops()` gates the queue and the read fails *soft*, so an
       account without a row sees an empty Reports section that reads as "no reports"
       rather than "you cannot see this". Anyone added as a second moderator needs a
       row here before they can do the job.
-- [ ] **Clear the backlog before you apply.** There is a real unreviewed report in
-      production from **2026-07-26** (a post, reason: misinformation). Applying while the
-      only report you have ever received sits untouched undercuts the answer above.
+- [x] **Backlog cleared 2026-08-09.** Both open reports — the 2026-07-26 post report
+      and a story report filed during testing — marked reviewed by `vvk_google_test`.
+      All three tables now read zero open. Done through `ops_mark_report_reviewed`
+      rather than an UPDATE: `reviewed_at`/`reviewed_by` are a claim that a person
+      looked, so they should be written by the path a person uses.
 - [ ] **Known gap — post and comment reports still cascade.** An author who deletes a
       reported post erases the report with it. Stories are fixed; these two are not.
       Same change applied to two more tables plus a `reported_user_id` backfill. Not a
@@ -110,11 +132,10 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
 
 ## 2. Store listing
 
-- [ ] **App icon is stale in the Console** — shows the pre-rebrand blue-on-white
-      mark. See [Why the Console icon is wrong](#appendix-why-the-console-icon-never-updated).
-      The replacement is generated and checked in at
-      **`docs/play-store-icon-512.png`** — upload it under
-      **Main store listing → App icon**.
+- [x] **App icon uploaded 2026-08-09** — `docs/play-store-icon-512.png`, replacing the
+      pre-rebrand blue-on-white mark the Console had shown since 2026-07-20. Keep the
+      appendix below: it explains why the mark went stale for three weeks, and the same
+      trap is waiting for the next rebrand.
 - [ ] Feature graphic (1024×500) reflects the purple rebrand, not the old blue.
 - [ ] Phone screenshots (min 2, 4–8 recommended) are from a current build — check
       none still show the old blue accent or pre-redesign stories.
