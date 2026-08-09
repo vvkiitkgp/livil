@@ -262,18 +262,27 @@ export default function UserProfileScreen() {
     [],
   );
 
+  /**
+   * TRUE counts, from a DEFINER RPC rather than `count: 'exact'` queries.
+   *
+   * A count runs under the same RLS as the rows it counts, so once reposts
+   * became friends-only the old queries reported 0 reposts for someone with
+   * plenty — and the tab then said "No reposts yet", which is not a gap in the
+   * UI but a false statement about a person. `profile_tab_counts` reports how
+   * much exists; RLS still decides what can be READ.
+   *
+   * It withholds two things on purpose: private playlists (counted only for
+   * their owner) and everything about a blocked pair (zeros both ways).
+   */
   const fetchTabCounts = useCallback(async (uid: string): Promise<TabCounts> => {
-    const [reposts, uploads, albumsRes, playlistsRes] = await Promise.all([
-      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', uid).eq('kind', 'repost'),
-      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', uid).eq('kind', 'upload'),
-      supabase.from('albums').select('id', { count: 'exact', head: true }).eq('uploader_id', uid),
-      supabase.from('playlists').select('id', { count: 'exact', head: true }).eq('user_id', uid),
-    ]);
+    const { data, error } = await supabase.rpc('profile_tab_counts', { p_user_id: uid });
+    if (error) { throw new Error(error.message); }
+    const row = (data ?? [])[0];
     return {
-      reposts: reposts.count ?? 0,
-      uploads: uploads.count ?? 0,
-      albums: albumsRes.count ?? 0,
-      playlists: playlistsRes.count ?? 0,
+      reposts: row?.reposts ?? 0,
+      uploads: row?.uploads ?? 0,
+      albums: row?.albums ?? 0,
+      playlists: row?.playlists ?? 0,
     };
   }, []);
 
@@ -518,6 +527,33 @@ export default function UserProfileScreen() {
         return <View style={styles.emptyWrap}><ActivityIndicator color={COLORS.purpleLight} /></View>;
       }
       if (item.kind === 'empty') {
+        // Nothing to show splits into two very different situations, and saying
+        // the wrong one is worse than saying nothing: "No reposts yet" on a
+        // profile with seventeen reposts is a false statement about a person.
+        // The tab counts come from a DEFINER RPC and are true, so an empty list
+        // with a non-zero count can only mean the rows are friends-only.
+        const hiddenByFriendship =
+          (tab === 'reposts' || tab === 'playlists') && tabCounts[tab] > 0;
+
+        if (hiddenByFriendship) {
+          return (
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyArt}>
+                <Icon name="friends" size={28} color={COLORS.purpleLight} />
+              </View>
+              {/* No button here on purpose — Add is already in the header, a few
+                  centimetres up. A second one competing with it would be noise. */}
+              <Text style={styles.emptyTitle}>
+                {tab === 'reposts' ? 'Reposts are for friends' : 'Playlists are for friends'}
+              </Text>
+              <Text style={styles.emptyBody}>
+                Add {profile?.username ? `@${profile.username}` : 'them'} as a friend to
+                see {tab === 'reposts' ? 'what they repost' : 'their playlists'}.
+              </Text>
+            </View>
+          );
+        }
+
         const tabEmpty = {
           reposts: 'No reposts yet',
           uploads: 'No uploads yet',
@@ -591,7 +627,7 @@ export default function UserProfileScreen() {
         />
       );
     },
-    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile],
   );
 
   const renderHeader = useCallback(() => {
@@ -1042,6 +1078,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   emptyTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  emptyBody: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+    marginTop: 6,
+  },
 
   listFooter: { height: 40 },
 
