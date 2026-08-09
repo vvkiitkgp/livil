@@ -127,8 +127,9 @@ export default function BlockedAccountsScreen() {
           ListHeaderComponent={
             items.length > 0 ? (
               <Text style={styles.intro}>
-                Blocked accounts can't message you, send you a friend request, star
-                you or comment on your posts. Their music stays visible on Livil.
+                You can't see their music, playlists or activity, and they can't see
+                yours. They also can't message you, send a friend request, star you
+                or comment on your posts.
               </Text>
             ) : null
           }

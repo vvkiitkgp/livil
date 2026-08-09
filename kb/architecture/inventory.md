@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-186 TypeScript file(s) under `src/`, 51,507 lines.
+186 TypeScript file(s) under `src/`, 51,497 lines.
 
 ## Size hotspots
 
@@ -32,7 +32,7 @@ reading alone (Constitution P28).
 | `src/components/PostCard.tsx` | 1266 |
 | `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
-| `src/screens/main/UserProfileScreen.tsx` | 1084 |
+| `src/screens/main/UserProfileScreen.tsx` | 1087 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/components/FloatingPlayer.tsx` | 927 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
@@ -94,7 +94,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-41 file(s), 20,487 lines.
+41 file(s), 20,491 lines.
 
 | File | Lines |
 |---|---:|
@@ -102,7 +102,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ConversationScreen.tsx` | 1432 |
 | `src/screens/main/UploadScreen.tsx` | 1261 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
-| `src/screens/main/UserProfileScreen.tsx` | 1084 |
+| `src/screens/main/UserProfileScreen.tsx` | 1087 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 856 |
 | `src/screens/main/JamRoomScreen.tsx` | 821 |
@@ -131,7 +131,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/FollowingScreen.tsx` | 225 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 217 |
-| `src/screens/main/BlockedAccountsScreen.tsx` | 208 |
+| `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 197 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 197 |
@@ -216,7 +216,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-32 file(s), 8,390 lines.
+32 file(s), 8,376 lines.
 
 | File | Lines |
 |---|---:|
@@ -234,9 +234,9 @@ case the call fails silently wherever its result is discarded.
 | `src/services/jamRealtime.ts` | 251 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 227 |
-| `src/services/relationships.ts` | 224 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/uploads.ts` | 218 |
+| `src/services/relationships.ts` | 210 |
 | `src/services/stories.ts` | 209 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
