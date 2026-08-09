@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-platform
 consumers: [DO, P-PF]
-last_verified: 2026-08-08
+last_verified: 2026-08-09
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -12,9 +12,9 @@ related_adrs: []
 
 # Play Store — Pre-Production Checklist
 
-Status as of **2026-08-08**: closed-testing criteria met (12+ testers, 14+ days),
+Status as of **2026-08-09**: closed-testing criteria met (12+ testers, 14+ days),
 **Apply for production** unlocked in the Console, production track **Inactive**.
-`main` is at `1.1.19 (65)`.
+`main` is at `2.0.2 (67)`. Codes 62–66 are spent.
 
 Applying for production is not the same as shipping to production. The application
 is a questionnaire Google reviews (typically days, occasionally weeks). Nothing below
@@ -32,15 +32,24 @@ requires **all** of: in-app reporting, in-app blocking, and a moderation process
 actually acts on reports. Livil had one of the three. It now has all three, shipped on
 `feat/moderation-blocking-reports` with the migrations applied to production.
 
-- [x] **Blocking.** `blocked_users` (migration `20260808100000`), one-way and invisible
-      to the person blocked. Severs the friendship (accepted or pending), drops stars
-      both ways, and refuses friend requests, stars, comments and DMs from either side.
-      Guards sit on the RLS policies, not only the RPCs — PostgREST would otherwise be
-      an open bypass. UI is the 3-dots menu on `UserProfileScreen`; when blocked, the
-      Friend/Message row collapses to one **Blocked** control that leads to unblock.
-      **Content stays visible** — uploads, reposts, playlists and albums. Deliberate:
-      the policy asks that a user be able to stop unwanted *contact*, and a catalogue
-      with holes in it based on who fell out with whom is a worse product.
+- [x] **Blocking.** `blocked_users` (migration `20260808100000`). Severs the friendship
+      (accepted or pending), drops stars both ways, and refuses friend requests, stars,
+      comments and DMs from either side. Guards sit on the RLS policies, not only the
+      RPCs — PostgREST would otherwise be an open bypass. UI is the 3-dots menu on
+      `UserProfileScreen`, a **Blocked** state in place of Friend/Message, and a
+      **Settings → Privacy & data → Blocked accounts** list to undo it.
+      **Blocking HIDES CONTENT, both ways** (`20260809000000`). Neither party sees the
+      other's profile, uploads, reposts, albums, playlists or tracks. This reverses the
+      original decision, which kept the catalogue visible on the argument that the
+      policy only asks you be able to stop unwanted *contact*. Device testing settled
+      it: you block someone and their songs are still in your feed, which reads as
+      broken rather than principled. The one exception is a shared conversation, where
+      the profile still resolves — otherwise every group both people are in fills with
+      "Unknown", including history neither can leave.
+      **This cost the invisible-block property.** The original design made a block
+      undetectable by the person blocked. Hiding a profile ends that: they find out the
+      moment it stops resolving. There is no way to hide someone from a person and keep
+      the hiding secret from them, and every large platform makes the same trade.
 - [x] **Stories are reportable.** `story_reports` (migration `20260808110000`) plus a
       Report row in the existing `StoryViewerScreen` menu and `StoryReportModal`.
       `story_id` is `on delete set null` and the reported user is denormalised, so a
@@ -53,8 +62,28 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
 - [x] **Stories ship posture: resolved — stories ship.** The question was only ever
       "can a viewer do anything about a bad story", and now they can. No longer a gate.
 
+### Also shipped, and not a policy item — but it changes what the app does
+
+- **Reposts are friends-only** (`20260809000000`). Uploads and albums stay public;
+  reposts and playlists are between friends; playlists additionally support
+  `private`, chosen from a picker on both create and edit. The profile shows the
+  TRUE count for a hidden tab (`profile_tab_counts`, DEFINER) with "add them as a
+  friend to see", because a count that runs under RLS reported 0 and the tab then
+  said "No reposts yet" — a false statement about a person, not a UI gap.
+- **DMs require friendship to write** (`20260809030000`). `msg_insert` had checked
+  membership and blocking but never friendship, and membership outlives a
+  friendship — so two people who unfriended could keep messaging indefinitely. The
+  guard was on the door (`get_or_create_dm`) and not the room.
+
 ### What this left open
 
+- [ ] **Re-check the App content declarations you have ALREADY submitted.** Two
+      answers changed on 2026-08-09 and a declaration that no longer matches the app
+      is a rejection risk in its own right:
+      **Data safety** now also stores blocks (`blocked_users`) and reports across three
+      tables, including free text a reporter types;
+      **Content rating** — the "is UGC moderated" answer flips from no to **yes**, but
+      only say so once the turnaround below is real.
 - [ ] **Commit to a review turnaround, in writing.** The questionnaire asks what happens
       when a user reports something. "It appears in a queue" is half an answer; the other
       half is how fast someone looks. Pick a number you will actually honour (24h is
@@ -137,10 +166,13 @@ production, and several are new-ish requirements that closed testing did not enf
 
 - [ ] `targetSdkVersion 36` / `compileSdkVersion 36` — current, comfortably inside the
       target-API window. `minSdkVersion 24`.
-- [ ] Bump `versionCode` (**65 → 66**) and `versionName` in
-      `android/app/build.gradle` for the production build. Codes 63, 64 and 65 are
-      already spent — a reused code is rejected at upload, and a code is spent even
-      if the release it belonged to was discarded.
+- [ ] Bump `versionCode` (**67 → 68**) and `versionName` in
+      `android/app/build.gradle` for the next build. Everything up to 67 is spent — a
+      reused code is rejected at upload, and a code is spent even if the release it
+      belonged to was discarded. Bump with `npm run version:sync` after editing
+      `build.gradle`, NOT `npm run prebuild:android` — that one bumps the patch and
+      the code again, so it would silently ship a different number than the one you
+      reviewed.
 - [ ] `cd android && ./gradlew bundleRelease` → upload
       `android/app/build/outputs/bundle/release/app-release.aab`.
 - [ ] Confirm the release build boots from a cold start on a clean device — the
