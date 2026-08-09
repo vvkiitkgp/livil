@@ -1683,6 +1683,7 @@ export type Database = {
       }
       activity_unread_count: { Args: never; Returns: number }
       add_star: { Args: { target_user_id: string }; Returns: undefined }
+      are_friends: { Args: { a: string; b: string }; Returns: boolean }
       assert_analytics_window: {
         Args: { p_from: string; p_to: string }
         Returns: undefined
@@ -1803,6 +1804,16 @@ export type Database = {
           track_video_url: string
           username: string
           viewed_at: string
+        }[]
+      }
+      list_blocked_accounts: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          blocked_id: string
+          created_at: string
+          display_name: string
+          username: string
         }[]
       }
       list_friend_listen_stories: {
@@ -1943,6 +1954,10 @@ export type Database = {
       send_friend_request: {
         Args: { target_user_id: string }
         Returns: undefined
+      }
+      shares_conversation_with: {
+        Args: { a: string; b: string }
+        Returns: boolean
       }
       track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
       unblock_user: { Args: { target_user_id: string }; Returns: undefined }

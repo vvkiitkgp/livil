@@ -843,17 +843,20 @@ export default function UserProfileScreen() {
         title={confirmBlock === 'unblock' ? 'Unblock this person?' : 'Block this person?'}
         message={
           confirmBlock === 'unblock'
-            ? 'They will be able to message you, send a friend request and comment again. Your friendship and stars are not restored.'
-            : 'They will not be able to message you, send a friend request, star you or comment on your posts.'
+            ? "You'll be able to see each other's music again, and they'll be able to message you, send a friend request and comment. Your friendship and stars are not restored."
+            : "You won't see each other's music, playlists or activity, and they won't be able to contact you."
         }
         bullets={
           confirmBlock === 'block'
-            // Stated plainly because both surprise people: blocking silently ends
-            // a friendship, and it does NOT hide their music.
+            // Every line here was false until this commit. The first two flipped
+            // when 20260809000000 made blocking hide content; the third was never
+            // survivable alongside hiding — a person whose profile stops resolving
+            // works out what happened. Promising secrecy we cannot keep is worse
+            // than not promising it.
             ? [
                 'Any friendship or pending request is removed',
-                'Their music stays visible on Livil',
-                "They aren't told that you blocked them",
+                "Their uploads, albums, playlists and reposts disappear for you — and yours for them",
+                'You can undo this any time from Settings → Privacy & data',
               ]
             : undefined
         }
