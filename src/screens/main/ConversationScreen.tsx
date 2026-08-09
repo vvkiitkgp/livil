@@ -29,6 +29,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
+import { useRelationships } from '../../contexts/RelationshipContext';
 import {
   fetchMessages,
   sendMessage,
@@ -410,6 +411,26 @@ export default function ConversationScreen() {
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserAvatarUrl, setOtherUserAvatarUrl] = useState<string | null>(null);
+  const rel = useRelationships();
+
+  /**
+   * Why the composer may be unavailable, or null when it is fine.
+   *
+   * MIRRORS `can_write_to_conversation` (20260809030000) — it does not create
+   * the rule. The server refuses these sends either way; without this the user
+   * types a whole message, hits send, and gets "Couldn't send message. Please
+   * try again." — advice that cannot work, for a reason never stated.
+   *
+   * DMs only. A group is authorized by membership, so friendship between every
+   * pair would break every group containing two strangers.
+   */
+  const sendBlock = useMemo<null | 'blocked' | 'not-friends'>(() => {
+    if (kind !== 'dm' || !otherUserId) { return null; }
+    const status = rel.status(otherUserId);
+    if (status === 'blocked') { return 'blocked'; }
+    if (status === 'friend' || status === 'me') { return null; }
+    return 'not-friends';
+  }, [kind, otherUserId, rel]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   // When the user taps a reply quote we scroll to the original and pulse it
@@ -1037,6 +1058,28 @@ export default function ConversationScreen() {
                 </TouchableOpacity>
               </View>
             ) : null}
+            {sendBlock ? (
+              <View style={[styles.sendBlocked, { paddingBottom: 12 + insets.bottom }]}>
+                <Text style={styles.sendBlockedText}>
+                  {sendBlock === 'blocked'
+                    ? `You blocked ${title || 'this person'}.`
+                    : `You can only message friends on Livil.`}
+                </Text>
+                <Button
+                  label={sendBlock === 'blocked' ? 'Unblock' : 'Add friend'}
+                  onPress={() => {
+                    if (!otherUserId) { return; }
+                    // Both actions live on the profile: unblock needs its
+                    // confirmation, and Add opens the same relationship sheet
+                    // the rest of the app uses. Duplicating either here would be
+                    // a second place to keep in step with the first.
+                    navigation.navigate('UserProfile', { userId: otherUserId });
+                  }}
+                  variant="secondary"
+                  size="md"
+                />
+              </View>
+            ) : (
             <View style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}>
               <View style={styles.inputWrap}>
                 <FormInput
@@ -1070,6 +1113,7 @@ export default function ConversationScreen() {
                 />
               </TouchableOpacity>
             </View>
+            )}
           </KeyboardStickyView>
         </KeyboardGestureArea>
       )}
@@ -1398,6 +1442,24 @@ const styles = StyleSheet.create({
   replyPreviewTitle: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '700' },
   replyPreviewBodyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   replyPreviewClose: { padding: 4 },
+  // Replaces the send bar rather than sitting above it — a disabled composer
+  // still invites typing, which is how the "Couldn't send message" toast got
+  // reached in the first place.
+  sendBlocked: {
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  sendBlockedText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
   sendBar: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
