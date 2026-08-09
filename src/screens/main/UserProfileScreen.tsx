@@ -60,6 +60,7 @@ const PAGE_SIZE = 10;
 
 type ListItem =
   | { kind: 'tabs'; key: string }
+  | { kind: 'blocked'; key: string }
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
@@ -140,6 +141,16 @@ export default function UserProfileScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
   const comments = useCommentsCountDeltas();
+  /**
+   * Blocked profiles show one explanation instead of the whole profile body.
+   *
+   * The server already returns nothing — the block-aware SELECT policies hide
+   * their posts, tracks, albums and playlists — so this is not the enforcement.
+   * It exists because WITHOUT it the screen renders correctly-empty tabs, zeroed
+   * counters and "No uploads yet", which looks like the app is broken rather
+   * than like a block being respected.
+   */
+  const blockedView = rel.status(userId) === 'blocked';
   const listRef = useRef<FlatList<ListItem>>(null);
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
   // auto-open comments) have already fired this mount — they're one-shot.
@@ -444,6 +455,11 @@ export default function UserProfileScreen() {
 
   const listData = useMemo<ListItem[]>(() => {
     const head: ListItem = { kind: 'tabs', key: '__tabs__' };
+    // Blocked: no tab bar, no counts, no empty states — one explanation instead.
+    // RLS already returns nothing for a blocked pair, so without this the screen
+    // would render a full set of tabs that are all mysteriously empty, which
+    // reads as a bug rather than as a block.
+    if (blockedView) { return [{ kind: 'blocked', key: '__blocked__' }]; }
     if (loading) { return [head, { kind: 'loading', key: '__loading__' }]; }
     if (tab === 'reposts' || tab === 'uploads') {
       const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
@@ -462,7 +478,7 @@ export default function UserProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -476,6 +492,27 @@ export default function UserProfileScreen() {
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
         return <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />;
+      }
+      if (item.kind === 'blocked') {
+        return (
+          <View style={styles.blockedWrap}>
+            <View style={styles.blockedIcon}>
+              <Icon name="block" size={30} color={COLORS.textSecondary} />
+            </View>
+            <Text style={styles.blockedTitle}>You blocked this account</Text>
+            <Text style={styles.blockedBody}>
+              You can't see their music, playlists or activity, and they can't see
+              yours or contact you. Unblock to undo this.
+            </Text>
+            <Button
+              label="Unblock"
+              onPress={() => setConfirmBlock('unblock')}
+              variant="secondary"
+              size="md"
+              style={styles.blockedBtn}
+            />
+          </View>
+        );
       }
       if (item.kind === 'loading') {
         return <View style={styles.emptyWrap}><ActivityIndicator color={COLORS.purpleLight} /></View>;
@@ -661,32 +698,40 @@ export default function UserProfileScreen() {
           ) : null}
         </View>
 
-        <View style={styles.socialPills}>
-          <View style={styles.socialPill}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
-            <Text style={styles.socialPillLabel}>Fans</Text>
-          </View>
-          <View style={styles.socialPillDivider} />
-          <View style={styles.socialPill}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
-            <Text style={styles.socialPillLabel}>Friends</Text>
-          </View>
-          <View style={styles.socialPillDivider} />
-          <View style={styles.socialPill}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
-            <Text style={styles.socialPillLabel}>Stars</Text>
-          </View>
-        </View>
+        {/* Counts are suppressed for a blocked account rather than shown as
+            zeroes. They are not secret — they are simply wrong: RLS returns no
+            rows, so every figure would read 0 and imply this person has posted
+            nothing, rather than that you cannot see it. */}
+        {!blockedView ? (
+          <>
+            <View style={styles.socialPills}>
+              <View style={styles.socialPill}>
+                <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
+                <Text style={styles.socialPillLabel}>Fans</Text>
+              </View>
+              <View style={styles.socialPillDivider} />
+              <View style={styles.socialPill}>
+                <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
+                <Text style={styles.socialPillLabel}>Friends</Text>
+              </View>
+              <View style={styles.socialPillDivider} />
+              <View style={styles.socialPill}>
+                <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
+                <Text style={styles.socialPillLabel}>Stars</Text>
+              </View>
+            </View>
 
-        <View style={styles.contentStats}>
-          <Text style={styles.contentStatsText}>
-            <Text style={styles.contentStatsValue}>{formatStat(stats.posts)}</Text>
-            {' '}post{stats.posts === 1 ? '' : 's'}
-            <Text style={styles.contentStatsDivider}>  ·  </Text>
-            <Text style={styles.contentStatsValue}>{formatStat(stats.uploads)}</Text>
-            {' '}upload{stats.uploads === 1 ? '' : 's'}
-          </Text>
-        </View>
+            <View style={styles.contentStats}>
+              <Text style={styles.contentStatsText}>
+                <Text style={styles.contentStatsValue}>{formatStat(stats.posts)}</Text>
+                {' '}post{stats.posts === 1 ? '' : 's'}
+                <Text style={styles.contentStatsDivider}>  ·  </Text>
+                <Text style={styles.contentStatsValue}>{formatStat(stats.uploads)}</Text>
+                {' '}upload{stats.uploads === 1 ? '' : 's'}
+              </Text>
+            </View>
+          </>
+        ) : null}
 
         {error ? (
           <View style={styles.errorBox}>
@@ -695,7 +740,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories]);
+  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -892,6 +937,36 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   menuRowTextDanger: { color: COLORS.error },
+  // ── Blocked state ──
+  blockedWrap: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingTop: 48,
+    paddingBottom: 24,
+    gap: 10,
+  },
+  blockedIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  blockedTitle: {
+    color: COLORS.white,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  blockedBody: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  blockedBtn: { marginTop: 10 },
   screenTitle: {
     flex: 1, color: COLORS.white, fontSize: 16, fontWeight: '700',
     textAlign: 'center', letterSpacing: -0.2,
