@@ -10,6 +10,7 @@ import React, {
 import { View, StyleSheet, Image, Pressable, Text, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
 import Video, { ViewType, type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
+import CoverFallback from './CoverFallback';
 import { Icon } from './Icon';
 import { usePlayback } from '../contexts/PlaybackContext';
 
@@ -334,8 +335,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
           accessibilityRole="button"
           accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
         >
-          <View style={styles.fallbackBlobA} pointerEvents="none" />
-          <View style={styles.fallbackBlobB} pointerEvents="none" />
+          <CoverFallback />
         </Pressable>
       ) : null}
 
@@ -408,26 +408,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.card,
     overflow: 'hidden',
-  },
-  fallbackBlobA: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: COLORS.purple,
-    opacity: 0.45,
-    top: -60,
-    left: -40,
-  },
-  fallbackBlobB: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#EC4899',
-    opacity: 0.35,
-    bottom: -50,
-    right: -20,
   },
   playGlyphWrap: {
     ...StyleSheet.absoluteFill,

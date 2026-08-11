@@ -16,6 +16,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
+import WaveformScrubber from '../../components/WaveformScrubber';
+import { usePlayback } from '../../contexts/PlaybackContext';
 import FormInput from '../../components/FormInput';
 import TagInput from '../../components/TagInput';
 import { EMOTION_TAGS } from '../../../shared/constants/tags';
@@ -96,6 +98,13 @@ const VIDEO_SLOTS: FileSlot[] = [
   },
 ];
 
+/** m:ss for the preview scrubber's readout. */
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) { return '0:00'; }
+  const total = Math.floor(seconds);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 function formatBytes(bytes: number | null): string {
   if (bytes == null) {return '';}
   if (bytes < 1024) {return `${bytes} B`;}
@@ -105,6 +114,7 @@ function formatBytes(bytes: number | null): string {
 
 export default function UploadScreen() {
   const navigation = useNavigation<UploadNavigation>();
+  const playback = usePlayback();
 
   const [mode, setMode] = useState<PostMode>('audio');
   const [audio, setAudio] = useState<PickedFile | null>(null);
@@ -134,11 +144,38 @@ export default function UploadScreen() {
   // seconds — so we can persist duration_seconds at upload (feed/profile cards
   // read it to show the track length before the post is ever played).
   const [previewDurationSec, setPreviewDurationSec] = useState<number | null>(null);
+  const [previewPositionSec, setPreviewPositionSec] = useState(0);
   const previewRef = useRef<MediaPlayerHandle>(null);
+  // True for the length of a scrub swipe. While it is set the FINGER owns the
+  // readout, so the player's progress events must not overwrite it.
+  const previewScrubbingRef = useRef(false);
 
   const handlePreviewEnded = useCallback(() => {
     setPreviewPaused(true);
+    setPreviewPositionSec(0);
     previewRef.current?.seek(0);
+  }, []);
+
+  const handlePreviewProgress = useCallback((pos: number) => {
+    if (previewScrubbingRef.current) { return; }
+    setPreviewPositionSec(pos);
+  }, []);
+
+  const handlePreviewScrubStart = useCallback(() => {
+    previewScrubbingRef.current = true;
+  }, []);
+
+  // Readout only while the finger moves — seeking the preview on every gesture
+  // event makes it re-buffer and the scrub visibly stutters. Same rule as the
+  // player and the repost editor.
+  const handlePreviewScrub = useCallback((s: number) => {
+    setPreviewPositionSec(s);
+  }, []);
+
+  const handlePreviewSeekEnd = useCallback((s: number) => {
+    previewScrubbingRef.current = false;
+    setPreviewPositionSec(s);
+    previewRef.current?.seek(s);
   }, []);
 
   const previewMedia: MediaShape | null = useMemo(() => {
@@ -189,10 +226,29 @@ export default function UploadScreen() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => { setPreviewPaused(true); setPreviewDurationSec(null); }, [previewMedia]);
+  useEffect(() => { setPreviewPaused(true); setPreviewDurationSec(null); setPreviewPositionSec(0); }, [previewMedia]);
 
+  // Hide the FloatingPlayer for the length of this screen, and stop whatever it
+  // was controlling on the way in. Hiding it alone would leave music playing with
+  // no visible control — and the preview below is a second player competing for
+  // the same ears. Mirrors RepostScreen.
+  //
+  // NOTE the flag is named for the repost screen because that was its first
+  // caller; it really means "a full-screen compose surface is open". Depending on
+  // the individual callbacks rather than the whole `playback` object matters:
+  // its value memo re-creates constantly, which would re-run this on every
+  // playback state change and re-pause the user's music mid-screen.
+  const { pauseAll, setRepostOpen, handlersRef } = playback;
   useFocusEffect(
-    useCallback(() => () => { setPreviewPaused(true); }, []),
+    useCallback(() => {
+      handlersRef.current?.pause();
+      pauseAll();
+      setRepostOpen(true);
+      return () => {
+        setPreviewPaused(true);
+        setRepostOpen(false);
+      };
+    }, [handlersRef, pauseAll, setRepostOpen]),
   );
 
   const handlePickFile = useCallback(
@@ -512,6 +568,7 @@ export default function UploadScreen() {
                   media={previewMedia}
                   paused={previewPaused}
                   onTogglePaused={() => setPreviewPaused(p => !p)}
+                  onProgress={handlePreviewProgress}
                   onLoaded={setPreviewDurationSec}
                   onEnded={handlePreviewEnded}
                   visible
@@ -522,6 +579,27 @@ export default function UploadScreen() {
                     <Text style={styles.previewTitle} numberOfLines={1}>
                       {title}
                     </Text>
+                  </View>
+                ) : null}
+                {/* Same control the jam room uses: whole track, no clip, swipe to
+                    scrub. Audio and video alike — the preview is one file either
+                    way, and there is nothing to trim at upload. */}
+                {previewDurationSec && previewDurationSec > 0 ? (
+                  <View style={styles.previewSeekWrap}>
+                    <WaveformScrubber
+                      position={previewPositionSec}
+                      duration={previewDurationSec}
+                      seed={previewMedia.kind === 'audio' ? (audio?.uri ?? '') : (video?.uri ?? '')}
+                      span="full"
+                      height={44}
+                      onSeekStart={handlePreviewScrubStart}
+                      onSeek={handlePreviewScrub}
+                      onSeekEnd={handlePreviewSeekEnd}
+                    />
+                    <View style={styles.previewTimeRow}>
+                      <Text style={styles.previewTimeText}>{formatClock(previewPositionSec)}</Text>
+                      <Text style={styles.previewTimeText}>{formatClock(previewDurationSec)}</Text>
+                    </View>
                   </View>
                 ) : null}
               </View>
@@ -962,14 +1040,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 24,
   },
+  // Not a card any more — no fill, no outline, no rounding. The media sits
+  // straight on the page and keeps its own square corners.
   previewCard: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    overflow: 'hidden',
     marginBottom: 24,
   },
+  previewSeekWrap: { width: '100%', marginTop: 4, marginBottom: 4 },
+  previewTimeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
+  previewTimeText: { color: COLORS.textMuted, fontSize: 11, fontVariant: ['tabular-nums'] },
   previewTrackInfo: {
     padding: 14,
     gap: 4,

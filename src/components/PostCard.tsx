@@ -6,7 +6,8 @@ import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
-import ClipRangeSlider from './ClipRangeSlider';
+import WaveformScrubber from './WaveformScrubber';
+import CoverFallback from './CoverFallback';
 import CollabAvatar from './CollabAvatar';
 import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import TrackContextMenu from './TrackContextMenu';
@@ -231,6 +232,16 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   const isVideo = post.track.mediaKind === 'video';
   const isThisActive = playback.activePostId === post.id;
+  // A repost carrying a clip gets the purple box drawn around its slice of the
+  // full track, and its time labels are the clip boundaries. An upload (or a
+  // repost saved without a window) is just the whole song, unmarked.
+  const isClippedRepost =
+    post.kind === 'repost' &&
+    post.clipStartSec != null &&
+    post.clipEndSec != null &&
+    post.clipEndSec > post.clipStartSec;
+  const waveViewStart = isClippedRepost ? (post.clipStartSec ?? 0) : 0;
+  const waveViewEnd = isClippedRepost ? (post.clipEndSec ?? duration) : duration;
   // True when this post is the loaded track (playing OR paused). At most one
   // card is the current track, so only that card polls the position refs.
   const isCurrentTrack = playback.nowPlaying?.postId === post.id;
@@ -275,6 +286,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     }, 250);
     return () => clearInterval(id);
   }, [isCurrentTrack, post.track.durationSeconds, playback.positionRef, playback.durationRef]);
+
 
   // Build the NowPlayingInfo for this post — shared between play-button and
   // thumbnail-tap so we don't duplicate field-list maintenance.
@@ -750,12 +762,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               source={{ uri: post.track.coverArtUrl }}
               style={styles.audioCover}
               resizeMode="cover"
-              placeholder={
-                <>
-                  <View style={styles.fallbackBlobA} pointerEvents="none" />
-                  <View style={styles.fallbackBlobB} pointerEvents="none" />
-                </>
-              }
+              placeholder={<CoverFallback />}
             />
             {isThisActive && playback.isBuffering ? (
               <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
@@ -776,23 +783,28 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         )}
       </View>
 
-      {/* Clip-window indicator — shows only the clip start/end markers (no
-          progress fill, no seek thumb). Labels are the clip boundaries, not
-          the live playback position. */}
-      <View style={styles.seekRow}>
-        <Text style={styles.seekTime}>{formatTime(post.clipStartSec ?? 0)}</Text>
-        <View style={styles.seekBarWrap}>
-          <ClipRangeSlider
-            readOnly
-            hideProgress
-            duration={duration}
-            position={position}
-            start={post.clipStartSec ?? 0}
-            end={post.clipEndSec ?? duration}
-            minClipSeconds={1}
-          />
+      {/* Waveform. Always the WHOLE song in white — a repost draws a purple box
+          around the slice that was reposted, so you can see the clip in the
+          context of the track it came from. No progress of any kind on the feed
+          card: it shows the shape of the song and where the clip sits, and the
+          labels are the clip boundaries, not a live position. */}
+      <View style={styles.seekBlock}>
+        <View style={styles.seekLabels}>
+          <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
+          <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
         </View>
-        <Text style={styles.seekTime}>{formatTime(post.clipEndSec ?? duration)}</Text>
+        <WaveformScrubber
+          duration={duration}
+          position={position}
+          seed={post.track.id}
+          span="full"
+          clipStart={waveViewStart}
+          clipEnd={waveViewEnd}
+          showBox={isClippedRepost}
+          showProgress={false}
+          seekable={false}
+          height={44}
+        />
       </View>
 
       {/* Action row: play/pause + stats */}
@@ -1119,26 +1131,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: COLORS.card,
   },
-  fallbackBlobA: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: COLORS.purple,
-    opacity: 0.45,
-    top: -60,
-    left: -40,
-  },
-  fallbackBlobB: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#EC4899',
-    opacity: 0.35,
-    bottom: -50,
-    right: -20,
-  },
   videoBadge: {
     position: 'absolute',
     top: 10,
@@ -1171,21 +1163,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
   },
-  seekRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 10,
+  // Labels sit ABOVE the waveform (start · now · end) so the bars keep the full
+  // card width — at feed width, side labels leave too little room to read.
+  seekBlock: {
+    // Clear of the artwork. Has to beat the 6dp holding the labels to their own
+    // waveform, or the block reads as belonging to the image instead.
+    marginTop: 14,
   },
-  seekBarWrap: {
-    flex: 1,
+  seekLabels: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    // Negative on purpose, same as the fullscreen player: the scrubber carries
+    // SCRUBBER_SLOP of transparent touch padding above its box, so without this
+    // the clip times read as floating clear of the wave they label. Pulling into
+    // that slop tightens the gap without shrinking the target.
+    marginBottom: -6,
   },
   seekTime: {
     color: COLORS.textMuted,
     fontSize: 11,
     fontVariant: ['tabular-nums'],
-    width: 40,
-    textAlign: 'center',
   },
   actionRow: {
     flexDirection: 'row',

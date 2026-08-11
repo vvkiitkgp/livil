@@ -25,7 +25,7 @@ import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
 import { GradientBorder } from '../../components/GradientBorder';
 import FormInput from '../../components/FormInput';
-import SeekBar from '../../components/SeekBar';
+import WaveformScrubber from '../../components/WaveformScrubber';
 import AddBadge from '../../components/AddBadge';
 import JamExitModal from '../../components/JamExitModal';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
@@ -518,9 +518,17 @@ export default function JamRoomScreen() {
         {/* Seek bar */}
         {(permissions.can_seek || !isHost) && durationSec > 0 && (
           <View style={styles.seekWrap}>
-            <SeekBar
+            {/* Absolute span — a jam plays whole tracks, there is no clip here.
+                No envelope: a guest only has the host's broadcast metadata, not
+                the track row, so the shape stays decorative (seeded by title so
+                it is at least stable for the song everyone is hearing). */}
+            <WaveformScrubber
               position={positionSec}
               duration={durationSec}
+              seed={displayTrack?.title ?? ''}
+              span="full"
+              height={44}
+              seekable={permissions.can_seek}
               onSeekEnd={permissions.can_seek ? handleSeekEnd : undefined}
             />
             <View style={styles.timeRow}>
