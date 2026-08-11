@@ -16,7 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
-import WaveformScrubber from '../../components/WaveformScrubber';
+import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import FormInput from '../../components/FormInput';
 import TagInput from '../../components/TagInput';
@@ -586,6 +586,11 @@ export default function UploadScreen() {
                     way, and there is nothing to trim at upload. */}
                 {previewDurationSec && previewDurationSec > 0 ? (
                   <View style={styles.previewSeekWrap}>
+                    <View style={styles.previewTimeRow}>
+                      <Text style={styles.previewTimeText}>{formatClock(0)}</Text>
+                      <Text style={styles.previewTimeNow}>{formatClock(previewPositionSec)}</Text>
+                      <Text style={styles.previewTimeText}>{formatClock(previewDurationSec)}</Text>
+                    </View>
                     <WaveformScrubber
                       position={previewPositionSec}
                       duration={previewDurationSec}
@@ -596,10 +601,6 @@ export default function UploadScreen() {
                       onSeek={handlePreviewScrub}
                       onSeekEnd={handlePreviewSeekEnd}
                     />
-                    <View style={styles.previewTimeRow}>
-                      <Text style={styles.previewTimeText}>{formatClock(previewPositionSec)}</Text>
-                      <Text style={styles.previewTimeText}>{formatClock(previewDurationSec)}</Text>
-                    </View>
                   </View>
                 ) : null}
               </View>
@@ -1046,8 +1047,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   previewSeekWrap: { width: '100%', marginTop: 4, marginBottom: 4 },
-  previewTimeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  previewTimeText: { color: COLORS.textMuted, fontSize: 11, fontVariant: ['tabular-nums'] },
+  // start · now · end above the bar, matching FullScreenPlayer — including the
+  // negative pull into the scrubber's transparent top slop.
+  previewTimeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: SCRUBBER_LABEL_PULL },
+  previewTimeText: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'] },
+  previewTimeNow: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
   previewTrackInfo: {
     padding: 14,
     gap: 4,
