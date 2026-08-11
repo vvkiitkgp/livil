@@ -117,7 +117,7 @@ livil/
 │   │   ├── FormInput.tsx          ← always use this for text inputs
 │   │   ├── GlobalAudioPlayer.tsx  ← THE single audio engine + MediaSession owner
 │   │   ├── FullScreenPlayer.tsx   ← muted, foreground-only video frame (slaved to GAP)
-│   │   └── ClipRangeSlider.tsx    ← clip-window editing (needs the FULL track)
+│   │   └── WaveformScrubber.tsx   ← THE one scrubber (span='full' | 'clip'; needs the FULL track)
 │   ├── contexts/
 │   │   └── PlaybackContext.tsx    ← playback seam (handlers, refs, queue, clip)
 │   ├── utils/

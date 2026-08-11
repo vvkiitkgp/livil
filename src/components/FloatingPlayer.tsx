@@ -28,6 +28,7 @@ import { haptics } from '../utils/haptics';
 import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
 import WaveVisualizer from './WaveVisualizer';
+import CoverFallback from './CoverFallback';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -765,8 +766,7 @@ export default function FloatingPlayer() {
                 />
               ) : (
                 <View style={styles.fallbackArt}>
-                  <View style={styles.fallbackBlobA} />
-                  <View style={styles.fallbackBlobB} />
+                  <CoverFallback />
                 </View>
               )
             )}
@@ -921,6 +921,4 @@ const styles = StyleSheet.create({
   innerDiscOpen: { backgroundColor: 'rgba(10,10,15,0.9)' },
   albumArt: { width: '100%', height: '100%' },
   fallbackArt: { flex: 1, backgroundColor: COLORS.card, overflow: 'hidden' },
-  fallbackBlobA: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.purple, opacity: 0.5, top: -15, left: -10 },
-  fallbackBlobB: { position: 'absolute', width: 50, height: 50, borderRadius: 25, backgroundColor: '#EC4899', opacity: 0.4, bottom: -10, right: -8 },
 });

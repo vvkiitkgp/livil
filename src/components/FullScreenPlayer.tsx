@@ -34,7 +34,13 @@ import Reanimated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import ClipRangeSlider from './ClipRangeSlider';
+import WaveformScrubber, {
+  SCRUBBER_SLOP,
+  SCRUBBER_BOX_H,
+  SCRUBBER_GUTTER,
+  SCRUBBER_LABEL_PULL,
+} from './WaveformScrubber';
+import CoverFallback from './CoverFallback';
 import CollabAvatar from './CollabAvatar';
 import QueueList from './QueueList';
 import { resolveAuthorDisplay } from '../utils/authorDisplay';
@@ -58,6 +64,27 @@ import type { RootStackParamList } from '../navigation/types';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const FLOAT_D = 60;
+
+/** Below this much movement a released scrub was a tap, and seeks nothing. */
+const SCRUB_NOOP_SECONDS = 0.25;
+
+// ── Seek block geometry ──────────────────────────────────────────────────────
+// The seek row is anchored by its BOTTOM and grows upward, and the title/stats
+// block above it is positioned by a fixed offset from that same anchor. So that
+// offset has to be the block's real height — when it was a hardcoded 56 and the
+// block grew past it, the time labels silently rendered on top of the stats row.
+// Derived here so changing SCRUBBER_BOX_H can never desync it again.
+/** Line box of the start · now · end row (12px tabular text). */
+const SEEK_LABEL_TEXT_H = 15;
+const SEEK_LABEL_H = SEEK_LABEL_TEXT_H + SCRUBBER_LABEL_PULL;
+/** Total height the seek row occupies, touch slop included. */
+const SEEK_BLOCK_H = SEEK_LABEL_H + SCRUBBER_SLOP + SCRUBBER_BOX_H + SCRUBBER_SLOP;
+/**
+ * Clear space above and below the block. Applied symmetrically — note the
+ * subtraction below: the scrubber carries SCRUBBER_SLOP of its own padding
+ * beneath the box, which is already part of that gap visually.
+ */
+const SEEK_GAP = 30;
 // First-render estimate for the bottom title/artist/stats block, replaced by the
 // real onLayout height. Only used to size the audio cover-art gap, so a slightly
 // wrong guess costs at most one silent re-layout on the very first frame.
@@ -173,17 +200,24 @@ function roleIcon(role: string): IconName {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 /**
- * Polls position/duration at 4 Hz and renders:
- * - A ClipRangeSlider when the current track has an active clip window
- *   (a repost with stored clip_start_sec / clip_end_sec). The user can drag the
- *   handles freely to listen to any range of the full track. Changes are stored in
- *   clipWindowRef so PostCard respects the new boundaries without a DB write.
- * - A plain SeekBar for uploads with no clip window.
+ * Polls position/duration at 10 Hz and renders the one scrubber.
+ *
+ * ANCHORED layout: the purple box and its two handles hold fixed screen
+ * positions and never move. Trimming zooms the waveform underneath them — the
+ * bars inside the box are always exactly [clipStart, clipEnd] — with faded ghost
+ * bars in the gutters previewing the audio just outside. A gutter is empty when
+ * there is nothing out there, so a clip starting at 0:00 has a blank left gutter.
+ *
+ * An upload has no clip, so its handles simply sit at 0 and the track end (blank
+ * gutters on both sides) and it plays as the whole song.
+ *
+ * Handle drags are stored in clipWindowRef (no DB write), so PostCard and the
+ * native clip JSON both respect the new boundaries for the life of the track.
  */
 function FullScreenClipBar() {
   const {
     positionRef, durationRef, handlersRef, nowPlaying, clipWindowRef, markSeekTarget,
-    bumpClipVersion,
+    bumpClipVersion, scrubbingRef,
   } = usePlayback();
   // Lazy-init from refs so handles appear at correct positions the moment the
   // full-screen player opens, without waiting for the first polling tick.
@@ -197,13 +231,9 @@ function FullScreenClipBar() {
   if (duration > 0) { lastDurationRef.current = duration; }
   const displayDuration = duration > 0 ? duration : lastDurationRef.current;
 
-  // Local clip state — drives ClipRangeSlider during drag without touching context.
+  // Local clip state — drives the handles during drag without touching context.
   const [localStart, setLocalStart] = useState<number | null>(() => nowPlaying?.clipStartSec ?? null);
   const [localEnd,   setLocalEnd]   = useState<number | null>(() => nowPlaying?.clipEndSec   ?? null);
-
-  // Track localStart in a ref so handleClipChangeEnd can detect which handle moved.
-  const localStartRef = useRef(localStart);
-  localStartRef.current = localStart;
 
   // Sync from nowPlaying whenever the track changes.
   useEffect(() => {
@@ -215,6 +245,7 @@ function FullScreenClipBar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
 
+
   // Poll positionRef/durationRef at 10 Hz. Tighter than 250 ms so the thumb
   // looks smoother, but plain — no rAF interpolation (jittery onProgress
   // samples cause the projection to snap back, visible as flicker).
@@ -223,7 +254,10 @@ function FullScreenClipBar() {
     const id = setInterval(() => {
       const p = positionRef.current;
       const d = durationRef.current;
-      setPosition(p);
+      // While the finger is scrubbing, the SWIPE owns the readout. Playback has
+      // not moved yet — it only seeks on release — so the poll would otherwise
+      // yank the label straight back to where the song is still playing.
+      if (!scrubbingRef.current) { setPosition(p); }
       setDuration(d);
       // Only log duration transitions (0 ↔ non-zero). The 1-Hz heartbeat is
       // pulled — too noisy for normal playback investigation.
@@ -235,10 +269,10 @@ function FullScreenClipBar() {
       lastLoggedDurRef.current = d;
     }, 100);
     return () => clearInterval(id);
-  }, [positionRef, durationRef]);
+  }, [positionRef, durationRef, scrubbingRef]);
 
-  // Stable callbacks so ClipRangeSlider's panResponder useMemo doesn't
-  // recreate on every polling tick.
+  // Stable callbacks so WaveformScrubber's panResponder useMemo doesn't recreate
+  // on every polling tick.
   const handleClipChange = useCallback((s: number, e: number) => {
     setLocalStart(s);
     setLocalEnd(e);
@@ -265,35 +299,88 @@ function FullScreenClipBar() {
     bumpClipVersion();
   }, [clipWindowRef, handlersRef, markSeekTarget, bumpClipVersion]);
 
-  // Seek handle (blue circle): scrubs to the chosen position.
-  // Never calls play() — if the song was paused, it stays paused after the scrub.
-  // markSeekTarget pre-commits positionRef and arms the guard so stale onProgress
-  // samples from the native player don't rubber-band the bar back to the
-  // pre-seek position before the seek lands.
+  // Where playback REALLY was when the finger went down. Captured because the
+  // swipe is about to take ownership of positionRef (so the ring can follow it),
+  // which makes positionRef useless as a reference point on release.
+  const scrubOriginPosRef = useRef(0);
+
+  const handleScrubStart = useCallback(() => {
+    scrubOriginPosRef.current = positionRef.current;
+    scrubbingRef.current = true;
+  }, [positionRef, scrubbingRef]);
+
+  /**
+   * While the finger is moving, update the READOUT and nothing else. One local
+   * setState; the audio keeps playing from wherever it was and only moves on
+   * release.
+   *
+   * Do NOT be tempted to drive the engine from here as well. Seeking mid-swipe
+   * needs markSeekTarget to keep the guard honest, and markSeekTarget bumps
+   * seekNonce — which invalidates PlaybackContext's value and re-renders every
+   * consumer in the tree, and is also the signal FullScreenPlayer's muted video
+   * frame uses to eager-seek. At gesture rate that re-renders the whole player
+   * and re-seeks the video frame continuously; the scrub visibly stutters. That
+   * shipped once and was reverted. Scrub-along audio needs a cheaper seam than
+   * markSeekTarget before it can be tried again.
+   */
+  const handleScrub = useCallback((s: number) => {
+    setPosition(s);
+    // Publish the swipe target to every OTHER position consumer — chiefly the
+    // floating player's progress ring, which polls positionRef and would
+    // otherwise sit still while the number above it moves. A plain ref write:
+    // no re-render, no seek. updatePosition is yielding to us for the length of
+    // the gesture, so the engine's own progress cannot overwrite this.
+    positionRef.current = s;
+  }, [positionRef]);
+
+  // Commit — the ONE place a swipe moves playback. markSeekTarget pre-commits
+  // positionRef and arms the guard so stale onProgress samples from the native
+  // player don't rubber-band the bar back to the pre-seek position before the
+  // seek lands.
   const handleSeekEnd = useCallback((s: number) => {
+    // Cleared FIRST: markSeekTarget arms the guard that filters stale samples,
+    // and the guard can only be released by a sample updatePosition actually
+    // processes.
+    scrubbingRef.current = false;
+    // A tap that never moved should not seek — that would make ExoPlayer
+    // re-buffer and hiccup the audio for nothing. Compare against where playback
+    // was at TOUCH-DOWN, not against positionRef: the swipe has been writing the
+    // target into positionRef all along, so `s` always equals it by now and
+    // comparing the two classified every scrub as a tap. With the poll resumed,
+    // the engine's next sample corrects both positionRef and the readout.
+    if (Math.abs(s - scrubOriginPosRef.current) < SCRUB_NOOP_SECONDS) { return; }
     markSeekTarget(s);
     setPosition(s);
     handlersRef.current?.seek(s);
-  }, [handlersRef, markSeekTarget]);
+  }, [handlersRef, markSeekTarget, scrubbingRef]);
 
+  const dur = displayDuration > 0 ? displayDuration : 1;
   const start = localStart ?? 0;
-  const end = localEnd ?? displayDuration;
+  const end = localEnd ?? dur;
 
   return (
     <View style={seekSt.wrap}>
       <View style={seekSt.timeRow}>
-        <Text style={seekSt.time}>{formatTime(position)}</Text>
-        <Text style={seekSt.time}>{formatTime(displayDuration)}</Text>
+        <Text style={seekSt.time}>{formatTime(start)}</Text>
+        <Text style={seekSt.timeNow}>{formatTime(position)}</Text>
+        <Text style={seekSt.time}>{formatTime(end)}</Text>
       </View>
-      <ClipRangeSlider
-        duration={displayDuration > 0 ? displayDuration : 1}
+      <WaveformScrubber
+        layout="anchored"
+        duration={dur}
         position={position}
-        start={start}
-        end={end}
+        seed={nowPlaying?.trackId ?? ''}
+        clipStart={start}
+        clipEnd={end}
+        editableClip
         minClipSeconds={2}
+        height={SCRUBBER_BOX_H}
+        gutter={SCRUBBER_GUTTER}
         edgeInset={20}
-        onChange={handleClipChange}
-        onChangeEnd={handleClipChangeEnd}
+        onClipChange={handleClipChange}
+        onClipChangeEnd={handleClipChangeEnd}
+        onSeekStart={handleScrubStart}
+        onSeek={handleScrub}
         onSeekEnd={handleSeekEnd}
       />
     </View>
@@ -301,9 +388,10 @@ function FullScreenClipBar() {
 }
 
 const seekSt = StyleSheet.create({
-  wrap: { paddingHorizontal: 24, paddingBottom: 4 },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  wrap: { paddingHorizontal: 24 },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: SCRUBBER_LABEL_PULL, paddingHorizontal: 20 },
   time: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  timeNow: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
 });
 
 /**
@@ -1617,7 +1705,8 @@ export default function FullScreenPlayer() {
   const panelHeight = SCREEN_H - panelTop;
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 44;
-  const seekRowBottom = playerBottom + FLOAT_D + 24;
+  const seekRowBottom = playerBottom + FLOAT_D + SEEK_GAP - SCRUBBER_SLOP;
+  const bottomInfoBottom = seekRowBottom + SEEK_BLOCK_H + SEEK_GAP;
   // ── Audio cover-art card ──────────────────────────────────────────────────
   // Audio has no picture to fill the screen with, so a full-bleed crop just
   // hides the edges of the artwork. Instead the card takes the ARTWORK'S OWN
@@ -1625,7 +1714,7 @@ export default function FullScreenPlayer() {
   // the title block, or the side padding — whichever it reaches first. Video is
   // untouched: it keeps the full-bleed frame and its pinch/pan clean view.
   const artTop = safeTop + HEADER_H + ART_GAP_TOP;
-  const artBottomEdge = seekRowBottom + 56 + bottomInfoH + ART_GAP_BOTTOM;
+  const artBottomEdge = bottomInfoBottom + bottomInfoH + ART_GAP_BOTTOM;
   const artBandH = Math.max(160, SCREEN_H - artTop - artBottomEdge);
   const artMaxW = SCREEN_W - ART_SIDE_PAD * 2;
   // The min() picks whichever limit binds: a wide image runs out of width first,
@@ -1843,8 +1932,7 @@ export default function FullScreenPlayer() {
           )
         ) : nowPlaying.mediaKind === 'video' ? (
           <View style={styles.albumArtFallback}>
-            <View style={styles.fallbackBlobA} />
-            <View style={styles.fallbackBlobB} />
+            <CoverFallback />
           </View>
         ) : (
           // No artwork on an audio post — the gradient placeholder becomes the
@@ -1858,8 +1946,7 @@ export default function FullScreenPlayer() {
                 style={[styles.artCard, { width: artSide, height: artSide }, artFloatStyle]}
               >
                 <View style={styles.artClip}>
-                  <View style={styles.fallbackBlobA} />
-                  <View style={styles.fallbackBlobB} />
+                  <CoverFallback />
                 </View>
               </Reanimated.View>
             </View>
@@ -1957,7 +2044,7 @@ export default function FullScreenPlayer() {
 
       {/* ── Track title + credit line + engagement stats ── */}
       <Animated.View
-        style={[styles.bottomInfo, { bottom: seekRowBottom + 56, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
+        style={[styles.bottomInfo, { bottom: bottomInfoBottom, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
         pointerEvents={isImmersive ? 'none' : 'box-none'}
         // Feeds the audio cover-art box its bottom boundary. Guarded so a
         // sub-pixel re-measure of the same layout can't loop re-renders.
@@ -2264,16 +2351,6 @@ const styles = StyleSheet.create({
   // The card is cut to the artwork's own ratio, so the picture fills it edge to
   // edge — no letterbox, and nothing of the image is cropped away.
   artCentered: { flex: 1 },
-  fallbackBlobA: {
-    position: 'absolute', width: SCREEN_W * 0.8, height: SCREEN_W * 0.8,
-    borderRadius: SCREEN_W * 0.4, backgroundColor: COLORS.purple, opacity: 0.4,
-    top: -SCREEN_W * 0.2, left: -SCREEN_W * 0.1,
-  },
-  fallbackBlobB: {
-    position: 'absolute', width: SCREEN_W * 0.6, height: SCREEN_W * 0.6,
-    borderRadius: SCREEN_W * 0.3, backgroundColor: '#EC4899', opacity: 0.3,
-    bottom: -SCREEN_W * 0.15, right: -SCREEN_W * 0.1,
-  },
   video: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
   // Clips the over-scaled (zoomed) video wrapper to the screen so it never bleeds.
   mediaClip: { overflow: 'hidden' },

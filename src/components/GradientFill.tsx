@@ -25,7 +25,7 @@ export type GradientFillProps = {
   /**
    * Distance from the track's left edge to the filled element's left edge.
    * Shifts the gradient back so it stays pinned to the TRACK when the fill does
-   * not start at zero (e.g. ClipRangeSlider, whose fill begins at the clip start).
+   * not start at zero (e.g. a fill that begins at a clip start rather than at 0).
    */
   offsetX?: number;
 };

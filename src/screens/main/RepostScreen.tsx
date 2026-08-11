@@ -20,7 +20,11 @@ import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
-import ClipRangeSlider from '../../components/ClipRangeSlider';
+import WaveformScrubber, {
+  SCRUBBER_BOX_H,
+  SCRUBBER_GUTTER,
+  SCRUBBER_LABEL_PULL,
+} from '../../components/WaveformScrubber';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { fetchPostById, fetchTrackPlaysTotal } from '../../services/posts';
 import { createRepost } from '../../services/posts';
@@ -145,6 +149,9 @@ export default function RepostScreen() {
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [seekTo, setSeekTo] = useState<number | null>(null);
+  // True for the length of a scrub swipe. While it is set the FINGER owns the
+  // time readout — see handleProgress.
+  const scrubbingRef = useRef(false);
 
   const [clipStart, setClipStart] = useState(0);
   const [clipEnd, setClipEnd] = useState(0);
@@ -161,6 +168,7 @@ export default function RepostScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+
 
   // Stop global player on mount, hide FloatingPlayer for the duration of this
   // screen, and leave the global player paused on exit. We intentionally do
@@ -257,6 +265,11 @@ export default function RepostScreen() {
   }, []);
 
   const handleProgress = useCallback((pos: number) => {
+    // A swipe in flight owns the readout, and the preview has not moved yet — it
+    // only seeks on release. Letting progress through here would yank the label
+    // back to where the song is still playing, and the clip-end loop below would
+    // fight the finger outright.
+    if (scrubbingRef.current) { return; }
     setPosition(pos);
     // Honour the selected clip window: the preview LOOPS back to clip start when
     // it reaches clip end, so you hear exactly what you're about to post while
@@ -290,10 +303,24 @@ export default function RepostScreen() {
     }
   }, []);
 
-  // Blue seek-dot drag — push the seeked position to the player so the
-  // audio/video actually jumps. Without this the slider's seek handle
-  // animates back to the playhead on release.
+  const handleScrubStart = useCallback(() => {
+    scrubbingRef.current = true;
+  }, []);
+
+  /**
+   * While the finger moves, update the READOUT only — same rule as the
+   * fullscreen player. Seeking the preview on every gesture event makes the
+   * player re-buffer continuously and the scrub visibly stutters; the position
+   * is committed once, on release.
+   */
+  const handleScrub = useCallback((s: number) => {
+    setPosition(s);
+  }, []);
+
+  // Swipe released — push the position to the player so the audio/video actually
+  // jumps. Without this the wave animates back to the playhead on release.
   const handleSeekEnd = useCallback((s: number) => {
+    scrubbingRef.current = false;
     setPosition(s);
     setSeekTo(s);
     setTimeout(() => setSeekTo(null), 0);
@@ -499,21 +526,35 @@ export default function RepostScreen() {
               </View>
               <View style={styles.clipTimestamps}>
                 <Text style={styles.clipTime}>{duration > 0 ? formatTime(clipStart) : '–:–'}</Text>
+                <Text style={styles.clipTimeNow}>{duration > 0 ? formatTime(position) : ''}</Text>
                 <Text style={styles.clipTime}>{duration > 0 ? formatTime(clipEnd) : '–:–'}</Text>
               </View>
               <View style={styles.sliderWrap}>
                 {duration > 0 ? (
-                  <ClipRangeSlider
+                  // The SAME control as the fullscreen player, down to the preset:
+                  // fixed box and handles, waveform zooming underneath them, ghost
+                  // gutters, swipe-to-scrub. Both modes — post and story — pick a
+                  // clip the same way, so they must feel the same doing it. The
+                  // only things that differ are the story's length cap and its
+                  // slide-instead-of-resize left handle.
+                  <WaveformScrubber
+                    layout="anchored"
                     duration={duration}
                     position={position}
-                    start={clipStart}
-                    end={clipEnd}
+                    seed={originalPost?.track.id ?? ''}
+                    clipStart={clipStart}
+                    clipEnd={clipEnd}
+                    editableClip
                     minClipSeconds={1}
                     maxClipSeconds={mode === 'story' ? MAX_STORY_CLIP : undefined}
-                    slideWindowOnLeftDrag={mode === 'story'}
+                    slideWindow={mode === 'story'}
+                    height={SCRUBBER_BOX_H}
+                    gutter={SCRUBBER_GUTTER}
                     edgeInset={20}
-                    onChange={handleRangeChange}
-                    onChangeEnd={handleRangeChangeEnd}
+                    onClipChange={handleRangeChange}
+                    onClipChangeEnd={handleRangeChangeEnd}
+                    onSeekStart={handleScrubStart}
+                    onSeek={handleScrub}
                     onSeekEnd={handleSeekEnd}
                   />
                 ) : (
@@ -739,23 +780,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  // Matches FullScreenPlayer's seek label row exactly — same sizes, colours and
+  // the same negative pull into the scrubber's transparent top slop.
   clipTimestamps: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    alignItems: 'baseline',
+    marginBottom: SCRUBBER_LABEL_PULL,
+    paddingHorizontal: 20,
   },
   clipTime: {
-    color: COLORS.textMuted,
+    color: COLORS.white,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
+  clipTimeNow: {
+    color: COLORS.purpleLight,
     fontSize: 11,
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   sliderWrap: {
     marginBottom: 24,
   },
   // Placeholder shown while the track duration is still loading — same footprint
-  // as ClipRangeSlider's hit area (paddingVertical 14 + 6px track) and edgeInset.
+  // as the anchored WaveformScrubber (box + its slop top and bottom).
   sliderSkeleton: {
-    height: 34,
+    height: SCRUBBER_BOX_H + 24,
     justifyContent: 'center',
     marginHorizontal: 20,
   },

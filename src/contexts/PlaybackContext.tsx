@@ -91,6 +91,22 @@ type PlaybackContextValue = {
   // --- position / duration (refs — no re-renders) ---
   positionRef: React.MutableRefObject<number>;
   /**
+   * Set while a scrubber owns the position — for the length of a swipe.
+   *
+   * A scrub does not seek the engine until the finger lifts, so playback keeps
+   * running where it was and its progress events would overwrite whatever the
+   * finger has written into `positionRef` four times a second. `updatePosition`
+   * yields while this is set, which lets the scrubbing surface publish the swipe
+   * target to every OTHER position consumer — the floating player's progress ring
+   * above all — without seeking anything.
+   *
+   * A plain ref, deliberately: this is written at gesture rate, and the cheap
+   * seam is the whole point. Routing it through state (or through markSeekTarget,
+   * which bumps seekNonce) re-renders every playback consumer per touch event and
+   * the scrub visibly stutters. That was measured, not assumed.
+   */
+  scrubbingRef: React.MutableRefObject<boolean>;
+  /**
    * Where the NEXT activation must start, committed by whoever changed the track.
    *
    * Separate from `positionRef` because that one has two writers: the code choosing a track,
@@ -283,6 +299,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const bumpClipVersion = useCallback(() => setClipVersion(v => v + 1), []);
 
   const positionRef = useRef<number>(0);
+  const scrubbingRef = useRef<boolean>(false);
   /** Single-writer start position for the next activation — see the type above. */
   const pendingStartRef = useRef<number | null>(null);
   const durationRef = useRef<number>(0);
@@ -396,6 +413,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- position / duration ---
 
   const updatePosition = useCallback((seconds: number) => {
+    // A swipe in flight owns positionRef. Checked BEFORE the seek guard so a
+    // pending guard is neither consumed nor released by samples nobody is
+    // listening to; it expires on its own, and the release re-arms it anyway.
+    if (scrubbingRef.current) { return; }
     const guard = seekGuardRef.current;
     if (guard) {
       if (Date.now() < guard.until) {
@@ -820,6 +841,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       clearNowPlaying,
       bumpCommentsCount,
       positionRef,
+      scrubbingRef,
       pendingStartRef,
       durationRef,
       updatePosition,
