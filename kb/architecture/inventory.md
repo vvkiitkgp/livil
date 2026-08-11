@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-09
+last_verified: 2026-08-11
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-186 TypeScript file(s) under `src/`, 51,603 lines.
+187 TypeScript file(s) under `src/`, 52,551 lines.
 
 ## Size hotspots
 
@@ -26,17 +26,18 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2370 |
+| `src/components/FullScreenPlayer.tsx` | 2447 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/ConversationScreen.tsx` | 1494 |
-| `src/components/PostCard.tsx` | 1266 |
-| `src/screens/main/UploadScreen.tsx` | 1261 |
+| `src/screens/main/UploadScreen.tsx` | 1343 |
+| `src/components/PostCard.tsx` | 1264 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
-| `src/components/FloatingPlayer.tsx` | 927 |
-| `src/screens/main/RepostScreen.tsx` | 856 |
-| `src/screens/main/JamRoomScreen.tsx` | 821 |
+| `src/components/WaveformScrubber.tsx` | 1000 |
+| `src/components/FloatingPlayer.tsx` | 925 |
+| `src/screens/main/RepostScreen.tsx` | 907 |
+| `src/screens/main/JamRoomScreen.tsx` | 843 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
@@ -44,7 +45,7 @@ reading alone (Constitution P28).
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 
-> 17 file(s) over the threshold against **3 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 18 file(s) over the threshold against **3 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -94,18 +95,18 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-41 file(s), 20,597 lines.
+41 file(s), 20,752 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/ConversationScreen.tsx` | 1494 |
-| `src/screens/main/UploadScreen.tsx` | 1261 |
+| `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
-| `src/screens/main/RepostScreen.tsx` | 856 |
-| `src/screens/main/JamRoomScreen.tsx` | 821 |
+| `src/screens/main/RepostScreen.tsx` | 907 |
+| `src/screens/main/JamRoomScreen.tsx` | 843 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/SearchScreen.tsx` | 647 |
@@ -142,21 +143,21 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-67 file(s), 16,311 lines.
+68 file(s), 17,082 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2370 |
-| `src/components/PostCard.tsx` | 1266 |
-| `src/components/FloatingPlayer.tsx` | 927 |
+| `src/components/FullScreenPlayer.tsx` | 2447 |
+| `src/components/PostCard.tsx` | 1264 |
+| `src/components/WaveformScrubber.tsx` | 1000 |
+| `src/components/FloatingPlayer.tsx` | 925 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 541 |
 | `src/components/QueueList.tsx` | 475 |
-| `src/components/MediaPlayer.tsx` | 469 |
+| `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/AddUserSheet.tsx` | 401 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/DetailView.tsx` | 395 |
-| `src/components/ClipRangeSlider.tsx` | 387 |
 | `src/components/PostLikersSheet.tsx` | 356 |
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/CommentItem.tsx` | 271 |
@@ -167,6 +168,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ActivityBubble.tsx` | 229 |
 | `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
+| `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
 | `src/components/SettingsRow.tsx` | 202 |
@@ -177,7 +179,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
 | `src/components/GradientBorder.tsx` | 181 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
-| `src/components/SeekBar.tsx` | 174 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
 | `src/components/TagInput.tsx` | 167 |
 | `src/components/MentionSuggestions.tsx` | 160 |
@@ -208,6 +209,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
+| `src/components/CoverFallback.tsx` | 62 |
 | `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
@@ -255,11 +257,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-9 file(s), 2,298 lines.
+9 file(s), 2,320 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 955 |
+| `src/contexts/PlaybackContext.tsx` | 977 |
 | `src/contexts/JamRealtimeContext.tsx` | 389 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/ToastContext.tsx` | 190 |
