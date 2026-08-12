@@ -469,12 +469,14 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
                 <Text style={styles.displayName} numberOfLines={1}>
                   {headerAuthor.displayName ?? headerAuthor.username}
                 </Text>
-                <Text style={styles.timeDot}> · </Text>
+              </View>
+              <View style={styles.handleRow}>
+                <Text style={styles.handleText} numberOfLines={1}>
+                  @{headerAuthor.username}
+                </Text>
+                <Text style={styles.timeDot}>·</Text>
                 <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
               </View>
-              <Text style={styles.handleText} numberOfLines={1}>
-                @{headerAuthor.username}
-              </Text>
             </View>
           </TouchableOpacity>
           <TouchableOpacity
@@ -588,18 +590,31 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             >
               {headerAuthor.displayName ?? headerAuthor.username}
             </Text>
-            {' reposted from '}
-            <Text
-              style={styles.repostBannerName}
-              onPress={() => openAuthor(post.originalAuthor!.id)}
-            >
+            {' reposted'}
+          </Text>
+          {/* The CREATOR pill names who the repost came from — it used to sit in
+              the title block while the banner spelled out "reposted from @x",
+              saying the same thing twice. It stays tappable because dropping the
+              "from @x" link would otherwise leave no way to reach the original
+              author from this card. */}
+          <TouchableOpacity
+            style={styles.creatorTag}
+            activeOpacity={0.75}
+            onPress={() => openAuthor(post.originalAuthor!.id)}
+            accessibilityLabel={`Open @${post.originalAuthor!.username}, creator of this track`}
+          >
+            <Text style={styles.creatorTagLabel}>CREATOR</Text>
+            <Text style={styles.creatorTagName} numberOfLines={1}>
               @{post.originalAuthor!.username}
             </Text>
-          </Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
-      {/* Header: avatar + name + handle + time */}
+      {/* Header: avatar, then name + Add pill on the first line and @handle · age
+          on the second. The age sits with the handle rather than the name because
+          the name line also carries the Add pill, and the two together crowded out
+          the Repost button beside them. */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.authorTap}
@@ -620,12 +635,14 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
                 {headerAuthor.displayName ?? headerAuthor.username}
               </Text>
               <AddBadge userId={headerAuthor.id} size="sm" />
-              <Text style={styles.timeDot}> · </Text>
+            </View>
+            <View style={styles.handleRow}>
+              <Text style={styles.handleText} numberOfLines={1}>
+                @{headerAuthor.username}
+              </Text>
+              <Text style={styles.timeDot}>·</Text>
               <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
             </View>
-            <Text style={styles.handleText} numberOfLines={1}>
-              @{headerAuthor.username}
-            </Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity
@@ -662,14 +679,6 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <Text style={styles.trackTitle} numberOfLines={2}>
           {post.track.title}
         </Text>
-        {isRepost ? (
-          <View style={styles.creatorTag}>
-            <Text style={styles.creatorTagLabel}>CREATOR</Text>
-            <Text style={styles.creatorTagName} numberOfLines={1}>
-              @{post.originalAuthor!.username}
-            </Text>
-          </View>
-        ) : null}
       </View>
       {post.caption ? (
         <Text style={styles.caption} numberOfLines={4}>
@@ -1029,10 +1038,18 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 12,
   },
+  // The handle shrinks and truncates so the age stays visible next to it — a long
+  // username must not push "3d" off the row.
+  handleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 1,
+  },
   handleText: {
     color: COLORS.textMuted,
     fontSize: 12,
-    marginTop: 1,
+    flexShrink: 1,
   },
   repostBtn: {
     flexDirection: 'row',

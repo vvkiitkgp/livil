@@ -10,6 +10,12 @@ type Size = 'sm' | 'md';
  * Pill-shaped "+ Add" button rendered next to a username. Returns null when the
  * viewer already has any relationship with this user (friend, star, pending,
  * or self) — so it's safe to drop anywhere a user is rendered.
+ *
+ * Hidden by default until relationships have loaded. Before `ready` the context's
+ * sets are empty, so every user reads as 'none' — rendering the pill on every row
+ * of the feed and inbox and then popping it off the friends a moment later. Absent
+ * is the safe default: the only cost is the badge appearing a beat late for someone
+ * you really can add.
  */
 export default function AddBadge({
   userId,
@@ -22,6 +28,7 @@ export default function AddBadge({
   const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!userId) { return null; }
+  if (!rel.ready) { return null; }
   if (rel.status(userId) !== 'none') { return null; }
 
   const isMd = size === 'md';
