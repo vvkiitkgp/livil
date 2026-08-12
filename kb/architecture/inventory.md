@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-11
+last_verified: 2026-08-12
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-187 TypeScript file(s) under `src/`, 52,551 lines.
+187 TypeScript file(s) under `src/`, 52,575 lines.
 
 ## Size hotspots
 
@@ -30,7 +30,7 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/ConversationScreen.tsx` | 1494 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
-| `src/components/PostCard.tsx` | 1264 |
+| `src/components/PostCard.tsx` | 1281 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
@@ -143,12 +143,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-68 file(s), 17,082 lines.
+68 file(s), 17,106 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2447 |
-| `src/components/PostCard.tsx` | 1264 |
+| `src/components/PostCard.tsx` | 1281 |
 | `src/components/WaveformScrubber.tsx` | 1000 |
 | `src/components/FloatingPlayer.tsx` | 925 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -190,9 +190,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/StageLamp.tsx` | 121 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
+| `src/components/AddBadge.tsx` | 102 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
-| `src/components/AddBadge.tsx` | 95 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
