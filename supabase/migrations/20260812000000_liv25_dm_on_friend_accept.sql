@@ -193,6 +193,22 @@ comment on function public.friendships_create_dm_on_accept() is
   'LIV-25: ensures a DM exists for the pair the moment a friendship becomes accepted. '
   'Idempotent; serialized against get_or_create_dm by _dm_lock_key.';
 
+-- Supabase issues a DEFAULT PRIVILEGE granting EXECUTE on every new function in `public`
+-- to anon, so a SECURITY DEFINER function is unauthenticated-reachable the moment it is
+-- created unless this line exists. Caught by scripts/check-definer-anon-grants.mjs.
+--
+-- The exposure here is smaller than usual — a trigger function returns `trigger` and
+-- errors if called outside a trigger context — but "it happens to fail" is not the same
+-- as "it is not reachable", and this body inserts into conversations and
+-- conversation_members with the owner's rights. Revoked on the same principle that
+-- applies to every other DEFINER function in the set.
+--
+-- FROM anon, not FROM public: revoking the PUBLIC pseudo-role leaves the direct anon
+-- grant untouched. That mistake has shipped three times in this repository
+-- (20260806040000 corrected four instances, 20260808130000 seven more), which is why
+-- the lint rejects the `public` form outright.
+revoke execute on function public.friendships_create_dm_on_accept() from anon;
+
 -- AFTER, not BEFORE: the conversation should only exist if the accept commits. The WHEN
 -- clause keeps this off every other friendships UPDATE, and makes re-accepting an
 -- already-accepted row (which accept_friend_request rejects anyway) a no-op rather than
