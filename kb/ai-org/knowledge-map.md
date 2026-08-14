@@ -74,7 +74,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `operations/deployment.md` | principal-platform | DO, P-PF | 2026-07-21 | 90d |
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
-| `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-09 | 90d |
+| `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-14 | 90d |
 | `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
 | `operations/runbooks/incident-response.md` | principal-platform | DO, P-PF, P-SE, human | 2026-07-21 | 180d |
 | `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-22 | 180d |
