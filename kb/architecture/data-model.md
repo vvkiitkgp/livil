@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-08-12
+last_verified: 2026-08-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 88 migration(s) in `supabase/migrations/`.
+Reconstructed from 89 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -249,6 +249,10 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 - `friendships_user_b_idx` `(user_b_id)`
 - `idx_friendships_user_a_status` `(user_a_id, status)`
 - `idx_friendships_user_b_status` `(user_b_id, status)`
+
+**Triggers**
+
+- `trg_friendships_create_dm_on_accept` — after update (`20260812000000_liv25_dm_on_friend_accept.sql`)
 
 ### `jam_queue`
 
@@ -941,6 +945,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
 | `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |

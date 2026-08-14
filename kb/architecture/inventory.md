@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-12
+last_verified: 2026-08-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-187 TypeScript file(s) under `src/`, 52,575 lines.
+187 TypeScript file(s) under `src/`, 52,656 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2447 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
-| `src/screens/main/ConversationScreen.tsx` | 1494 |
+| `src/screens/main/ConversationScreen.tsx` | 1558 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/components/PostCard.tsx` | 1281 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
@@ -95,12 +95,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-41 file(s), 20,752 lines.
+41 file(s), 20,833 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
-| `src/screens/main/ConversationScreen.tsx` | 1494 |
+| `src/screens/main/ConversationScreen.tsx` | 1558 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1142 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
@@ -115,7 +115,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
 | `src/screens/auth/SignUpScreen.tsx` | 453 |
-| `src/screens/main/InboxScreen.tsx` | 408 |
+| `src/screens/main/InboxScreen.tsx` | 425 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/SignInScreen.tsx` | 348 |
