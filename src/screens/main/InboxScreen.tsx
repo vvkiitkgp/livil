@@ -194,6 +194,13 @@ export default function InboxScreen() {
   //      (typically because I opened the conversation on another tab/device
   //      OR returned from ConversationScreen). The unread badge should drop
   //      to 0 immediately.
+  //   3. conversation_members INSERT on MY row → I was just added to a
+  //      conversation someone else created. Since LIV-25 that happens without
+  //      any action of mine: accepting a friend request creates the DM for
+  //      BOTH people, so the requester — who may be sitting on this screen —
+  //      gets a conversation with no message in it. Nothing in (1) or (2)
+  //      fires for that, and without this the row only appears on the next
+  //      focus or pull-to-refresh.
   //
   // Realtime refresh goes straight to network — bypassing the cache — so the
   // badge swap doesn't get briefly painted with stale data. RLS limits
@@ -223,6 +230,16 @@ export default function InboxScreen() {
           // My own last_read_at moved → unread badge for that row should
           // drop. Refetch picks up the new server-computed unread count.
           console.log('[realtime] inbox got own conversation_members UPDATE');
+          void refreshFromNetwork();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'conversation_members', filter: `user_id=eq.${myId}` },
+        () => {
+          // I was added to a new conversation — a friend accepted my request
+          // (LIV-25), or someone started a DM/group with me.
+          console.log('[realtime] inbox got own conversation_members INSERT');
           void refreshFromNetwork();
         },
       )

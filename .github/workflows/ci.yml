@@ -336,6 +336,20 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/track-tags.test.sql
 
+      # LIV-25 — accepting a friend request must leave BOTH people with a DM already in
+      # their inbox. Drives the accept through accept_friend_request as `authenticated`,
+      # so the deployed trigger is what creates the conversation. The assertion that
+      # carries the weight is the count: get_or_create_dm is still called from two
+      # screens, and a second writer that does not take the same advisory lock key
+      # duplicates the row rather than failing, which shows up as the same person twice
+      # in the inbox and not as an error anywhere.
+      - name: DM-on-friend-accept tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/dm-on-friend-accept.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
