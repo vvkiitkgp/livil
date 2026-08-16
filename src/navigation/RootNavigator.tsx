@@ -50,6 +50,7 @@ import { COLORS } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
 import { updatePresenceHeartbeat } from '../services/conversations';
 import { messageCache } from '../services/messageCache';
+import { discardImpressions } from '../services/feedImpressions';
 import {
   initPush,
   registerDeviceForUser,
@@ -369,6 +370,10 @@ export default function RootNavigator() {
         // aren't briefly visible if a different user signs in on the same device.
         if (event === 'SIGNED_OUT') {
           void messageCache.clearAll();
+          // Same reason as the line above: the feed-impression buffer is module-global
+          // and the server attributes a flush to whoever is signed in when it lands, so
+          // ids collected by the previous account would be filed against the next one.
+          discardImpressions();
           const prevUserId = pushUserIdRef.current;
           pushUserIdRef.current = null;
           setNeedsUsername(null);
