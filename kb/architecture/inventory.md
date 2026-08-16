@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-12
+last_verified: 2026-08-16
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-187 TypeScript file(s) under `src/`, 52,575 lines.
+189 TypeScript file(s) under `src/`, 52,919 lines.
 
 ## Size hotspots
 
@@ -31,7 +31,7 @@ reading alone (Constitution P28).
 | `src/screens/main/ConversationScreen.tsx` | 1494 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/components/PostCard.tsx` | 1281 |
-| `src/screens/main/HomeScreen.tsx` | 1142 |
+| `src/screens/main/HomeScreen.tsx` | 1231 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/components/WaveformScrubber.tsx` | 1000 |
@@ -95,14 +95,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-41 file(s), 20,752 lines.
+41 file(s), 20,841 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/ConversationScreen.tsx` | 1494 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
-| `src/screens/main/HomeScreen.tsx` | 1142 |
+| `src/screens/main/HomeScreen.tsx` | 1231 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 907 |
@@ -218,11 +218,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-32 file(s), 8,376 lines.
+34 file(s), 8,626 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 1052 |
+| `src/services/posts.ts` | 1097 |
 | `src/services/tracks.ts` | 822 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 497 |
@@ -246,6 +246,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
 | `src/services/messageCache.ts` | 109 |
+| `src/services/__tests__/feedImpressions.test.ts` | 105 |
+| `src/services/feedImpressions.ts` | 100 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/waveform.ts` | 66 |
