@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-191 TypeScript file(s) under `src/`, 53,118 lines.
+192 TypeScript file(s) under `src/`, 53,270 lines.
 
 ## Size hotspots
 
@@ -220,11 +220,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-34 file(s), 8,626 lines.
+35 file(s), 8,778 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 1097 |
+| `src/services/posts.ts` | 1104 |
 | `src/services/tracks.ts` | 822 |
 | `src/services/pushNotifications.ts` | 615 |
 | `src/services/albums.ts` | 497 |
@@ -247,8 +247,9 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
+| `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
+| `src/services/__tests__/feedImpressions.test.ts` | 119 |
 | `src/services/messageCache.ts` | 109 |
-| `src/services/__tests__/feedImpressions.test.ts` | 105 |
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/searchAnalytics.ts` | 72 |

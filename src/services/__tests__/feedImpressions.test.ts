@@ -10,9 +10,23 @@
  */
 
 const mockRpc = jest.fn().mockResolvedValue({ data: null, error: null });
-jest.mock('../../../lib/supabase', () => ({
-  supabase: { rpc: (...a: unknown[]) => mockRpc(...(a as [])) },
-}));
+
+// The mock is a METHOD that checks its receiver, mirroring supabase-js. This matters:
+// the previous mock was an arrow function on an object literal, so it worked whether or
+// not the caller kept `rpc` attached to the client. That let `const rpc = supabase.rpc`
+// ship green and take the whole feed down with "Cannot read property 'rpc' of undefined".
+// A mock that cannot fail the way the real thing fails is not a test.
+jest.mock('../../../lib/supabase', () => {
+  const client = {
+    rpc(this: unknown, fn: string, args: Record<string, unknown>) {
+      if (this !== client) {
+        throw new TypeError("Cannot read property 'rpc' of undefined");
+      }
+      return mockRpc(fn, args);
+    },
+  };
+  return { supabase: client };
+});
 
 import {
   recordImpression,
