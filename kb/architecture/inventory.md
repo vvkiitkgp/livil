@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-16
+last_verified: 2026-08-18
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-189 TypeScript file(s) under `src/`, 52,919 lines.
+191 TypeScript file(s) under `src/`, 53,118 lines.
 
 ## Size hotspots
 
@@ -143,7 +143,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-68 file(s), 17,106 lines.
+70 file(s), 17,303 lines.
 
 | File | Lines |
 |---|---:|
@@ -190,11 +190,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/StageLamp.tsx` | 121 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
+| `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 87 |
+| `src/components/RealtimeConnectionGate.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
