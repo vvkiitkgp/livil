@@ -43,6 +43,7 @@ import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
+import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
 import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
@@ -443,6 +444,7 @@ export default function RootNavigator() {
           />
         ) : (
     <JamProvider>
+    <RealtimeConnectionGate />
     <JamRealtimeProvider>
     <RelationshipProvider>
     <StoriesProvider>
