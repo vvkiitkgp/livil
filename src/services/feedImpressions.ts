@@ -49,12 +49,12 @@ export function flushImpressions(): void {
 
   void (async () => {
     try {
-      // Cast via unknown: the generated Supabase types predate this RPC. Regenerate them
-      // once the migration is applied and this goes away.
-      await (supabase.rpc as unknown as (
-        fn: string,
-        args: Record<string, unknown>,
-      ) => Promise<unknown>)('record_post_impressions', { p_post_ids: postIds });
+      // Cast the CLIENT, never the method — see the note in services/posts.ts. Detaching
+      // rpc() from the client breaks `this` inside supabase-js and throws.
+      const db = supabase as unknown as {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<unknown>;
+      };
+      await db.rpc('record_post_impressions', { p_post_ids: postIds });
     } catch {
       /* a lost batch is never worth an error in front of somebody scrolling */
     }

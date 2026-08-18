@@ -386,14 +386,21 @@ export async function fetchHomeFeedPage(options: {
   const c = options.cursor ?? null;
   const session = options.session ?? null;
 
-  // Cast via unknown: the generated Supabase types still describe the pre-session RPC
-  // signature. Regenerate types after the migration lands.
-  const rpc = supabase.rpc as unknown as (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => Promise<{ data: unknown; error: { message: string } | null }>;
+  // Cast the CLIENT, never the method. `const rpc = supabase.rpc` detaches it from the
+  // client, and supabase-js's rpc() uses `this` internally — calling it detached throws
+  // "Cannot read property 'rpc' of undefined" and takes the whole feed down. Every other
+  // service in this repo calls `db.rpc(...)` attached; this must too.
+  //
+  // The cast is only here because the generated Supabase types still describe the
+  // pre-session RPC signature. Regenerate them and it goes away.
+  const db = supabase as unknown as {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message: string } | null }>;
+  };
 
-  const { data, error } = await rpc('fetch_home_feed', {
+  const { data, error } = await db.rpc('fetch_home_feed', {
     p_limit: limit,
     p_cursor_bucket: c?.bucket ?? undefined,
     p_cursor_sort_key: c?.sortKey ?? undefined,
