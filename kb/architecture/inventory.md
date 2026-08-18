@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-192 TypeScript file(s) under `src/`, 53,270 lines.
+192 TypeScript file(s) under `src/`, 53,283 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2447 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
-| `src/screens/main/ConversationScreen.tsx` | 1494 |
+| `src/screens/main/ConversationScreen.tsx` | 1507 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/components/PostCard.tsx` | 1281 |
 | `src/screens/main/HomeScreen.tsx` | 1231 |
@@ -95,12 +95,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-41 file(s), 20,841 lines.
+41 file(s), 20,854 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
-| `src/screens/main/ConversationScreen.tsx` | 1494 |
+| `src/screens/main/ConversationScreen.tsx` | 1507 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1231 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
