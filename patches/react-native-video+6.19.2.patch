@@ -342,7 +342,7 @@ index b10dfb5..4a2d164 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..8765e15 100644
+index 4760ea5..b0e03fc 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 @@ -11,28 +11,258 @@ import android.content.Intent
@@ -918,7 +918,7 @@ index 4760ea5..8765e15 100644
          cleanup()
          stopSelf()
      }
-@@ -106,6 +598,92 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -106,6 +598,93 @@ class VideoPlaybackService : MediaSessionService() {
          super.onDestroy()
      }
  
@@ -997,6 +997,7 @@ index 4760ea5..8765e15 100644
 +            // RAW player's hashCode — see notifIdFor().
 +            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 +            notificationManager.cancel(player.hashCode())
++            notificationManager.cancel(PLACEHOLDER_NOTIFICATION_ID)
 +        }
 +        if (isServiceStarted) {
 +            stopSelf()
@@ -1011,7 +1012,7 @@ index 4760ea5..8765e15 100644
      private fun createSessionNotification(session: MediaSession) {
          val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-@@ -118,14 +696,15 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -118,14 +697,15 @@ class VideoPlaybackService : MediaSessionService() {
              )
          }
  
@@ -1029,7 +1030,7 @@ index 4760ea5..8765e15 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +721,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,6 +722,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -1040,7 +1041,7 @@ index 4760ea5..8765e15 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -214,12 +797,35 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -214,12 +798,38 @@ class VideoPlaybackService : MediaSessionService() {
          notificationManager.cancel(player.hashCode())
      }
  
@@ -1054,6 +1055,9 @@ index 4760ea5..8765e15 100644
 -        notificationManager.cancelAll()
 +        mediaSessionsList.keys.forEach { notificationManager.cancel(it.hashCode()) }
 +        currentPlayer?.let { notificationManager.cancel(it.hashCode()) }
++        // The placeholder posted by onStartCommand is ours too, and is posted under a
++        // fixed id rather than a player hashCode.
++        notificationManager.cancel(PLACEHOLDER_NOTIFICATION_ID)
      }
  
      private fun cleanup() {
@@ -1077,7 +1081,50 @@ index 4760ea5..8765e15 100644
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -273,8 +879,183 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -248,7 +858,41 @@ class VideoPlaybackService : MediaSessionService() {
+ 
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+-            startForeground(PLACEHOLDER_NOTIFICATION_ID, createPlaceholderNotification())
++            // Livil patch: Android requires a foreground service to post a notification
++            // within ~5s of being started; that is what the placeholder exists for. But
++            // it is posted under its OWN id, so once a session exists it becomes a
++            // SECOND, permanent card ("Media playback / Preparing playback") that
++            // nothing cancels — upstream only ever swept it up via cleanup()'s
++            // cancelAll(), which we removed because it also wiped the user's chat
++            // notifications.
++            //
++            // It is also worse than a stray card: startForeground() here re-promotes the
++            // service behind our back, so Android considers us foreground while
++            // `isForegroundService` still says false. releaseForegroundIfIdle() then
++            // early-returns and the process is pinned out of the freezer again — exactly
++            // the bug this patch exists to fix, reintroduced through the back door.
++            //
++            // So once a session exists, start foreground with the REAL card under the
++            // SAME id promoteToForeground uses. The placeholder is then only ever seen
++            // before the first track has loaded.
++            val player = currentPlayer
++            val session = player?.let { mediaSessionsList[it] }
++            if (player != null && session != null) {
++                startForeground(player.hashCode(), buildNotification(session))
++            } else {
++                startForeground(PLACEHOLDER_NOTIFICATION_ID, createPlaceholderNotification())
++            }
++            isForegroundService = true
++            isServiceStarted = true
++            // Whatever started us, if nothing is actually playing we must still come
++            // back down. Without this an onStartCommand outside the register/resume
++            // paths would leave the service foreground with no pending idle check.
++            if (currentPlayer?.isPlaying != true) {
++                idleHandler.removeCallbacks(foregroundReleaseRunnable)
++                idleHandler.removeCallbacks(idleTeardownRunnable)
++                idleHandler.postDelayed(foregroundReleaseRunnable, FOREGROUND_RELEASE_DELAY_MS)
++                idleHandler.postDelayed(idleTeardownRunnable, IDLE_TEARDOWN_DELAY_MS)
++            }
+         }
+ 
+         intent?.let {
+@@ -273,8 +917,183 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -1261,7 +1308,7 @@ index 4760ea5..8765e15 100644
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
  
          const val NOTIFICATION_CHANEL_ID = "RNVIDEO_SESSION_NOTIFICATION"
-@@ -283,6 +1064,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +1102,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -1270,7 +1317,7 @@ index 4760ea5..8765e15 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +1075,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +1113,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -1279,7 +1326,7 @@ index 4760ea5..8765e15 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +1088,13 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +1126,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
