@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-08-18
+last_verified: 2026-08-19
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-192 TypeScript file(s) under `src/`, 53,283 lines.
+192 TypeScript file(s) under `src/`, 53,297 lines.
 
 ## Size hotspots
 
@@ -143,7 +143,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-70 file(s), 17,303 lines.
+70 file(s), 17,317 lines.
 
 | File | Lines |
 |---|---:|
@@ -165,8 +165,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
 | `src/components/StoryReportModal.tsx` | 236 |
+| `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/ActivityBubble.tsx` | 229 |
-| `src/components/WaveVisualizer.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
