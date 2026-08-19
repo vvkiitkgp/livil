@@ -368,7 +368,7 @@ index b10dfb5..4a2d164 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..473c1d9 100644
+index 4760ea5..83f7816 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 @@ -11,28 +11,291 @@ import android.content.Intent
@@ -1115,7 +1115,7 @@ index 4760ea5..473c1d9 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +781,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,14 +781,28 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -1126,7 +1126,69 @@ index 4760ea5..473c1d9 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -214,12 +857,38 @@ class VideoPlaybackService : MediaSessionService() {
+ 
+-            // Action for COMMAND.SEEK_BACKWARD
++            // Livil patch: PREVIOUS TRACK, not seek-backward.
++            //
++            // This whole branch is the Android 12-and-below notification, where RNV
++            // builds the actions BY HAND — `setCustomLayout` (which we changed to
++            // prev/next) only drives the session-rendered UI on Android 13+. So on
++            // Android 12 the patched app still showed upstream's rewind / play /
++            // fast-forward, and "next" was literally a +10s fast-forward button.
++            //
++            // COMMAND.SEEK_TO_PREVIOUS/NEXT route through onStartCommand ->
++            // handleCommand -> handleSkipFromController, the same single pipeline the
++            // Android 13+ buttons and AVRCP controllers use.
+             val seekBackwardIntent = Intent(this, VideoPlaybackService::class.java).apply {
+                 putExtra("PLAYER_ID", playerId)
+-                putExtra("ACTION", COMMAND.SEEK_BACKWARD.stringValue)
++                putExtra("ACTION", COMMAND.SEEK_TO_PREVIOUS.stringValue)
+             }
+             val seekBackwardPendingIntent = PendingIntent.getService(
+                 this,
+@@ -170,10 +823,10 @@ class VideoPlaybackService : MediaSessionService() {
+                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+             )
+ 
+-            // ACTION FOR COMMAND.SEEK_FORWARD
++            // Livil patch: NEXT TRACK, not seek-forward. See the previous-track note.
+             val seekForwardIntent = Intent(this, VideoPlaybackService::class.java).apply {
+                 putExtra("PLAYER_ID", playerId)
+-                putExtra("ACTION", COMMAND.SEEK_FORWARD.stringValue)
++                putExtra("ACTION", COMMAND.SEEK_TO_NEXT.stringValue)
+             }
+             val seekForwardPendingIntent = PendingIntent.getService(
+                 this,
+@@ -187,7 +840,7 @@ class VideoPlaybackService : MediaSessionService() {
+                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                 .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
+                 // Add media control buttons that invoke intents in your media service
+-                .addAction(androidx.media3.session.R.drawable.media3_icon_rewind, "Seek Backward", seekBackwardPendingIntent) // #0
++                .addAction(androidx.media3.session.R.drawable.media3_icon_previous, "Previous", seekBackwardPendingIntent) // #0
+                 .addAction(
+                     if (session.player.isPlaying) {
+                         androidx.media3.session.R.drawable.media3_icon_pause
+@@ -197,14 +850,17 @@ class VideoPlaybackService : MediaSessionService() {
+                     "Toggle Play",
+                     togglePlayPendingIntent
+                 ) // #1
+-                .addAction(androidx.media3.session.R.drawable.media3_icon_fast_forward, "Seek Forward", seekForwardPendingIntent) // #2
++                .addAction(androidx.media3.session.R.drawable.media3_icon_next, "Next", seekForwardPendingIntent) // #2
+                 // Apply the media style template
+                 .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2))
+                 .setContentTitle(session.player.mediaMetadata.title)
+                 .setContentText(session.player.mediaMetadata.description)
+                 .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+                 .setLargeIcon(session.player.mediaMetadata.artworkUri?.let { session.bitmapLoader.loadBitmap(it).get() })
+-                .setOngoing(true)
++                // Livil patch: match the Android 13+ branch — pinned while playing,
++                // dismissible when paused. Hardcoded `true` left a paused card the
++                // user could not swipe away on Android 12.
++                .setOngoing(session.player.isPlaying)
+                 .build()
+         }
+     }
+@@ -214,12 +870,38 @@ class VideoPlaybackService : MediaSessionService() {
          notificationManager.cancel(player.hashCode())
      }
  
@@ -1166,7 +1228,7 @@ index 4760ea5..473c1d9 100644
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -248,7 +917,41 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -248,7 +930,41 @@ class VideoPlaybackService : MediaSessionService() {
  
      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1209,7 +1271,7 @@ index 4760ea5..473c1d9 100644
          }
  
          intent?.let {
-@@ -273,8 +976,190 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -273,8 +989,190 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -1400,7 +1462,7 @@ index 4760ea5..473c1d9 100644
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
  
          const val NOTIFICATION_CHANEL_ID = "RNVIDEO_SESSION_NOTIFICATION"
-@@ -283,6 +1168,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +1181,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -1409,7 +1471,7 @@ index 4760ea5..473c1d9 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +1179,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +1192,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -1418,7 +1480,7 @@ index 4760ea5..473c1d9 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +1192,13 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +1205,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
