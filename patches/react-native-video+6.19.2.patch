@@ -368,10 +368,10 @@ index b10dfb5..4a2d164 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..692ee56 100644
+index 4760ea5..473c1d9 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-@@ -11,28 +11,265 @@ import android.content.Intent
+@@ -11,28 +11,291 @@ import android.content.Intent
  import android.os.Binder
  import android.os.Build
  import android.os.Bundle
@@ -485,6 +485,32 @@ index 4760ea5..692ee56 100644
 +    private fun emitShuffleModeChanged(enabled: Boolean) {
 +        val snapshot = customListeners.toList()
 +        customMainHandler.post { snapshot.forEach { it.onShuffleModeEnabledChanged(enabled) } }
++    }
++
++    // Livil patch: the notification scrubber's MAX comes from the session's
++    // MediaMetadata, NOT from PlaybackState. getDuration() alone was not enough:
++    // media3 publishes duration into the platform metadata, and metadata is only
++    // rebuilt on a metadata/timeline event — a seek republishes position only.
++    // That is why a live clip edit moved the playhead correctly (seekTo IS
++    // translated) while the scrubber still spanned the whole 4:18 track.
++    override fun getMediaMetadata(): MediaMetadata =
++        if (active) super.getMediaMetadata().buildUpon().setDurationMs(clipDur).build()
++        else super.getMediaMetadata()
++
++    // Livil patch: force media3 to re-read duration/metadata after the clip window
++    // moves. Same mechanism as emitRepeatModeChanged: the INNER player did not
++    // change, so nothing would otherwise tell the session to rebuild. Timeline
++    // first (duration is a timeline-derived value), then metadata.
++    fun notifyClipWindowChanged() {
++        val snapshot = customListeners.toList()
++        val timeline = currentTimeline
++        val metadata = mediaMetadata
++        customMainHandler.post {
++            snapshot.forEach {
++                it.onTimelineChanged(timeline, Player.TIMELINE_CHANGE_REASON_SOURCE_UPDATE)
++                it.onMediaMetadataChanged(metadata)
++            }
++        }
 +    }
 +
 +    override fun getRepeatMode(): Int = localRepeatMode
@@ -637,7 +663,7 @@ index 4760ea5..692ee56 100644
  
      @SuppressLint("PrivateResource")
      private val seekForwardBtn = CommandButton.Builder()
-@@ -48,37 +285,265 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -48,37 +311,289 @@ class VideoPlaybackService : MediaSessionService() {
          .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
          .build()
  
@@ -674,7 +700,8 @@ index 4760ea5..692ee56 100644
 +        currentPlayer?.removeListener(naturalEndListener)
 +        currentPlayer = player
 +        player.addListener(naturalEndListener)
-+
+ 
+-        val mediaSession = MediaSession.Builder(this, player)
 +        // Livil patch: keep exactly ONE active media session / notification.
 +        // Release any previously-registered session (e.g. a paused video's
 +        // lingering session) before adding the new one, so Android never stacks
@@ -686,12 +713,13 @@ index 4760ea5..692ee56 100644
 +            }
 +            mediaSessionsList.clear()
 +        }
- 
--        val mediaSession = MediaSession.Builder(this, player)
++
 +        // Livil patch: the SESSION sees a ClipForwardingPlayer (clip-relative
 +        // lock-screen view); the raw `player` stays the source of truth (full track,
 +        // absolute) and remains the map key + `currentPlayer` for nativeSkip/watcher.
-+        val mediaSession = MediaSession.Builder(this, ClipForwardingPlayer(player))
++        val forwardingPlayer = ClipForwardingPlayer(player)
++        currentForwardingPlayer = forwardingPlayer
++        val mediaSession = MediaSession.Builder(this, forwardingPlayer)
              .setId("RNVideoPlaybackService_" + player.hashCode())
              .setCallback(VideoPlaybackCallback())
 -            .setCustomLayout(immutableListOf(seekForwardBtn, seekBackwardBtn))
@@ -849,6 +877,10 @@ index 4760ea5..692ee56 100644
 +                if (p != null && p.playbackState == Player.STATE_READY) {
 +                    p.seekTo(p.currentPosition)
 +                }
++                // The seek above republishes POSITION. Duration lives in the
++                // metadata, which a seek does not touch — so ask for that too, or
++                // the scrubber keeps spanning the full track.
++                currentForwardingPlayer?.notifyClipWindowChanged()
 +            }
 +        } catch (e: Exception) {
 +            DebugLog.w(TAG, "[LIVIL] setCurrentClip parse error: ${e.message}")
@@ -878,8 +910,26 @@ index 4760ea5..692ee56 100644
 +                DebugLog.w(TAG, "[LIVIL] clip-end repeat-one → seek to ${currentClipStartMs}ms")
 +                p.seekTo(currentClipStartMs)
 +            } else {
-+                DebugLog.w(TAG, "[LIVIL] clip-end → nativeSkip(1) + notify JS")
-+                nativeSkip(1)
++                val handled = nativeSkip(1)
++                DebugLog.w(TAG, "[LIVIL] clip-end → nativeSkip(1) handled=$handled + notify JS")
++                if (!handled) {
++                    // Livil patch: end of the queue, repeat off. nativeSkip found no
++                    // next track, so nothing is going to replace the source — and
++                    // unlike a NATURAL end there is no STATE_ENDED to stop the player,
++                    // because a clip ends MID-track. Without this the audio simply
++                    // carried on past the clip into the rest of the song, which is the
++                    // one thing a clip must never do.
++                    //
++                    // Park at the clip start, paused: playback has stopped, and the
++                    // card is left ready to replay the clip rather than dead.
++                    //
++                    // Still notify JS afterwards. If the JS queue does know about a
++                    // next track (its queue is the source of truth; ours is a mirror
++                    // pushed via mediaQueueJson), it will set a new source and play,
++                    // which simply overrides this pause.
++                    p.seekTo(currentClipStartMs)
++                    p.playWhenReady = false
++                }
 +                currentEmitter?.onVideoNextTrack?.invoke()
 +            }
 +        }
@@ -907,7 +957,7 @@ index 4760ea5..692ee56 100644
      // Callbacks
  
      override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
-@@ -90,9 +555,45 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -90,9 +605,45 @@ class VideoPlaybackService : MediaSessionService() {
  
      override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
          createSessionNotification(session)
@@ -953,7 +1003,7 @@ index 4760ea5..692ee56 100644
          cleanup()
          stopSelf()
      }
-@@ -106,6 +607,93 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -106,6 +657,93 @@ class VideoPlaybackService : MediaSessionService() {
          super.onDestroy()
      }
  
@@ -1047,7 +1097,7 @@ index 4760ea5..692ee56 100644
      private fun createSessionNotification(session: MediaSession) {
          val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-@@ -118,14 +706,15 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -118,14 +756,15 @@ class VideoPlaybackService : MediaSessionService() {
              )
          }
  
@@ -1065,7 +1115,7 @@ index 4760ea5..692ee56 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +731,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,6 +781,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -1076,7 +1126,7 @@ index 4760ea5..692ee56 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -214,12 +807,38 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -214,12 +857,38 @@ class VideoPlaybackService : MediaSessionService() {
          notificationManager.cancel(player.hashCode())
      }
  
@@ -1116,7 +1166,7 @@ index 4760ea5..692ee56 100644
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -248,7 +867,41 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -248,7 +917,41 @@ class VideoPlaybackService : MediaSessionService() {
  
      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1159,7 +1209,7 @@ index 4760ea5..692ee56 100644
          }
  
          intent?.let {
-@@ -273,8 +926,183 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -273,8 +976,190 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -1173,6 +1223,12 @@ index 4760ea5..692ee56 100644
 +        // handleCommand can reach it.
 +        @Volatile
 +        var currentEmitter: VideoEventEmitter? = null
++
++        // Livil patch: our ClipForwardingPlayer for the active session. Cannot be
++        // recovered from session.player — media3 wraps it again — so hold it here,
++        // alongside currentPlayer, for the clip-window republish.
++        @Volatile
++        var currentForwardingPlayer: ClipForwardingPlayer? = null
 +
 +        // Livil patch: native queue so notification next/previous can load the
 +        // target track DIRECTLY on the ExoPlayer — works while the app is
@@ -1320,6 +1376,7 @@ index 4760ea5..692ee56 100644
 +            currentClipEndMs = item.clipEndMs
 +            currentClipActive = item.clipActive
 +            clipEndFired = false
++            currentForwardingPlayer?.notifyClipWindowChanged()
 +            DebugLog.w(TAG, "[LIVIL] nativeSkip -> idx=$target id=${item.id} clip=[${item.clipStartMs},${item.clipEndMs}] active=${item.clipActive}")
 +            return true
 +        }
@@ -1343,7 +1400,7 @@ index 4760ea5..692ee56 100644
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
  
          const val NOTIFICATION_CHANEL_ID = "RNVIDEO_SESSION_NOTIFICATION"
-@@ -283,6 +1111,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +1168,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -1352,7 +1409,7 @@ index 4760ea5..692ee56 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +1122,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +1179,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -1361,7 +1418,7 @@ index 4760ea5..692ee56 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +1135,13 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +1192,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
