@@ -114,7 +114,7 @@ index 440e8fc..83303ec 100644
                  .build()
          }
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
-index e16ac96..23c498a 100644
+index e16ac96..16a09a0 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 @@ -141,6 +141,8 @@ import com.google.ads.interactivemedia.v3.api.ImaSdkFactory;
@@ -164,7 +164,33 @@ index e16ac96..23c498a 100644
                      } else {
                          // Handle the case where currentActivity is null
                          DebugLog.w(TAG, "Could not register ExoPlayer: currentActivity is null");
-@@ -2061,9 +2084,23 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -1939,6 +1962,25 @@ public class ReactExoplayerView extends FrameLayout implements
+ 
+     @Override
+     public void onIsPlayingChanged(boolean isPlaying) {
++        // Livil patch: the 250ms progress poll must not outlive playback.
++        //
++        // Upstream starts it on STATE_READY and only ever clears it on release, so a
++        // PAUSED player kept waking the main thread 4x/second forever — calling
++        // getBufferedPercentage/getDuration/getCurrentPosition and re-posting itself.
++        // updateProgress() suppresses the JS event when the position has not moved,
++        // which hid the cost but did not remove it: the wake-ups still happened, and
++        // they happen while the app is backgrounded, where a paused player should be
++        // costing exactly nothing.
++        //
++        // isPlaying (not !paused) is the right signal: it is false while buffering or
++        // stalled too, and STATE_READY restarts the handler when playback resumes.
++        if (isPlaying) {
++            clearProgressMessageHandler();
++            startProgressHandler();
++        } else {
++            clearProgressMessageHandler();
++        }
++
+         if (isPlaying && isSeeking) {
+             eventEmitter.onVideoSeek.invoke(player.getCurrentPosition(), seekPosition);
+         }
+@@ -2061,9 +2103,23 @@ public class ReactExoplayerView extends FrameLayout implements
              }
  
              if (!isSourceEqual) {
@@ -191,7 +217,7 @@ index e16ac96..23c498a 100644
              }
          } else {
              clearSrc();
-@@ -2616,6 +2653,66 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -2616,6 +2672,66 @@ public class ReactExoplayerView extends FrameLayout implements
          this.playInBackground = playInBackground;
      }
  
@@ -342,10 +368,10 @@ index b10dfb5..4a2d164 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..b0e03fc 100644
+index 4760ea5..692ee56 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-@@ -11,28 +11,258 @@ import android.content.Intent
+@@ -11,28 +11,265 @@ import android.content.Intent
  import android.os.Binder
  import android.os.Build
  import android.os.Bundle
@@ -539,7 +565,14 @@ index 4760ea5..b0e03fc 100644
 +        override fun onIsPlayingChanged(isPlaying: Boolean) {
 +            idleHandler.removeCallbacks(foregroundReleaseRunnable)
 +            idleHandler.removeCallbacks(idleTeardownRunnable)
++            // Livil patch: the clip-end watcher only has anything to do while audio is
++            // actually advancing — checkClipEnd() already returns immediately unless
++            // p.isPlaying. Leaving it posted while paused woke the main thread 4x/second
++            // to do nothing, including in the background, where a paused player must
++            // cost nothing at all. registerPlayer no longer starts it; this does.
++            clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
 +            if (isPlaying) {
++                clipWatcherHandler.postDelayed(clipWatcherRunnable, 250)
 +                promoteToForeground()
 +            } else {
 +                idleHandler.postDelayed(foregroundReleaseRunnable, FOREGROUND_RELEASE_DELAY_MS)
@@ -604,7 +637,7 @@ index 4760ea5..b0e03fc 100644
  
      @SuppressLint("PrivateResource")
      private val seekForwardBtn = CommandButton.Builder()
-@@ -48,37 +278,263 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -48,37 +285,265 @@ class VideoPlaybackService : MediaSessionService() {
          .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
          .build()
  
@@ -673,9 +706,11 @@ index 4760ea5..b0e03fc 100644
 +        // pushes (setMediaSessionState) can reach this session's wrapper.
 +        activeSession = mediaSession
 +
-+        // Livil patch: (re)start the clip-end watcher for this player.
++        // Livil patch: the clip-end watcher is armed by onIsPlayingChanged(true), NOT
++        // here — a player registers while paused (the engine mounts before the user
++        // hits play), and a watcher posted at registration would poll for the whole
++        // idle window. Clearing any watcher from a previous player is still ours to do.
 +        clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
-+        clipWatcherHandler.postDelayed(clipWatcherRunnable, 250)
  
          val notificationId = player.hashCode()
 -        startForeground(notificationId, buildNotification(mediaSession))
@@ -872,7 +907,7 @@ index 4760ea5..b0e03fc 100644
      // Callbacks
  
      override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
-@@ -90,9 +546,45 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -90,9 +555,45 @@ class VideoPlaybackService : MediaSessionService() {
  
      override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
          createSessionNotification(session)
@@ -918,7 +953,7 @@ index 4760ea5..b0e03fc 100644
          cleanup()
          stopSelf()
      }
-@@ -106,6 +598,93 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -106,6 +607,93 @@ class VideoPlaybackService : MediaSessionService() {
          super.onDestroy()
      }
  
@@ -1012,7 +1047,7 @@ index 4760ea5..b0e03fc 100644
      private fun createSessionNotification(session: MediaSession) {
          val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-@@ -118,14 +697,15 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -118,14 +706,15 @@ class VideoPlaybackService : MediaSessionService() {
              )
          }
  
@@ -1030,7 +1065,7 @@ index 4760ea5..b0e03fc 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +722,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,6 +731,10 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -1041,7 +1076,7 @@ index 4760ea5..b0e03fc 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -214,12 +798,38 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -214,12 +807,38 @@ class VideoPlaybackService : MediaSessionService() {
          notificationManager.cancel(player.hashCode())
      }
  
@@ -1081,7 +1116,7 @@ index 4760ea5..b0e03fc 100644
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -248,7 +858,41 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -248,7 +867,41 @@ class VideoPlaybackService : MediaSessionService() {
  
      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1124,7 +1159,7 @@ index 4760ea5..b0e03fc 100644
          }
  
          intent?.let {
-@@ -273,8 +917,183 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -273,8 +926,183 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -1308,7 +1343,7 @@ index 4760ea5..b0e03fc 100644
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
  
          const val NOTIFICATION_CHANEL_ID = "RNVIDEO_SESSION_NOTIFICATION"
-@@ -283,6 +1102,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -283,6 +1111,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -1317,7 +1352,7 @@ index 4760ea5..b0e03fc 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +1113,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +1122,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -1326,7 +1361,7 @@ index 4760ea5..b0e03fc 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +1126,13 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +1135,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)
