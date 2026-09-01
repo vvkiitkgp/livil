@@ -34,18 +34,18 @@ content, so the hand-maintained count is the number worth keeping small.
 
 ## Past freshness SLA
 
-| Document | Owner | Last verified | SLA | Age |
-|---|---|---|---|---:|
-| `debt/proposals/0005-restore-the-messages-write-boundary.md` | chief-architect | 2026-07-29 | 30d | 34d |
-| `debt/register.md` | chief-architect | 2026-07-21 | 30d | 42d |
+| Document | Owner | Last verified | SLA |
+|---|---|---|---|
+| `debt/proposals/0005-restore-the-messages-write-boundary.md` | chief-architect | 2026-07-29 | 30d |
+| `debt/register.md` | chief-architect | 2026-07-21 | 30d |
 
 ## Tier 1 — Generated
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-08-19 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-01 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-09-01 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-01 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-08-19 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-08-19 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-08-19 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-08-19 | 9999d |
 

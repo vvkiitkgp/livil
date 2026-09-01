@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-01
+last_verified: 2026-08-19
 verify_every: 9999d
 verified_by: generated
 visibility: public
