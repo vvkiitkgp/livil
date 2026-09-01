@@ -77,7 +77,6 @@ import {
   Queue,
   Repeat,
   RepeatOnce,
-  ShareNetwork,
   ShieldCheck,
   Shuffle,
   SignOut,
@@ -143,7 +142,13 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   flag: [Flag, 'regular'],
   trash: [Trash, 'regular'],
   reply: [ArrowBendUpLeft, 'bold'],
-  share: [ShareNetwork, 'regular'],
+  // PaperPlaneTilt, not ShareNetwork. The three-linked-dots glyph is Android's
+  // convention but reads as "network"/"connections" out of context, and it was
+  // genuinely missed on the feed card. The paper plane is what every social app uses
+  // for this exact interaction — a sheet that leads with "send to a friend". Swap to
+  // `Export` (the iOS box-with-up-arrow) by changing this one line; it is already a
+  // phosphor export, and `share` has exactly one call site.
+  share: [PaperPlaneTilt, 'regular'],
   externalLink: [ArrowSquareOut, 'regular'],
   tombstone: [Prohibit, 'regular'],
   // Same glyph as `tombstone`, deliberately a separate name: one marks removed

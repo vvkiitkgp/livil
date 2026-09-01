@@ -395,6 +395,19 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/feed-candidates.test.sql
 
+      # shared_post_public is the ONLY function role `anon` may execute against post
+      # data, so this suite is the whole anonymous perimeter. Two of its assertions
+      # fail silently in production if broken: a repost becoming publicly readable
+      # (the client only HIDES the Share button on reposts), and `anon` regaining a
+      # direct select on posts — which is the change this design explicitly refused
+      # and which no other test in this repo would notice.
+      - name: Shared post public-read tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/shared-post-public.test.sql
+
       # LIV-25 — accepting a friend request must leave BOTH people with a DM already in
       # their inbox. Drives the accept through accept_friend_request as `authenticated`,
       # so the deployed trigger is what creates the conversation. The assertion that

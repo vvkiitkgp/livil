@@ -7,6 +7,25 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Android 11+ (API 30) hides installed packages from an app unless it declares
+         what it wants to see. Without this, react-native-share cannot resolve
+         Instagram at all: `isPackageInstalled` reports false on a phone with
+         Instagram on the home screen, and the ADD_TO_STORY intent finds no receiver.
+         The failure looks exactly like "the user does not have Instagram", which is
+         why it is easy to ship and hard to diagnose.
+
+         Declaring the packages, not a broad QUERY_ALL_PACKAGES: that permission is
+         restricted on Google Play and needs a declared justification for a use case
+         this specific list already covers. -->
+    <queries>
+        <package android:name="com.instagram.android" />
+        <package android:name="com.whatsapp" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
     <!-- Lock-screen / notification media controls (react-native-video MediaSession).
          Required on Android 14+ (API 34) for the media-playback foreground service. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -39,6 +58,29 @@
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="livil" />
+        </intent-filter>
+
+        <!-- Android App Links: https://livil-music.com/p/<postId> opens the app
+             instead of the browser.
+
+             autoVerify only takes effect once /.well-known/assetlinks.json on that
+             domain carries the app's PLAY APP SIGNING certificate fingerprint — the
+             Play-side key, not the local upload keystore, because Play re-signs every
+             release. Until that file is published, verification simply fails and these
+             links open in the browser, which is a working outcome: the share page's
+             "Open in app" button uses livil://post/<id>, which needs no verification.
+             So this filter is safe to ship ahead of the file.
+
+             pathPrefix is /p/ ONLY. Claiming the whole host would capture the /studio
+             dashboard and the Play-Console-registered policy pages, so tapping a
+             privacy-policy link would open the app instead of the page Google is
+             checking. -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" android:host="livil-music.com" android:pathPrefix="/p/" />
+            <data android:scheme="https" android:host="www.livil-music.com" android:pathPrefix="/p/" />
         </intent-filter>
       </activity>
 
