@@ -545,7 +545,8 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           viewerId={viewerId}
           postId={post.id}
           postAuthorId={post.author.id}
-          onReportPost={() => setReportOpen(true)}
+          onSharePost={canSharePost(post) ? () => setShareOpen(true) : undefined}
+        onReportPost={() => setReportOpen(true)}
           onDeletePost={() => setConfirmDelete(true)}
           currentAlbumTitle={currentAlbum?.title ?? null}
           onAddToAlbum={isOwnerOfPost ? handleAddOrMoveAlbum : undefined}
@@ -867,23 +868,35 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
             </View>
           ) : null}
-          {/* Share — UPLOADS ONLY. A repost is somebody else's share already, and its
-              public link would put a second person's clip choice under the original
-              artist's name. This hides the affordance; `shared_post_public` is what
-              actually refuses a repost id, because a hidden button is not a rule. */}
-          {canSharePost(post) ? (
-            <TouchableOpacity
-              style={styles.statBtn}
-              activeOpacity={0.7}
-              onPress={() => setShareOpen(true)}
-              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-              accessibilityRole="button"
-              accessibilityLabel="Share this post"
-            >
-              <Icon name="share" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
         </View>
+
+        {/* Share — UPLOADS ONLY. A repost is somebody else's share already, and its
+            public link would put a second person's clip choice on the open web under
+            the original artist's name. This hides the affordance; `shared_post_public`
+            is what actually refuses a repost id, because a hidden button is not a rule.
+
+            OUTSIDE statsGroup, and outlined rather than grey. Everything inside that
+            group is a COUNTER — muted icon plus a number — so a grey share glyph sitting
+            among them read as decoration and was genuinely unfindable. The purple
+            outline is what marks it as a control, which is also what the design system
+            says purple is for.
+
+            Icon-only, mirroring the play button at the other end of the row, because a
+            labelled `[icon] Share` pill is ~82dp: on a 360dp phone that leaves the three
+            counters 142dp for 144dp of content, and they clip. The labelled path is the
+            Share row in the overflow menu. */}
+        {canSharePost(post) ? (
+          <TouchableOpacity
+            style={styles.shareBtn}
+            activeOpacity={0.85}
+            onPress={() => setShareOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${post.track.title}`}
+          >
+            <GradientBorder borderRadius={23} />
+            <Icon name="share" size={18} color={COLORS.purpleNeon} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <LikedByLine
@@ -1083,6 +1096,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
+  },
+  // Same box as playButton, deliberately: one outlined control at each end of the
+  // action row, counters between them. No `elevation` and no `overflow: 'hidden'` —
+  // GradientBorder draws its glow inward and both would cut it off.
+  shareBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   repostBtnLabel: {
     color: COLORS.purpleNeon,
