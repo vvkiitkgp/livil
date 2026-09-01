@@ -24,6 +24,133 @@
 Livil is a social music platform — think Spotify + Discord + SoundCloud.
 Users can upload music (audio + video), listen together in real time (Jam rooms), chat with friends, build shared playlists, and follow each other's listening activity.
 
+---
+
+## How to explain things to me (READ THIS FIRST)
+
+I am a **front-end developer**. I am comfortable with React, React Native, TypeScript, and
+UI work. I am **not** comfortable with backend, database, native Android/iOS, or build
+tooling — explain those parts as if I have never seen them before.
+
+**This section governs how you WRITE TO ME. It does not lower the bar on the code itself,
+and it does not apply to code comments, commit messages, PR bodies, or `kb/` documents —
+those stay precise and technical.**
+
+### Rules for your replies to me
+
+1. **Lead with the plain-English answer.** First 1–3 sentences: what happened / what you
+   did / what I should do, in words my non-technical friend would understand. Detail comes
+   after, never before.
+2. **One jargon term per reply, max — and define it inline the first time.**
+   Not "Fabric defers view commands while backgrounded." →
+   "When the app is in the background, Android ignores our instructions to the player
+   until the app is open again (that's what 'Fabric defers view commands' means)."
+3. **Use an analogy for anything backend, native, or infrastructure.** A database row is a
+   spreadsheet line. RLS is "the database's own bouncer, checking who you are on every
+   request." A migration is "a numbered instruction we ship once to change the database's
+   shape." If you can't think of an analogy, you don't understand it well enough to
+   explain it yet.
+4. **Say what it means for the user of the app, not just for the code.** Always answer the
+   unasked question: "so what would I actually see on my phone if this were broken?"
+5. **No unexplained acronyms.** MediaSession, RLS, JNI, AAB, codegen, Fabric, jsonb, OOM,
+   ADR — spell out and define on first use in every conversation, not just once ever.
+6. **Structure over prose.** Short paragraphs, bullets, and a bolded takeaway line. Never
+   write a 10-line paragraph of dense technical narrative.
+7. **When you're proposing a change, always give me three things:**
+   - **What I'll see change** (in the app, as a user)
+   - **What could break** (in plain terms)
+   - **Whether I need to do anything** — and if so, it goes in the ✅ **Your turn** list
+     below, not buried in a paragraph.
+8. **When I ask "why", answer with the reason first and the mechanism second.** I usually
+   want the reason. If I want the mechanism I'll ask a follow-up.
+9. **Never assume I know a file, table, or concept because it's in this document.** This
+   file is my notes to *you*, not proof I remember any of it.
+10. **If I can't act on it, don't say it.** Skip internal detail that changes nothing for
+    me.
+
+### ALWAYS end with my to-do list
+
+If **anything at all** is left for me to do — because you can't do it, aren't allowed to
+do it, or it needs my hands, my password, my browser, or my phone — it goes in a list at
+the **very end of your reply**, in exactly this format:
+
+```
+## ✅ Your turn
+
+- [ ] **Apply the database migration** — open the Supabase dashboard → SQL Editor, paste
+      `supabase/migrations/20260816000000_foo.sql`, hit Run. *(~2 min. I can't do this:
+      it changes production data.)*
+- [ ] **Rebuild the Android app** — `cd android && ./gradlew assembleDebug`. *(~4 min.
+      Needed because I changed native code; reloading Metro will NOT pick it up.)*
+```
+
+Rules for this list:
+- **Always use the `## ✅ Your turn` heading**, exactly, so I can spot it by scrolling.
+- **Checkboxes (`- [ ]`), one action per line**, in the order I should do them.
+- **Bold the action**, then the exact command / click-path. Give me the literal command
+  in a copy-pasteable code block if it's more than a few words.
+- **Say roughly how long it takes**, and **why you couldn't do it yourself** — one short
+  clause in italics. "I can't — it needs your Play Console login."
+- **Blocking vs. optional:** if something must happen before the change works at all, mark
+  it **`(BLOCKING)`**. If it's a nice-to-have, mark it *(optional)*.
+- **If there is genuinely nothing for me to do, say one line: "✅ Your turn: nothing —
+  this is done."** Don't leave me guessing whether you forgot the list.
+- **Never hide a required step in prose.** If I have to do it and it isn't in this list,
+  that's a bug in your reply.
+
+Things that almost always belong here: applying a database migration, rebuilding the
+native app, bumping the version and uploading to the Play Console, rotating a key or
+password, clicking something in the Supabase/Google/Play dashboards, testing a gesture or
+lock-screen behaviour on a real phone, and anything needing a login.
+
+### Backend changes: show me BEFORE → AFTER with a real example
+
+Any time you change the **database, a service, a query, an API, auth/permissions, or a
+migration**, you must show me the behaviour change as a concrete before-and-after — with
+real-looking data, not abstract description. Use this shape:
+
+> **Before:** When you opened Home, the feed showed every post from everyone, newest
+> first — so a stranger's 3-minute-old upload pushed your friend's post out of sight.
+> **After:** The feed shows posts from people you follow first, then everyone else. Same
+> posts exist; the order changed.
+>
+> **Concrete example — you follow @riya, you don't follow @sam:**
+>
+> | | Before | After |
+> |---|---|---|
+> | 1st post | @sam — 2 min ago | @riya — 40 min ago |
+> | 2nd post | @riya — 40 min ago | @sam — 2 min ago |
+
+Rules for this:
+- **Use real-looking values** — a username, a time, a count. Never "entity A" / "field X".
+- **Say explicitly if nothing visible changes.** "Before and after look identical to you;
+  this only makes the feed load faster." That's a valid and useful answer.
+- **If existing data is affected, say what happens to it.** Does old data get rewritten,
+  left alone, or become invisible? Is it reversible?
+- **Call out anything that can't be undone** in bold, before I approve it.
+- This also applies to changes in **who can see or do what** (permissions/RLS). Show it as
+  "Before: any logged-in user could read your drafts. After: only you can."
+
+### Front-end is the exception
+
+For React / React Native / TypeScript / styling / navigation work, talk to me normally as
+a peer. Don't over-explain `useEffect`. The simplification above is for **backend,
+database, native, and build** topics.
+
+### Quick example
+
+> ❌ "The clip-end watcher polls at 250ms and routes through `onVideoNextTrack → playNext`
+> because Fabric defers the source prop while backgrounded."
+>
+> ✅ "**When a song's clip ends with the phone locked, the next song has to be started by
+> the Android side, not by our JavaScript.** Android freezes our JavaScript when the
+> screen is off, so if we relied on it, the music would just stop. Instead a small piece
+> of Android code checks 4 times a second whether the clip is over, and starts the next
+> one itself. **For you:** nothing to do — just don't move that logic back into
+> JavaScript, or music will stop on the lock screen."
+
+---
+
 ## Rules
 - Always follow the confirmed dependency versions below. Never suggest upgrading or downgrading without explicit instruction.
 - Always use `FormInput` (`src/components/FormInput.tsx`) for text inputs — never create raw `TextInput` with focus state lifted to parent. **Why**: on Android 15 + Fabric, lifting focus state causes re-renders that remount the `TextInput` and immediately dismiss the keyboard.
@@ -363,6 +490,16 @@ locked-in; if you must change one, re-read the **Do-not-break** table first.
 | Hard-clipping the player | Never (`ClippingConfiguration`/`cropStart`). Breaks the editing slider AND desyncs JS-absolute vs native-relative. |
 | Background advance | Must be native (watcher / `naturalEndListener`). JS is foreground/iOS only. |
 | Swipe-dismiss on Android 15 Pixel | **Intentional Google behavior**, not our bug. `setOngoing(player.isPlaying)` pins it while playing (Samsung pins regardless). |
+| Permanent foreground service (**battery**) | Upstream RNV `startForegroundService`s + binds, `startForeground`s once in `registerPlayer`, and never lets go of either — so the process was permanently above the cached tier and **never frozen**. Idling is now two-stage, armed on `onIsPlayingChanged(false)`: **30s** → `stopForeground(DETACH)` (card kept, exemption released); **5 min** → cancel the notification + `stopSelf()` (process finally cached/freezable). **Both stages are required** — dropping only foreground status leaves a STARTED service, which still pins the process above cached. |
+| Removing the card is deliberate | Stage 2 makes the process reclaimable, so a card left behind would be **dead** (no engine, buttons do nothing). Never "fix" the disappearing card by skipping stage 2 or re-posting the notification without `promoteToForeground()`. The session + player are intentionally NOT released, so the next play just re-posts the card. |
+| `startForeground` after stage 2 | Must re-`startForegroundService` first (`isServiceStarted`) — the service object survives `stopSelf()` only because the view holds a `BIND_AUTO_CREATE` binding, and `startForeground` on a bound-only service is not a valid FGS start. Keep both calls inside the try/catch: Android 12+ can refuse a background FGS start, and a refusal must never take playback down. |
+| Stopping playback on swipe-away | The `playWhenReady=false` + `stop()` belongs in **`onTaskRemoved` only** — NOT in `cleanup()`. `cleanup()` is shared with `unregisterPlayer`, which the **story viewer** triggers on every `showNotificationControls` flip; stopping there kills the user's music whenever they open a story. |
+| Card outliving a swipe-away | `NotificationManager.cancel()` is **silently ignored** for a foreground service's own notification, and `stopSelf()` does not destroy this service (the view's `BIND_AUTO_CREATE` binding keeps it alive) — so the card survived until the OS killed the process. `cleanup()` must `stopForeground(REMOVE)` **before** cancelling. Applies to every caller: `onTaskRemoved`, `onDestroy`, `unregisterPlayer`. |
+| Any poll that outlives playback | Both 250ms polls are armed by `onIsPlayingChanged(true)` and cleared on `false`: the view's `progressHandler` (upstream started it on `STATE_READY` and only cleared it on release) and the service's `clipWatcherRunnable` (was armed in `registerPlayer`, which happens while PAUSED). A paused player must wake the main thread **zero** times — `updateProgress()` suppressing the JS event when the position hasn't moved hides the cost, it does not remove it. |
+| Wave visualizer frame loop | `useFrameCallback(cb, false)` + `setActive(playing && !suppressed)`. `phase` is the only shared value still changing once amplitude eases to 0, so an always-on integrator rebuilt the `<Path>` every frame to redraw a straight line, on every screen, for as long as a track was loaded. The flatten still animates — `baseAmp`/`kick` ride Reanimated's own loop, not this one. |
+| Android 12 notification buttons | RNV builds the pre-Tiramisu notification's actions **by hand**; `setCustomLayout` only drives the session-rendered UI on **Android 13+**. Patch BOTH branches or Android 12 keeps upstream's rewind/fast-forward — where "next" is a literal +10s seek. Same for `setOngoing`: the manual branch hardcoded `true`, leaving a paused card unswipeable. |
+| RNV's PLACEHOLDER notification (id 9999) | `onStartCommand` must `startForeground` with the **real card under the raw player's hashCode** whenever a session exists, never the placeholder. `startForeground` with a DIFFERENT id makes Android cancel the previous foreground notification, and `onStartCommand` is delivered LATE — so a placeholder there silently replaces the media card AND re-promotes the service behind `isForegroundService`'s back, re-pinning the process. Cancel id 9999 in `hideAllNotifications()`/`teardownIfIdle()` too. |
+| `cancelAll()` in the playback service | **Never.** It cancels every notification the *app* has posted, so tearing the player down also wiped the user's unread chat/push notifications (notifee posts from the same app). Cancel only our media ids — the raw players' `hashCode`s. |
 | `react-native-track-player` | **Ruled out** — V4 launch-crashes on RN 0.85 + New Arch; paid V5 adds a video A/V-sync risk. We use patched `react-native-video` as the single engine. |
 
 ### Status / follow-ups
@@ -459,7 +596,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 
 - **Developer**: Livil Labs (`vvk.iitkgp@gmail.com`)
 - **Package**: `com.livil`
-- **Status**: Closed testing (versionName `2.0.2`, versionCode `67` — bump both before each release)
+- **Status**: Closed testing (versionName `2.0.4`, versionCode `69` — bump both before each release)
 - **GitHub**: https://github.com/vvkiitkgp/livil
 
 ---

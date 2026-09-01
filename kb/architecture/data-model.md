@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-08-14
+last_verified: 2026-09-01
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 88 migration(s) in `supabase/migrations/`.
+Reconstructed from 92 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-39 table(s).
+40 table(s).
 
 ### `activity_notifications`
 
@@ -504,6 +504,25 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 - `trg_post_comments_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 - `trg_post_comments_freeze_post_id` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
 
+### `post_impressions`
+
+RLS enabled · defined in `20260816000000_post_impressions.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `seen_count` | `int not null default 1` |
+| `last_seen_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (user_id, post_id)`
+
+**Indexes**
+
+- `post_impressions_last_seen_idx` `(last_seen_at)`
+
 ### `post_likes`
 
 RLS enabled · defined in `00000000000000_baseline_schema.sql`
@@ -617,6 +636,8 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 |---|---|---|
 | `clip_start_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
 | `clip_end_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
+| `hot_score` | `double precision NOT NULL DEFAULT 0` | `20260816030000_home_feed_candidates.sql` |
+| `hot_score_updated_at` | `timestamptz` | `20260816030000_home_feed_candidates.sql` |
 
 **Indexes**
 
@@ -626,6 +647,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `posts_track_id_idx` `(track_id)`
 - `idx_posts_created_at_id_desc` `(created_at DESC, id DESC)`
 - `idx_posts_author_created` `(author_id, created_at DESC)`
+- `posts_hot_score_idx` `(hot_score DESC) WHERE hot_score > 0`
 
 **Triggers**
 

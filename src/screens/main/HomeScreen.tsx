@@ -37,9 +37,12 @@ import { useRelationships } from '../../contexts/RelationshipContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   fetchHomeFeedPage,
+  newHomeFeedSession,
   type FeedPost,
   type HomeFeedCursor,
+  type HomeFeedSession,
 } from '../../services/posts';
+import { recordImpression, flushImpressions } from '../../services/feedImpressions';
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
@@ -65,6 +68,17 @@ type FeedListItem =
 const FEED_PAGE_SIZE = 12;
 /** Fetch the next page while the viewer is still a few cards away from the bottom. */
 const PREFETCH_FROM_END = 5;
+
+/**
+ * How long a card must stay on screen before it counts as having been SHOWN (PROP-0010).
+ *
+ * Deliberately not expressed as `minimumViewTime` on the shared `viewabilityConfig`: that
+ * config also drives the pagination prefetch, and raising it to 1.2s would delay every
+ * next-page fetch by the same amount. Dwell is timed here instead, per card, and the timer
+ * is cancelled if the card scrolls away first — so flicking past ten cards to reach the
+ * eleventh records one impression, not eleven.
+ */
+const IMPRESSION_DWELL_MS = 1200;
 
 /**
  * Warm RN's image cache for a freshly-fetched page so cover art / thumbnails /
@@ -267,9 +281,16 @@ export default function HomeScreen() {
 
   // Always restore the chrome when leaving Home (e.g. switching tabs while the
   // bar is hidden) so it isn't stuck off-screen on the next screen.
+  //
+  // Leaving is also the moment to send whatever impressions are still buffered: the
+  // viewer may not come back for hours, and a batch that never leaves the device is a
+  // post the feed goes on repeating.
   useFocusEffect(
     useCallback(() => {
-      return () => { showChrome(); };
+      return () => {
+        showChrome();
+        flushImpressions();
+      };
     }, [showChrome]),
   );
 
@@ -295,6 +316,10 @@ export default function HomeScreen() {
   const [endOfFeed, setEndOfFeed] = useState(false);
 
   const nextCursorRef = useRef<HomeFeedCursor | null>(null);
+  // One pass through the feed. Replaced on cold open and on every refresh; every page in
+  // between is fetched with the SAME session, which is what keeps the ranking still while
+  // the viewer scrolls (PROP-0010 phase 2).
+  const feedSessionRef = useRef<HomeFeedSession>(newHomeFeedSession());
   const loadingMoreRef = useRef(false);
   const loadingInitialRef = useRef(true);
 
@@ -356,13 +381,50 @@ export default function HomeScreen() {
     async () => {},
   );
 
+  // Cards currently being timed for the dwell threshold, and the ones already counted in
+  // this feed session. `countedRef` is what stops a card being re-armed every time it
+  // re-enters the viewport while the viewer scrolls up and down the same stretch — the
+  // server's 10-minute window would collapse those anyway, but not sending them is cheaper
+  // than having them ignored.
+  const dwellTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const countedRef = useRef(new Set<string>());
+
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       let maxIndex = 0;
+      const visiblePostIds = new Set<string>();
       for (const v of viewableItems) {
         if (typeof v.index === 'number') {
           maxIndex = Math.max(maxIndex, v.index);
         }
+        const row = v.item as FeedListItem | undefined;
+        if (row?.kind === 'post') {
+          visiblePostIds.add(row.post.id);
+        }
+      }
+
+      // ── Impressions (PROP-0010) ───────────────────────────────────────────
+      // Refs only, no setState: this fires several times a second while scrolling, and
+      // the reason the old `visibleIds` state was removed (see viewabilityConfig above)
+      // applies just as much here.
+      const timers = dwellTimersRef.current;
+      for (const [postId, timer] of timers) {
+        // Scrolled away before it was really looked at — that is not an impression.
+        if (!visiblePostIds.has(postId)) {
+          clearTimeout(timer);
+          timers.delete(postId);
+        }
+      }
+      for (const postId of visiblePostIds) {
+        if (timers.has(postId) || countedRef.current.has(postId)) { continue; }
+        timers.set(
+          postId,
+          setTimeout(() => {
+            timers.delete(postId);
+            countedRef.current.add(postId);
+            recordImpression(postId);
+          }, IMPRESSION_DWELL_MS),
+        );
       }
 
       const len = postsRef.current.length;
@@ -383,6 +445,17 @@ export default function HomeScreen() {
       }, 0);
     },
   ).current;
+
+  // A dwell timer that fires after the screen is gone would record an impression for a
+  // card nobody is looking at, and would do it from an unmounted component.
+  useEffect(() => {
+    const timers = dwellTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) { clearTimeout(timer); }
+      timers.clear();
+      flushImpressions();
+    };
+  }, []);
 
   // Deliberately no pauseAll() on blur — audio should keep playing when the
   // user navigates to another screen (e.g. UserProfile). Cards render no inline
@@ -537,6 +610,21 @@ export default function HomeScreen() {
     if (showSpinner) {
       setLoadingMore(true);
     }
+    if (mode === 'initial' || mode === 'refresh') {
+      // A new pass through the feed gets a new seed and a new decay origin — this is what
+      // makes pulling down actually re-rank rather than hand back the page already on
+      // screen. Minted before the fetch below reads it.
+      feedSessionRef.current = newHomeFeedSession();
+
+      // The list is about to be replaced wholesale, so anything mid-dwell is measuring a
+      // card that is on its way off screen. Send what has been counted and start clean —
+      // a post that comes back in the new page is a new showing, and the server's
+      // 10-minute window decides whether it counts as a separate occasion.
+      for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
+      dwellTimersRef.current.clear();
+      countedRef.current.clear();
+      flushImpressions();
+    }
     if (mode === 'initial') {
       setLoadingInitial(true);
       setFeedError('');
@@ -559,6 +647,7 @@ export default function HomeScreen() {
       const { posts: chunk, nextCursor } = await fetchHomeFeedPage({
         limit: FEED_PAGE_SIZE,
         cursor,
+        session: feedSessionRef.current,
       });
 
       // Warm the cache for this page's media so cards below the fold (and the
