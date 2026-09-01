@@ -63,6 +63,11 @@ describe('when the RNShare native module is absent from the binary', () => {
     expect(() => require('../share')).not.toThrow();
   });
 
+  it('reports itself unavailable, so the UI can hide what it cannot do', () => {
+    const { isNativeShareAvailable } = require('../share');
+    expect(isNativeShareAvailable()).toBe(false);
+  });
+
   it('still exposes the pure helpers, which need no native module at all', () => {
     const { canSharePost } = require('../share');
     expect(canSharePost({ kind: 'upload' })).toBe(true);

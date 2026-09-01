@@ -96,6 +96,20 @@ export function toShareablePost(post: FeedPost): ShareablePost {
   };
 }
 
+/**
+ * Whether image-based sharing can work at all on this build.
+ *
+ * False when the native module is missing from the binary — an older APK, a failed
+ * autolink, a JS-only reload after adding the dependency. The UI uses this to HIDE the
+ * image-based destinations rather than offer them and quietly send a link instead: two
+ * menu rows that do exactly the same thing is a worse failure than one row fewer,
+ * because the user cannot tell anything went wrong. That is precisely how a silently
+ * degrading "Share the card" got reported as "I don't see a difference between these".
+ */
+export function isNativeShareAvailable(): boolean {
+  return loadNativeShare() !== null;
+}
+
 /** Uploads only — see the header. */
 export function canSharePost(post: { kind: 'upload' | 'repost' }): boolean {
   return post.kind === 'upload';

@@ -17,6 +17,7 @@ import { useToast } from '../contexts/ToastContext';
 import { getOrCreateDm } from '../services/conversations';
 import { listFriends, type FriendRef } from '../services/relationships';
 import {
+  isNativeShareAvailable,
   shareCardImage,
   sharePostLink,
   shareStoryCard,
@@ -60,10 +61,22 @@ type Destination = {
   icon: IconName;
 };
 
-const DESTINATIONS: Destination[] = [
-  { key: 'story', label: 'Instagram Story', hint: 'Share a card with a link back', icon: 'instagram' },
-  { key: 'link', label: 'Share link', hint: 'WhatsApp, Messages, anywhere', icon: 'share' },
-  { key: 'image', label: 'Share the card', hint: 'Send the image instead of a link', icon: 'externalLink' },
+const LINK_DESTINATION: Destination = {
+  key: 'link',
+  label: 'Share link',
+  hint: 'WhatsApp, Messages, anywhere',
+  icon: 'share',
+};
+
+/**
+ * Attaching an image to a share needs the native module; the plain link does not.
+ * When it is missing, the two image rows are HIDDEN rather than shown and silently
+ * degraded to the link — three rows where two do the same thing is the worst outcome,
+ * because nothing tells the user which one failed.
+ */
+const IMAGE_DESTINATIONS: Destination[] = [
+  { key: 'story', label: 'Instagram Story', hint: 'Post the card with a link back', icon: 'instagram' },
+  { key: 'image', label: 'Send the card', hint: 'The artwork as an image, not a link', icon: 'externalLink' },
 ];
 
 function initials(name: string | null, username: string): string {
@@ -132,6 +145,9 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
    * already picked, and "Send to 3" would send to one.
    */
   const SEARCH_THRESHOLD = 6;
+  const destinations = isNativeShareAvailable()
+    ? [IMAGE_DESTINATIONS[0]!, LINK_DESTINATION, IMAGE_DESTINATIONS[1]!]
+    : [LINK_DESTINATION];
   const q = query.trim().toLowerCase();
   const visibleFriends = q
     ? friends.filter(
@@ -217,10 +233,11 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
 
       const fileUri = await captureCard();
       if (!fileUri) {
-        // No card — share the link rather than nothing, and say so, because silently
-        // doing something different from what was tapped is worse than a small toast.
+        // No card — share the link rather than nothing, and SAY SO. Silently doing
+        // something other than what was tapped is the worst option: it looks like the
+        // button does nothing, or like two buttons do the same thing.
         await sharePostLink(post);
-        showToast('Shared the link instead — the card didn’t render', { kind: 'info' });
+        showToast('Couldn’t render the card — shared the link instead', { kind: 'info' });
         onClose();
         return;
       }
@@ -229,8 +246,15 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
         ? await shareStoryCard(post, fileUri)
         : await shareCardImage(post, fileUri);
 
-      if (outcome === 'fellback' && key === 'story') {
-        showToast('Instagram isn’t set up — shared the link instead', { kind: 'info' });
+      // Every fallback is reported, and each says which step gave way, so a failure is
+      // diagnosable from the phone instead of from a log.
+      if (outcome === 'fellback') {
+        showToast(
+          key === 'story'
+            ? 'Instagram isn’t set up — shared the link instead'
+            : 'Couldn’t attach the image — shared the link instead',
+          { kind: 'info' },
+        );
       }
       onClose();
     } catch {
@@ -352,7 +376,7 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
               <View style={styles.divider} />
 
               {/* ── Everywhere else ── */}
-              {DESTINATIONS.map(d => (
+              {destinations.map(d => (
                 <Pressable
                   key={d.key}
                   style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}

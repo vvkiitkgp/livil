@@ -54,7 +54,7 @@ import { createJamRoom, bulkAddToQueue, isJamRoomEnded } from '../../services/ja
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
-import { resolveSharedPostTarget } from '../../services/share';
+import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
 import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
@@ -174,7 +174,7 @@ function MessageBubble({
   onReplyQuotePress,
   onLongPress,
   onReactionToggle,
-  onOpenSharedPost,
+  onPlaySharedPost,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -186,7 +186,7 @@ function MessageBubble({
   onReplyQuotePress: (originalId: string) => void;
   onLongPress: (msg: ChatMessage) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
-  onOpenSharedPost: (postId: string) => void;
+  onPlaySharedPost: (postId: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
@@ -252,10 +252,10 @@ function MessageBubble({
         <View style={[styles.bubbleWrapper, hasReactions && styles.bubbleWrapperWithReactions]}>
           <Pressable
             onLongPress={() => onLongPress(msg)}
-            onPress={sharedPostId ? () => onOpenSharedPost(sharedPostId) : undefined}
+            onPress={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
             accessibilityRole={sharedPostId ? 'button' : undefined}
             accessibilityLabel={
-              sharedPostId ? `Listen to ${msg.metadata!.title as string}` : undefined
+              sharedPostId ? `Play ${msg.metadata!.title as string}` : undefined
             }
             style={[
               styles.bubble,
@@ -317,15 +317,30 @@ function MessageBubble({
                 <Text style={styles.trackCardTitle} numberOfLines={2}>
                   {msg.metadata!.title as string}
                 </Text>
-                <Text style={styles.trackCardArtist} numberOfLines={1}>
+                <Text
+                  style={[styles.trackCardArtist, isMe && styles.trackCardArtistMe]}
+                  numberOfLines={1}
+                >
                   {msg.metadata!.artist_name as string}
                 </Text>
                 {/* The affordance. Without it a shared track reads as an image somebody
-                    sent, and the whole point of sharing it is that the recipient can go
-                    and hear it. */}
+                    sent, and the whole point of sharing it is that the recipient can
+                    hear it.
+
+                    Two colourways because the bubble has two backgrounds. On MY bubble
+                    the ground is COLORS.purple, where purpleNeon text is very nearly
+                    invisible — the accent that reads as "tappable" on a dark card
+                    disappears against a purple one. White carries it there instead. */}
                 <View style={styles.trackCardCta}>
-                  <Icon name="play" size={12} color={COLORS.purpleNeon} />
-                  <Text style={styles.trackCardCtaText}>Tap to listen</Text>
+                  <Icon
+                    name="play"
+                    size={12}
+                    color={isMe ? COLORS.white : COLORS.purpleNeon}
+                    weight="fill"
+                  />
+                  <Text style={[styles.trackCardCtaText, isMe && styles.trackCardCtaTextMe]}>
+                    Tap to listen
+                  </Text>
                 </View>
               </View>
             )}
@@ -416,7 +431,8 @@ export default function ConversationScreen() {
   const { conversationId, title, kind } = route.params;
   const isGroup = kind === 'group';
 
-  const { nowPlaying, queueRef } = usePlayback();
+  const { nowPlaying, queueRef, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget } =
+    usePlayback();
   const { activeJam, setActiveJam } = useJam();
   const { showToast } = useToast();
   const [startingJam, setStartingJam] = useState(false);
@@ -794,21 +810,39 @@ export default function ConversationScreen() {
   }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast]);
 
   /**
-   * Open the post behind a shared-track bubble.
+   * PLAY the shared track. The card says "Tap to listen", so it plays — it does not
+   * navigate somewhere the song might be.
    *
-   * Resolves through the same helper the deep-link handler uses, so a track that arrives
-   * as a DM and the same track opened from a livil-music.com link land in exactly the
-   * same place. A post that cannot be resolved (deleted, or hidden by a block) says so
-   * instead of navigating to a blank profile.
+   * The first version of this opened the author's profile focused on the post, copying
+   * what an ActivityCenter notification tap does. That is right for "someone liked your
+   * post" and wrong here: a song someone sent you in a chat is a song, and making the
+   * listener find it on a profile is a worse version of the thing they asked for.
+   *
+   * Playback is started exactly the way PostCard starts it — setNowPlaying, mark the
+   * clip start as the seek target, then requestPlay — so the single engine
+   * (GlobalAudioPlayer) picks it up and the floating player appears over the chat. The
+   * user stays in the conversation; tapping the floating player expands it. A video's
+   * audio plays through the same engine, which is the documented single-engine design.
    */
-  const handleOpenSharedPost = useCallback(async (postId: string) => {
-    const target = await resolveSharedPostTarget(postId);
-    if (!target) {
-      showToast('That post is no longer available', { kind: 'info' });
+  const handlePlaySharedPost = useCallback(async (postId: string) => {
+    // Already the loaded track: toggle rather than restart, so tapping a card you are
+    // already listening to does not jump back to the beginning.
+    if (nowPlaying?.postId === postId) {
+      if (activePostId === postId) { handlersRef.current?.pause(); }
+      else { requestPlay(postId); }
       return;
     }
-    navigation.navigate('UserProfile', target);
-  }, [navigation, showToast]);
+
+    const post = await fetchPostById(postId);
+    if (!post) {
+      showToast('That track is no longer available', { kind: 'info' });
+      return;
+    }
+    const clipStart = post.clipStartSec ?? 0;
+    setNowPlaying(feedPostToNowPlaying(post));
+    markSeekTarget(clipStart);
+    requestPlay(post.id);
+  }, [nowPlaying, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget, showToast]);
 
   const handleLongPress = useCallback((msg: ChatMessage) => {
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
@@ -931,7 +965,7 @@ export default function ConversationScreen() {
               onReplyQuotePress={handleReplyQuotePress}
               onLongPress={handleLongPress}
               onReactionToggle={handleReactionToggle}
-              onOpenSharedPost={handleOpenSharedPost}
+              onPlaySharedPost={handlePlaySharedPost}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -946,7 +980,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handleOpenSharedPost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
   const headerSubtitle = useMemo(() => {
@@ -1343,8 +1377,12 @@ const styles = StyleSheet.create({
   trackCardArtPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   trackCardTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700', marginTop: 8 },
   trackCardArtist: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 2 },
+  // COLORS.textSecondary is #888 — fine on the dark received bubble, muddy on the
+  // purple sent one. Same reason the CTA needs a second colour below.
+  trackCardArtistMe: { color: 'rgba(255,255,255,0.82)' },
   trackCardCta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   trackCardCtaText: { color: COLORS.purpleNeon, fontSize: 11.5, fontWeight: '700' },
+  trackCardCtaTextMe: { color: COLORS.white },
   // Jam invite card
   jamInviteCard: {
     flexDirection: 'row',
