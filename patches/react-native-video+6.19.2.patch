@@ -114,7 +114,7 @@ index 440e8fc..83303ec 100644
                  .build()
          }
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
-index e16ac96..23c498a 100644
+index e16ac96..16a09a0 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/ReactExoplayerView.java
 @@ -141,6 +141,8 @@ import com.google.ads.interactivemedia.v3.api.ImaSdkFactory;
@@ -164,7 +164,33 @@ index e16ac96..23c498a 100644
                      } else {
                          // Handle the case where currentActivity is null
                          DebugLog.w(TAG, "Could not register ExoPlayer: currentActivity is null");
-@@ -2061,9 +2084,23 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -1939,6 +1962,25 @@ public class ReactExoplayerView extends FrameLayout implements
+ 
+     @Override
+     public void onIsPlayingChanged(boolean isPlaying) {
++        // Livil patch: the 250ms progress poll must not outlive playback.
++        //
++        // Upstream starts it on STATE_READY and only ever clears it on release, so a
++        // PAUSED player kept waking the main thread 4x/second forever — calling
++        // getBufferedPercentage/getDuration/getCurrentPosition and re-posting itself.
++        // updateProgress() suppresses the JS event when the position has not moved,
++        // which hid the cost but did not remove it: the wake-ups still happened, and
++        // they happen while the app is backgrounded, where a paused player should be
++        // costing exactly nothing.
++        //
++        // isPlaying (not !paused) is the right signal: it is false while buffering or
++        // stalled too, and STATE_READY restarts the handler when playback resumes.
++        if (isPlaying) {
++            clearProgressMessageHandler();
++            startProgressHandler();
++        } else {
++            clearProgressMessageHandler();
++        }
++
+         if (isPlaying && isSeeking) {
+             eventEmitter.onVideoSeek.invoke(player.getCurrentPosition(), seekPosition);
+         }
+@@ -2061,9 +2103,23 @@ public class ReactExoplayerView extends FrameLayout implements
              }
  
              if (!isSourceEqual) {
@@ -191,7 +217,7 @@ index e16ac96..23c498a 100644
              }
          } else {
              clearSrc();
-@@ -2616,6 +2653,66 @@ public class ReactExoplayerView extends FrameLayout implements
+@@ -2616,6 +2672,66 @@ public class ReactExoplayerView extends FrameLayout implements
          this.playInBackground = playInBackground;
      }
  
@@ -342,10 +368,10 @@ index b10dfb5..4a2d164 100644
                  )
                  .build()
 diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-index 4760ea5..2ee29e9 100644
+index 4760ea5..83f7816 100644
 --- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
 +++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/exoplayer/VideoPlaybackService.kt
-@@ -11,28 +11,194 @@ import android.content.Intent
+@@ -11,28 +11,291 @@ import android.content.Intent
  import android.os.Binder
  import android.os.Build
  import android.os.Bundle
@@ -354,6 +380,8 @@ index 4760ea5..2ee29e9 100644
 +import android.os.Looper
 +import android.net.Uri
  import androidx.core.app.NotificationCompat
++import androidx.core.app.ServiceCompat
++import androidx.core.content.ContextCompat
 +import androidx.media3.common.ForwardingPlayer
 +import androidx.media3.common.MediaItem
 +import androidx.media3.common.MediaMetadata
@@ -459,6 +487,32 @@ index 4760ea5..2ee29e9 100644
 +        customMainHandler.post { snapshot.forEach { it.onShuffleModeEnabledChanged(enabled) } }
 +    }
 +
++    // Livil patch: the notification scrubber's MAX comes from the session's
++    // MediaMetadata, NOT from PlaybackState. getDuration() alone was not enough:
++    // media3 publishes duration into the platform metadata, and metadata is only
++    // rebuilt on a metadata/timeline event — a seek republishes position only.
++    // That is why a live clip edit moved the playhead correctly (seekTo IS
++    // translated) while the scrubber still spanned the whole 4:18 track.
++    override fun getMediaMetadata(): MediaMetadata =
++        if (active) super.getMediaMetadata().buildUpon().setDurationMs(clipDur).build()
++        else super.getMediaMetadata()
++
++    // Livil patch: force media3 to re-read duration/metadata after the clip window
++    // moves. Same mechanism as emitRepeatModeChanged: the INNER player did not
++    // change, so nothing would otherwise tell the session to rebuild. Timeline
++    // first (duration is a timeline-derived value), then metadata.
++    fun notifyClipWindowChanged() {
++        val snapshot = customListeners.toList()
++        val timeline = currentTimeline
++        val metadata = mediaMetadata
++        customMainHandler.post {
++            snapshot.forEach {
++                it.onTimelineChanged(timeline, Player.TIMELINE_CHANGE_REASON_SOURCE_UPDATE)
++                it.onMediaMetadataChanged(metadata)
++            }
++        }
++    }
++
 +    override fun getRepeatMode(): Int = localRepeatMode
 +    override fun setRepeatMode(repeatMode: Int) {
 +        if (localRepeatMode == repeatMode) return
@@ -529,7 +583,76 @@ index 4760ea5..2ee29e9 100644
 +                onNaturalEnd()
 +            }
 +        }
++
++        // Livil patch: idle lifecycle, see `isForegroundService` below. Playback
++        // starting cancels both pending stages and restores the card; playback
++        // stopping arms them. The delays also filter out track transitions and
++        // rebuffer stalls, which both report isPlaying=false for a moment.
++        override fun onIsPlayingChanged(isPlaying: Boolean) {
++            idleHandler.removeCallbacks(foregroundReleaseRunnable)
++            idleHandler.removeCallbacks(idleTeardownRunnable)
++            // Livil patch: the clip-end watcher only has anything to do while audio is
++            // actually advancing — checkClipEnd() already returns immediately unless
++            // p.isPlaying. Leaving it posted while paused woke the main thread 4x/second
++            // to do nothing, including in the background, where a paused player must
++            // cost nothing at all. registerPlayer no longer starts it; this does.
++            clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
++            if (isPlaying) {
++                clipWatcherHandler.postDelayed(clipWatcherRunnable, 250)
++                promoteToForeground()
++            } else {
++                idleHandler.postDelayed(foregroundReleaseRunnable, FOREGROUND_RELEASE_DELAY_MS)
++                idleHandler.postDelayed(idleTeardownRunnable, IDLE_TEARDOWN_DELAY_MS)
++            }
++        }
 +    }
++
++    /**
++     * Livil patch: the service's idle lifecycle — the fix for a BATTERY defect, not
++     * a playback one.
++     *
++     * Upstream RNV `startForegroundService()`s + binds the service, calls
++     * startForeground() once in registerPlayer, and NEVER lets go of either. It
++     * overrides MediaSessionService.onUpdateNotification (where media3 would
++     * normally manage this) with a plain notificationManager.notify(). So after the
++     * user's FIRST play, forever after:
++     *   - a foreground service exempts the process from Android's cached-app
++     *     freezer, and
++     *   - even without that, a STARTED service holds the process above the cached
++     *     tier, which is the only tier the freezer touches.
++     * The process was therefore never frozen and never reclaimed — the realtime
++     * socket, the native progress callbacks and the clip watcher all kept running
++     * while the user believed the app was closed.
++     *
++     * Both halves have to go, so idling happens in two stages after playback stops:
++     *
++     *   1. FOREGROUND_RELEASE_DELAY_MS — stopForeground(DETACH). Hands back the
++     *      freezer exemption and the foreground-service battery attribution, but
++     *      KEEPS the notification: the card still resumes playback, which is what a
++     *      user expects from a short pause.
++     *   2. IDLE_TEARDOWN_DELAY_MS — remove the notification and stopSelf(). Now the
++     *      process is genuinely cached and freezable.
++     *
++     * Stage 2 fires reliably because between the two stages the process is still
++     * held up by the started service, so this Handler is not frozen yet.
++     *
++     * We deliberately do NOT release the MediaSession or the player — they cost
++     * nothing while frozen, and keeping them means the next play just re-posts the
++     * card (promoteToForeground) with no session to rebuild.
++     *
++     * Why remove the card rather than leave it: once stage 2 has run, the process
++     * is reclaimable, and a card left behind by a reclaimed process is dead — it
++     * shows a track that no longer has an engine behind it and its buttons do
++     * nothing. Removing it is honest; a dead card is not.
++     */
++    private var isForegroundService = false
++    // Mirrors the started (as opposed to bound) state of this service. Cleared by
++    // stopSelf() in stage 2; promoteToForeground re-starts before re-promoting,
++    // because startForeground() on a bound-only service is not a valid FGS start.
++    private var isServiceStarted = false
++    private val idleHandler = Handler(Looper.getMainLooper())
++    private val foregroundReleaseRunnable = Runnable { releaseForegroundIfIdle() }
++    private val idleTeardownRunnable = Runnable { teardownIfIdle() }
 +
      // Controls for Android 13+ - see buildNotification function
      private val commandSeekForward = SessionCommand(COMMAND.SEEK_FORWARD.stringValue, Bundle.EMPTY)
@@ -540,7 +663,7 @@ index 4760ea5..2ee29e9 100644
  
      @SuppressLint("PrivateResource")
      private val seekForwardBtn = CommandButton.Builder()
-@@ -48,37 +214,225 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -48,37 +311,289 @@ class VideoPlaybackService : MediaSessionService() {
          .setIconResId(androidx.media3.ui.R.drawable.exo_notification_rewind)
          .build()
  
@@ -577,7 +700,8 @@ index 4760ea5..2ee29e9 100644
 +        currentPlayer?.removeListener(naturalEndListener)
 +        currentPlayer = player
 +        player.addListener(naturalEndListener)
-+
+ 
+-        val mediaSession = MediaSession.Builder(this, player)
 +        // Livil patch: keep exactly ONE active media session / notification.
 +        // Release any previously-registered session (e.g. a paused video's
 +        // lingering session) before adding the new one, so Android never stacks
@@ -589,12 +713,13 @@ index 4760ea5..2ee29e9 100644
 +            }
 +            mediaSessionsList.clear()
 +        }
- 
--        val mediaSession = MediaSession.Builder(this, player)
++
 +        // Livil patch: the SESSION sees a ClipForwardingPlayer (clip-relative
 +        // lock-screen view); the raw `player` stays the source of truth (full track,
 +        // absolute) and remains the map key + `currentPlayer` for nativeSkip/watcher.
-+        val mediaSession = MediaSession.Builder(this, ClipForwardingPlayer(player))
++        val forwardingPlayer = ClipForwardingPlayer(player)
++        currentForwardingPlayer = forwardingPlayer
++        val mediaSession = MediaSession.Builder(this, forwardingPlayer)
              .setId("RNVideoPlaybackService_" + player.hashCode())
              .setCallback(VideoPlaybackCallback())
 -            .setCustomLayout(immutableListOf(seekForwardBtn, seekBackwardBtn))
@@ -609,16 +734,42 @@ index 4760ea5..2ee29e9 100644
 +        // pushes (setMediaSessionState) can reach this session's wrapper.
 +        activeSession = mediaSession
 +
-+        // Livil patch: (re)start the clip-end watcher for this player.
++        // Livil patch: the clip-end watcher is armed by onIsPlayingChanged(true), NOT
++        // here — a player registers while paused (the engine mounts before the user
++        // hits play), and a watcher posted at registration would poll for the whole
++        // idle window. Clearing any watcher from a previous player is still ours to do.
 +        clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
-+        clipWatcherHandler.postDelayed(clipWatcherRunnable, 250)
  
          val notificationId = player.hashCode()
-         startForeground(notificationId, buildNotification(mediaSession))
+-        startForeground(notificationId, buildNotification(mediaSession))
++        // Livil patch: unconditional (not promoteToForeground) — registering a new
++        // player must re-post under the NEW notification id even if we already held
++        // foreground status for the session we just evicted. Guarded because a
++        // background-start can be refused on Android 12+; see promoteToForeground.
++        try {
++            startForeground(notificationId, buildNotification(mediaSession))
++            isForegroundService = true
++            // The view startForegroundService()s before binding, so by the time we
++            // get here the service is started.
++            isServiceStarted = true
++        } catch (e: Exception) {
++            DebugLog.w(TAG, "[LIVIL] startForeground refused on register: ${e.message}")
++        }
++        // Livil patch: a player can register while PAUSED (the engine mounts before
++        // the user hits play, and re-mounts paused after a track switch). Nothing
++        // would then fire onIsPlayingChanged, so arm both idle stages here too —
++        // otherwise registering alone would pin the process out of the freezer.
++        idleHandler.removeCallbacks(foregroundReleaseRunnable)
++        idleHandler.removeCallbacks(idleTeardownRunnable)
++        idleHandler.postDelayed(foregroundReleaseRunnable, FOREGROUND_RELEASE_DELAY_MS)
++        idleHandler.postDelayed(idleTeardownRunnable, IDLE_TEARDOWN_DELAY_MS)
      }
  
      fun unregisterPlayer(player: ExoPlayer) {
 +        player.removeListener(naturalEndListener)
++        // Livil patch: this player can no longer justify foreground status.
++        idleHandler.removeCallbacks(foregroundReleaseRunnable)
++        idleHandler.removeCallbacks(idleTeardownRunnable)
          hidePlayerNotification(player)
          val session = mediaSessionsList.remove(player)
 +        // Livil patch: clear the active-session pointer if we just dropped it.
@@ -699,7 +850,22 @@ index 4760ea5..2ee29e9 100644
 +            currentClipEndMs = newEnd
 +            currentClipActive = obj.optBoolean("active", false)
 +            currentRepeatOne = obj.optBoolean("repeatOne", false)
-+            clipEndFired = false
++            // Livil patch: when the WINDOW moved, adopt it DISARMED.
++            //
++            // A track is uploaded once and can appear in many posts, so an original and its
++            // clipped reposts share one media URL. Tapping one while another is playing swaps
++            // the window from JS without reloading anything — and the playhead is still
++            // wherever the old clip left it, which can be far PAST the new clip's end. Arming
++            // here would let the very next 250ms poll read "position >= clipEnd", fire
++            // clip-end, and skip the post the user just tapped.
++            //
++            // Disarmed is safe, never sticky: checkClipEnd re-arms the moment the playhead is
++            // seen inside the window (pos < end - 500), which is immediate once the JS seek
++            // lands. A window change while playing normally re-arms on the very next poll.
++            //
++            // An unchanged window still arms, because that is the track-advance republish —
++            // nativeSkip has already seated the playhead at the new clip start.
++            clipEndFired = windowChanged
 +            // Force the MediaSession to republish PlaybackState so the notification
 +            // duration/scrubber reflect the new clip window. media3 only re-reads the
 +            // player on a player event, so nudge an in-place seek — but ONLY for a
@@ -711,6 +877,10 @@ index 4760ea5..2ee29e9 100644
 +                if (p != null && p.playbackState == Player.STATE_READY) {
 +                    p.seekTo(p.currentPosition)
 +                }
++                // The seek above republishes POSITION. Duration lives in the
++                // metadata, which a seek does not touch — so ask for that too, or
++                // the scrubber keeps spanning the full track.
++                currentForwardingPlayer?.notifyClipWindowChanged()
 +            }
 +        } catch (e: Exception) {
 +            DebugLog.w(TAG, "[LIVIL] setCurrentClip parse error: ${e.message}")
@@ -740,8 +910,26 @@ index 4760ea5..2ee29e9 100644
 +                DebugLog.w(TAG, "[LIVIL] clip-end repeat-one → seek to ${currentClipStartMs}ms")
 +                p.seekTo(currentClipStartMs)
 +            } else {
-+                DebugLog.w(TAG, "[LIVIL] clip-end → nativeSkip(1) + notify JS")
-+                nativeSkip(1)
++                val handled = nativeSkip(1)
++                DebugLog.w(TAG, "[LIVIL] clip-end → nativeSkip(1) handled=$handled + notify JS")
++                if (!handled) {
++                    // Livil patch: end of the queue, repeat off. nativeSkip found no
++                    // next track, so nothing is going to replace the source — and
++                    // unlike a NATURAL end there is no STATE_ENDED to stop the player,
++                    // because a clip ends MID-track. Without this the audio simply
++                    // carried on past the clip into the rest of the song, which is the
++                    // one thing a clip must never do.
++                    //
++                    // Park at the clip start, paused: playback has stopped, and the
++                    // card is left ready to replay the clip rather than dead.
++                    //
++                    // Still notify JS afterwards. If the JS queue does know about a
++                    // next track (its queue is the source of truth; ours is a mirror
++                    // pushed via mediaQueueJson), it will set a new source and play,
++                    // which simply overrides this pause.
++                    p.seekTo(currentClipStartMs)
++                    p.playWhenReady = false
++                }
 +                currentEmitter?.onVideoNextTrack?.invoke()
 +            }
 +        }
@@ -769,7 +957,53 @@ index 4760ea5..2ee29e9 100644
      // Callbacks
  
      override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = null
-@@ -106,6 +460,16 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -90,9 +605,45 @@ class VideoPlaybackService : MediaSessionService() {
+ 
+     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+         createSessionNotification(session)
++        // Livil patch: media3's own signal that this session now needs to keep
++        // running. Belt-and-braces alongside onIsPlayingChanged — it also covers a
++        // resume driven straight from the MediaSession (lock screen / Bluetooth /
++        // Assistant), which is exactly when we are in the background and demoted.
++        if (startInForegroundRequired) {
++            idleHandler.removeCallbacks(foregroundReleaseRunnable)
++            idleHandler.removeCallbacks(idleTeardownRunnable)
++            promoteToForeground()
++        }
+     }
+ 
++    // Swipe out of Recents. cleanup() now drops foreground status before cancelling,
++    // so the media card goes with the app instead of outliving it.
++    //
++    // Note this is only delivered to a STARTED service, so it will NOT fire once the
++    // idle teardown (stage 2) has run — which is fine, because stage 2 has already
++    // removed the card and stopped the service. Every path that can leave a card
++    // posted still ends in cleanup().
+     override fun onTaskRemoved(rootIntent: Intent?) {
++        // Livil patch: swiping the app away means "close it" — so stop the audio,
++        // don't just take its controls away. Without this, releasing the session
++        // below could leave the track still playing with NO notification and no way
++        // to stop it short of killing the app.
++        //
++        // Deliberately here and NOT in cleanup(): cleanup() is shared with
++        // unregisterPlayer, which the story viewer triggers every time it flips
++        // showNotificationControls — stopping there would kill the user's music
++        // whenever they opened a story.
++        //
++        // playWhenReady=false before stop(): stop() alone leaves playWhenReady set,
++        // so anything that re-prepared this player would immediately auto-play.
++        try {
++            currentPlayer?.let { player ->
++                player.playWhenReady = false
++                player.stop()
++            }
++        } catch (e: Exception) {
++            DebugLog.w(TAG, "[LIVIL] could not stop playback on task removal: ${e.message}")
++        }
+         cleanup()
+         stopSelf()
+     }
+@@ -106,6 +657,93 @@ class VideoPlaybackService : MediaSessionService() {
          super.onDestroy()
      }
  
@@ -779,6 +1013,83 @@ index 4760ea5..2ee29e9 100644
 +    // ClipForwardingPlayer, so `session.player.hashCode()` is a DIFFERENT value:
 +    // posting at it would create a SECOND, uncancellable notification card for the
 +    // same session (the "carousel" / exact-duplicate-in-sync bug).
++    // Livil patch: (re)claim foreground-service status for the active session, so
++    // the OS keeps the process alive for as long as audio is actually playing.
++    //
++    // The startForeground() call can legitimately fail: on Android 12+ a service
++    // may not be promoted from the background without an exemption. Playing via a
++    // MediaSession control IS exempt (REASON_MEDIA_BUTTON), which covers the
++    // lock-screen resume path, but we must not crash the player if the platform
++    // disagrees — audio keeps playing either way, we are just killable.
++    private fun promoteToForeground() {
++        if (isForegroundService) { return }
++        val player = currentPlayer ?: return
++        val session = mediaSessionsList[player] ?: return
++        try {
++            // Re-start first if stage 2 stopped us: the service object is still
++            // alive (the ReactExoplayerView holds a BIND_AUTO_CREATE binding, which
++            // is why the session survives a stopSelf), but it is no longer STARTED,
++            // and startForeground() needs a started service.
++            if (!isServiceStarted) {
++                val intent = Intent(this, VideoPlaybackService::class.java).apply {
++                    action = MediaSessionService.SERVICE_INTERFACE
++                }
++                ContextCompat.startForegroundService(this, intent)
++                isServiceStarted = true
++            }
++            startForeground(player.hashCode(), buildNotification(session))
++            isForegroundService = true
++        } catch (e: Exception) {
++            // Android 12+ can refuse a foreground start from the background. Resuming
++            // via a MediaSession control is exempt (REASON_MEDIA_BUTTON), which covers
++            // the lock-screen path, but never let a refusal take playback down with
++            // it — the audio plays either way, we are simply killable.
++            DebugLog.w(TAG, "[LIVIL] startForeground refused: ${e.message}")
++        }
++    }
++
++    // Livil patch: idle stage 1 — hand back foreground status, KEEP the card.
++    // Releases the freezer exemption and the foreground-service battery
++    // attribution while leaving the notification fully functional, so a user who
++    // pauses briefly can still resume from the lock screen.
++    private fun releaseForegroundIfIdle() {
++        if (!isForegroundService) { return }
++        if (currentPlayer?.isPlaying == true) { return }
++        DebugLog.w(TAG, "[LIVIL] playback idle → releasing foreground service (notification kept)")
++        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH)
++        isForegroundService = false
++    }
++
++    // Livil patch: idle stage 2 — remove the card and stop the service, so the
++    // process finally drops to the cached tier and can be frozen.
++    //
++    // The session and player are left intact: they cost nothing while frozen, and
++    // the next play re-posts the card via promoteToForeground without having to
++    // rebuild a session. `cleanup()` is NOT called for the same reason — this is an
++    // idle pause, not a teardown of the engine.
++    private fun teardownIfIdle() {
++        if (currentPlayer?.isPlaying == true) { return }
++        val player = currentPlayer ?: return
++        DebugLog.w(TAG, "[LIVIL] playback idle → removing media notification + stopping service")
++        if (isForegroundService) {
++            // REMOVE rather than DETACH: drops foreground status and the card in one
++            // step, for the case where stage 1 has not run (or could not).
++            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
++            isForegroundService = false
++        } else {
++            // Already detached by stage 1, so the notification is now an ordinary
++            // one and only the NotificationManager can take it down. Cancel by the
++            // RAW player's hashCode — see notifIdFor().
++            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
++            notificationManager.cancel(player.hashCode())
++            notificationManager.cancel(PLACEHOLDER_NOTIFICATION_ID)
++        }
++        if (isServiceStarted) {
++            stopSelf()
++            isServiceStarted = false
++        }
++    }
++
 +    private fun notifIdFor(session: MediaSession): Int =
 +        mediaSessionsList.entries.firstOrNull { it.value === session }?.key?.hashCode()
 +            ?: session.player.hashCode()
@@ -786,7 +1097,7 @@ index 4760ea5..2ee29e9 100644
      private fun createSessionNotification(session: MediaSession) {
          val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-@@ -118,14 +482,15 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -118,14 +756,15 @@ class VideoPlaybackService : MediaSessionService() {
              )
          }
  
@@ -804,7 +1115,7 @@ index 4760ea5..2ee29e9 100644
      }
  
      private fun buildNotification(session: MediaSession): Notification {
-@@ -142,6 +507,10 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -142,14 +781,28 @@ class VideoPlaybackService : MediaSessionService() {
                  .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
                  .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
                  .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -815,15 +1126,152 @@ index 4760ea5..2ee29e9 100644
                  .build()
          } else {
              val playerId = session.player.hashCode()
-@@ -220,6 +589,7 @@ class VideoPlaybackService : MediaSessionService() {
+ 
+-            // Action for COMMAND.SEEK_BACKWARD
++            // Livil patch: PREVIOUS TRACK, not seek-backward.
++            //
++            // This whole branch is the Android 12-and-below notification, where RNV
++            // builds the actions BY HAND — `setCustomLayout` (which we changed to
++            // prev/next) only drives the session-rendered UI on Android 13+. So on
++            // Android 12 the patched app still showed upstream's rewind / play /
++            // fast-forward, and "next" was literally a +10s fast-forward button.
++            //
++            // COMMAND.SEEK_TO_PREVIOUS/NEXT route through onStartCommand ->
++            // handleCommand -> handleSkipFromController, the same single pipeline the
++            // Android 13+ buttons and AVRCP controllers use.
+             val seekBackwardIntent = Intent(this, VideoPlaybackService::class.java).apply {
+                 putExtra("PLAYER_ID", playerId)
+-                putExtra("ACTION", COMMAND.SEEK_BACKWARD.stringValue)
++                putExtra("ACTION", COMMAND.SEEK_TO_PREVIOUS.stringValue)
+             }
+             val seekBackwardPendingIntent = PendingIntent.getService(
+                 this,
+@@ -170,10 +823,10 @@ class VideoPlaybackService : MediaSessionService() {
+                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+             )
+ 
+-            // ACTION FOR COMMAND.SEEK_FORWARD
++            // Livil patch: NEXT TRACK, not seek-forward. See the previous-track note.
+             val seekForwardIntent = Intent(this, VideoPlaybackService::class.java).apply {
+                 putExtra("PLAYER_ID", playerId)
+-                putExtra("ACTION", COMMAND.SEEK_FORWARD.stringValue)
++                putExtra("ACTION", COMMAND.SEEK_TO_NEXT.stringValue)
+             }
+             val seekForwardPendingIntent = PendingIntent.getService(
+                 this,
+@@ -187,7 +840,7 @@ class VideoPlaybackService : MediaSessionService() {
+                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                 .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
+                 // Add media control buttons that invoke intents in your media service
+-                .addAction(androidx.media3.session.R.drawable.media3_icon_rewind, "Seek Backward", seekBackwardPendingIntent) // #0
++                .addAction(androidx.media3.session.R.drawable.media3_icon_previous, "Previous", seekBackwardPendingIntent) // #0
+                 .addAction(
+                     if (session.player.isPlaying) {
+                         androidx.media3.session.R.drawable.media3_icon_pause
+@@ -197,14 +850,17 @@ class VideoPlaybackService : MediaSessionService() {
+                     "Toggle Play",
+                     togglePlayPendingIntent
+                 ) // #1
+-                .addAction(androidx.media3.session.R.drawable.media3_icon_fast_forward, "Seek Forward", seekForwardPendingIntent) // #2
++                .addAction(androidx.media3.session.R.drawable.media3_icon_next, "Next", seekForwardPendingIntent) // #2
+                 // Apply the media style template
+                 .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2))
+                 .setContentTitle(session.player.mediaMetadata.title)
+                 .setContentText(session.player.mediaMetadata.description)
+                 .setContentIntent(PendingIntent.getActivity(this, 0, returnToPlayer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+                 .setLargeIcon(session.player.mediaMetadata.artworkUri?.let { session.bitmapLoader.loadBitmap(it).get() })
+-                .setOngoing(true)
++                // Livil patch: match the Android 13+ branch — pinned while playing,
++                // dismissible when paused. Hardcoded `true` left a paused card the
++                // user could not swipe away on Android 12.
++                .setOngoing(session.player.isPlaying)
+                 .build()
+         }
+     }
+@@ -214,12 +870,38 @@ class VideoPlaybackService : MediaSessionService() {
+         notificationManager.cancel(player.hashCode())
+     }
+ 
++    // Livil patch: cancel only OUR media notifications, by the same raw-player
++    // hashCode we post with (see notifIdFor). Upstream called
++    // notificationManager.cancelAll(), which cancels EVERY notification the app has
++    // posted — so tearing the player down also wiped the user's unread chat/push
++    // notifications, which notifee posts from the same app.
+     private fun hideAllNotifications() {
+         val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+-        notificationManager.cancelAll()
++        mediaSessionsList.keys.forEach { notificationManager.cancel(it.hashCode()) }
++        currentPlayer?.let { notificationManager.cancel(it.hashCode()) }
++        // The placeholder posted by onStartCommand is ours too, and is posted under a
++        // fixed id rather than a player hashCode.
++        notificationManager.cancel(PLACEHOLDER_NOTIFICATION_ID)
      }
  
      private fun cleanup() {
 +        clipWatcherHandler.removeCallbacks(clipWatcherRunnable)
++        // Livil patch: drop both pending idle stages with the session.
++        idleHandler.removeCallbacks(foregroundReleaseRunnable)
++        idleHandler.removeCallbacks(idleTeardownRunnable)
++        // Livil patch: a foreground service's notification is OWNED by the service —
++        // NotificationManager.cancel() on it is silently ignored. It only goes away
++        // when the service leaves the foreground or is destroyed, and this service is
++        // NOT destroyed by stopSelf() because the ReactExoplayerView still holds a
++        // BIND_AUTO_CREATE binding. That is why swiping the app out of Recents while
++        // music was playing could leave the media card behind until the OS got round
++        // to killing the process. Drop foreground status FIRST (REMOVE takes the
++        // notification with it), then cancel whatever is left.
++        if (isForegroundService) {
++            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
++        }
++        isForegroundService = false
++        isServiceStarted = false
          hideAllNotifications()
          mediaSessionsList.forEach { (_, session) ->
              session.release()
-@@ -273,6 +643,167 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -248,7 +930,41 @@ class VideoPlaybackService : MediaSessionService() {
+ 
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+-            startForeground(PLACEHOLDER_NOTIFICATION_ID, createPlaceholderNotification())
++            // Livil patch: Android requires a foreground service to post a notification
++            // within ~5s of being started; that is what the placeholder exists for. But
++            // it is posted under its OWN id, so once a session exists it becomes a
++            // SECOND, permanent card ("Media playback / Preparing playback") that
++            // nothing cancels — upstream only ever swept it up via cleanup()'s
++            // cancelAll(), which we removed because it also wiped the user's chat
++            // notifications.
++            //
++            // It is also worse than a stray card: startForeground() here re-promotes the
++            // service behind our back, so Android considers us foreground while
++            // `isForegroundService` still says false. releaseForegroundIfIdle() then
++            // early-returns and the process is pinned out of the freezer again — exactly
++            // the bug this patch exists to fix, reintroduced through the back door.
++            //
++            // So once a session exists, start foreground with the REAL card under the
++            // SAME id promoteToForeground uses. The placeholder is then only ever seen
++            // before the first track has loaded.
++            val player = currentPlayer
++            val session = player?.let { mediaSessionsList[it] }
++            if (player != null && session != null) {
++                startForeground(player.hashCode(), buildNotification(session))
++            } else {
++                startForeground(PLACEHOLDER_NOTIFICATION_ID, createPlaceholderNotification())
++            }
++            isForegroundService = true
++            isServiceStarted = true
++            // Whatever started us, if nothing is actually playing we must still come
++            // back down. Without this an onStartCommand outside the register/resume
++            // paths would leave the service foreground with no pending idle check.
++            if (currentPlayer?.isPlaying != true) {
++                idleHandler.removeCallbacks(foregroundReleaseRunnable)
++                idleHandler.removeCallbacks(idleTeardownRunnable)
++                idleHandler.postDelayed(foregroundReleaseRunnable, FOREGROUND_RELEASE_DELAY_MS)
++                idleHandler.postDelayed(idleTeardownRunnable, IDLE_TEARDOWN_DELAY_MS)
++            }
+         }
+ 
+         intent?.let {
+@@ -273,8 +989,190 @@ class VideoPlaybackService : MediaSessionService() {
      }
  
      companion object {
@@ -837,6 +1285,12 @@ index 4760ea5..2ee29e9 100644
 +        // handleCommand can reach it.
 +        @Volatile
 +        var currentEmitter: VideoEventEmitter? = null
++
++        // Livil patch: our ClipForwardingPlayer for the active session. Cannot be
++        // recovered from session.player — media3 wraps it again — so hold it here,
++        // alongside currentPlayer, for the clip-window republish.
++        @Volatile
++        var currentForwardingPlayer: ClipForwardingPlayer? = null
 +
 +        // Livil patch: native queue so notification next/previous can load the
 +        // target track DIRECTLY on the ExoPlayer — works while the app is
@@ -984,14 +1438,31 @@ index 4760ea5..2ee29e9 100644
 +            currentClipEndMs = item.clipEndMs
 +            currentClipActive = item.clipActive
 +            clipEndFired = false
++            currentForwardingPlayer?.notifyClipWindowChanged()
 +            DebugLog.w(TAG, "[LIVIL] nativeSkip -> idx=$target id=${item.id} clip=[${item.clipStartMs},${item.clipEndMs}] active=${item.clipActive}")
 +            return true
 +        }
 +
          private const val SEEK_INTERVAL_MS = 10000L
          private const val TAG = "VideoPlaybackService"
++
++        // Livil patch: how long playback must stay stopped before we hand back
++        // foreground-service status. Long enough to ride out a track transition or
++        // a rebuffer stall (which both report isPlaying=false) without churning
++        // start/stopForeground; short enough that pausing and pocketing the phone
++        // releases the freezer exemption almost immediately.
++        private const val FOREGROUND_RELEASE_DELAY_MS = 30_000L
++
++        // Livil patch: how long playback must stay stopped before the media card is
++        // removed and the service stopped. This is the point of no return for the
++        // lock-screen card, so it is generous — a user who pauses to take a call
++        // still finds the card where they left it. Past this the process becomes
++        // reclaimable, which is exactly why the card must not outlive it.
++        private const val IDLE_TEARDOWN_DELAY_MS = 300_000L
          private const val PLACEHOLDER_NOTIFICATION_ID = 9999
-@@ -283,6 +814,8 @@ class VideoPlaybackService : MediaSessionService() {
+ 
+         const val NOTIFICATION_CHANEL_ID = "RNVIDEO_SESSION_NOTIFICATION"
+@@ -283,6 +1181,8 @@ class VideoPlaybackService : MediaSessionService() {
              NONE("NONE"),
              SEEK_FORWARD("COMMAND_SEEK_FORWARD"),
              SEEK_BACKWARD("COMMAND_SEEK_BACKWARD"),
@@ -1000,7 +1471,7 @@ index 4760ea5..2ee29e9 100644
              TOGGLE_PLAY("COMMAND_TOGGLE_PLAY"),
              PLAY("COMMAND_PLAY"),
              PAUSE("COMMAND_PAUSE")
-@@ -292,6 +825,8 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -292,6 +1192,8 @@ class VideoPlaybackService : MediaSessionService() {
              when (value) {
                  COMMAND.SEEK_FORWARD.stringValue -> COMMAND.SEEK_FORWARD
                  COMMAND.SEEK_BACKWARD.stringValue -> COMMAND.SEEK_BACKWARD
@@ -1009,7 +1480,7 @@ index 4760ea5..2ee29e9 100644
                  COMMAND.TOGGLE_PLAY.stringValue -> COMMAND.TOGGLE_PLAY
                  COMMAND.PLAY.stringValue -> COMMAND.PLAY
                  COMMAND.PAUSE.stringValue -> COMMAND.PAUSE
-@@ -303,6 +838,13 @@ class VideoPlaybackService : MediaSessionService() {
+@@ -303,6 +1205,13 @@ class VideoPlaybackService : MediaSessionService() {
              when (command) {
                  COMMAND.SEEK_BACKWARD -> session.player.seekTo(session.player.contentPosition - SEEK_INTERVAL_MS)
                  COMMAND.SEEK_FORWARD -> session.player.seekTo(session.player.contentPosition + SEEK_INTERVAL_MS)

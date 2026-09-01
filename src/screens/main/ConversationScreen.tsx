@@ -966,21 +966,34 @@ export default function ConversationScreen() {
             </View>
           ) : null}
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.jamBtn}
-          activeOpacity={0.7}
-          onPress={() => void handleStartJam()}
-          disabled={startingJam}
-        >
-          <GradientBorder borderRadius={20} />
-          {startingJam
-            ? <ActivityIndicator size="small" color={COLORS.purpleNeon} />
-            : <>
-                <Icon name="musicNote" size={14} color={COLORS.purpleNeon} />
-                <Text style={styles.jamBtnLabel}>Jam</Text>
-              </>
-          }
-        </TouchableOpacity>
+        {/* Same gate as the composer: a jam is a shared listening session, so offering
+            one to somebody you cannot even message is incoherent.
+            `sendBlock` is null for groups, which keep their Jam button, and it covers
+            'blocked' as well as 'not-friends'.
+
+            NOTE, and it is the opposite of what it looks like: the server does NOT
+            refuse this. jmem_insert (20260721120000) gates on CONVERSATION membership,
+            not friendship, and both parties to a DM are conversation members whatever
+            their friend status. So this button worked — it would create a live jam with
+            someone who cannot send you a message. This hides the entry point; closing
+            the door itself is a policy change and a separate decision. */}
+        {sendBlock === null && (
+          <TouchableOpacity
+            style={styles.jamBtn}
+            activeOpacity={0.7}
+            onPress={() => void handleStartJam()}
+            disabled={startingJam}
+          >
+            <GradientBorder borderRadius={20} />
+            {startingJam
+              ? <ActivityIndicator size="small" color={COLORS.purpleNeon} />
+              : <>
+                  <Icon name="musicNote" size={14} color={COLORS.purpleNeon} />
+                  <Text style={styles.jamBtnLabel}>Jam</Text>
+                </>
+            }
+          </TouchableOpacity>
+        )}
         {isGroup && (
           <TouchableOpacity
             style={styles.infoBtn}

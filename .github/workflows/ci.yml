@@ -336,6 +336,57 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/track-tags.test.sql
 
+      # Feed suppression fails SILENTLY when it fails. `fetch_home_feed` is SECURITY
+      # INVOKER, so a missing own-row SELECT policy on post_impressions or post_views
+      # makes the join read zero rows: the feed still renders, the shape is still right,
+      # and the feature does nothing. Both policies were mutation-tested against this
+      # file — dropping either one turns an assertion red.
+      - name: Feed impression tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-impressions.test.sql
+
+      # The feed has to be two contradictory things: identical across the pages of one
+      # scroll, and different the next time the viewer pulls down. Getting either half
+      # wrong is invisible in a screenshot — a broken freeze shows up as posts silently
+      # skipped between pages, and a broken seed as a refresh that does nothing, which is
+      # the defect PROP-0010 was written for. Also pins the exp() underflow clamp, without
+      # which every viewer's feed starts erroring once any post is about a year old.
+      - name: Feed session tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-sessions.test.sql
+
+      # The ranking is seven weighted terms in one expression, and every one of them is a
+      # number somebody can change in a second without being able to see what it did. These
+      # assert the SEMANTICS — a friend still leads all else equal, affinity takes the
+      # strongest relationship rather than summing them, listening counts, being shown
+      # something costs it — so a constant edited on a hunch fails here rather than in
+      # production, where nobody can tell a bad feed from an unlucky one.
+      - name: Feed ranking tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-ranking.test.sql
+
+      # Once the ranker scores a candidate POOL rather than every row, "why is this post
+      # missing" becomes a second question the ranking tests cannot answer. These assert
+      # the pool — and one of them sets an extreme timezone on purpose: comparing a
+      # `timezone('utc', now())` value against a timestamptz column is silently correct
+      # on a UTC runner and silently drops every recent post anywhere else, which is
+      # exactly the defect this suite was written after hitting.
+      - name: Feed candidate tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-candidates.test.sql
+
       # LIV-25 — accepting a friend request must leave BOTH people with a DM already in
       # their inbox. Drives the accept through accept_friend_request as `authenticated`,
       # so the deployed trigger is what creates the conversation. The assertion that

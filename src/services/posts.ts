@@ -328,6 +328,38 @@ export type HomeFeedCursor = {
   id: string;
 };
 
+/**
+ * One pass through the feed (PROP-0010 phase 2).
+ *
+ * `seed` keys a deterministic per-post nudge, and `startedAt` freezes the instant the
+ * decay is measured from. Sending both with every page is what lets the ranking be STABLE
+ * while the viewer scrolls and DIFFERENT the next time they pull down — the two things a
+ * plain `ORDER BY random()` cannot be at once.
+ *
+ * Freezing the origin is also a pagination fix on its own: with a live `now()` the scores
+ * move between page 1 and page 3, so the cursor is compared against numbers it was never
+ * issued from and rows can be skipped or repeated.
+ */
+export type HomeFeedSession = {
+  seed: number;
+  /** ISO 8601. Clamped server-side to the last hour — it is untrusted input there. */
+  startedAt: string;
+};
+
+/**
+ * Mint a session. Call on cold open and on every pull-to-refresh; keep it for every page
+ * in between.
+ *
+ * Seed 0 is reserved by the RPC to mean "no jitter" (the pre-session ordering), so it is
+ * excluded here — a session that rolled 0 would silently be an unseeded one.
+ */
+export function newHomeFeedSession(): HomeFeedSession {
+  return {
+    seed: 1 + Math.floor(Math.random() * 2147483646),
+    startedAt: new Date().toISOString(),
+  };
+}
+
 type RpcHomeFeedRow = {
   feed_bucket: number;
   sort_key: number;
@@ -338,28 +370,48 @@ type RpcHomeFeedRow = {
 
 /**
  * Home ranking is computed in Postgres (`fetch_home_feed`): mutual friends →
- * starred friends → global trending (time-decayed engagement). Pagination is
- * keyset-based so feeds stay cheap at large scale.
+ * starred friends → global trending (time-decayed engagement) → already-seen.
+ * Pagination is keyset-based so feeds stay cheap at large scale.
+ *
+ * Pass the SAME `session` for every page of one pass through the feed, and a fresh one on
+ * refresh — see `HomeFeedSession`. Omitting it falls back to the unseeded ordering, which
+ * is stable but identical on every refresh.
  */
 export async function fetchHomeFeedPage(options: {
   limit?: number;
   cursor?: HomeFeedCursor | null;
+  session?: HomeFeedSession | null;
 }): Promise<{ posts: FeedPost[]; nextCursor: HomeFeedCursor | null }> {
   const limit = options.limit ?? 12;
   const c = options.cursor ?? null;
+  const session = options.session ?? null;
 
-  const { data, error } = await supabase.rpc('fetch_home_feed', {
+  // Cast the CLIENT, never the method. `const rpc = supabase.rpc` detaches it from the
+  // client, and supabase-js's rpc() uses `this` internally — calling it detached throws
+  // "Cannot read property 'rpc' of undefined" and takes the whole feed down. Every other
+  // service in this repo calls `db.rpc(...)` attached; this must too.
+  //
+  // The cast is only here because the generated Supabase types still describe the
+  // pre-session RPC signature. Regenerate them and it goes away.
+  const db = supabase as unknown as {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message: string } | null }>;
+  };
+
+  const { data, error } = await db.rpc('fetch_home_feed', {
     p_limit: limit,
     p_cursor_bucket: c?.bucket ?? undefined,
     p_cursor_sort_key: c?.sortKey ?? undefined,
     p_cursor_id: c?.id ?? undefined,
+    p_seed: session?.seed ?? undefined,
+    p_session_started_at: session?.startedAt ?? undefined,
   });
   if (error) {
     throw new Error(error.message);
   }
 
-  // Cast via unknown: the generated Supabase types still describe the pre-
-  // consolidation RPC signature. Regenerate types after the migration lands.
   const rows = (data ?? []) as unknown as RpcHomeFeedRow[];
 
   if (rows.length === 0) {
