@@ -122,8 +122,8 @@ and the never-lists apply to every author regardless.
 | | |
 |---|---|
 | Package | `com.livil` |
-| Track | Closed testing |
-| Current | versionCode 55 / versionName 1.1.9 |
+| Track | **Production** — live since 2026-08-14, full rollout, 176 countries + rest of world |
+| Current | versionCode 70 / versionName 2.0.5 |
 
 ---
 
