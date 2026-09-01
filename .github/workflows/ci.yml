@@ -60,6 +60,14 @@ jobs:
       - name: Tracker adapter tests
         run: npm run test:tracker
 
+      # Same reasoning, and a sharper case: the kb generators are .mjs outside the jest
+      # project too, and the behaviour under test is the one that made the knowledge-base
+      # gate fail on every open pull request for twelve days — a generated document that
+      # no longer matched itself, because its own date stamp had moved. Pin it where a
+      # regression is visible on the next push rather than on the next calendar day.
+      - name: Knowledge base generator tests
+        run: npm run test:kb
+
   knowledge-base:
     name: knowledge base
     runs-on: ubuntu-latest
