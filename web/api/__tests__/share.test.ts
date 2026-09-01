@@ -100,6 +100,37 @@ describe('share page — a post that exists', () => {
     expect(res.body).toContain('play.google.com/store/apps/details?id=com.livil');
   });
 
+  it('carries a seekable progress control, not just a progress indicator', async () => {
+    // Shipped as a bare fill bar: it showed position and could not set it. The padded
+    // wrapper is the hit area — a 5px drag target is unusable on a phone.
+    const res = await render(POST_ID, [POST]);
+    expect(res.body).toContain('role="slider"');
+    expect(res.body).toContain('pointerdown');
+    expect(res.body).toContain('touch-action:none');
+  });
+
+  it('embeds the stored duration, so the bar is seekable before the audio loads', async () => {
+    // preload="none" means the browser learns the duration only on first play. Without
+    // the stored value the bar would be dead until someone had already pressed play —
+    // backwards from how a progress bar is used.
+    const res = await render(POST_ID, [POST]);
+    expect(res.body).toContain('var DUR=214');
+  });
+
+  it('uses the real app icon rather than a stand-in', async () => {
+    const res = await render(POST_ID, [POST]);
+    expect(res.body).toContain('src="/favicon.svg"');
+  });
+
+  it('emits an inline script that actually parses', async () => {
+    // A syntax error here renders a page that looks fine and does nothing — no play, no
+    // seek, no open-in-app, and no error anyone would see. Worth a real parse.
+    const res = await render(POST_ID, [POST]);
+    const block = res.body.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
+    expect(block).not.toBeNull();
+    expect(() => new Function(block![1]!)).not.toThrow();
+  });
+
   it('caches at the edge so a viral link does not become a function bill', async () => {
     const res = await render(POST_ID, [POST]);
     expect(res.headers['Cache-Control']).toBe(

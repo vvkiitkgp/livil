@@ -149,9 +149,9 @@ a{color:inherit}
   background:radial-gradient(120% 80% at 50% -10%,#4C1D95 0%,#0A0A0F 60%)}
 .wrap{position:relative;z-index:1;width:100%;max-width:480px;padding:24px 20px 40px;
   display:flex;flex-direction:column;align-items:center;flex:1}
-.brand{display:flex;align-items:center;gap:8px;align-self:flex-start;margin-bottom:24px;
+.brand{display:flex;align-items:center;gap:9px;align-self:flex-start;margin-bottom:24px;
   font-weight:800;letter-spacing:.5px;font-size:15px}
-.dot{width:10px;height:10px;border-radius:50%;background:#8B3DFF}
+.brand img{width:28px;height:28px;display:block;border-radius:7px}
 .art{width:100%;aspect-ratio:1;border-radius:16px;object-fit:cover;background:#12121C;
   display:block}
 video.art{aspect-ratio:9/16;max-height:60dvh;width:auto;border-radius:16px}
@@ -163,9 +163,14 @@ video.art{aspect-ratio:9/16;max-height:60dvh;width:auto;border-radius:16px}
   background:rgba(139,61,255,.12);color:#A855F7;font-size:18px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;padding:0}
 .play:disabled{opacity:.5;cursor:default}
-.bar{flex:1;height:5px;border-radius:3px;background:#22222e;overflow:hidden}
-.fill{height:100%;width:0;background:linear-gradient(90deg,#6D28D9,#A855F7)}
-.time{font-variant-numeric:tabular-nums;font-size:12px;color:#888;min-width:38px;
+/* The hit area is the padded wrapper, not the 5px line — a 5px drag target is
+   unusable on a phone. The visible track sits inside it. */
+.barwrap{flex:1;padding:14px 0;cursor:pointer;touch-action:none}
+.bar{position:relative;height:5px;border-radius:3px;background:#22222e}
+.fill{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,#6D28D9,#A855F7)}
+.thumb{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;
+  background:#fff;transform:translate(-50%,-50%);box-shadow:0 0 0 3px rgba(139,61,255,.35)}
+.time{font-variant-numeric:tabular-nums;font-size:12px;color:#888;min-width:74px;
   text-align:right}
 .stats{display:flex;gap:8px;margin-top:22px;width:100%}
 .stat{flex:1;border:1px solid #23232f;background:transparent;border-radius:12px;
@@ -216,7 +221,7 @@ ${opts.meta}
 <body>
 <div class="bg"></div>
 <div class="wrap">
-<div class="brand"><span class="dot"></span>LIVIL</div>
+<div class="brand"><img src="/favicon.svg" alt="" width="28" height="28">LIVIL</div>
 ${opts.body}
 </div>
 ${opts.script ? `<script>${opts.script}</script>` : ''}
@@ -301,7 +306,10 @@ ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
 
 <div class="player">
   <button class="play" id="p" aria-label="Play" ${mediaUrl ? '' : 'disabled'}>&#9654;</button>
-  <div class="bar"><div class="fill" id="f"></div></div>
+  <div class="barwrap" id="bw" role="slider" tabindex="0" aria-label="Seek"
+       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="bar"><div class="fill" id="f"></div><div class="thumb" id="th"></div></div>
+  </div>
   <span class="time" id="t">0:00</span>
 </div>
 
@@ -344,17 +352,84 @@ ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
 (function(){
   var m=document.getElementById('m'),p=document.getElementById('p'),
       f=document.getElementById('f'),t=document.getElementById('t'),
+      th=document.getElementById('th'),bw=document.getElementById('bw'),
       gate=document.getElementById('gate');
   var CS=${clipStart === null ? 'null' : clipStart}, CE=${clipEnd === null ? 'null' : clipEnd};
+  // Track length from the database. The browser does not know it until metadata loads,
+  // and preload="none" means that does not happen until the first play — so without this
+  // the bar would be un-seekable until someone had already pressed play, which is exactly
+  // backwards from how people use a progress bar.
+  var DUR=${post.track_duration_seconds != null ? Number(post.track_duration_seconds) : 0};
 
   function fmt(s){s=Math.max(0,Math.floor(s||0));
     return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+  function startAt(){return CS!=null?CS:0;}
+  function endAt(){
+    if(CE!=null) return CE;
+    if(m&&isFinite(m.duration)&&m.duration>0) return m.duration;
+    return DUR;
+  }
+  function span(){var v=endAt()-startAt();return v>0?v:0;}
+
+  function paint(pos){
+    var sp=span();
+    var frac=sp>0?Math.min(1,Math.max(0,(pos-startAt())/sp)):0;
+    f.style.width=(frac*100)+'%';
+    th.style.left=(frac*100)+'%';
+    t.textContent=fmt(pos-startAt())+' / '+fmt(sp);
+    if(bw) bw.setAttribute('aria-valuenow',Math.round(frac*100));
+  }
+
+  // A seek requested before the media has any metadata cannot be applied yet — setting
+  // currentTime at readyState 0 is ignored. Remember it and apply it once metadata
+  // arrives, so tapping the bar on a cold page starts playback at the tapped point.
+  var pending=null;
+  function seekTo(pos){
+    if(!m) return;
+    pos=Math.min(endAt(),Math.max(startAt(),pos));
+    paint(pos);
+    if(m.readyState>0){ try{m.currentTime=pos;}catch(e){} }
+    else { pending=pos; m.load(); }
+    m.dataset.seeded='1';
+  }
+  if(m){
+    m.addEventListener('loadedmetadata',function(){
+      if(pending!=null){ try{m.currentTime=pending;}catch(e){} pending=null; }
+      paint(m.currentTime);
+    });
+  }
+
+  if(bw&&m){
+    var dragging=false;
+    function posFromEvent(e){
+      var r=bw.getBoundingClientRect();
+      var x=(e.clientX!=null?e.clientX:0)-r.left;
+      var frac=r.width>0?Math.min(1,Math.max(0,x/r.width)):0;
+      return startAt()+frac*span();
+    }
+    bw.addEventListener('pointerdown',function(e){
+      dragging=true;
+      if(bw.setPointerCapture&&e.pointerId!=null){try{bw.setPointerCapture(e.pointerId);}catch(err){}}
+      seekTo(posFromEvent(e));
+      e.preventDefault();
+    });
+    bw.addEventListener('pointermove',function(e){ if(dragging) seekTo(posFromEvent(e)); });
+    bw.addEventListener('pointerup',function(){dragging=false;});
+    bw.addEventListener('pointercancel',function(){dragging=false;});
+    // Keyboard, because role="slider" promises it.
+    bw.addEventListener('keydown',function(e){
+      var step=span()/20;
+      if(e.key==='ArrowRight'){seekTo((m.currentTime||startAt())+step);e.preventDefault();}
+      else if(e.key==='ArrowLeft'){seekTo((m.currentTime||startAt())-step);e.preventDefault();}
+    });
+  }
 
   if(m&&p){
     p.addEventListener('click',function(){
       if(m.paused){
-        // Seek to the clip start on the FIRST play only. Doing it on every play would
-        // make a mid-track pause un-resumable.
+        // Jump to the clip start on the FIRST play only — doing it on every play would
+        // make a mid-track pause un-resumable. A seek counts as seeding, so tapping the
+        // bar and then play starts where you tapped.
         if(CS!=null&&!m.dataset.seeded){m.dataset.seeded='1';try{m.currentTime=CS;}catch(e){}}
         m.play().catch(function(){});
       } else { m.pause(); }
@@ -362,13 +437,11 @@ ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
     m.addEventListener('play',function(){p.innerHTML='&#10073;&#10073;';p.setAttribute('aria-label','Pause');});
     m.addEventListener('pause',function(){p.innerHTML='&#9654;';p.setAttribute('aria-label','Play');});
     m.addEventListener('timeupdate',function(){
-      var start=CS!=null?CS:0, end=CE!=null?CE:(m.duration||0);
-      var span=end-start;
       if(CE!=null&&m.currentTime>=CE){m.pause();}
-      if(span>0){f.style.width=Math.min(100,Math.max(0,((m.currentTime-start)/span)*100))+'%';}
-      t.textContent=fmt(m.currentTime-start);
+      paint(m.currentTime);
     });
-    m.addEventListener('ended',function(){f.style.width='0%';t.textContent='0:00';m.dataset.seeded='';});
+    m.addEventListener('ended',function(){m.dataset.seeded='';paint(startAt());});
+    paint(startAt());
   }
 
   // Any action that needs an account: prompt, never pretend. There is no anonymous
