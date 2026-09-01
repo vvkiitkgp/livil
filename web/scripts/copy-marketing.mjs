@@ -17,7 +17,7 @@
  * CNAME is skipped: it is a GitHub Pages mechanism and means nothing to Vercel, where the
  * domain is configured on the project.
  */
-import { cp, mkdir, readdir, access, rm } from 'node:fs/promises';
+import { cp, mkdir, readdir, access, readFile, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -63,6 +63,29 @@ async function main() {
         '      is a policy violation, not a broken link.\n',
     );
     process.exit(1);
+  }
+
+  // Android App Links verification depends on a file only the maintainer can complete:
+  // it needs the PLAY APP SIGNING certificate fingerprint from the Play Console, not the
+  // local upload keystore, because Play re-signs every release. Until it is filled in,
+  // https://livil-music.com/p/<id> opens the browser rather than the app.
+  //
+  // A WARNING, NOT A FAILURE. The share page's "Open in app" button uses the
+  // livil://post/<id> custom scheme, which needs no verification and has always worked —
+  // so an unverified App Link costs one extra tap and nothing else. Failing the build
+  // over it would block deploys of a site that is working.
+  try {
+    const assetlinks = await readFile(join(OUT, '.well-known/assetlinks.json'), 'utf8');
+    if (assetlinks.includes('REPLACE_WITH_PLAY_APP_SIGNING')) {
+      console.warn(
+        '\nWARN  docs/.well-known/assetlinks.json still holds the placeholder fingerprint.\n' +
+          '      Android App Links will NOT verify, so shared https links open the browser\n' +
+          '      instead of the app. Paste the SHA-256 from Play Console -> Setup -> App\n' +
+          '      integrity -> App signing key certificate.\n',
+      );
+    }
+  } catch {
+    console.warn('\nWARN  no .well-known/assetlinks.json in the build — App Links cannot verify.\n');
   }
 
   console.log(`marketing site: ${copied} entries copied, ${REQUIRED.length} Play paths verified`);

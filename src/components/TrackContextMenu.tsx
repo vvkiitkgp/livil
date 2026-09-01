@@ -22,6 +22,9 @@ export type TrackContextMenuProps = {
   onAddToPlaylist?: (track: NowPlayingInfo) => void;
   onGoToArtist?: (userId: string) => void;
   /** Opens the report modal for the post. Hidden when the viewer is the post owner. */
+  /** Share this post. Passed only for shareable posts (uploads) — the caller
+   *  decides, so this menu does not need to know the rule. */
+  onSharePost?: () => void;
   onReportPost?: (postId: string) => void;
   /** Hard-deletes the post after confirmation. Only shown when the viewer is the post owner. */
   onDeletePost?: (postId: string) => void;
@@ -72,6 +75,7 @@ export default function TrackContextMenu({
   onAddToQueue,
   onAddToPlaylist,
   onGoToArtist,
+  onSharePost,
   onReportPost,
   onDeletePost,
   viewerId,
@@ -92,6 +96,12 @@ export default function TrackContextMenu({
   const items: MenuItem[] = disablePlaybackActions
     ? BASE_MENU_ITEMS.filter(i => i.id === 'go-to-artist')
     : [...BASE_MENU_ITEMS];
+  // Share sits at the top of the discretionary items, above the creator-only ones:
+  // it applies to everyone and is the most likely reason to open this menu. Present
+  // only when the caller passes a handler, which it does for uploads only.
+  if (onSharePost) {
+    items.push({ id: 'share-post', label: 'Share', icon: 'share' });
+  }
   // Creator-only album actions. The DB invariant (one album per track) is
   // enforced by `album_tracks_one_album_per_track` — so the UI shows EITHER
   // Add OR Move + Remove, never all three.
@@ -140,6 +150,9 @@ export default function TrackContextMenu({
       case 'remove-from-album':
         onRemoveFromAlbum?.(track);
         break;
+      case 'share-post':
+        onSharePost?.();
+        break;
       case 'report-post':
         if (postId) { onReportPost?.(postId); }
         break;
@@ -147,7 +160,7 @@ export default function TrackContextMenu({
         if (postId) { onDeletePost?.(postId); }
         break;
     }
-  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
+  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onSharePost, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
 
   if (!track) { return null; }
 

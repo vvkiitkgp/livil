@@ -29,5 +29,8 @@
       "@supabase/supabase-js": ["./node_modules/@supabase/supabase-js"]
     }
   },
-  "include": ["src", "vite.config.ts", "../shared"]
+  // `api` is the Vercel serverless function that renders the public share page. It is
+  // built by Vercel, not by Vite, so nothing else would ever type-check it — and it is
+  // the one file in this project that emits raw HTML from user-authored strings.
+  "include": ["src", "api", "vite.config.ts", "../shared"]
 }

@@ -60,7 +60,11 @@ async function dispatchMessagePush(
     if (payload.kind === 'text') {
       bodyPreview = payload.body;
     } else if (payload.kind === 'track_share') {
-      bodyPreview = `shared a track: ${payload.metadata.title}`;
+      // Artist included: a title alone is often ambiguous ("Retrograde" by whom?), and
+      // the note glyph makes the row scannable against a wall of text messages. Matches
+      // the copy the external share sheet uses, so the same track reads the same way
+      // whether it arrived as a DM or a link.
+      bodyPreview = `🎵 ${payload.metadata.title} — ${payload.metadata.artist_name}`;
     } else {
       bodyPreview = 'sent a sticker';
     }
