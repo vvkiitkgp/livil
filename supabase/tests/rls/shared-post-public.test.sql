@@ -156,32 +156,50 @@ select pg_temp.assert_count(
   'anon cannot select tracks directly',
   (select count(*) from public.tracks), 0);
 
--- ── 4. views_count is not in the contract ───────────────────────────────────
--- Withheld on purpose: play count is business intelligence about a working artist.
--- A column added to the return type would make this raise "column does not exist",
--- which is the point — the return list is the review surface.
+-- ── 4. The withheld columns are really withheld ─────────────────────────────
+-- Play count is business intelligence about a working artist, and waveform_peaks is
+-- a per-track array nothing on the page reads. Neither belongs in a contract with the
+-- open internet.
+--
+-- READ FROM pg_proc.proargnames, NOT information_schema.columns. An earlier version of
+-- this file asked information_schema, which does not list a set-returning function's
+-- OUT parameters at all — so it answered "absent" for every column, including the
+-- seventeen that ARE returned, and both assertions passed without testing anything.
+-- Caught by running the real query against production and getting zero columns back
+-- for a function that plainly returns seventeen. proargnames holds the input parameter
+-- followed by the OUT names, which is the actual published shape.
 reset role;
+
+select pg_temp.assert_count(
+  'the return type is the seventeen enumerated columns, plus the one input parameter',
+  (select cardinality(p.proargnames)::bigint
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'shared_post_public'),
+  18);
+
 select pg_temp.assert(
   'views_count is absent from the return type',
-  exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'shared_post_public'
-      and column_name = 'views_count'
-  ),
+  (select 'views_count' = any(p.proargnames)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'shared_post_public'),
   false);
 
 select pg_temp.assert(
   'waveform_peaks is absent from the return type',
-  exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'shared_post_public'
-      and column_name = 'waveform_peaks'
-  ),
+  (select 'waveform_peaks' = any(p.proargnames)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'shared_post_public'),
   false);
+
+-- The guard that makes the two above meaningful: prove the mechanism can SEE a column
+-- that is present. Without this, a typo in the function name would make every
+-- "absent" assertion pass for the same reason the old ones did.
+select pg_temp.assert(
+  'the check can see a column that IS returned — proves it is looking somewhere real',
+  (select 'track_title' = any(p.proargnames)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'shared_post_public'),
+  true);
 
 -- ── 5. The grant is the one we wrote, not a default ─────────────────────────
 select pg_temp.assert(
