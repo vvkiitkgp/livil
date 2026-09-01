@@ -40,6 +40,10 @@ jest.mock('react-native', () => ({
     sharedAction: 'sharedAction',
     dismissedAction: 'dismissedAction',
   },
+  // An empty registry is the binary that has neither library linked — the exact state a
+  // device reported: JS current via Metro, APK predating both native modules.
+  TurboModuleRegistry: { get: () => null },
+  NativeModules: {},
 }));
 
 jest.mock('../../../lib/supabase', () => ({ supabase: {} }));
@@ -63,9 +67,9 @@ describe('when the RNShare native module is absent from the binary', () => {
     expect(() => require('../share')).not.toThrow();
   });
 
-  it('reports itself unavailable, so the UI can hide what it cannot do', () => {
-    const { isNativeShareAvailable } = require('../share');
-    expect(isNativeShareAvailable()).toBe(false);
+  it('reports card sharing unavailable, so the UI can hide what it cannot do', () => {
+    const { isCardShareAvailable } = require('../share');
+    expect(isCardShareAvailable()).toBe(false);
   });
 
   it('still exposes the pure helpers, which need no native module at all', () => {

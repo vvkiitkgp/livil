@@ -19,7 +19,7 @@
  * the native module being absent from the binary, which is why that library is required
  * lazily rather than imported. The Story card is an enhancement, never a dependency.
  */
-import { Share } from 'react-native';
+import { NativeModules, Share, TurboModuleRegistry } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import {
   FACEBOOK_APP_ID,
@@ -66,17 +66,51 @@ export type ShareOutcome = 'shared' | 'dismissed' | 'fellback';
  */
 type RNShareModule = typeof import('react-native-share');
 
+/**
+ * Is a native module actually in this binary?
+ *
+ * `TurboModuleRegistry.get` returns null for a missing module; `getEnforcing` throws.
+ * Asking the registry directly is what lets us find out WITHOUT importing the library
+ * that would throw — and that distinction is not cosmetic. Catching the throw works,
+ * but Metro's module loader also hands it to the global error handler before rethrowing,
+ * so every probe painted a red `Invariant Violation` in LogBox and the dev console. On a
+ * component that probes during render, that is one scary-looking crash report per render
+ * for a condition the code is handling deliberately.
+ *
+ * NativeModules is checked as well because the old bridge still registers there.
+ */
+function nativeModulePresent(name: string): boolean {
+  try {
+    return !!(
+      TurboModuleRegistry.get(name) ??
+      (NativeModules as unknown as Record<string, unknown>)[name]
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** `undefined` = not tried yet, `null` = tried and unavailable. Cached so a missing
- *  module is not re-thrown and re-caught on every share. */
+ *  module is not probed and logged on every share. */
 let cachedShareModule: RNShareModule | null | undefined;
 
 function loadNativeShare(): RNShareModule | null {
   if (cachedShareModule !== undefined) { return cachedShareModule; }
+
+  if (!nativeModulePresent('RNShare')) {
+    console.warn(
+      '[LIVIL][share] RNShare is not in this binary. A Metro reload cannot add a native ' +
+        'module — the app needs a Gradle build AND install (npx react-native run-android).',
+    );
+    cachedShareModule = null;
+    return null;
+  }
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     cachedShareModule = require('react-native-share') as RNShareModule;
   } catch (e) {
-    console.warn('[LIVIL][share] native module unavailable:', (e as Error).message);
+    console.warn('[LIVIL][share] react-native-share failed to load:', (e as Error).message);
     cachedShareModule = null;
   }
   return cachedShareModule;
@@ -107,8 +141,11 @@ export function toShareablePost(post: FeedPost): ShareablePost {
  * because the user cannot tell anything went wrong. That is precisely how a silently
  * degrading "Share the card" got reported as "I don't see a difference between these".
  */
-export function isNativeShareAvailable(): boolean {
-  return loadNativeShare() !== null;
+export function isCardShareAvailable(): boolean {
+  // BOTH, not just the share module. Rendering the card needs react-native-view-shot and
+  // sending it needs react-native-share; with only one of them the rows would appear and
+  // then fail. The previous version checked the share module alone.
+  return nativeModulePresent('RNViewShot') && loadNativeShare() !== null;
 }
 
 /** Uploads only — see the header. */

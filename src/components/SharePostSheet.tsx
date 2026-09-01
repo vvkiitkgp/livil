@@ -17,7 +17,7 @@ import { useToast } from '../contexts/ToastContext';
 import { getOrCreateDm } from '../services/conversations';
 import { listFriends, type FriendRef } from '../services/relationships';
 import {
-  isNativeShareAvailable,
+  isCardShareAvailable,
   shareCardImage,
   sharePostLink,
   shareStoryCard,
@@ -145,7 +145,7 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
    * already picked, and "Send to 3" would send to one.
    */
   const SEARCH_THRESHOLD = 6;
-  const destinations = isNativeShareAvailable()
+  const destinations = isCardShareAvailable()
     ? [IMAGE_DESTINATIONS[0]!, LINK_DESTINATION, IMAGE_DESTINATIONS[1]!]
     : [LINK_DESTINATION];
   const q = query.trim().toLowerCase();
