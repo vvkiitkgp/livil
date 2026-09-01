@@ -55,6 +55,7 @@ Status: ✅ available · ⏳ planned (wave) · ✍️ awaiting human author · �
 | Services, Supabase access patterns, error handling | [architecture/backend.md](architecture/backend.md) ✅ |
 | Realtime subscriptions, presence, jam sync, push | [architecture/realtime.md](architecture/realtime.md) ✅ |
 | Sessions, sign-in, deep links, username claim | [architecture/auth.md](architecture/auth.md) ✅ |
+| Sharing a post — DMs, Instagram Stories, public web links | [architecture/post-sharing.md](architecture/post-sharing.md) ✅ |
 
 ### "What's in the database?"
 | Question | Document |

@@ -207,3 +207,63 @@ export async function listIncomingFriendRequests(): Promise<IncomingFriendReques
     createdAt: row.created_at as string,
   }));
 }
+
+export type FriendRef = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+/**
+ * My accepted friends, as rows renderable directly.
+ *
+ * Friends rather than followers, because a DM write requires an accepted friendship
+ * (`20260809030000_dm_writes_require_friendship`). Listing anyone else in a share
+ * picker would offer a send the database is going to refuse.
+ *
+ * The same query is inlined in `NewConversationScreen`; it is lifted here rather than
+ * copied a second time. That screen is deliberately left alone — rewriting a working
+ * screen is not part of adding a share sheet.
+ */
+export async function listFriends(): Promise<FriendRef[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  if (!me) { return []; }
+
+  const { data, error } = await supabase
+    .from('friendships')
+    .select(`
+      user_a_id, user_b_id,
+      profile_a:profiles!friendships_user_a_id_fkey(id, username, display_name, avatar_url),
+      profile_b:profiles!friendships_user_b_id_fkey(id, username, display_name, avatar_url)
+    `)
+    .eq('status', 'accepted')
+    .or(`user_a_id.eq.${me},user_b_id.eq.${me}`);
+
+  if (error || !data) { return []; }
+
+  type Row = {
+    user_a_id: string;
+    user_b_id: string;
+    profile_a: { id: string; username: string; display_name: string | null; avatar_url: string | null } | null;
+    profile_b: { id: string; username: string; display_name: string | null; avatar_url: string | null } | null;
+  };
+
+  const out: FriendRef[] = [];
+  for (const raw of data as unknown as Row[]) {
+    const other = raw.user_a_id === me ? raw.profile_b : raw.profile_a;
+    if (!other) { continue; }
+    out.push({
+      id: other.id,
+      username: other.username,
+      displayName: other.display_name,
+      avatarUrl: other.avatar_url,
+    });
+  }
+
+  out.sort((a, b) =>
+    (a.displayName || a.username).localeCompare(b.displayName || b.username),
+  );
+  return out;
+}
