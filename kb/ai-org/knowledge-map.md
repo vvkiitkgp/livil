@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-08-19
+last_verified: 2026-09-01
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -25,18 +25,25 @@ related_adrs: []
 | Documents | 66 |
 | Drift-proof (tier 1 + 4) | 34 |
 | Hand-maintained (tier 3 + 5) | 25 |
-| Past freshness SLA | 0 |
+| Past freshness SLA | 2 |
 | Private-content stubs | 6 |
 
 Tiers 1 and 4 cannot drift by construction — the first is regenerated, the second is never
 edited. Historical documentation drift in this project occurred entirely in hand-maintained
 content, so the hand-maintained count is the number worth keeping small.
 
+## Past freshness SLA
+
+| Document | Owner | Last verified | SLA |
+|---|---|---|---|
+| `debt/proposals/0005-restore-the-messages-write-boundary.md` | chief-architect | 2026-07-29 | 30d |
+| `debt/register.md` | chief-architect | 2026-07-21 | 30d |
+
 ## Tier 1 — Generated
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-08-19 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-01 | 9999d |
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-08-19 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-08-19 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-08-19 | 9999d |
@@ -46,7 +53,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `debt/register.md` 🔒 | chief-architect | DC, CA, TR, ALL | 2026-07-21 | 30d |
+| `debt/register.md` 🔒 ⚠️ | chief-architect | DC, CA, TR, ALL | 2026-07-21 | 30d |
 | `standards/coding.md` | principal-client | ALL, CR, RF, FE, BE | 2026-07-21 | 90d |
 | `standards/data-access.md` | principal-data | BE, P-DA, CR, QA | 2026-07-21 | 90d |
 | `standards/design-system.md` | principal-client | FE, RF, CR, P-CL | 2026-07-21 | 90d |
@@ -92,7 +99,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0003-in-app-account-deletion.md` | principal-client | CA, TR, ALL | 2026-07-22 | 9999d |
 | `debt/proposals/0004-harden-stories-backend.md` | principal-data | CA, TR, ALL | 2026-07-24 | 9999d |
 | `debt/proposals/0004-harden-stories-draft.md` | chief-architect | CA, TR, ALL | 2026-07-24 | 9999d |
-| `debt/proposals/0005-restore-the-messages-write-boundary.md` 🔒 | chief-architect | CA, TR, ALL | 2026-07-29 | 30d |
+| `debt/proposals/0005-restore-the-messages-write-boundary.md` 🔒 ⚠️ | chief-architect | CA, TR, ALL | 2026-07-29 | 30d |
 | `debt/proposals/0006-null-author-rendering.md` | principal-client | CA, TR, ALL | 2026-07-29 | 9999d |
 | `debt/proposals/0007-settings-screen.md` | principal-client | CA, TR, ALL | 2026-07-30 | 9999d |
 | `debt/proposals/0008-delete-account-flow.md` | principal-client | CA, TR, ALL | 2026-07-30 | 9999d |

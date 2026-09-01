@@ -5,11 +5,12 @@
  * that goes stale. Also surfaces RPC names the client calls that no migration defines.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadMigrations, parseFunctions, frontmatter, GENERATED_WARNING,
+  writeGenerated,
 } from '../lib/sql-parse.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -136,7 +137,7 @@ export function generate() {
   L.push('');
   L.push('*Bold = installed version differs from the floor of the declared range.*\n');
 
-  writeFileSync(OUT, L.join('\n'));
+  writeGenerated(OUT, L.join('\n'));
 
   return {
     doc: 'inventory',
@@ -166,7 +167,7 @@ function writeUndefinedRpcsPrivate(undefinedRpcs) {
     ...undefinedRpcs.map(r => `| \`${r.name}\` | ${r.sites.map(s => `\`${s}\``).join(', ')} |`),
     '',
   ];
-  writeFileSync(out, L.join('\n'));
+  writeGenerated(out, L.join('\n'));
 }
 
 function section(L, title, files) {

@@ -5,12 +5,13 @@
  * only a findings-free stub goes to the public repo.
  */
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadMigrations, parseTables, parseRls, isPermissive, parsePublications,
   frontmatter, GENERATED_WARNING,
+  writeGenerated,
 } from '../lib/sql-parse.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -131,8 +132,8 @@ export function generate() {
   }
 
   mkdirSync(dirname(PRIVATE_OUT), { recursive: true });
-  writeFileSync(PRIVATE_OUT, L.join('\n'));
-  writeFileSync(PUBLIC_STUB, buildStub(policies.length, byTable.size));
+  writeGenerated(PRIVATE_OUT, L.join('\n'));
+  writeGenerated(PUBLIC_STUB, buildStub(policies.length, byTable.size));
 
   return {
     doc: 'rls-policies',

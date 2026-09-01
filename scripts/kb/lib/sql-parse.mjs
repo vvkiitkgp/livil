@@ -13,7 +13,7 @@
  *   - Comment-stripping is naive about $$-quoted bodies containing '--'
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function loadMigrations(dir) {
@@ -458,6 +458,39 @@ export function frontmatter({ tier, owner, consumers, visibility, verifiedBy = '
     '',
   ].join('\n');
 }
+
+/**
+ * Writes a generated document, but keeps its recorded `last_verified` when NOTHING ELSE
+ * in the file changed.
+ *
+ * ── WHY THIS EXISTS ────────────────────────────────────────────────────────
+ *
+ * `frontmatter()` above stamps TODAY on every run, unconditionally. CI runs
+ * `kb:generate --check`, which regenerates and diffs against what is committed. So a
+ * document generated on one day differs from its own regeneration on the next — by the
+ * date line, and by nothing else.
+ *
+ * The generated docs on `main` were last written 2026-08-19. From 2026-08-20 the
+ * "knowledge base" gate therefore failed on EVERY open pull request, none of which had
+ * touched a generated document, and its instruction — "Run: npm run kb:generate" —
+ * bought exactly one more day before failing again. Four pull requests sat red behind
+ * it, and the repository merged nothing for twelve days.
+ *
+ * A gate that fires on every change for a reason no change caused is not a gate, it is
+ * a calendar (P6). The date now moves when the CONTENT moves, which is what
+ * `last_verified` was always claiming to record.
+ *
+ * Returns true when the file was actually rewritten.
+ */
+export function writeGenerated(path, content) {
+  if (existsSync(path) && sameButForDate(readFileSync(path, 'utf8'), content)) return false;
+  writeFileSync(path, content);
+  return true;
+}
+
+const VERIFIED_LINE = /^last_verified: \d{4}-\d{2}-\d{2}$/m;
+const sameButForDate = (a, b) =>
+  a.replace(VERIFIED_LINE, 'last_verified: -') === b.replace(VERIFIED_LINE, 'last_verified: -');
 
 export const GENERATED_WARNING =
   '> **GENERATED FILE — DO NOT EDIT.**\n' +
