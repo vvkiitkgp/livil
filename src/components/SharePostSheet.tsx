@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { captureRef } from 'react-native-view-shot';
 import { COLORS } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
 import { getOrCreateDm } from '../services/conversations';
@@ -155,10 +154,18 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
   }, [post, selected, sending, showToast, onClose]);
 
   /** Capture the offscreen card. Returns null on any failure — the callers all have a
-   *  link-shaped fallback, so a capture problem must never be fatal. */
+   *  link-shaped fallback, so a capture problem must never be fatal.
+   *
+   *  `react-native-view-shot` is required here rather than imported at module scope, for
+   *  the same reason `react-native-share` is (see services/share.ts): a native module
+   *  missing from the binary must cost the card, not the screen. This library happens to
+   *  resolve softly rather than throwing, but relying on that asymmetry is how the next
+   *  dependency bump becomes a crash. */
   const captureCard = useCallback(async (): Promise<string | null> => {
     if (!artworkReady || !cardRef.current) { return null; }
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+      const { captureRef } = require('react-native-view-shot') as typeof import('react-native-view-shot');
       return await captureRef(cardRef, {
         format: 'jpg',
         // 0.9 rather than PNG: a 1080x1920 PNG of a photographic card is ~2.1 MB

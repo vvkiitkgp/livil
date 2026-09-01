@@ -15,11 +15,11 @@
  * React Native's own `Share` handles the link case perfectly and is used for it here.
  * What it cannot do on Android is attach a FILE — it sends text and a URL, full stop.
  * Instagram Stories needs an image, so that one path (and only that one) goes through
- * `react-native-share`. Every failure inside it degrades to the plain link, which is
- * why the Story card is an enhancement and never a dependency.
+ * `react-native-share`. Every failure inside it degrades to the plain link — INCLUDING
+ * the native module being absent from the binary, which is why that library is required
+ * lazily rather than imported. The Story card is an enhancement, never a dependency.
  */
 import { Share } from 'react-native';
-import RNShare, { Social } from 'react-native-share';
 import { supabase } from '../../lib/supabase';
 import {
   FACEBOOK_APP_ID,
@@ -43,6 +43,43 @@ export type ShareablePost = {
 /** Result of a share attempt, so callers can toast the honest outcome rather than
  *  claiming success for a fallback. */
 export type ShareOutcome = 'shared' | 'dismissed' | 'fellback';
+
+/**
+ * `react-native-share`, loaded ON DEMAND — never at module scope.
+ *
+ * THIS IS NOT A MICRO-OPTIMISATION; it is the difference between a degraded share
+ * button and a dead app. The library resolves its native module with
+ * `TurboModuleRegistry.getEnforcing('RNShare')`, which THROWS at import time when the
+ * native binary does not have it — an older APK, a failed autolink, a JS-only reload
+ * after adding the dependency. `PostCard` imports this file for `canSharePost`, so a
+ * top-level import turned that throw into a crash of the entire feed. Observed exactly
+ * that: `Invariant Violation: 'RNShare' could not be found`, thrown from PostCard, with
+ * the whole home screen replaced by the error boundary.
+ *
+ * Note that `react-native-view-shot` does NOT share this hazard — it uses
+ * `TurboModuleRegistry.get()` with a `NativeModules` fallback, so it resolves to
+ * undefined instead of throwing. Do not assume the two behave alike.
+ *
+ * Requiring here instead means a missing native module costs the Instagram Story path
+ * and nothing else: the caller falls back to the plain link, which is the behaviour
+ * every other failure in this file already has.
+ */
+type RNShareModule = typeof import('react-native-share');
+
+/** `undefined` = not tried yet, `null` = tried and unavailable. Cached so a missing
+ *  module is not re-thrown and re-caught on every share. */
+let cachedShareModule: RNShareModule | null | undefined;
+
+function loadNativeShare(): RNShareModule | null {
+  if (cachedShareModule !== undefined) { return cachedShareModule; }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    cachedShareModule = require('react-native-share') as RNShareModule;
+  } catch {
+    cachedShareModule = null;
+  }
+  return cachedShareModule;
+}
 
 export function toShareablePost(post: FeedPost): ShareablePost {
   // A repost displays the ORIGINAL artist, so the card and the message say who made
@@ -95,14 +132,15 @@ export async function shareStoryCard(
   post: ShareablePost,
   fileUri: string,
 ): Promise<ShareOutcome> {
-  if (!FACEBOOK_APP_ID) {
+  const native = loadNativeShare();
+  if (!native || !FACEBOOK_APP_ID) {
     await sharePostLink(post);
     return 'fellback';
   }
 
   try {
-    await RNShare.shareSingle({
-      social: Social.InstagramStories,
+    await native.default.shareSingle({
+      social: native.Social.InstagramStories,
       appId: FACEBOOK_APP_ID,
       backgroundImage: fileUri,
       // The card fills the frame, so the surrounding gradient is only ever seen on a
@@ -129,8 +167,14 @@ export async function shareCardImage(
   post: ShareablePost,
   fileUri: string,
 ): Promise<ShareOutcome> {
+  const native = loadNativeShare();
+  if (!native) {
+    await sharePostLink(post);
+    return 'fellback';
+  }
+
   try {
-    await RNShare.open({
+    await native.default.open({
       url: fileUri,
       type: 'image/jpeg',
       message: buildPostShareMessage(post.title, post.artistName, post.id),
