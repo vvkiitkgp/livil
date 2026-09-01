@@ -63,7 +63,7 @@ on the share page; iOS.
 
 | # | Requirement | Target | Why it shapes the design |
 |---|---|---|---|
-| N1 | Share-page first paint | p99 < 1.5 s on 4G | Rules out shipping the `/studio` dashboard bundle; needs a separate small entry |
+| N1 | Share-page first paint | p99 < 1.5 s on 4G | Rules out shipping the 697 kB `/studio` bundle — and, as built, any bundle: the page is one self-contained response |
 | N2 | Preview tag availability | 100%, no JavaScript | WhatsApp/Instagram/Twitter crawlers **do not run JS** — forces server rendering |
 | N3 | Anonymous read scope | Exactly one post, by id | No listing, no enumeration, no adjacent data |
 | N4 | Post-row confidentiality | Unchanged for every other read path | `posts_select_authenticated` must survive untouched |
@@ -323,7 +323,6 @@ flowchart LR
     Visitor((Browser))
     VF["Vercel Function<br/>api/share.ts"]
     CDN{"Vercel edge cache"}
-    SPA["Share bundle<br/>dist/share"]
     PGRST["Supabase PostgREST"]
     RPC[["shared_post_public()"]]
     PG[("Postgres")]
@@ -337,23 +336,22 @@ flowchart LR
     VF -->|"POST /rpc/shared_post_public"| PGRST
     PGRST --> RPC
     RPC --> PG
-    VF -->|"200 HTML + og:* + inlined JSON"| Visitor
-    Visitor -->|"hydrate, no refetch"| SPA
-    SPA -.->|"GET audio.mp3 ONLY after tap"| STOR
-    SPA -.->|"Open in app"| APP
+    VF -->|"200 HTML — og:*, inline CSS + JS"| Visitor
+    Visitor -.->|"GET audio.mp3 ONLY after tap"| STOR
+    Visitor -.->|"livil://post/:id"| APP
     Crawler -.->|"GET og:image"| STOR
 
     nRPC["shared_post_public - SECURITY DEFINER<br/>Grants: anon + authenticated<br/>Why: posts_select_authenticated stays shut.<br/>One reviewable function beats a widened policy"]
     nVF["Vercel Function - Node, not the SPA<br/>Renders og:* server-side<br/>Why: crawlers do not run JS. A Vite SPA<br/>gives every share the same generic card"]
     nCDN["s-maxage=300, stale-while-revalidate=86400<br/>A viral link hits the function ~12x/hour<br/>regardless of how many people open it"]
     nStor["Supabase Storage - public bucket<br/>Byte reads bypass RLS entirely<br/>4.3 MB per audio listen, 60 MB per video.<br/>THIS is the cost centre, not the database"]
-    nSPA["Separate Vite entry, base /share/<br/>Why: the /studio dashboard bundle is a<br/>creator tool. Shipping it to a stranger<br/>on 4G blows N1 on its own"]
+    nSPA["NO client bundle at all - one request.<br/>Play/pause, progress, open-in-app and the<br/>sign-in prompts are ~60 lines inline.<br/>Why: the /studio bundle is 697 kB; a second<br/>Vite entry would still be a second request,<br/>a second config and a cache-busting scheme"]
 
     RPC -.- nRPC
     VF -.- nVF
     CDN -.- nCDN
     STOR -.- nStor
-    SPA -.- nSPA
+    Visitor -.- nSPA
 
     classDef note fill:#fdfdfd,stroke:#c8c8c8,stroke-width:1px,stroke-dasharray:3 3,color:#444,text-align:left
     class nRPC,nVF,nCDN,nStor,nSPA note
@@ -406,7 +404,7 @@ flowchart LR
 | Component | Why it exists | What if removed |
 |---|---|---|
 | Vercel Function | Server-renders OG tags | Every shared link previews as a blank Livil card (N2) |
-| Separate `/share` bundle | Small, fast landing page | The dashboard bundle ships to strangers; N1 fails |
+| Inline CSS + JS, no bundle | One request, nothing to hydrate | A second bundle to fetch, build and cache-bust for behaviour that fits in 60 lines |
 | `shared_post_public` | The only anonymous read | Alternative is widening `posts_select_authenticated` to `anon` — publishes every post row including reposts |
 | Edge cache | Collapses crawler + human traffic | Every WhatsApp forward re-runs the function |
 | `react-native-view-shot` | Turns a React view into a JPEG | No Story card; F4 drops to a link |
@@ -449,7 +447,7 @@ sequenceDiagram
 
     U->>CDN: GET /p/:id (human taps the card)
     CDN-->>U: cached HTML with post JSON inlined
-    Note over U: Hydrates from the inlined JSON.<br/>NO second round trip. Page is interactive<br/>before any network call of its own.
+    Note over U: Complete page - markup, CSS and JS inline.<br/>NO second round trip, nothing to hydrate.<br/>Interactive before any network call of its own.
     U->>U: renders paused, preload=none
     Note over U,S: Zero bytes of audio fetched yet.<br/>This is the egress guard, not an optimisation.
     U->>S: GET audio.mp3 (ONLY on tap)
@@ -509,7 +507,7 @@ which is exactly never on the developer's own phone.*
 |---|---|---|
 | **`security definer` RPC** for anonymous reads | Widen `posts_select_authenticated` to `anon` | Never. The policy is a blanket `using (true)` — adding `anon` publishes every post row, reposts included, to an unauthenticated `select *` |
 | **Vercel Function** renders the page | Client-side route in the existing SPA | Only if crawlers started running JavaScript. They don't, and won't |
-| **Separate `/share` Vite entry** | Reuse the `/studio` bundle | If the dashboard bundle ever got small enough to ship to a stranger on 4G |
+| **No client bundle — inline CSS and JS** | A second Vite entry hydrating the page (the original plan), or reusing `/studio` | When the page needs real app state — a queue, a comment thread, sign-in. `/studio` is 697 kB and was never a candidate; the *second entry* was, and it lost because everything the page does fits in ~60 lines against a native `<audio>`, so the bundle bought a second request, a second Vite config and a cache-busting scheme for nothing |
 | **Raw post uuid** in the URL | `share_links` table with base62 codes | The first time we need per-link attribution, or someone has to read a link aloud |
 | **`cover_art_url` as `og:image`** | `@vercel/og` composing a branded 1200×630 card | When link previews become a growth channel worth a dependency and a render budget. It is a self-contained upgrade — one function, no schema |
 | **On-device Story card** | Server-rendered card image | If Android capture proves unreliable across the device matrix, or iOS needs parity without a second implementation |
@@ -595,7 +593,7 @@ actually make.
 | `track_share` DM message | Type declared (`messages.ts:245`), bubble rendered (`ConversationScreen.tsx:188`), push wired (`messages.ts:62`) | **Nothing ever sends one.** Needs a sheet, a friend picker, one service function | Low — plumbing exists |
 | Anonymous post read | `posts_select_authenticated` blocks `anon` entirely | Needs `shared_post_public` | **Blocking** |
 | Public media bytes | Buckets are `public`; byte reads bypass RLS (verified by probe in `20260804010000`) | **None** — already works | — |
-| Share page | `web/` is a signed-in dashboard at `/studio`; the apex is static marketing | Needs a Vercel Function, a second Vite entry, a `vercel.json` route | **Blocking** |
+| Share page | `web/` is a signed-in dashboard at `/studio`; the apex is static marketing | Needs a Vercel Function and a `vercel.json` route. **No second Vite entry** — see §8 | **Blocking** |
 | OG tags | None anywhere | Needs server rendering | **Blocking for F6** |
 | Deep links | `livil://` scheme registered in `AndroidManifest.xml`; handler in `RootNavigator.tsx:270` **only accepts `livil://auth`** and returns early otherwise | Needs a `post` route in the handler; App Links filter + `assetlinks.json` for F8 | Medium |
 | File sharing from the app | `Share.share({message})` used in `SettingsScreen.tsx:100` and `ProfileScreen.tsx:661` — **text only** | Needs `react-native-share` + `react-native-view-shot` and a **native rebuild** | **Blocking for F4** |

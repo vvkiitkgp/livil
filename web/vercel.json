@@ -5,6 +5,10 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/p/:id",
+      "destination": "/api/share?id=:id"
+    },
+    {
       "source": "/studio/:path*",
       "destination": "/studio/index.html"
     }

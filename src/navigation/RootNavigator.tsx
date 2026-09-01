@@ -4,6 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { postIdFromUrl } from '../utils/shareLinks';
+import { navigateWhenReady } from './navigationRef';
+import { fetchPostById } from '../services/posts';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
@@ -276,6 +279,35 @@ export default function RootNavigator() {
       // other apps on older Android and by anyone with the device connected.
       // Log only the shape.
       console.log('[deeplink] received (scheme only):', url.split('?')[0].split('#')[0]);
+
+      // A shared post — livil://post/<id>, or https://livil-music.com/p/<id> once
+      // App Links are verified. Checked BEFORE the auth guard below, which returns
+      // early on anything that is not an auth link and would otherwise swallow this.
+      //
+      // There is no PostDetail route: a single post is shown by opening its author's
+      // profile focused on it, which is the same path ActivityCenter notifications
+      // already take. That needs the author id, so the post is resolved first — and
+      // if it cannot be (deleted, or the viewer is signed out and RLS returns
+      // nothing) we say so rather than navigating somewhere blank.
+      const sharedPostId = postIdFromUrl(url);
+      if (sharedPostId) {
+        try {
+          const post = await fetchPostById(sharedPostId);
+          if (post) {
+            navigateWhenReady('UserProfile', {
+              userId: post.author.id,
+              focusPostId: post.id,
+              focusPostKind: post.kind,
+            });
+          } else {
+            console.log('[deeplink] shared post not resolvable');
+          }
+        } catch (e) {
+          console.log('[deeplink] shared post lookup failed:', (e as Error).message);
+        }
+        return;
+      }
+
       if (!url.startsWith('livil://auth')) { return; }
 
       // type=recovery marks a password-reset link (present alongside the

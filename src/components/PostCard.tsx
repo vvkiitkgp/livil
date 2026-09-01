@@ -24,6 +24,8 @@ import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 import { Icon } from './Icon';
+import SharePostSheet from './SharePostSheet';
+import { canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
 
@@ -201,6 +203,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     }
   }, [post.track.id]);
   const [likersOpen, setLikersOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const trackInfoForMenu = useMemo((): NowPlayingInfo => {
     const displayAuthor = (post.kind === 'repost' && post.originalAuthor) ? post.originalAuthor : post.author;
@@ -864,6 +867,22 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
             </View>
           ) : null}
+          {/* Share — UPLOADS ONLY. A repost is somebody else's share already, and its
+              public link would put a second person's clip choice under the original
+              artist's name. This hides the affordance; `shared_post_public` is what
+              actually refuses a repost id, because a hidden button is not a rule. */}
+          {canSharePost(post) ? (
+            <TouchableOpacity
+              style={styles.statBtn}
+              activeOpacity={0.7}
+              onPress={() => setShareOpen(true)}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel="Share this post"
+            >
+              <Icon name="share" size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -872,6 +891,12 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         likesCount={likesCount}
         viewerHasLiked={liked}
         onPress={() => setLikersOpen(true)}
+      />
+
+      <SharePostSheet
+        visible={shareOpen}
+        post={shareOpen ? toShareablePost(post) : null}
+        onClose={() => setShareOpen(false)}
       />
 
       <TrackContextMenu
