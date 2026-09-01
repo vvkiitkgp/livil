@@ -65,6 +65,19 @@ const BASELINE = new Map([
   ['handle_new_user', 'signup trigger — runs as the row is created'],
   ['welcome_email_mark', 'signup-time bookkeeping'],
   ['claim_username', 'runs during onboarding, immediately post-signup'],
+  // The public share page. `shared_post_public` is the entire anonymous read
+  // surface for post data, and it is anon-executable BY DESIGN — a livil-music.com
+  // link opened from WhatsApp or an Instagram Story has no session and never will.
+  // 20260901000000 chose it over adding `anon` to the blanket `posts_select_
+  // authenticated` policy precisely so this grant would be one reviewable function
+  // with an enumerated column list rather than an unauthenticated `select *`.
+  //
+  // This entry declares what production already does — verified 2026-09-01:
+  // has_function_privilege('anon', ..., 'EXECUTE') is true. It grants nothing new.
+  // The migration's own `REVOKE ... FROM public` is the no-op this lint exists to
+  // reject; it was never going to remove the anon grant, and here removing it was
+  // not the intent in the first place.
+  ['shared_post_public', 'the public share page is reached before sign-in, by design — 20260901000000'],
 
   // Legacy. Anon-executable since the relationship layer shipped; each raises
   // 'not_authenticated' when auth.uid() is null, so they fail closed on their own.
