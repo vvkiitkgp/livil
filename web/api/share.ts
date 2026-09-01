@@ -102,7 +102,18 @@ function safeUrl(value: string | null): string | null {
 
 async function fetchSharedPost(postId: string): Promise<SharedPost | null> {
   const { url: SUPABASE_URL, key: SUPABASE_ANON_KEY } = supabaseConfig();
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { return null; }
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    // Every share link on the internet renders "not available" when this is wrong, and
+    // the page itself must not say why — it does not leak configuration to visitors. So
+    // it is said HERE, in the Vercel function log, where the person who can fix it
+    // looks. Neither value is a secret; the anon key is public by design.
+    console.error(
+      '[share] Supabase is not configured for this deployment. Set SUPABASE_URL and ' +
+        'SUPABASE_ANON_KEY (or the VITE_ equivalents) in the Vercel project settings. ' +
+        `Currently url=${SUPABASE_URL ? 'set' : 'MISSING'} key=${SUPABASE_ANON_KEY ? 'set' : 'MISSING'}`,
+    );
+    return null;
+  }
 
   // Plain fetch rather than supabase-js: the function does one unauthenticated RPC
   // call, and a rarely-hit serverless function is ALWAYS cold, so every kilobyte of
@@ -117,7 +128,12 @@ async function fetchSharedPost(postId: string): Promise<SharedPost | null> {
     body: JSON.stringify({ p_post_id: postId }),
   });
 
-  if (!res.ok) { return null; }
+  if (!res.ok) {
+    // The other systematic cause of a page that renders but says nothing is there:
+    // most likely the migration not applied, or EXECUTE not granted to `anon`.
+    console.error(`[share] shared_post_public failed: HTTP ${res.status} ${res.statusText}`);
+    return null;
+  }
   const rows = (await res.json()) as SharedPost[];
   return Array.isArray(rows) && rows.length > 0 ? rows[0]! : null;
 }
