@@ -5,12 +5,13 @@
  * RLS inventory.
  */
 
-import { writeFileSync } from 'node:fs';
+
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadMigrations, parseTables, parseRls, parseTriggers, parsePublications,
   frontmatter, GENERATED_WARNING,
+  writeGenerated,
 } from '../lib/sql-parse.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -149,7 +150,7 @@ export function generate() {
   L.push('- Authorization policies: [../security/rls-policies.md](../security/rls-policies.md)');
   L.push('- Access model and rationale: [../security/model.md](../security/model.md)\n');
 
-  writeFileSync(OUT, L.join('\n'));
+  writeGenerated(OUT, L.join('\n'));
 
   return {
     doc: 'data-model',
