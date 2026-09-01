@@ -202,7 +202,14 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
    *  resolve softly rather than throwing, but relying on that asymmetry is how the next
    *  dependency bump becomes a crash. */
   const captureCard = useCallback(async (): Promise<string | null> => {
-    if (!artworkReady || !cardRef.current) { return null; }
+    if (!artworkReady || !cardRef.current) {
+      // The two ways to get a blank card, told apart: the artwork has not decoded yet,
+      // or the offscreen view never mounted.
+      console.log(
+        `[LIVIL][share] capture skipped: artworkReady=${artworkReady} hasRef=${!!cardRef.current}`,
+      );
+      return null;
+    }
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
       const { captureRef } = require('react-native-view-shot') as typeof import('react-native-view-shot');
@@ -216,7 +223,8 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
         height: 1920,
         result: 'tmpfile',
       });
-    } catch {
+    } catch (e) {
+      console.warn('[LIVIL][share] capture failed:', (e as Error).message);
       return null;
     }
   }, [artworkReady]);

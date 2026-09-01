@@ -75,7 +75,8 @@ function loadNativeShare(): RNShareModule | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     cachedShareModule = require('react-native-share') as RNShareModule;
-  } catch {
+  } catch (e) {
+    console.warn('[LIVIL][share] native module unavailable:', (e as Error).message);
     cachedShareModule = null;
   }
   return cachedShareModule;
@@ -148,6 +149,9 @@ export async function shareStoryCard(
 ): Promise<ShareOutcome> {
   const native = loadNativeShare();
   if (!native || !FACEBOOK_APP_ID) {
+    console.log(
+      `[LIVIL][share] story fallback: nativeModule=${!!native} facebookAppId=${!!FACEBOOK_APP_ID}`,
+    );
     await sharePostLink(post);
     return 'fellback';
   }
@@ -166,7 +170,8 @@ export async function shareStoryCard(
       attributionURL: postShareUrl(post.id),
     });
     return 'shared';
-  } catch {
+  } catch (e) {
+    console.warn('[LIVIL][share] Instagram Story rejected:', (e as Error).message);
     await sharePostLink(post);
     return 'fellback';
   }
@@ -183,19 +188,29 @@ export async function shareCardImage(
 ): Promise<ShareOutcome> {
   const native = loadNativeShare();
   if (!native) {
+    console.log('[LIVIL][share] card fallback: native module unavailable');
     await sharePostLink(post);
     return 'fellback';
   }
 
+  // Defensive: the library decides between "attach an image" and "send text" purely on
+  // the URI's SCHEME — `file:` or `content:` attaches, anything else silently degrades
+  // to a text share, which is indistinguishable from the plain link. captureRef returns
+  // a `file://` URI today, so this normally does nothing; it exists because the failure
+  // it guards against is invisible from the outside.
+  const uri = /^[a-z]+:/i.test(fileUri) ? fileUri : `file://${fileUri}`;
+  console.log(`[LIVIL][share] card share uri=${uri.slice(0, 12)}… len=${uri.length}`);
+
   try {
     await native.default.open({
-      url: fileUri,
+      url: uri,
       type: 'image/jpeg',
       message: buildPostShareMessage(post.title, post.artistName, post.id),
       failOnCancel: false,
     });
     return 'shared';
-  } catch {
+  } catch (e) {
+    console.warn('[LIVIL][share] card share refused:', (e as Error).message);
     await sharePostLink(post);
     return 'fellback';
   }
