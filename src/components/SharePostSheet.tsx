@@ -24,6 +24,7 @@ import {
   type ShareablePost,
 } from '../services/share';
 import { Button } from './Button';
+import FormInput from './FormInput';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
 import { StoryCard } from './StoryCard';
@@ -78,6 +79,7 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
   const [friends, setFriends] = useState<FriendRef[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
   const [sending, setSending] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -97,6 +99,7 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
   useEffect(() => {
     if (!visible) {
       setSelected(new Set());
+      setQuery('');
       setArtworkReady(false);
       setBusyKey(null);
       return;
@@ -117,6 +120,27 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
       return next;
     });
   }, []);
+
+  /**
+   * Search is shown only past a handful of friends. Below that the strip is faster to
+   * scan than a text field is to type into, and an empty search box over four avatars
+   * is furniture.
+   *
+   * Matches display name AND username, because people search for whichever they know —
+   * "Bipasa" and "bipasa_b" have to find the same person. Selected friends are never
+   * filtered out: narrowing the query would otherwise silently drop someone you had
+   * already picked, and "Send to 3" would send to one.
+   */
+  const SEARCH_THRESHOLD = 6;
+  const q = query.trim().toLowerCase();
+  const visibleFriends = q
+    ? friends.filter(
+        f =>
+          selected.has(f.id) ||
+          (f.displayName ?? '').toLowerCase().includes(q) ||
+          f.username.toLowerCase().includes(q),
+      )
+    : friends;
 
   const handleSend = useCallback(async () => {
     if (!post || selected.size === 0 || sending) { return; }
@@ -220,9 +244,10 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* Rendered FIRST so the backdrop below covers it. See the header. */}
+      {/* The offscreen story card. See `cardHost` for why it is clipped rather than
+          hidden, and why "rendered behind the backdrop" was not good enough. */}
       <View style={styles.cardHost} pointerEvents="none">
-        <View ref={cardRef} collapsable={false}>
+        <View ref={cardRef} collapsable={false} style={styles.cardInner}>
           <StoryCard
             width={cardWidth}
             height={cardHeight}
@@ -254,45 +279,62 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
                   Add friends to send tracks straight to them.
                 </Text>
               ) : (
-                <FlatList
-                  horizontal
-                  data={friends}
-                  keyExtractor={f => f.id}
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.friendsRow}
-                  renderItem={({ item }) => {
-                    const isOn = selected.has(item.id);
-                    return (
-                      <Pressable
-                        style={({ pressed }) => [styles.friend, pressed && styles.pressed]}
-                        onPress={() => toggle(item.id)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isOn }}
-                        accessibilityLabel={`Send to ${item.displayName || item.username}`}
-                      >
-                        <View style={styles.friendAvatarWrap}>
-                          {item.avatarUrl ? (
-                            <Image source={{ uri: item.avatarUrl }} style={styles.friendAvatar} />
-                          ) : (
-                            <View style={[styles.friendAvatar, styles.friendAvatarFallback]}>
-                              <Text style={styles.friendInitial}>
-                                {initials(item.displayName, item.username)}
-                              </Text>
-                            </View>
-                          )}
-                          {isOn ? (
-                            <View style={styles.check}>
-                              <Icon name="check" size={12} color={COLORS.white} weight="bold" />
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text style={styles.friendName} numberOfLines={1}>
-                          {item.displayName || item.username}
-                        </Text>
-                      </Pressable>
-                    );
-                  }}
-                />
+                <>
+                  {friends.length > SEARCH_THRESHOLD ? (
+                    <FormInput
+                      value={query}
+                      onChangeText={setQuery}
+                      placeholder="Search friends"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      wrapperStyle={styles.search}
+                    />
+                  ) : null}
+                  <FlatList
+                    horizontal
+                    data={visibleFriends}
+                    keyExtractor={f => f.id}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.friendsRow}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item }) => {
+                      const isOn = selected.has(item.id);
+                      return (
+                        <Pressable
+                          style={({ pressed }) => [styles.friend, pressed && styles.pressed]}
+                          onPress={() => toggle(item.id)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isOn }}
+                          accessibilityLabel={`Send to ${item.displayName || item.username}`}
+                        >
+                          <View style={styles.friendAvatarWrap}>
+                            {item.avatarUrl ? (
+                              <Image source={{ uri: item.avatarUrl }} style={styles.friendAvatar} />
+                            ) : (
+                              <View style={[styles.friendAvatar, styles.friendAvatarFallback]}>
+                                <Text style={styles.friendInitial}>
+                                  {initials(item.displayName, item.username)}
+                                </Text>
+                              </View>
+                            )}
+                            {isOn ? (
+                              <View style={styles.check}>
+                                <Icon name="check" size={12} color={COLORS.white} weight="bold" />
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.friendName} numberOfLines={1}>
+                            {item.displayName || item.username}
+                          </Text>
+                        </Pressable>
+                      );
+                    }}
+                    ListEmptyComponent={
+                      <Text style={styles.emptyFriends}>No friends match “{query}”.</Text>
+                    }
+                  />
+                </>
               )}
 
               {selected.size > 0 ? (
@@ -342,8 +384,24 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-  // Top-left and behind everything. NOT opacity-hidden — see the header.
-  cardHost: { position: 'absolute', top: 0, left: 0 },
+  /**
+   * The offscreen card, clipped to a 1x1 window at the top-left corner.
+   *
+   * THIS SHIPPED BROKEN and the fix is not obvious, so: the host used to be a plain
+   * absolute box at 0,0 with the comment "the backdrop covers it". The backdrop is
+   * `rgba(0,0,0,0.72)` — it covers nothing. A full-bleed 9:16 card rendered over the
+   * whole screen above the sheet, and read as a layout bug in the sheet itself.
+   *
+   * Clipping is the right hiding mechanism here, and the alternatives are worse:
+   *   * `opacity: 0` bakes alpha into what `captureRef` draws — a transparent card.
+   *   * moving it off-window risks Android skipping layout, and layout is what gives
+   *     the card its measured size and lets the artwork load.
+   * Clipped, it stays laid out and drawn at 0,0 where nothing about it is uncertain,
+   * and only 1dp of it is on screen. `captureRef` draws the INNER view directly into a
+   * bitmap, so the parent's clip never applies to the capture.
+   */
+  cardHost: { position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden' },
+  cardInner: { position: 'absolute', top: 0, left: 0 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: COLORS.surface,
@@ -391,6 +449,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.surface,
   },
   friendName: { color: COLORS.textSecondary, fontSize: 11, marginTop: 6, textAlign: 'center' },
+  search: { marginBottom: 12 },
   sendWrap: { marginTop: 14 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border, marginVertical: 16 },
   destRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11 },

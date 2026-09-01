@@ -6,7 +6,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { postIdFromUrl } from '../utils/shareLinks';
 import { navigateWhenReady } from './navigationRef';
-import { fetchPostById } from '../services/posts';
+import { resolveSharedPostTarget } from '../services/share';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
@@ -291,19 +291,11 @@ export default function RootNavigator() {
       // nothing) we say so rather than navigating somewhere blank.
       const sharedPostId = postIdFromUrl(url);
       if (sharedPostId) {
-        try {
-          const post = await fetchPostById(sharedPostId);
-          if (post) {
-            navigateWhenReady('UserProfile', {
-              userId: post.author.id,
-              focusPostId: post.id,
-              focusPostKind: post.kind,
-            });
-          } else {
-            console.log('[deeplink] shared post not resolvable');
-          }
-        } catch (e) {
-          console.log('[deeplink] shared post lookup failed:', (e as Error).message);
+        const target = await resolveSharedPostTarget(sharedPostId);
+        if (target) {
+          navigateWhenReady('UserProfile', target);
+        } else {
+          console.log('[deeplink] shared post not resolvable');
         }
         return;
       }

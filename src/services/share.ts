@@ -27,7 +27,7 @@ import {
   postShareUrl,
 } from '../constants/links';
 import { sendMessage } from './messages';
-import type { FeedPost } from './posts';
+import { fetchPostById, type FeedPost } from './posts';
 
 /** The subset of a post the share paths actually need. Keeps callers from having to
  *  hold a whole `FeedPost` where a player or a detail row only has fragments. */
@@ -248,4 +248,30 @@ export async function shareToConversations(
 
   const sent = results.filter(r => r.status === 'fulfilled').length;
   return { sent, failed: results.length - sent };
+}
+
+/**
+ * Where a shared post opens.
+ *
+ * There is no PostDetail route: a single post is shown by opening its author's profile
+ * focused on it, which is the path ActivityCenter notifications already take. That needs
+ * the author id, so the post has to be resolved first.
+ *
+ * Shared by the deep-link handler (`livil://post/<id>` and the https App Link) and the
+ * `track_share` chat bubble, so a link and a DM land in exactly the same place. Returns
+ * null when the post cannot be resolved — deleted, or hidden from this viewer by a block
+ * — and callers say so rather than navigating somewhere blank.
+ */
+export async function resolveSharedPostTarget(postId: string): Promise<{
+  userId: string;
+  focusPostId: string;
+  focusPostKind: 'upload' | 'repost';
+} | null> {
+  try {
+    const post = await fetchPostById(postId);
+    if (!post) { return null; }
+    return { userId: post.author.id, focusPostId: post.id, focusPostKind: post.kind };
+  } catch {
+    return null;
+  }
 }
