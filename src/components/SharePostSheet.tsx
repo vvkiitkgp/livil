@@ -18,6 +18,7 @@ import { getOrCreateDm } from '../services/conversations';
 import { listFriends, type FriendRef } from '../services/relationships';
 import {
   isCardShareAvailable,
+  isInstagramStoryAvailable,
   shareCardImage,
   sharePostLink,
   shareStoryCard,
@@ -145,9 +146,6 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
    * already picked, and "Send to 3" would send to one.
    */
   const SEARCH_THRESHOLD = 6;
-  const destinations = isCardShareAvailable()
-    ? [IMAGE_DESTINATIONS[0]!, LINK_DESTINATION, IMAGE_DESTINATIONS[1]!]
-    : [LINK_DESTINATION];
   const q = query.trim().toLowerCase();
   const visibleFriends = q
     ? friends.filter(
@@ -273,6 +271,19 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
   }, [post, busyKey, captureCard, showToast, onClose]);
 
   if (!post) { return null; }
+
+  /**
+   * Which destinations this build can actually deliver. Computed AFTER the early return
+   * on purpose: PostCard mounts this sheet for every card in the feed (closed, with a
+   * null post), so putting the probe above the return ran a native-module lookup on
+   * every render of every card — and when a module was missing, logged about it just as
+   * often. It belongs on the path where a sheet is genuinely open.
+   */
+  const destinations = [
+    ...(isInstagramStoryAvailable() ? [IMAGE_DESTINATIONS[0]!] : []),
+    LINK_DESTINATION,
+    ...(isCardShareAvailable() ? [IMAGE_DESTINATIONS[1]!] : []),
+  ];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

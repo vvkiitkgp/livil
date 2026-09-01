@@ -141,6 +141,20 @@ export function toShareablePost(post: FeedPost): ShareablePost {
  * because the user cannot tell anything went wrong. That is precisely how a silently
  * degrading "Share the card" got reported as "I don't see a difference between these".
  */
+/**
+ * Whether the Instagram Story destination can actually post a story.
+ *
+ * Instagram rejects ADD_TO_STORY without a registered Facebook App ID, so with
+ * FACEBOOK_APP_ID empty that row could only ever fall back to sharing a link — a menu
+ * item that does not do what it says. It stays hidden until the id is filled in, at
+ * which point it appears on its own with no code change.
+ *
+ * Same principle as isCardShareAvailable: do not offer what this build cannot deliver.
+ */
+export function isInstagramStoryAvailable(): boolean {
+  return !!FACEBOOK_APP_ID && isCardShareAvailable();
+}
+
 export function isCardShareAvailable(): boolean {
   // BOTH, not just the share module. Rendering the card needs react-native-view-shot and
   // sending it needs react-native-share; with only one of them the rows would appear and

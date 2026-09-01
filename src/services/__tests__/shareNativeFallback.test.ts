@@ -68,8 +68,10 @@ describe('when the RNShare native module is absent from the binary', () => {
   });
 
   it('reports card sharing unavailable, so the UI can hide what it cannot do', () => {
-    const { isCardShareAvailable } = require('../share');
+    const { isCardShareAvailable, isInstagramStoryAvailable } = require('../share');
     expect(isCardShareAvailable()).toBe(false);
+    // Instagram needs the native module AND a Facebook App ID; neither is present here.
+    expect(isInstagramStoryAvailable()).toBe(false);
   });
 
   it('still exposes the pure helpers, which need no native module at all', () => {
