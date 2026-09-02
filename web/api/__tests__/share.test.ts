@@ -128,6 +128,11 @@ describe('share page — a post that exists', () => {
     const res = await render(POST_ID, [POST]);
     const block = res.body.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
     expect(block).not.toBeNull();
+    // The constructor COMPILES the body without running it, and compiling is the whole
+    // assertion. The input is markup this test just generated, not anything a user
+    // supplies. `eval` would run it; this does not. The directive has to be the LAST
+    // line before the code — a multi-line reason above it disables the wrong line.
+    // eslint-disable-next-line no-new-func
     expect(() => new Function(block![1]!)).not.toThrow();
   });
 

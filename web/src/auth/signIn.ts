@@ -4,7 +4,7 @@
 import { supabase } from '../supabase';
 import { studioUrl } from '../basePath';
 
-/** The public listing. In closed testing this resolves only for enrolled testers. */
+/** The public listing. Live in production, so it resolves for everyone. */
 export const PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.livil';
 
@@ -192,38 +192,4 @@ export async function signInWithGoogle(): Promise<SignInResult> {
     options: { redirectTo: studioUrl('/') },
   });
   return error ? { ok: false, message: error.message } : { ok: true };
-}
-
-/**
- * Waitlist capture for visitors without an account.
- *
- * `waitlist` grants anon INSERT only — no select, update or delete — so the list cannot be
- * read back or enumerated. A duplicate email hits the UNIQUE constraint; that is reported
- * as success because "you're already on the list" and "you're on the list" are the same
- * outcome to the visitor, and distinguishing them would leak membership.
- */
-export async function joinWaitlist(email: string): Promise<SignInResult> {
-  // Routed through the `waitlist-join` edge function rather than inserting directly,
-  // because signing up now SENDS the invite in the same breath — and the Resend key
-  // that requires can never be in a browser bundle.
-  //
-  // The function still reports success for an address already on the list, without
-  // saying so. That was true of the direct insert too (a 23505 was reported as ok) and
-  // it is deliberate: "you're on the list" and "you were already on the list" are the
-  // same outcome to the visitor, and telling them apart would leak membership to
-  // anyone probing addresses.
-  const { data, error } = await supabase.functions.invoke('waitlist-join', {
-    body: { email: email.trim() },
-  });
-
-  if (error) return { ok: false, message: 'Could not add you just now. Try again in a moment.' };
-
-  // The function returns 200 with `{ ok: true }` even when the mail provider failed —
-  // the visitor genuinely joined, and a delivery problem is ours to fix from /ops, not
-  // theirs to retry. Only a transport-level failure reaches the branch above.
-  if (data && typeof data === 'object' && 'error' in data) {
-    return { ok: false, message: 'Could not add you just now. Try again in a moment.' };
-  }
-
-  return { ok: true };
 }

@@ -65,6 +65,18 @@ const BASELINE = new Map([
   ['handle_new_user', 'signup trigger — runs as the row is created'],
   ['welcome_email_mark', 'signup-time bookkeeping'],
   ['claim_username', 'runs during onboarding, immediately post-signup'],
+  // Not legacy and not an oversight: this one is anon-executable ON PURPOSE, and the
+  // grant is written out in 20260901000000 rather than inherited from Supabase's
+  // defaults. It IS the public share page — a livil-music.com/p/<id> link has to render
+  // for someone with no account, which is the whole product. Revoking it, the other fix
+  // this lint suggests, would blank every shared link.
+  //
+  // What keeps it inside the rule's intent: the return type is an ENUMERATED column
+  // list rather than `select *`, `kind = 'upload'` excludes reposts in the WHERE clause,
+  // and views_count is withheld. The post id is a v4 uuid with no listing endpoint, so
+  // it is a capability rather than a guessable handle. The migration header argues all
+  // of this at length — read it before shrinking or widening this entry.
+  ['shared_post_public', 'the public share page; anon read by design, enumerated columns'],
 
   // Legacy. Anon-executable since the relationship layer shipped; each raises
   // 'not_authenticated' when auth.uid() is null, so they fail closed on their own.

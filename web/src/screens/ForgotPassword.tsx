@@ -9,10 +9,10 @@ import { isTransportFailure } from '../auth/signIn';
 /**
  * Ask for a reset link.
  *
- * This existing at all is the point. The dashboard is sign-in only and the Android app is in
- * closed testing, so before this an artist who forgot their password and was not already an
- * enrolled tester had NO route back into their account — the copy told them to reset in an
- * app they could not install.
+ * This existing at all is the point. The dashboard is sign-in only, and while the Android app
+ * was in closed testing an artist who forgot their password and was not an enrolled tester had
+ * NO route back into their account — the copy told them to reset in an app they could not
+ * install. The app is public now, but a web-only artist still needs a reset that lives here.
  *
  * The response is deliberately identical whether or not the address has an account. Saying
  * "no account with that email" turns this form into an account-existence oracle for anyone
