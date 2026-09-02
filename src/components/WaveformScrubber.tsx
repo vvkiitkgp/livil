@@ -397,22 +397,42 @@ export function barsAreaFor(
 /* ── Component ───────────────────────────────────────────────────────────── */
 
 /**
- * The drag ratchet: one tick per 3 seconds of audio moved, in either direction.
+ * The drag ratchet — one tick per notch of audio moved, in either direction, where the
+ * notch ADAPTS to how much audio the finger is actually covering.
  *
- * The notch is a unit of MEDIA TIME, not finger travel, so a tick means something
- * specific — "you have moved three seconds" — and the ratchet is a readout you can feel
- * rather than a texture. The consequence, worth knowing: the same swipe produces far
- * more ticks on a nine-minute track than on a thirty-second clip, because it covers
- * more audio. That is the point.
+ * A fixed notch cannot be right on both surfaces this component serves. The player is
+ * zoomed to a clip, where a second of audio is a wide, deliberate movement and you can
+ * place a handle to the second — there, a 3-second notch is coarse and swallows exactly
+ * the precision the zoom exists to give. The feed's full-track view is the opposite: a
+ * second is a fraction of a pixel, so a 1-second notch machine-guns.
  *
- * TICK_MIN_INTERVAL_MS is a floor, not a design choice. A fast flick across a long
- * track crosses dozens of notches in a moment, and neither the hardware nor a finger
- * can resolve them: each pulse is already 20ms of vibration, so anything under ~45ms
- * apart fuses into one continuous buzz. Ticks are dropped past that rate rather than
- * queued.
+ * So the notch is chosen from the view's scale: aim for a tick roughly every
+ * TICK_TRAVEL of finger movement, then round UP to a whole number of seconds from
+ * TICK_STEPS. Two properties fall out, and both matter. A tick always means a round
+ * number of seconds, so it stays a readout rather than a texture. And the ratchet feels
+ * the same under the finger at every zoom, because that is what it was solved for.
+ *
+ * The ladder stops at 1 second because below that a tick no longer corresponds to a
+ * difference a listener can hear, and reaches 60 at the top so that an hour-long mix
+ * still gets ticks a finger-width apart rather than a rattle.
  */
-const TICK_SECONDS = 3;
+const TICK_TRAVEL = 10;
+const TICK_STEPS = [1, 2, 3, 5, 10, 15, 30, 60];
+
+/**
+ * A floor, not a design choice. A fast flick crosses dozens of notches in a moment, and
+ * neither the hardware nor a finger can resolve them: each pulse is already 20ms of
+ * vibration, so anything closer than ~45ms fuses into one continuous buzz. Ticks past
+ * that rate are dropped rather than queued.
+ */
 const TICK_MIN_INTERVAL_MS = 45;
+
+/** Seconds per tick for a view showing `span` seconds across `width` pixels. */
+function notchSeconds(span: number, width: number): number {
+  if (!(span > 0) || !(width > 0)) { return TICK_STEPS[0]!; }
+  const wanted = TICK_TRAVEL * (span / width);
+  return TICK_STEPS.find(step => step >= wanted) ?? TICK_STEPS[TICK_STEPS.length - 1]!;
+}
 
 /** Which control a finger is on. Exported because surfaces hold it in state to
  *  emphasise the matching time readout. */
@@ -519,9 +539,11 @@ export default function WaveformScrubber({
   const boxRightRef = useRef(boxRight); boxRightRef.current = boxRight;
   const onClipChangeRef = useRef(onClipChange); onClipChangeRef.current = onClipChange;
   const activeHandleRef = useRef<ActiveHandle | null>(null);
-  // Ratchet bookkeeping — the media position the last tick fired at, and when.
+  // Ratchet bookkeeping — the media position the last tick fired at, when, and the
+  // notch size chosen for this gesture.
   const lastTickValueRef = useRef(0);
   const lastTickAtRef = useRef(0);
+  const tickNotchRef = useRef(TICK_STEPS[0]!);
 
   // The clip is written through these refs on every drag tick, so the crawl loop
   // and the next move event read the value they just produced. Syncing from props
@@ -731,6 +753,11 @@ export default function WaveformScrubber({
               : activeHandleRef.current === 'right' ? endRef.current
                 : positionRef.current;
           lastTickAtRef.current = Date.now();
+          // Chosen ONCE per gesture, not per move. Dragging a handle in the anchored
+          // layout re-zooms the wave underneath it, so a per-move notch would change
+          // size mid-drag — the ratchet would coarsen under a finger that had not
+          // changed what it was doing.
+          tickNotchRef.current = notchSeconds(viewSpanRef.current, barsWRef.current);
           if (activeHandleRef.current === 'scrub') { onSeekStart?.(); }
           grabWindowRef.current = endRef.current - startRef.current;
           anchorRef.current = { s0: startRef.current, dur0: endRef.current - startRef.current };
@@ -741,7 +768,7 @@ export default function WaveformScrubber({
           const absX = g.moveX !== 0 ? g.moveX : g.x0;
           const active = activeHandleRef.current;
 
-          // Ratchet — see TICK_SECONDS. The scrub target is derived from the finger
+          // Ratchet — see TICK_TRAVEL. The scrub target is derived from the finger
           // (scrubTo is pure), while the handles read back through the refs that
           // commitClip/commitEnd wrote on the previous move: one frame behind, which
           // at 60fps is 16ms and not something a finger can feel.
@@ -751,17 +778,19 @@ export default function WaveformScrubber({
                 : active === 'right' ? endRef.current
                   : null;
           if (dragged !== null) {
+            const notch = tickNotchRef.current;
             const now = Date.now();
             if (
-              Math.abs(dragged - lastTickValueRef.current) >= TICK_SECONDS &&
+              Math.abs(dragged - lastTickValueRef.current) >= notch &&
               now - lastTickAtRef.current >= TICK_MIN_INTERVAL_MS
             ) {
               haptics.select();
               // Snap the reference to the notch actually crossed rather than to where
-              // the finger happens to be, so a slow drag keeps ticking every 3s instead
-              // of drifting out of step after a throttled tick.
-              const steps = Math.trunc((dragged - lastTickValueRef.current) / TICK_SECONDS);
-              lastTickValueRef.current += steps * TICK_SECONDS;
+              // the finger happens to be. Without this a tick dropped by the rate floor
+              // would leave the next one measured from a stale point, and a slow drag
+              // would drift off the grid.
+              const steps = Math.trunc((dragged - lastTickValueRef.current) / notch);
+              lastTickValueRef.current += steps * notch;
               lastTickAtRef.current = now;
             }
           }
