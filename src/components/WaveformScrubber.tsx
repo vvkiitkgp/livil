@@ -397,17 +397,21 @@ export function barsAreaFor(
 /* ── Component ───────────────────────────────────────────────────────────── */
 
 /**
- * The drag ratchet.
+ * The drag ratchet: one tick per 3 seconds of audio moved, in either direction.
  *
- * A tick per frame is a buzz, not a ratchet, so a tick needs BOTH conditions: the
- * finger has travelled far enough, and enough time has passed. Distance alone machine-
- * guns on a fast flick; time alone keeps ticking while the finger is barely moving.
+ * The notch is a unit of MEDIA TIME, not finger travel, so a tick means something
+ * specific — "you have moved three seconds" — and the ratchet is a readout you can feel
+ * rather than a texture. The consequence, worth knowing: the same swipe produces far
+ * more ticks on a nine-minute track than on a thirty-second clip, because it covers
+ * more audio. That is the point.
  *
- * Measured in finger travel rather than seconds of audio deliberately — the same swipe
- * feels the same whether the scrubber is showing a 30-second clip or a nine-minute
- * track, which it would not if the notch were a unit of media time.
+ * TICK_MIN_INTERVAL_MS is a floor, not a design choice. A fast flick across a long
+ * track crosses dozens of notches in a moment, and neither the hardware nor a finger
+ * can resolve them: each pulse is already 20ms of vibration, so anything under ~45ms
+ * apart fuses into one continuous buzz. Ticks are dropped past that rate rather than
+ * queued.
  */
-const TICK_DISTANCE = 8;
+const TICK_SECONDS = 3;
 const TICK_MIN_INTERVAL_MS = 45;
 
 /** Which control a finger is on. Exported because surfaces hold it in state to
@@ -515,8 +519,8 @@ export default function WaveformScrubber({
   const boxRightRef = useRef(boxRight); boxRightRef.current = boxRight;
   const onClipChangeRef = useRef(onClipChange); onClipChangeRef.current = onClipChange;
   const activeHandleRef = useRef<ActiveHandle | null>(null);
-  // Ratchet bookkeeping — where and when the last tick fired.
-  const lastTickXRef = useRef(0);
+  // Ratchet bookkeeping — the media position the last tick fired at, and when.
+  const lastTickValueRef = useRef(0);
   const lastTickAtRef = useRef(0);
 
   // The clip is written through these refs on every drag tick, so the crawl loop
@@ -722,7 +726,10 @@ export default function WaveformScrubber({
           // Firmer than the ratchet, so grabbing a control is a different sensation
           // from moving it.
           haptics.impact();
-          lastTickXRef.current = g.x0;
+          lastTickValueRef.current =
+            activeHandleRef.current === 'left' ? startRef.current
+              : activeHandleRef.current === 'right' ? endRef.current
+                : positionRef.current;
           lastTickAtRef.current = Date.now();
           if (activeHandleRef.current === 'scrub') { onSeekStart?.(); }
           grabWindowRef.current = endRef.current - startRef.current;
@@ -734,15 +741,29 @@ export default function WaveformScrubber({
           const absX = g.moveX !== 0 ? g.moveX : g.x0;
           const active = activeHandleRef.current;
 
-          // Ratchet. Both gates must pass — see TICK_DISTANCE.
-          const now = Date.now();
-          if (
-            Math.abs(absX - lastTickXRef.current) >= TICK_DISTANCE &&
-            now - lastTickAtRef.current >= TICK_MIN_INTERVAL_MS
-          ) {
-            haptics.select();
-            lastTickXRef.current = absX;
-            lastTickAtRef.current = now;
+          // Ratchet — see TICK_SECONDS. The scrub target is derived from the finger
+          // (scrubTo is pure), while the handles read back through the refs that
+          // commitClip/commitEnd wrote on the previous move: one frame behind, which
+          // at 60fps is 16ms and not something a finger can feel.
+          const dragged =
+            active === 'scrub' ? scrubTo(absX)
+              : active === 'left' ? startRef.current
+                : active === 'right' ? endRef.current
+                  : null;
+          if (dragged !== null) {
+            const now = Date.now();
+            if (
+              Math.abs(dragged - lastTickValueRef.current) >= TICK_SECONDS &&
+              now - lastTickAtRef.current >= TICK_MIN_INTERVAL_MS
+            ) {
+              haptics.select();
+              // Snap the reference to the notch actually crossed rather than to where
+              // the finger happens to be, so a slow drag keeps ticking every 3s instead
+              // of drifting out of step after a throttled tick.
+              const steps = Math.trunc((dragged - lastTickValueRef.current) / TICK_SECONDS);
+              lastTickValueRef.current += steps * TICK_SECONDS;
+              lastTickAtRef.current = now;
+            }
           }
 
           if (active === 'scrub') {
