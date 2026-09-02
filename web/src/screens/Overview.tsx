@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-d
 import type { Session } from '@supabase/supabase-js';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/Button';
+import { PLAY_STORE_URL } from '../auth/signIn';
 import {
   fetchCreatorPosts,
   fetchCreatorTotals,
@@ -91,57 +92,78 @@ export function Overview() {
 
       <section className="overview">
         {/* ── The pass ───────────────────────────────────────────────── */}
-        <aside className="pass overview__pass">
-          <div className="holo holo-strip" />
-          <div className="pass__punch" />
-          <div className="holo pass__sticker">
-            100%
-            <br />
-            REAL
-          </div>
-
-          <div className="pass__body">
-            <Logo size={104} />
-            <span className="pass__tagline">artist &amp; fan network</span>
-
-            <div className="pass__photo">
-              {profile?.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="" />
-              ) : (
-                <div className="pass__photo-empty stripes">[ your face here ]</div>
-              )}
+        <div className="overview__side">
+          <aside className="pass overview__pass">
+            <div className="holo holo-strip" />
+            <div className="pass__punch" />
+            <div className="holo pass__sticker">
+              100%
+              <br />
+              REAL
             </div>
 
-            <div className="pass__specs">
-              <div className="spec">
-                <span className="spec__label">Name</span>
-                <span className="spec__leader" />
-                <span className="spec__value">{name}</span>
-              </div>
-              <div className="spec">
-                <span className="spec__label">Handle</span>
-                <span className="spec__leader" />
-                <span className="spec__value spec__value--accent">
-                  @{profile?.username ?? '—'}
-                </span>
-              </div>
-              <div className="spec">
-                <span className="spec__label">Fans</span>
-                <span className="spec__leader" />
-                <span className="spec__value spec__value--info">
-                  {formatCount(profile?.followers ?? 0)}
-                </span>
-              </div>
-              <div className="spec">
-                <span className="spec__label">Access</span>
-                <span className="spec__leader" />
-                <span className="spec__value">All areas</span>
-              </div>
-            </div>
+            <div className="pass__body">
+              <Logo size={104} />
+              <span className="pass__tagline">artist &amp; fan network</span>
 
-            <div className="barcode" />
-          </div>
-        </aside>
+              <div className="pass__photo">
+                {profile?.avatarUrl ? (
+                  <img src={profile.avatarUrl} alt="" />
+                ) : (
+                  <div className="pass__photo-empty stripes">[ your face here ]</div>
+                )}
+              </div>
+
+              <div className="pass__specs">
+                <div className="spec">
+                  <span className="spec__label">Name</span>
+                  <span className="spec__leader" />
+                  <span className="spec__value">{name}</span>
+                </div>
+                <div className="spec">
+                  <span className="spec__label">Handle</span>
+                  <span className="spec__leader" />
+                  <span className="spec__value spec__value--accent">
+                    @{profile?.username ?? '—'}
+                  </span>
+                </div>
+                <div className="spec">
+                  <span className="spec__label">Fans</span>
+                  <span className="spec__leader" />
+                  <span className="spec__value spec__value--info">
+                    {formatCount(profile?.followers ?? 0)}
+                  </span>
+                </div>
+                <div className="spec">
+                  <span className="spec__label">Access</span>
+                  <span className="spec__leader" />
+                  <span className="spec__value">All areas</span>
+                </div>
+              </div>
+
+              <div className="barcode" />
+            </div>
+          </aside>
+
+          {/* Hangs off the pass on purpose: the pass is the artist's credential, and this is
+              where that credential is actually spent. A plain store link — the listing is
+              public now, so there is nothing to request and no state to keep. */}
+          <section className="panel getapp">
+            <h2 className="panel__title">Get the app</h2>
+            <p className="hint">
+              The studio is where you publish. The app is where it lands — your profile, your
+              tracks in the feed, people playing and reacting to them.
+            </p>
+            <a
+              className="btn btn--secondary btn--md"
+              href={PLAY_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Get Livil on Google Play
+            </a>
+          </section>
+        </div>
 
         {/* ── Numbers + recent ───────────────────────────────────────── */}
         <div className="overview__main">

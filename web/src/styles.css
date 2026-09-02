@@ -676,6 +676,12 @@ a {
   /* Never `elevation`/box-shadow here — glow comes from the outline. */
 }
 
+/* A `.btn` that navigates off-site is an <a>, not a <button>, and would otherwise inherit
+   the browser's underline. Every other use is a real button, which has none to reset. */
+a.btn {
+  text-decoration: none;
+}
+
 .btn--sm {
   padding: 6px 12px;
   font-size: 13px;
@@ -956,11 +962,29 @@ a {
   }
 }
 
+/* The whole left column travels together, so `sticky` lives here rather than on the pass:
+   the store card below it must not scroll out from under the thing it hangs off. */
+.overview__side {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--space-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
 .overview__pass {
   /* A pass hangs; a slight tilt keeps it from reading as another panel. */
   transform: rotate(-1.5deg);
-  position: sticky;
-  top: calc(var(--topbar-h) + var(--space-6));
+}
+
+/* The one thing in the studio that says the app exists, now that the early-access prompt
+   has retired with the waitlist. A standing pointer, not a prompt: it asks for nothing,
+   so — unlike the card it replaces — there is nothing to dismiss. */
+.getapp {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
 }
 
 .pass__tagline {
