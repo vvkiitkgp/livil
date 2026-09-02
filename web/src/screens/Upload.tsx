@@ -1,4 +1,5 @@
-import { useRef, useState, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { CoverCropper } from '../components/CoverCropper';
 import { VideoPreview } from '../components/VideoPreview';
@@ -88,6 +89,24 @@ export function Upload() {
   const missingArt = pending.filter(i => !i.image).length;
   const missingRole = pending.filter(i => !i.uploaderRole.trim()).length;
   const oversize = queue.items.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
+
+  /**
+   * A finished run ends the artist's business with this screen, so it hands them back to
+   * Overview rather than leaving them on a spent form — which reads as "nothing happened".
+   * The confirmation travels with them as route state; Overview announces it there, next
+   * to the recent-uploads list the new tracks now appear in.
+   *
+   * `replace` because Back must not return to an upload screen whose queue died with the
+   * unmount. The ref only guards against firing twice under StrictMode's double effect —
+   * `finished` cannot go true again from here, since navigating unmounts this.
+   */
+  const navigate = useNavigate();
+  const handedOff = useRef(false);
+  useEffect(() => {
+    if (!finished || handedOff.current) return;
+    handedOff.current = true;
+    navigate('/', { replace: true, state: { published: done.length } });
+  }, [finished, done.length, navigate]);
 
   // The meter outlives playback on purpose: pausing, or a track running out, is exactly
   // when the artist wants to read the verdict. It goes away when the row it measured does.
@@ -299,23 +318,6 @@ export function Upload() {
             setCropping(null);
           }}
         />
-      )}
-
-      {finished && (
-        <div className="done" role="status">
-          <p className="done__title">
-            {done.length === 1 ? 'Track published' : `${done.length} tracks published`}
-          </p>
-          <p className="hint">
-            They're live in the Livil app now — on your profile and in your followers'
-            feeds. There's no player here yet, so open the app to hear them in place.
-          </p>
-          <div className="filerow">
-            <Button variant="secondary" size="sm" onClick={queue.clearFinished}>
-              Upload more
-            </Button>
-          </div>
-        </div>
       )}
 
       {failed.length > 0 && !queue.running && (
