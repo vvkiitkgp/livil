@@ -334,6 +334,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   //   - loaded but paused → seek to clipStart + play (re-issuing setNowPlaying
   //     wouldn't restart GAP since postId is unchanged).
   //   - otherwise → setNowPlaying + requestPlay; GAP picks it up.
+  // It also opens full screen, exactly like the thumbnail tap and like audio.
   const handleVideoTogglePlay = useCallback(() => {
     haptics.tap();
     if (isThisActive) {
@@ -351,7 +352,12 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+    // Same as audio: tapping a song opens the player. A video's picture only exists
+    // in full screen, so NOT opening here left the bottom play button starting a video
+    // you could hear and not see, while tapping its thumbnail — the same post, the same
+    // intent — opened it. Two ways to start one post should not disagree.
+    openFullScreen();
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
   // Center play button (overlay on the thumbnail) AND thumbnail tap: start (or
   // resume) playback and open FullScreenPlayer, which mounts the muted video
