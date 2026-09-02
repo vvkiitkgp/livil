@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-d
 import type { Session } from '@supabase/supabase-js';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/Button';
-import { EarlyAccessCard } from '../components/EarlyAccessCard';
 import {
   fetchCreatorPosts,
   fetchCreatorTotals,
@@ -89,10 +88,6 @@ export function Overview() {
           </p>
         </div>
       )}
-
-      {/* Above the fold on purpose. A creator who signs up on the web can publish but has
-          no way into the app, and nothing else in the studio says a path exists. */}
-      <EarlyAccessCard email={session.user.email} />
 
       <section className="overview">
         {/* ── The pass ───────────────────────────────────────────────── */}

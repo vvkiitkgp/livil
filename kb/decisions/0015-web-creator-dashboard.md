@@ -220,6 +220,28 @@ changes clear review, and `www.livil-music.com` still points at `vvkiitkgp.githu
 
 ---
 
+## Outcome — 2026-09-02 — the waitlist retires
+
+Appended, not edited. The first "Revisit when" entry above has now fired: the Play listing left
+closed testing and Livil is in full production, so the Download button is real for everyone and
+the waitlist capture had nothing left to do.
+
+Removed from the web client: the "Join the waitlist" form on sign-in, the `EarlyAccessCard` the
+studio showed on Overview, `joinWaitlist()` in `web/src/auth/signIn.ts`, and their styles. The
+store link on sign-in was deliberately the quiet half of that card — a primary control must not
+be the one that dead-ends for a non-tester — and now carries the card's weight on its own.
+
+**Kept, deliberately.** The `waitlist` table, its RLS, the `waitlist-join` / `waitlist-invite`
+edge functions and the `/ops` roster all stand. The table holds real addresses collected under a
+stated purpose, and `/ops` is the only way to read them back — retiring the backend is its own
+decision, with its own data question, not a side effect of deleting a form.
+
+**Consequence to watch:** with `EarlyAccessCard` gone, a signed-in creator on Overview has no
+pointer to the app at all. The gap that card was built to close — publish on web, no way to
+listen — is smaller now that the store link works, but it is not zero.
+
+---
+
 > **ADRs are append-only.** Do not edit an accepted ADR to reflect a new decision — write a new
 > one and mark this one `Superseded by ADR-NNNN`. The record of what we believed and when is
 > the point.
