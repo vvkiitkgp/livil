@@ -597,7 +597,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       {/* Repost banner sits above everything when this post is a repost. */}
       {isRepost ? (
         <View style={styles.repostBanner}>
-          <Icon name="repost" size={13} color={COLORS.white} />
+          <Icon name="repost" size={13} color={COLORS.purpleLight} />
           <Text style={styles.repostBannerText} numberOfLines={1}>
             <Text
               style={styles.repostBannerName}
@@ -1023,38 +1023,39 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   /**
-   * A full-bleed band across the top of a repost card.
+   * A full-bleed header row across the top of a repost card, closed off by a purple
+   * rule rather than filled.
    *
-   * Negative margins cancel the card's 14dp padding so the band reaches the card's
-   * inner edge, and the padding puts the content back where it was. The top corners are
-   * rounded HERE rather than by putting `overflow: 'hidden'` on the card: the card also
-   * hosts GradientBorder (the play button, the Repost pill), whose glow is drawn inward
-   * and would be clipped by it — the trap the design notes call out by name. 19 is the
-   * card's 20dp radius less its 1dp border, which is the radius of the padding box the
-   * band actually sits in.
+   * An outline instead of a fill because that is what purple is for here — it outlines
+   * and letters, it does not fill (a solid #8B3DFF band dominates the dark card, which
+   * is the same reason buttons are never filled with it). A single bottom rule reads as
+   * a section divider and leaves the text on the surface it was designed for.
+   *
+   * Negative margins cancel the card's 14dp padding so the rule spans the card's full
+   * inner width; the padding puts the content back. No `overflow: 'hidden'` on the card
+   * to go with it — the card hosts GradientBorder (the play button, the Repost pill),
+   * whose glow is drawn inward and would be clipped by it.
    */
   repostBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.purple,
     marginTop: -14,
     marginHorizontal: -14,
     marginBottom: 12,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderTopLeftRadius: 19,
-    borderTopRightRadius: 19,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.purple,
   },
-  // Everything below was coloured for the card's dark surface. On purple, textMuted
-  // and textSecondary are close to invisible.
   repostBannerText: {
-    color: 'rgba(255,255,255,0.9)',
+    color: COLORS.textMuted,
     fontSize: 12,
     flex: 1,
   },
   repostBannerName: {
-    color: COLORS.white,
+    color: COLORS.textSecondary,
     fontWeight: '700',
   },
   header: {
@@ -1172,28 +1173,26 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     flex: 1,
   },
-  // Cyan on translucent cyan was tuned against the dark card surface; on the purple
-  // band it reads as a second, competing accent. Neutral white belongs to the band.
   creatorTag: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: COLORS.infoBg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
+    borderColor: COLORS.infoBorder,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     maxWidth: '60%',
   },
   creatorTagLabel: {
-    color: COLORS.white,
+    color: COLORS.info,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
   creatorTagName: {
-    color: COLORS.white,
+    color: COLORS.info,
     fontSize: 11,
     fontWeight: '700',
   },
