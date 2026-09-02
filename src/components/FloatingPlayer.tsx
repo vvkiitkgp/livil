@@ -21,8 +21,7 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
-import { getOrAnalyzeWaveform } from '../services/tracks';
-import type { WaveformData } from '../services/waveform';
+import { useTrackWaveform } from '../hooks/useTrackWaveform';
 import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
@@ -172,23 +171,11 @@ export default function FloatingPlayer() {
   // and hand it to WaveVisualizer. Fetched by trackId only (not threaded through
   // every NowPlayingInfo / feed query), since only the playing track needs it.
   //
-  // AUDIO ONLY. Lazy analysis decodes the source URL, which pulls the WHOLE remote
-  // file into memory via RN networking — fine for an mp3 (a few MB) but a video is
-  // tens-to-hundreds of MB and OOM-crashes the app mid-playback. Downloading a full
-  // video client-side just to read its audio envelope is the wrong approach, so
-  // video posts keep the decorative wave. (audioUrl is null for video anyway.)
-  const [waveform, setWaveform] = useState<WaveformData | null>(null);
-  const activeTrackId = nowPlaying?.trackId ?? null;
-  const analyzableUrl = nowPlaying?.mediaKind === 'audio' ? nowPlaying?.audioUrl : undefined;
-  useEffect(() => {
-    if (!activeTrackId || !analyzableUrl) { setWaveform(null); return; }
-    let cancelled = false;
-    setWaveform(null); // clear while the new track's envelope resolves
-    getOrAnalyzeWaveform(activeTrackId, analyzableUrl)
-      .then(data => { if (!cancelled) { setWaveform(data); } })
-      .catch(() => { if (!cancelled) { setWaveform(null); } });
-    return () => { cancelled = true; };
-  }, [activeTrackId, analyzableUrl]);
+  // The visualiser's envelope. The AUDIO-ONLY gate that keeps this off video — the one
+  // that prevents an OOM kill — now lives in the hook, in one place.
+  const waveform = useTrackWaveform(
+    nowPlaying?.trackId, nowPlaying?.mediaKind, nowPlaying?.audioUrl,
+  );
 
   // ─── Keyboard hide ────────────────────────────────────────────────────────────
   const keyboardAnim = useRef(new Animated.Value(0)).current;

@@ -27,6 +27,7 @@ import WaveformScrubber, {
 } from '../../components/WaveformScrubber';
 import type { ActiveHandle } from '../../components/WaveformScrubber';
 import { ScrubTimeLabel } from '../../components/ScrubTimeLabel';
+import { useTrackWaveform } from '../../hooks/useTrackWaveform';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { fetchPostById, fetchTrackPlaysTotal } from '../../services/posts';
 import { createRepost } from '../../services/posts';
@@ -152,6 +153,16 @@ export default function RepostScreen() {
   const [position, setPosition] = useState(0);
   // Which handle the finger is on, so the matching readout can answer. Null on release.
   const [activeHandle, setActiveHandle] = useState<ActiveHandle | null>(null);
+
+  /**
+   * Real bars, so the clip is chosen against the actual audio rather than a shape that
+   * only looks like a song. This is the surface where that matters most — everywhere
+   * else the wave is decoration you listen past, here it is the thing being read to
+   * decide where the cut goes.
+   */
+  const waveform = useTrackWaveform(
+    originalPost?.track.id, originalPost?.track.mediaKind, originalPost?.track.audioUrl,
+  );
   const [seekTo, setSeekTo] = useState<number | null>(null);
   // True for the length of a scrub swipe. While it is set the FINGER owns the
   // time readout — see handleProgress.
@@ -552,6 +563,8 @@ export default function RepostScreen() {
                     duration={duration}
                     position={position}
                     seed={originalPost?.track.id ?? ''}
+                    peaks={waveform?.peaks}
+                    peaksHz={waveform?.hz}
                     clipStart={clipStart}
                     clipEnd={clipEnd}
                     editableClip
