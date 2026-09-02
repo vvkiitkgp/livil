@@ -59,6 +59,8 @@ import {
 import { COLORS } from '../theme/colors';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
+import SharePostSheet from './SharePostSheet';
+import type { ShareablePost } from '../services/share';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -2197,6 +2199,29 @@ function CompactStats({
   const effective = getEffectivePost(nowPlaying);
   const [liked, setLiked] = useState(effective.viewerHasLiked);
   const [count, setCount] = useState(effective.likesCount);
+  const [shareOpen, setShareOpen] = useState(false);
+
+  /**
+   * What sharing from here targets.
+   *
+   * `getEffectivePost` already resolves a repost to the ORIGINAL upload, which is
+   * exactly what the uploads-only rule wants: sharing the song you are listening to
+   * shares the artist's post, not somebody's clip of it. So the only unshareable case
+   * left is an ORPHANED repost — the original was deleted, `originalPostId` is null,
+   * and `effective.postId` falls back to the repost's own id. Sharing that would
+   * produce a public link that resolves to nothing.
+   */
+  const shareable: ShareablePost | null =
+    nowPlaying.kind === 'upload' || nowPlaying.originalPostId
+      ? {
+          id: effective.postId,
+          kind: 'upload',
+          trackId: nowPlaying.trackId,
+          title: nowPlaying.title,
+          artistName: nowPlaying.artistName,
+          coverArtUrl: nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl ?? null,
+        }
+      : null;
 
   useEffect(() => {
     setLiked(effective.viewerHasLiked);
@@ -2256,6 +2281,18 @@ function CompactStats({
           <Icon name="comment" size={16} color={COLORS.white} />
           <Text style={csSt.val}>{formatCount(effective.commentsCount)}</Text>
         </TouchableOpacity>
+        {shareable ? (
+          <TouchableOpacity
+            style={csSt.item}
+            onPress={() => setShareOpen(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${nowPlaying.title}`}
+          >
+            <Icon name="share" size={16} color={COLORS.white} />
+          </TouchableOpacity>
+        ) : null}
       </View>
       {/* Passive pill — plays (cumulative across every post using this track)
           and reposts (always the original post's count). Read-only. */}
@@ -2271,6 +2308,12 @@ function CompactStats({
           <Text style={csSt.pillVal}>{formatCount(effective.repostsCount)}</Text>
         </View>
       </View>
+
+      <SharePostSheet
+        visible={shareOpen}
+        post={shareOpen ? shareable : null}
+        onClose={() => setShareOpen(false)}
+      />
     </View>
   );
 }

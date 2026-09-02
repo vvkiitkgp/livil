@@ -52,6 +52,7 @@ import {
 } from '../../services/jamRealtime';
 import { createJamRoom, bulkAddToQueue, isJamRoomEnded } from '../../services/jamRooms';
 import { usePlayback } from '../../contexts/PlaybackContext';
+import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
 import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
@@ -433,6 +434,7 @@ export default function ConversationScreen() {
 
   const { nowPlaying, queueRef, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget } =
     usePlayback();
+  const openFullScreen = usePlayFullScreen();
   const { activeJam, setActiveJam } = useJam();
   const { showToast } = useToast();
   const [startingJam, setStartingJam] = useState(false);
@@ -842,7 +844,8 @@ export default function ConversationScreen() {
     setNowPlaying(feedPostToNowPlaying(post));
     markSeekTarget(clipStart);
     requestPlay(post.id);
-  }, [nowPlaying, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget, showToast]);
+    openFullScreen();
+  }, [nowPlaying, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget, showToast, openFullScreen]);
 
   const handleLongPress = useCallback((msg: ChatMessage) => {
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at

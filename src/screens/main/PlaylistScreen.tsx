@@ -14,6 +14,7 @@ import {
   type PlaylistVisibility,
 } from '../../services/playlists';
 import { usePlayback, type NowPlayingInfo } from '../../contexts/PlaybackContext';
+import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import DetailView, { type DetailTrack } from '../../components/DetailView';
 import DetailActionSheet from '../../components/DetailActionSheet';
 
@@ -33,7 +34,10 @@ type PlaylistMeta = {
 export default function PlaylistScreen({ route }: Props) {
   const { playlistId, playlistName } = route.params;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { nowPlaying, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer } = usePlayback();
+  const { nowPlaying, setQueue, setNowPlaying, requestPlay } = usePlayback();
+  // Opens the player a beat after playback starts, so the floating pill is seen to
+  // rise into it rather than being replaced instantly. See the hook.
+  const openFullScreen = usePlayFullScreen();
 
   const [items, setItems] = useState<PlaylistItem[]>([]);
   const [meta, setMeta] = useState<PlaylistMeta | null>(null);
@@ -163,8 +167,8 @@ export default function PlaylistScreen({ route }: Props) {
     setQueue(queue, initialIdx, label);
     setNowPlaying(queue[initialIdx]!);
     requestPlay(queue[initialIdx]!.postId);
-    openFullScreenPlayer();
-  }, [items, playlistId, playlistName, meta?.name, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer]);
+    openFullScreen();
+  }, [items, playlistId, playlistName, meta?.name, setQueue, setNowPlaying, requestPlay, openFullScreen]);
 
   const handlePressTrack = useCallback((idx: number) => { startQueue(idx, false); }, [startQueue]);
   const handlePlay = useCallback(() => { startQueue(0, false); }, [startQueue]);

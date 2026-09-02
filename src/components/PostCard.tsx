@@ -25,6 +25,7 @@ import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 import { Icon } from './Icon';
 import SharePostSheet from './SharePostSheet';
+import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
 import { canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
@@ -204,6 +205,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }, [post.track.id]);
   const [likersOpen, setLikersOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const openFullScreen = usePlayFullScreen();
 
   const trackInfoForMenu = useMemo((): NowPlayingInfo => {
     const displayAuthor = (post.kind === 'repost' && post.originalAuthor) ? post.originalAuthor : post.author;
@@ -332,6 +334,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   //   - loaded but paused → seek to clipStart + play (re-issuing setNowPlaying
   //     wouldn't restart GAP since postId is unchanged).
   //   - otherwise → setNowPlaying + requestPlay; GAP picks it up.
+  // It also opens full screen, exactly like the thumbnail tap and like audio.
   const handleVideoTogglePlay = useCallback(() => {
     haptics.tap();
     if (isThisActive) {
@@ -349,7 +352,12 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+    // Same as audio: tapping a song opens the player. A video's picture only exists
+    // in full screen, so NOT opening here left the bottom play button starting a video
+    // you could hear and not see, while tapping its thumbnail — the same post, the same
+    // intent — opened it. Two ways to start one post should not disagree.
+    openFullScreen();
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
   // Center play button (overlay on the thumbnail) AND thumbnail tap: start (or
   // resume) playback and open FullScreenPlayer, which mounts the muted video
@@ -358,7 +366,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     haptics.tap();
     if (isThisActive) {
       // Already playing this track — just maximize.
-      playback.openFullScreenPlayer();
+      openFullScreen();
       return;
     }
     const clipStart = post.clipStartSec ?? 0;
@@ -372,8 +380,8 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-    playback.openFullScreenPlayer();
-  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback]);
+    openFullScreen();
+  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback, openFullScreen]);
 
   /**
    * Open the player on the Info tab, where the credits actually live.
@@ -415,7 +423,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+    // Tapping a song opens the player. The pause branch above returns early, so
+    // pausing what is already playing stays a pause and does not throw a screen up.
+    openFullScreen();
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
   const handleToggleLike = useCallback(async () => {
     // Optimistic update — flip immediately, revert on failure.
@@ -796,29 +807,36 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         )}
       </View>
 
-      {/* Waveform. Always the WHOLE song in white — a repost draws a purple box
-          around the slice that was reposted, so you can see the clip in the
-          context of the track it came from. No progress of any kind on the feed
-          card: it shows the shape of the song and where the clip sits, and the
-          labels are the clip boundaries, not a live position. */}
-      <View style={styles.seekBlock}>
-        <View style={styles.seekLabels}>
-          <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
-          <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
+      {/* The wave is here to show WHERE A CLIP SITS inside the track it came from —
+          the whole song in white, with a purple box around the reposted slice. An
+          upload has no clip, so on an upload the wave was decoration: 44dp of bars
+          carrying no information the card did not already have. Uploads get the one
+          fact that is actually useful, the length of the song; reposts keep the wave,
+          because for a repost the clip IS the post. */}
+      {post.kind === 'upload' ? (
+        <View style={styles.durationBlock}>
+          <Text style={styles.seekTime}>{formatTime(duration)}</Text>
         </View>
-        <WaveformScrubber
-          duration={duration}
-          position={position}
-          seed={post.track.id}
-          span="full"
-          clipStart={waveViewStart}
-          clipEnd={waveViewEnd}
-          showBox={isClippedRepost}
-          showProgress={false}
-          seekable={false}
-          height={44}
-        />
-      </View>
+      ) : (
+        <View style={styles.seekBlock}>
+          <View style={styles.seekLabels}>
+            <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
+            <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
+          </View>
+          <WaveformScrubber
+            duration={duration}
+            position={position}
+            seed={post.track.id}
+            span="full"
+            clipStart={waveViewStart}
+            clipEnd={waveViewEnd}
+            showBox={isClippedRepost}
+            showProgress={false}
+            seekable={false}
+            height={44}
+          />
+        </View>
+      )}
 
       {/* Action row: play/pause + stats */}
       <View style={styles.actionRow}>
@@ -1004,11 +1022,33 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
+  /**
+   * A full-bleed header band across the top of a repost card.
+   *
+   * `COLORS.card` (#1A1A2E), one step up the neutral ramp from the card's own #12121C —
+   * NOT the primary. Filling this with purple was tried and dominated the card it was
+   * only meant to label, so the marking is neutral and confined to this band: a repost
+   * card is otherwise the same shape and colour as every other card in the feed.
+   *
+   * Negative margins cancel the card's 14dp padding so the band spans its full inner
+   * width, and the padding puts the content back. The top corners are rounded HERE
+   * rather than by putting `overflow: 'hidden'` on the card: the card also hosts
+   * GradientBorder (the play button, the Repost pill), whose glow is drawn inward and
+   * would be clipped by it — the trap the design notes name explicitly. 19 is the card's
+   * 20dp radius less its 1dp border, the radius of the padding box the band sits in.
+   */
   repostBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
+    backgroundColor: COLORS.card,
+    marginTop: -14,
+    marginHorizontal: -14,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopLeftRadius: 19,
+    borderTopRightRadius: 19,
   },
   repostBannerText: {
     color: COLORS.textMuted,
@@ -1230,6 +1270,10 @@ const styles = StyleSheet.create({
   },
   // Labels sit ABOVE the waveform (start · now · end) so the bars keep the full
   // card width — at feed width, side labels leave too little room to read.
+  // Where the wave used to be on an upload. Right-aligned so the number lands in the
+  // same place the track's end time did, rather than moving to the other side of the
+  // card for people used to reading it there.
+  durationBlock: { marginTop: 14, alignItems: 'flex-end' },
   seekBlock: {
     // Clear of the artwork. Has to beat the 6dp holding the labels to their own
     // waveform, or the block reads as belonging to the image instead.
