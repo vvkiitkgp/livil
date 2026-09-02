@@ -10,9 +10,15 @@
  * No service_role anywhere, per ADR-0008 §4. The operator's own session is the credential.
  */
 import { supabase } from '../supabase';
+import { MESSAGE_MAX } from '@shared/constants/teamMessages';
 
-/** Mirrors the database CHECK, so the form can say why before the round trip. */
-export const MESSAGE_MAX = 4000;
+/**
+ * Mirrors the database CHECK, so the form can say why before the round trip. Now shared
+ * with mobile, which writes the same column — see `shared/constants/teamMessages.ts`.
+ * Imported as well as re-exported: a bare `export … from` would not bind the name for the
+ * validation below.
+ */
+export { MESSAGE_MAX };
 
 export type TeamMessage = {
   id: string;
