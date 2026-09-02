@@ -597,7 +597,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       {/* Repost banner sits above everything when this post is a repost. */}
       {isRepost ? (
         <View style={styles.repostBanner}>
-          <Icon name="repost" size={13} color={COLORS.purpleLight} />
+          <Icon name="repost" size={13} color={COLORS.white} />
           <Text style={styles.repostBannerText} numberOfLines={1}>
             <Text
               style={styles.repostBannerName}
@@ -1022,19 +1022,39 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
+  /**
+   * A full-bleed band across the top of a repost card.
+   *
+   * Negative margins cancel the card's 14dp padding so the band reaches the card's
+   * inner edge, and the padding puts the content back where it was. The top corners are
+   * rounded HERE rather than by putting `overflow: 'hidden'` on the card: the card also
+   * hosts GradientBorder (the play button, the Repost pill), whose glow is drawn inward
+   * and would be clipped by it — the trap the design notes call out by name. 19 is the
+   * card's 20dp radius less its 1dp border, which is the radius of the padding box the
+   * band actually sits in.
+   */
   repostBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
+    backgroundColor: COLORS.purple,
+    marginTop: -14,
+    marginHorizontal: -14,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderTopLeftRadius: 19,
+    borderTopRightRadius: 19,
   },
+  // Everything below was coloured for the card's dark surface. On purple, textMuted
+  // and textSecondary are close to invisible.
   repostBannerText: {
-    color: COLORS.textMuted,
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     flex: 1,
   },
   repostBannerName: {
-    color: COLORS.textSecondary,
+    color: COLORS.white,
     fontWeight: '700',
   },
   header: {
@@ -1152,26 +1172,28 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     flex: 1,
   },
+  // Cyan on translucent cyan was tuned against the dark card surface; on the purple
+  // band it reads as a second, competing accent. Neutral white belongs to the band.
   creatorTag: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: COLORS.infoBg,
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: COLORS.infoBorder,
+    borderColor: 'rgba(255,255,255,0.32)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     maxWidth: '60%',
   },
   creatorTagLabel: {
-    color: COLORS.info,
+    color: COLORS.white,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
   creatorTagName: {
-    color: COLORS.info,
+    color: COLORS.white,
     fontSize: 11,
     fontWeight: '700',
   },
