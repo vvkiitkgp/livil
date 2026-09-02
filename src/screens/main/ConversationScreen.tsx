@@ -1114,6 +1114,37 @@ export default function ConversationScreen() {
                 ]}
                 onEndReached={loadMore}
                 onEndReachedThreshold={0.2}
+                ListEmptyComponent={
+                  // Reachable since LIV-25: a DM now exists from the moment two people
+                  // become friends, so the FIRST time either of them opens it there is
+                  // nothing to render. Before that a conversation was created BY a
+                  // message and could never be empty, which is why there was no empty
+                  // state here — an empty thread showed a blank void above the composer.
+                  //
+                  // styles.emptyThread carries `scaleY: -1` to cancel the FlatList's
+                  // `inverted` transform. Without it this block renders MIRRORED —
+                  // upside-down text — because inverted flips the whole content view and
+                  // the empty component is not exempt from that.
+                  <View style={styles.emptyThread}>
+                    {!isGroup && otherUserAvatarUrl ? (
+                      <Image source={{ uri: otherUserAvatarUrl }} style={styles.emptyThreadAvatar} />
+                    ) : (
+                      <View style={styles.emptyThreadAvatarFallback}>
+                        <Text style={styles.emptyThreadAvatarText}>
+                          {(title?.trim()?.[0] ?? '♪').toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={styles.emptyThreadTitle}>
+                      {isGroup ? title : `You and ${title} are friends`}
+                    </Text>
+                    <Text style={styles.emptyThreadBody}>
+                      {isGroup
+                        ? 'No messages yet — start the conversation.'
+                        : 'Say hi, or send them a track to get started.'}
+                    </Text>
+                  </View>
+                }
                 ListFooterComponent={
                   loadingMore ? (
                     <View style={styles.loadMoreSpinner}>
@@ -1268,6 +1299,39 @@ const styles = StyleSheet.create({
   onlineText: { color: '#22C55E', fontSize: 11 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 6 },
+  // scaleY: -1 undoes the FlatList `inverted` transform — see the comment at the
+  // ListEmptyComponent. Everything else here is ordinary centred column layout.
+  emptyThread: {
+    transform: [{ scaleY: -1 }],
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 48,
+    gap: 10,
+  },
+  emptyThreadAvatar: { width: 72, height: 72, borderRadius: 36, marginBottom: 4 },
+  emptyThreadAvatarFallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    marginBottom: 4,
+    backgroundColor: COLORS.purpleDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyThreadAvatarText: { color: COLORS.purpleLight, fontSize: 28, fontWeight: '700' },
+  emptyThreadTitle: {
+    color: COLORS.white,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  emptyThreadBody: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   loadMoreSpinner: { paddingVertical: 16, alignItems: 'center' },
   // Bubbles
   bubbleRow: {
