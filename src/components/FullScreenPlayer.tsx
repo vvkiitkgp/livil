@@ -39,7 +39,11 @@ import WaveformScrubber, {
   SCRUBBER_BOX_H,
   SCRUBBER_GUTTER,
   SCRUBBER_LABEL_PULL,
+  type ActiveHandle,
 } from './WaveformScrubber';
+import { ScrubTimeLabel } from './ScrubTimeLabel';
+import { getOrAnalyzeWaveform } from '../services/tracks';
+import type { WaveformData } from '../services/waveform';
 import CoverFallback from './CoverFallback';
 import CollabAvatar from './CollabAvatar';
 import QueueList from './QueueList';
@@ -356,16 +360,51 @@ function FullScreenClipBar() {
     handlersRef.current?.seek(s);
   }, [handlersRef, markSeekTarget, scrubbingRef]);
 
+  // Which handle the finger is on, so the matching readout can answer. Null on release.
+  const [activeHandle, setActiveHandle] = useState<ActiveHandle | null>(null);
+
+  /**
+   * The track's real loudness envelope, so the bars under the clip are the actual audio
+   * instead of a seeded shape. Same accessor and the same AUDIO-ONLY gate the floating
+   * player uses: lazy analysis decodes the source URL, which pulls the whole remote file
+   * into memory, and a video is tens-to-hundreds of MB — an OOM kill with no JS error.
+   * Video keeps the decorative wave.
+   *
+   * One track at a time, fetched by trackId and cached by the service, which is why this
+   * belongs here and not in the feed: a per-post envelope would put a few hundred
+   * numbers on every card for data only the playing track uses.
+   */
+  const [waveform, setWaveform] = useState<WaveformData | null>(null);
+  const waveTrackId = nowPlaying?.trackId ?? null;
+  const waveUrl = nowPlaying?.mediaKind === 'audio' ? nowPlaying?.audioUrl : undefined;
+  useEffect(() => {
+    if (!waveTrackId || !waveUrl) { setWaveform(null); return; }
+    let cancelled = false;
+    setWaveform(null); // clear while the new track's envelope resolves
+    getOrAnalyzeWaveform(waveTrackId, waveUrl)
+      .then(data => { if (!cancelled) { setWaveform(data); } })
+      .catch(() => { if (!cancelled) { setWaveform(null); } });
+    return () => { cancelled = true; };
+  }, [waveTrackId, waveUrl]);
+
   const dur = displayDuration > 0 ? displayDuration : 1;
   const start = localStart ?? 0;
   const end = localEnd ?? dur;
 
   return (
     <View style={seekSt.wrap}>
+      {/* Each readout grows while its own handle is held. `align` pins the outer two
+          so they grow inward instead of off the ends of the row. */}
       <View style={seekSt.timeRow}>
-        <Text style={seekSt.time}>{formatTime(start)}</Text>
-        <Text style={seekSt.timeNow}>{formatTime(position)}</Text>
-        <Text style={seekSt.time}>{formatTime(end)}</Text>
+        <ScrubTimeLabel active={activeHandle === 'left'} style={seekSt.time} align="left">
+          {formatTime(start)}
+        </ScrubTimeLabel>
+        <ScrubTimeLabel active={activeHandle === 'scrub'} style={seekSt.timeNow}>
+          {formatTime(position)}
+        </ScrubTimeLabel>
+        <ScrubTimeLabel active={activeHandle === 'right'} style={seekSt.time} align="right">
+          {formatTime(end)}
+        </ScrubTimeLabel>
       </View>
       <WaveformScrubber
         layout="anchored"
@@ -384,6 +423,9 @@ function FullScreenClipBar() {
         onSeekStart={handleScrubStart}
         onSeek={handleScrub}
         onSeekEnd={handleSeekEnd}
+        onActiveHandleChange={setActiveHandle}
+        peaks={waveform?.peaks}
+        peaksHz={waveform?.hz}
       />
     </View>
   );

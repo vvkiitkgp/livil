@@ -25,6 +25,8 @@ import WaveformScrubber, {
   SCRUBBER_GUTTER,
   SCRUBBER_LABEL_PULL,
 } from '../../components/WaveformScrubber';
+import type { ActiveHandle } from '../../components/WaveformScrubber';
+import { ScrubTimeLabel } from '../../components/ScrubTimeLabel';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { fetchPostById, fetchTrackPlaysTotal } from '../../services/posts';
 import { createRepost } from '../../services/posts';
@@ -148,6 +150,8 @@ export default function RepostScreen() {
   const [paused, setPaused] = useState(true);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
+  // Which handle the finger is on, so the matching readout can answer. Null on release.
+  const [activeHandle, setActiveHandle] = useState<ActiveHandle | null>(null);
   const [seekTo, setSeekTo] = useState<number | null>(null);
   // True for the length of a scrub swipe. While it is set the FINGER owns the
   // time readout — see handleProgress.
@@ -525,9 +529,15 @@ export default function RepostScreen() {
                 </TouchableOpacity>
               </View>
               <View style={styles.clipTimestamps}>
-                <Text style={styles.clipTime}>{duration > 0 ? formatTime(clipStart) : '–:–'}</Text>
-                <Text style={styles.clipTimeNow}>{duration > 0 ? formatTime(position) : ''}</Text>
-                <Text style={styles.clipTime}>{duration > 0 ? formatTime(clipEnd) : '–:–'}</Text>
+                <ScrubTimeLabel active={activeHandle === 'left'} style={styles.clipTime} align="left">
+                  {duration > 0 ? formatTime(clipStart) : '–:–'}
+                </ScrubTimeLabel>
+                <ScrubTimeLabel active={activeHandle === 'scrub'} style={styles.clipTimeNow}>
+                  {duration > 0 ? formatTime(position) : ''}
+                </ScrubTimeLabel>
+                <ScrubTimeLabel active={activeHandle === 'right'} style={styles.clipTime} align="right">
+                  {duration > 0 ? formatTime(clipEnd) : '–:–'}
+                </ScrubTimeLabel>
               </View>
               <View style={styles.sliderWrap}>
                 {duration > 0 ? (
@@ -553,6 +563,7 @@ export default function RepostScreen() {
                     edgeInset={20}
                     onClipChange={handleRangeChange}
                     onClipChangeEnd={handleRangeChangeEnd}
+                    onActiveHandleChange={setActiveHandle}
                     onSeekStart={handleScrubStart}
                     onSeek={handleScrub}
                     onSeekEnd={handleSeekEnd}
