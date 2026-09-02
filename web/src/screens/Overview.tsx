@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useOutletContext } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/Button';
-import { EarlyAccessCard } from '../components/EarlyAccessCard';
 import {
   fetchCreatorPosts,
   fetchCreatorTotals,
@@ -14,6 +13,15 @@ import {
 import { formatCount, formatDate, formatDuration } from '../format';
 
 type Ctx = { session: Session; profile: CreatorProfile | null };
+
+/**
+ * How many tracks the upload screen published on its way here, if it sent us. Route state
+ * rather than a query string: it is a one-shot announcement, not part of the address.
+ */
+function publishedCount(state: unknown): number {
+  const n = (state as { published?: unknown } | null)?.published;
+  return typeof n === 'number' && n > 0 ? Math.round(n) : 0;
+}
 
 /**
  * The landing screen.
@@ -31,6 +39,15 @@ export function Overview() {
   const navigate = useNavigate();
   const [totals, setTotals] = useState<CreatorTotals | null>(null);
   const [recent, setRecent] = useState<CreatorPost[] | null>(null);
+
+  // Read once into state, then wiped off the history entry: the banner has to outlive the
+  // wipe, and a refresh an hour later must not re-announce an upload that is long done.
+  // Replacing with the same path keeps this component mounted, so the captured count holds.
+  const location = useLocation();
+  const [published] = useState(() => publishedCount(location.state));
+  useEffect(() => {
+    if (published > 0) navigate('.', { replace: true, state: null });
+  }, [published, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,9 +76,18 @@ export function Overview() {
 
   return (
     <div className="page fade-up">
-      {/* Above the fold on purpose. A creator who signs up on the web can publish but has
-          no way into the app, and nothing else in the studio says a path exists. */}
-      <EarlyAccessCard email={session.user.email} />
+      {published > 0 && (
+        <div className="done" role="status">
+          <p className="done__title">
+            {published === 1 ? 'Track published' : `${published} tracks published`}
+          </p>
+          <p className="hint">
+            {published === 1 ? "It's" : "They're"} live in the Livil app now — on your
+            profile and in your followers&apos; feeds. There&apos;s no player here yet, so
+            open the app to hear {published === 1 ? 'it' : 'them'} in place.
+          </p>
+        </div>
+      )}
 
       <section className="overview">
         {/* ── The pass ───────────────────────────────────────────────── */}
