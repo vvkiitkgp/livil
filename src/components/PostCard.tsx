@@ -25,6 +25,7 @@ import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 import { Icon } from './Icon';
 import SharePostSheet from './SharePostSheet';
+import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
 import { canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
@@ -204,6 +205,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }, [post.track.id]);
   const [likersOpen, setLikersOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const openFullScreen = usePlayFullScreen();
 
   const trackInfoForMenu = useMemo((): NowPlayingInfo => {
     const displayAuthor = (post.kind === 'repost' && post.originalAuthor) ? post.originalAuthor : post.author;
@@ -358,7 +360,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     haptics.tap();
     if (isThisActive) {
       // Already playing this track — just maximize.
-      playback.openFullScreenPlayer();
+      openFullScreen();
       return;
     }
     const clipStart = post.clipStartSec ?? 0;
@@ -372,8 +374,8 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-    playback.openFullScreenPlayer();
-  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback]);
+    openFullScreen();
+  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback, openFullScreen]);
 
   /**
    * Open the player on the Info tab, where the credits actually live.
@@ -415,7 +417,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+    // Tapping a song opens the player. The pause branch above returns early, so
+    // pausing what is already playing stays a pause and does not throw a screen up.
+    openFullScreen();
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
   const handleToggleLike = useCallback(async () => {
     // Optimistic update — flip immediately, revert on failure.
@@ -796,29 +801,36 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         )}
       </View>
 
-      {/* Waveform. Always the WHOLE song in white — a repost draws a purple box
-          around the slice that was reposted, so you can see the clip in the
-          context of the track it came from. No progress of any kind on the feed
-          card: it shows the shape of the song and where the clip sits, and the
-          labels are the clip boundaries, not a live position. */}
-      <View style={styles.seekBlock}>
-        <View style={styles.seekLabels}>
-          <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
-          <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
+      {/* The wave is here to show WHERE A CLIP SITS inside the track it came from —
+          the whole song in white, with a purple box around the reposted slice. An
+          upload has no clip, so on an upload the wave was decoration: 44dp of bars
+          carrying no information the card did not already have. Uploads get the one
+          fact that is actually useful, the length of the song; reposts keep the wave,
+          because for a repost the clip IS the post. */}
+      {post.kind === 'upload' ? (
+        <View style={styles.durationBlock}>
+          <Text style={styles.seekTime}>{formatTime(duration)}</Text>
         </View>
-        <WaveformScrubber
-          duration={duration}
-          position={position}
-          seed={post.track.id}
-          span="full"
-          clipStart={waveViewStart}
-          clipEnd={waveViewEnd}
-          showBox={isClippedRepost}
-          showProgress={false}
-          seekable={false}
-          height={44}
-        />
-      </View>
+      ) : (
+        <View style={styles.seekBlock}>
+          <View style={styles.seekLabels}>
+            <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
+            <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
+          </View>
+          <WaveformScrubber
+            duration={duration}
+            position={position}
+            seed={post.track.id}
+            span="full"
+            clipStart={waveViewStart}
+            clipEnd={waveViewEnd}
+            showBox={isClippedRepost}
+            showProgress={false}
+            seekable={false}
+            height={44}
+          />
+        </View>
+      )}
 
       {/* Action row: play/pause + stats */}
       <View style={styles.actionRow}>
@@ -1230,6 +1242,10 @@ const styles = StyleSheet.create({
   },
   // Labels sit ABOVE the waveform (start · now · end) so the bars keep the full
   // card width — at feed width, side labels leave too little room to read.
+  // Where the wave used to be on an upload. Right-aligned so the number lands in the
+  // same place the track's end time did, rather than moving to the other side of the
+  // card for people used to reading it there.
+  durationBlock: { marginTop: 14, alignItems: 'flex-end' },
   seekBlock: {
     // Clear of the artwork. Has to beat the 6dp holding the labels to their own
     // waveform, or the block reads as belonging to the image instead.
