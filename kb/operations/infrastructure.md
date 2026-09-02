@@ -123,7 +123,7 @@ and the never-lists apply to every author regardless.
 |---|---|
 | Package | `com.livil` |
 | Track | **Production** — live since 2026-08-14, full rollout, 176 countries + rest of world |
-| Current | versionCode 70 / versionName 2.0.5 |
+| Current | versionCode 71 / versionName 2.0.6 |
 
 ---
 
