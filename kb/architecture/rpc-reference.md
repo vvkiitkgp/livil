@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, P-SE, SR, BE]
-last_verified: 2026-08-19
+last_verified: 2026-09-02
 verify_every: 9999d
 verified_by: generated
 visibility: private-content
@@ -16,7 +16,7 @@ related_adrs: []
 that bypasses row-level security and assesses whether each performs an authorization check.
 Naming the ones that do not would hand an attacker a map, and this repository is public.
 
-Scope: 72 `SECURITY DEFINER` function(s) across the migration set.
+Scope: 73 `SECURITY DEFINER` function(s) across the migration set.
 
 | | |
 |---|---|

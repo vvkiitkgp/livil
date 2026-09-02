@@ -236,9 +236,10 @@ edge functions and the `/ops` roster all stand. The table holds real addresses c
 stated purpose, and `/ops` is the only way to read them back — retiring the backend is its own
 decision, with its own data question, not a side effect of deleting a form.
 
-**Consequence to watch:** with `EarlyAccessCard` gone, a signed-in creator on Overview has no
-pointer to the app at all. The gap that card was built to close — publish on web, no way to
-listen — is smaller now that the store link works, but it is not zero.
+**What replaced it.** `EarlyAccessCard` was the only thing in the studio that said the app
+exists, so Overview keeps a plain store link in its place, hanging off the pass in the left
+column. It is a standing pointer, not a prompt: no email, no request, no dismissed state to
+persist — which is why it can sit there permanently where the card could not.
 
 ---
 

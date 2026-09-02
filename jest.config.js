@@ -11,6 +11,14 @@ module.exports = {
   // native-prop-seam contract test — which resolves react-native-video relative to its
   // own __dirname — throws "the patch may not have applied" in each copy. That is a
   // false alarm about the checkout it is running in, not about the patch.
+  // `@shared/*` is how web/ imports the cross-client modules — the alias is declared in
+  // web/tsconfig.json and web/vite.config.ts, but Jest resolves neither. Without this a web
+  // suite passes under Vite and fails here the moment anything it imports reaches for the
+  // alias, which is a build-tool difference masquerading as a broken import.
+  moduleNameMapper: {
+    '^@shared/(.*)$': '<rootDir>/shared/$1',
+  },
+
   testPathIgnorePatterns: [
     '/node_modules/',
     '/supabase/functions/',

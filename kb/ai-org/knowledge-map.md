@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-09-01
+last_verified: 2026-09-02
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,15 +16,15 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-66 document(s) under `kb/`.
+67 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 66 |
+| Documents | 67 |
 | Drift-proof (tier 1 + 4) | 34 |
-| Hand-maintained (tier 3 + 5) | 25 |
+| Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
 
@@ -43,10 +43,10 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-01 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-08-19 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-08-19 | 9999d |
-| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-08-19 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-02 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-02 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-09-02 | 9999d |
+| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-02 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-08-19 | 9999d |
 
 ## Tier 2 — Enforced
@@ -76,6 +76,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/media-pipeline.md` | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
 | `architecture/overview.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `architecture/playback.md` | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
+| `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-09-01 | 90d |
 | `architecture/realtime.md` | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
 | `glossary.md` | chief-architect | ALL | 2026-07-20 | 180d |
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
@@ -134,7 +135,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 23 |
+| chief-architect | 24 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
