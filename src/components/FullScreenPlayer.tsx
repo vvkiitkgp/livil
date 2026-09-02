@@ -39,7 +39,9 @@ import WaveformScrubber, {
   SCRUBBER_BOX_H,
   SCRUBBER_GUTTER,
   SCRUBBER_LABEL_PULL,
+  type ActiveHandle,
 } from './WaveformScrubber';
+import { ScrubTimeLabel } from './ScrubTimeLabel';
 import CoverFallback from './CoverFallback';
 import CollabAvatar from './CollabAvatar';
 import QueueList from './QueueList';
@@ -356,16 +358,27 @@ function FullScreenClipBar() {
     handlersRef.current?.seek(s);
   }, [handlersRef, markSeekTarget, scrubbingRef]);
 
+  // Which handle the finger is on, so the matching readout can answer. Null on release.
+  const [activeHandle, setActiveHandle] = useState<ActiveHandle | null>(null);
+
   const dur = displayDuration > 0 ? displayDuration : 1;
   const start = localStart ?? 0;
   const end = localEnd ?? dur;
 
   return (
     <View style={seekSt.wrap}>
+      {/* Each readout grows while its own handle is held. `align` pins the outer two
+          so they grow inward instead of off the ends of the row. */}
       <View style={seekSt.timeRow}>
-        <Text style={seekSt.time}>{formatTime(start)}</Text>
-        <Text style={seekSt.timeNow}>{formatTime(position)}</Text>
-        <Text style={seekSt.time}>{formatTime(end)}</Text>
+        <ScrubTimeLabel active={activeHandle === 'left'} style={seekSt.time} align="left">
+          {formatTime(start)}
+        </ScrubTimeLabel>
+        <ScrubTimeLabel active={activeHandle === 'scrub'} style={seekSt.timeNow}>
+          {formatTime(position)}
+        </ScrubTimeLabel>
+        <ScrubTimeLabel active={activeHandle === 'right'} style={seekSt.time} align="right">
+          {formatTime(end)}
+        </ScrubTimeLabel>
       </View>
       <WaveformScrubber
         layout="anchored"
@@ -384,6 +397,7 @@ function FullScreenClipBar() {
         onSeekStart={handleScrubStart}
         onSeek={handleScrub}
         onSeekEnd={handleSeekEnd}
+        onActiveHandleChange={setActiveHandle}
       />
     </View>
   );

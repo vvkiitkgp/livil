@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 import { COLORS } from '../theme/colors';
+import haptics from '../utils/haptics';
 
 /**
  * The one scrubber. Replaces both SeekBar (plain progress) and ClipRangeSlider
@@ -136,6 +137,19 @@ export type WaveformScrubberProps = {
   onSeek?: (seconds: number) => void;
   /** The swipe ended here. The one place a surface must commit the position. */
   onSeekEnd?: (seconds: number) => void;
+  /**
+   * Which control the finger is currently on, or null on release.
+   *
+   * Exists so a surface can emphasise the READOUT for the thing being dragged — the
+   * clip-start time while the left handle moves, the clip-end time while the right one
+   * does, the position while scrubbing. The labels live outside this component (they
+   * are laid out by each surface), so they cannot see the gesture without being told.
+   *
+   * Distinct from `onSeekStart`, which fires only for a scrub and says nothing about
+   * the clip handles, and from `onClipChangeEnd`, which reports the handle only once
+   * the drag is over.
+   */
+  onActiveHandleChange?: (handle: ActiveHandle | null) => void;
 };
 
 // Bar pitch: bar width + gap. Bars are sized from the measured width so a narrow
@@ -382,7 +396,23 @@ export function barsAreaFor(
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 
-type ActiveHandle = 'left' | 'right' | 'scrub';
+/**
+ * The drag ratchet.
+ *
+ * A tick per frame is a buzz, not a ratchet, so a tick needs BOTH conditions: the
+ * finger has travelled far enough, and enough time has passed. Distance alone machine-
+ * guns on a fast flick; time alone keeps ticking while the finger is barely moving.
+ *
+ * Measured in finger travel rather than seconds of audio deliberately — the same swipe
+ * feels the same whether the scrubber is showing a 30-second clip or a nine-minute
+ * track, which it would not if the notch were a unit of media time.
+ */
+const TICK_DISTANCE = 8;
+const TICK_MIN_INTERVAL_MS = 45;
+
+/** Which control a finger is on. Exported because surfaces hold it in state to
+ *  emphasise the matching time readout. */
+export type ActiveHandle = 'left' | 'right' | 'scrub';
 type BarRect = { key: number; x: number; y: number; w: number; h: number };
 
 export default function WaveformScrubber({
@@ -408,6 +438,7 @@ export default function WaveformScrubber({
   onSeekStart,
   onSeek,
   onSeekEnd,
+  onActiveHandleChange,
 }: WaveformScrubberProps) {
   const containerRef = useRef<View>(null);
   const [boxWidth, setBoxWidth] = useState(0);
@@ -484,6 +515,9 @@ export default function WaveformScrubber({
   const boxRightRef = useRef(boxRight); boxRightRef.current = boxRight;
   const onClipChangeRef = useRef(onClipChange); onClipChangeRef.current = onClipChange;
   const activeHandleRef = useRef<ActiveHandle | null>(null);
+  // Ratchet bookkeeping — where and when the last tick fired.
+  const lastTickXRef = useRef(0);
+  const lastTickAtRef = useRef(0);
 
   // The clip is written through these refs on every drag tick, so the crawl loop
   // and the next move event read the value they just produced. Syncing from props
@@ -684,6 +718,12 @@ export default function WaveformScrubber({
           // Scrub is RELATIVE: remember where the finger and the playhead were,
           // and move the playhead by the swipe's delta.
           scrubOriginRef.current = { x: g.x0, t: positionRef.current };
+          onActiveHandleChange?.(activeHandleRef.current);
+          // Firmer than the ratchet, so grabbing a control is a different sensation
+          // from moving it.
+          haptics.impact();
+          lastTickXRef.current = g.x0;
+          lastTickAtRef.current = Date.now();
           if (activeHandleRef.current === 'scrub') { onSeekStart?.(); }
           grabWindowRef.current = endRef.current - startRef.current;
           anchorRef.current = { s0: startRef.current, dur0: endRef.current - startRef.current };
@@ -693,6 +733,17 @@ export default function WaveformScrubber({
         onPanResponderMove: (_e: GestureResponderEvent, g: PanResponderGestureState) => {
           const absX = g.moveX !== 0 ? g.moveX : g.x0;
           const active = activeHandleRef.current;
+
+          // Ratchet. Both gates must pass — see TICK_DISTANCE.
+          const now = Date.now();
+          if (
+            Math.abs(absX - lastTickXRef.current) >= TICK_DISTANCE &&
+            now - lastTickAtRef.current >= TICK_MIN_INTERVAL_MS
+          ) {
+            haptics.select();
+            lastTickXRef.current = absX;
+            lastTickAtRef.current = now;
+          }
 
           if (active === 'scrub') {
             const t = scrubTo(absX);
@@ -750,6 +801,9 @@ export default function WaveformScrubber({
           const active = activeHandleRef.current;
           stopCrawl();
           activeHandleRef.current = null;
+          onActiveHandleChange?.(null);
+          // Closes the arc: engage, ratchet, land.
+          if (active) { haptics.tap(); }
           if (active === 'scrub') {
             // Always report the end of a scrub gesture, even for a tap that never
             // moved — a caller that suspended its own polling on onSeekStart has
@@ -766,14 +820,17 @@ export default function WaveformScrubber({
         },
 
         onPanResponderTerminate: () => {
+          // A stolen gesture must clear the emphasis too — a label left large forever
+          // is a worse failure than one that never grew.
           stopCrawl();
           setSeekDragPos(null);
           activeHandleRef.current = null;
+          onActiveHandleChange?.(null);
         },
       }),
     [refreshMeasure, localX, secondsFromAbsX, scrubTo, clampLeft,
      slideStartTo, commitEnd, commitClip, startCrawl, stopCrawl, onClipChangeEnd,
-     onSeekStart, onSeek, onSeekEnd],
+     onSeekStart, onSeek, onSeekEnd, onActiveHandleChange],
   );
 
   /* ── Bars ─────────────────────────────────────────────────────────────── */
