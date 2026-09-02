@@ -30,16 +30,20 @@ import { usePlayback } from '../contexts/PlaybackContext';
  * When the pill is ARRIVING — nothing was playing, so `FloatingPlayer` is springing up
  * from below the screen.
  *
- * This is the number that was wrong on the first attempt. It was 240ms, chosen against
- * FloatingPlayer's `OPEN_MORPH_DELAY`, which is a different animation entirely: the pill
- * has its own entrance, `Animated.spring(slideAnim, { bounciness: 6 })`, and a default
- * spring at that bounciness takes on the order of half a second to settle. Opening at
- * 240ms burst the player open while the pill was still travelling, so the thing the delay
- * exists to show — the pill arriving, then lifting — was never visible.
+ * The pill's entrance is `Animated.spring(slideAnim, { bounciness: 6 })`, which at that
+ * bounciness takes on the order of half a second to fully settle. An earlier version used
+ * 240ms — picked against FloatingPlayer's `OPEN_MORPH_DELAY`, a different animation
+ * entirely — and burst the player open while the pill was barely off the bottom of the
+ * screen, so the thing this delay exists to show was never visible at all.
  *
- * Tuned by eye rather than measured; it is meant to land just after the spring settles.
+ * 350ms deliberately lands BEFORE the spring has finished settling, rather than after.
+ * The pill is up and readable by then and is still moving, so the player takes off from
+ * a pill that is arriving rather than one already parked — and the tap is answered
+ * sooner. Waiting for the full settle read as a hesitation.
+ *
+ * Tuned by eye on a device, not measured.
  */
-export const FS_OPEN_AFTER_PILL_ARRIVES_MS = 520;
+export const FS_OPEN_AFTER_PILL_ARRIVES_MS = 350;
 
 /**
  * When the pill is ALREADY on screen, because something was already playing. There is no
