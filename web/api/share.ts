@@ -150,7 +150,7 @@ a{color:inherit}
 .wrap{position:relative;z-index:1;width:100%;max-width:480px;padding:24px 20px 40px;
   display:flex;flex-direction:column;align-items:center;flex:1}
 .brand{display:flex;align-items:center;gap:9px;align-self:flex-start;margin-bottom:24px;
-  font-weight:800;letter-spacing:.5px;font-size:15px}
+  font-weight:800;letter-spacing:.5px;font-size:15px;text-decoration:none}
 .brand img{width:28px;height:28px;display:block;border-radius:7px}
 .art{width:100%;aspect-ratio:1;border-radius:16px;object-fit:cover;background:#12121C;
   display:block}
@@ -221,7 +221,7 @@ ${opts.meta}
 <body>
 <div class="bg"></div>
 <div class="wrap">
-<div class="brand"><img src="/favicon.svg" alt="" width="28" height="28">LIVIL</div>
+<a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">LIVIL</a>
 ${opts.body}
 </div>
 ${opts.script ? `<script>${opts.script}</script>` : ''}

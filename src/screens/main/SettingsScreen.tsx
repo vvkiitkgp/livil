@@ -24,7 +24,6 @@ import {
   PLAY_STORE_APP_URL,
   PLAY_STORE_WEB_URL,
   PRIVACY_POLICY_URL,
-  SUPPORT_EMAIL,
 } from '../../constants/links';
 import { supabase } from '../../../lib/supabase';
 
@@ -103,11 +102,6 @@ export default function SettingsScreen() {
     }
   }, [showToast]);
 
-  const onContactSupport = useCallback(() => {
-    const subject = encodeURIComponent(`Livil support (${APP_VERSION_LABEL})`);
-    void openUrl(`mailto:${SUPPORT_EMAIL}?subject=${subject}`);
-  }, [openUrl]);
-
   // No navigation reset after signOut: RootNavigator swaps the whole signed-in
   // stack for AuthNavigator on SIGNED_OUT, so this screen unmounts itself.
   const confirmSignOut = useCallback(async () => {
@@ -159,12 +153,18 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title="Support">
+          {/* Replaces a `mailto:` to SUPPORT_EMAIL. The mail client dropped everything on
+              the way — who was writing, what version they were on, whether they ever
+              finished — and a compose window covering the app mid-thought is where most
+              people gave up. This writes a row instead, into the same `team_messages` the
+              studio's Contact screen writes, readable in /studio/ops. The address is still
+              on Privacy & data and on Delete account, which are the two places someone
+              needs a human by another route. */}
           <SettingsRow
-            icon="support"
-            label="Contact support"
-            subtitle={SUPPORT_EMAIL}
-            external
-            onPress={onContactSupport}
+            icon="comment"
+            label="Message the team"
+            subtitle="Bugs, ideas, or what nearly made you give up"
+            onPress={() => navigation.navigate('ContactTeam')}
           />
           <SettingsRow
             icon="star"

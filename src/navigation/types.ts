@@ -47,6 +47,7 @@ export type RootStackParamList = {
   Settings: undefined;
   NotificationSettings: undefined;
   PrivacyData: undefined;
+  ContactTeam: undefined;
   BlockedAccounts: undefined;
   DeleteAccount: undefined;
   CreatePlaylist: {

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 import { COLORS } from '../theme/colors';
+import haptics from '../utils/haptics';
 
 /**
  * The one scrubber. Replaces both SeekBar (plain progress) and ClipRangeSlider
@@ -119,6 +120,14 @@ export type WaveformScrubberProps = {
    * drag that starts in a gutter.
    */
   edgeInset?: number;
+  /**
+   * The track's real loudness envelope, normalised 0..1 at `peaksHz` buckets per second
+   * over the FULL track. When present the bars are the actual audio; without it they
+   * fall back to the seeded decorative shape, which is what every surface that has not
+   * loaded an envelope still gets.
+   */
+  peaks?: number[] | null;
+  peaksHz?: number;
   /** Draw the purple box. Defaults on when anchored or when there are handles. */
   showBox?: boolean;
   onClipChange?: (start: number, end: number) => void;
@@ -136,6 +145,19 @@ export type WaveformScrubberProps = {
   onSeek?: (seconds: number) => void;
   /** The swipe ended here. The one place a surface must commit the position. */
   onSeekEnd?: (seconds: number) => void;
+  /**
+   * Which control the finger is currently on, or null on release.
+   *
+   * Exists so a surface can emphasise the READOUT for the thing being dragged — the
+   * clip-start time while the left handle moves, the clip-end time while the right one
+   * does, the position while scrubbing. The labels live outside this component (they
+   * are laid out by each surface), so they cannot see the gesture without being told.
+   *
+   * Distinct from `onSeekStart`, which fires only for a scrub and says nothing about
+   * the clip handles, and from `onClipChangeEnd`, which reports the handle only once
+   * the drag is over.
+   */
+  onActiveHandleChange?: (handle: ActiveHandle | null) => void;
 };
 
 // Bar pitch: bar width + gap. Bars are sized from the measured width so a narrow
@@ -261,6 +283,50 @@ export function decorativeAt(timeSec: number, seed: string): number {
 }
 
 /** Sample `count` bars across [from, to] absolute seconds. */
+/**
+ * Real loudness, one value per bar, across the window the scrubber is showing.
+ *
+ * `peaks` is the envelope stored on the track — normalised 0..1, `hz` buckets per
+ * second, spanning the FULL track in absolute seconds. Each bar averages the buckets
+ * inside its own time slice rather than point-sampling one of them: at the feed's zoom
+ * a bar covers several seconds, and picking a single bucket out of forty would make the
+ * wave flicker between takes of the same song rather than describe it.
+ *
+ * How much time a bar covers is a consequence of geometry, not a choice: bars sit
+ * BAR_PITCH apart, so the span divided by the bar count is whatever it is. Zoomed to a
+ * clip in the player that lands near half a second; across a whole track in the feed it
+ * is several seconds. Both are the same function.
+ */
+export function amplitudeBars(
+  from: number,
+  to: number,
+  count: number,
+  peaks: number[],
+  hz: number,
+): number[] {
+  const step = (to - from) / Math.max(1, count);
+  const out = new Array<number>(count);
+  for (let i = 0; i < count; i += 1) {
+    const t0 = from + i * step;
+    const lo = Math.max(0, Math.floor(t0 * hz));
+    const hi = Math.min(peaks.length, Math.max(lo + 1, Math.ceil((t0 + step) * hz)));
+    let sum = 0;
+    let n = 0;
+    for (let k = lo; k < hi; k += 1) { sum += peaks[k] ?? 0; n += 1; }
+    out[i] = n > 0 ? sum / n : 0;
+  }
+
+  // Normalise to the loudest bar ON SCREEN. Without this a quiet passage viewed on its
+  // own draws as a flat line, because the stored envelope is normalised against the
+  // whole song — the zoom would show you that the intro is quieter than the chorus
+  // instead of showing you the intro.
+  const peak = out.reduce((m, v) => (v > m ? v : m), 0);
+  if (peak > 0) {
+    for (let i = 0; i < count; i += 1) { out[i] = out[i]! / peak; }
+  }
+  return out;
+}
+
 export function decorativeBars(
   from: number,
   to: number,
@@ -382,7 +448,32 @@ export function barsAreaFor(
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 
-type ActiveHandle = 'left' | 'right' | 'scrub';
+/**
+ * The drag ratchet: ONE TICK PER BAR crossed.
+ *
+ * The notch is the thing on screen. Cross a bar, feel a bar — so the ratchet is not a
+ * texture laid over the gesture, it is the wave being read out through a second sense,
+ * and the count you feel is the count you can see.
+ *
+ * This also makes the ratchet self-scaling with no ladder and no tuning constant.
+ * Earlier versions picked a notch in seconds and had to adapt it, because a fixed one is
+ * wrong on both surfaces at once: zoomed to a clip a second is a wide deliberate
+ * movement, across a whole track it is a fraction of a pixel. Bars already solve that —
+ * they are laid out from the measured width, so a bar is a constant BAR_PITCH under the
+ * finger at every zoom, and how much audio it represents follows from the view.
+ */
+
+/**
+ * A floor, not a design choice. A fast flick crosses dozens of bars in a moment, and
+ * neither the hardware nor a finger can resolve them: each pulse is already 20ms of
+ * vibration, so anything closer than ~45ms fuses into one continuous buzz. Ticks past
+ * that rate are dropped rather than queued.
+ */
+const TICK_MIN_INTERVAL_MS = 45;
+
+/** Which control a finger is on. Exported because surfaces hold it in state to
+ *  emphasise the matching time readout. */
+export type ActiveHandle = 'left' | 'right' | 'scrub';
 type BarRect = { key: number; x: number; y: number; w: number; h: number };
 
 export default function WaveformScrubber({
@@ -402,12 +493,15 @@ export default function WaveformScrubber({
   height = 56,
   gutter = DEFAULT_GUTTER,
   edgeInset = 0,
+  peaks,
+  peaksHz,
   showBox,
   onClipChange,
   onClipChangeEnd,
   onSeekStart,
   onSeek,
   onSeekEnd,
+  onActiveHandleChange,
 }: WaveformScrubberProps) {
   const containerRef = useRef<View>(null);
   const [boxWidth, setBoxWidth] = useState(0);
@@ -480,10 +574,14 @@ export default function WaveformScrubber({
   const anchoredRef = useRef(anchored); anchoredRef.current = anchored;
   const barsLeftRef = useRef(barsLeft); barsLeftRef.current = barsLeft;
   const barsWRef = useRef(barsW); barsWRef.current = barsW;
+  const barCountRef = useRef(barCount); barCountRef.current = barCount;
   const boxLeftRef = useRef(boxLeft); boxLeftRef.current = boxLeft;
   const boxRightRef = useRef(boxRight); boxRightRef.current = boxRight;
   const onClipChangeRef = useRef(onClipChange); onClipChangeRef.current = onClipChange;
   const activeHandleRef = useRef<ActiveHandle | null>(null);
+  // Ratchet bookkeeping — the bar the last tick fired on, and when.
+  const lastTickBarRef = useRef(0);
+  const lastTickAtRef = useRef(0);
 
   // The clip is written through these refs on every drag tick, so the crawl loop
   // and the next move event read the value they just produced. Syncing from props
@@ -574,6 +672,13 @@ export default function WaveformScrubber({
     const o = scrubOriginRef.current;
     return clampSeek(scrubTarget(absX - o.x, barsWRef.current, viewSpanRef.current, o.t));
   }, [clampSeek]);
+
+  /** Which bar an absolute time falls on, in the window currently drawn. */
+  const barIndexAt = useCallback((seconds: number): number => {
+    const span = viewSpanRef.current;
+    if (!(span > 0)) { return 0; }
+    return Math.floor(((seconds - viewStartRef.current) / span) * barCountRef.current);
+  }, []);
 
   const slideStartTo = useCallback((raw: number): [number, number] =>
     slideWindowTo(raw, grabWindowRef.current, durationRef.current), []);
@@ -684,6 +789,16 @@ export default function WaveformScrubber({
           // Scrub is RELATIVE: remember where the finger and the playhead were,
           // and move the playhead by the swipe's delta.
           scrubOriginRef.current = { x: g.x0, t: positionRef.current };
+          onActiveHandleChange?.(activeHandleRef.current);
+          // Firmer than the ratchet, so grabbing a control is a different sensation
+          // from moving it.
+          haptics.impact();
+          lastTickBarRef.current = barIndexAt(
+            activeHandleRef.current === 'left' ? startRef.current
+              : activeHandleRef.current === 'right' ? endRef.current
+                : positionRef.current,
+          );
+          lastTickAtRef.current = Date.now();
           if (activeHandleRef.current === 'scrub') { onSeekStart?.(); }
           grabWindowRef.current = endRef.current - startRef.current;
           anchorRef.current = { s0: startRef.current, dur0: endRef.current - startRef.current };
@@ -693,6 +808,28 @@ export default function WaveformScrubber({
         onPanResponderMove: (_e: GestureResponderEvent, g: PanResponderGestureState) => {
           const absX = g.moveX !== 0 ? g.moveX : g.x0;
           const active = activeHandleRef.current;
+
+          // Ratchet — one tick per bar. The scrub target is derived from the finger
+          // (scrubTo is pure), while the handles read back through the refs that
+          // commitClip/commitEnd wrote on the previous move: one frame behind, which
+          // at 60fps is 16ms and not something a finger can feel.
+          const dragged =
+            active === 'scrub' ? scrubTo(absX)
+              : active === 'left' ? startRef.current
+                : active === 'right' ? endRef.current
+                  : null;
+          if (dragged !== null) {
+            const bar = barIndexAt(dragged);
+            const now = Date.now();
+            if (bar !== lastTickBarRef.current && now - lastTickAtRef.current >= TICK_MIN_INTERVAL_MS) {
+              haptics.select();
+              // Jump straight to the bar under the finger. Ticks dropped by the rate
+              // floor are skipped, not queued — a flick must not leave a rattle
+              // playing out after the finger has stopped.
+              lastTickBarRef.current = bar;
+              lastTickAtRef.current = now;
+            }
+          }
 
           if (active === 'scrub') {
             const t = scrubTo(absX);
@@ -750,6 +887,9 @@ export default function WaveformScrubber({
           const active = activeHandleRef.current;
           stopCrawl();
           activeHandleRef.current = null;
+          onActiveHandleChange?.(null);
+          // Closes the arc: engage, ratchet, land.
+          if (active) { haptics.tap(); }
           if (active === 'scrub') {
             // Always report the end of a scrub gesture, even for a tap that never
             // moved — a caller that suspended its own polling on onSeekStart has
@@ -766,20 +906,25 @@ export default function WaveformScrubber({
         },
 
         onPanResponderTerminate: () => {
+          // A stolen gesture must clear the emphasis too — a label left large forever
+          // is a worse failure than one that never grew.
           stopCrawl();
           setSeekDragPos(null);
           activeHandleRef.current = null;
+          onActiveHandleChange?.(null);
         },
       }),
-    [refreshMeasure, localX, secondsFromAbsX, scrubTo, clampLeft,
+    [refreshMeasure, localX, secondsFromAbsX, scrubTo, clampLeft, barIndexAt,
      slideStartTo, commitEnd, commitClip, startCrawl, stopCrawl, onClipChangeEnd,
-     onSeekStart, onSeek, onSeekEnd],
+     onSeekStart, onSeek, onSeekEnd, onActiveHandleChange],
   );
 
   /* ── Bars ─────────────────────────────────────────────────────────────── */
   const bars = useMemo(
-    () => decorativeBars(viewStart, viewEnd, barCount, seed),
-    [viewStart, viewEnd, barCount, seed],
+    () => (peaks && peaks.length > 0 && peaksHz && peaksHz > 0
+      ? amplitudeBars(viewStart, viewEnd, barCount, peaks, peaksHz)
+      : decorativeBars(viewStart, viewEnd, barCount, seed)),
+    [viewStart, viewEnd, barCount, seed, peaks, peaksHz],
   );
 
   const barRects = useMemo((): BarRect[] | null => {

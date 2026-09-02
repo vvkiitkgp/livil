@@ -9,6 +9,7 @@ import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import { fetchAlbumDetail, type AlbumDetail } from '../../services/albums';
 import { usePlayback, type NowPlayingInfo } from '../../contexts/PlaybackContext';
+import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import DetailView, { type DetailTrack } from '../../components/DetailView';
 import DetailActionSheet from '../../components/DetailActionSheet';
 
@@ -17,7 +18,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AlbumDetail'>;
 export default function AlbumDetailScreen({ route }: Props) {
   const { albumId } = route.params;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { nowPlaying, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer } = usePlayback();
+  const { nowPlaying, setQueue, setNowPlaying, requestPlay } = usePlayback();
+  // Opens the player a beat after playback starts, so the floating pill is seen to
+  // rise into it rather than being replaced instantly. See the hook.
+  const openFullScreen = usePlayFullScreen();
 
   const [album, setAlbum] = useState<AlbumDetail | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
@@ -110,8 +114,8 @@ export default function AlbumDetailScreen({ route }: Props) {
     setQueue(ordered, initialIdx, `album:${album.title}`);
     setNowPlaying(ordered[initialIdx]!);
     requestPlay(ordered[initialIdx]!.postId);
-    openFullScreenPlayer();
-  }, [album, toNowPlaying, setQueue, setNowPlaying, requestPlay, openFullScreenPlayer]);
+    openFullScreen();
+  }, [album, toNowPlaying, setQueue, setNowPlaying, requestPlay, openFullScreen]);
 
   const handlePressTrack = useCallback((idx: number) => { startQueue(idx, false); }, [startQueue]);
   const handlePlay = useCallback(() => { startQueue(0, false); }, [startQueue]);

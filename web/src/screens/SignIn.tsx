@@ -4,7 +4,6 @@ import { ResendButton } from '../components/ResendButton';
 import { PasswordField, TextField } from '../components/TextField';
 import {
   PLAY_STORE_URL,
-  joinWaitlist,
   resendConfirmation,
   signInWithGoogle,
   signInWithPassword,
@@ -53,9 +52,6 @@ export function SignIn({
   // box means shouting at someone who is still typing.
   const mismatch = signingUp && confirm.length > 0 && password !== confirm;
 
-  const [waitlistEmail, setWaitlistEmail] = useState('');
-  const [waitlistDone, setWaitlistDone] = useState(false);
-  const [waitlistBusy, setWaitlistBusy] = useState(false);
   const [confirmSent, setConfirmSent] = useState(false);
 
   async function onSubmit(event: FormEvent) {
@@ -106,15 +102,6 @@ export function SignIn({
       setError(result.message);
       setBusy(null);
     }
-  }
-
-  async function onWaitlist(event: FormEvent) {
-    event.preventDefault();
-    setWaitlistBusy(true);
-    const result = await joinWaitlist(waitlistEmail);
-    setWaitlistBusy(false);
-    if (result.ok) setWaitlistDone(true);
-    else setError(result.message);
   }
 
   if (confirmSent) {
@@ -290,6 +277,11 @@ export function SignIn({
         </button>
       </form>
 
+      {/* The store link stands alone now that Livil is in production. It used to be the
+          quiet half of this card, deliberately outweighed by a waitlist form, because
+          closed testing meant the listing resolved only for enrolled testers and the
+          loud control must not be the one that dead-ends. It resolves for everyone, so
+          it carries the card's weight. */}
       <section className="card card--muted">
         <h2 className="card__title">Prefer the phone?</h2>
         <p className="hint">
@@ -297,44 +289,10 @@ export function SignIn({
         </p>
         <Button
           type="button"
-          variant="secondary"
           onClick={() => window.open(PLAY_STORE_URL, '_blank', 'noopener,noreferrer')}
         >
           Get the Android app
         </Button>
-
-        {/* Livil is in closed testing, so the Play listing above resolves ONLY for enrolled
-            testers — for everyone else it reads "app not available". That makes this the
-            only working path for a new visitor, which is why it is set apart and carries a
-            primary button rather than sitting as a ghost-weight afterthought under the
-            store link. The loud control must not be the one that dead-ends. */}
-        {waitlistDone ? (
-          <div className="waitlist waitlist--done">
-            <p className="waitlist__lede">
-              <strong>You're on the list.</strong> The invite is already on its way — check
-              your inbox, and spam if it isn't there in a minute.
-            </p>
-          </div>
-        ) : (
-          <form className="waitlist" onSubmit={onWaitlist}>
-            <p className="waitlist__lede">
-              <strong>Not a tester yet?</strong> Livil is in closed testing, so the store
-              link above only opens for enrolled testers. Leave your email and the invite
-              lands in your inbox straight away.
-            </p>
-            <TextField
-              label="Email"
-              type="email"
-              required
-              placeholder="you@example.com"
-              value={waitlistEmail}
-              onChange={e => setWaitlistEmail(e.target.value)}
-            />
-            <Button type="submit" busy={waitlistBusy}>
-              Join the waitlist
-            </Button>
-          </form>
-        )}
       </section>
     </main>
   );

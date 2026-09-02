@@ -24,6 +24,7 @@ import { searchProfiles, type ProfileSearchResult } from '../../services/tracks'
 import { searchPosts, feedPostToNowPlaying, type FeedPost } from '../../services/posts';
 import { searchAlbums, type AlbumSearchResult } from '../../services/albums';
 import { usePlayback } from '../../contexts/PlaybackContext';
+import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useRecentSearches } from '../../hooks/useRecentSearches';
 import {
   recordSearchTap, fetchSearchPopularity, type SearchTapKind,
@@ -132,6 +133,7 @@ export default function SearchScreen() {
   const {
     nowPlaying, setQueue, setNowPlaying, requestPlay, markSeekTarget, handlersRef,
   } = usePlayback();
+  const openFullScreen = usePlayFullScreen();
   const { recents, remember, forget } = useRecentSearches();
   const inputRef = useRef<TextInput>(null);
 
@@ -269,8 +271,15 @@ export default function SearchScreen() {
    * queueing the other results would have the next thing autoplay something they merely
    * scrolled past.
    *
-   * No `openFullScreenPlayer()` here, unlike AlbumDetail: playback surfaces in the floating
-   * player so the results stay on screen and the next tap is still one tap away.
+   * Opens the full-screen player, a beat after playback starts so the floating pill is
+   * seen to rise into it.
+   *
+   * This REVERSES the earlier decision recorded here, which kept results on screen so the
+   * next tap was one tap away. That reasoning still holds and is the cost: dismissing the
+   * player to get back to the list is now a swipe. It was overridden deliberately — tapping
+   * a song should do the same thing everywhere in the app, and a result that plays
+   * differently from a feed card is the surprising case. Revert this one call if browsing
+   * search results turns out to matter more than the consistency.
    */
   const playTrack = useCallback(
     (post: FeedPost) => {
@@ -299,8 +308,9 @@ export default function SearchScreen() {
       // position the previous track left behind.
       markSeekTarget(clipStart);
       requestPlay(item.postId);
+      openFullScreen();
     },
-    [setQueue, setNowPlaying, requestPlay, markSeekTarget, handlersRef, nowPlaying?.postId],
+    [setQueue, setNowPlaying, requestPlay, markSeekTarget, handlersRef, nowPlaying?.postId, openFullScreen],
   );
 
   /**
