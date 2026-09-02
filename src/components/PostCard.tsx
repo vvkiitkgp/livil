@@ -464,7 +464,9 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   if (isOrphanedRepost) {
     return (
-      <View style={styles.card}>
+      // Still a repost, so still outlined as one — the original being gone changes what
+      // the card can show, not what kind of post it is.
+      <View style={[styles.card, styles.cardRepost]}>
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.authorTap}
@@ -593,7 +595,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isRepost && styles.cardRepost]}>
       {/* Repost banner sits above everything when this post is a repost. */}
       {isRepost ? (
         <View style={styles.repostBanner}>
@@ -1022,6 +1024,11 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
+  // A repost is outlined in purple, the same colour as the rule under its banner, so
+  // the card reads as one marked object rather than a default card with a coloured line
+  // inside it. Colour only — width, radius and everything else stay the card's, so an
+  // upload and a repost are the same shape.
+  cardRepost: { borderColor: COLORS.purple },
   /**
    * A full-bleed header row across the top of a repost card, closed off by a purple
    * rule rather than filled.
