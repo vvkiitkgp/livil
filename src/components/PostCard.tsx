@@ -464,9 +464,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   if (isOrphanedRepost) {
     return (
-      // Still a repost, so still outlined as one — the original being gone changes what
-      // the card can show, not what kind of post it is.
-      <View style={[styles.card, styles.cardRepost]}>
+      <View style={styles.card}>
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.authorTap}
@@ -595,7 +593,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }
 
   return (
-    <View style={[styles.card, isRepost && styles.cardRepost]}>
+    <View style={styles.card}>
       {/* Repost banner sits above everything when this post is a repost. */}
       {isRepost ? (
         <View style={styles.repostBanner}>
@@ -1024,19 +1022,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
-  // A repost is outlined in purple, the same colour as the rule under its banner, so
-  // the card reads as one marked object rather than a default card with a coloured line
-  // inside it. Colour only — width, radius and everything else stay the card's, so an
-  // upload and a repost are the same shape.
-  cardRepost: { borderColor: COLORS.purple },
   /**
    * A full-bleed header band across the top of a repost card.
    *
    * `COLORS.card` (#1A1A2E), one step up the neutral ramp from the card's own #12121C —
    * NOT the primary. Filling this with purple was tried and dominated the card it was
-   * only meant to label; purple is left doing what it does everywhere else here, which
-   * is outlining (the card's own border) rather than filling. A neutral band separates
-   * the section without competing with the artwork below it.
+   * only meant to label, so the marking is neutral and confined to this band: a repost
+   * card is otherwise the same shape and colour as every other card in the feed.
    *
    * Negative margins cancel the card's 14dp padding so the band spans its full inner
    * width, and the padding puts the content back. The top corners are rounded HERE
