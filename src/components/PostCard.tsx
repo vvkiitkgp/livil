@@ -1030,31 +1030,33 @@ const styles = StyleSheet.create({
   // upload and a repost are the same shape.
   cardRepost: { borderColor: COLORS.purple },
   /**
-   * A full-bleed header row across the top of a repost card, closed off by a purple
-   * rule rather than filled.
+   * A full-bleed header band across the top of a repost card.
    *
-   * An outline instead of a fill because that is what purple is for here — it outlines
-   * and letters, it does not fill (a solid #8B3DFF band dominates the dark card, which
-   * is the same reason buttons are never filled with it). A single bottom rule reads as
-   * a section divider and leaves the text on the surface it was designed for.
+   * `COLORS.card` (#1A1A2E), one step up the neutral ramp from the card's own #12121C —
+   * NOT the primary. Filling this with purple was tried and dominated the card it was
+   * only meant to label; purple is left doing what it does everywhere else here, which
+   * is outlining (the card's own border) rather than filling. A neutral band separates
+   * the section without competing with the artwork below it.
    *
-   * Negative margins cancel the card's 14dp padding so the rule spans the card's full
-   * inner width; the padding puts the content back. No `overflow: 'hidden'` on the card
-   * to go with it — the card hosts GradientBorder (the play button, the Repost pill),
-   * whose glow is drawn inward and would be clipped by it.
+   * Negative margins cancel the card's 14dp padding so the band spans its full inner
+   * width, and the padding puts the content back. The top corners are rounded HERE
+   * rather than by putting `overflow: 'hidden'` on the card: the card also hosts
+   * GradientBorder (the play button, the Repost pill), whose glow is drawn inward and
+   * would be clipped by it — the trap the design notes name explicitly. 19 is the card's
+   * 20dp radius less its 1dp border, the radius of the padding box the band sits in.
    */
   repostBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: COLORS.card,
     marginTop: -14,
     marginHorizontal: -14,
     marginBottom: 12,
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.purple,
+    paddingVertical: 10,
+    borderTopLeftRadius: 19,
+    borderTopRightRadius: 19,
   },
   repostBannerText: {
     color: COLORS.textMuted,
