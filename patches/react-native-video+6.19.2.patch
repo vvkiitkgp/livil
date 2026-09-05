@@ -1495,7 +1495,7 @@ index 4760ea5..83f7816 100644
                  COMMAND.PLAY -> session.player.play()
                  COMMAND.PAUSE -> session.player.pause()
 diff --git a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
-index 7927c37..633657e 100644
+index 7927c37..66b4952 100644
 --- a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
 +++ b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
 @@ -19,6 +19,13 @@ class NowPlayingInfoCenterManager {
@@ -1546,17 +1546,30 @@ index 7927c37..633657e 100644
  
          if let playbackObserver {
              currentPlayer?.removeTimeObserver(playbackObserver)
-@@ -188,6 +219,37 @@ class NowPlayingInfoCenterManager {
+@@ -188,6 +219,50 @@ class NowPlayingInfoCenterManager {
  
              return .success
          }
 +
 +        // Livil patch: lock-screen next/previous-track commands. Enabled only when
-+        // a handler is registered for the current player. NOTE: enabling these
-+        // makes iOS show the |<< >>| track buttons on the lock screen INSTEAD of
-+        // the +/-10s skip-forward/back arrows.
++        // a handler is registered for the current player.
 +        let hasNext = currentPlayer.flatMap { nextTrackHandlers[$0.hashValue] } != nil
 +        let hasPrevious = currentPlayer.flatMap { previousTrackHandlers[$0.hashValue] } != nil
++
++        // Enabling nextTrack/previousTrack is NOT sufficient. iOS renders the
++        // +/-SEEK_INTERVAL skip arrows INSTEAD of the |<< >>| track buttons for as
++        // long as the skip commands are enabled, no matter what the track commands
++        // say -- so the skip commands must be switched OFF for track buttons to
++        // appear at all.
++        //
++        // An earlier revision of this patch asserted the opposite in a comment. That
++        // was written while iOS could not be built, so it was never run; the symptom
++        // on a real device is a lock screen offering 10-second seeks in a queue-based
++        // music app, with no way to change track. Do not re-enable these without
++        // checking a physical lock screen.
++        let wantsTrackButtons = hasNext || hasPrevious
++        remoteCommandCenter.skipForwardCommand.isEnabled = !wantsTrackButtons
++        remoteCommandCenter.skipBackwardCommand.isEnabled = !wantsTrackButtons
 +
 +        remoteCommandCenter.nextTrackCommand.isEnabled = hasNext
 +        if hasNext {
@@ -1584,7 +1597,7 @@ index 7927c37..633657e 100644
      }
  
      private func invalidateCommandTargets() {
-@@ -197,6 +259,10 @@ class NowPlayingInfoCenterManager {
+@@ -197,6 +272,10 @@ class NowPlayingInfoCenterManager {
          remoteCommandCenter.skipBackwardCommand.removeTarget(skipBackwardTarget)
          remoteCommandCenter.changePlaybackPositionCommand.removeTarget(playbackPositionTarget)
          remoteCommandCenter.togglePlayPauseCommand.removeTarget(togglePlayPauseTarget)
