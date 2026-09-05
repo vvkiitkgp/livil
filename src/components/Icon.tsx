@@ -13,6 +13,7 @@
  */
 import React from 'react';
 import {
+  AppleLogo,
   ArrowBendUpLeft,
   ArrowLeft,
   ArrowRight,
@@ -118,7 +119,7 @@ export type IconName =
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai'
   // settings
-  | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
+  | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram' | 'apple'
   | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
 
 type PhComponent = React.ComponentType<PhProps>;
@@ -228,6 +229,9 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   gift: [Gift, 'regular'],
   support: [Lifebuoy, 'regular'],
   instagram: [InstagramLogo, 'regular'],
+  // 'fill' is deliberate: Apple's guidelines show a solid mark on the Sign in
+  // with Apple button, and an outlined logo there reads as a broken glyph.
+  apple: [AppleLogo, 'fill'],
   // Distinct from `error` (WarningCircle): the triangle is the danger-banner
   // glyph on DeleteAccountScreen, where it needs to read at 32px.
   warningTriangle: [Warning, 'regular'],

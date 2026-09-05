@@ -32,6 +32,7 @@
 		5DCACB8F33CDC322A6C60F78 /* libPods-livil.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-livil.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = livil/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = livil/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		E3E337CF3E28A727C95A141D /* livil.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = livil/livil.entitlements; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -56,6 +57,7 @@
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				561141FE479ED60BE31C013C /* GoogleService-Info.plist */,
+				E3E337CF3E28A727C95A141D /* livil.entitlements */,
 			);
 			name = livil;
 			sourceTree = "<group>";
@@ -298,7 +300,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = livil/livil.entitlements;
 				CURRENT_PROJECT_VERSION = 71;
+				DEVELOPMENT_TEAM = FG78VP2M42;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = livil/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -327,7 +331,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = livil/livil.entitlements;
 				CURRENT_PROJECT_VERSION = 71;
+				DEVELOPMENT_TEAM = FG78VP2M42;
 				INFOPLIST_FILE = livil/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
