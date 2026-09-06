@@ -22,6 +22,7 @@ import {
   KeyboardChatScrollView,
   KeyboardStickyView,
   KeyboardGestureArea,
+  KeyboardController,
 } from 'react-native-keyboard-controller';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -439,6 +440,23 @@ export default function ConversationScreen() {
   const { showToast } = useToast();
   const [startingJam, setStartingJam] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // Leaving the screen must take the keyboard with it.
+  //
+  // On Android the IME hides on its own when the focused TextInput is torn down.
+  // iOS does not: UIKit keeps the keyboard up across a pop while the composer is
+  // still mounted behind the transition (KeyboardStickyView keeps it alive), so
+  // the user lands back on the conversation list with a keyboard covering half of
+  // it and nothing focused to dismiss it.
+  //
+  // Hooked to `beforeRemove` rather than the back button's onPress so every exit
+  // path is covered by one handler: the header button, the iOS interactive
+  // swipe-back, and the Android hardware back. We never block removal here, only
+  // dismiss.
+  useEffect(
+    () => navigation.addListener('beforeRemove', () => { KeyboardController.dismiss(); }),
+    [navigation],
+  );
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 

@@ -28,6 +28,7 @@ import { ScreenBackdrop } from '../../components/onboarding/ScreenBackdrop';
 import { StageLamp } from '../../components/onboarding/StageLamp';
 import { signInWithGoogle } from '../../services/googleAuth';
 import { useToast } from '../../contexts/ToastContext';
+import AppleSignInButton from '../../components/AppleSignInButton';
 import type { AuthStackParamList } from '../../navigation/types';
 
 /**
@@ -157,6 +158,7 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
             onGoogle={handleGoogle}
             onEmail={() => navigation.navigate('SignUp')}
             onSignIn={() => navigation.navigate('SignIn')}
+            onAppleError={msg => showToast(msg, { kind: 'error' })}
           />
         )}
       </StepFade>
@@ -197,7 +199,12 @@ function Kicker({ children }: { children: string }) {
 }
 
 function Headline({ children, size = 38 }: { children: React.ReactNode; size?: number }) {
-  return <Text style={[styles.headline, { fontSize: size, lineHeight: size * 1.1 }]}>{children}</Text>;
+  // 1.28, not 1.1: Anton's ascenders run taller than its em box, so a line box of
+  // 1.1x is shorter than the glyphs actually need and the tops get clipped -- most
+  // visibly on the apostrophe in "WHO'S". The extra leading lands above the
+  // baseline, which is exactly where the missing room was. Shared by every step,
+  // so this fixes the whole sequence at once.
+  return <Text style={[styles.headline, { fontSize: size, lineHeight: size * 1.28 }]}>{children}</Text>;
 }
 
 function PrimaryCta({
@@ -306,7 +313,13 @@ function RolePick({
                 <Text style={styles.roleName}>{r.key}</Text>
                 <Text style={styles.roleDesc}>{r.desc}</Text>
               </View>
-              {selected && <Text style={styles.roleCheck}>✓</Text>}
+              {/* Always rendered, so all three read as a choose-one set rather than
+                  two plain rows plus a tick. Filled when on: the design system
+                  exempts small indicators from the no-fill rule precisely because
+                  a hollow 10px dot reads as unselected. */}
+              <View style={[styles.radio, selected && styles.radioOn]}>
+                {selected && <View style={styles.radioDot} />}
+              </View>
             </Pressable>
           );
         })}
@@ -464,12 +477,14 @@ function GuestList({
   onGoogle,
   onEmail,
   onSignIn,
+  onAppleError,
 }: {
   role: PassRole | null;
   googleBusy: boolean;
   onGoogle: () => void;
   onEmail: () => void;
   onSignIn: () => void;
+  onAppleError: (message: string) => void;
 }) {
   return (
     <View style={styles.step}>
@@ -481,6 +496,16 @@ function GuestList({
       </View>
 
       <View style={styles.authStack}>
+        {/* Apple first. Guideline 4.8 asks for it to be at least as prominent as
+            the other third-party options, and this is also the only one-tap path
+            that needs neither an email nor a password. Renders null off iOS, and
+            authStack's `gap` collapses with it, so Android is untouched. */}
+        <AppleSignInButton
+          onError={onAppleError}
+          disabled={googleBusy}
+          style={styles.authBtn}
+          labelStyle={styles.authLabel}
+        />
         <Button
           label="Continue with Google"
           onPress={onGoogle}
@@ -591,7 +616,22 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 3,
   },
-  roleCheck: { fontSize: 16, color: COLORS.purpleNeon },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: { borderColor: COLORS.purpleNeon },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.purpleNeon,
+  },
 
   itinerary: { marginTop: 30 },
   itemRow: {
