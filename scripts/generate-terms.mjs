@@ -21,7 +21,11 @@
  * Run after ANY edit to docs/terms.html:
  *     node scripts/generate-terms.mjs
  *
- * Then apply the printed sha256 to the terms_versions row for that version.
+ * EDITING TERMS MEANS PUBLISHING A NEW VERSION, not patching the old row. The
+ * terms_versions table refuses UPDATE by trigger, deliberately: a hash that can be
+ * retro-fitted to changed text attests to nothing. So bump the version in the HTML
+ * header, re-run this, and INSERT a new row. Every existing user is then re-prompted,
+ * recorded as 'reaccept'.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -150,5 +154,10 @@ console.log(`  effective ${effective}`);
 console.log(`  sections  ${sections.length}`);
 console.log(`  sha256    ${sha256}`);
 console.log();
-console.log('Apply that hash to the terms_versions row:');
-console.log(`  update public.terms_versions set sha256 = '${sha256}' where version = '${version}';`);
+console.log('Publish this version as a NEW ROW (terms_versions refuses UPDATE by design):');
+console.log("  insert into public.terms_versions (version, effective_at, url, sha256)");
+console.log(`  values ('${version}', now(), 'https://livil-music.com/terms.html', '${sha256}')`);
+console.log('  on conflict (version) do nothing;');
+console.log();
+console.log('If this version already exists with a DIFFERENT hash, the text changed');
+console.log('without the version being bumped. Bump it in docs/terms.html and re-run.');
