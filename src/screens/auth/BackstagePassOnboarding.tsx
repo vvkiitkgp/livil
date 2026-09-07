@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BackHandler,
+  Linking,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -29,6 +30,7 @@ import { StageLamp } from '../../components/onboarding/StageLamp';
 import { signInWithGoogle } from '../../services/googleAuth';
 import { useToast } from '../../contexts/ToastContext';
 import AppleSignInButton from '../../components/AppleSignInButton';
+import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import type { AuthStackParamList } from '../../navigation/types';
 
 /**
@@ -529,8 +531,20 @@ function GuestList({
         <Text style={styles.signInLink} onPress={onSignIn} suppressHighlighting>
           Already have a pass? Sign in
         </Text>
+        {/* The Terms and Privacy words are the agreement itself, so they have to be
+            reachable: this line previously named two documents and linked to
+            neither, which is not consent to anything. Opening in the browser
+            rather than a modal keeps the user's place in the flow. */}
         <Text style={styles.legal}>
-          By continuing you agree to soundcheck the Terms &amp; Privacy.
+          By continuing you agree to soundcheck the{' '}
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(TERMS_URL)}>
+            Terms
+          </Text>
+          {' & '}
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+            Privacy
+          </Text>
+          .
         </Text>
       </View>
     </View>
@@ -707,6 +721,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textMuted,
     textAlign: 'center',
+  },
+  // Underlined as well as tinted: colour alone is not a reliable affordance, and
+  // at 10px on a dark background the tint difference is easy to miss entirely.
+  legalLink: {
+    color: COLORS.purpleLight,
+    textDecorationLine: 'underline',
   },
 
   dots: {

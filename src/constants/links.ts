@@ -10,7 +10,9 @@
 /** Play Store package id. Must match `applicationId` in android/app/build.gradle. */
 export const ANDROID_PACKAGE = 'com.livil';
 
+export const TERMS_URL = 'https://livil-music.com/terms.html';
 export const PRIVACY_POLICY_URL = 'https://livil-music.com/privacy-policy.html';
+export const SUPPORT_URL = 'https://livil-music.com/support.html';
 export const CHILD_SAFETY_URL = 'https://livil-music.com/child-safety.html';
 export const DELETE_ACCOUNT_INFO_URL = 'https://livil-music.com/delete-account.html';
 

@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <meta name="robots" content="index,follow" />
+    <title>Terms of Service · Livil</title>
+    <meta
+      name="description"
+      content="The terms you agree to when you use Livil, including the rights you keep in what you upload. Livil is a social music platform."
+    />
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: #14141c;
+        --surface-2: #1b1b26;
+        --border: #232330;
+        --text: #f5f5fa;
+        --text-secondary: #b8b8c8;
+        --text-muted: #7a7a8c;
+        --purple: #7c3aed;
+        --purple-light: #a78bfa;
+        --purple-glow: rgba(124, 58, 237, 0.35);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        height: 800px;
+        background: radial-gradient(
+          circle at center,
+          var(--purple-glow) 0%,
+          transparent 60%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 22px 96px;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 18px 8px 14px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        margin-bottom: 28px;
+      }
+
+      .logo-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--purple);
+        box-shadow: 0 0 12px var(--purple-glow);
+      }
+
+      .logo-name {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--text);
+      }
+
+      h1 {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        margin: 0 0 10px;
+        background: linear-gradient(135deg, #fff 0%, #c4b5fd 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .tagline {
+        color: var(--text-secondary);
+        font-size: 15px;
+        margin: 0;
+      }
+
+      .updated {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 4px 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text-muted);
+        font-size: 12px;
+        letter-spacing: 0.3px;
+      }
+
+      .intro {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 22px 24px;
+        margin-bottom: 8px;
+      }
+
+      .intro p {
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 44px 0 14px;
+        letter-spacing: -0.3px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      h2::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 22px;
+        background: var(--purple);
+        border-radius: 2px;
+        box-shadow: 0 0 12px var(--purple-glow);
+      }
+
+      h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 22px 0 8px;
+        color: var(--text);
+      }
+
+      p,
+      li {
+        color: var(--text-secondary);
+      }
+
+      ul,
+      ol {
+        padding-left: 20px;
+        margin: 8px 0 12px;
+      }
+
+      li {
+        margin-bottom: 7px;
+      }
+
+      a {
+        color: var(--purple-light);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.15s ease;
+      }
+
+      a:hover {
+        border-bottom-color: var(--purple-light);
+      }
+
+      strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin: 14px 0;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+      }
+
+      .card:hover {
+        border-color: #2e2e42;
+      }
+
+      .card p {
+        margin: 0;
+      }
+
+      .card .name {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .contact-card {
+        background: linear-gradient(
+          135deg,
+          rgba(124, 58, 237, 0.12) 0%,
+          var(--surface) 100%
+        );
+        border: 1px solid rgba(124, 58, 237, 0.35);
+        border-radius: 16px;
+        padding: 24px;
+        margin-top: 14px;
+        text-align: center;
+      }
+
+      .contact-card .name {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--purple-light);
+        margin-bottom: 8px;
+      }
+
+      .contact-card .email {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      footer {
+        margin-top: 60px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+
+      footer .heart {
+        color: var(--purple-light);
+      }
+
+      @media (max-width: 520px) {
+        .wrap {
+          padding: 36px 18px 72px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        h2 {
+          font-size: 19px;
+        }
+        .card,
+        .intro {
+          padding: 16px 18px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="logo">
+          <span class="logo-dot"></span>
+          <span class="logo-name">Livil</span>
+        </div>
+        <h1>Terms of Service</h1>
+        <p class="tagline">A social music platform built around what you listen to.</p>
+        <span class="updated">Version 1.0 &middot; Effective September 7, 2026</span>
+      </header>
+
+      <div class="intro">
+        <p>
+          These terms are the agreement between you and Livil. By creating an
+          account or using the app, you accept them. If you do not accept them,
+          please do not use Livil.
+        </p>
+        <p>
+          Livil is operated by <strong>Vamsi Vinay Kumar Bosara</strong>,
+          Visakhapatnam, Andhra Pradesh, India. In these terms, "we" and "us"
+          mean the operator, and "you" means you.
+        </p>
+      </div>
+
+      <h2>1. Who Can Use Livil</h2>
+      <p>
+        You must be <strong>13 years or older</strong> to use Livil. If the law
+        where you live sets a higher minimum age for using a service like this
+        without a parent's consent, you must meet that age instead.
+      </p>
+      <p>
+        You may hold one account, you must give accurate information when you
+        create it, and you are responsible for what happens through it. Tell us
+        promptly if you believe someone else is using your account.
+      </p>
+
+      <h2>2. What You Upload Stays Yours</h2>
+      <p>
+        <strong>You keep ownership of everything you upload</strong> &mdash; your
+        tracks, videos, artwork, playlists, profile and messages. We do not claim
+        your work.
+      </p>
+      <p>
+        To run the service, we need your permission to handle it. You grant us a
+        worldwide, non-exclusive, royalty-free licence to host, store, reproduce,
+        adapt for playback, and display your content <em>for the purpose of
+        operating and improving Livil</em>. That licence covers the ordinary
+        mechanics of a music app: storing your file, converting it for streaming,
+        generating a waveform, making a thumbnail, and showing it to the people
+        you shared it with.
+      </p>
+      <p>
+        We do not sell your content, license it to third parties, or use it to
+        advertise anything without asking you first.
+      </p>
+      <p>
+        <strong>The licence ends when your content does.</strong> Delete a post
+        or your account and the licence ends with it, except where a copy must be
+        kept briefly in backups or where the law requires us to retain something.
+        Content other people have re-shared may remain visible in their posts.
+      </p>
+
+      <h2>3. You Must Own What You Upload</h2>
+      <p>
+        You promise that you own, or have permission to use, everything you
+        upload &mdash; the recording, the composition, the artwork, and anything
+        that appears in a video. Uploading someone else's music without their
+        permission is not allowed on Livil, whatever the reason.
+      </p>
+      <p>Do not upload it if you cannot answer "yes, this is mine or I have permission."</p>
+
+      <h2>4. Things You Cannot Do</h2>
+      <p>
+        <strong>We have zero tolerance for objectionable content and abusive
+        behaviour.</strong> Do not post, upload, or send anything that:
+      </p>
+      <ul>
+        <li>infringes someone else's copyright or other rights;</li>
+        <li>harasses, bullies, threatens, or targets another person;</li>
+        <li>promotes hatred or violence against people or groups;</li>
+        <li>sexualises children in any way, or depicts sexual content;</li>
+        <li>is unlawful, deceptive, or impersonates someone else;</li>
+        <li>contains malware, or attempts to break, overload, or gain
+            unauthorised access to Livil or its users' accounts.</li>
+      </ul>
+      <p>
+        Do not scrape, resell, or redistribute other people's content from Livil,
+        and do not use it to build a competing dataset or service.
+      </p>
+
+      <h2>5. Reporting, and What We Do About It</h2>
+      <p>
+        Every post, comment and story can be reported from its
+        <strong>&hellip;</strong> menu, and any account can be blocked from its
+        profile. We review reports and act on them.
+      </p>
+      <p>
+        Content that breaks these terms is removed. Accounts that break them
+        repeatedly, or seriously even once, are suspended or terminated. We do
+        not require a warning first, and we do not owe an explanation for a
+        removal &mdash; though we will usually give one.
+      </p>
+
+      <h2>6. Copyright Complaints</h2>
+      <p>
+        If you own the rights to a work uploaded to Livil without your
+        permission, email us with a link to the post, a description of the work,
+        and confirmation that you hold the rights. We remove infringing content
+        and terminate accounts that repeatedly infringe. Details are on our
+        <a href="./support.html">Support page</a>.
+      </p>
+
+      <h2>7. Your Account, and Ending It</h2>
+      <p>
+        You can delete your account at any time from
+        <strong>Profile &rarr; settings &rarr; Account settings</strong>, or as
+        described at <a href="./delete-account.html">Delete Your Account</a>.
+        Deletion is immediate and permanent.
+      </p>
+      <p>
+        We may suspend or end your access if you break these terms, or if we must
+        do so to comply with the law. We may also stop offering Livil, in whole
+        or in part &mdash; we will give reasonable notice where we can.
+      </p>
+
+      <h2>8. Livil Is Provided As-Is</h2>
+      <p>
+        Livil is offered free of charge and <strong>as-is</strong>. We do not
+        promise it will be uninterrupted, error-free, or that content will always
+        be available. Back up anything you cannot afford to lose &mdash; do not
+        treat Livil as the only copy of your work.
+      </p>
+      <p>
+        To the extent the law allows, we exclude implied warranties, and our
+        total liability to you for any claim relating to Livil is limited to
+        <strong>INR 1,000</strong>. Nothing here limits liability that cannot be
+        limited by law.
+      </p>
+      <p>
+        Livil hosts content uploaded by its users. We do not endorse it, and we
+        are not responsible for it, though we act on reports as described above.
+      </p>
+
+      <h2>9. Changes to These Terms</h2>
+      <p>
+        We may update these terms. The version and effective date are shown at
+        the top of this page. If a change materially affects your rights, we will
+        give notice in the app before it takes effect. Continuing to use Livil
+        after that means you accept the new version.
+      </p>
+
+      <h2>10. Governing Law</h2>
+      <p>
+        These terms are governed by the laws of India, and the courts of
+        Visakhapatnam, Andhra Pradesh have jurisdiction &mdash; except where the
+        law of your own country gives you the right to bring a claim locally.
+      </p>
+
+      <h2>11. Contact</h2>
+      <p>Questions about these terms:</p>
+      <div class="contact-card">
+        <span class="name">Livil Support</span>
+        <a class="email" href="mailto:vvk.iitkgp@gmail.com"
+          >vvk.iitkgp@gmail.com</a
+        >
+      </div>
+      <footer>
+        © 2026 Livil — Made with <span class="heart">♪</span> for music lovers.
+      </footer>
+    </div>
+  </body>
+</html>
