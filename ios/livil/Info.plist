@@ -42,6 +42,14 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Export compliance. Declared once here so App Store Connect stops asking
+	     on every upload. false is correct: the app ships no crypto library, does
+	     no encryption of its own, and talks only HTTPS (NSAllowsArbitraryLoads is
+	     false above) - i.e. it uses nothing beyond the standard encryption iOS
+	     itself provides, which is exempt. Revisit this if we ever add our own
+	     cryptography or ship a non-standard algorithm. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
