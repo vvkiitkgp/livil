@@ -9,10 +9,13 @@
  * apex right up until DNS flips — so there is no window where livil-music.com is down or
  * half-migrated. Pages gets disabled after the Vercel deployment is confirmed, not before.
  *
- * THE THREE PATHS THAT MUST NOT MOVE. `privacy-policy.html`, `child-safety.html` and
- * `delete-account.html` are registered in the Play Console listing. A 404 on any of them is a
- * policy violation against a live listing, not a broken link — so this script fails the build
- * if any is missing rather than deploying a site that is quietly non-compliant.
+ * THE PATHS THAT MUST NOT MOVE. `privacy-policy.html`, `child-safety.html` and
+ * `delete-account.html` are registered in the Play Console listing; `support.html` is the
+ * Support URL registered with App Store Connect, and `terms.html` is what both clients' signup
+ * copy links to as the agreement being accepted. A 404 on any of them is a policy violation
+ * against a live listing — or, for terms.html, an agreement citing a document that does not
+ * load — not a broken link. So this script fails the build if any is missing rather than
+ * deploying a site that is quietly non-compliant.
  *
  * CNAME is skipped: it is a GitHub Pages mechanism and means nothing to Vercel, where the
  * domain is configured on the project.
@@ -25,8 +28,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DOCS = join(here, '../../docs');
 const OUT = join(here, '../dist');
 
-/** Registered in the Play Console. Their absence is a compliance failure, not a warning. */
-const REQUIRED = ['privacy-policy.html', 'child-safety.html', 'delete-account.html'];
+/**
+ * Registered with a store, or cited as the terms users accept. Their absence is a compliance
+ * failure, not a warning.
+ *
+ * `support.html` is App Store Connect's Support URL — Apple rejects a listing whose support
+ * link does not resolve. `terms.html` is named at both signup surfaces as the agreement being
+ * entered into, and is the document terms_acceptances rows point at by version and hash; a
+ * 404 there would mean users accepting something nobody can read.
+ */
+const REQUIRED = [
+  'privacy-policy.html',
+  'child-safety.html',
+  'delete-account.html',
+  'support.html',
+  'terms.html',
+];
 
 const SKIP = new Set(['CNAME']);
 
