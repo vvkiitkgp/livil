@@ -15,6 +15,7 @@ import React from 'react';
 import {
   AppleLogo,
   ArrowBendUpLeft,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowSquareOut,
@@ -103,7 +104,7 @@ export type IconName =
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
   | 'share' | 'externalLink' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
-  | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp'
+  | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
   | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
@@ -163,6 +164,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   send: [PaperPlaneTilt, 'fill'],
   arrowRight: [ArrowRight, 'bold'],
   arrowUp: [ArrowUp, 'bold'],
+  arrowDown: [ArrowDown, 'bold'],
   collapse: [CaretDown, 'bold'],
   close: [X, 'bold'],
   clear: [XCircle, 'fill'],
