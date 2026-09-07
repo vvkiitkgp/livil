@@ -1615,6 +1615,57 @@ export type Database = {
         }
         Relationships: []
       }
+      terms_acceptances: {
+        Row: {
+          accepted_at: string
+          app_version: string | null
+          id: string
+          source: string
+          user_id: string
+          version: string
+        }
+        Insert: {
+          accepted_at?: string
+          app_version?: string | null
+          id?: string
+          source: string
+          user_id: string
+          version: string
+        }
+        Update: {
+          accepted_at?: string
+          app_version?: string | null
+          id?: string
+          source?: string
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
+      terms_versions: {
+        Row: {
+          created_at: string
+          effective_at: string
+          sha256: string
+          url: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          effective_at: string
+          sha256: string
+          url: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          effective_at?: string
+          sha256?: string
+          url?: string
+          version?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
