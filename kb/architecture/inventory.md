@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-02
+last_verified: 2026-09-10
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-205 TypeScript file(s) under `src/`, 55,893 lines.
+210 TypeScript file(s) under `src/`, 56,731 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2512 |
-| `src/screens/main/ConversationScreen.tsx` | 1659 |
+| `src/screens/main/ConversationScreen.tsx` | 1677 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/components/PostCard.tsx` | 1373 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
@@ -39,8 +39,8 @@ reading alone (Constitution P28).
 | `src/components/FloatingPlayer.tsx` | 912 |
 | `src/screens/main/JamRoomScreen.tsx` | 843 |
 | `src/components/CommentsSheet.tsx` | 776 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/SearchScreen.tsx` | 657 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
@@ -96,11 +96,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-42 file(s), 21,337 lines.
+43 file(s), 21,674 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1659 |
+| `src/screens/main/ConversationScreen.tsx` | 1677 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1231 |
@@ -108,18 +108,18 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 843 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 683 |
 | `src/screens/main/SearchScreen.tsx` | 657 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
+| `src/screens/auth/SignUpScreen.tsx` | 467 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
-| `src/screens/auth/SignUpScreen.tsx` | 453 |
 | `src/screens/main/InboxScreen.tsx` | 425 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
-| `src/screens/auth/SignInScreen.tsx` | 348 |
+| `src/screens/auth/SignInScreen.tsx` | 357 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 318 |
@@ -129,6 +129,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 268 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 268 |
+| `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
 | `src/screens/main/FollowingScreen.tsx` | 225 |
@@ -145,7 +146,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-74 file(s), 18,396 lines.
+75 file(s), 18,537 lines.
 
 | File | Lines |
 |---|---:|
@@ -164,7 +165,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostLikersSheet.tsx` | 356 |
 | `src/components/TrackContextMenu.tsx` | 306 |
 | `src/components/CommentItem.tsx` | 271 |
-| `src/components/Icon.tsx` | 260 |
+| `src/components/Icon.tsx` | 266 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
 | `src/components/StoryReportModal.tsx` | 236 |
@@ -188,6 +189,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/ProfileTabBar.tsx` | 140 |
+| `src/components/AppleSignInButton.tsx` | 135 |
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
@@ -226,7 +228,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-39 file(s), 9,448 lines.
+41 file(s), 9,657 lines.
 
 | File | Lines |
 |---|---:|
@@ -255,12 +257,14 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 157 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
+| `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
+| `src/services/terms.ts` | 78 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/waveform.ts` | 66 |
 | `src/services/teamMessages.ts` | 57 |
@@ -333,6 +337,7 @@ version is not the version running (Constitution P52).
 
 | Package | Declared | Installed |
 |---|---|---|
+| `@invertase/react-native-apple-authentication` | `2.5.1` | *(not installed)* |
 | `@notifee/react-native` | `^9.1.8` | 9.1.8 |
 | `@react-native-async-storage/async-storage` | `^1.23.1` | 1.23.1 |
 | `@react-native-documents/picker` | `^10.1.7` | 10.1.7 |
