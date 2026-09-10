@@ -123,7 +123,7 @@ and the never-lists apply to every author regardless.
 |---|---|
 | Package | `com.livil` |
 | Track | **Production** — live since 2026-08-14, full rollout, 176 countries + rest of world |
-| Current | versionCode 71 / versionName 2.0.6 |
+| Current | See the Play Store line in `CLAUDE.md` — it is the copy the `version drift` gate holds to `build.gradle`. Duplicating the number here is what let this row reach 1.1.9 while production ran 2.0.5. |
 
 ---
 
