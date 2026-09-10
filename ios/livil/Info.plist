@@ -20,31 +20,76 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.livil</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>livil</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
+		<string>instagram</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Export compliance. Declared once here so App Store Connect stops asking
+	     on every upload. false is correct: the app ships no crypto library, does
+	     no encryption of its own, and talks only HTTPS (NSAllowsArbitraryLoads is
+	     false above) - i.e. it uses nothing beyond the standard encryption iOS
+	     itself provides, which is exempt. Revisit this if we ever add our own
+	     cryptography or ship a non-standard algorithm. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-	  <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string/>
+	<key>NSCameraUsageDescription</key>
+	<string>Livil uses the camera so you can take a new photo for your profile picture or an album cover.</string>
+	<!-- REQUIRED even though Livil never records. Apple rejected build 2.0.6 (71)
+	     with ITMS-90683 for its absence: the check is on what the BINARY REFERENCES,
+	     not on what our code calls. react-native-audio-api's AudioSessionManager.mm
+	     calls requestRecordPermission, and it is linked in because we use that
+	     library's standalone decodeAudioData for waveform analysis -- never as a
+	     recorder. Apple's own words: "While your app might not use these APIs, a
+	     purpose string is still required."
+	     The prompt this text belongs to will never actually appear, since nothing
+	     requests microphone access -- so it says so plainly rather than inventing a
+	     recording feature that does not exist. Removing this re-breaks the upload. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Livil does not record audio. An audio component used to draw track waveforms references the microphone, so iOS requires this notice — you will never be asked for microphone access.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Livil needs access to your photos so you can pick a profile picture or an album cover.</string>
+	<key>RCTNewArchEnabled</key>
+	<true/>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Anton-Regular.ttf</string>
+		<string>CourierPrime-Bold.ttf</string>
+		<string>CourierPrime-Regular.ttf</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<!-- Keeps audio (incl. a video's audio track) playing when backgrounded/locked
-		     and powers the lock-screen / Control Center Now Playing controls + PiP. -->
-		<string>audio</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -54,11 +99,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>UIAppFonts</key>
-	<array>
-		<string>Anton-Regular.ttf</string>
-		<string>CourierPrime-Bold.ttf</string>
-		<string>CourierPrime-Regular.ttf</string>
-	</array>
 </dict>
 </plist>

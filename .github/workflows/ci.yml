@@ -433,6 +433,19 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/definer-search-path.test.sql
 
+      # terms_acceptances is an evidential record, so the suite asserts what it
+      # REFUSES. Policies stop clients; TRIGGERS stop the table owner, which RLS never
+      # binds — and the owner is precisely the party a counterparty would accuse of
+      # writing the row. Every assertion here fails silently in production if broken:
+      # nothing in the app reads these refusals, so a lost immutability guarantee would
+      # surface for the first time in a dispute.
+      - name: Terms acceptance immutability tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/terms-acceptance.test.sql
+
   schema-parity:
     name: production matches the repo
     runs-on: ubuntu-latest

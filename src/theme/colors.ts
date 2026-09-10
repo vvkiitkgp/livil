@@ -14,6 +14,11 @@ export const COLORS = {
   purpleDim: 'rgba(139, 61, 255, 0.15)',
   purpleGlow: 'rgba(139, 61, 255, 0.3)',
   white: '#FFFFFF',
+  // True black, distinct from `bg` (#0A0A0F). Exists for Apple's Sign in with
+  // Apple button, whose appearance Apple specifies exactly: on the white
+  // variant the mark and label must be pure black. Do not reach for this as a
+  // general background - `bg` is the app's black.
+  black: '#000000',
   textSecondary: '#8B90A7',
   textMuted: '#4B5268',
   border: '#252545',

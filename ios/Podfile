@@ -17,6 +17,17 @@ end
 target 'livil' do
   config = use_native_modules!
 
+  # Firebase (push notifications) ships FirebaseCoreInternal as a Swift pod, and Swift can
+  # only import a static library that defines a module map. GoogleUtilities — which it
+  # depends on — does not define one by default, so `pod install` aborts with
+  # "The following Swift pods cannot yet be integrated as static libraries".
+  #
+  # Fixed narrowly rather than with a global `use_modular_headers!` or
+  # `use_frameworks! :linkage => :static`: both change how EVERY pod is built, which on
+  # RN 0.85 + Hermes + the New Architecture is a much larger blast radius than this one
+  # dependency warrants.
+  pod 'GoogleUtilities', :modular_headers => true
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Linking,
   View,
   Text,
   TouchableOpacity,
@@ -14,6 +15,7 @@ import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
+import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import { Icon } from '../../components/Icon';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 
@@ -246,11 +248,20 @@ export default function SignUpScreen({ navigation }: Props) {
               fullWidth
             />
 
+            {/* These were styled as links and had no onPress -- purple, weighted, and
+                completely inert. Worse than plain text: it invites a tap, does
+                nothing, and the user concludes the documents do not exist. This
+                line is the point of agreement, so what it names has to be
+                reachable from it. */}
             <Text style={styles.termsText}>
               By creating an account you agree to our{' '}
-              <Text style={styles.termsLink}>Terms of Service</Text>
+              <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>
+                Terms of Service
+              </Text>
               {' '}and{' '}
-              <Text style={styles.termsLink}>Privacy Policy</Text>
+              <Text style={styles.termsLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+                Privacy Policy
+              </Text>
             </Text>
           </View>
 
@@ -432,6 +443,9 @@ const styles = StyleSheet.create({
   termsLink: {
     color: COLORS.purpleLight,
     fontWeight: '500',
+    // Underlined now that it genuinely is a link: tint plus weight alone is not a
+    // reliable affordance, and fails outright for colour-blind users.
+    textDecorationLine: 'underline',
   },
   footer: {
     flexDirection: 'row',

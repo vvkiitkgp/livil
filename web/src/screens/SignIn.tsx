@@ -238,14 +238,24 @@ export function SignIn({
           {signingUp ? 'Create account' : 'Sign in'}
         </Button>
 
-        {/* Privacy Policy only, and linked for real. Mobile's signup shows "Terms of
-            Service and Privacy Policy" as styled text with NO press handler, and there is
-            no terms.html in docs/ — so the mobile copy promises two documents, links
-            neither, and one of them does not exist. Naming only what we actually publish is
-            the honest version until a Terms page is written. */}
+        {/* Both documents now, because both now exist and both are reachable. The
+            previous note here named only the Privacy Policy on the grounds that
+            docs/terms.html had never been written and mobile's copy promised two
+            documents while linking neither — an honest workaround for a real gap. Terms
+            were published on 2026-09-07 and mobile's links were made functional in the
+            same change, so that reasoning has expired.
+
+            NOTE: web still has no terms ACCEPTANCE gate. Mobile shows a scrollwrap screen
+            and records the acceptance in terms_acceptances; this is clickwrap only, and a
+            user who signs up here is never recorded as having agreed. That is a hole in
+            what the acceptance record claims, and it is not closed by this change. */}
         {signingUp && (
           <p className="hint hint--center">
             By creating an account you agree to our{' '}
+            <a href="/terms.html" target="_blank" rel="noopener noreferrer">
+              Terms of Service
+            </a>{' '}
+            and{' '}
             <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer">
               Privacy Policy
             </a>

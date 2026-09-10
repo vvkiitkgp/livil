@@ -10,6 +10,8 @@ import { resolveSharedPostTarget } from '../services/share';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
+import TermsAcceptScreen from '../screens/auth/TermsAcceptScreen';
+import { hasAcceptedCurrentTerms } from '../services/terms';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import { getUsernameSet } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
@@ -159,6 +161,10 @@ export default function RootNavigator() {
   // null = unknown (checking), true = must choose a username (new OAuth user),
   // false = onboarded. Gates the app behind ChooseUsernameScreen.
   const [needsUsername, setNeedsUsername] = useState<boolean | null>(null);
+  // null = unresolved. Gates the app behind TermsAcceptScreen, ahead of the username
+  // gate: agreeing to use the service comes before setting up an identity within it.
+  // Also fires for EXISTING users when TERMS_VERSION changes, with source 'reaccept'.
+  const [needsTerms, setNeedsTerms] = useState<boolean | null>(null);
   // Set when a livil://auth deep link carries type=recovery (password reset
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
@@ -368,8 +374,14 @@ export default function RootNavigator() {
           } catch {
             if (!cancelled) { setNeedsUsername(false); }
           }
+          // Resolved here too, so the splash covers BOTH gates and a returning user
+          // never sees a flash of home before the terms screen. hasAcceptedCurrentTerms
+          // fails open, so a network problem lets them in rather than walling them out.
+          const accepted = await hasAcceptedCurrentTerms(s.user.id);
+          if (!cancelled) { setNeedsTerms(!accepted); }
         } else {
           setNeedsUsername(null);
+          setNeedsTerms(null);
         }
         if (!cancelled) { setSession(s); }
       })
@@ -403,6 +415,7 @@ export default function RootNavigator() {
           const prevUserId = pushUserIdRef.current;
           pushUserIdRef.current = null;
           setNeedsUsername(null);
+          setNeedsTerms(null);
           setPasswordRecoveryPending(false);
           if (prevUserId) void unregisterDevice(prevUserId);
         } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
@@ -411,9 +424,12 @@ export default function RootNavigator() {
           pushUserIdRef.current = s.user.id;
           void registerDeviceForUser(s.user.id);
           setNeedsUsername(null);
+          setNeedsTerms(null);
           void getUsernameSet(s.user.id)
             .then(set => { if (!cancelled) { setNeedsUsername(!set); } })
             .catch(() => { if (!cancelled) { setNeedsUsername(false); } });
+          void hasAcceptedCurrentTerms(s.user.id)
+            .then(ok => { if (!cancelled) { setNeedsTerms(!ok); } });
         }
       }
     });
@@ -425,7 +441,8 @@ export default function RootNavigator() {
   }, []);
 
   // Splash is showing while we either load or resolve the onboarding gate.
-  const onSplash = loading || (!!session && needsUsername === null);
+  const onSplash =
+    loading || (!!session && (needsUsername === null || needsTerms === null));
 
   // Once that resolves, crossfade the splash overlay out (fade + gentle scale)
   // — dissolving into whatever's underneath: the app, or the username gate.
@@ -451,6 +468,14 @@ export default function RootNavigator() {
               showToast('Password updated.', { kind: 'success' });
             }}
             onCancel={() => setPasswordRecoveryPending(false)}
+          />
+        ) : session?.user?.id && needsTerms ? (
+          <TermsAcceptScreen
+            userId={session.user.id}
+            // A user who has no username yet is brand new, so this is their first
+            // acceptance; anyone past that point is re-accepting a changed version.
+            source={needsUsername ? 'signup' : 'reaccept'}
+            onAccepted={() => setNeedsTerms(false)}
           />
         ) : session && needsUsername ? (
           <ChooseUsernameScreen
