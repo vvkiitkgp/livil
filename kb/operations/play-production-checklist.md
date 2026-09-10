@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-platform
 consumers: [DO, P-PF]
-last_verified: 2026-08-09
+last_verified: 2026-08-14
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -12,13 +12,26 @@ related_adrs: []
 
 # Play Store — Pre-Production Checklist
 
-Status as of **2026-08-09**: closed-testing criteria met (12+ testers, 14+ days),
-**Apply for production** unlocked in the Console, production track **Inactive**.
-`main` is at `2.0.2 (67)`, submitted for closed-track review. Codes 62–66 are spent.
+## 🚀 LIVE ON GOOGLE PLAY — 2026-08-14
 
-**Two things stand between here and applying**, both in section 1: test 2.0.2 once
-it goes live to testers, and re-check the two App content declarations that today's
-work invalidated. Everything else on this list is either done or not a blocker.
+`2.0.2 (67)` is published to production, full rollout, 176 countries + rest of world.
+Verified from outside the account: `play.google.com/store/apps/details?id=com.livil`
+returns the listing for **Livil**, developer **Livil Labs**.
+
+    Applied for production access   2026-08-09, 19:01
+    Access granted                  2026-08-14  (inside the "7 days or less" window)
+    Published                       2026-08-14
+
+The bundle promoted was the one closed testers had run for five days — NOT a fresh
+build from `main`. `main` had two features merged after 67 (#175, #176) that no
+tester had seen, and shipping those as the debut release would have contradicted the
+readiness answer given in the application. They go out as `2.0.3 (68)` the normal
+way: closed testing first.
+
+**This document is now history, not a plan.** It is kept because the appendix and the
+open items below still apply, and because the next release repeats most of it.
+
+---
 
 Applying for production is not the same as shipping to production. The application
 is a questionnaire Google reviews (typically days, occasionally weeks). Nothing below
@@ -81,20 +94,38 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
 
 ### What this left open
 
-- [ ] **Test 2.0.2 (67) once it goes live to testers.** Not ceremony: every defect in
-      this section was found by opening the app, and none by CI. Typecheck, lint, 453
-      tests and twelve checks were all green on the build that told users a blocked
-      person's music was still visible, showed "Reposts 0" for someone with reposts,
-      and let a non-friend message you. Nothing automated catches a screen that lies.
-      Highest-value paths: blocking an EXISTING DM thread, a non-friend's profile
-      (reposts/playlists hidden but counted), and Settings → Blocked accounts.
-- [ ] **Re-check the App content declarations you have ALREADY submitted.** Two
-      answers changed on 2026-08-09 and a declaration that no longer matches the app
-      is a rejection risk in its own right:
-      **Data safety** now also stores blocks (`blocked_users`) and reports across three
-      tables, including free text a reporter types;
-      **Content rating** — the "is UGC moderated" answer flips from no to **yes**, but
-      only say so once the turnaround below is real.
+- [x] **2.0.2 (67) tested on device, 2026-08-09.** Blocking an existing DM thread,
+      a non-friend's profile, the DM composer states, and Settings → Blocked accounts
+      all behaved correctly. Kept as a record of what mattered: every defect in this
+      section was found by opening the app, and none by CI. Typecheck, lint, 453 tests
+      and twelve checks were all green on the build that told users a blocked person's
+      music was still visible, showed "Reposts 0" for someone with reposts, and let a
+      non-friend message you. Nothing automated catches a screen that lies.
+- [ ] **Group chat with a blocked member is still only verified in the database.**
+      A rolled-back transaction confirmed the shared-conversation exception returns
+      the profile (so names resolve) while hiding their content. The CLIENT rendering
+      it has never been eyeballed. Worst case is "Unknown" appearing in a group both
+      people are in — cosmetic, narrow, patchable. Deprioritised deliberately before
+      launch; still worth ten minutes.
+- [x] **App content declarations re-checked and resubmitted, 2026-08-09.**
+      **Data safety** — added, under App activity: *Other user-generated content*
+      (report reason plus the free text a reporter types) and *Other actions* (who a
+      user has blocked). Both optional, neither shared.
+      **Content rating** — no change needed, which was the surprise: the questionnaire
+      submitted on 2026-05-09 already declared "users or user-generated content can be
+      blocked / reported" and "moderated chat". Those answers were not true when made;
+      today's work made them true. The app caught up to its own declaration.
+      **In-app search history was deliberately left UNTICKED** — `search_result_taps`
+      records which item a user opened, never the query text ("the query text, ever",
+      per the service), and `recentSearches` never leaves the device. That is App
+      interactions, already declared. Over-declaring is still a mismatch.
+
+      One residual overstatement, accepted knowingly: **"Moderated chat" is not
+      strictly true** — there is no `message_reports` table and no report affordance in
+      `ConversationScreen`, so a message cannot be flagged. DMs are friend-only,
+      blockable, and now require friendship to write, which is real protection but not
+      moderation. Revisit at the next questionnaire retake, either by having message
+      reporting or by answering differently.
 - [x] **Review turnaround: 24 HOURS.** Decided 2026-08-09. This is the commitment to
       give when the questionnaire asks what happens after a user reports something —
       "it appears in a queue" is half an answer; this is the other half.
@@ -209,13 +240,37 @@ production, and several are new-ish requirements that closed testing did not enf
       `kb/operations/scaling-assumptions.md` against an open-signup load, and confirm
       rate limits and the storage plan survive uncapped registration.
 
-## 5. Rollout
+## 5. Rollout — done 2026-08-14
 
-- [ ] Country availability — start narrow if you want a soft launch.
-- [ ] **Staged rollout at 5–10%**, not 100%. A production halt is easy at 10% and
-      painful at 100%.
-- [ ] Release notes written for a public audience, not for testers.
-- [ ] Someone is watching Crashlytics / Console vitals for the first 48 hours.
+- [x] **Country availability: 176 countries + rest of world.** Geography was never the
+      risk control here, and restricting it would only have complicated the Instagram
+      push.
+- [x] **Full rollout, NOT staged — and the earlier advice in this file was wrong.**
+      It said 5–10%, on the general principle that a halt is cheap at 10% and painful
+      at 100%. That principle is about UPDATES: it limits how many existing users a
+      bad build reaches. On a FIRST production release there are no existing users, so
+      the percentage governs who may install at all — roughly 10% of people who reach
+      the listing, the rest seeing "unavailable". For an app with no search presence
+      yet, whose first cohort arrives through a link you send them, that throttles
+      precisely the people you are trying to reach and protects a blast radius of zero.
+      Staged rollout becomes genuinely valuable at the NEXT release, when real users
+      are on 2.0.2 and an update can break them. Use it then.
+- [x] Release notes written for a public audience, not for testers.
+- [ ] **Watch Android vitals + Crashlytics for the first 48 hours.** With no rollback,
+      catching a problem early and shipping a fix fast IS the strategy — halting a
+      rollout does not uninstall the app from anyone who already has it.
+- [ ] **Watch Supabase.** Micro tier in `ap-south-1`, sized for twelve testers. Uploads
+      are the thing most likely to surprise you. See `scaling-assumptions.md`.
+
+### Live ≠ findable
+
+The listing is public and the link installs, but **Play search will return nothing for
+"Livil" for days to a couple of weeks**. Indexing lags publication for a new app with no
+install history; there is no setting for it. Installs, ratings and time are what move
+it, so the first cohort has to arrive via the link — Instagram, the waitlist, direct
+invitations. `PLAY_STORE_WEB_URL` and `market://` are already wired into
+`src/constants/links.ts`, so the in-app invite share and the marketing site need no
+change.
 
 ---
 

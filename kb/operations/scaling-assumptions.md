@@ -30,9 +30,20 @@ That has a concrete consequence: **"will this scale?" is currently unanswerable*
 agent asked to weigh a performance concern against a feature has no basis for the trade. It
 must escalate rather than invent a threshold (Constitution P63).
 
-Working assumption, stated so it can be corrected: **closed testing, on the order of hundreds
-of users**, with a public launch as the next inflection point. Everything below is calibrated
-against that assumption. If it is wrong, the priorities change.
+Working assumption, stated so it can be corrected: **the order of hundreds of users**.
+Everything below is calibrated against that assumption. If it is wrong, the priorities change.
+
+**That assumption now needs re-basing, and no agent should do it alone.** It was written for
+closed testing with a public launch named as the next inflection point. The launch happened:
+Livil has been live on Google Play since 2026-08-14, on full rollout, with open signup. The
+ceiling that a fixed tester list used to impose is gone.
+
+What has NOT changed is that usage is still unmeasured — there is no analytics, so nobody can
+say whether the real number is twenty or twenty thousand. Constitution P63 applies with more
+force than before, not less: an agent must escalate rather than invent a threshold, because the
+one bound that made the old number defensible has been removed. The cliffs below are still the
+right cliffs; how close the app now sits to each of them is an open question, and answering it
+needs a human with the Supabase dashboard open.
 
 ---
 
