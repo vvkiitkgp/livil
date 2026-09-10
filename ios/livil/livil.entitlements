@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Sign in with Apple. Required by App Store Review guideline 4.8 because the
+	     app offers Google sign-in. Without this entitlement Apple's sheet refuses
+	     to appear at runtime, and the matching capability must also be enabled on
+	     the com.livil App ID in the developer portal - both halves are required. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>

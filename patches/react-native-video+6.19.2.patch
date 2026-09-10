@@ -1495,10 +1495,10 @@ index 4760ea5..83f7816 100644
                  COMMAND.PLAY -> session.player.play()
                  COMMAND.PAUSE -> session.player.pause()
 diff --git a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
-index 7927c37..633657e 100644
+index 7927c37..86ad04a 100644
 --- a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
 +++ b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
-@@ -19,6 +19,13 @@ class NowPlayingInfoCenterManager {
+@@ -19,6 +19,40 @@ class NowPlayingInfoCenterManager {
      private var playbackPositionTarget: Any?
      private var seekTarget: Any?
      private var togglePlayPauseTarget: Any?
@@ -1509,10 +1509,37 @@ index 7927c37..633657e 100644
 +    // lock-screen next/previous-track commands (manager only holds AVPlayers).
 +    private var nextTrackHandlers: [Int: () -> Void] = [:]
 +    private var previousTrackHandlers: [Int: () -> Void] = [:]
++
++    // Livil patch: clip window per AVPlayer, in ABSOLUTE full-track seconds.
++    // The player always loads the WHOLE track (never AVAssetReferenceRestriction /
++    // trimmed composition) so the in-app clip editor can scrub the full song; the
++    // clip is presented only here, at the Now Playing boundary. Android does the
++    // same thing with ClipForwardingPlayer wrapping the ExoPlayer for the
++    // MediaSession alone. JS stays absolute on both platforms.
++    private var clipWindows: [Int: (start: Double, end: Double)] = [:]
++
++    /// Clip window for the player currently owning the lock screen, if any.
++    private var currentClip: (start: Double, end: Double)? {
++        guard let player = currentPlayer, let clip = clipWindows[player.hashValue] else { return nil }
++        return clip.end > clip.start ? clip : nil
++    }
++
++    /// Livil patch: called by RCTVideo when the `currentClipJson` prop changes.
++    /// Passing nil (or an inactive window) restores the plain full-track timeline.
++    func setClipWindow(player: AVPlayer, start: Double, end: Double, active: Bool) {
++        if active, end > start {
++            clipWindows[player.hashValue] = (start: start, end: end)
++        } else {
++            clipWindows.removeValue(forKey: player.hashValue)
++        }
++        if currentPlayer === player {
++            updateNowPlayingInfo()
++        }
++    }
  
      private let remoteCommandCenter = MPRemoteCommandCenter.shared()
  
-@@ -81,9 +88,33 @@ class NowPlayingInfoCenterManager {
+@@ -81,9 +115,34 @@ class NowPlayingInfoCenterManager {
          }
      }
  
@@ -1533,6 +1560,7 @@ index 7927c37..633657e 100644
 +    func removeTrackCommandHandlers(player: AVPlayer) {
 +        nextTrackHandlers.removeValue(forKey: player.hashValue)
 +        previousTrackHandlers.removeValue(forKey: player.hashValue)
++        clipWindows.removeValue(forKey: player.hashValue)
 +        if currentPlayer != nil {
 +            registerCommandTargets()
 +        }
@@ -1546,17 +1574,49 @@ index 7927c37..633657e 100644
  
          if let playbackObserver {
              currentPlayer?.removeTimeObserver(playbackObserver)
-@@ -188,6 +219,37 @@ class NowPlayingInfoCenterManager {
+@@ -167,8 +226,17 @@ class NowPlayingInfoCenterManager {
+             guard let self, let player = self.currentPlayer else {
+                 return .commandFailed
+             }
++            // Livil patch: the lock-screen scrubber reports a CLIP-relative position,
++            // so translate it back to absolute before seeking, and clamp inside the
++            // window. Without this a clipped repost scrubs into the wrong part of the
++            // song -- position 0 on the lock screen jumped to 0:00 of the full track
++            // rather than to the start of the clip.
+             if let event = event as? MPChangePlaybackPositionCommandEvent {
+-                player.seek(to: CMTime(seconds: event.positionTime, preferredTimescale: .max))
++                var target = event.positionTime
++                if let clip = self.currentClip {
++                    target = min(max(clip.start + event.positionTime, clip.start), clip.end)
++                }
++                player.seek(to: CMTime(seconds: target, preferredTimescale: .max))
+                 return .success
+             }
+             return .commandFailed
+@@ -188,6 +256,50 @@ class NowPlayingInfoCenterManager {
  
              return .success
          }
 +
 +        // Livil patch: lock-screen next/previous-track commands. Enabled only when
-+        // a handler is registered for the current player. NOTE: enabling these
-+        // makes iOS show the |<< >>| track buttons on the lock screen INSTEAD of
-+        // the +/-10s skip-forward/back arrows.
++        // a handler is registered for the current player.
 +        let hasNext = currentPlayer.flatMap { nextTrackHandlers[$0.hashValue] } != nil
 +        let hasPrevious = currentPlayer.flatMap { previousTrackHandlers[$0.hashValue] } != nil
++
++        // Enabling nextTrack/previousTrack is NOT sufficient. iOS renders the
++        // +/-SEEK_INTERVAL skip arrows INSTEAD of the |<< >>| track buttons for as
++        // long as the skip commands are enabled, no matter what the track commands
++        // say -- so the skip commands must be switched OFF for track buttons to
++        // appear at all.
++        //
++        // An earlier revision of this patch asserted the opposite in a comment. That
++        // was written while iOS could not be built, so it was never run; the symptom
++        // on a real device is a lock screen offering 10-second seeks in a queue-based
++        // music app, with no way to change track. Do not re-enable these without
++        // checking a physical lock screen.
++        let wantsTrackButtons = hasNext || hasPrevious
++        remoteCommandCenter.skipForwardCommand.isEnabled = !wantsTrackButtons
++        remoteCommandCenter.skipBackwardCommand.isEnabled = !wantsTrackButtons
 +
 +        remoteCommandCenter.nextTrackCommand.isEnabled = hasNext
 +        if hasNext {
@@ -1584,7 +1644,7 @@ index 7927c37..633657e 100644
      }
  
      private func invalidateCommandTargets() {
-@@ -197,6 +259,10 @@ class NowPlayingInfoCenterManager {
+@@ -197,6 +309,10 @@ class NowPlayingInfoCenterManager {
          remoteCommandCenter.skipBackwardCommand.removeTarget(skipBackwardTarget)
          remoteCommandCenter.changePlaybackPositionCommand.removeTarget(playbackPositionTarget)
          remoteCommandCenter.togglePlayPauseCommand.removeTarget(togglePlayPauseTarget)
@@ -1595,8 +1655,100 @@ index 7927c37..633657e 100644
      }
  
      func updateNowPlayingInfo() {
+@@ -206,45 +322,65 @@ class NowPlayingInfoCenterManager {
+             return
+         }
+ 
+-        // commonMetadata is metadata from asset, externalMetadata is custom metadata set by user
+-        // externalMetadata should override commonMetadata to allow override metadata from source
+-        // When the metadata has the tag "iTunSMPB" or "iTunNORM" then the metadata is not converted correctly and comes [nil, nil, ...]
+-        // This leads to a crash of the app
+-        let metadata: [AVMetadataItem] = {
+-            func processMetadataItems(_ items: [AVMetadataItem]) -> [String: AVMetadataItem] {
+-                var result = [String: AVMetadataItem]()
+-
+-                for item in items {
+-                    if let id = item.identifier?.rawValue, !id.isEmpty, result[id] == nil {
+-                        result[id] = item
+-                    }
+-                }
+-
+-                return result
+-            }
+-
+-            let common = processMetadataItems(currentItem.asset.commonMetadata)
+-            let external = processMetadataItems(currentItem.externalMetadata)
++        // Livil patch: resolve each field EXTERNAL-FIRST, per identifier, explicitly.
++        //
++        // Upstream merged the asset's own tags and the app-supplied metadata into a
++        // single `Array(dictionary.values)` and then took `.first` matching an
++        // identifier. Dictionary value order is undefined, so when a file carried its
++        // OWN title/artist tags, which of the two same-identifier items landed first
++        // was arbitrary. This runs 4x/second off the periodic time observer, so the
++        // lock screen visibly flip-flopped between the app's title and the mp3's
++        // embedded one several times a second.
++        //
++        // externalMetadata (built by buildNowPlayingMetadata from the database row) is
++        // the source of truth -- it is what the user sees inside the app, and an
++        // uploaded file's tags are frequently wrong, stale, or somebody else's. The
++        // file's own tags are now only a FALLBACK, per field, for anything the app did
++        // not supply.
++        //
++        // This also drops upstream's dictionary-building helper, which existed to work
++        // around "iTunSMPB"/"iTunNORM" tags converting to [nil, nil, ...] and crashing;
++        // filtering by identifier never touches those items, so the hazard goes with it.
++        let externalItems = currentItem.externalMetadata
++        let commonItems = currentItem.asset.commonMetadata
++
++        func resolvedString(_ identifier: AVMetadataIdentifier) -> String? {
++            AVMetadataItem.metadataItems(from: externalItems, filteredByIdentifier: identifier).first?.stringValue
++                ?? AVMetadataItem.metadataItems(from: commonItems, filteredByIdentifier: identifier).first?.stringValue
++        }
+ 
+-            return Array(common.merging(external) { _, new in new }.values)
+-        }()
++        func resolvedData(_ identifier: AVMetadataIdentifier) -> Data? {
++            AVMetadataItem.metadataItems(from: externalItems, filteredByIdentifier: identifier).first?.dataValue
++                ?? AVMetadataItem.metadataItems(from: commonItems, filteredByIdentifier: identifier).first?.dataValue
++        }
+ 
+-        let titleItem = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierTitle).first?.stringValue ?? ""
++        let titleItem = resolvedString(.commonIdentifierTitle) ?? ""
+ 
+-        let artistItem = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtist).first?.stringValue ?? ""
++        let artistItem = resolvedString(.commonIdentifierArtist) ?? ""
+ 
+         // I have some issue with this - setting artworkItem when it not set dont return nil but also is crashing application
+         // this is very hacky workaround for it
+-        let imgData = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first?.dataValue
++        let imgData = resolvedData(.commonIdentifierArtwork)
+         let image = imgData.flatMap { UIImage(data: $0) } ?? UIImage()
+         let artworkItem = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+ 
++        // Livil patch: present the CLIP, not the full track. Duration becomes the clip
++        // length and elapsed is measured from the clip start, so the lock-screen
++        // scrubber spans exactly the audible section. Falls through to the plain
++        // full-track values when no clip is active.
++        let absoluteElapsed = currentItem.currentTime().seconds
++        let clip = currentClip
++        let presentedDuration = clip.map { $0.end - $0.start } ?? currentItem.duration.seconds
++        let presentedElapsed = clip
++            .map { min(max(absoluteElapsed - $0.start, 0), $0.end - $0.start) }
++            ?? absoluteElapsed
++
+         let newNowPlayingInfo: [String: Any] = [
+             MPMediaItemPropertyTitle: titleItem,
+             MPMediaItemPropertyArtist: artistItem,
+             MPMediaItemPropertyArtwork: artworkItem,
+-            MPMediaItemPropertyPlaybackDuration: currentItem.duration.seconds,
+-            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentItem.currentTime().seconds.rounded(),
++            MPMediaItemPropertyPlaybackDuration: presentedDuration,
++            MPNowPlayingInfoPropertyElapsedPlaybackTime: presentedElapsed.rounded(),
+             MPNowPlayingInfoPropertyPlaybackRate: player.rate,
+             MPNowPlayingInfoPropertyIsLiveStream: CMTIME_IS_INDEFINITE(currentItem.asset.duration),
+         ]
 diff --git a/node_modules/react-native-video/ios/Video/RCTVideo.swift b/node_modules/react-native-video/ios/Video/RCTVideo.swift
-index 5f2f5f6..a872329 100644
+index 5f2f5f6..287b182 100644
 --- a/node_modules/react-native-video/ios/Video/RCTVideo.swift
 +++ b/node_modules/react-native-video/ios/Video/RCTVideo.swift
 @@ -132,6 +132,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
@@ -1617,7 +1769,43 @@ index 5f2f5f6..a872329 100644
              }
          } else {
              #if !os(tvOS) && !os(visionOS)
-@@ -1276,11 +1280,30 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+@@ -1266,6 +1270,35 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+         }
+     }
+ 
++    // Livil patch: clip-relative lock screen. JS sends the ABSOLUTE clip window as
++    // JSON -- {startMs, endMs, active, repeatOne} from buildCurrentClipJson -- and the
++    // player is deliberately NOT trimmed, so the in-app editor can still scrub the
++    // whole track. Only the Now Playing timeline is translated. This mirrors what
++    // Android does with ClipForwardingPlayer, minus the player wrapper: on iOS the
++    // MediaSession equivalent is a plain info dictionary, so there is nothing to wrap.
++    //
++    // `repeatOne` is ignored here: iOS clip-end looping is still driven from JS in
++    // GlobalAudioPlayer's progress handler.
++    @objc
++    func setCurrentClipJson(_ currentClipJson: NSString?) {
++        guard let player = _player else { return }
++        guard let json = currentClipJson as String?,
++              let data = json.data(using: .utf8),
++              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
++            NowPlayingInfoCenterManager.shared.setClipWindow(player: player, start: 0, end: 0, active: false)
++            return
++        }
++        let startMs = (obj["startMs"] as? NSNumber)?.doubleValue ?? 0
++        let endMs = (obj["endMs"] as? NSNumber)?.doubleValue ?? 0
++        let active = (obj["active"] as? NSNumber)?.boolValue ?? false
++        NowPlayingInfoCenterManager.shared.setClipWindow(
++            player: player,
++            start: startMs / 1000.0,
++            end: endMs / 1000.0,
++            active: active
++        )
++    }
++
+     @objc
+     func setShowNotificationControls(_ showNotificationControls: Bool) {
+         _showNotificationControls = showNotificationControls
+@@ -1276,11 +1309,30 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
  
          if showNotificationControls {
              NowPlayingInfoCenterManager.shared.registerPlayer(player: player)
@@ -1648,7 +1836,7 @@ index 5f2f5f6..a872329 100644
      @objc
      func setDisableAudioSessionManagement(_ disableAudioSessionManagement: Bool) {
          _disableAudioSessionManagement = disableAudioSessionManagement
-@@ -1434,6 +1457,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+@@ -1434,6 +1486,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
          self._player?.replaceCurrentItem(with: nil)
          if let player = _player {
              player.pause()
@@ -1656,7 +1844,7 @@ index 5f2f5f6..a872329 100644
              NowPlayingInfoCenterManager.shared.removePlayer(player: player)
          }
  
-@@ -2033,6 +2057,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
+@@ -2033,6 +2086,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
  
              if _showNotificationControls {
                  NowPlayingInfoCenterManager.shared.registerPlayer(player: _player)
@@ -1665,10 +1853,20 @@ index 5f2f5f6..a872329 100644
                  NowPlayingInfoCenterManager.shared.updateNowPlayingInfo()
              }
 diff --git a/node_modules/react-native-video/ios/Video/RCTVideoManager.m b/node_modules/react-native-video/ios/Video/RCTVideoManager.m
-index 7ec8955..4bd4a07 100644
+index 7ec8955..060d13e 100644
 --- a/node_modules/react-native-video/ios/Video/RCTVideoManager.m
 +++ b/node_modules/react-native-video/ios/Video/RCTVideoManager.m
-@@ -67,6 +67,8 @@ @interface RCT_EXTERN_MODULE (RCTVideoManager, RCTViewManager)
+@@ -37,6 +37,9 @@ @interface RCT_EXTERN_MODULE (RCTVideoManager, RCTViewManager)
+ RCT_EXPORT_VIEW_PROPERTY(localSourceEncryptionKeyScheme, NSString);
+ RCT_EXPORT_VIEW_PROPERTY(subtitleStyle, NSDictionary);
+ RCT_EXPORT_VIEW_PROPERTY(showNotificationControls, BOOL);
++// Livil patch: absolute clip window as JSON, presented clip-relative on the lock
++// screen only. Already declared in src/specs/VideoNativeComponent.ts for Android.
++RCT_EXPORT_VIEW_PROPERTY(currentClipJson, NSString);
+ RCT_EXPORT_VIEW_PROPERTY(disableAudioSessionManagement, BOOL);
+ /* Should support: onLoadStart, onLoad, and onError to stay consistent with Image */
+ RCT_EXPORT_VIEW_PROPERTY(onVideoLoadStart, RCTDirectEventBlock);
+@@ -67,6 +70,8 @@ @interface RCT_EXTERN_MODULE (RCTVideoManager, RCTViewManager)
  RCT_EXPORT_VIEW_PROPERTY(onTextTracks, RCTDirectEventBlock);
  RCT_EXPORT_VIEW_PROPERTY(onAudioTracks, RCTDirectEventBlock);
  RCT_EXPORT_VIEW_PROPERTY(onTextTrackDataChanged, RCTDirectEventBlock);

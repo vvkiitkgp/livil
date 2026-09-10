@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Livil — Music is better together</title>
-<meta name="description" content="Livil is a social music platform. A place to listen with people, not beside them. Live · Vibe · Link." />
+<meta name="description" content="Livil is a social music platform — upload your music, listen together in real time, and share what you play. Free on Android: download Livil from the Google Play Store, or use the web app. Live · Vibe · Link." />
 <meta property="og:title" content="Livil — Music is better together" />
-<meta property="og:description" content="A social music platform. A place to listen with people, not beside them. Live · Vibe · Link." />
+<meta property="og:description" content="A social music platform. A place to listen with people, not beside them. Free on Google Play. Live · Vibe · Link." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://livil-music.com/" />
 <meta property="og:site_name" content="Livil" />
@@ -16,7 +16,7 @@
 <meta property="og:image:alt" content="Livil — Music is better together. Live · Vibe · Link." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Livil — Music is better together" />
-<meta name="twitter:description" content="A social music platform. A place to listen with people, not beside them." />
+<meta name="twitter:description" content="A social music platform. A place to listen with people, not beside them. Free on Google Play." />
 <meta name="twitter:image" content="https://livil-music.com/og.png" />
 <meta name="theme-color" content="#07070B" />
 <link rel="canonical" href="https://livil-music.com/" />
@@ -25,13 +25,49 @@
   "@context": "https://schema.org",
   "@graph": [
     {
+      "@type": "MobileApplication",
+      "@id": "https://livil-music.com/#androidapp",
+      "name": "Livil",
+      "alternateName": "Livil Music",
+      "url": "https://play.google.com/store/apps/details?id=com.livil",
+      "installUrl": "https://play.google.com/store/apps/details?id=com.livil",
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.livil",
+      "operatingSystem": "Android",
+      "applicationCategory": "MusicApplication",
+      "applicationSubCategory": "Social music",
+      "description": "Livil is a social music platform for Android. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
+      "softwareVersion": "2.0.6",
+      "releaseNotes": "https://play.google.com/store/apps/details?id=com.livil",
+      "datePublished": "2026-08-14",
+      "image": "https://livil-music.com/icon-192.png",
+      "screenshot": [
+        "https://livil-music.com/screenshots/home-feed.png",
+        "https://livil-music.com/screenshots/jam-room.png",
+        "https://livil-music.com/screenshots/player.png",
+        "https://livil-music.com/screenshots/profile.png"
+      ],
+      "author": { "@id": "https://livil-music.com/#organization" },
+      "publisher": { "@id": "https://livil-music.com/#organization" },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock",
+        "url": "https://play.google.com/store/apps/details?id=com.livil"
+      }
+    },
+    {
       "@type": "Organization",
       "@id": "https://livil-music.com/#organization",
       "name": "Livil",
       "url": "https://livil-music.com/",
       "logo": "https://livil-music.com/og.png",
       "description": "Livil is a social music platform — a place to listen with people, not beside them.",
-      "sameAs": ["https://play.google.com/store/apps/details?id=com.livil"]
+      "sameAs": [
+        "https://play.google.com/store/apps/details?id=com.livil",
+        "https://instagram.com/livil_music"
+      ],
+      "owns": { "@id": "https://livil-music.com/#androidapp" }
     },
     {
       "@type": "WebSite",
@@ -109,6 +145,22 @@
   .btn.ghost{background:transparent;color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.16)}
   .btn.ghost:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.32);box-shadow:none}
   .btn.lg{padding:16px 30px;font-size:16px}
+
+  /* "Get it on Google Play" — outlined so it reads as a store badge, not a
+     second primary CTA competing with "Create your account". */
+  .btn.store{background:transparent;box-shadow:none;border:1px solid rgba(255,255,255,0.22);
+    padding-top:9px;padding-bottom:9px;text-align:left;line-height:1.15}
+  .btn.store:hover{background:rgba(255,255,255,0.05);border-color:var(--purple-light);box-shadow:none}
+  .btn.store svg{flex:none;width:20px;height:22px}
+  .btn.store .st{display:flex;flex-direction:column;gap:1px}
+  .btn.store .st b{font-size:14.5px;font-weight:600}
+  .btn.store .st i{font-style:normal;font-size:10.5px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--secondary)}
+  .btn.store.lg{padding:12px 26px}
+  .btn.store.lg svg{width:23px;height:25px}
+  .btn.store.lg .st b{font-size:16px}
+  .cta .avail{width:100%;margin-top:-4px;font-size:13px;color:var(--muted)}
+  @media(max-width:720px){.nav-right a.btn.store{display:none}}
 
   /* ---------------- shared type ---------------- */
   .eyebrow{font-size:12px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:var(--purple-light);
@@ -331,6 +383,7 @@
       <a href="#believe" class="link">Manifesto</a>
       <a href="#makers" class="link">For creators</a>
       <a href="/studio" class="link">Sign in</a>
+      <a href="https://play.google.com/store/apps/details?id=com.livil" class="btn store" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
       <a href="/studio" class="btn" data-magnetic>Create account</a>
     </div>
   </div>
@@ -350,7 +403,9 @@
   <p class="sub r d2">A place to listen <em>with</em> people — not beside them. Livil turns music back into something you share.</p>
   <div class="cta r d3">
     <a href="/studio" class="btn lg" data-magnetic>Create your account</a>
+    <a href="https://play.google.com/store/apps/details?id=com.livil" class="btn store lg" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
     <a href="#believe" class="btn ghost lg">Read the manifesto</a>
+    <p class="avail">Free on Android — <strong>Livil is live on the Google Play Store</strong>. Or use it right here in your browser.</p>
   </div>
   <div class="scrollcue"><span class="rail"></span>Scroll</div>
 </section>

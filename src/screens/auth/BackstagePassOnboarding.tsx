@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BackHandler,
+  Linking,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -28,6 +29,8 @@ import { ScreenBackdrop } from '../../components/onboarding/ScreenBackdrop';
 import { StageLamp } from '../../components/onboarding/StageLamp';
 import { signInWithGoogle } from '../../services/googleAuth';
 import { useToast } from '../../contexts/ToastContext';
+import AppleSignInButton from '../../components/AppleSignInButton';
+import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import type { AuthStackParamList } from '../../navigation/types';
 
 /**
@@ -157,6 +160,7 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
             onGoogle={handleGoogle}
             onEmail={() => navigation.navigate('SignUp')}
             onSignIn={() => navigation.navigate('SignIn')}
+            onAppleError={msg => showToast(msg, { kind: 'error' })}
           />
         )}
       </StepFade>
@@ -197,7 +201,12 @@ function Kicker({ children }: { children: string }) {
 }
 
 function Headline({ children, size = 38 }: { children: React.ReactNode; size?: number }) {
-  return <Text style={[styles.headline, { fontSize: size, lineHeight: size * 1.1 }]}>{children}</Text>;
+  // 1.28, not 1.1: Anton's ascenders run taller than its em box, so a line box of
+  // 1.1x is shorter than the glyphs actually need and the tops get clipped -- most
+  // visibly on the apostrophe in "WHO'S". The extra leading lands above the
+  // baseline, which is exactly where the missing room was. Shared by every step,
+  // so this fixes the whole sequence at once.
+  return <Text style={[styles.headline, { fontSize: size, lineHeight: size * 1.28 }]}>{children}</Text>;
 }
 
 function PrimaryCta({
@@ -306,7 +315,13 @@ function RolePick({
                 <Text style={styles.roleName}>{r.key}</Text>
                 <Text style={styles.roleDesc}>{r.desc}</Text>
               </View>
-              {selected && <Text style={styles.roleCheck}>✓</Text>}
+              {/* Always rendered, so all three read as a choose-one set rather than
+                  two plain rows plus a tick. Filled when on: the design system
+                  exempts small indicators from the no-fill rule precisely because
+                  a hollow 10px dot reads as unselected. */}
+              <View style={[styles.radio, selected && styles.radioOn]}>
+                {selected && <View style={styles.radioDot} />}
+              </View>
             </Pressable>
           );
         })}
@@ -464,12 +479,14 @@ function GuestList({
   onGoogle,
   onEmail,
   onSignIn,
+  onAppleError,
 }: {
   role: PassRole | null;
   googleBusy: boolean;
   onGoogle: () => void;
   onEmail: () => void;
   onSignIn: () => void;
+  onAppleError: (message: string) => void;
 }) {
   return (
     <View style={styles.step}>
@@ -481,6 +498,16 @@ function GuestList({
       </View>
 
       <View style={styles.authStack}>
+        {/* Apple first. Guideline 4.8 asks for it to be at least as prominent as
+            the other third-party options, and this is also the only one-tap path
+            that needs neither an email nor a password. Renders null off iOS, and
+            authStack's `gap` collapses with it, so Android is untouched. */}
+        <AppleSignInButton
+          onError={onAppleError}
+          disabled={googleBusy}
+          style={styles.authBtn}
+          labelStyle={styles.authLabel}
+        />
         <Button
           label="Continue with Google"
           onPress={onGoogle}
@@ -504,8 +531,20 @@ function GuestList({
         <Text style={styles.signInLink} onPress={onSignIn} suppressHighlighting>
           Already have a pass? Sign in
         </Text>
+        {/* The Terms and Privacy words are the agreement itself, so they have to be
+            reachable: this line previously named two documents and linked to
+            neither, which is not consent to anything. Opening in the browser
+            rather than a modal keeps the user's place in the flow. */}
         <Text style={styles.legal}>
-          By continuing you agree to soundcheck the Terms &amp; Privacy.
+          By continuing you agree to soundcheck the{' '}
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(TERMS_URL)}>
+            Terms
+          </Text>
+          {' & '}
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+            Privacy
+          </Text>
+          .
         </Text>
       </View>
     </View>
@@ -591,7 +630,22 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 3,
   },
-  roleCheck: { fontSize: 16, color: COLORS.purpleNeon },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: { borderColor: COLORS.purpleNeon },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.purpleNeon,
+  },
 
   itinerary: { marginTop: 30 },
   itemRow: {
@@ -667,6 +721,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textMuted,
     textAlign: 'center',
+  },
+  // Underlined as well as tinted: colour alone is not a reliable affordance, and
+  // at 10px on a dark background the tint difference is easy to miss entirely.
+  legalLink: {
+    color: COLORS.purpleLight,
+    textDecorationLine: 'underline',
   },
 
   dots: {
