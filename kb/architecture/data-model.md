@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-02
+last_verified: 2026-09-10
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 93 migration(s) in `supabase/migrations/`.
+Reconstructed from 94 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-40 table(s).
+42 table(s).
 
 ### `activity_notifications`
 
@@ -817,6 +817,45 @@ RLS enabled · defined in `20260806000000_team_messages.sql`
 
 - `team_messages_created_at_desc_idx` `(created_at DESC)`
 
+### `terms_acceptances`
+
+RLS enabled · defined in `20260907000000_terms_acceptance_log.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `user_id` | `uuid not null references auth.users(id) on delete cascade` |
+| `version` | `text not null references public.terms_versions(version)` |
+| `accepted_at` | `timestamptz not null default now()` |
+| `source` | `text not null check (source in ('signup', 'reaccept'))` |
+| `app_version` | `text` |
+
+**Indexes**
+
+- **unique** `terms_acceptances_one_per_version` `(user_id, version) where source in ('signup', 'reaccept')`
+- `terms_acceptances_user_idx` `(user_id, version)`
+
+**Triggers**
+
+- `trg_terms_acceptances_no_update` — BEFORE UPDATE (`20260907000000_terms_acceptance_log.sql`)
+- `trg_terms_acceptances_pin` — BEFORE INSERT (`20260907000000_terms_acceptance_log.sql`)
+
+### `terms_versions`
+
+RLS enabled · defined in `20260907000000_terms_acceptance_log.sql`
+
+| Column | Definition |
+|---|---|
+| `version` | `text primary key` |
+| `effective_at` | `timestamptz not null` |
+| `url` | `text not null` |
+| `sha256` | `text not null check (sha256 ~ '^[0-9a-f]{64}$')` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Triggers**
+
+- `trg_terms_versions_immutable` — BEFORE UPDATE OR DELETE (`20260907000000_terms_acceptance_log.sql`)
+
 ### `track_collaborators`
 
 RLS enabled · defined in `00000000000000_baseline_schema.sql`
@@ -979,6 +1018,9 @@ same row-level security policies that gate ordinary reads.
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
+| `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |
+| `trg_terms_acceptances_pin` | `terms_acceptances` | BEFORE INSERT | `20260907000000_terms_acceptance_log.sql` |
+| `trg_terms_versions_immutable` | `terms_versions` | BEFORE UPDATE OR DELETE | `20260907000000_terms_acceptance_log.sql` |
 
 ## Related
 
