@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-09-02
+last_verified: 2026-09-07
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-67 document(s) under `kb/`.
+68 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 67 |
-| Drift-proof (tier 1 + 4) | 34 |
+| Documents | 68 |
+| Drift-proof (tier 1 + 4) | 35 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -44,10 +44,10 @@ content, so the hand-maintained count is the number worth keeping small.
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
 | `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-02 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-02 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-09-02 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-07 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-09-07 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-02 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-08-19 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-09-07 | 9999d |
 
 ## Tier 2 — Enforced
 
@@ -122,6 +122,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0013-story-clip-session.md` | chief-architect | ALL | 2026-07-25 | 9999d |
 | `decisions/0014-reject-widening-msg-update-for-orphaned-messages.md` | chief-architect | ALL | 2026-07-29 | 9999d |
 | `decisions/0015-web-creator-dashboard.md` | chief-architect | ALL | 2026-08-05 | 9999d |
+| `decisions/0016-ship-ios.md` | chief-architect | ALL | 2026-09-08 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -135,7 +136,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 24 |
+| chief-architect | 25 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
