@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-210 TypeScript file(s) under `src/`, 56,731 lines.
+210 TypeScript file(s) under `src/`, 56,650 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2512 |
-| `src/screens/main/ConversationScreen.tsx` | 1677 |
+| `src/screens/main/ConversationScreen.tsx` | 1613 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/components/PostCard.tsx` | 1373 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
@@ -96,11 +96,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 21,674 lines.
+43 file(s), 21,593 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1677 |
+| `src/screens/main/ConversationScreen.tsx` | 1613 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1231 |
@@ -116,7 +116,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/GroupInfoScreen.tsx` | 582 |
 | `src/screens/auth/SignUpScreen.tsx` | 467 |
 | `src/screens/main/NewConversationScreen.tsx` | 462 |
-| `src/screens/main/InboxScreen.tsx` | 425 |
+| `src/screens/main/InboxScreen.tsx` | 408 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/SignInScreen.tsx` | 357 |
@@ -337,7 +337,7 @@ version is not the version running (Constitution P52).
 
 | Package | Declared | Installed |
 |---|---|---|
-| `@invertase/react-native-apple-authentication` | `2.5.1` | *(not installed)* |
+| `@invertase/react-native-apple-authentication` | `2.5.1` | 2.5.1 |
 | `@notifee/react-native` | `^9.1.8` | 9.1.8 |
 | `@react-native-async-storage/async-storage` | `^1.23.1` | 1.23.1 |
 | `@react-native-documents/picker` | `^10.1.7` | 10.1.7 |

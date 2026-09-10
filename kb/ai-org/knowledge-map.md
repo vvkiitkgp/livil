@@ -47,7 +47,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-10 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-09-10 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-02 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-08-19 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-09-10 | 9999d |
 
 ## Tier 2 — Enforced
 
