@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-08
+last_verified: 2026-09-10
 verify_every: 9999d
 verified_by: generated
 visibility: public
