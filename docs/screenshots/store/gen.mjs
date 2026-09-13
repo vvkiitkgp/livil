@@ -172,7 +172,7 @@ const ring = (inner, size, { width = 5, color = C.purple } = {}) => `<div style=
 const initialsAv = (txt, size, hue) => `<div style="width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:hsl(${hue} 45% 20%);color:${C.light};font-weight:800;font-size:${Math.round(size * 0.34)}px;letter-spacing:0.04em;">${txt}</div>`;
 // the app's "outlined + glow" primary as it renders today: dark fill, gradient border, inner bloom
 const primaryBtn = (label, { w = 'auto', h = 96, fs = 30, pad = 44, icon = '' } = {}) =>
-  `<div style="display:flex;align-items:center;justify-content:center;gap:16px;height:${h}px;width:${w};padding:0 ${pad}px;border-radius:32px;border:3px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 28px rgba(139,61,255,0.45),0 0 26px rgba(139,61,255,0.25);color:${C.neon};font-weight:800;font-size:${fs}px;">${icon}<span>${label}</span></div>`;
+  `<div style="display:flex;align-items:center;justify-content:center;gap:16px;height:${h}px;width:${w};padding:0 ${pad}px;border-radius:32px;border:3px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 28px rgba(139,61,255,0.45),0 0 26px rgba(139,61,255,0.25);color:${C.neon};font-weight:800;font-size:${fs}px;white-space:nowrap;flex-shrink:0;">${icon}<span style="white-space:nowrap;">${label}</span></div>`;
 const secondaryBtn = (label, { w = 'auto', h = 96, fs = 30, pad = 44, icon = '' } = {}) =>
   `<div style="display:flex;align-items:center;justify-content:center;gap:16px;height:${h}px;width:${w};padding:0 ${pad}px;border-radius:32px;border:3px solid ${C.border};color:${C.white};font-weight:800;font-size:${fs}px;">${icon}<span>${label}</span></div>`;
 
@@ -397,7 +397,7 @@ P.Panel5 = page('5', `
   ${pulseLine(`M-10 200 H300 L350 120 L410 270 L470 150 L520 200 H1330`)}
   ${headline([{ t: 'Built for the people who ' }, { t: 'make', g: true }, { t: ' the music.' }], 'Upload audio or video. Credit your collaborators. Be heard by people who actually listen.', { size: 112, top: SAFE_TOP + 80 })}
   <div style="position:absolute;left:120px;top:${SAFE_TOP + 720}px;">${phone(profileScreen())}</div>
-  <div style="position:absolute;right:-40px;top:${SAFE_TOP + 1460}px;transform:rotate(4deg);">${uploadCard()}</div>
+  <div style="position:absolute;right:-30px;top:${SAFE_TOP + 1540}px;transform:rotate(4deg);">${uploadCard()}</div>
 `);
 P.Panel6 = page('6', `
   ${glow(1200, 2500, 1000, 800, 0.55)}
