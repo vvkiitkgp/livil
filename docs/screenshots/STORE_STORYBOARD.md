@@ -266,3 +266,15 @@ Existing captures in this folder (`jam-room.png`, `home-feed.png`, `profile.png`
 side so the pulse line and the 1↔2 glow can be drawn as one continuous shape and then
 sliced. Export PNG, flatten alpha, run both size exports, and upload the six in this order
 to both stores.
+
+---
+
+## Designed panels
+
+The six panels above are built as a design canvas (Claude Design artifact, "Livil Store
+Screenshots"). Each artboard is 1320 × 2868 and exports to PNG from the canvas toolbar.
+
+`store/gen.mjs` regenerates the artboard HTML (`node gen.mjs` writes `Main.dc.html`,
+`Panel2..6.dc.html` and `canvas.json` into the current directory). `store/panel-N.png`
+are headless-Chromium preview renders of the same files with fallback fonts — the
+canvas loads Sora / Manrope / Instrument Serif and looks sharper than these previews.
