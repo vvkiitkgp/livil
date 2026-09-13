@@ -89,10 +89,13 @@ chat and suggest tracks while the host controls playback."
 
 ---
 
-## Panel 3 — "See what your friends are playing. Right now."
+## Panel 3 — "See what your friends are playing."
 
-**Headline:** `See what your friends are playing. *Right now.*`  (gradient: *Right now.*)
-**Sub-line:** `Presence, not posts. Star people with taste and follow their listening live.`
+**Headline:** `See what your friends are *playing*.`  (gradient: *playing*)
+**Sub-line:** `Friends' stories up top. A feed built from people you know — not an algorithm.`
+
+> Revised after checking the source: Home has no live "listening now" strip, so the
+> panel leans on the Friends stories row and the feed card instead.
 
 **Scene:** Phone straight-on, centred. On screen: the **Home feed**.
 
@@ -278,3 +281,8 @@ Screenshots"). Each artboard is 1320 × 2868 and exports to PNG from the canvas 
 `Panel2..6.dc.html` and `canvas.json` into the current directory). `store/panel-N.png`
 are headless-Chromium preview renders of the same files with fallback fonts — the
 canvas loads Sora / Manrope / Instrument Serif and looks sharper than these previews.
+
+
+> **Reference note.** The older PNGs at the top of this folder (`home-feed.png`, `player.png`,
+> …) predate the outlined-button design, the anchored waveform scrubber and the two-tab
+> player. The panels in `store/` were rebuilt from the September 2026 UI and the screen source.
