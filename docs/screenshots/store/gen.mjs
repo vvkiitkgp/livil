@@ -159,12 +159,12 @@ const orb = (pct = 0.35, { size = 132, playing = true, wave = true, bottom = 330
   return `<div style="position:absolute;left:0;right:0;bottom:${bottom}px;display:flex;align-items:center;justify-content:center;gap:0;">${line(false)}${ringEl}${line(true)}</div>`;
 };
 // the WaveformScrubber: rounded outlined track, bars inside, clip handles at the ends
-const scrubber = (w, { pct = 0.4, seed = 5, clip = true, bars: n = 46, h = 60 } = {}) =>
+const scrubber = (w, { pct = 0.4, seed = 5, clip = true, bars: n = 46, h = 44 } = {}) =>
   `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:${w}px;">
      ${clip ? `<div style="position:absolute;left:0;top:50%;transform:translateY(-50%);">${bars(8, seed + 1, Math.round(h * 0.5), 'rgba(255,255,255,0.18)', { from: 2, to: 3, dim: 'rgba(255,255,255,0.18)', gap: 6, w: 5 })}</div><div style="position:absolute;right:0;top:50%;transform:translateY(-50%);">${bars(6, seed + 2, Math.round(h * 0.5), 'rgba(255,255,255,0.18)', { from: 2, to: 3, dim: 'rgba(255,255,255,0.18)', gap: 6, w: 5 })}</div>` : ''}
-     <div style="position:relative;display:flex;align-items:center;gap:0;padding:14px 26px;border-radius:999px;border:3px solid rgba(139,61,255,0.45);background:rgba(18,18,28,0.9);width:${clip ? w - 150 : w}px;box-sizing:border-box;">
+     <div style="position:relative;display:flex;align-items:center;gap:0;padding:10px 24px;border-radius:999px;border:3px solid rgba(139,61,255,0.45);background:rgba(18,18,28,0.9);width:${clip ? w - 150 : w}px;box-sizing:border-box;">
        ${bars(n, seed, h, C.neon, { from: 0, to: pct, dim: 'rgba(255,255,255,0.5)', gap: 6, w: 6 })}
-       ${clip ? `<div style="position:absolute;left:-22px;top:50%;transform:translateY(-50%);width:30px;height:62px;border-radius:15px;background:${C.white};display:flex;align-items:center;justify-content:center;"><div style="width:8px;height:34px;border-radius:4px;background:${C.bg};"></div></div><div style="position:absolute;right:-22px;top:50%;transform:translateY(-50%);width:30px;height:62px;border-radius:15px;background:${C.white};display:flex;align-items:center;justify-content:center;"><div style="width:8px;height:34px;border-radius:4px;background:${C.bg};"></div></div>` : ''}
+       ${clip ? `<div style="position:absolute;left:-16px;top:50%;transform:translateY(-50%);width:20px;height:56px;border-radius:10px;background:${C.white};display:flex;align-items:center;justify-content:center;"><div style="width:6px;height:30px;border-radius:3px;background:${C.bg};"></div></div><div style="position:absolute;right:-16px;top:50%;transform:translateY(-50%);width:20px;height:56px;border-radius:10px;background:${C.white};display:flex;align-items:center;justify-content:center;"><div style="width:6px;height:30px;border-radius:4px;background:${C.bg};"></div></div>` : ''}
      </div>
    </div>`;
 const timesRow = (a, b, c, w) => `<div style="display:flex;justify-content:space-between;align-items:baseline;width:${w}px;color:${C.white};font-size:26px;font-weight:600;"><span>${a}</span><span style="color:${C.neon};font-weight:800;">${b}</span><span>${c}</span></div>`;
@@ -182,33 +182,33 @@ const avatarStack = (sz = 64) => `<div style="display:flex;align-items:center;">
 
 const jamHeader = (host) =>
   `<div style="display:flex;align-items:center;justify-content:space-between;padding:96px 40px 26px 40px;border-bottom:2px solid ${C.border};">
-     <div style="display:flex;align-items:center;gap:22px;">${I.back(56, C.neon)}<div style="display:flex;flex-direction:column;gap:6px;"><div style="font-size:40px;font-weight:800;">Jam Room</div><div style="display:flex;align-items:center;gap:10px;color:${C.sec};font-size:26px;">${host ? `${I.crown(28, C.warning)}<span>You are the host</span>` : `${I.crown(28, C.warning)}<span>Host: @riya.wav</span>`}</div></div></div>
-     ${host ? `<div style="height:72px;padding:0 30px;border-radius:22px;border:3px solid ${C.error};color:${C.error};font-weight:800;font-size:28px;display:flex;align-items:center;">End</div>` : `<div style="height:72px;padding:0 30px;border-radius:22px;border:3px solid ${C.error};color:${C.error};font-weight:800;font-size:28px;display:flex;align-items:center;">Leave</div>`}
+     <div style="display:flex;align-items:center;gap:22px;">${I.back(56, C.neon)}<div style="display:flex;flex-direction:column;gap:6px;"><div style="font-size:32px;font-weight:800;">Jam Room</div><div style="display:flex;align-items:center;gap:10px;color:${C.sec};font-size:24px;">${host ? `${I.crown(28, C.warning)}<span>You are the host</span>` : `${I.crown(28, C.warning)}<span>Host: @riya.wav</span>`}</div></div></div>
+     ${host ? `<div style="height:48px;padding:0 24px;border-radius:16px;border:3px solid ${C.error};color:${C.error};font-weight:800;font-size:26px;display:flex;align-items:center;">End</div>` : `<div style="height:48px;padding:0 24px;border-radius:16px;border:3px solid ${C.error};color:${C.error};font-weight:800;font-size:26px;display:flex;align-items:center;">Leave</div>`}
    </div>`;
 const bubble = (text, { me = false, name = '' } = {}) =>
-  `<div style="display:flex;justify-content:${me ? 'flex-end' : 'flex-start'};"><div style="max-width:560px;padding:${name ? '16px 30px 20px' : '20px 30px'};border-radius:34px;${me ? `border-bottom-right-radius:12px;background:${C.purple};` : `border-bottom-left-radius:12px;background:${C.card};`}display:flex;flex-direction:column;gap:4px;">${name ? `<div style="color:${C.neon};font-size:24px;font-weight:700;">${name}</div>` : ''}<div style="font-size:30px;line-height:1.3;">${text}</div></div></div>`;
+  `<div style="display:flex;justify-content:${me ? 'flex-end' : 'flex-start'};"><div style="max-width:560px;padding:${name ? '14px 26px 18px' : '18px 26px'};border-radius:28px;${me ? `border-bottom-right-radius:12px;background:${C.purple};` : `border-bottom-left-radius:12px;background:${C.card};`}display:flex;flex-direction:column;gap:4px;">${name ? `<div style="color:${C.neon};font-size:24px;font-weight:700;">${name}</div>` : ''}<div style="font-size:30px;line-height:1.3;">${text}</div></div></div>`;
 const segmented = (which) =>
-  `<div style="margin:0 40px;display:flex;padding:8px;border-radius:40px;background:${C.surface};gap:8px;">${['Chat', 'Queue'].map((l, i) => `<div style="flex:1;height:78px;border-radius:30px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;${i === which ? `border:3px solid transparent;background:linear-gradient(${C.surface},${C.surface}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 22px rgba(139,61,255,0.4);color:${C.neon};` : `color:${C.sec};`}">${l}</div>`).join('')}</div>`;
+  `<div style="margin:0 40px;display:flex;padding:8px;border-radius:40px;background:${C.surface};gap:8px;">${['Chat', 'Queue'].map((l, i) => `<div style="flex:1;height:72px;border-radius:30px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;${i === which ? `border:3px solid transparent;background:linear-gradient(${C.surface},${C.surface}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 22px rgba(139,61,255,0.4);color:${C.neon};` : `color:${C.sec};`}">${l}</div>`).join('')}</div>`;
 const msgInput = () =>
-  `<div style="position:absolute;left:0;right:0;bottom:0;padding:24px 40px 60px;display:flex;gap:20px;align-items:center;background:${C.bg};border-top:2px solid ${C.border};">
-     <div style="flex:1;height:100px;border-radius:32px;border:3px solid ${C.border};background:${C.inputBg};display:flex;align-items:center;padding:0 34px;color:${C.muted};font-size:30px;">Message…</div>
-     <div style="width:96px;height:96px;border-radius:50%;border:3px solid ${C.neon};display:flex;align-items:center;justify-content:center;">${I.send(44, C.neon)}</div>
+  `<div style="position:absolute;left:0;right:0;bottom:0;padding:22px 40px 56px;display:flex;gap:18px;align-items:center;background:${C.bg};border-top:2px solid ${C.border};">
+     <div style="flex:1;height:84px;border-radius:28px;border:3px solid ${C.border};background:${C.inputBg};display:flex;align-items:center;padding:0 30px;color:${C.muted};font-size:28px;">Message…</div>
+     <div style="width:76px;height:76px;border-radius:50%;border:3px solid ${C.neon};display:flex;align-items:center;justify-content:center;">${I.send(36, C.neon)}</div>
    </div>`;
 const queueRow = (kind, t, a, { now = false } = {}) =>
   `<div style="display:flex;align-items:center;gap:22px;padding:18px 40px;${now ? 'background:rgba(139,61,255,0.10);' : ''}">${cover(kind, 96, 18)}<div style="display:flex;flex-direction:column;gap:6px;flex:1;"><div style="font-size:30px;font-weight:800;color:${now ? C.light : C.white};">${t}</div><div style="color:${C.sec};font-size:24px;">${a}</div></div>${now ? bars(3, 2, 30, C.neon, { gap: 5, w: 6 }) : ''}</div>`;
 const listeners = (n) =>
-  `<div style="display:flex;justify-content:center;align-items:center;">${[['R', 285], ['SB', 195], ['N', 330], ['K', 20]].slice(0, n).map(([i, h], k) => `<div style="margin-left:${k ? -16 : 0}px;border-radius:50%;border:5px solid ${C.bg};">${avatar(i, 76, h, { dot: true })}</div>`).join('')}</div>`;
+  `<div style="display:flex;justify-content:center;align-items:center;">${[['R', 285], ['SB', 195], ['N', 330], ['K', 20]].slice(0, n).map(([i, h], k) => `<div style="margin-left:${k ? -14 : 0}px;border-radius:50%;border:5px solid ${C.bg};">${avatar(i, 64, h, { dot: true })}</div>`).join('')}</div>`;
 
 const jamScreen = ({ host }) => {
   const pct = 102 / 236;
   return `
   ${jamHeader(host)}
   <div style="display:flex;flex-direction:column;align-items:center;gap:22px;padding:34px 40px 0;">
-    ${cover('midnight', 230, 26)}
-    <div style="text-align:center;display:flex;flex-direction:column;gap:6px;"><div style="font-size:38px;font-weight:800;">Midnight Drive</div><div style="color:${C.sec};font-size:28px;">riya.wav</div></div>
+    ${cover('midnight', 220, 24)}
+    <div style="text-align:center;display:flex;flex-direction:column;gap:6px;"><div style="font-size:30px;font-weight:800;">Midnight Drive</div><div style="color:${C.sec};font-size:24px;">riya.wav</div></div>
     ${timesRow('0:00', '1:42', '3:56', 700)}
     ${bars(52, 9, 90, C.neon, { from: 0, to: pct, dim: 'rgba(255,255,255,0.45)', gap: 7, w: 7 })}
-    <div style="width:130px;height:130px;border-radius:50%;border:4px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:0 0 50px rgba(139,61,255,0.35),inset 0 0 30px rgba(139,61,255,0.45);display:flex;align-items:center;justify-content:center;${host ? '' : 'display:none;'}">${I.pause(60, C.neon)}</div>
+    <div style="width:104px;height:104px;border-radius:50%;border:4px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:0 0 50px rgba(139,61,255,0.35),inset 0 0 26px rgba(139,61,255,0.45);display:flex;align-items:center;justify-content:center;${host ? '' : 'display:none;'}">${I.pause(50, C.neon)}</div>
     ${listeners(4)}
   </div>
   <div style="height:2px;background:${C.border};margin:26px 0 22px;"></div>
@@ -219,24 +219,24 @@ const jamScreen = ({ host }) => {
 };
 
 const homeHeader = () =>
-  `<div style="display:flex;align-items:center;justify-content:space-between;padding:78px 34px 20px 40px;border-bottom:2px solid ${C.border};">
-     ${wordmark(370)}
-     <div style="display:flex;gap:18px;align-items:center;">
-       <div style="width:86px;height:86px;border-radius:50%;border:3px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 20px rgba(139,61,255,0.5);display:flex;align-items:center;justify-content:center;">${I.plus(46, C.neon)}</div>
-       <div style="position:relative;width:86px;height:86px;border-radius:50%;border:3px solid ${C.border};display:flex;align-items:center;justify-content:center;">${I.send(40, C.white)}<div style="position:absolute;top:-6px;right:-6px;min-width:36px;height:36px;border-radius:18px;background:${C.purple};color:${C.white};font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;">2</div></div>
+  `<div style="display:flex;align-items:center;justify-content:space-between;padding:84px 34px 22px 40px;border-bottom:2px solid ${C.border};">
+     ${wordmark(192)}
+     <div style="display:flex;gap:16px;align-items:center;">
+       <div style="width:76px;height:76px;border-radius:50%;border:3px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 20px rgba(139,61,255,0.5);display:flex;align-items:center;justify-content:center;">${I.plus(40, C.neon)}</div>
+       <div style="position:relative;width:76px;height:76px;border-radius:50%;border:3px solid ${C.border};display:flex;align-items:center;justify-content:center;">${I.send(36, C.white)}<div style="position:absolute;top:-6px;right:-6px;min-width:32px;height:32px;border-radius:16px;background:${C.purple};color:${C.white};font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;">2</div></div>
      </div>
    </div>`;
 
 const feedCard = ({ reposter, from, initials, hue, title, caption, kind, cur, end, upload = false, credits = '', active = false }) =>
-  `<div style="margin:0 34px;border-radius:44px;background:${C.surface};border:2px solid ${C.border};overflow:hidden;display:flex;flex-direction:column;">
+  `<div style="margin:0 30px;border-radius:38px;background:${C.surface};border:2px solid ${C.border};overflow:hidden;display:flex;flex-direction:column;">
      ${upload ? '' : `<div style="display:flex;align-items:center;justify-content:space-between;padding:22px 30px;background:#161628;">
        <div style="display:flex;align-items:center;gap:12px;font-size:26px;">${I.repost(30, C.neon)}<span><b>${reposter}</b> <span style="color:${C.sec};">reposted</span></span></div>
        <div style="display:flex;align-items:center;gap:12px;height:56px;padding:0 24px;border-radius:999px;border:2px solid rgba(34,211,238,0.55);color:${C.info};font-size:20px;font-weight:800;letter-spacing:0.14em;">CREATOR <span style="letter-spacing:0;">@${from}</span></div>
      </div>`}
      <div style="padding:26px 30px 30px;display:flex;flex-direction:column;gap:22px;">
        <div style="display:flex;align-items:center;justify-content:space-between;">
-         <div style="display:flex;align-items:center;gap:18px;">${ring(initialsAv(initials, 78, hue), 88)}<div style="display:flex;flex-direction:column;gap:4px;"><div style="font-size:30px;font-weight:800;">${reposter}</div><div style="color:${C.sec};font-size:24px;">@${upload ? from : reposter.toLowerCase()} · 2h</div></div></div>
-         <div style="display:flex;align-items:center;gap:14px;">${primaryBtn('Repost', { h: 76, fs: 26, pad: 28, icon: I.repost(28, C.neon) })}<div style="width:76px;height:76px;border-radius:50%;background:${C.card};display:flex;align-items:center;justify-content:center;">${I.more(36, C.sec)}</div></div>
+         <div style="display:flex;align-items:center;gap:18px;">${ring(initialsAv(initials, 74, hue), 84)}<div style="display:flex;flex-direction:column;gap:4px;"><div style="font-size:30px;font-weight:800;">${reposter}</div><div style="color:${C.sec};font-size:24px;">@${upload ? from : reposter.toLowerCase()} · 2h</div></div></div>
+         <div style="display:flex;align-items:center;gap:14px;">${primaryBtn('Repost', { h: 62, fs: 25, pad: 24, icon: I.repost(24, C.neon) })}<div style="width:62px;height:62px;border-radius:50%;background:${C.card};display:flex;align-items:center;justify-content:center;">${I.more(32, C.sec)}</div></div>
        </div>
        <div style="font-size:34px;font-weight:800;">${title}</div>
        ${caption ? `<div style="color:${C.light};font-size:28px;line-height:1.35;">${caption}</div>` : ''}
@@ -246,7 +246,7 @@ const feedCard = ({ reposter, from, initials, hue, title, caption, kind, cur, en
          <div style="display:flex;justify-content:space-between;color:${C.sec};font-size:22px;font-weight:600;"><span>0:48</span><span>1:03</span></div>
          ${scrubber(680, { pct: cur, clip: false, bars: 50, h: 40 })}
        </div>`}
-       <div style="display:flex;align-items:center;gap:34px;color:${C.sec};font-size:26px;font-weight:600;"><div style="width:84px;height:84px;border-radius:50%;border:3px solid transparent;background:linear-gradient(${C.surface},${C.surface}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;display:flex;align-items:center;justify-content:center;">${I.play(40, C.neon)}</div><div style="display:flex;align-items:center;gap:10px;">${I.heart(34, C.neon)}<span>${upload ? '412' : '128'}</span></div><div style="display:flex;align-items:center;gap:10px;">${I.chat(34, C.sec)}<span>${upload ? '37' : '14'}</span></div>${upload ? `<div style="display:flex;align-items:center;gap:10px;">${I.repost(32, C.sec)}<span>64</span></div><div style="flex:1;"></div><div style="width:84px;height:84px;border-radius:50%;border:3px solid transparent;background:linear-gradient(${C.surface},${C.surface}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;display:flex;align-items:center;justify-content:center;">${I.send(36, C.neon)}</div>` : ''}</div>
+       <div style="display:flex;align-items:center;gap:34px;color:${C.sec};font-size:26px;font-weight:600;"><div style="width:80px;height:80px;border-radius:50%;border:3px solid transparent;background:linear-gradient(${C.surface},${C.surface}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;display:flex;align-items:center;justify-content:center;">${I.play(38, C.neon)}</div><div style="display:flex;align-items:center;gap:10px;">${I.heart(34, C.neon)}<span>${upload ? '412' : '128'}</span></div><div style="display:flex;align-items:center;gap:10px;">${I.chat(34, C.sec)}<span>${upload ? '37' : '14'}</span></div>${upload ? `<div style="display:flex;align-items:center;gap:10px;">${I.repost(32, C.sec)}<span>64</span></div><div style="flex:1;"></div><div style="width:80px;height:80px;border-radius:50%;border:3px solid transparent;background:linear-gradient(${C.surface},${C.surface}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;display:flex;align-items:center;justify-content:center;">${I.send(36, C.neon)}</div>` : ''}</div>
      </div>
    </div>`;
 
@@ -255,7 +255,7 @@ const homeScreen = () => `
   <div style="padding:26px 40px 0;display:flex;flex-direction:column;gap:20px;">
     <div style="font-size:34px;font-weight:800;">Friends</div>
     <div style="display:flex;gap:24px;">
-      ${[['R', 285, 'riya.wav', true], ['SB', 195, 'sam_beats', true], ['N', 330, 'nadia', true], ['K', 20, 'kabir', false], ['AJ', 120, 'aj.mp3', false]].map(([i, h, n, u]) => `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;width:126px;">${u ? avatar(i, 96, h, { ring: true }) : `<div style="padding:10px;border-radius:50%;border:4px solid ${C.border};">${avatar(i, 96, h)}</div>`}<div style="color:${C.sec};font-size:22px;white-space:nowrap;">@${n}</div></div>`).join('')}
+      ${[['R', 285, 'riya.wav', true], ['SB', 195, 'sam_beats', true], ['N', 330, 'nadia', true], ['K', 20, 'kabir', false], ['AJ', 120, 'aj.mp3', false]].map(([i, h, n, u]) => `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;width:132px;">${u ? avatar(i, 118, h, { ring: true }) : `<div style="padding:10px;border-radius:50%;border:4px solid ${C.border};">${avatar(i, 118, h)}</div>`}<div style="color:${C.sec};font-size:22px;white-space:nowrap;">@${n}</div></div>`).join('')}
     </div>
   </div>
   <div style="padding:44px 40px 22px;display:flex;flex-direction:column;gap:8px;"><div style="font-size:44px;font-weight:800;letter-spacing:-0.02em;">For you</div><div style="color:${C.sec};font-size:26px;line-height:1.35;">Mutual friends first, people you star next, then what's trending.</div></div>
@@ -264,7 +264,7 @@ const homeScreen = () => `
   <div style="position:absolute;left:0;right:0;bottom:0;">${tabBar('home')}</div>`;
 
 const sectionLabel = (t, right = '') => `<div style="display:flex;justify-content:space-between;align-items:center;"><div style="color:${C.sec};font-size:22px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;">${t}</div>${right ? `<div style="color:${C.neon};font-size:24px;font-weight:700;">${right}</div>` : ''}</div>`;
-const modeCard = (t, sub, on) => `<div style="flex:1;padding:22px 26px;border-radius:30px;display:flex;flex-direction:column;gap:6px;${on ? `border:3px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 24px rgba(139,61,255,0.4);` : `border:3px solid ${C.border};`}"><div style="font-size:28px;font-weight:800;color:${on ? C.neon : C.white};">${t}</div><div style="font-size:22px;color:${on ? C.neon : C.sec};">${sub}</div></div>`;
+const modeCard = (t, sub, on) => `<div style="flex:1;padding:20px 24px;border-radius:24px;display:flex;flex-direction:column;gap:6px;${on ? `border:3px solid transparent;background:linear-gradient(${C.bg},${C.bg}) padding-box,linear-gradient(135deg,${C.deep},${C.neon}) border-box;box-shadow:inset 0 0 24px rgba(139,61,255,0.4);` : `border:3px solid ${C.border};`}"><div style="font-size:28px;font-weight:800;color:${on ? C.neon : C.white};">${t}</div><div style="font-size:22px;color:${on ? C.neon : C.sec};">${sub}</div></div>`;
 const repostScreen = () => `
   <div style="display:flex;align-items:center;justify-content:space-between;padding:96px 40px 30px;">
     <div style="color:${C.sec};font-size:28px;width:120px;">Cancel</div><div style="font-size:38px;font-weight:800;">Repost</div><div style="width:120px;"></div>
@@ -277,13 +277,13 @@ const repostScreen = () => `
     <div style="display:flex;flex-direction:column;gap:22px;align-items:center;">
       <div style="width:100%;">${sectionLabel('Clip', 'Use full song')}</div>
       ${timesRow('0:48', '0:55', '1:03', 700)}
-      ${scrubber(700, { pct: 0.45, seed: 11, clip: true, bars: 40, h: 110 })}
+      ${scrubber(700, { pct: 0.45, seed: 11, clip: true, bars: 40, h: 64 })}
     </div>
     <div style="display:flex;flex-direction:column;gap:18px;">${sectionLabel('Description')}
-      <div style="min-height:200px;border-radius:32px;border:3px solid ${C.neon};background:${C.inputBg};padding:26px 30px;font-size:30px;line-height:1.35;color:${C.white};box-shadow:0 0 0 6px rgba(139,61,255,0.18);">the bridge in this is insane<span style="display:inline-block;width:3px;height:34px;background:${C.neon};vertical-align:-6px;margin-left:2px;"></span></div>
+      <div style="min-height:180px;border-radius:26px;border:3px solid ${C.neon};background:${C.inputBg};padding:26px 30px;font-size:30px;line-height:1.35;color:${C.white};box-shadow:0 0 0 6px rgba(139,61,255,0.18);">the bridge in this is insane<span style="display:inline-block;width:3px;height:34px;background:${C.neon};vertical-align:-6px;margin-left:2px;"></span></div>
     </div>
   </div>
-  <div style="position:absolute;left:40px;right:40px;bottom:70px;">${primaryBtn('Repost', { h: 108, fs: 32 })}</div>`;
+  <div style="position:absolute;left:40px;right:40px;bottom:64px;">${primaryBtn('Repost', { h: 96, fs: 30 })}</div>`;
 
 const profileScreen = () => `
   <div style="display:flex;align-items:center;justify-content:space-between;padding:88px 40px 10px;">
@@ -294,15 +294,15 @@ const profileScreen = () => `
     <div style="font-size:44px;font-weight:800;margin-top:6px;">Riya</div>
     <div style="color:${C.light};font-size:30px;font-weight:700;">@riya.wav</div>
     <div style="color:${C.sec};font-size:28px;">bedroom producer · Mumbai</div>
-    <div style="display:flex;align-items:center;gap:12px;height:60px;padding:0 24px;border-radius:20px;border:2px solid ${C.border};color:${C.light};font-size:24px;font-weight:700;">${ic('<path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h5"/>', 26, C.light)}riya.bandcamp.com</div>
+    <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 20px;border-radius:16px;border:2px solid ${C.border};color:${C.light};font-size:22px;font-weight:700;">${ic('<path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1h5"/>', 26, C.light)}riya.bandcamp.com</div>
   </div>
-  <div style="margin:34px 40px 0;display:flex;border-radius:44px;background:${C.surface};border:2px solid ${C.border};padding:30px 0;">
-    ${[['2.4K', 'FANS'], ['38', 'FRIENDS'], ['16', 'STARS']].map(([n, l], i) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;${i ? `border-left:2px solid ${C.border};` : ''}"><div style="font-size:44px;font-weight:800;">${n}</div><div style="color:${C.sec};font-size:22px;font-weight:800;letter-spacing:0.16em;">${l}</div></div>`).join('')}
+  <div style="margin:30px 40px 0;display:flex;border-radius:36px;background:${C.surface};border:2px solid ${C.border};padding:22px 0;">
+    ${[['2.4K', 'FANS'], ['38', 'FRIENDS'], ['16', 'STARS']].map(([n, l], i) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;${i ? `border-left:2px solid ${C.border};` : ''}"><div style="font-size:40px;font-weight:800;">${n}</div><div style="color:${C.sec};font-size:22px;font-weight:800;letter-spacing:0.16em;">${l}</div></div>`).join('')}
   </div>
   <div style="text-align:center;color:${C.sec};font-size:28px;padding:24px 0 0;"><b style="color:${C.white};">41</b> posts · <b style="color:${C.white};">38</b> uploads</div>
-  <div style="padding:26px 40px 0;">${secondaryBtn('Invite friends', { w: '100%', h: 96, fs: 30 })}</div>
-  <div style="display:flex;gap:14px;padding:34px 40px 0;overflow:hidden;">
-    ${[['Uploads', 38, true], ['Reposts', 3, false], ['Albums', 3, false], ['Playlists', 5, false]].map(([l, n, on]) => on ? primaryBtn(`${l} <span style="opacity:.7;font-weight:600;margin-left:8px;">${n}</span>`, { h: 74, fs: 26, pad: 28 }) : `<div style="height:74px;padding:0 28px;border-radius:24px;border:3px solid ${C.border};color:${C.white};font-size:26px;font-weight:700;display:flex;align-items:center;gap:10px;white-space:nowrap;">${l} <span style="color:${C.sec};">${n}</span></div>`).join('')}
+  <div style="padding:24px 40px 0;">${secondaryBtn('Invite friends', { w: '100%', h: 82, fs: 30 })}</div>
+  <div style="display:flex;gap:14px;padding:30px 40px 0;overflow:hidden;">
+    ${[['Uploads', 38, true], ['Reposts', 3, false], ['Albums', 3, false], ['Playlists', 5, false]].map(([l, n, on]) => on ? primaryBtn(`${l} <span style="opacity:.7;font-weight:600;margin-left:8px;">${n}</span>`, { h: 58, fs: 26, pad: 26 }) : `<div style="height:58px;padding:0 26px;border-radius:20px;border:3px solid ${C.border};color:${C.white};font-size:26px;font-weight:700;display:flex;align-items:center;gap:10px;white-space:nowrap;">${l} <span style="color:${C.sec};">${n}</span></div>`).join('')}
   </div>
   <div style="padding:30px 6px 0;">${feedCard({ reposter: 'Riya', from: 'riya.wav', initials: 'R', hue: 285, title: 'Midnight Drive', caption: '', kind: 'midnight', cur: 0, end: '3:56', upload: true, credits: 'sam_beats &amp; kabir' })}</div>
   <div style="position:absolute;left:0;right:0;bottom:0;">${tabBar('user')}</div>`;
@@ -324,24 +324,24 @@ const uploadCard = () =>
 const playerScreen = () => `
   <div style="position:absolute;inset:0;background:radial-gradient(60% 40% at 50% 34%,rgba(76,29,149,0.85),rgba(10,10,15,0) 70%),${C.bg};"></div>
   <div style="position:absolute;left:0;right:0;top:0;display:flex;align-items:center;justify-content:space-between;padding:90px 40px 0;">
-    ${I.chevDown(56, C.white)}<div style="display:flex;align-items:center;gap:22px;"><div style="display:flex;align-items:center;gap:12px;height:70px;padding:0 28px;border-radius:999px;background:rgba(139,61,255,0.15);border:2px solid rgba(139,61,255,0.3);color:${C.light};font-size:24px;font-weight:700;">${I.repost(26, C.light)}Repost</div>${I.plus(52, C.white)}</div>
+    ${I.chevDown(56, C.white)}<div style="display:flex;align-items:center;gap:22px;"><div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 22px;border-radius:999px;background:rgba(139,61,255,0.15);border:2px solid rgba(139,61,255,0.3);color:${C.light};font-size:22px;font-weight:700;">${I.repost(22, C.light)}Repost</div>${I.plus(56, C.white)}</div>
   </div>
-  <div style="position:absolute;left:150px;right:150px;top:210px;height:640px;border-radius:44px;${ART.midnight}box-shadow:0 0 90px rgba(139,61,255,0.35);"></div>
-  <div style="position:absolute;left:0;right:0;bottom:0;padding:0 40px 60px;display:flex;flex-direction:column;gap:26px;">
-    <div style="display:flex;flex-direction:column;gap:14px;"><div style="font-size:46px;font-weight:800;letter-spacing:-0.02em;">Midnight Drive</div><div style="display:flex;align-items:center;gap:16px;font-size:27px;">${avatarStack()}<span><b>riya.wav</b> <span style="color:${C.sec};">· with</span> <b>sam_beats &amp; kabir</b></span></div></div>
+  <div style="position:absolute;left:154px;right:154px;top:200px;height:760px;border-radius:40px;${ART.midnight}box-shadow:0 0 90px rgba(139,61,255,0.35);"></div>
+  <div style="position:absolute;left:0;right:0;bottom:0;padding:0 40px 56px;display:flex;flex-direction:column;gap:30px;">
+    <div style="display:flex;flex-direction:column;gap:14px;"><div style="font-size:44px;font-weight:800;letter-spacing:-0.02em;">Midnight Drive</div><div style="display:flex;align-items:center;gap:16px;font-size:26px;">${avatarStack(52)}<span><b>riya.wav</b> <span style="color:${C.sec};">· with</span> <b>sam_beats &amp; kabir</b></span></div></div>
     <div style="display:flex;align-items:center;justify-content:space-between;color:${C.white};font-size:26px;font-weight:700;">
-      <div style="display:flex;gap:36px;align-items:center;"><div style="display:flex;align-items:center;gap:10px;">${I.heart(38, C.white)}<span>412</span></div><div style="display:flex;align-items:center;gap:10px;">${I.chat(38, C.white)}<span>37</span></div>${I.send(36, C.white)}</div>
-      <div style="display:flex;align-items:center;gap:20px;height:64px;padding:0 24px;border-radius:999px;border:2px solid ${C.border};background:${C.surface};"><div style="display:flex;align-items:center;gap:8px;">${I.play(26, C.white)}12.8K</div><div style="width:2px;height:28px;background:${C.border};"></div><div style="display:flex;align-items:center;gap:8px;">${I.repost(26, C.white)}64</div></div>
+      <div style="display:flex;gap:36px;align-items:center;"><div style="display:flex;align-items:center;gap:10px;">${I.heart(30, C.white)}<span>412</span></div><div style="display:flex;align-items:center;gap:10px;">${I.chat(30, C.white)}<span>37</span></div>${I.send(28, C.white)}</div>
+      <div style="display:flex;align-items:center;gap:18px;height:48px;padding:0 22px;border-radius:999px;border:2px solid ${C.border};background:${C.surface};"><div style="display:flex;align-items:center;gap:8px;font-size:24px;">${I.play(22, C.white)}12.8K</div><div style="width:2px;height:24px;background:${C.border};"></div><div style="display:flex;align-items:center;gap:8px;font-size:24px;">${I.repost(22, C.white)}64</div></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:18px;align-items:center;">
       ${timesRow('0:00', '1:42', '3:56', 700)}
-      ${scrubber(700, { pct: 0.43, seed: 5, clip: true, bars: 40, h: 60 })}
+      ${scrubber(700, { pct: 0.43, seed: 5, clip: true, bars: 40, h: 48 })}
     </div>
-    <div style="position:relative;height:150px;display:flex;align-items:center;justify-content:center;">
-      <div style="position:absolute;left:0;right:0;top:25px;height:100px;border-radius:999px;border:3px solid rgba(139,61,255,0.5);background:${C.surface};display:flex;align-items:center;justify-content:space-between;padding:0 60px;">${I.shuffle(46, C.white)}${I.repeat(46, C.white)}</div>
-      <div style="position:relative;width:150px;height:150px;border-radius:50%;background:conic-gradient(from 0deg,${C.neon} 0 43%,#4E5470 43% 100%);display:flex;align-items:center;justify-content:center;"><div style="width:130px;height:130px;border-radius:50%;background:${C.bg};display:flex;align-items:center;justify-content:center;">${I.pause(60, C.white)}</div></div>
+    <div style="position:relative;height:116px;display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;left:0;right:0;top:16px;height:84px;border-radius:999px;border:3px solid rgba(139,61,255,0.5);background:${C.surface};display:flex;align-items:center;justify-content:space-between;padding:0 50px;">${I.shuffle(40, C.white)}${I.repeat(40, C.white)}</div>
+      <div style="position:relative;width:116px;height:116px;border-radius:50%;background:conic-gradient(from 0deg,${C.neon} 0 43%,#4E5470 43% 100%);display:flex;align-items:center;justify-content:center;"><div style="width:102px;height:102px;border-radius:50%;background:${C.bg};display:flex;align-items:center;justify-content:center;">${I.pause(48, C.white)}</div></div>
     </div>
-    <div style="display:flex;gap:18px;">${['Queue', 'Info'].map((l) => `<div style="flex:1;">${secondaryBtn(l, { w: '100%', h: 92, fs: 28 })}</div>`).join('')}</div>
+    <div style="display:flex;gap:18px;">${['Queue', 'Info'].map((l) => `<div style="flex:1;">${secondaryBtn(l, { w: '100%', h: 76, fs: 26 })}</div>`).join('')}</div>
   </div>`;
 
 const lockCard = () =>
@@ -352,13 +352,13 @@ const lockCard = () =>
    </div>`;
 
 const playlistCard = () =>
-  `<div style="width:600px;border-radius:44px;padding:34px 30px;background:${C.surface};border:2px solid ${C.border};box-shadow:0 50px 120px rgba(0,0,0,0.7);display:flex;flex-direction:column;gap:22px;align-items:center;font-family:'Manrope',system-ui,sans-serif;color:${C.white};">
-     ${cover('late', 260, 34)}
-     <div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 22px;border-radius:999px;border:2px solid rgba(34,211,238,0.55);color:${C.info};font-size:20px;font-weight:800;letter-spacing:0.16em;">${I.library(26, C.info)}PLAYLIST</div>
-     <div style="font-size:40px;font-weight:800;">late nights</div>
+  `<div style="width:640px;border-radius:44px;padding:40px 30px;background:${C.surface};border:2px solid ${C.border};box-shadow:0 50px 120px rgba(0,0,0,0.7);display:flex;flex-direction:column;gap:22px;align-items:center;font-family:'Manrope',system-ui,sans-serif;color:${C.white};">
+     ${cover('late', 360, 28)}
+     <div style="display:flex;align-items:center;gap:10px;height:40px;padding:0 20px;border-radius:999px;border:2px solid rgba(34,211,238,0.55);color:${C.info};font-size:18px;font-weight:800;letter-spacing:0.16em;">${I.library(22, C.info)}PLAYLIST</div>
+     <div style="font-size:48px;font-weight:800;">late nights</div>
      <div style="color:${C.sec};font-size:26px;">by <b style="color:${C.light};">@nadia</b> · Nadia</div>
      <div style="display:flex;align-items:center;gap:10px;height:50px;padding:0 22px;border-radius:999px;border:2px solid rgba(0,200,83,0.5);color:${C.light};font-size:22px;font-weight:800;">${I.users(26, C.light)}Friends only</div>
-     <div style="display:flex;gap:16px;">${primaryBtn('Play', { h: 84, fs: 28, pad: 36, icon: I.play(30, C.neon) })}${secondaryBtn('Shuffle', { h: 84, fs: 28, pad: 36, icon: I.shuffle(30, C.white) })}</div>
+     <div style="display:flex;gap:16px;">${primaryBtn('Play', { h: 80, fs: 30, pad: 40, icon: I.play(30, C.neon) })}${secondaryBtn('Shuffle', { h: 80, fs: 30, pad: 40, icon: I.shuffle(30, C.white) })}</div>
      <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
        ${[['Low Tide', 'sam_beats', 'lowtide'], ['Midnight Drive', 'riya.wav', 'midnight']].map(([t, a, k], i) => `<div style="display:flex;align-items:center;gap:18px;padding:12px 6px;"><div style="color:${C.sec};font-size:24px;width:24px;">${i + 1}</div>${cover(k, 76, 16)}<div style="display:flex;flex-direction:column;gap:4px;flex:1;"><div style="font-size:26px;font-weight:700;">${t}</div><div style="color:${C.sec};font-size:22px;">${a}</div></div>${avatar(i ? 'R' : 'SB', 52, i ? 285 : 195)}</div>`).join('')}
      </div>
@@ -397,7 +397,7 @@ P.Panel5 = page('5', `
   ${pulseLine(`M-10 200 H300 L350 120 L410 270 L470 150 L520 200 H1330`)}
   ${headline([{ t: 'Built for the people who ' }, { t: 'make', g: true }, { t: ' the music.' }], 'Upload audio or video. Credit your collaborators. Be heard by people who actually listen.', { size: 112, top: SAFE_TOP + 80 })}
   <div style="position:absolute;left:120px;top:${SAFE_TOP + 720}px;">${phone(profileScreen())}</div>
-  <div style="position:absolute;right:-150px;top:${SAFE_TOP + 1480}px;transform:rotate(4deg);">${uploadCard()}</div>
+  <div style="position:absolute;right:-40px;top:${SAFE_TOP + 1460}px;transform:rotate(4deg);">${uploadCard()}</div>
 `);
 P.Panel6 = page('6', `
   ${glow(1200, 2500, 1000, 800, 0.55)}
