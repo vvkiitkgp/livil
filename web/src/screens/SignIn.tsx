@@ -291,11 +291,24 @@ export function SignIn({
           quiet half of this card, deliberately outweighed by a waitlist form, because
           closed testing meant the listing resolved only for enrolled testers and the
           loud control must not be the one that dead-ends. It resolves for everyone, so
-          it carries the card's weight. */}
+          it carries the card's weight.
+
+          The availability line below is not decoration. Where it sits, this card used to
+          read "Not a tester yet? Livil is in closed testing, so the store link above only
+          opens for enrolled testers" — and search engines still serve that sentence from
+          a cached copy of this page, months after the waitlist was retired, telling people
+          the app cannot be installed. A crawler re-reading this page needs an equally
+          specific sentence in the same position to overwrite it; "Get the Android app" is
+          a button label and does not refute a claim. Keep a plain, literal statement of
+          availability here for as long as the listing is public. */}
       <section className="card card--muted">
         <h2 className="card__title">Prefer the phone?</h2>
         <p className="hint">
           The app is where you listen, follow and message. The studio is for publishing.
+        </p>
+        <p className="hint">
+          <strong>Livil is live on the Google Play Store</strong> — free, and open to
+          everyone. No invite, no waitlist, no tester list.
         </p>
         <Button
           type="button"

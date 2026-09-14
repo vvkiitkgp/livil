@@ -65,4 +65,23 @@ if (constName !== actualName || constCode !== actualCode) {
   process.exit(1);
 }
 
+// Fourth copy: the MobileApplication node in docs/index.html states softwareVersion
+// to search engines and LLM-backed answer engines. It is the copy with the widest
+// audience and the one nobody opens, so it is the likeliest to rot -- and a stale
+// version there is not cosmetic: the whole point of that node is to be believed by
+// something that will repeat it. versionCode has no meaning to schema.org, so only
+// the name is checked.
+const site = readFileSync(join(REPO, 'docs/index.html'), 'utf8');
+const siteName = site.match(/"softwareVersion":\s*"([^"]+)"/)?.[1];
+
+if (siteName !== actualName) {
+  console.error(
+    '\nFAIL  version drift between docs/index.html and build.gradle\n\n' +
+    `        build.gradle     : versionName ${actualName}\n` +
+    `        docs/index.html  : softwareVersion ${siteName ?? '(absent)'}\n\n` +
+    '      Update the MobileApplication node in docs/index.html.\n',
+  );
+  process.exit(1);
+}
+
 console.log(`PASS  version in sync: ${actualName} (${actualCode})`);
