@@ -10,6 +10,7 @@ import React, {
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { Icon, type IconName } from '../components/Icon';
 
 export type ToastKind = 'error' | 'success' | 'info';
@@ -74,6 +75,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         kind: options?.kind ?? 'info',
         duration: options?.duration ?? DEFAULT_DURATION,
       };
+      // Every toast in the app routes through here, so failures and completions
+      // are felt without a single screen having to remember to buzz. 'info' is
+      // silent on purpose — it is ambient, and a passing note that buzzes reads
+      // as something having gone wrong.
+      if (next.kind === 'error') { haptics.error(); }
+      else if (next.kind === 'success') { haptics.success(); }
       setToast(next);
       opacity.setValue(0);
       translateY.setValue(-20);

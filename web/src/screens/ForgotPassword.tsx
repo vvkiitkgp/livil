@@ -1,0 +1,127 @@
+import { useState, type FormEvent } from 'react';
+import { Button } from '../components/Button';
+import { ResendButton } from '../components/ResendButton';
+import { TextField } from '../components/TextField';
+import { supabase } from '../supabase';
+import { studioUrl } from '../basePath';
+import { isTransportFailure } from '../auth/signIn';
+
+/**
+ * Ask for a reset link.
+ *
+ * This existing at all is the point. The dashboard is sign-in only, and while the Android app
+ * was in closed testing an artist who forgot their password and was not an enrolled tester had
+ * NO route back into their account — the copy told them to reset in an app they could not
+ * install. The app is public now, but a web-only artist still needs a reset that lives here.
+ *
+ * The response is deliberately identical whether or not the address has an account. Saying
+ * "no account with that email" turns this form into an account-existence oracle for anyone
+ * who wants to know whether a given person is on Livil.
+ */
+export function ForgotPassword({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    return supabase.auth.resetPasswordForEmail(email.trim(), {
+      // Base-prefixed, NOT `${origin}/reset`. The app is served under `/studio/`, so an
+      // origin-relative link lands outside it — and because the recovery token is consumed
+      // by Supabase's /verify BEFORE the redirect, that first dead click burns the link and
+      // the next one reports `otp_expired`. See basePath.ts.
+      redirectTo: studioUrl('/reset'),
+    });
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+
+    const { error: sendError } = await send();
+
+    setBusy(false);
+
+    // Rate limiting is the one thing worth surfacing, because the user CAN act on it —
+    // waiting is a real instruction.
+    if (sendError && /rate|too many/i.test(sendError.message)) {
+      setError('Too many attempts. Wait a minute and try again.');
+      return;
+    }
+
+    // A TRANSPORT FAILURE IS NOT A RESULT. supabase-js does not throw when the request never
+    // reaches the server — it RETURNS an AuthRetryableFetchError. Treating that as "sent"
+    // showed "Check your email" for a request the server never saw, which is the worst
+    // possible answer: the user waits for mail that was never asked for.
+    //
+    // This does not weaken the anti-enumeration posture. "We couldn't reach Livil" says
+    // nothing about whether an address has an account — only that the network failed. The
+    // vagueness exists to hide the SERVER's answer, and here there isn't one.
+    if (isTransportFailure(sendError)) {
+      setError("Couldn't reach Livil. Check your connection and try again.");
+      return;
+    }
+
+    setSent(true);
+  }
+
+  if (sent) {
+    return (
+      <main className="auth bg-stage">
+        <header className="auth__head">
+          <p className="kicker">Backstage door</p>
+          <h1 className="display auth__title">Check your email</h1>
+          <p className="tagline">
+            If there&apos;s an account for {email.trim()}, a reset link is on its way.
+          </p>
+        </header>
+        <section className="card">
+          <p className="hint">
+            The link opens back here, works once, and expires in an hour.
+          </p>
+          {/* Swallows the result: a resend that reported failure would distinguish a real
+              address from an unknown one, which is exactly what the copy above avoids. */}
+          <ResendButton onResend={() => send().then(() => undefined)} />
+          <Button variant="secondary" onClick={onBack}>
+            Back to sign in
+          </Button>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="auth bg-stage">
+      <header className="auth__head">
+        <p className="kicker">Backstage door</p>
+        <h1 className="display auth__title">Forgot your password?</h1>
+        <p className="tagline">We&apos;ll email you a link to set a new one.</p>
+      </header>
+
+      <form className="card" onSubmit={onSubmit}>
+        <TextField
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+        />
+
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+
+        <Button type="submit" size="lg" busy={busy}>
+          Send reset link
+        </Button>
+        <Button type="button" variant="ghost" onClick={onBack}>
+          Back to sign in
+        </Button>
+      </form>
+    </main>
+  );
+}

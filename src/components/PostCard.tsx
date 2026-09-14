@@ -3,9 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
-import ClipRangeSlider from './ClipRangeSlider';
+import WaveformScrubber from './WaveformScrubber';
+import CoverFallback from './CoverFallback';
+import CollabAvatar from './CollabAvatar';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import TrackContextMenu from './TrackContextMenu';
 import AddToAlbumSheet from './AddToAlbumSheet';
 import type { FeedPost } from '../services/posts';
@@ -20,19 +24,14 @@ import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
 import { Icon } from './Icon';
+import SharePostSheet from './SharePostSheet';
+import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
+import { canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
 
 export type PostCardProps = {
   post: FeedPost;
-  /** Visibility from the parent FlatList — feeds MediaPlayer's debounced off-screen
-   *  pause and drives the dedup'd view count after a brief dwell. */
-  visible: boolean;
-  /**
-   * When false, playback is not auto-paused from FlatList viewability (Home feed).
-   * Profile / single-column feeds should keep the default true.
-   */
-  pauseWhenOffScreen?: boolean;
   /** Tap the comments stat to open the CommentsSheet for this post. */
   onCommentsPress?: (postId: string) => void;
   /**
@@ -82,13 +81,28 @@ function avatarInitials(author: { displayName: string | null; username: string }
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-// `visible` and `pauseWhenOffScreen` are still accepted for source compatibility —
-// several screens pass them — but PostCard deliberately ignores them. Since the
-// single-engine consolidation (ADR-0001) this component produces no audio: it renders
-// cover art and a play button that hands off to GlobalAudioPlayer. There is nothing
-// here to pause when it scrolls off screen. The props are vestigial and should be
-// removed from PostCardProps and its call sites in a separate change.
-export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
+// Since the single-engine consolidation (ADR-0001) this component produces no audio:
+// it renders cover art and a play button that hands off to GlobalAudioPlayer, so it
+// needs no viewability wiring. (The former `visible`/`pauseWhenOffScreen` props were
+// vestigial and forced every feed to re-render all mounted cards on each scroll tick;
+// removed with the feed-jank fix.)
+//
+// Memoized: feed items keep a stable identity (useCommentsCountDeltas.withDelta
+// returns the same object when there's no delta), so React.memo lets a like /
+// comment / pagination on ONE card skip re-rendering every other mounted card.
+/** Faces before the row starts counting instead. Four fits a phone without crowding. */
+const CREDIT_FACES_SHOWN = 4;
+
+/** "with Ana" / "with Ana and 2 others" — a name is worth more than a face count. */
+function creditsSummary(credits: FeedPost['credits']): string {
+  const first = credits[0]?.name?.trim();
+  if (!first) {return credits.length === 1 ? 'with 1 other' : `with ${credits.length} others`;}
+  if (credits.length === 1) {return `with ${first}`;}
+  const rest = credits.length - 1;
+  return `with ${first} and ${rest} other${rest === 1 ? '' : 's'}`;
+}
+
+function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
@@ -190,6 +204,8 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
     }
   }, [post.track.id]);
   const [likersOpen, setLikersOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const openFullScreen = usePlayFullScreen();
 
   const trackInfoForMenu = useMemo((): NowPlayingInfo => {
     const displayAuthor = (post.kind === 'repost' && post.originalAuthor) ? post.originalAuthor : post.author;
@@ -221,6 +237,16 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
 
   const isVideo = post.track.mediaKind === 'video';
   const isThisActive = playback.activePostId === post.id;
+  // A repost carrying a clip gets the purple box drawn around its slice of the
+  // full track, and its time labels are the clip boundaries. An upload (or a
+  // repost saved without a window) is just the whole song, unmarked.
+  const isClippedRepost =
+    post.kind === 'repost' &&
+    post.clipStartSec != null &&
+    post.clipEndSec != null &&
+    post.clipEndSec > post.clipStartSec;
+  const waveViewStart = isClippedRepost ? (post.clipStartSec ?? 0) : 0;
+  const waveViewEnd = isClippedRepost ? (post.clipEndSec ?? duration) : duration;
   // True when this post is the loaded track (playing OR paused). At most one
   // card is the current track, so only that card polls the position refs.
   const isCurrentTrack = playback.nowPlaying?.postId === post.id;
@@ -266,6 +292,7 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
     return () => clearInterval(id);
   }, [isCurrentTrack, post.track.durationSeconds, playback.positionRef, playback.durationRef]);
 
+
   // Build the NowPlayingInfo for this post — shared between play-button and
   // thumbnail-tap so we don't duplicate field-list maintenance.
   const buildNowPlayingForThis = useCallback((): NowPlayingInfo => {
@@ -307,7 +334,9 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
   //   - loaded but paused → seek to clipStart + play (re-issuing setNowPlaying
   //     wouldn't restart GAP since postId is unchanged).
   //   - otherwise → setNowPlaying + requestPlay; GAP picks it up.
+  // It also opens full screen, exactly like the thumbnail tap and like audio.
   const handleVideoTogglePlay = useCallback(() => {
+    haptics.tap();
     if (isThisActive) {
       playback.handlersRef.current?.pause();
       return;
@@ -323,15 +352,21 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+    // Same as audio: tapping a song opens the player. A video's picture only exists
+    // in full screen, so NOT opening here left the bottom play button starting a video
+    // you could hear and not see, while tapping its thumbnail — the same post, the same
+    // intent — opened it. Two ways to start one post should not disagree.
+    openFullScreen();
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
   // Center play button (overlay on the thumbnail) AND thumbnail tap: start (or
   // resume) playback and open FullScreenPlayer, which mounts the muted video
   // frame for this track (rule 2: opening FS shows the picture).
   const handleVideoOpenFs = useCallback(() => {
+    haptics.tap();
     if (isThisActive) {
       // Already playing this track — just maximize.
-      playback.openFullScreenPlayer();
+      openFullScreen();
       return;
     }
     const clipStart = post.clipStartSec ?? 0;
@@ -345,8 +380,22 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-    playback.openFullScreenPlayer();
-  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback]);
+    openFullScreen();
+  }, [post.id, post.clipStartSec, isThisActive, buildNowPlayingForThis, playback, openFullScreen]);
+
+  /**
+   * Open the player on the Info tab, where the credits actually live.
+   *
+   * Reuses the same open-and-play path as the artwork rather than a bespoke one, so a card
+   * whose track is not loaded yet still lands on the right track's info.
+   */
+  const handleOpenCredits = useCallback(() => {
+    haptics.tap();
+    if (!isThisActive) {
+      playback.setNowPlaying(buildNowPlayingForThis());
+    }
+    playback.openFullScreenPlayer('info');
+  }, [isThisActive, buildNowPlayingForThis, playback]);
 
   // Audio play/pause (action-row button + cover tap). Drives the GLOBAL audio
   // player, never an inline <Video>, so playback is independent of whether this
@@ -358,6 +407,7 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
   //   - otherwise → setNowPlaying (with audioUrl) + requestPlay; GlobalAudioPlayer
   //     picks it up and becomes the source.
   const handleAudioTogglePlay = useCallback(() => {
+    haptics.tap();
     if (isThisActive) {
       playback.handlersRef.current?.pause();
       return;
@@ -373,13 +423,19 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
       playback.markSeekTarget(clipStart);
       playback.requestPlay(post.id);
     }
-  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback]);
+    // Tapping a song opens the player. The pause branch above returns early, so
+    // pausing what is already playing stays a pause and does not throw a screen up.
+    openFullScreen();
+  }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
   const handleToggleLike = useCallback(async () => {
     // Optimistic update — flip immediately, revert on failure.
     const prevLiked = liked;
     const prevCount = likesCount;
     const nextLiked = !prevLiked;
+    // Only on the way ON — unliking is not an achievement, and buzzing both
+    // directions turns an accidental double-tap into a rattle.
+    if (nextLiked) { haptics.toggleOn(); }
     setLiked(nextLiked);
     setLikesCount(prevCount + (nextLiked ? 1 : -1));
     try {
@@ -427,12 +483,14 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
                 <Text style={styles.displayName} numberOfLines={1}>
                   {headerAuthor.displayName ?? headerAuthor.username}
                 </Text>
-                <Text style={styles.timeDot}> · </Text>
+              </View>
+              <View style={styles.handleRow}>
+                <Text style={styles.handleText} numberOfLines={1}>
+                  @{headerAuthor.username}
+                </Text>
+                <Text style={styles.timeDot}>·</Text>
                 <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
               </View>
-              <Text style={styles.handleText} numberOfLines={1}>
-                @{headerAuthor.username}
-              </Text>
             </View>
           </TouchableOpacity>
           <TouchableOpacity
@@ -498,7 +556,8 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
           viewerId={viewerId}
           postId={post.id}
           postAuthorId={post.author.id}
-          onReportPost={() => setReportOpen(true)}
+          onSharePost={canSharePost(post) ? () => setShareOpen(true) : undefined}
+        onReportPost={() => setReportOpen(true)}
           onDeletePost={() => setConfirmDelete(true)}
           currentAlbumTitle={currentAlbum?.title ?? null}
           onAddToAlbum={isOwnerOfPost ? handleAddOrMoveAlbum : undefined}
@@ -546,18 +605,31 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
             >
               {headerAuthor.displayName ?? headerAuthor.username}
             </Text>
-            {' reposted from '}
-            <Text
-              style={styles.repostBannerName}
-              onPress={() => openAuthor(post.originalAuthor!.id)}
-            >
+            {' reposted'}
+          </Text>
+          {/* The CREATOR pill names who the repost came from — it used to sit in
+              the title block while the banner spelled out "reposted from @x",
+              saying the same thing twice. It stays tappable because dropping the
+              "from @x" link would otherwise leave no way to reach the original
+              author from this card. */}
+          <TouchableOpacity
+            style={styles.creatorTag}
+            activeOpacity={0.75}
+            onPress={() => openAuthor(post.originalAuthor!.id)}
+            accessibilityLabel={`Open @${post.originalAuthor!.username}, creator of this track`}
+          >
+            <Text style={styles.creatorTagLabel}>CREATOR</Text>
+            <Text style={styles.creatorTagName} numberOfLines={1}>
               @{post.originalAuthor!.username}
             </Text>
-          </Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
-      {/* Header: avatar + name + handle + time */}
+      {/* Header: avatar, then name + Add pill on the first line and @handle · age
+          on the second. The age sits with the handle rather than the name because
+          the name line also carries the Add pill, and the two together crowded out
+          the Repost button beside them. */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.authorTap}
@@ -578,12 +650,14 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
                 {headerAuthor.displayName ?? headerAuthor.username}
               </Text>
               <AddBadge userId={headerAuthor.id} size="sm" />
-              <Text style={styles.timeDot}> · </Text>
+            </View>
+            <View style={styles.handleRow}>
+              <Text style={styles.handleText} numberOfLines={1}>
+                @{headerAuthor.username}
+              </Text>
+              <Text style={styles.timeDot}>·</Text>
               <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
             </View>
-            <Text style={styles.handleText} numberOfLines={1}>
-              @{headerAuthor.username}
-            </Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity
@@ -620,19 +694,42 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
         <Text style={styles.trackTitle} numberOfLines={2}>
           {post.track.title}
         </Text>
-        {isRepost ? (
-          <View style={styles.creatorTag}>
-            <Text style={styles.creatorTagLabel}>CREATOR</Text>
-            <Text style={styles.creatorTagName} numberOfLines={1}>
-              @{post.originalAuthor!.username}
-            </Text>
-          </View>
-        ) : null}
       </View>
       {post.caption ? (
         <Text style={styles.caption} numberOfLines={4}>
           {post.caption}
         </Text>
+      ) : null}
+
+      {/* Credits — faces only. A track's collaborators are part of what the post IS, and
+          the card showed no sign of them at all; you had to open the player to find out
+          anyone else played on it. Tapping opens the player's Info tab, where the names,
+          roles and glyphs live, rather than repeating them here. */}
+      {post.credits.length > 0 ? (
+        <TouchableOpacity
+          style={styles.creditsRow}
+          activeOpacity={0.75}
+          onPress={handleOpenCredits}
+          accessibilityRole="button"
+          accessibilityLabel={`${post.credits.length} credited on this track. Opens track info.`}
+        >
+          {post.credits.slice(0, CREDIT_FACES_SHOWN).map((c, i) => (
+            <View key={c.userId ?? i} style={[styles.creditFace, i > 0 && styles.creditFaceStacked]}>
+              <CollabAvatar
+                uri={c.avatarUrl}
+                display={resolveAuthorDisplay({ displayName: c.name })}
+                size={22}
+                pending={c.pending}
+              />
+            </View>
+          ))}
+          {post.credits.length > CREDIT_FACES_SHOWN ? (
+            <Text style={styles.creditsMore}>+{post.credits.length - CREDIT_FACES_SHOWN}</Text>
+          ) : null}
+          <Text style={styles.creditsLabel} numberOfLines={1}>
+            {creditsSummary(post.credits)}
+          </Text>
+        </TouchableOpacity>
       ) : null}
 
       {/* Media */}
@@ -689,12 +786,7 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
               source={{ uri: post.track.coverArtUrl }}
               style={styles.audioCover}
               resizeMode="cover"
-              placeholder={
-                <>
-                  <View style={styles.fallbackBlobA} pointerEvents="none" />
-                  <View style={styles.fallbackBlobB} pointerEvents="none" />
-                </>
-              }
+              placeholder={<CoverFallback />}
             />
             {isThisActive && playback.isBuffering ? (
               <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
@@ -715,24 +807,36 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
         )}
       </View>
 
-      {/* Clip-window indicator — shows only the clip start/end markers (no
-          progress fill, no seek thumb). Labels are the clip boundaries, not
-          the live playback position. */}
-      <View style={styles.seekRow}>
-        <Text style={styles.seekTime}>{formatTime(post.clipStartSec ?? 0)}</Text>
-        <View style={styles.seekBarWrap}>
-          <ClipRangeSlider
-            readOnly
-            hideProgress
+      {/* The wave is here to show WHERE A CLIP SITS inside the track it came from —
+          the whole song in white, with a purple box around the reposted slice. An
+          upload has no clip, so on an upload the wave was decoration: 44dp of bars
+          carrying no information the card did not already have. Uploads get the one
+          fact that is actually useful, the length of the song; reposts keep the wave,
+          because for a repost the clip IS the post. */}
+      {post.kind === 'upload' ? (
+        <View style={styles.durationBlock}>
+          <Text style={styles.seekTime}>{formatTime(duration)}</Text>
+        </View>
+      ) : (
+        <View style={styles.seekBlock}>
+          <View style={styles.seekLabels}>
+            <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
+            <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
+          </View>
+          <WaveformScrubber
             duration={duration}
             position={position}
-            start={post.clipStartSec ?? 0}
-            end={post.clipEndSec ?? duration}
-            minClipSeconds={1}
+            seed={post.track.id}
+            span="full"
+            clipStart={waveViewStart}
+            clipEnd={waveViewEnd}
+            showBox={isClippedRepost}
+            showProgress={false}
+            seekable={false}
+            height={44}
           />
         </View>
-        <Text style={styles.seekTime}>{formatTime(post.clipEndSec ?? duration)}</Text>
-      </View>
+      )}
 
       {/* Action row: play/pause + stats */}
       <View style={styles.actionRow}>
@@ -783,6 +887,34 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
             </View>
           ) : null}
         </View>
+
+        {/* Share — UPLOADS ONLY. A repost is somebody else's share already, and its
+            public link would put a second person's clip choice on the open web under
+            the original artist's name. This hides the affordance; `shared_post_public`
+            is what actually refuses a repost id, because a hidden button is not a rule.
+
+            OUTSIDE statsGroup, and outlined rather than grey. Everything inside that
+            group is a COUNTER — muted icon plus a number — so a grey share glyph sitting
+            among them read as decoration and was genuinely unfindable. The purple
+            outline is what marks it as a control, which is also what the design system
+            says purple is for.
+
+            Icon-only, mirroring the play button at the other end of the row, because a
+            labelled `[icon] Share` pill is ~82dp: on a 360dp phone that leaves the three
+            counters 142dp for 144dp of content, and they clip. The labelled path is the
+            Share row in the overflow menu. */}
+        {canSharePost(post) ? (
+          <TouchableOpacity
+            style={styles.shareBtn}
+            activeOpacity={0.85}
+            onPress={() => setShareOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${post.track.title}`}
+          >
+            <GradientBorder borderRadius={23} />
+            <Icon name="share" size={18} color={COLORS.purpleNeon} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <LikedByLine
@@ -790,6 +922,12 @@ export default function PostCard({ post, onCommentsPress, onDeleted }: PostCardP
         likesCount={likesCount}
         viewerHasLiked={liked}
         onPress={() => setLikersOpen(true)}
+      />
+
+      <SharePostSheet
+        visible={shareOpen}
+        post={shareOpen ? toShareablePost(post) : null}
+        onClose={() => setShareOpen(false)}
       />
 
       <TrackContextMenu
@@ -884,11 +1022,33 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
+  /**
+   * A full-bleed header band across the top of a repost card.
+   *
+   * `COLORS.card` (#1A1A2E), one step up the neutral ramp from the card's own #12121C —
+   * NOT the primary. Filling this with purple was tried and dominated the card it was
+   * only meant to label, so the marking is neutral and confined to this band: a repost
+   * card is otherwise the same shape and colour as every other card in the feed.
+   *
+   * Negative margins cancel the card's 14dp padding so the band spans its full inner
+   * width, and the padding puts the content back. The top corners are rounded HERE
+   * rather than by putting `overflow: 'hidden'` on the card: the card also hosts
+   * GradientBorder (the play button, the Repost pill), whose glow is drawn inward and
+   * would be clipped by it — the trap the design notes name explicitly. 19 is the card's
+   * 20dp radius less its 1dp border, the radius of the padding box the band sits in.
+   */
   repostBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
+    backgroundColor: COLORS.card,
+    marginTop: -14,
+    marginHorizontal: -14,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopLeftRadius: 19,
+    borderTopRightRadius: 19,
   },
   repostBannerText: {
     color: COLORS.textMuted,
@@ -956,10 +1116,18 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 12,
   },
+  // The handle shrinks and truncates so the age stays visible next to it — a long
+  // username must not push "3d" off the row.
+  handleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 1,
+  },
   handleText: {
     color: COLORS.textMuted,
     fontSize: 12,
-    marginTop: 1,
+    flexShrink: 1,
   },
   repostBtn: {
     flexDirection: 'row',
@@ -968,6 +1136,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
+  },
+  // Same box as playButton, deliberately: one outlined control at each end of the
+  // action row, counters between them. No `elevation` and no `overflow: 'hidden'` —
+  // GradientBorder draws its glow inward and both would cut it off.
+  shareBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   repostBtnLabel: {
     color: COLORS.purpleNeon,
@@ -1019,6 +1197,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  creditsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 },
+  creditFace: {},
+  // Overlapped, so a row of credits reads as one group rather than a queue of avatars.
+  creditFaceStacked: { marginLeft: -10 },
+  creditsMore: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', marginLeft: 2 },
+  creditsLabel: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
   caption: {
     color: COLORS.textSecondary,
     fontSize: 14,
@@ -1052,26 +1236,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: COLORS.card,
   },
-  fallbackBlobA: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: COLORS.purple,
-    opacity: 0.45,
-    top: -60,
-    left: -40,
-  },
-  fallbackBlobB: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#EC4899',
-    opacity: 0.35,
-    bottom: -50,
-    right: -20,
-  },
   videoBadge: {
     position: 'absolute',
     top: 10,
@@ -1104,21 +1268,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
   },
-  seekRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 10,
+  // Labels sit ABOVE the waveform (start · now · end) so the bars keep the full
+  // card width — at feed width, side labels leave too little room to read.
+  // Where the wave used to be on an upload. Right-aligned so the number lands in the
+  // same place the track's end time did, rather than moving to the other side of the
+  // card for people used to reading it there.
+  durationBlock: { marginTop: 14, alignItems: 'flex-end' },
+  seekBlock: {
+    // Clear of the artwork. Has to beat the 6dp holding the labels to their own
+    // waveform, or the block reads as belonging to the image instead.
+    marginTop: 14,
   },
-  seekBarWrap: {
-    flex: 1,
+  seekLabels: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    // Negative on purpose, same as the fullscreen player: the scrubber carries
+    // SCRUBBER_SLOP of transparent touch padding above its box, so without this
+    // the clip times read as floating clear of the wave they label. Pulling into
+    // that slop tightens the gap without shrinking the target.
+    marginBottom: -6,
   },
   seekTime: {
     color: COLORS.textMuted,
     fontSize: 11,
     fontVariant: ['tabular-nums'],
-    width: 40,
-    textAlign: 'center',
   },
   actionRow: {
     flexDirection: 'row',
@@ -1194,3 +1368,5 @@ const styles = StyleSheet.create({
     color: '#FF4D6D',
   },
 });
+
+export default React.memo(PostCard);

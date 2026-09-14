@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-07-24
+last_verified: 2026-09-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 44 migration(s) in `supabase/migrations/`.
+Reconstructed from 95 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-31 table(s).
+42 table(s).
 
 ### `activity_notifications`
 
@@ -96,6 +96,25 @@ RLS enabled · defined in `20260616000000_albums_and_playlist_visibility.sql`
 
 - `albums_uploader_idx` `(uploader_id, created_at desc)`
 
+### `blocked_users`
+
+RLS enabled · defined in `20260808100000_blocked_users.sql`
+
+| Column | Definition |
+|---|---|
+| `blocker_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `blocked_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (blocker_id, blocked_id)`
+- `constraint blocked_users_no_self check (blocker_id <> blocked_id)`
+
+**Indexes**
+
+- `blocked_users_blocked_idx` `(blocked_id)`
+
 ### `conversation_members`
 
 RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
@@ -138,6 +157,22 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `trg_conversations_freeze_derived` — before update (`20260722180000_fix_comment_like_counts_and_conversation_drift.sql`)
+
+### `deleted_accounts`
+
+RLS enabled · defined in `20260730000000_liv74_delete_messages_and_deletion_ledger.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `bigint generated always as identity primary key` |
+| `email_sha256` | `text` |
+| `username` | `text` |
+| `deleted_at` | `timestamptz not null default now()` |
+
+**Indexes**
+
+- `deleted_accounts_username_idx` `(username)`
+- `deleted_accounts_email_idx` `(email_sha256)`
 
 ### `device_tokens`
 
@@ -323,6 +358,31 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `after_message_insert` — after insert (`20260528000000_chat_jam.sql`)
+- `trg_messages_freeze_identity` — before update (`20260729000000_liv78_msg_update_with_check.sql`)
+- `after_message_delete` — after delete (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
+
+### `notification_preferences`
+
+RLS enabled · defined in `20260803120000_notification_preferences.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid primary key references auth.users(id) on delete cascade` |
+| `social` | `boolean not null default true` |
+| `activity` | `boolean not null default true` |
+| `messages` | `boolean not null default true` |
+| `jam` | `boolean not null default true` |
+| `updated_at` | `timestamptz not null default now()` |
+
+### `ops_users`
+
+RLS enabled · defined in `20260805000000_waitlist_ops_dashboard.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE` |
+| `note` | `text` |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` |
 
 ### `playlist_posts`
 
@@ -397,9 +457,17 @@ RLS enabled · defined in `20260607000004_post_comments_likes_reports.sql`
 | `details` | `text` |
 | `created_at` | `timestamptz not null default now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
+| `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+
 **Indexes**
 
 - `post_comment_reports_reporter_idx` `(reporter_id)`
+- `post_comment_reports_open_idx` `(created_at desc) where reviewed_at is null`
 
 ### `post_comments`
 
@@ -436,6 +504,25 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 - `trg_post_comments_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 - `trg_post_comments_freeze_post_id` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
 
+### `post_impressions`
+
+RLS enabled · defined in `20260816000000_post_impressions.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `seen_count` | `int not null default 1` |
+| `last_seen_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (user_id, post_id)`
+
+**Indexes**
+
+- `post_impressions_last_seen_idx` `(last_seen_at)`
+
 ### `post_likes`
 
 RLS enabled · defined in `00000000000000_baseline_schema.sql`
@@ -471,10 +558,18 @@ RLS enabled · defined in `20260607000007_post_reports.sql`
 | `details` | `text` |
 | `created_at` | `timestamptz not null default now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
+| `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+
 **Indexes**
 
 - `post_reports_reporter_idx` `(reporter_id)`
 - `post_reports_post_idx` `(post_id)`
+- `post_reports_open_idx` `(created_at desc) where reviewed_at is null`
 
 ### `post_views`
 
@@ -497,6 +592,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `post_views_post_id_idx` `(post_id)`
 - `post_views_user_id_played_at_idx` `(user_id, played_at desc)`
+- `post_views_post_id_played_at_idx` `(post_id, played_at desc)`
 
 **Triggers**
 
@@ -540,6 +636,8 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 |---|---|---|
 | `clip_start_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
 | `clip_end_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
+| `hot_score` | `double precision NOT NULL DEFAULT 0` | `20260816030000_home_feed_candidates.sql` |
+| `hot_score_updated_at` | `timestamptz` | `20260816030000_home_feed_candidates.sql` |
 
 **Indexes**
 
@@ -549,12 +647,14 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `posts_track_id_idx` `(track_id)`
 - `idx_posts_created_at_id_desc` `(created_at DESC, id DESC)`
 - `idx_posts_author_created` `(author_id, created_at DESC)`
+- `posts_hot_score_idx` `(hot_score DESC) WHERE hot_score > 0`
 
 **Triggers**
 
 - `trg_post_reposts_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 - `trg_posts_freeze_counter_identity` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
 - `trg_posts_clamp_counters_on_insert` — before insert (`20260722160000_counters_are_not_client_writable.sql`)
+- `notify_track_credits` — after insert (`20260806130000_credit_accept_decline.sql`)
 
 ### `profiles`
 
@@ -585,11 +685,17 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `fans_seen_at` | `timestamptz` | `20260530000000_relationships.sql` |
 | `links` | `text[] not null default '{}'` | `20260607000000_edit_profile_schema.sql` |
 | `username_set` | `boolean NOT NULL DEFAULT false` | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
+| `comments_friends_only` | `boolean not null default false` | `20260803000000_profiles_comments_friends_only.sql` |
+
+**Indexes**
+
+- **unique** `profiles_username_lower_key` `(lower(username))`
 
 **Triggers**
 
 - `trg_enforce_username_immutable` — BEFORE UPDATE (`20260628000000_profiles_username_set_and_oauth_onboarding.sql`)
 - `trg_profiles_freeze_counters` — before update (`20260722160000_counters_are_not_client_writable.sql`)
+- `trg_enforce_username_reservation` — before insert or update (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
 
 ### `profiles_private`
 
@@ -601,6 +707,27 @@ RLS enabled · defined in `20260607000000_edit_profile_schema.sql`
 | `date_of_birth` | `date` |
 | `phone_number` | `text` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `search_result_taps`
+
+RLS enabled · defined in `20260808000000_search_result_taps.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `kind` | `text not null` |
+| `entity_id` | `uuid not null` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `constraint search_result_taps_kind_check check (kind in ('track', 'album', 'profile'))`
+
+**Indexes**
+
+- `search_result_taps_kind_created_idx` `(kind, created_at desc, entity_id)`
+- `search_result_taps_entity_user_idx` `(entity_id, user_id)`
 
 ### `stories`
 
@@ -630,6 +757,37 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 
 - `stories_active_idx` `(expires_at desc, author_id)`
 
+**Triggers**
+
+- `stories_pin_expiry_trg` — before insert or update (`20260724120000_prop0004_harden_stories.sql`)
+
+### `story_reports`
+
+RLS enabled · defined in `20260808110000_story_reports.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `story_id` | `uuid references public.stories(id) on delete set null` |
+| `reported_user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `reporter_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `reason` | `text not null check (reason in ('spam','harassment','hate','misinformation','other'))` |
+| `details` | `text` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
+| `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+
+**Indexes**
+
+- `story_reports_reporter_idx` `(reporter_id)`
+- `story_reports_reported_idx` `(reported_user_id)`
+- `story_reports_open_idx` `(created_at desc) where reviewed_at is null`
+
 ### `story_views`
 
 RLS enabled · defined in `20260530000001_repost_and_stories.sql`
@@ -643,6 +801,60 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 **Table constraints**
 
 - `primary key (story_id, viewer_id)`
+
+### `team_messages`
+
+RLS enabled · defined in `20260806000000_team_messages.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
+| `sender_id` | `uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE` |
+| `body` | `text NOT NULL CHECK (char_length(btrim(body)) BETWEEN 1 AND 4000)` |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` |
+
+**Indexes**
+
+- `team_messages_created_at_desc_idx` `(created_at DESC)`
+
+### `terms_acceptances`
+
+RLS enabled · defined in `20260907000000_terms_acceptance_log.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `user_id` | `uuid not null references auth.users(id) on delete cascade` |
+| `version` | `text not null references public.terms_versions(version)` |
+| `accepted_at` | `timestamptz not null default now()` |
+| `source` | `text not null check (source in ('signup', 'reaccept'))` |
+| `app_version` | `text` |
+
+**Indexes**
+
+- **unique** `terms_acceptances_one_per_version` `(user_id, version) where source in ('signup', 'reaccept')`
+- `terms_acceptances_user_idx` `(user_id, version)`
+
+**Triggers**
+
+- `trg_terms_acceptances_no_update` — BEFORE UPDATE (`20260907000000_terms_acceptance_log.sql`)
+- `trg_terms_acceptances_pin` — BEFORE INSERT (`20260907000000_terms_acceptance_log.sql`)
+
+### `terms_versions`
+
+RLS enabled · defined in `20260907000000_terms_acceptance_log.sql`
+
+| Column | Definition |
+|---|---|
+| `version` | `text primary key` |
+| `effective_at` | `timestamptz not null` |
+| `url` | `text not null` |
+| `sha256` | `text not null check (sha256 ~ '^[0-9a-f]{64}$')` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Triggers**
+
+- `trg_terms_versions_immutable` — BEFORE UPDATE OR DELETE (`20260907000000_terms_acceptance_log.sql`)
 
 ### `track_collaborators`
 
@@ -706,10 +918,15 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | Column | Definition | Migration |
 |---|---|---|
 | `waveform_peaks` | `jsonb` | `20260611000000_tracks_waveform_peaks.sql` |
+| `file_size_bytes` | `bigint` | `20260804040000_tracks_file_size.sql` |
+| `lyrics` | `text` | `20260805030000_track_lyrics.sql` |
+| `lyrics_format` | `text` | `20260805030000_track_lyrics.sql` |
+| `tags` | `text[]` | `20260807000000_track_tags.sql` |
 
 **Indexes**
 
 - `tracks_uploader_created_idx` `(uploader_id, created_at desc)`
+- `tracks_tags_gin` `using gin (tags)`
 
 ### `user_recent_tracks`
 
@@ -739,6 +956,32 @@ RLS enabled · defined in `20260718000000_waitlist_table.sql`
 | `email` | `text NOT NULL UNIQUE` |
 | `created_at` | `timestamptz NOT NULL DEFAULT now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `email_sent_at` | `timestamptz` | `20260805000000_waitlist_ops_dashboard.sql` |
+| `email_error` | `text` | `20260805000000_waitlist_ops_dashboard.sql` |
+| `email_attempts` | `integer NOT NULL DEFAULT 0` | `20260805000000_waitlist_ops_dashboard.sql` |
+| `email_source` | `text CONSTRAINT waitlist_email_source_check CHECK (email_source IN ('auto'` | `20260806000000_waitlist_self_serve_invite.sql` |
+
+**Indexes**
+
+- `waitlist_created_at_desc_idx` `(created_at DESC)`
+
+### `welcome_emails`
+
+RLS enabled · defined in `20260807000000_welcome_email_on_signup.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid primary key references auth.users(id) on delete cascade` |
+| `claimed_at` | `timestamptz not null default now()` |
+| `attempts` | `integer not null default 0` |
+| `sent_at` | `timestamptz` |
+| `suppressed_at` | `timestamptz` |
+| `error` | `text` |
+
 ## Realtime publication
 
 Tables published to `supabase_realtime`. Row changes stream to subscribers, gated by the
@@ -760,6 +1003,8 @@ same row-level security policies that gate ordinary reads.
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
+| `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
+| `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
@@ -768,8 +1013,14 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
+| `notify_track_credits` | `posts` | after insert | `20260806130000_credit_accept_decline.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
+| `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
+| `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
+| `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |
+| `trg_terms_acceptances_pin` | `terms_acceptances` | BEFORE INSERT | `20260907000000_terms_acceptance_log.sql` |
+| `trg_terms_versions_immutable` | `terms_versions` | BEFORE UPDATE OR DELETE | `20260907000000_terms_acceptance_log.sql` |
 
 ## Related
 

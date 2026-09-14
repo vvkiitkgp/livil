@@ -135,6 +135,63 @@ export async function createStory(
 }
 
 /**
+ * Delete a story. Authorization is enforced by RLS — `stories_delete` is
+ * `using (author_id = auth.uid())`, so a non-author's delete affects zero rows
+ * (and the caller cannot delete someone else's story even by forging the id).
+ * No DB change was needed to support this; the policy already exists.
+ */
+export async function deleteStory(storyId: string): Promise<void> {
+  const { error } = await supabase.from('stories').delete().eq('id', storyId);
+  if (error) {throw new Error(error.message);}
+}
+
+/** Same five reasons as posts and comments — one vocabulary across every surface. */
+export type StoryReportReason = 'spam' | 'harassment' | 'hate' | 'misinformation' | 'other';
+
+/**
+ * Report a story.
+ *
+ * UNLIKE `reportPost`/`reportComment`, which insert directly under an RLS policy,
+ * this goes through the `report_story` RPC. Two reasons:
+ *
+ *  - `story_reports.reported_user_id` is denormalised so the report outlives the
+ *    story's 24-hour expiry, and a client must not be able to assert who it is
+ *    reporting — the RPC derives it from the story.
+ *  - `story_reports` therefore has no INSERT policy at all; the RPC is the only
+ *    way in.
+ */
+export async function reportStory(
+  storyId: string,
+  reason: StoryReportReason,
+  details?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('report_story', {
+    p_story_id: storyId,
+    p_reason: reason,
+    // `undefined` rather than `null`: supabase-js omits the key entirely, so the
+    // function's own `default null` applies. The generated types decline null here.
+    p_details: details?.trim() || undefined,
+  });
+  if (error) {throw new Error(error.message);}
+}
+
+/**
+ * Resolve the author (uploader) of a story's original upload post, so the viewer
+ * can deep-link to that post via `UserProfile { userId, focusPostId }` (the app
+ * has no standalone post screen). Returns null if the post is gone. `posts_select`
+ * is `using (true)`, so any authenticated viewer may read this.
+ */
+export async function getStoryPostAuthorId(originalPostId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('author_id')
+    .eq('id', originalPostId)
+    .maybeSingle();
+  if (error || !data) {return null;}
+  return (data as { author_id: string }).author_id;
+}
+
+/**
  * Mark a story as seen by the current viewer. Idempotent — safe to call
  * multiple times (the primary key deduplicates).
  */

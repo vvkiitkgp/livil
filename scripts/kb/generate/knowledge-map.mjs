@@ -4,10 +4,10 @@
  * Makes the knowledge base self-auditing — doc-steward reads this rather than crawling.
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { frontmatter, GENERATED_WARNING } from '../lib/sql-parse.mjs';
+import { frontmatter, GENERATED_WARNING, writeGenerated } from '../lib/sql-parse.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const KB = join(REPO, 'kb');
@@ -54,10 +54,10 @@ export function generate() {
 
   if (stale.length) {
     L.push('## Past freshness SLA\n');
-    L.push('| Document | Owner | Last verified | SLA | Age |');
-    L.push('|---|---|---|---|---:|');
+    L.push('| Document | Owner | Last verified | SLA |');
+    L.push('|---|---|---|---|');
     for (const d of stale) {
-      L.push(`| \`${d.path}\` | ${d.owner} | ${d.last_verified} | ${d.verify_every} | ${d.age}d |`);
+      L.push(`| \`${d.path}\` | ${d.owner} | ${d.last_verified} | ${d.verify_every} |`);
     }
     L.push('');
   }
@@ -87,7 +87,7 @@ export function generate() {
   L.push('Every document has exactly one accountable owner — a surface nobody owns will decay\n' +
     '(Constitution P48).\n');
 
-  writeFileSync(OUT, L.join('\n'));
+  writeGenerated(OUT, L.join('\n'));
 
   return { doc: 'knowledge-map', docs: docs.length, stale: stale.length };
 }

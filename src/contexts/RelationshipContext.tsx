@@ -12,6 +12,7 @@ import * as svc from '../services/relationships';
 
 export type RelationshipStatus =
   | 'me'
+  | 'blocked'
   | 'friend'
   | 'star'
   | 'pending_outgoing'
@@ -23,6 +24,8 @@ type Sets = {
   stars: Set<string>;
   pendingOutgoing: Set<string>;
   pendingIncoming: Set<string>;
+  /** People I have blocked. Never people who blocked me — that is unknowable here. */
+  blocked: Set<string>;
 };
 
 type RelationshipContextValue = {
@@ -40,6 +43,10 @@ type RelationshipContextValue = {
   removeFriend: (userId: string) => Promise<void>;
   addStar: (userId: string) => Promise<void>;
   removeStar: (userId: string) => Promise<void>;
+  // Blocking severs the friendship and both stars server-side, so the optimistic
+  // update below has to clear all four sets to match what the RPC will do.
+  blockUser: (userId: string) => Promise<void>;
+  unblockUser: (userId: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -51,6 +58,7 @@ function emptySets(): Sets {
     stars: new Set(),
     pendingOutgoing: new Set(),
     pendingIncoming: new Set(),
+    blocked: new Set(),
   };
 }
 
@@ -81,6 +89,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
         stars: new Set(r.stars),
         pendingOutgoing: new Set(r.pendingOutgoing),
         pendingIncoming: new Set(r.pendingIncoming),
+        blocked: new Set(r.blocked),
       });
     } catch {
       // Leave sets as-is; surface via individual mutation errors instead.
@@ -129,6 +138,10 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
       if (!userId) { return 'none'; }
       if (meId && userId === meId) { return 'me'; }
       const s = setsRef.current;
+      // Checked first: a block overrides every other relationship. block_user()
+      // clears the others server-side, so this should be redundant — but the UI
+      // must not depend on that ordering to render the right control.
+      if (s.blocked.has(userId)) { return 'blocked'; }
       if (s.friends.has(userId)) { return 'friend'; }
       if (s.pendingOutgoing.has(userId)) { return 'pending_outgoing'; }
       if (s.pendingIncoming.has(userId)) { return 'pending_incoming'; }
@@ -146,6 +159,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
         stars: new Set(before.stars),
         pendingOutgoing: new Set(before.pendingOutgoing),
         pendingIncoming: new Set(before.pendingIncoming),
+        blocked: new Set(before.blocked),
       });
       applySets(next);
       try {
@@ -234,6 +248,39 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
     [mutate],
   );
 
+  const blockUser = useCallback(
+    (userId: string) =>
+      mutate(
+        s => {
+          s.blocked.add(userId);
+          // Mirrors block_user() exactly: it deletes the friendship row whatever
+          // its status and both follow rows. Leaving any of these set would render
+          // a stale "Friends ✓" behind the blocked state until the next refresh.
+          s.friends.delete(userId);
+          s.pendingOutgoing.delete(userId);
+          s.pendingIncoming.delete(userId);
+          s.stars.delete(userId);
+          return s;
+        },
+        () => svc.blockUser(userId),
+      ),
+    [mutate],
+  );
+
+  const unblockUser = useCallback(
+    (userId: string) =>
+      mutate(
+        s => {
+          // Only the block is lifted. The friendship and stars it removed are not
+          // restored — server-side unblock_user() does not resurrect them either.
+          s.blocked.delete(userId);
+          return s;
+        },
+        () => svc.unblockUser(userId),
+      ),
+    [mutate],
+  );
+
   const removeStar = useCallback(
     (userId: string) =>
       mutate(
@@ -261,6 +308,8 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
       removeFriend,
       addStar,
       removeStar,
+      blockUser,
+      unblockUser,
       refresh,
     }),
     [
@@ -275,6 +324,8 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
       removeFriend,
       addStar,
       removeStar,
+      blockUser,
+      unblockUser,
       refresh,
     ],
   );

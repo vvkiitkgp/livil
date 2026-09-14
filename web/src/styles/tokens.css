@@ -1,0 +1,66 @@
+/*
+ * Non-colour design tokens.
+ *
+ * Colours are injected at runtime from `shared/theme/colors.ts` (see theme.ts) so the two
+ * clients cannot drift on brand colour. Everything else — spacing, radii, type — lives here.
+ *
+ * This file exists because the mobile app doesn't have one: every padding, radius and font
+ * size over there is a bare literal across 100+ style blocks, and the knowledge base records
+ * that as debt. The web app is small enough that the discipline can still be won.
+ *
+ * Type scale and radii come from the Backstage Pass handoff, which is the only place Livil's
+ * visual language has been specified end to end.
+ */
+
+:root {
+  /* ── Spacing — 4px base ─────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Radii — 12 buttons/cards, 14–16 passes (handoff) ───────────────── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  /* Anton: display only, uppercase, 34–42px. Never body copy. */
+  --font-display: 'Anton', 'Impact', sans-serif;
+  /* Courier Prime: everything else. The monospace IS the brand — it is what makes a
+     spec row read as a laminate pass rather than a table. */
+  --font-mono: 'Courier Prime', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-2xs: 9px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-display-sm: 26px;
+  --text-display: 34px;
+  --text-display-lg: 42px;
+
+  /* Kickers and spec labels are tracked out; body copy is not. */
+  --tracking-kicker: 3px;
+  --tracking-label: 2px;
+  --tracking-cta: 1px;
+
+  /* ── Chrome ─────────────────────────────────────────────────────────── */
+  --topbar-h: 60px;
+  --cta-h: 56px;
+  --content-max: 1180px;
+
+  /* ── Motion — 450ms fade-up is the handoff's screen transition ──────── */
+  --ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --dur-fast: 140ms;
+  --dur-base: 300ms;
+  --dur-screen: 450ms;
+}

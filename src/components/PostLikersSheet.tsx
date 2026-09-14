@@ -44,6 +44,11 @@ type ChipConf = { label: string; primary: boolean } | null;
 function chipFor(status: RelationshipStatus): ChipConf {
   switch (status) {
     case 'me': return null;
+    // No chip for someone you have blocked. Every action this chip offers —
+    // add, accept, star — is refused by the server for a blocked pair, so
+    // offering one would only produce an error the user cannot act on. Their
+    // like still shows: blocking hides contact, not content.
+    case 'blocked': return null;
     case 'none': return { label: 'Add', primary: true };
     case 'pending_outgoing': return { label: 'Requested', primary: false };
     case 'pending_incoming': return { label: 'Add', primary: true };

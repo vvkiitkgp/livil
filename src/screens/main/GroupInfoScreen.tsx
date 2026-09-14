@@ -21,6 +21,7 @@ import {
   updateGroupName,
   addGroupMember,
   leaveConversation,
+  getConversationDetails,
   type GroupMember,
 } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
@@ -101,14 +102,10 @@ export default function GroupInfoScreen() {
       if (!cancelled) { setMyId(uid); }
 
       // Fetch conversation name
-      const { data: conv } = await db
-        .from('conversations')
-        .select('name')
-        .eq('id', conversationId)
-        .maybeSingle();
+      const conv = await getConversationDetails(conversationId);
       if (!cancelled && conv) {
-        setGroupName((conv as { name: string | null }).name ?? '');
-        setSavedName((conv as { name: string | null }).name ?? '');
+        setGroupName(conv.name ?? '');
+        setSavedName(conv.name ?? '');
       }
 
       // Fetch members

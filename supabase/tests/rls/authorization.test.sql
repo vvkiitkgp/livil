@@ -1383,18 +1383,20 @@ select pg_temp.assert(
   'delete #4: the account is gone',
   (select not exists (select 1 from auth.users where id='f0000000-0000-0000-0000-0000000000e9')), true);
 
--- The reason SET NULL was chosen over CASCADE. docs/delete-account.html section 3 does not
--- list sent messages among deleted data, and section 4 says content shared with others may
--- persist. CASCADE would punch holes in the RECIPIENT's history of a conversation they
--- took part in. If someone later "simplifies" these FKs to CASCADE, this fails.
+-- LIV-74 reversed ADR-0014: the departing user's messages go with them. This conversation
+-- is a GROUP, so only their own message is removed and the group's other messages stay.
+-- The DM rule, the ledger and username reclaim are covered in
+-- supabase/tests/rls/account-deletion-liv74.test.sql.
 select pg_temp.assert(
-  'delete #5: a message the deleted user sent SURVIVES for its recipient',
-  (select body = 'the recipient keeps this'
-     from messages where id='f0000000-0000-0000-0000-0000000000ea'), true);
+  'delete #5: a message the deleted user sent in a GROUP is gone',
+  exists(select 1 from messages where id='f0000000-0000-0000-0000-0000000000ea'), false);
 
 select pg_temp.assert(
-  'delete #6: ...with its sender nulled rather than the row removed',
-  (select sender_id is null from messages where id='f0000000-0000-0000-0000-0000000000ea'), true);
+  'delete #6: another member''s message in that same group survives',
+  (select count(*) = 1 from messages
+    where conversation_id='aaaaaaaa-0000-0000-0000-000000000001'
+      and sender_id='11111111-1111-1111-1111-111111111111'
+      and body='a genuine message'), true);
 
 -- Deleting yourself must not touch anyone else. Cheap to assert, and the failure mode it
 -- guards against is catastrophic and silent.

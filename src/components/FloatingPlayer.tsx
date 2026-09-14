@@ -10,7 +10,6 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHandler } from 'react-native-keyboard-controller';
 import { runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -22,18 +21,20 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
-import { getOrAnalyzeWaveform } from '../services/tracks';
-import type { WaveformData } from '../services/waveform';
+import { useTrackWaveform } from '../hooks/useTrackWaveform';
 import { COLORS } from '../theme/colors';
+import { haptics } from '../utils/haptics';
+import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
 import WaveVisualizer from './WaveVisualizer';
+import CoverFallback from './CoverFallback';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 // ─── Dimensions ───────────────────────────────────────────────────────────────
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const D    = 60;   // circle diameter
+const D    = FLOATING_PLAYER_HEIGHT;   // circle diameter
 const R    = D / 2;
 const B    = 4;    // arc ring width
 
@@ -57,17 +58,22 @@ const OPEN_FS_DIST  = 80;
 const OPEN_FS_VEL   = 500;
 const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
-const RATE_FORWARD  = 2.0;
 // Delay (ms) before the pill morphs open, so the FS player opens first and the
 // pill then pops up. Close stays instant (matches the FS collapse).
 const OPEN_MORPH_DELAY = 220;
 
 // ─── "It's draggable" wiggle (onboarding discovery) ─────────────────────────────
-// A gentle shimmy of the floating circle that teaches a NEW user the center is
-// movable. Shown only to users who haven't dragged it yet, a few times, then it
-// stops forever once they drag (persisted). It's a pure visual transform — it
-// dispatches NO gesture, so it can never trigger play/pause/seek/next.
-const WIGGLE_LEARNED_KEY  = 'fmp_drag_learned';
+// A gentle shimmy of the floating circle that teaches the user the centre is
+// movable. Shown a few times per app run, and it stops as soon as they drag.
+// It's a pure visual transform — it dispatches NO gesture, so it can never
+// trigger play/pause/seek/next.
+/**
+ * Set once the user drags the circle. Module scope, NOT persisted: the hint is
+ * session-scoped, so it retires for this app run and returns on the next cold
+ * start (the module is re-evaluated). At module scope rather than in a ref so a
+ * component remount cannot re-arm it mid-session.
+ */
+let wiggleLearnedThisSession = false;
 const WIGGLE_MAX_PER_SESS = 3;     // cap so it never nags
 const WIGGLE_FIRST_MS     = 2600;  // after the player settles in
 const WIGGLE_INTERVAL_MS  = 14000; // spacing between hints if still not dragged
@@ -75,7 +81,10 @@ const WIGGLE_INTERVAL_MS  = 14000; // spacing between hints if still not dragged
 // Avatar
 const AV = 28;  // avatar diameter
 
-export const FLOATING_PLAYER_HEIGHT = D;
+// Re-exported so the 16 screens that already import it from here keep working.
+// The definition lives in constants/layout so a screen can reserve space for
+// the player without pulling this module's dependency graph into its tests.
+export { FLOATING_PLAYER_HEIGHT };
 
 // ─── Repeat icon glyphs ───────────────────────────────────────────────────────
 function RepeatGlyph({ mode }: { mode: string }) {
@@ -162,23 +171,11 @@ export default function FloatingPlayer() {
   // and hand it to WaveVisualizer. Fetched by trackId only (not threaded through
   // every NowPlayingInfo / feed query), since only the playing track needs it.
   //
-  // AUDIO ONLY. Lazy analysis decodes the source URL, which pulls the WHOLE remote
-  // file into memory via RN networking — fine for an mp3 (a few MB) but a video is
-  // tens-to-hundreds of MB and OOM-crashes the app mid-playback. Downloading a full
-  // video client-side just to read its audio envelope is the wrong approach, so
-  // video posts keep the decorative wave. (audioUrl is null for video anyway.)
-  const [waveform, setWaveform] = useState<WaveformData | null>(null);
-  const activeTrackId = nowPlaying?.trackId ?? null;
-  const analyzableUrl = nowPlaying?.mediaKind === 'audio' ? nowPlaying?.audioUrl : undefined;
-  useEffect(() => {
-    if (!activeTrackId || !analyzableUrl) { setWaveform(null); return; }
-    let cancelled = false;
-    setWaveform(null); // clear while the new track's envelope resolves
-    getOrAnalyzeWaveform(activeTrackId, analyzableUrl)
-      .then(data => { if (!cancelled) { setWaveform(data); } })
-      .catch(() => { if (!cancelled) { setWaveform(null); } });
-    return () => { cancelled = true; };
-  }, [activeTrackId, analyzableUrl]);
+  // The visualiser's envelope. The AUDIO-ONLY gate that keeps this off video — the one
+  // that prevents an OOM kill — now lives in the hook, in one place.
+  const waveform = useTrackWaveform(
+    nowPlaying?.trackId, nowPlaying?.mediaKind, nowPlaying?.audioUrl,
+  );
 
   // ─── Keyboard hide ────────────────────────────────────────────────────────────
   const keyboardAnim = useRef(new Animated.Value(0)).current;
@@ -209,7 +206,14 @@ export default function FloatingPlayer() {
   // ─── Slide in / out ───────────────────────────────────────────────────────────
   const slideAnim  = useRef(new Animated.Value(0)).current;
   const wasVisible = useRef(false);
-  const shouldShow = !!nowPlaying || !!activeJam;
+  // While a story/repost owns the screen the pill must be treated as HIDDEN — not
+  // just `return null`ed below. During a story the single engine's nowPlaying IS
+  // the story, so without this `shouldShow` stayed true, slideAnim sat at the
+  // "shown" position, and on close (return-null lifts before nowPlaying settles)
+  // the pill animated OUT visibly for ~200ms — a hacky flash. Gating shouldShow
+  // keeps slideAnim parked at hidden throughout, so closing a story reveals the
+  // pill only if the user's music is actually being restored.
+  const shouldShow = (!!nowPlaying || !!activeJam) && !isStoryViewerOpen && !isRepostOpen;
   useEffect(() => {
     if (shouldShow && !wasVisible.current) {
       wasVisible.current = true;
@@ -287,17 +291,6 @@ export default function FloatingPlayer() {
     Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
     Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
   ]).start();
-
-  const rewindTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stopRewind  = () => { if (rewindTimer.current !== null) { clearInterval(rewindTimer.current); rewindTimer.current = null; } };
-  const startRewind = () => {
-    stopRewind();
-    rewindTimer.current = setInterval(() => {
-      const p = Math.max(0, positionRef.current - 0.5);
-      positionRef.current = p;
-      handlersRef.current?.seek(p);
-    }, 250);
-  };
 
   // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
   const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
@@ -388,23 +381,15 @@ export default function FloatingPlayer() {
   }, [isJamOnly, narrowAnim]);
 
   // ─── "It's draggable" wiggle ──────────────────────────────────────────────────
-  const learnedRef     = useRef(false);  // user has dragged → never wiggle again
+  // SESSION-SCOPED: dragging stops the wiggle for the rest of this app run, and
+  // the next cold start offers it again. It used to be persisted forever, which
+  // meant a hint that could only ever teach once — after a reinstall-free year
+  // the gesture was undiscoverable again for anyone who had merely brushed past
+  // it. `learnedThisSession` lives at module scope so a component remount (Fast
+  // Refresh, a nav swap) can't quietly re-arm it mid-session.
   const wiggleCountRef = useRef(0);      // per-session cap
   const wiggleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [wiggleEligible, setWiggleEligible] = useState(false); // only for not-yet-learned users
-
-  // Load the persisted "has dragged" flag once.
-  useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem(WIGGLE_LEARNED_KEY)
-      .then(v => {
-        if (cancelled) { return; }
-        if (v === 'true') { learnedRef.current = true; }
-        else { setWiggleEligible(true); }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  const [wiggleEligible, setWiggleEligible] = useState(!wiggleLearnedThisSession);
 
   // Pure-visual shimmy: a quick damped horizontal sway + a tiny scale breath. It
   // animates the SAME values a drag uses (circleX / scaleAnim), so an incoming
@@ -424,13 +409,12 @@ export default function FloatingPlayer() {
     ]).start();
   }, [circleX, scaleAnim]);
 
-  // First real drag → mark discovered, stop wiggling now and forever (persisted).
+  // First real drag → discovered; stop wiggling for the rest of this session.
   const markDragLearned = useCallback(() => {
-    if (learnedRef.current) { return; }
-    learnedRef.current = true;
+    if (wiggleLearnedThisSession) { return; }
+    wiggleLearnedThisSession = true;
     setWiggleEligible(false);
     if (wiggleTimerRef.current) { clearTimeout(wiggleTimerRef.current); wiggleTimerRef.current = null; }
-    AsyncStorage.setItem(WIGGLE_LEARNED_KEY, 'true').catch(() => {});
   }, []);
 
   // Schedule the hint only while the circle is the resting floating dot (not
@@ -438,13 +422,13 @@ export default function FloatingPlayer() {
   // users, capped per session and spaced out so it never nags.
   useEffect(() => {
     const eligible =
-      wiggleEligible && !learnedRef.current &&
+      wiggleEligible && !wiggleLearnedThisSession &&
       shouldShow && !isExpanded && !jamLocked && !!nowPlaying;
     if (!eligible) { return; }
     let cancelled = false;
     const schedule = (ms: number) => {
       wiggleTimerRef.current = setTimeout(() => {
-        if (cancelled || learnedRef.current || wiggleCountRef.current >= WIGGLE_MAX_PER_SESS) { return; }
+        if (cancelled || wiggleLearnedThisSession || wiggleCountRef.current >= WIGGLE_MAX_PER_SESS) { return; }
         doWiggle();
         wiggleCountRef.current += 1;
         if (wiggleCountRef.current < WIGGLE_MAX_PER_SESS) { schedule(WIGGLE_INTERVAL_MS); }
@@ -544,6 +528,10 @@ export default function FloatingPlayer() {
     .onEnd((_e, ok) => {
       if (!ok || jamLocked) { return; }
       const hasHandlers = !!handlersRef.current;
+      // Acknowledge the tap here, not at the top of the handler: a tap while
+      // jam-locked or mid-recognition does nothing, and buzzing for it would
+      // promise an action that never happens.
+      haptics.tap();
       console.log(`[LIVIL][FP] tap: activePostId=${activePostId} hasHandlers=${hasHandlers} nowPlaying=${!!nowPlaying}`);
       if (!nowPlaying) {
         // No track loaded — auto-play user's posts
@@ -583,22 +571,17 @@ export default function FloatingPlayer() {
       // wiggle hint forever (also interrupts an in-flight wiggle via stopAnimation).
       markDragLearned();
       if (jamLocked) { return; }
-      circleX.stopAnimation(); circleY.stopAnimation(); stopRewind();
+      circleX.stopAnimation(); circleY.stopAnimation();
     })
     .onUpdate((e) => {
+      // Movement only. The drag used to also scrub — 2x while held right, a rewind timer
+      // while held left — which made one gesture mean two things and, because the rewind
+      // wrote positionRef on a 250ms timer, gave the playhead a second writer.
       circleX.setValue(Math.max(-MAX_DRAG,      Math.min(MAX_DRAG,       e.translationX)));
       circleY.setValue(Math.max(-MAX_DRAG_Y_UP, Math.min(MAX_DRAG_Y_DOWN, e.translationY)));
-      const isH = Math.abs(e.translationX) > Math.abs(e.translationY);
-      if (isH) {
-        if (e.translationX >= 0) { stopRewind(); console.log('[LIVIL][FP] dragging → forward 2x'); handlersRef.current?.setRate(RATE_FORWARD); }
-        else {
-          handlersRef.current?.setRate(1.0);
-          if (rewindTimer.current === null && activePostId !== null) { console.log('[LIVIL][FP] dragging ← rewind'); startRewind(); }
-        }
-      } else { stopRewind(); handlersRef.current?.setRate(1.0); }
     })
     .onEnd((e) => {
-      stopRewind(); handlersRef.current?.setRate(1.0); springBack();
+      springBack();
       // ── X-grid ── The swipe belongs to exactly ONE quadrant by its dominant
       // axis, so a left/right swipe can never also trigger open/close (the old
       // bug where a leftward "previous" swipe with a little downward drift would
@@ -608,9 +591,11 @@ export default function FloatingPlayer() {
       const avx = Math.abs(e.velocityX), avy = Math.abs(e.velocityY);
       const horizontalDominant = avx > avy ? true : avx < avy ? false : ax >= ay;
       if (horizontalDominant) {
-        // Quick horizontal SNAP → prev/next. A slow drag-and-hold (low velocity)
-        // was a fast-forward/rewind scrub (done live in onUpdate) → no track change.
+        // Quick horizontal SNAP → prev/next. A slow drag still does nothing: the velocity
+        // threshold keeps an idle fidget with the circle from changing track.
         if (avx > SNAP_VELOCITY) {
+          // Only on a committed snap, so a slow fidget with the circle stays silent.
+          haptics.select();
           if (e.velocityX > 0) { console.log('[LIVIL][FP] snap → playNext'); playNext(); }
           else { console.log('[LIVIL][FP] snap ← playPrev'); playPrev(); }
         }
@@ -627,7 +612,7 @@ export default function FloatingPlayer() {
       }
     })
     .onFinalize(() => {
-      stopRewind(); handlersRef.current?.setRate(1.0); springBack();
+      springBack();
       scaleAnim.stopAnimation();
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
     });
@@ -671,7 +656,10 @@ export default function FloatingPlayer() {
           <View style={styles.pillLeft}>
             {/* Shuffle — fullscreen only (state 1 & 2) */}
             {isFullScreenOpen && (
-              <TouchableOpacity onPress={toggleShuffle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => { haptics.select(); toggleShuffle(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <ShuffleGlyph active={shuffleEnabled} />
               </TouchableOpacity>
             )}
@@ -709,7 +697,10 @@ export default function FloatingPlayer() {
             )}
             {/* Repeat — fullscreen only (state 1 & 2) */}
             {isFullScreenOpen && (
-              <TouchableOpacity onPress={cycleRepeatMode} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => { haptics.select(); cycleRepeatMode(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <RepeatGlyph mode={repeatMode} />
               </TouchableOpacity>
             )}
@@ -762,8 +753,7 @@ export default function FloatingPlayer() {
                 />
               ) : (
                 <View style={styles.fallbackArt}>
-                  <View style={styles.fallbackBlobA} />
-                  <View style={styles.fallbackBlobB} />
+                  <CoverFallback />
                 </View>
               )
             )}
@@ -918,6 +908,4 @@ const styles = StyleSheet.create({
   innerDiscOpen: { backgroundColor: 'rgba(10,10,15,0.9)' },
   albumArt: { width: '100%', height: '100%' },
   fallbackArt: { flex: 1, backgroundColor: COLORS.card, overflow: 'hidden' },
-  fallbackBlobA: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.purple, opacity: 0.5, top: -15, left: -10 },
-  fallbackBlobB: { position: 'absolute', width: 50, height: 50, borderRadius: 25, backgroundColor: '#EC4899', opacity: 0.4, bottom: -10, right: -8 },
 });

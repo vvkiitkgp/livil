@@ -65,7 +65,6 @@ export type PlayerHandlers = {
   play: () => void;
   pause: () => void;
   seek: (seconds: number) => void;
-  setRate: (rate: number) => void;
 };
 
 type PlaybackContextValue = {
@@ -91,6 +90,38 @@ type PlaybackContextValue = {
 
   // --- position / duration (refs — no re-renders) ---
   positionRef: React.MutableRefObject<number>;
+  /**
+   * Set while a scrubber owns the position — for the length of a swipe.
+   *
+   * A scrub does not seek the engine until the finger lifts, so playback keeps
+   * running where it was and its progress events would overwrite whatever the
+   * finger has written into `positionRef` four times a second. `updatePosition`
+   * yields while this is set, which lets the scrubbing surface publish the swipe
+   * target to every OTHER position consumer — the floating player's progress ring
+   * above all — without seeking anything.
+   *
+   * A plain ref, deliberately: this is written at gesture rate, and the cheap
+   * seam is the whole point. Routing it through state (or through markSeekTarget,
+   * which bumps seekNonce) re-renders every playback consumer per touch event and
+   * the scrub visibly stutters. That was measured, not assumed.
+   */
+  scrubbingRef: React.MutableRefObject<boolean>;
+  /**
+   * Where the NEXT activation must start, committed by whoever changed the track.
+   *
+   * Separate from `positionRef` because that one has two writers: the code choosing a track,
+   * and `updatePosition` reporting progress from the engine. Between committing a queue
+   * advance and GlobalAudioPlayer reading it, the OUTGOING track keeps emitting progress —
+   * so the intended start gets overwritten by the old playhead, and the new track begins
+   * wherever the last one happened to be. `seekGuardRef` was meant to hold that off and
+   * demonstrably does not (no guard ever logged across a whole session of flicks).
+   *
+   * This ref has exactly one writer and one reader, and the reader clears it. Progress
+   * samples cannot touch it, so a start position cannot be raced. Null means "no explicit
+   * start" — resume wherever `positionRef` says, which is what a jam listener syncing to a
+   * host's position relies on.
+   */
+  pendingStartRef: React.MutableRefObject<number | null>;
   durationRef: React.MutableRefObject<number>;
   updatePosition: (seconds: number) => void;
   updateDuration: (seconds: number) => void;
@@ -159,7 +190,15 @@ type PlaybackContextValue = {
 
   // --- full-screen player ---
   isFullScreenOpen: boolean;
-  openFullScreenPlayer: () => void;
+  /**
+   * `tab` lands the player on a panel instead of the bare artwork — the credits row on a
+   * post card opens 'info'. Cleared once the player has consumed it, so reopening by any
+   * other route starts clean.
+   */
+  openFullScreenPlayer: (tab?: 'queue' | 'info') => void;
+  /** Panel the next open should land on, or null. Read and cleared by FullScreenPlayer. */
+  pendingTab: 'queue' | 'info' | null;
+  clearPendingTab: () => void;
   closeFullScreenPlayer: () => void;
   /**
    * Clean / immersive view — the FS video with EVERY control + the floating
@@ -174,7 +213,17 @@ type PlaybackContextValue = {
 
   // --- story viewer (hides FloatingPlayer while stories are fullscreen) ---
   isStoryViewerOpen: boolean;
+  /** The track that was playing when the clip session opened (null if none, or no
+   *  session). GAP pins the media notification's METADATA to this for the whole
+   *  session, so the OS card keeps showing the user's music — never the story. */
+  clipSessionPrevTrack: NowPlayingInfo | null;
   setStoryViewerOpen: (open: boolean) => void;
+  /** Enter a declared clip session (stories): snapshots the engine, forces
+   *  repeat/shuffle off, disarms the native clip-end watcher, and returns the
+   *  pre-session source url. The caller passes the current nowPlaying. See ADR-0013. */
+  enterClipSession: (prevNowPlaying: NowPlayingInfo | null) => string | null;
+  /** Exit the clip session and restore the user's music (track/position/queue). */
+  exitClipSession: () => void;
 
   // --- repost screen (hides FloatingPlayer while editing a repost clip) ---
   isRepostOpen: boolean;
@@ -197,6 +246,25 @@ type PlaybackContextValue = {
   setShuffleEnabled: (enabled: boolean) => void;
 };
 
+/**
+ * Full snapshot of the engine's state captured when a clip session (stories)
+ * opens, so the user's music — track, position, queue, repeat/shuffle — is
+ * restored intact on close. The clip session overwrites ALL of this while it
+ * drives short clips through the single engine.
+ */
+type ClipSnapshot = {
+  nowPlaying: NowPlayingInfo | null;
+  queue: NowPlayingInfo[];
+  currentIndex: number;
+  userQueue: NowPlayingInfo[];
+  queueSource: string;
+  playSource: 'user' | 'queue';
+  position: number;
+  duration: number;
+  repeatMode: RepeatMode;
+  shuffleEnabled: boolean;
+};
+
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
 
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
@@ -208,6 +276,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isImmersive, setIsImmersiveState] = useState(false);
   const [isStoryViewerOpen, setIsStoryViewerOpenState] = useState(false);
+  const [clipSessionPrevTrack, setClipSessionPrevTrack] = useState<NowPlayingInfo | null>(null);
   const [isRepostOpen, setIsRepostOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
   const [shuffleEnabled, setShuffleEnabledState] = useState(false);
@@ -230,6 +299,9 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const bumpClipVersion = useCallback(() => setClipVersion(v => v + 1), []);
 
   const positionRef = useRef<number>(0);
+  const scrubbingRef = useRef<boolean>(false);
+  /** Single-writer start position for the next activation — see the type above. */
+  const pendingStartRef = useRef<number | null>(null);
   const durationRef = useRef<number>(0);
   const clipWindowRef = useRef<{ start: number; end: number } | null>(null);
   const handlersRef = useRef<PlayerHandlers | null>(null);
@@ -250,6 +322,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // Refs so playNext/playPrev stay stable (useCallback []) while still reading latest values.
   const shuffleRef = useRef(false);
   const repeatModeRef = useRef<RepeatMode>('off');
+  // Clip session (stories): a declared foreground mode where the JS clock is the
+  // sole advance authority and the native clip-end watcher is disarmed (ADR-0013).
+  // clipSessionRef is a ref so playNext can read it synchronously; the reactive
+  // twin GAP reads to null-out currentClipJson is `isStoryViewerOpen`.
+  const clipSessionRef = useRef(false);
+  const clipSnapshotRef = useRef<ClipSnapshot | null>(null);
 
   // --- existing ---
 
@@ -293,6 +371,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           ? info.clipStartSec : 0;
         console.log(`[LIVIL][CTX] setNowPlaying NEW postId=${info.postId} title="${info.title}" kind=${info.mediaKind} startAt=${clipStart}s clip=[${info.clipStartSec},${info.clipEndSec}] knownDur=${info.knownDurationSec ?? 0}`);
         positionRef.current = clipStart;
+        // Committed where progress samples cannot reach it — see pendingStartRef.
+        pendingStartRef.current = clipStart;
         durationRef.current = info.knownDurationSec ?? 0;
         clipWindowRef.current = (info.clipStartSec !== null && info.clipEndSec !== null)
           ? { start: info.clipStartSec, end: info.clipEndSec }
@@ -333,6 +413,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- position / duration ---
 
   const updatePosition = useCallback((seconds: number) => {
+    // A swipe in flight owns positionRef. Checked BEFORE the seek guard so a
+    // pending guard is neither consumed nor released by samples nobody is
+    // listening to; it expires on its own, and the release re-arms it anyway.
+    if (scrubbingRef.current) { return; }
     const guard = seekGuardRef.current;
     if (guard) {
       if (Date.now() < guard.until) {
@@ -426,6 +510,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     const startPos = (track.clipStartSec !== null && track.clipEndSec !== null)
       ? track.clipStartSec : 0;
     positionRef.current = startPos;
+    pendingStartRef.current = startPos;
     durationRef.current = track.knownDurationSec ?? 0;
     clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
       ? { start: track.clipStartSec, end: track.clipEndSec }
@@ -465,6 +550,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, [generateShuffleOrder, bumpQueue]);
 
   const playNext = useCallback(() => {
+    // In a CLIP SESSION (stories) the JS clock is the sole advance authority; the
+    // native watcher is disarmed at the source (currentClipJson inactive, ADR-0013)
+    // so it shouldn't emit at all, but the naturalEndListener still fires at a true
+    // STATE_ENDED (a clip that IS the whole short track), so keep this as a cheap
+    // belt-and-suspenders: playNext never acts during a clip session.
+    if (clipSessionRef.current) { return; }
     if (userQueueRef.current.length > 0) {
       const track = userQueueRef.current.shift()!;
       activeRef.current = track.postId;
@@ -472,6 +563,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       const startPos = (track.clipStartSec !== null && track.clipEndSec !== null)
         ? track.clipStartSec : 0;
       positionRef.current = startPos;
+      pendingStartRef.current = startPos;
       durationRef.current = track.knownDurationSec ?? 0;
       clipWindowRef.current = (track.clipStartSec !== null && track.clipEndSec !== null)
         ? { start: track.clipStartSec, end: track.clipEndSec }
@@ -589,9 +681,14 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setPendingPlayId(null);
   }, []);
 
-  const openFullScreenPlayer = useCallback(() => {
+  const [pendingTab, setPendingTab] = useState<'queue' | 'info' | null>(null);
+
+  const openFullScreenPlayer = useCallback((tab?: 'queue' | 'info') => {
+    setPendingTab(tab ?? null);
     setIsFullScreenOpen(true);
   }, []);
+
+  const clearPendingTab = useCallback(() => setPendingTab(null), []);
 
   const closeFullScreenPlayer = useCallback(() => {
     setIsFullScreenOpen(false);
@@ -652,6 +749,85 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setRepeatMode(next);
   }, [setRepeatMode]);
 
+  // ── Clip session (stories), ADR-0013 ──────────────────────────────────────────
+  // Enter/exit a declared, foreground-only clip session over the single engine.
+  // This REPLACES the story viewer's former snapshot-and-neutralize dance: one
+  // declared mode instead of many implicit ref overrides. In the session the JS
+  // clock is the sole advance authority and GAP disarms the native clip-end watcher
+  // (currentClipJson inactive off `isStoryViewerOpen`). GAP stays the sole engine
+  // and sole audio source, so ADR-0001 is fully intact. `enterClipSession` snapshots
+  // the engine (caller passes the current nowPlaying, which is state, not a ref) and
+  // returns the pre-session source url; `exitClipSession` restores the user's music.
+  const enterClipSession = useCallback((prevNowPlaying: NowPlayingInfo | null): string | null => {
+    clipSnapshotRef.current = {
+      nowPlaying: prevNowPlaying,
+      queue: queueRef.current,
+      currentIndex: currentIndexRef.current,
+      userQueue: userQueueRef.current,
+      queueSource: queueSourceRef.current,
+      playSource: playSourceRef.current,
+      position: positionRef.current,
+      duration: durationRef.current,
+      repeatMode: repeatModeRef.current,
+      shuffleEnabled: shuffleRef.current,
+    };
+    handlersRef.current?.pause();
+    pauseAll();
+    setRepeatMode('off');
+    setShuffleEnabled(false);
+    clipSessionRef.current = true;
+    // Pin the media card's metadata to the user's music for the whole session —
+    // the OS notification must keep showing THIS track (paused), never the story.
+    setClipSessionPrevTrack(prevNowPlaying);
+    setStoryViewerOpen(true);
+    return prevNowPlaying
+      ? (prevNowPlaying.audioUrl ?? prevNowPlaying.videoUrl ?? null)
+      : null;
+  }, [pauseAll, setRepeatMode, setShuffleEnabled, setStoryViewerOpen]);
+
+  const exitClipSession = useCallback(() => {
+    const snap = clipSnapshotRef.current;
+    handlersRef.current?.pause();
+    if (snap) {
+      // Restore the queue refs the one-item clip queue overwrote (setQueue reassigns
+      // these to NEW arrays, so the snapshotted arrays were never mutated in place).
+      queueRef.current = snap.queue;
+      currentIndexRef.current = snap.currentIndex;
+      userQueueRef.current = snap.userQueue;
+      queueSourceRef.current = snap.queueSource;
+      playSourceRef.current = snap.playSource;
+      setRepeatMode(snap.repeatMode);
+      setShuffleEnabled(snap.shuffleEnabled);
+    }
+    if (snap?.nowPlaying) {
+      // Restore the previous track. setNowPlaying resets positionRef to the new
+      // post's clip start, so re-apply the saved position on the next tick and force
+      // the NATIVE engine back to it (raw ref writes aren't enough same-source).
+      const { nowPlaying: prev, position, duration } = snap;
+      setNowPlaying(prev);
+      setTimeout(() => {
+        durationRef.current = duration;
+        markSeekTarget(position);
+        handlersRef.current?.seek(position);
+        // Assert the FINAL state explicitly: restored track paused, JS state and
+        // the pill icon in sync. Without this, a stray native isPlaying report
+        // during the source swap-back could leave native playing while JS (and the
+        // play/pause icon) said paused. GAP's stray-PLAY guard is the primary
+        // defense; this makes the end-state deterministic regardless.
+        handlersRef.current?.pause();
+      }, 0);
+    } else {
+      clearNowPlaying();
+    }
+    // pauseAll (activePostId → null) runs AFTER setNowPlaying, so the restored track
+    // settles PAUSED (GAP gates on activePostId; null never equals the restored id).
+    pauseAll();
+    clipSessionRef.current = false;
+    setStoryViewerOpen(false);
+    setClipSessionPrevTrack(null);
+    clipSnapshotRef.current = null;
+  }, [pauseAll, setRepeatMode, setShuffleEnabled, setNowPlaying, clearNowPlaying, markSeekTarget, setStoryViewerOpen]);
+
   const value = useMemo<PlaybackContextValue>(
     () => ({
       activePostId,
@@ -665,6 +841,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       clearNowPlaying,
       bumpCommentsCount,
       positionRef,
+      scrubbingRef,
+      pendingStartRef,
       durationRef,
       updatePosition,
       updateDuration,
@@ -702,12 +880,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       queueVersion,
       isFullScreenOpen,
       openFullScreenPlayer,
+      pendingTab,
+      clearPendingTab,
       closeFullScreenPlayer,
       isImmersive,
       setImmersive,
       toggleImmersive,
       isStoryViewerOpen,
+      clipSessionPrevTrack,
       setStoryViewerOpen,
+      enterClipSession,
+      exitClipSession,
       isRepostOpen,
       setRepostOpen,
       jamLocked,
@@ -759,12 +942,17 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       queueVersion,
       isFullScreenOpen,
       openFullScreenPlayer,
+      pendingTab,
+      clearPendingTab,
       closeFullScreenPlayer,
       isImmersive,
       setImmersive,
       toggleImmersive,
       isStoryViewerOpen,
+      clipSessionPrevTrack,
       setStoryViewerOpen,
+      enterClipSession,
+      exitClipSession,
       isRepostOpen,
       setRepostOpen,
       jamLocked,

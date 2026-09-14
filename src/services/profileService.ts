@@ -2,6 +2,7 @@ import ImagePicker, {
   type Image as CroppedImage,
 } from 'react-native-image-crop-picker';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
+import { TRACKS_MEDIA_BUCKET } from './uploads';
 
 export const AVATARS_BUCKET = 'avatars';
 
@@ -67,9 +68,7 @@ export type PrivateProfilePatch = {
  * the username screen.
  */
 export async function getUsernameSet(userId: string): Promise<boolean> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { data, error } = await db
+  const { data, error } = await supabase
     .from('profiles')
     .select('username_set')
     .eq('id', userId)
@@ -88,11 +87,12 @@ export async function claimUsername(
   username: string,
   displayName?: string | null,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { error } = await db.rpc('claim_username', {
+  const { error } = await supabase.rpc('claim_username', {
     p_username: username.trim().toLowerCase(),
-    p_display_name: displayName?.trim() || null,
+    // The generated signature types this arg as optional, not nullable, so the key is
+    // omitted rather than sent as null. Same result: the function declares
+    // `p_display_name text DEFAULT NULL`, so an absent key resolves to NULL server-side.
+    p_display_name: displayName?.trim() || undefined,
   });
   if (error) {throw new Error(error.message);}
 }
@@ -131,6 +131,66 @@ export async function updateProfile(
       avatar_url: patch.avatar_url,
       links: patch.links,
     })
+    .eq('id', userId);
+  if (error) {throw error;}
+}
+
+/**
+ * Whether the user broadcasts "last seen" / now-playing to friends.
+ *
+ * Read side already exists: `conversations.ts` gates presence on this column.
+ * Defaults to `true` on any error so a transient failure never silently
+ * presents the user as having opted out of something they didn't.
+ */
+export async function getShowActivity(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('show_activity')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return (data as { show_activity: boolean | null } | null)?.show_activity ?? true;
+}
+
+export async function updateShowActivity(
+  userId: string,
+  showActivity: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ show_activity: showActivity })
+    .eq('id', userId);
+  if (error) {throw error;}
+}
+
+/**
+ * Whether the user wants comments on their posts limited to accepted friends.
+ *
+ * NOT ENFORCED YET. `post_comments_insert_self` still only checks
+ * `author_id = auth.uid()`, so this reads and writes a preference that nothing
+ * acts on. Enforcement needs an RLS amendment on post_comments plus a security
+ * review — see 20260803000000_profiles_comments_friends_only.sql.
+ *
+ * Defaults to false (everyone) on error, matching the column default, so a
+ * failed read never shows the user a restriction they did not choose.
+ */
+export async function getCommentsFriendsOnly(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('comments_friends_only')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return (data as { comments_friends_only: boolean | null } | null)?.comments_friends_only ?? false;
+}
+
+export async function updateCommentsFriendsOnly(
+  userId: string,
+  friendsOnly: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ comments_friends_only: friendsOnly })
     .eq('id', userId);
   if (error) {throw error;}
 }
@@ -229,4 +289,85 @@ export async function uploadAvatar(
 
   const { data } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path);
   return data.publicUrl;
+}
+
+const DELETABLE_BUCKETS = [AVATARS_BUCKET, TRACKS_MEDIA_BUCKET];
+const LIST_PAGE = 100;
+const REMOVE_BATCH = 100;
+
+/**
+ * `list()` is one level deep, pages at 100, and returns folders as entries with
+ * a null id — so `tracks-media/${userId}` yields track folders, not files.
+ * Without the recursion every upload survives the account, silently.
+ */
+async function listOwnedPaths(bucket: string, root: string): Promise<string[]> {
+  const paths: string[] = [];
+  const dirs = [root];
+
+  while (dirs.length > 0) {
+    const dir = dirs.shift() as string;
+    let offset = 0;
+
+    for (;;) {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .list(dir, { limit: LIST_PAGE, offset });
+      if (error) {
+        throw new Error(`Could not read your files in ${bucket}: ${error.message}`);
+      }
+
+      const entries = data ?? [];
+      for (const entry of entries) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.id === null) { dirs.push(path); } else { paths.push(path); }
+      }
+
+      if (entries.length < LIST_PAGE) { break; }
+      offset += LIST_PAGE;
+    }
+  }
+
+  return paths;
+}
+
+/**
+ * storage-api answers 200 with only the rows it actually deleted, so a short
+ * return is a refusal rather than an error. Treating it as success would orphan
+ * those files behind a deleted account, unreachable forever.
+ */
+async function removeOwnedPaths(bucket: string, paths: string[]): Promise<void> {
+  for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+    const batch = paths.slice(i, i + REMOVE_BATCH);
+    const { data, error } = await supabase.storage.from(bucket).remove(batch);
+    if (error) {
+      throw new Error(`Could not delete your files in ${bucket}: ${error.message}`);
+    }
+    if ((data?.length ?? 0) < batch.length) {
+      throw new Error(`Only some of your files in ${bucket} could be deleted.`);
+    }
+  }
+}
+
+/**
+ * Permanent. Storage goes first and a failure there aborts: the RPC removes the
+ * auth user, and since 20260802000000 the client is the only thing that deletes
+ * the files at all. Takes no argument — the prefix is the session's.
+ */
+export async function deleteMyAccount(): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const userId = userData?.user?.id;
+  if (userError || !userId) {
+    throw new Error('You are not signed in.');
+  }
+
+  for (const bucket of DELETABLE_BUCKETS) {
+    await removeOwnedPaths(bucket, await listOwnedPaths(bucket, userId));
+  }
+
+  const { error: rpcError } = await supabase.rpc('delete_my_account');
+  if (rpcError) {
+    throw new Error(rpcError.message);
+  }
+
+  await supabase.auth.signOut();
 }

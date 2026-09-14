@@ -15,6 +15,7 @@ import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
+import AppleSignInButton from '../../components/AppleSignInButton';
 import { Icon } from '../../components/Icon';
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
@@ -168,6 +169,12 @@ export default function SignInScreen({ navigation }: Props) {
               <View style={styles.dividerLine} />
             </View>
 
+            {/* Apple first: guideline 4.8 asks for it to be at least as prominent
+                as the other options. Renders null off iOS, and the wrapper's gap
+                collapses with it, so Android is unchanged. */}
+            <View style={styles.socialButtons}>
+            <AppleSignInButton onError={setError} disabled={loading || googleLoading} />
+
             <TouchableOpacity
               style={[styles.googleButton, googleLoading && styles.buttonDisabled]}
               onPress={handleGoogleSignIn}
@@ -183,6 +190,7 @@ export default function SignInScreen({ navigation }: Props) {
                 </>
               )}
             </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.footer}>
@@ -304,6 +312,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textMuted,
   },
+  socialButtons: { gap: 12 },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',

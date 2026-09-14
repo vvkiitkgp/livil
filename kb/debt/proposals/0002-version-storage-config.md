@@ -88,3 +88,38 @@ succeed *today* was not established and should be confirmed before and after.
 | Copy the `avatars` migration shape | Bare `create policy`, no drop — reproduces the `follows_select` failure |
 | Leave it | The gap is real and reflection is minutes |
 | Sign all media URLs | A much larger architectural change; see the media-pipeline revisit triggers |
+
+---
+
+## Board update — LIV-8 review (2026-07-24), pending founder ratification
+
+The LIV-8 board debate ([ADR-0012](../../decisions/0012-storage-config-ratification-and-modifications.md))
+recommends ratifying this proposal **with four modifications**. This is the board's
+recommendation; **the founder still ratifies** — the `Status` field above is left `Draft`
+deliberately.
+
+1. **Make the policy verb list explicit, and include DELETE.** "Write policies" is ambiguous.
+   [PROP-0003](0003-in-app-account-deletion.md) (in-app account deletion) is **already ratified**
+   and its plan requires an authenticated client `DELETE` under the user's own `${userId}/`
+   prefix. Ship INSERT + UPDATE + DELETE scoped to `foldername[1] = auth.uid()::text` (matching the
+   `avatars` migration's verb set), or an INSERT-only interpretation silently forecloses PROP-0003.
+2. **Make "confirm uploads work today" a hard precondition** — run the reflect/live probe
+   immediately before authoring the SQL, not as post-merge verification. Justified by the repo's
+   base rate for merged-but-unapplied / silent-perimeter failures (D-54, D-59, D-61), not by the
+   "23 objects dated 2026-07-07" artifact (which a migration-tooling timestamp reset explains
+   equally well).
+3. **Extend the parity gate to the `storage` schema.** `scripts/schema-fingerprint.sql` is scoped
+   `where nspname = 'public'`, so the very control built to catch merged-but-unapplied drift is
+   blind to this migration. Extend it to `storage.buckets`/`storage.objects`, or log a named
+   tracked gap.
+4. **Do not bundle a new `avatars` MIME allowlist/size-limit into this migration.** Keep it a
+   separate, reflected-first follow-up (check the bucket's actual stored types before designing a
+   list). Recorded dissent (ADR-0012): principal-security holds that the missing `avatars`
+   content-type control is a live gap (D-29) and should be closed soon in its own ticket, not
+   deferred indefinitely.
+
+The board must **not** assert storage is currently safe or exploitable — a third RLS state exists
+(the `storage.objects` owner bypasses RLS with `FORCE RLS` off). Only the live probe settles it.
+Proceed now regardless of LIV-35/R2 (Constitution P51): [ADR-0010](../../decisions/0010-transcoding-approach-deferred.md)
+deferred that decision and unbundled R2; if R2 is later chosen, that ADR must address retiring
+this migration.

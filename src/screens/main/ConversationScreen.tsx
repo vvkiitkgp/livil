@@ -6,6 +6,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  Dimensions,
   View,
   Text,
   FlatList,
@@ -15,13 +16,13 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollViewProps,
-  Vibration,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   KeyboardChatScrollView,
   KeyboardStickyView,
   KeyboardGestureArea,
+  KeyboardController,
 } from 'react-native-keyboard-controller';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,6 +31,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
+import { useRelationships } from '../../contexts/RelationshipContext';
 import {
   fetchMessages,
   sendMessage,
@@ -51,8 +53,11 @@ import {
 } from '../../services/jamRealtime';
 import { createJamRoom, bulkAddToQueue, isJamRoomEnded } from '../../services/jamRooms';
 import { usePlayback } from '../../contexts/PlaybackContext';
+import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
+import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
+import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import { Button } from '../../components/Button';
@@ -69,7 +74,29 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Conversation'>;
 
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
-const MAX_CHARS = 500;
+const MAX_CHARS = 250;
+
+/** How many characters from the cap the countdown starts showing. */
+const COUNTER_VISIBLE_FROM = 50;
+
+/**
+ * Second ceiling alongside MAX_CHARS. A message can sit inside the character
+ * budget and still be almost entirely newlines, rendering as a bubble tall
+ * enough to push the whole conversation off-screen, so line count is capped
+ * independently.
+ *
+ * Both ceilings clamp rather than reject, matching how MAX_CHARS already behaves.
+ * Note this is a composer-side guard only — `messages.body` has no equivalent
+ * constraint in Postgres, so it shapes what this app sends, not what it can
+ * receive.
+ */
+const MAX_LINES = 10;
+
+function clampComposerInput(raw: string): string {
+  const byChars = raw.slice(0, MAX_CHARS);
+  const lines = byChars.split('\n');
+  return lines.length <= MAX_LINES ? byChars : lines.slice(0, MAX_LINES).join('\n');
+}
 
 const MORE_EMOJIS = [
   '😀','😃','😄','😁','😆','😅','🤣','😊','😇','🥰',
@@ -149,6 +176,7 @@ function MessageBubble({
   onReplyQuotePress,
   onLongPress,
   onReactionToggle,
+  onPlaySharedPost,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -160,9 +188,21 @@ function MessageBubble({
   onReplyQuotePress: (originalId: string) => void;
   onLongPress: (msg: ChatMessage) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
+  onPlaySharedPost: (postId: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
+  /**
+   * A shared track opens the post. `track_share` bubbles rendered cover art and a title
+   * from the day the message kind was declared, but nothing ever SENT one — so the
+   * absence of a tap handler was invisible until sharing shipped and every shared song
+   * arrived as a picture you could not play.
+   *
+   * `post_id` is optional in the metadata contract (older senders could omit it), so an
+   * unopenable card must still render rather than crash — hence the guard rather than an
+   * assertion.
+   */
+  const sharedPostId = hasTrackMeta ? (msg.metadata!.post_id as string | undefined) : undefined;
   const isJamInvite = msg.kind === 'jam_invite' && !!msg.metadata?.jam_room_id;
   const isSystem = msg.kind === 'system';
 
@@ -214,6 +254,11 @@ function MessageBubble({
         <View style={[styles.bubbleWrapper, hasReactions && styles.bubbleWrapperWithReactions]}>
           <Pressable
             onLongPress={() => onLongPress(msg)}
+            onPress={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
+            accessibilityRole={sharedPostId ? 'button' : undefined}
+            accessibilityLabel={
+              sharedPostId ? `Play ${msg.metadata!.title as string}` : undefined
+            }
             style={[
               styles.bubble,
               isMe ? styles.bubbleMe : styles.bubbleThem,
@@ -267,16 +312,36 @@ function MessageBubble({
                     style={styles.trackCardArt}
                   />
                 ) : (
-                  <View style={styles.trackCardArtPlaceholder}>
-                    <Icon name="musicNote" size={20} color={COLORS.textSecondary} />
+                  <View style={[styles.trackCardArt, styles.trackCardArtPlaceholder]}>
+                    <Icon name="musicNote" size={36} color={COLORS.textSecondary} />
                   </View>
                 )}
-                <View style={styles.trackCardInfo}>
-                  <Text style={styles.trackCardTitle} numberOfLines={1}>
-                    {msg.metadata!.title as string}
-                  </Text>
-                  <Text style={styles.trackCardArtist} numberOfLines={1}>
-                    {msg.metadata!.artist_name as string}
+                <Text style={styles.trackCardTitle} numberOfLines={2}>
+                  {msg.metadata!.title as string}
+                </Text>
+                <Text
+                  style={[styles.trackCardArtist, isMe && styles.trackCardArtistMe]}
+                  numberOfLines={1}
+                >
+                  {msg.metadata!.artist_name as string}
+                </Text>
+                {/* The affordance. Without it a shared track reads as an image somebody
+                    sent, and the whole point of sharing it is that the recipient can
+                    hear it.
+
+                    Two colourways because the bubble has two backgrounds. On MY bubble
+                    the ground is COLORS.purple, where purpleNeon text is very nearly
+                    invisible — the accent that reads as "tappable" on a dark card
+                    disappears against a purple one. White carries it there instead. */}
+                <View style={styles.trackCardCta}>
+                  <Icon
+                    name="play"
+                    size={12}
+                    color={isMe ? COLORS.white : COLORS.purpleNeon}
+                    weight="fill"
+                  />
+                  <Text style={[styles.trackCardCtaText, isMe && styles.trackCardCtaTextMe]}>
+                    Tap to listen
                   </Text>
                 </View>
               </View>
@@ -368,11 +433,30 @@ export default function ConversationScreen() {
   const { conversationId, title, kind } = route.params;
   const isGroup = kind === 'group';
 
-  const { nowPlaying, queueRef } = usePlayback();
+  const { nowPlaying, queueRef, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget } =
+    usePlayback();
+  const openFullScreen = usePlayFullScreen();
   const { activeJam, setActiveJam } = useJam();
   const { showToast } = useToast();
   const [startingJam, setStartingJam] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // Leaving the screen must take the keyboard with it.
+  //
+  // On Android the IME hides on its own when the focused TextInput is torn down.
+  // iOS does not: UIKit keeps the keyboard up across a pop while the composer is
+  // still mounted behind the transition (KeyboardStickyView keeps it alive), so
+  // the user lands back on the conversation list with a keyboard covering half of
+  // it and nothing focused to dismiss it.
+  //
+  // Hooked to `beforeRemove` rather than the back button's onPress so every exit
+  // path is covered by one handler: the header button, the iOS interactive
+  // swipe-back, and the Android hardware back. We never block removal here, only
+  // dismiss.
+  useEffect(
+    () => navigation.addListener('beforeRemove', () => { KeyboardController.dismiss(); }),
+    [navigation],
+  );
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -388,6 +472,26 @@ export default function ConversationScreen() {
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserAvatarUrl, setOtherUserAvatarUrl] = useState<string | null>(null);
+  const rel = useRelationships();
+
+  /**
+   * Why the composer may be unavailable, or null when it is fine.
+   *
+   * MIRRORS `can_write_to_conversation` (20260809030000) — it does not create
+   * the rule. The server refuses these sends either way; without this the user
+   * types a whole message, hits send, and gets "Couldn't send message. Please
+   * try again." — advice that cannot work, for a reason never stated.
+   *
+   * DMs only. A group is authorized by membership, so friendship between every
+   * pair would break every group containing two strangers.
+   */
+  const sendBlock = useMemo<null | 'blocked' | 'not-friends'>(() => {
+    if (kind !== 'dm' || !otherUserId) { return null; }
+    const status = rel.status(otherUserId);
+    if (status === 'blocked') { return 'blocked'; }
+    if (status === 'friend' || status === 'me') { return null; }
+    return 'not-friends';
+  }, [kind, otherUserId, rel]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   // When the user taps a reply quote we scroll to the original and pulse it
@@ -725,11 +829,46 @@ export default function ConversationScreen() {
     }
   }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast]);
 
+  /**
+   * PLAY the shared track. The card says "Tap to listen", so it plays — it does not
+   * navigate somewhere the song might be.
+   *
+   * The first version of this opened the author's profile focused on the post, copying
+   * what an ActivityCenter notification tap does. That is right for "someone liked your
+   * post" and wrong here: a song someone sent you in a chat is a song, and making the
+   * listener find it on a profile is a worse version of the thing they asked for.
+   *
+   * Playback is started exactly the way PostCard starts it — setNowPlaying, mark the
+   * clip start as the seek target, then requestPlay — so the single engine
+   * (GlobalAudioPlayer) picks it up and the floating player appears over the chat. The
+   * user stays in the conversation; tapping the floating player expands it. A video's
+   * audio plays through the same engine, which is the documented single-engine design.
+   */
+  const handlePlaySharedPost = useCallback(async (postId: string) => {
+    // Already the loaded track: toggle rather than restart, so tapping a card you are
+    // already listening to does not jump back to the beginning.
+    if (nowPlaying?.postId === postId) {
+      if (activePostId === postId) { handlersRef.current?.pause(); }
+      else { requestPlay(postId); }
+      return;
+    }
+
+    const post = await fetchPostById(postId);
+    if (!post) {
+      showToast('That track is no longer available', { kind: 'info' });
+      return;
+    }
+    const clipStart = post.clipStartSec ?? 0;
+    setNowPlaying(feedPostToNowPlaying(post));
+    markSeekTarget(clipStart);
+    requestPlay(post.id);
+    openFullScreen();
+  }, [nowPlaying, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget, showToast, openFullScreen]);
+
   const handleLongPress = useCallback((msg: ChatMessage) => {
-    // Firm tap when the picker opens — same duration as the swipe-to-reply
-    // tick so the activation feel is consistent across gestures. Requires
-    // the VIBRATE permission in AndroidManifest.xml.
-    Vibration.vibrate(35);
+    // Firm tick when the picker opens — the same intent swipe-to-reply uses at
+    // its threshold, so activation feels consistent across gestures.
+    haptics.impact();
     setReactionTarget(msg);
   }, []);
 
@@ -774,9 +913,9 @@ export default function ConversationScreen() {
 
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
-    // Lighter confirmation tick for the selection itself — distinct from
-    // the firmer "picker opened" haptic so the two events feel different.
-    Vibration.vibrate(20);
+    // Lighter tick for the selection itself, so choosing an emoji doesn't feel
+    // like opening the picker again.
+    haptics.select();
     const msg = reactionTarget;
     setReactionTarget(null);
     await handleReactionToggle(msg, emoji);
@@ -847,6 +986,7 @@ export default function ConversationScreen() {
               onReplyQuotePress={handleReplyQuotePress}
               onLongPress={handleLongPress}
               onReactionToggle={handleReactionToggle}
+              onPlaySharedPost={handlePlaySharedPost}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -861,7 +1001,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
   const headerSubtitle = useMemo(() => {
@@ -924,21 +1064,34 @@ export default function ConversationScreen() {
             </View>
           ) : null}
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.jamBtn}
-          activeOpacity={0.7}
-          onPress={() => void handleStartJam()}
-          disabled={startingJam}
-        >
-          <GradientBorder borderRadius={20} />
-          {startingJam
-            ? <ActivityIndicator size="small" color={COLORS.purpleNeon} />
-            : <>
-                <Icon name="musicNote" size={14} color={COLORS.purpleNeon} />
-                <Text style={styles.jamBtnLabel}>Jam</Text>
-              </>
-          }
-        </TouchableOpacity>
+        {/* Same gate as the composer: a jam is a shared listening session, so offering
+            one to somebody you cannot even message is incoherent.
+            `sendBlock` is null for groups, which keep their Jam button, and it covers
+            'blocked' as well as 'not-friends'.
+
+            NOTE, and it is the opposite of what it looks like: the server does NOT
+            refuse this. jmem_insert (20260721120000) gates on CONVERSATION membership,
+            not friendship, and both parties to a DM are conversation members whatever
+            their friend status. So this button worked — it would create a live jam with
+            someone who cannot send you a message. This hides the entry point; closing
+            the door itself is a policy change and a separate decision. */}
+        {sendBlock === null && (
+          <TouchableOpacity
+            style={styles.jamBtn}
+            activeOpacity={0.7}
+            onPress={() => void handleStartJam()}
+            disabled={startingJam}
+          >
+            <GradientBorder borderRadius={20} />
+            {startingJam
+              ? <ActivityIndicator size="small" color={COLORS.purpleNeon} />
+              : <>
+                  <Icon name="musicNote" size={14} color={COLORS.purpleNeon} />
+                  <Text style={styles.jamBtnLabel}>Jam</Text>
+                </>
+            }
+          </TouchableOpacity>
+        )}
         {isGroup && (
           <TouchableOpacity
             style={styles.infoBtn}
@@ -1016,19 +1169,41 @@ export default function ConversationScreen() {
                 </TouchableOpacity>
               </View>
             ) : null}
+            {sendBlock ? (
+              <View style={[styles.sendBlocked, { paddingBottom: 12 + insets.bottom }]}>
+                <Text style={styles.sendBlockedText}>
+                  {sendBlock === 'blocked'
+                    ? `You blocked ${title || 'this person'}.`
+                    : `You can only message friends on Livil.`}
+                </Text>
+                <Button
+                  label={sendBlock === 'blocked' ? 'Unblock' : 'Add friend'}
+                  onPress={() => {
+                    if (!otherUserId) { return; }
+                    // Both actions live on the profile: unblock needs its
+                    // confirmation, and Add opens the same relationship sheet
+                    // the rest of the app uses. Duplicating either here would be
+                    // a second place to keep in step with the first.
+                    navigation.navigate('UserProfile', { userId: otherUserId });
+                  }}
+                  variant="secondary"
+                  size="md"
+                />
+              </View>
+            ) : (
             <View style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}>
               <View style={styles.inputWrap}>
                 <FormInput
                   nativeID="conversation-input"
                   value={text}
-                  onChangeText={t => setText(t.slice(0, MAX_CHARS))}
-                  placeholder="Message…"
+                  onChangeText={t => setText(clampComposerInput(t))}
+                  placeholder="Send Message…"
                   placeholderTextColor={COLORS.textMuted}
                   multiline
                   style={styles.textInput}
                   returnKeyType="default"
                 />
-                {text.length > MAX_CHARS - 100 && (
+                {text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
                   <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
                     {MAX_CHARS - text.length}
                   </Text>
@@ -1049,6 +1224,7 @@ export default function ConversationScreen() {
                 />
               </TouchableOpacity>
             </View>
+            )}
           </KeyboardStickyView>
         </KeyboardGestureArea>
       )}
@@ -1061,6 +1237,11 @@ export default function ConversationScreen() {
     </SafeAreaView>
   );
 }
+
+/** Half the screen width. A shared track is a piece of music, not a file attachment,
+ *  so its artwork gets real estate. Read once at module scope — chat bubbles are the
+ *  hottest list in the app and this must not become a per-row Dimensions call. */
+const TRACK_CARD_ART = Math.round(Dimensions.get('window').width * 0.5);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
@@ -1202,24 +1383,27 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   stickerImg: { width: 120, height: 120 },
-  trackCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minWidth: 200,
-  },
-  trackCardArt: { width: 44, height: 44, borderRadius: 6 },
-  trackCardArtPlaceholder: {
-    width: 44,
-    height: 44,
-    borderRadius: 6,
+  // Artwork on top at half the screen width, text beneath — a shared track is a piece
+  // of music, and a 44px thumbnail in a row read as a file attachment. Sized from the
+  // window rather than a fixed dp so it stays half-width on every device.
+  trackCard: { width: TRACK_CARD_ART, alignItems: 'flex-start' },
+  trackCardArt: {
+    width: TRACK_CARD_ART,
+    height: TRACK_CARD_ART,
+    borderRadius: 10,
     backgroundColor: COLORS.card,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  trackCardInfo: { flex: 1 },
-  trackCardTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
-  trackCardArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  // overflow is unnecessary — the Image is already the rounded element. Keep this to
+  // centring the fallback glyph only.
+  trackCardArtPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  trackCardTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700', marginTop: 8 },
+  trackCardArtist: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 2 },
+  // COLORS.textSecondary is #888 — fine on the dark received bubble, muddy on the
+  // purple sent one. Same reason the CTA needs a second colour below.
+  trackCardArtistMe: { color: 'rgba(255,255,255,0.82)' },
+  trackCardCta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  trackCardCtaText: { color: COLORS.purpleNeon, fontSize: 11.5, fontWeight: '700' },
+  trackCardCtaTextMe: { color: COLORS.white },
   // Jam invite card
   jamInviteCard: {
     flexDirection: 'row',
@@ -1377,6 +1561,24 @@ const styles = StyleSheet.create({
   replyPreviewTitle: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '700' },
   replyPreviewBodyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   replyPreviewClose: { padding: 4 },
+  // Replaces the send bar rather than sitting above it — a disabled composer
+  // still invites typing, which is how the "Couldn't send message" toast got
+  // reached in the first place.
+  sendBlocked: {
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  sendBlockedText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
   sendBar: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -1389,7 +1591,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
   },
   inputWrap: { flex: 1 },
-  textInput: { maxHeight: 100 },
+  // FormInput's default `paddingVertical: 15` is tuned for full-width auth
+  // fields; in a chat composer it makes the collapsed box read as a text area.
+  // Tighten it locally (the style prop merges after FormInput's own) so the
+  // single-line height sits alongside the 38px send button. `maxHeight` is
+  // untouched, so the input still grows with longer messages.
+  textInput: { maxHeight: 100, paddingVertical: 9 },
   charCounter: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 2, marginRight: 4 },
   charCounterOver: { color: COLORS.error },
   sendBtn: {

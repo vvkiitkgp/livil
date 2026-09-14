@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { resolveAuthorById, type AuthorDisplay } from '../utils/authorDisplay';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -20,6 +21,58 @@ export type ConversationSummary = {
   otherUserAvatar: string | null;
   otherUserOnline: boolean;
 };
+
+export type ConversationDetails = {
+  id: string;
+  kind: ConversationKind;
+  name: string | null;
+  createdById: string | null;
+  createdBy: AuthorDisplay;
+};
+
+type ConversationRow = { id: string; kind: string; name: string | null; created_by: string | null };
+type CreatorProfile = { username: string; display_name: string | null };
+
+export function toConversationDetails(
+  row: ConversationRow,
+  creator: CreatorProfile | null,
+): ConversationDetails {
+  return {
+    id: row.id,
+    kind: row.kind as ConversationKind,
+    name: row.name,
+    createdById: row.created_by,
+    createdBy: resolveAuthorById(row.created_by, {
+      displayName: creator?.display_name,
+      username: creator?.username,
+    }),
+  };
+}
+
+/**
+ * `createdBy` has no renderer yet. It is resolved here so whoever adds one inherits
+ * the deleted-author handling instead of improvising a sixth version of it.
+ */
+export async function getConversationDetails(
+  conversationId: string,
+): Promise<ConversationDetails | null> {
+  const { data, error } = await db
+    .from('conversations')
+    .select('id, kind, name, created_by')
+    .eq('id', conversationId)
+    .maybeSingle();
+  if (error || !data) { return null; }
+  const row = data as ConversationRow;
+
+  if (!row.created_by) { return toConversationDetails(row, null); }
+
+  const { data: creator } = await db
+    .from('profiles')
+    .select('username, display_name')
+    .eq('id', row.created_by)
+    .maybeSingle();
+  return toConversationDetails(row, (creator as CreatorProfile | null) ?? null);
+}
 
 export type NowPlaying = {
   trackTitle: string;

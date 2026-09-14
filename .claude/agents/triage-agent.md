@@ -12,7 +12,12 @@ You are the **Triage Agent** for Livil.
 1. `kb/standards/work-tracking.md` — issue types, definition of ready, agent limits
 2. `.claude/autonomy-config.yml` — **where agents may write**
 3. `kb/ai-org/board-routing.yml` — domain routing
-4. `scripts/tracker/types.mjs` — the readiness checks in machine-readable form
+4. `scripts/tracker/README.md` — the tracker adapter. **Every ticket read or write goes through
+   it**, never through the Jira API or an MCP tool: `node scripts/tracker/cli.mjs ready LIV-N`
+   scores a ticket against the definition of ready and prints the questions to send back with,
+   and `create` / `comment` / `start` file and update work. The forbidden actions in *Never*
+   below are not available through it, which is the point — the checks themselves live in
+   `scripts/tracker/types.mjs`.
 
 ## What you do
 

@@ -14,7 +14,9 @@ import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/re
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { COLORS } from '../theme/colors';
 import { navigateWhenReady } from '../navigation/navigationRef';
+import { LIVIL_NOTIFICATION_ID_PREFIX } from './appBadge';
 import type { RootStackParamList } from '../navigation/types';
 
 const DEVICE_ID_KEY = 'livil.device_id';
@@ -98,6 +100,188 @@ async function requestOsNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Whether push is currently live for this device: the OS permission is granted
+ * AND the user has not turned it off in Settings.
+ *
+ * Both halves matter. The OS permission alone is not enough — turning push off
+ * from Settings deletes the device token and records 'denied', which leaves the
+ * OS permission granted but no delivery path. Checking only our own status is
+ * likewise wrong: the user can revoke the permission from OS settings behind
+ * our back.
+ */
+export async function isPushEnabled(): Promise<boolean> {
+  const status = await getPushPromptStatus();
+  if (status === 'denied') return false;
+  return await checkOsNotificationPermission();
+}
+
+/**
+ * Settings-screen "off" switch. Deletes this device's token so the edge
+ * function stops targeting it, and records 'denied' so a later app launch does
+ * not silently re-register (registerDeviceForUser short-circuits on 'denied').
+ *
+ * The OS permission is deliberately left alone — an app cannot revoke it, and
+ * re-enabling from Settings should not have to re-prompt.
+ */
+export async function disablePushForUser(userId: string): Promise<void> {
+  await setPushPromptStatus('denied');
+  await unregisterDevice(userId);
+}
+
+/**
+ * Open the OS notification settings for this app, or for one channel when
+ * `channelId` is given (Android only — iOS has no per-channel concept and
+ * lands on the app's notification page either way).
+ */
+export async function openOsNotificationSettings(channelId?: string): Promise<void> {
+  await notifee.openNotificationSettings(channelId);
+}
+
+/**
+ * The ids of channels the user has silenced in Android settings.
+ *
+ * Android owns per-category state and we deliberately do not mirror it into our
+ * own storage: the OS is authoritative, the user can change it from outside the
+ * app at any time, and a second copy would drift and then lie in the settings
+ * list. Reading it back is the correct direction of dependency.
+ *
+ * One `getChannels()` call rather than four `getChannel()` calls. Empty on iOS,
+ * which has no channels, and on any failure — an unknown state should read as
+ * "on" rather than falsely telling the user they are missing notifications.
+ */
+export async function getBlockedChannelIds(): Promise<Set<string>> {
+  if (Platform.OS !== 'android') return new Set();
+  try {
+    const channels = await notifee.getChannels();
+    return new Set(
+      channels
+        // `blocked` covers an explicitly turned-off channel. IMPORTANCE_NONE is
+        // the same thing reached by a different control ("Importance: None"),
+        // and does NOT always set `blocked` — check both or the row lies.
+        .filter(c => c.blocked || c.importance === AndroidImportance.NONE)
+        .map(c => c.id),
+    );
+  } catch (e) {
+    console.warn('[push] getBlockedChannelIds failed', e);
+    return new Set();
+  }
+}
+
+export type NotificationChannel = {
+  id: string;
+  name: string;
+  description: string;
+  importance: AndroidImportance;
+};
+
+/**
+ * The Android notification channels, in the order the settings list shows them.
+ *
+ * This is the single source of truth: `ensureChannels` creates them from this
+ * array and NotificationSettingsScreen lists them from it, so a channel can
+ * never exist in the OS without a settings row (or vice versa).
+ *
+ * `social` is DEFAULT (silent tray); the rest are HIGH so they surface as a
+ * heads-up banner — DEFAULT-importance social notifications were being missed.
+ */
+export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
+  {
+    id: 'social',
+    name: 'Social',
+    description: 'Friend requests, new followers, and fan activity',
+    importance: AndroidImportance.DEFAULT,
+  },
+  {
+    id: 'activity',
+    name: 'Activity',
+    description: 'Likes, comments, reposts, milestones, and new fans on your tracks',
+    importance: AndroidImportance.HIGH,
+  },
+  {
+    id: 'messages',
+    name: 'Messages',
+    description: 'Direct messages, group messages, and reactions',
+    importance: AndroidImportance.HIGH,
+  },
+  {
+    id: 'jam',
+    name: 'Jam Rooms',
+    description: 'Jam invites and host activity',
+    importance: AndroidImportance.HIGH,
+  },
+];
+
+/** One flag per notifee channel id. Mirrors the notification_preferences columns. */
+export type NotificationCategoryPrefs = {
+  social: boolean;
+  activity: boolean;
+  messages: boolean;
+  jam: boolean;
+};
+
+/** Every category on, which is what an absent row means server-side. */
+export const ALL_CATEGORIES_ON: NotificationCategoryPrefs = {
+  social: true,
+  activity: true,
+  messages: true,
+  jam: true,
+};
+
+/**
+ * The user's per-category send preferences.
+ *
+ * This is OUR state, not Android's: it decides whether send-push sends at all, which
+ * is the only mechanism that works on iOS and the only one that avoids waking the
+ * device for a category the user muted. Android channel state is separate, OS-owned,
+ * and read via `getBlockedChannelIds` — never mirrored here.
+ *
+ * No row means all-on, matching the server's reading, so a user who has never opened
+ * this screen behaves exactly as before. Defaults to all-on if the read fails too —
+ * showing someone their notifications are off when we simply could not check would be
+ * a lie in the alarming direction.
+ */
+export async function getNotificationPreferences(
+  userId: string,
+): Promise<NotificationCategoryPrefs> {
+  const { data, error } = await supabase
+    .from('notification_preferences')
+    .select('social, activity, messages, jam')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error || !data) {
+    return { ...ALL_CATEGORIES_ON };
+  }
+  const row = data as Partial<NotificationCategoryPrefs>;
+  return {
+    social: row.social ?? true,
+    activity: row.activity ?? true,
+    messages: row.messages ?? true,
+    jam: row.jam ?? true,
+  };
+}
+
+/**
+ * Turn one category on or off.
+ *
+ * Upsert, not update: the row does not exist until the first toggle, and creating it
+ * lazily keeps the migration from having to backfill every user. The other three
+ * columns take their `true` defaults on insert, which is the correct starting point.
+ */
+export async function updateNotificationPreference(
+  userId: string,
+  category: keyof NotificationCategoryPrefs,
+  enabled: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('notification_preferences')
+    .upsert(
+      { user_id: userId, [category]: enabled, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+  if (error) {throw error;}
+}
+
+/**
  * Whether to render the pre-prompt modal. Returns true only when:
  *  - the user has never resolved the prompt before ('pending'), AND
  *  - the OS hasn't already granted permission (handles users who installed
@@ -135,36 +319,29 @@ function handleNotificationData(data: Record<string, string> | undefined): void 
  */
 const CHAT_KINDS = new Set(['message', 'reaction', 'jam_invite_dm']);
 
+/** Monotonic tail for non-chat notification ids -- see the id built below. */
+let nonChatSeq = 0;
+
+/**
+ * Create the per-category channels so users can mute by category from Android
+ * settings. Defined by NOTIFICATION_CHANNELS — add a channel there, not here.
+ */
 async function ensureChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  // Three channels so users can mute by category via Android settings.
-  await notifee.createChannel({
-    id: 'social',
-    name: 'Social',
-    importance: AndroidImportance.DEFAULT,
-    description: 'Friend requests, new followers, and fan activity',
-  });
-  // Activity center: likes, comments, reposts, play milestones, new fans, and
-  // friend-request outcomes. HIGH importance so these surface as a heads-up
-  // banner (the 'social' channel is DEFAULT = silent tray, which users miss).
-  await notifee.createChannel({
-    id: 'activity',
-    name: 'Activity',
-    importance: AndroidImportance.HIGH,
-    description: 'Likes, comments, reposts, milestones, and new fans on your tracks',
-  });
-  await notifee.createChannel({
-    id: 'messages',
-    name: 'Messages',
-    importance: AndroidImportance.HIGH,
-    description: 'Direct messages, group messages, and reactions',
-  });
-  await notifee.createChannel({
-    id: 'jam',
-    name: 'Jam Rooms',
-    importance: AndroidImportance.HIGH,
-    description: 'Jam invites and host activity',
-  });
+  for (const channel of NOTIFICATION_CHANNELS) {
+    await notifee.createChannel({
+      id: channel.id,
+      name: channel.name,
+      importance: channel.importance,
+      description: channel.description,
+      // Already the default, but stated because the launcher badge depends on
+      // it: with `badge: false` a channel's notifications contribute nothing to
+      // the icon, and the setting CANNOT be changed after a channel is created.
+      // Leaving it implicit makes the badge one upstream default change away
+      // from silently disappearing, with no call site to grep for.
+      badge: true,
+    });
+  }
 }
 
 /**
@@ -189,7 +366,11 @@ export async function displayPushNotification(
   const baseAndroid = {
     channelId,
     importance: AndroidImportance.HIGH,
-    smallIcon: 'ic_launcher',
+    // Android masks the small icon to its alpha channel, so a full-colour
+    // launcher icon renders as a solid white square in the status bar.
+    // `ic_stat_livil` is the flat white pulse silhouette on transparent.
+    smallIcon: 'ic_stat_livil',
+    color: COLORS.purple,
     pressAction: { id: 'default' },
   };
 
@@ -207,8 +388,12 @@ export async function displayPushNotification(
     //
     // The id is per-conversation, so different chats stay separate. For
     // events without a conversation (rare), fall back to actorUserId.
+    //
+    // The `livil:` prefix lets appBadge.ts cancel our notifications without
+    // touching the media3 lock-screen player card, which the same app posts under
+    // the raw player's hashCode. See LIVIL_NOTIFICATION_ID_PREFIX.
     const conversationId = data.conversationId ?? data.actorUserId ?? 'default';
-    const notifId = `chat:${conversationId}`;
+    const notifId = `${LIVIL_NOTIFICATION_ID_PREFIX}chat:${conversationId}`;
 
     let prior: Array<{ text: string; timestamp: number }> = [];
     try {
@@ -232,6 +417,11 @@ export async function displayPushNotification(
       android: {
         ...baseAndroid,
         groupId: 'chats',
+        // Android has no "set the app's badge to N" API: the launcher SUMS the
+        // `number` of every notification in the tray. This card merges every
+        // unread message from one conversation, so its number is that message
+        // count -- which makes the sum across cards the true unread total.
+        badgeCount: prior.length + 1,
         style: {
           type: AndroidStyle.MESSAGING,
           person: {
@@ -249,11 +439,18 @@ export async function displayPushNotification(
   }
 
   await notifee.displayNotification({
+    // Prefixed so appBadge.ts can clear it; sequenced so two notifications that
+    // land in the same millisecond don't replace one another. Unlike chat, these
+    // are deliberately NOT merged -- a like and a new fan are separate events.
+    id: `${LIVIL_NOTIFICATION_ID_PREFIX}${kind || 'push'}:${Date.now()}:${nonChatSeq++}`,
     title,
     body,
     data: tapData,
     android: {
       ...baseAndroid,
+      // One event, one unit of badge. See the chat card's badgeCount for why the
+      // launcher's sum is what we are steering here.
+      badgeCount: 1,
       ...(actorAvatarUrl ? { largeIcon: actorAvatarUrl } : {}),
     },
   });

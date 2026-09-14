@@ -52,6 +52,22 @@ jobs:
       - name: Test
         run: npm test -- --ci
 
+      # The tracker adapter is .mjs outside the React Native jest project, so `npm test` does
+      # not reach it. Run explicitly rather than teaching that jest config an ESM transform to
+      # cover four files — and run it at all, because the tests worth having here are the
+      # permission refusals, and an untested refusal is a rule that only looks like a control
+      # (LIV-93 is the same lesson from the other direction).
+      - name: Tracker adapter tests
+        run: npm run test:tracker
+
+      # Same reasoning, and a sharper case: the kb generators are .mjs outside the jest
+      # project too, and the behaviour under test is the one that made the knowledge-base
+      # gate fail on every open pull request for twelve days — a generated document that
+      # no longer matched itself, because its own date stamp had moved. Pin it where a
+      # regression is visible on the next push rather than on the next calendar day.
+      - name: Knowledge base generator tests
+        run: npm run test:kb
+
   knowledge-base:
     name: knowledge base
     runs-on: ubuntu-latest
@@ -87,6 +103,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: CLAUDE.md must match build.gradle
         run: node scripts/check-version-sync.mjs
+
+  # Deliberately its own job, not a step inside `migrations`. That job builds a
+  # Postgres which does NOT carry Supabase's default privileges, so a function
+  # anon can execute in production has no anon grant there at all — a live
+  # assertion would pass while production stayed open. This reads the SQL, needs
+  # no database, and so runs on every PR in seconds.
+  definer-grants:
+    name: definer functions are not anon-callable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No SECURITY DEFINER function left executable by anon
+        run: node scripts/check-definer-anon-grants.mjs
 
   migrations:
     name: migrations apply cleanly
@@ -129,7 +158,11 @@ jobs:
           create schema if not exists auth;
           create schema if not exists storage;
           create schema if not exists realtime;
-          create table if not exists auth.users (id uuid primary key);
+          -- `email` and its unique index mirror the real auth.users. LIV-74's deletion
+          -- ledger hashes the address, and the re-signup test needs the uniqueness to be
+          -- present for "the address is free again" to mean anything.
+          create table if not exists auth.users (id uuid primary key, email text);
+          create unique index if not exists users_email_key on auth.users (email);
           create or replace function auth.uid() returns uuid
             language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text
@@ -226,6 +259,155 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/rpc-contracts.test.sql
 
+      # PROP-0004 / ADR-0009 — Stories hardening. Attempts REAL writes as the
+      # `authenticated` role so the deployed trigger + tightened stories_insert are
+      # what allow or deny: a client-supplied expires_at must be overwritten, an
+      # unlinked / non-upload repost must be rejected, list_active_stories bounded.
+      - name: Stories hardening tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/stories-harden.test.sql
+
+      # LIV-78 — the `messages` UPDATE boundary. msg_update shipped with no
+      # WITH CHECK, so the USING expression was applied to the NEW row and
+      # constrained only sender_id: an author could move their own message into
+      # another conversation, and — via the shape PostgREST emits for an
+      # unfiltered PATCH — into one they are not even a member of. Attempts REAL
+      # updates as `authenticated`, so the deployed policy AND the freeze trigger
+      # are what allow or deny. Every denial is paired with an assertion on the
+      # stored row, because an UPDATE filtered out by USING raises nothing.
+      - name: messages write-boundary tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/messages-write-boundary.test.sql
+
+      # LIV-74 — account deletion deletes the user's messages (reversing ADR-0014) and
+      # records the departure in a ledger no client may read. The assertions that carry
+      # the weight are the ones about someone ELSE's data: a group co-member's messages
+      # survive, a third party's DM is untouched, and a reserved username is released
+      # only back to the address that gave it up.
+      - name: account deletion tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/account-deletion-liv74.test.sql
+
+      # profiles.comments_friends_only shipped in 1.1.14 with a Settings switch and NO
+      # enforcement — post_comments_insert_self checked only `author_id = auth.uid()`,
+      # so the control looked like protection and was not one. Step 1 is that exact
+      # attack. The suite also pins the ways a fix goes wrong in the other direction:
+      # refusing a real friend, locking an author out of their own post, or making the
+      # restriction apply to everyone rather than only those who opted in.
+      - name: comments friends-only tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comments-friends-only.test.sql
+
+      # A credit names somebody, so answering it is the one write a collaborator gets on a
+      # track that is not theirs. Asserts that the write is status-only (the previous policy
+      # let a tagged user rewrite their own role), that an answer is final, and that being
+      # credited notifies once at publish rather than again on every repost.
+      - name: credit accept/decline tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/credits-accept-decline.test.sql
+
+      # The welcome email is sent once per account, ever, and both clients ask for it on
+      # every launch — so the claim RPC is the only thing between an eager client and
+      # repeat mail. Asserts one winner per account, no mail to accounts that predate the
+      # feature, a capped retry after a failure, and a ledger no client can read or write.
+      - name: Welcome email claim tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/welcome-email.test.sql
+
+      # Tags are the only column on tracks that decides whether a stranger finds the track,
+      # and both ways of breaking that are silent: a tag stored in a form the search box
+      # cannot rebuild is unfindable forever, and an open UPDATE would let anyone file
+      # somebody else's track under any word. Asserts the stored shape, the single
+      # representation of "no tags", the deliberate looseness, and uploader-only writes.
+      - name: Track tag tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/track-tags.test.sql
+
+      # Feed suppression fails SILENTLY when it fails. `fetch_home_feed` is SECURITY
+      # INVOKER, so a missing own-row SELECT policy on post_impressions or post_views
+      # makes the join read zero rows: the feed still renders, the shape is still right,
+      # and the feature does nothing. Both policies were mutation-tested against this
+      # file — dropping either one turns an assertion red.
+      - name: Feed impression tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-impressions.test.sql
+
+      # The feed has to be two contradictory things: identical across the pages of one
+      # scroll, and different the next time the viewer pulls down. Getting either half
+      # wrong is invisible in a screenshot — a broken freeze shows up as posts silently
+      # skipped between pages, and a broken seed as a refresh that does nothing, which is
+      # the defect PROP-0010 was written for. Also pins the exp() underflow clamp, without
+      # which every viewer's feed starts erroring once any post is about a year old.
+      - name: Feed session tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-sessions.test.sql
+
+      # The ranking is seven weighted terms in one expression, and every one of them is a
+      # number somebody can change in a second without being able to see what it did. These
+      # assert the SEMANTICS — a friend still leads all else equal, affinity takes the
+      # strongest relationship rather than summing them, listening counts, being shown
+      # something costs it — so a constant edited on a hunch fails here rather than in
+      # production, where nobody can tell a bad feed from an unlucky one.
+      - name: Feed ranking tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-ranking.test.sql
+
+      # Once the ranker scores a candidate POOL rather than every row, "why is this post
+      # missing" becomes a second question the ranking tests cannot answer. These assert
+      # the pool — and one of them sets an extreme timezone on purpose: comparing a
+      # `timezone('utc', now())` value against a timestamptz column is silently correct
+      # on a UTC runner and silently drops every recent post anywhere else, which is
+      # exactly the defect this suite was written after hitting.
+      - name: Feed candidate tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/feed-candidates.test.sql
+
+      # shared_post_public is the ONLY function role `anon` may execute against post
+      # data, so this suite is the whole anonymous perimeter. Two of its assertions
+      # fail silently in production if broken: a repost becoming publicly readable
+      # (the client only HIDES the Share button on reposts), and `anon` regaining a
+      # direct select on posts — which is the change this design explicitly refused
+      # and which no other test in this repo would notice.
+      - name: Shared post public-read tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/shared-post-public.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
@@ -236,6 +418,19 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/definer-search-path.test.sql
+
+      # terms_acceptances is an evidential record, so the suite asserts what it
+      # REFUSES. Policies stop clients; TRIGGERS stop the table owner, which RLS never
+      # binds — and the owner is precisely the party a counterparty would accuse of
+      # writing the row. Every assertion here fails silently in production if broken:
+      # nothing in the app reads these refusals, so a lost immutability guarantee would
+      # surface for the first time in a dispute.
+      - name: Terms acceptance immutability tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/terms-acceptance.test.sql
 
   schema-parity:
     name: production matches the repo
@@ -300,7 +495,8 @@ jobs:
           create schema if not exists auth;
           create schema if not exists storage;
           create schema if not exists realtime;
-          create table if not exists auth.users (id uuid primary key);
+          create table if not exists auth.users (id uuid primary key, email text);
+          create unique index if not exists users_email_key on auth.users (email);
           create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
           create table if not exists storage.buckets (id text primary key, name text, public boolean);

@@ -69,13 +69,46 @@ messaging-style layout.
 **Exit:** moderate — the display layer is contained, but the data-only send convention is
 built around it.
 
-### GitHub — code, and the marketing site
+### GitHub — code, and CI
 
-Repositories plus Pages serving `livil-music.com` from `main/docs`.
+Repositories, Actions, and — until the Play policy URLs finish moving — a Pages deployment kept
+alive only for the redirect it serves ([deployment.md](deployment.md)).
 
-**If it disappears:** the site goes down; development continues from local clones.
+**If it disappears:** development continues from local clones; the web deploy stops, since
+Vercel builds from pushes to `main`.
 
-**Exit:** easy for code. The site is static and would move anywhere.
+**Exit:** easy for code. Harder than it looks for the redirect, which is load-bearing for three
+Play-registered URLs until those declarations republish.
+
+### Vercel — the web surface
+
+Serves `livil-music.com` (marketing, from `docs/`) and `livil-music.com/studio` (the creator
+dashboard, from `web/`) out of one project, rebuilt on every push to `main`. Added 2026-08-05
+([ADR-0015](../decisions/0015-web-creator-dashboard.md)).
+
+**If it disappears:** the marketing site and the dashboard go down together; the Android app is
+unaffected, because it talks to Supabase directly and never to Vercel. Artists lose desktop
+upload; listeners lose nothing.
+
+**Exit:** easy. The build is a static bundle plus `vercel.json`; any static host takes it. The
+one thing that does not travel is the Vercel-side configuration — root directory and the two
+`VITE_*` variables — which is why `deployment.md` records them.
+
+### Resend — transactional email
+
+SMTP relay for every Supabase auth email: signup confirmation, password reset, password-changed
+notice, email change. Sends as `noreply@mail.livil-music.com` over `smtp.resend.com`, with SPF,
+DKIM and a bounce MX on the `mail.` subdomain. Free tier: 3,000/month, 100/day, one domain.
+
+**If it disappears:** nobody can confirm an address or reset a password — account recovery stops
+entirely. The app keeps working for anyone already signed in, which makes the failure quiet.
+
+**Exit:** easy and rehearsed. It is one SMTP host, username and key in Supabase's settings; any
+provider substitutes in minutes. The domain verification records travel with the DNS, not with
+Resend.
+
+**Watch:** inbound is **off**, so mail sent to `noreply@` bounces. Templates must not invite
+replies — they point at the contact address published on the policy pages instead.
 
 ### Google Play — distribution
 

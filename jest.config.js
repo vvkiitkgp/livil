@@ -4,7 +4,26 @@ module.exports = {
   // supabase/functions/** are Deno edge functions with their own Deno test runner
   // (jsr: imports, Deno globals). Jest must not discover *.test.ts there, or it fails
   // trying to resolve `jsr:@std/assert`. They are tested with `deno test`, not Jest.
-  testPathIgnorePatterns: ['/node_modules/', '/supabase/functions/'],
+  //
+  // .claude/worktrees/** are agent git worktrees nested inside the repo. Each is a full
+  // checkout of src/, so Jest discovers and re-runs every suite once per live worktree.
+  // They have no node_modules of their own (git worktrees don't get one), so the
+  // native-prop-seam contract test — which resolves react-native-video relative to its
+  // own __dirname — throws "the patch may not have applied" in each copy. That is a
+  // false alarm about the checkout it is running in, not about the patch.
+  // `@shared/*` is how web/ imports the cross-client modules — the alias is declared in
+  // web/tsconfig.json and web/vite.config.ts, but Jest resolves neither. Without this a web
+  // suite passes under Vite and fails here the moment anything it imports reaches for the
+  // alias, which is a build-tool difference masquerading as a broken import.
+  moduleNameMapper: {
+    '^@shared/(.*)$': '<rootDir>/shared/$1',
+  },
+
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/supabase/functions/',
+    '/\\.claude/worktrees/',
+  ],
 
   // Several dependencies ship untranspiled ESM. Jest does not transform anything
   // under node_modules by default, so importing them fails with

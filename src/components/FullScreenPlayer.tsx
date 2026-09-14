@@ -15,15 +15,38 @@ import {
   ActivityIndicator,
   InteractionManager,
   AppState,
+  BackHandler,
 } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Reanimated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
+import ArtGlow from './ArtGlow';
+import { useImageAspect } from '../hooks/useImageAspect';
+import { haptics } from '../utils/haptics';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  runOnJS,
+  withTiming,
+  withRepeat,
+  cancelAnimation,
+  Easing as REasing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import ClipRangeSlider from './ClipRangeSlider';
+import WaveformScrubber, {
+  SCRUBBER_SLOP,
+  SCRUBBER_BOX_H,
+  SCRUBBER_GUTTER,
+  SCRUBBER_LABEL_PULL,
+  type ActiveHandle,
+} from './WaveformScrubber';
+import { ScrubTimeLabel } from './ScrubTimeLabel';
+import { useTrackWaveform } from '../hooks/useTrackWaveform';
+import CoverFallback from './CoverFallback';
+import CollabAvatar from './CollabAvatar';
 import QueueList from './QueueList';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { fetchAlbumForTrack, type AlbumForTrack } from '../services/albums';
@@ -39,17 +62,74 @@ import {
 import { COLORS } from '../theme/colors';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
+import SharePostSheet from './SharePostSheet';
+import type { ShareablePost } from '../services/share';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const FLOAT_D = 60;
+
+/** Below this much movement a released scrub was a tap, and seeks nothing. */
+const SCRUB_NOOP_SECONDS = 0.25;
+
+// ── Seek block geometry ──────────────────────────────────────────────────────
+// The seek row is anchored by its BOTTOM and grows upward, and the title/stats
+// block above it is positioned by a fixed offset from that same anchor. So that
+// offset has to be the block's real height — when it was a hardcoded 56 and the
+// block grew past it, the time labels silently rendered on top of the stats row.
+// Derived here so changing SCRUBBER_BOX_H can never desync it again.
+/** Line box of the start · now · end row (12px tabular text). */
+const SEEK_LABEL_TEXT_H = 15;
+const SEEK_LABEL_H = SEEK_LABEL_TEXT_H + SCRUBBER_LABEL_PULL;
+/** Total height the seek row occupies, touch slop included. */
+const SEEK_BLOCK_H = SEEK_LABEL_H + SCRUBBER_SLOP + SCRUBBER_BOX_H + SCRUBBER_SLOP;
+/**
+ * Clear space above and below the block. Applied symmetrically — note the
+ * subtraction below: the scrubber carries SCRUBBER_SLOP of its own padding
+ * beneath the box, which is already part of that gap visually.
+ */
+const SEEK_GAP = 30;
+// First-render estimate for the bottom title/artist/stats block, replaced by the
+// real onLayout height. Only used to size the audio cover-art gap, so a slightly
+// wrong guess costs at most one silent re-layout on the very first frame.
+const BOTTOM_INFO_EST_H = 92;
+// Corner rounding of the lifted cover-art card.
+const ART_RADIUS = 22;
+/**
+ * Set once the user taps into clean view. Module scope, NOT persisted: the hint
+ * is session-scoped, so it retires for this app run and returns on the next cold
+ * start (the module is re-evaluated). At module scope rather than in a ref so a
+ * component remount cannot re-arm it mid-session.
+ */
+let zoomHintLearnedThisSession = false;
+/**
+ * Delay before the hint shows — just long enough to clear the open burst so the
+ * pill doesn't ride the scale-up animation.
+ */
+const ZOOM_HINT_DELAY = 500;
+// Breathing room between the cover art and the header / title block.
+const ART_GAP_TOP = 12;
+const ART_GAP_BOTTOM = 16;
+const ART_SIDE_PAD = 24;
 // PLAYER_BOTTOM and CONVERGE_Y are intentionally NOT defined at module level.
 // They depend on insets.bottom (the real Android nav bar height) which is only
 // available inside the component via useSafeAreaInsets().  See playerBottom /
 // convergeY computed at the top of FullScreenPlayer().
 
-type TabId = 'lyrics' | 'queue' | 'info';
+type TabId = 'queue' | 'info';
+
+/**
+ * The panel tabs, in display order. Rendered in two places — the row inside the
+ * panel and the action-button row beneath the artwork — which must never drift
+ * apart, so both map this one list.
+ *
+ * Lyrics was removed here: it only ever rendered a "Lyrics coming soon"
+ * placeholder, and a tab that costs a tap to discover it does nothing is worse
+ * than no tab. Re-add it to this list (and restore the panel branch) when there
+ * is lyric data to show.
+ */
+const PANEL_TABS: TabId[] = ['queue', 'info'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -114,30 +194,35 @@ function roleIcon(role: string): IconName {
     'Songwriting': 'pencilLine', 'Lyrics': 'note',
     'Featured': 'star',
   };
+  // Every AI_ROLES entry, without restating the list: one glyph for the group, because the
+  // point of the mark is "a tool did this".
+  if (role.startsWith('AI ')) {return 'ai';}
+  // A typed-in role — 'Tabla', 'Additional production' — has no glyph of its own, and
+  // inventing a wrong one would say more than nothing does.
   return map[role] ?? 'musicNote';
-}
-
-function avatarInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) { return '?'; }
-  if (parts.length === 1) { return parts[0]!.slice(0, 2).toUpperCase(); }
-  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 /**
- * Polls position/duration at 4 Hz and renders:
- * - A ClipRangeSlider when the current track has an active clip window
- *   (a repost with stored clip_start_sec / clip_end_sec). The user can drag the
- *   handles freely to listen to any range of the full track. Changes are stored in
- *   clipWindowRef so PostCard respects the new boundaries without a DB write.
- * - A plain SeekBar for uploads with no clip window.
+ * Polls position/duration at 10 Hz and renders the one scrubber.
+ *
+ * ANCHORED layout: the purple box and its two handles hold fixed screen
+ * positions and never move. Trimming zooms the waveform underneath them — the
+ * bars inside the box are always exactly [clipStart, clipEnd] — with faded ghost
+ * bars in the gutters previewing the audio just outside. A gutter is empty when
+ * there is nothing out there, so a clip starting at 0:00 has a blank left gutter.
+ *
+ * An upload has no clip, so its handles simply sit at 0 and the track end (blank
+ * gutters on both sides) and it plays as the whole song.
+ *
+ * Handle drags are stored in clipWindowRef (no DB write), so PostCard and the
+ * native clip JSON both respect the new boundaries for the life of the track.
  */
 function FullScreenClipBar() {
   const {
     positionRef, durationRef, handlersRef, nowPlaying, clipWindowRef, markSeekTarget,
-    bumpClipVersion,
+    bumpClipVersion, scrubbingRef,
   } = usePlayback();
   // Lazy-init from refs so handles appear at correct positions the moment the
   // full-screen player opens, without waiting for the first polling tick.
@@ -151,13 +236,9 @@ function FullScreenClipBar() {
   if (duration > 0) { lastDurationRef.current = duration; }
   const displayDuration = duration > 0 ? duration : lastDurationRef.current;
 
-  // Local clip state — drives ClipRangeSlider during drag without touching context.
+  // Local clip state — drives the handles during drag without touching context.
   const [localStart, setLocalStart] = useState<number | null>(() => nowPlaying?.clipStartSec ?? null);
   const [localEnd,   setLocalEnd]   = useState<number | null>(() => nowPlaying?.clipEndSec   ?? null);
-
-  // Track localStart in a ref so handleClipChangeEnd can detect which handle moved.
-  const localStartRef = useRef(localStart);
-  localStartRef.current = localStart;
 
   // Sync from nowPlaying whenever the track changes.
   useEffect(() => {
@@ -169,6 +250,7 @@ function FullScreenClipBar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
 
+
   // Poll positionRef/durationRef at 10 Hz. Tighter than 250 ms so the thumb
   // looks smoother, but plain — no rAF interpolation (jittery onProgress
   // samples cause the projection to snap back, visible as flicker).
@@ -177,7 +259,10 @@ function FullScreenClipBar() {
     const id = setInterval(() => {
       const p = positionRef.current;
       const d = durationRef.current;
-      setPosition(p);
+      // While the finger is scrubbing, the SWIPE owns the readout. Playback has
+      // not moved yet — it only seeks on release — so the poll would otherwise
+      // yank the label straight back to where the song is still playing.
+      if (!scrubbingRef.current) { setPosition(p); }
       setDuration(d);
       // Only log duration transitions (0 ↔ non-zero). The 1-Hz heartbeat is
       // pulled — too noisy for normal playback investigation.
@@ -189,10 +274,10 @@ function FullScreenClipBar() {
       lastLoggedDurRef.current = d;
     }, 100);
     return () => clearInterval(id);
-  }, [positionRef, durationRef]);
+  }, [positionRef, durationRef, scrubbingRef]);
 
-  // Stable callbacks so ClipRangeSlider's panResponder useMemo doesn't
-  // recreate on every polling tick.
+  // Stable callbacks so WaveformScrubber's panResponder useMemo doesn't recreate
+  // on every polling tick.
   const handleClipChange = useCallback((s: number, e: number) => {
     setLocalStart(s);
     setLocalEnd(e);
@@ -219,162 +304,239 @@ function FullScreenClipBar() {
     bumpClipVersion();
   }, [clipWindowRef, handlersRef, markSeekTarget, bumpClipVersion]);
 
-  // Seek handle (blue circle): scrubs to the chosen position.
-  // Never calls play() — if the song was paused, it stays paused after the scrub.
-  // markSeekTarget pre-commits positionRef and arms the guard so stale onProgress
-  // samples from the native player don't rubber-band the bar back to the
-  // pre-seek position before the seek lands.
+  // Where playback REALLY was when the finger went down. Captured because the
+  // swipe is about to take ownership of positionRef (so the ring can follow it),
+  // which makes positionRef useless as a reference point on release.
+  const scrubOriginPosRef = useRef(0);
+
+  const handleScrubStart = useCallback(() => {
+    scrubOriginPosRef.current = positionRef.current;
+    scrubbingRef.current = true;
+  }, [positionRef, scrubbingRef]);
+
+  /**
+   * While the finger is moving, update the READOUT and nothing else. One local
+   * setState; the audio keeps playing from wherever it was and only moves on
+   * release.
+   *
+   * Do NOT be tempted to drive the engine from here as well. Seeking mid-swipe
+   * needs markSeekTarget to keep the guard honest, and markSeekTarget bumps
+   * seekNonce — which invalidates PlaybackContext's value and re-renders every
+   * consumer in the tree, and is also the signal FullScreenPlayer's muted video
+   * frame uses to eager-seek. At gesture rate that re-renders the whole player
+   * and re-seeks the video frame continuously; the scrub visibly stutters. That
+   * shipped once and was reverted. Scrub-along audio needs a cheaper seam than
+   * markSeekTarget before it can be tried again.
+   */
+  const handleScrub = useCallback((s: number) => {
+    setPosition(s);
+    // Publish the swipe target to every OTHER position consumer — chiefly the
+    // floating player's progress ring, which polls positionRef and would
+    // otherwise sit still while the number above it moves. A plain ref write:
+    // no re-render, no seek. updatePosition is yielding to us for the length of
+    // the gesture, so the engine's own progress cannot overwrite this.
+    positionRef.current = s;
+  }, [positionRef]);
+
+  // Commit — the ONE place a swipe moves playback. markSeekTarget pre-commits
+  // positionRef and arms the guard so stale onProgress samples from the native
+  // player don't rubber-band the bar back to the pre-seek position before the
+  // seek lands.
   const handleSeekEnd = useCallback((s: number) => {
+    // Cleared FIRST: markSeekTarget arms the guard that filters stale samples,
+    // and the guard can only be released by a sample updatePosition actually
+    // processes.
+    scrubbingRef.current = false;
+    // A tap that never moved should not seek — that would make ExoPlayer
+    // re-buffer and hiccup the audio for nothing. Compare against where playback
+    // was at TOUCH-DOWN, not against positionRef: the swipe has been writing the
+    // target into positionRef all along, so `s` always equals it by now and
+    // comparing the two classified every scrub as a tap. With the poll resumed,
+    // the engine's next sample corrects both positionRef and the readout.
+    if (Math.abs(s - scrubOriginPosRef.current) < SCRUB_NOOP_SECONDS) { return; }
     markSeekTarget(s);
     setPosition(s);
     handlersRef.current?.seek(s);
-  }, [handlersRef, markSeekTarget]);
+  }, [handlersRef, markSeekTarget, scrubbingRef]);
 
+  // Which handle the finger is on, so the matching readout can answer. Null on release.
+  const [activeHandle, setActiveHandle] = useState<ActiveHandle | null>(null);
+
+  // Real bars under the clip. The audio-only gate and the fail-safe live in the hook.
+  const waveform = useTrackWaveform(
+    nowPlaying?.trackId, nowPlaying?.mediaKind, nowPlaying?.audioUrl,
+  );
+
+  const dur = displayDuration > 0 ? displayDuration : 1;
   const start = localStart ?? 0;
-  const end = localEnd ?? displayDuration;
+  const end = localEnd ?? dur;
 
   return (
     <View style={seekSt.wrap}>
+      {/* Each readout grows while its own handle is held. `align` pins the outer two
+          so they grow inward instead of off the ends of the row. */}
       <View style={seekSt.timeRow}>
-        <Text style={seekSt.time}>{formatTime(position)}</Text>
-        <Text style={seekSt.time}>{formatTime(displayDuration)}</Text>
+        <ScrubTimeLabel active={activeHandle === 'left'} style={seekSt.time} align="left">
+          {formatTime(start)}
+        </ScrubTimeLabel>
+        <ScrubTimeLabel active={activeHandle === 'scrub'} style={seekSt.timeNow}>
+          {formatTime(position)}
+        </ScrubTimeLabel>
+        <ScrubTimeLabel active={activeHandle === 'right'} style={seekSt.time} align="right">
+          {formatTime(end)}
+        </ScrubTimeLabel>
       </View>
-      <ClipRangeSlider
-        duration={displayDuration > 0 ? displayDuration : 1}
+      <WaveformScrubber
+        layout="anchored"
+        duration={dur}
         position={position}
-        start={start}
-        end={end}
+        seed={nowPlaying?.trackId ?? ''}
+        clipStart={start}
+        clipEnd={end}
+        editableClip
         minClipSeconds={2}
+        height={SCRUBBER_BOX_H}
+        gutter={SCRUBBER_GUTTER}
         edgeInset={20}
-        onChange={handleClipChange}
-        onChangeEnd={handleClipChangeEnd}
+        onClipChange={handleClipChange}
+        onClipChangeEnd={handleClipChangeEnd}
+        onSeekStart={handleScrubStart}
+        onSeek={handleScrub}
         onSeekEnd={handleSeekEnd}
+        onActiveHandleChange={setActiveHandle}
+        peaks={waveform?.peaks}
+        peaksHz={waveform?.hz}
       />
     </View>
   );
 }
 
 const seekSt = StyleSheet.create({
-  wrap: { paddingHorizontal: 24, paddingBottom: 4 },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  wrap: { paddingHorizontal: 24 },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: SCRUBBER_LABEL_PULL, paddingHorizontal: 20 },
   time: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  timeNow: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
 });
 
 /**
- * Left-side credits column shown on the main player view.
- * Big author avatar at top, then one row per collaborator role.
- * All avatars are tappable — calls onNavigateToUser(userId).
+ * One-line credit under the song title: a stack of faces + "X · with A & B".
+ * Tapping it opens the Info panel, which carries the full role-by-role
+ * breakdown — this line is the teaser, not the whole story.
+ *
+ * Replaces the old left-side CreditsWidget column, which drew the same people
+ * over the artwork.
  */
-function CreditsWidget({
+function CreditLine({
   nowPlaying,
-  onNavigateToUser,
+  onPress,
 }: {
   nowPlaying: NowPlayingInfo;
-  onNavigateToUser: (userId: string) => void;
+  onPress: () => void;
 }) {
-  const [groups, setGroups] = useState<{ role: string; members: TrackCollaboratorInfo[] }[]>([]);
+  const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    // Clear on track change so the previous song's collaborators can't sit
+    // under the new title for the length of the fetch.
+    setCollabs([]);
     fetchTrackCollaborators(nowPlaying.trackId)
-      .then(data => {
-        if (cancelled) { return; }
-        const map = new Map<string, TrackCollaboratorInfo[]>();
-        for (const c of data) {
-          if (!map.has(c.role)) { map.set(c.role, []); }
-          map.get(c.role)!.push(c);
-        }
-        setGroups([...map.entries()].map(([role, members]) => ({ role, members })));
-      })
+      .then(data => { if (!cancelled) { setCollabs(data); } })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [nowPlaying.trackId]);
 
-  return (
-    <View style={cwSt.col}>
-      {/* Author — bigger tappable circle */}
-      <TouchableOpacity
-        onPress={() => onNavigateToUser(nowPlaying.authorId)}
-        activeOpacity={0.75}
-        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-      >
-        <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
-      </TouchableOpacity>
+  const author = resolveAuthorDisplay({ displayName: nowPlaying.artistName });
 
-      {/* One row per role */}
-      {groups.map(g => (
-        <View key={g.role} style={cwSt.roleRow}>
-          <View style={cwSt.emoji}>
-            <Icon name={roleIcon(g.role)} size={16} color={COLORS.textSecondary} />
+  // One person can hold several roles (singer AND producer) and the uploader is
+  // usually credited on their own track — dedupe both, or the line reads
+  // "Vvk · with Vvk & Vvk".
+  //
+  // Dropped entirely (face AND the "& N others" count):
+  //  • DELETED accounts — `(user_id null, custom_name null)` resolves to the
+  //    "[deleted]" placeholder, which has no business in a credit line.
+  //  • Nameless rows — a live collaborator whose profile join missed; the name
+  //    is '' and a blank chip is worse than an absent one.
+  const others = useMemo(() => {
+    const seen = new Set<string>([nowPlaying.authorId]);
+    const out: TrackCollaboratorInfo[] = [];
+    for (const c of collabs) {
+      if (c.display.isDeleted || !c.display.name.trim()) { continue; }
+      const key = c.userId ?? `name:${c.display.name.trim().toLowerCase()}`;
+      if (seen.has(key)) { continue; }
+      seen.add(key);
+      out.push(c);
+    }
+    return out;
+  }, [collabs, nowPlaying.authorId]);
+
+  // 1 → "Ravi" · 2 → "Ravi & Arjun" · 3+ → "Ravi & 4 others"
+  const withNames =
+    others.length === 0 ? null
+    : others.length === 1 ? others[0]!.display.name
+    : others.length === 2 ? `${others[0]!.display.name} & ${others[1]!.display.name}`
+    : `${others[0]!.display.name} & ${others.length - 1} others`;
+
+  const faces = [
+    { key: 'author', uri: nowPlaying.authorAvatarUrl, display: author },
+    ...others.slice(0, 2).map((c, i) => ({
+      key: c.userId ?? `c${i}`,
+      uri: c.avatarUrl,
+      display: c.display,
+    })),
+  ];
+
+  return (
+    <TouchableOpacity
+      style={clSt.row}
+      onPress={onPress}
+      activeOpacity={0.75}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={
+        withNames
+          ? `${author.name}, with ${withNames}. Open info.`
+          : `${author.name}. Open info.`
+      }
+    >
+      {/* Rendered REVERSED inside a row-reverse stack. Visual order is unchanged
+          (uploader leftmost), but siblings paint in child order — so reversing
+          makes each face sit ON TOP of the one to its right, with the uploader
+          highest. Doing it this way instead of zIndex keeps the paint order a
+          property of the layout, which Android honours without elevation (which
+          would paint a grey smudge behind each circle). */}
+      <View style={clSt.stack}>
+        {faces.slice().reverse().map((f, i, arr) => (
+          <View key={f.key} style={i < arr.length - 1 ? clSt.overlap : undefined}>
+            <CollabAvatar uri={f.uri} display={f.display} size={26} />
           </View>
-          <View style={cwSt.avRow}>
-            {g.members.slice(0, 3).map((m, i) =>
-              m.userId ? (
-                <TouchableOpacity
-                  key={m.userId}
-                  style={i > 0 ? cwSt.overlap : undefined}
-                  onPress={() => onNavigateToUser(m.userId!)}
-                  activeOpacity={0.75}
-                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                >
-                  <CollabAvatar
-                    uri={m.avatarUrl}
-                    name={m.displayName ?? m.username ?? '?'}
-                    size={28}
-                  />
-                </TouchableOpacity>
-              ) : (
-                // Custom-name collaborators have no profile to navigate to
-                <View key={`c${i}`} style={i > 0 ? cwSt.overlap : undefined}>
-                  <CollabAvatar
-                    uri={m.avatarUrl}
-                    name={m.displayName ?? m.username ?? '?'}
-                    size={28}
-                  />
-                </View>
-              ),
-            )}
-          </View>
-        </View>
-      ))}
-    </View>
+        ))}
+      </View>
+      <Text style={clSt.text} numberOfLines={1}>
+        {author.name}
+        {withNames ? (
+          <>
+            <Text style={clSt.muted}> · with </Text>
+            {withNames}
+          </>
+        ) : null}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
-const cwSt = StyleSheet.create({
-  col: { width: 88, gap: 10, paddingTop: 2, alignItems: 'flex-start' },
-  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  emoji: { width: 22, alignItems: 'center' },
-  avRow: { flexDirection: 'row', alignItems: 'center' },
-  overlap: { marginLeft: -8 },
-});
-
-/** Small avatar circle used in collaborator rows. */
-function CollabAvatar({ uri, name, size = 36 }: { uri: string | null; name: string; size?: number }) {
-  return (
-    <View style={[avSt.wrap, { width: size, height: size, borderRadius: size / 2 }]}>
-      {uri ? (
-        <Image source={{ uri }} style={avSt.img} />
-      ) : (
-        <Text style={[avSt.initials, { fontSize: size * 0.35 }]}>
-          {avatarInitials(name || '?')}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-const avSt = StyleSheet.create({
-  wrap: {
-    backgroundColor: COLORS.purpleDim,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
+const clSt = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  // row-reverse + a reversed children array — see the comment at the call site.
+  stack: { flexDirection: 'row-reverse', alignItems: 'center' },
+  // Applied to every face except the visually-leftmost (the uploader), so each
+  // circle tucks 10dp under its left-hand neighbour.
+  overlap: { marginLeft: -10 },
+  text: {
+    flex: 1, color: COLORS.white, fontSize: 13, fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
-  img: { width: '100%', height: '100%' },
-  initials: { color: COLORS.purpleLight, fontWeight: '700' },
+  muted: { color: COLORS.textSecondary, fontWeight: '600' },
 });
 
 /** Info tab: artist + collaborators by role + engagement stats. */
@@ -395,6 +557,12 @@ function InfoContent({
   const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [album, setAlbum] = useState<AlbumForTrack | null>(null);
+
+  // The uploader's own credit is a `track_collaborators` row like any other, so it arrives
+  // in this list. It is split out here: the header shows it, and CREDITS shows everyone
+  // else, rather than putting the same person on screen twice.
+  const uploaderCredit = collabs.find(c => c.userId === nowPlaying.authorId) ?? null;
+  const otherCredits = collabs.filter(c => c.userId !== nowPlaying.authorId);
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(nowPlaying.likesCount);
 
@@ -430,6 +598,7 @@ function InfoContent({
     const prev = liked;
     const prevCount = likesCount;
     const next = !prev;
+    if (next) { haptics.toggleOn(); }
     setLiked(next);
     setLikesCount(prevCount + (next ? 1 : -1));
     try {
@@ -456,14 +625,6 @@ function InfoContent({
     }
   }, [liked, likesCount, effective.postId, effective.isOriginal, nowPlaying, setNowPlaying]);
 
-  // Group collaborators by role for display
-  type RoleGroup = { role: string; members: TrackCollaboratorInfo[] };
-  const groups: RoleGroup[] = [];
-  for (const c of collabs) {
-    const existing = groups.find(g => g.role === c.role);
-    if (existing) { existing.members.push(c); }
-    else { groups.push({ role: c.role, members: [c] }); }
-  }
 
   return (
     <ScrollView
@@ -472,6 +633,8 @@ function InfoContent({
       showsVerticalScrollIndicator={false}
     >
       {/* ── Artist row — tap minimizes the player then pushes UserProfile. ── */}
+      {/* The uploader's credit is rendered in the header above, not in the list below:
+          showing it in both put the same person on screen twice on every track. */}
       <TouchableOpacity
         style={infoSt.artistRow}
         activeOpacity={0.75}
@@ -480,10 +643,20 @@ function InfoContent({
           navigation.dispatch(StackActions.push('UserProfile', { userId: nowPlaying.authorId }));
         }}
       >
-        <CollabAvatar uri={nowPlaying.authorAvatarUrl} name={nowPlaying.artistName} size={52} />
+        <CollabAvatar
+          uri={nowPlaying.authorAvatarUrl}
+          display={resolveAuthorDisplay({ displayName: nowPlaying.artistName })}
+          size={52}
+        />
         <View style={infoSt.artistMeta}>
           <Text style={infoSt.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
-          <Text style={infoSt.artistHandle} numberOfLines={1}>@{nowPlaying.authorUsername}</Text>
+          {/* What they did, in place of the handle — the artist is already named on the
+              line above, so the handle was repeating it in a second alphabet. Falls back
+              to the handle for tracks uploaded before uploader roles existed, because a
+              blank line there would read as missing data. */}
+          <Text style={infoSt.artistHandle} numberOfLines={1}>
+            {uploaderCredit ? uploaderCredit.role : `@${nowPlaying.authorUsername}`}
+          </Text>
         </View>
       </TouchableOpacity>
 
@@ -514,33 +687,55 @@ function InfoContent({
       {/* ── Collaborators ── */}
       {loading ? (
         <ActivityIndicator size="small" color={COLORS.purpleLight} style={{ marginTop: 20 }} />
-      ) : groups.length > 0 ? (
+      ) : otherCredits.length > 0 ? (
         <View style={infoSt.creditsBlock}>
           <Text style={infoSt.creditsLabel}>CREDITS</Text>
-          {groups.map(g => (
-            <View key={g.role} style={infoSt.roleRow}>
-              <View style={infoSt.roleEmoji}>
-                <Icon name={roleIcon(g.role)} size={24} color={COLORS.textSecondary} />
-              </View>
-              <View style={infoSt.avatarStack}>
-                {g.members.map((m, i) => (
-                  <View
-                    key={m.userId ?? `custom-${i}`}
-                    style={[infoSt.stackedAvatar, i > 0 && { marginLeft: -10 }]}
-                  >
-                    <CollabAvatar
-                      uri={m.avatarUrl}
-                      name={m.displayName ?? m.username ?? '?'}
-                      size={36}
-                    />
-                  </View>
-                ))}
-              </View>
-              <Text style={infoSt.roleName}>{g.role}</Text>
-            </View>
-          ))}
+          {/* One row per credit, not per role. Grouping by role collapsed the people into
+              an anonymous avatar stack — a credit is somebody's NAME, and a list of faces
+              with a job title next to them is not a credit list. */}
+          {otherCredits.map((c, i) => {
+            const tappable = Boolean(c.userId) && !c.display.isDeleted;
+            return (
+              <TouchableOpacity
+                key={c.userId ?? `custom-${i}`}
+                style={infoSt.roleRow}
+                activeOpacity={tappable ? 0.75 : 1}
+                disabled={!tappable}
+                onPress={() => {
+                  closeFullScreenPlayer();
+                  navigation.dispatch(StackActions.push('UserProfile', { userId: c.userId! }));
+                }}
+              >
+                <View style={infoSt.roleEmoji}>
+                  <Icon name={roleIcon(c.role)} size={24} color={COLORS.textSecondary} />
+                </View>
+                <CollabAvatar
+                  uri={c.avatarUrl}
+                  display={c.display}
+                  size={36}
+                  pending={c.status === 'pending'}
+                />
+                <View style={infoSt.roleNameCol}>
+                  <Text style={infoSt.collabName} numberOfLines={1}>{c.display.name}</Text>
+                  <Text style={infoSt.roleName} numberOfLines={1}>{c.role}</Text>
+                </View>
+                {/* A clock, not the words "awaiting confirmation": the row already carries
+                    a name and a role, and a third line of amber text turned every
+                    unanswered credit into the loudest thing on the screen. */}
+                {c.status === 'pending' ? (
+                  <Icon name="pending" size={16} color={COLORS.warning} />
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       ) : null}
+
+      {/* Tags are deliberately NOT rendered here. They are an input to search and to the
+          suggestion engine, not a badge on the track — and since every upload starts with
+          the ten EMOTION_TAGS pre-applied, showing them would put "happy sad love angry" on
+          the face of any track whose artist did not prune. The artist manages them where
+          they are set: the upload screen, and the dashboard's track page. */}
 
       {/* ── Engagement stats ──
           Interactive (like + comments) on the left.
@@ -624,9 +819,9 @@ const infoSt = StyleSheet.create({
     gap: 12, marginBottom: 12,
   },
   roleEmoji: { width: 32, alignItems: 'center' },
-  avatarStack: { flexDirection: 'row', alignItems: 'center' },
-  stackedAvatar: { zIndex: 1 },
-  roleName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', flex: 1 },
+  roleNameCol: { flex: 1 },
+  collabName: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  roleName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
 
   statsRow: {
     flexDirection: 'row',
@@ -699,6 +894,7 @@ function AddToPlaylistModal({
 
   const handleToggleLiked = useCallback(async () => {
     const next = !liked;
+    if (next) { haptics.toggleOn(); }
     setLiked(next);
     try {
       const serverLiked = await toggleLike(nowPlaying.postId);
@@ -936,16 +1132,16 @@ export default function FullScreenPlayer() {
     return () => sub.remove();
   }, [isFullScreenOpen, nowPlaying?.mediaKind, closeFullScreenPlayer]);
 
-  const handleNavigateToUser = useCallback((userId: string) => {
-    // Minimize full-screen player — floating player stays visible, music keeps playing.
-    closeFullScreenPlayer();
-    // dispatch(StackActions.push) always creates a fresh UserProfile screen even if
-    // one already exists in the stack. navigate() would reuse the existing screen
-    // (showing stale profile data). dispatch() works on the root navigation object
-    // that useNavigation() returns from outside the Stack.Navigator tree — push()
-    // would be undefined there, but dispatch() is available everywhere.
-    navigation.dispatch(StackActions.push('UserProfile', { userId }));
-  }, [closeFullScreenPlayer, navigation]);
+  // NOTE: the player surface no longer navigates to a profile directly — the
+  // credit line under the title opens the Info panel, whose artist and
+  // collaborator rows own that navigation (they push UserProfile themselves).
+
+  // The card is drawn at the artwork's OWN proportions, so we need its intrinsic
+  // size. `null` until known — the render holds off rather than laying out a
+  // guessed rectangle that pops to the real shape a frame later.
+  const artAR = useImageAspect(
+    nowPlaying ? (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl) : null,
+  );
 
   // NOTE: lock-screen / notification / headset play-pause sync used to live here.
   // It now belongs to GlobalAudioPlayer (the single MediaSession owner) — its
@@ -963,6 +1159,10 @@ export default function FullScreenPlayer() {
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  // Measured height of the bottom title/artist/stats block. Audio cover art is
+  // centered in the gap ABOVE it, so the gap can only be computed once we know
+  // how tall that block actually rendered (a 2-line title makes it taller).
+  const [bottomInfoH, setBottomInfoH] = useState(BOTTOM_INFO_EST_H);
   // Buffering spinner for the video frame. ExoPlayer/AVPlayer fire onBuffer
   // while loading and onReadyForDisplay once the first frame is decodable.
   const [fsBuffering, setFsBuffering] = useState(false);
@@ -1038,12 +1238,97 @@ export default function FullScreenPlayer() {
     }).start();
   }, [isImmersive, controlsAnim]);
 
+  // ── "Tap and pinch" hint ──────────────────────────────────────────────────
+  // Zoom is discoverable only by accident: pinch does nothing until clean view
+  // is on, and clean view is itself an undocumented tap. So every time a VIDEO
+  // opens full-screen, a pill flashes at the centre naming both. Audio has no
+  // zoom, so it never shows there.
+  //
+  // SESSION-SCOPED: entering clean view retires it for the rest of this app run
+  // and the next cold start offers it again — see zoomHintLearnedThisSession.
+  const [zoomHintOn, setZoomHintOn] = useState(false);
+  const zoomHintAnim = useRef(new Animated.Value(0)).current;
+
+  // At most ONE showing per open — the pill greets you, it doesn't loop. Reset
+  // on open/close and on a track change, so the next video gets its own.
+  const zoomHintShownThisOpenRef = useRef(false);
+  useEffect(() => {
+    zoomHintShownThisOpenRef.current = false;
+  }, [isFullScreenOpen, nowPlaying?.postId]);
+
+  // Delayed past the open burst so the pill doesn't ride the scale-up animation.
+  useEffect(() => {
+    if (zoomHintLearnedThisSession) { return; }
+    if (!isFullScreenOpen || nowPlaying?.mediaKind !== 'video') { return; }
+    if (zoomHintShownThisOpenRef.current) { return; }
+    const t = setTimeout(() => {
+      zoomHintShownThisOpenRef.current = true;
+      setZoomHintOn(true);
+    }, ZOOM_HINT_DELAY);
+    return () => clearTimeout(t);
+  }, [isFullScreenOpen, nowPlaying?.mediaKind, nowPlaying?.postId]);
+
+  // Found clean view → they know. Pull the pill down now and stay quiet for the
+  // rest of this run.
+  useEffect(() => {
+    if (!isImmersive) { return; }
+    zoomHintLearnedThisSession = true;
+    setZoomHintOn(false);
+    zoomHintAnim.setValue(0);
+  }, [isImmersive, zoomHintAnim]);
+
+  useEffect(() => {
+    if (!zoomHintOn) { return; }
+    const anim = Animated.sequence([
+      Animated.timing(zoomHintAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.delay(1000),
+      Animated.timing(zoomHintAnim, { toValue: 0, duration: 320, useNativeDriver: true }),
+    ]);
+    anim.start(({ finished }) => { if (finished) { setZoomHintOn(false); } });
+    return () => anim.stop();
+  }, [zoomHintOn, zoomHintAnim]);
+
   // Animated style for the muted video wrapper (Reanimated, UI thread).
   const videoZoomStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: panX.value },
       { translateY: panY.value },
       { scale: zoomScale.value },
+    ],
+  }));
+
+  // ── Cover-art float (audio, while playing) ────────────────────────────────
+  // A slow rise-and-settle, 0 → 1 → 0 forever. Deliberately long and shallow: at
+  // this size anything faster or bigger stops reading as "floating" and starts
+  // reading as a glitch. Runs entirely on the UI thread, so it keeps its cadence
+  // while JS is busy with a feed fetch or an artwork decode.
+  const artFloat = useSharedValue(0);
+  // Playing == the engine is actively on THIS post (activePostId is null when
+  // paused). Gated on the player being open so a backgrounded/minimized player
+  // isn't animating a view nobody can see.
+  const artFloating =
+    isFullScreenOpen &&
+    nowPlaying?.mediaKind !== 'video' &&
+    activePostId === nowPlaying?.postId;
+  useEffect(() => {
+    if (artFloating) {
+      artFloat.value = withRepeat(
+        withTiming(1, { duration: 2000, easing: REasing.inOut(REasing.quad) }),
+        -1,   // forever
+        true, // reverse — the way back down is the same curve, so no snap
+      );
+    } else {
+      // Cancel BEFORE retargeting: withRepeat keeps driving the value otherwise,
+      // and the settle would be overwritten on the next frame.
+      cancelAnimation(artFloat);
+      artFloat.value = withTiming(0, { duration: 420, easing: REasing.out(REasing.quad) });
+    }
+  }, [artFloating, artFloat]);
+
+  const artFloatStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -7 * artFloat.value },
+      { scale: 1 + 0.018 * artFloat.value },
     ],
   }));
 
@@ -1210,8 +1495,39 @@ export default function FullScreenPlayer() {
   }, [panelAnim]);
 
   const handleTabPress = useCallback((tab: TabId) => {
+    // Covers the Queue/Info row AND the credit line under the title,
+    // which routes through here to open Info. `select` because the panel is a
+    // view change, not a committed action.
+    haptics.select();
     if (activeTab === tab) { closePanel(); } else { openTab(tab); }
   }, [activeTab, openTab, closePanel]);
+
+  // ── Android back ──────────────────────────────────────────────────────────
+  // This player is an OVERLAY, not a navigation screen — nothing in the stack
+  // represents it, so an unhandled back went straight to the navigator, found it
+  // already at the root, and dropped the user out of the app. Back must peel one
+  // layer at a time instead: innermost sheet → content panel → the player.
+  //
+  // Only registered while open, so a closed player never eats a back press. The
+  // sheet/modal cases are belt-and-braces: RN's <Modal> owns a Dialog that
+  // normally consumes the key event before it reaches any BackHandler — but if
+  // one ever renders inline instead, back would otherwise close the whole player
+  // out from under it.
+  useEffect(() => {
+    if (!isFullScreenOpen) { return; }
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showPlaylistModal) { setShowPlaylistModal(false); return true; }
+      if (likersPostId !== null) { setLikersPostId(null); return true; }
+      if (commentsOpen) { setCommentsOpen(false); return true; }
+      if (activeTab !== null) { closePanel(); return true; }
+      closeFullScreenPlayer();
+      return true;
+    });
+    return () => sub.remove();
+  }, [
+    isFullScreenOpen, showPlaylistModal, likersPostId, commentsOpen,
+    activeTab, closePanel, closeFullScreenPlayer,
+  ]);
 
   // ── Media-background gesture tree (built ONCE — stable identity) ───────────
   // Race( tap , Simultaneous(pinch, pan) ):
@@ -1413,7 +1729,25 @@ export default function FullScreenPlayer() {
   const panelHeight = SCREEN_H - panelTop;
   const panelScrollPad = playerBottom + FLOAT_D + 24 + 44 + safeBottom + 16;
   const actionRowBottom = safeBottom + 44;
-  const seekRowBottom = playerBottom + FLOAT_D + 24;
+  const seekRowBottom = playerBottom + FLOAT_D + SEEK_GAP - SCRUBBER_SLOP;
+  const bottomInfoBottom = seekRowBottom + SEEK_BLOCK_H + SEEK_GAP;
+  // ── Audio cover-art card ──────────────────────────────────────────────────
+  // Audio has no picture to fill the screen with, so a full-bleed crop just
+  // hides the edges of the artwork. Instead the card takes the ARTWORK'S OWN
+  // proportions and is scaled up until it hits the band between the header and
+  // the title block, or the side padding — whichever it reaches first. Video is
+  // untouched: it keeps the full-bleed frame and its pinch/pan clean view.
+  const artTop = safeTop + HEADER_H + ART_GAP_TOP;
+  const artBottomEdge = bottomInfoBottom + bottomInfoH + ART_GAP_BOTTOM;
+  const artBandH = Math.max(160, SCREEN_H - artTop - artBottomEdge);
+  const artMaxW = SCREEN_W - ART_SIDE_PAD * 2;
+  // The min() picks whichever limit binds: a wide image runs out of width first,
+  // a tall one runs out of band height. Whole dp so the rounded corners and the
+  // 1px rim land on pixel boundaries.
+  const artW = Math.floor(Math.min(artMaxW, artBandH * (artAR ?? 1)));
+  const artH = Math.floor(artW / (artAR ?? 1));
+  // The no-artwork placeholder has no intrinsic shape of its own — square it.
+  const artSide = Math.min(artMaxW, artBandH);
   // Clean-view control hide: top group (header/credits) slides fully above the
   // status bar, bottom group (info/seek/actions) slides down off-screen; both
   // fade via controlsAnim (opacity). pointerEvents is flipped to 'none' on each
@@ -1425,11 +1759,11 @@ export default function FullScreenPlayer() {
     inputRange: [0, 1], outputRange: [seekRowBottom + 160, 0],
   });
   // Memoize the interpolation node + style array. Without this, every render
-  // (e.g. when activeTab changes from null → 'lyrics') creates a fresh
+  // (e.g. when activeTab changes from null → 'queue') creates a fresh
   // interpolation and a new style array; React Native re-binds the
   // Animated.Value to the native view, and during the re-bind the panel
   // briefly snaps to its non-animated rest position for one frame — that's
-  // the flicker the user sees when opening Lyrics / Queue / Info.
+  // the flicker the user sees when opening Queue / Info.
   const panelTranslateY = useMemo(
     () => panelAnim.interpolate({
       inputRange: [0, 1],
@@ -1580,18 +1914,87 @@ export default function FullScreenPlayer() {
           // to cover (FS minimized / backgrounded) falls back to its thumbnail so
           // the picture-to-cover transition matches the floating player instead of
           // flashing the gradient placeholder.
-          <Image
-            source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
-            style={styles.albumArt}
-            resizeMode="cover"
-          />
-        ) : (
+          //
+          // AUDIO shows the whole artwork on a card cut to its own proportions,
+          // centered between the header and the title block, lit by a purple halo
+          // and its cast shadow, drifting while the song plays. A demoted VIDEO
+          // keeps the full-bleed crop — its thumbnail is a frame of the picture,
+          // and shrinking it would make minimize/background visibly jump.
+          nowPlaying.mediaKind === 'video' ? (
+            <Image
+              source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+              style={styles.albumArt}
+              resizeMode="cover"
+            />
+          ) : artAR === null ? (
+            // Intrinsic size not resolved yet — draw nothing rather than a
+            // guessed rectangle that would visibly snap to the real shape.
+            null
+          ) : (
+            <>
+              <ArtGlow centerY={artTop + artBandH / 2} width={artW} height={artH} />
+              <View
+                style={[styles.artBox, { top: artTop, height: artBandH }]}
+                pointerEvents="none"
+              >
+                <Reanimated.View
+                  style={[styles.artCard, { width: artW, height: artH }, artFloatStyle]}
+                >
+                  <View style={styles.artClip}>
+                    <Image
+                      source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+                      style={styles.artCentered}
+                      // The frame already matches the artwork's ratio, so this
+                      // crops nothing — it just guarantees the picture reaches
+                      // the rounded edge even if the dp rounding is off by one.
+                      resizeMode="cover"
+                    />
+                  </View>
+                </Reanimated.View>
+              </View>
+            </>
+          )
+        ) : nowPlaying.mediaKind === 'video' ? (
           <View style={styles.albumArtFallback}>
-            <View style={styles.fallbackBlobA} />
-            <View style={styles.fallbackBlobB} />
+            <CoverFallback />
           </View>
+        ) : (
+          // No artwork on an audio post — the gradient placeholder becomes the
+          // "artwork", drawn in the same centered box (halo included) so the
+          // layout doesn't change shape between a post that has cover art and
+          // one that doesn't.
+          <>
+            <ArtGlow centerY={artTop + artBandH / 2} width={artSide} height={artSide} />
+            <View style={[styles.artBox, { top: artTop, height: artBandH }]} pointerEvents="none">
+              <Reanimated.View
+                style={[styles.artCard, { width: artSide, height: artSide }, artFloatStyle]}
+              >
+                <View style={styles.artClip}>
+                  <CoverFallback />
+                </View>
+              </Reanimated.View>
+            </View>
+          </>
         )}
       </View>
+
+      {/* "Tap and pinch" — flashes at the centre on every full-screen VIDEO
+          open. pointerEvents none so it never eats the very tap it asks for. */}
+      {zoomHintOn ? (
+        <Animated.View
+          style={[styles.zoomHintWrap, { opacity: zoomHintAnim }]}
+          pointerEvents="none"
+        >
+          {/* Icons sit as siblings in the row, never nested in the <Text> —
+              they are SVGs, not inline glyphs (CLAUDE.md). The inward arrows
+              after the label say which way the pinch goes. */}
+          <View style={styles.zoomHintPill}>
+            <Icon name="handTap" size={16} color={COLORS.purpleLight} />
+            <Text style={styles.zoomHintText}>Tap and pinch</Text>
+            <Icon name="zoomOut" size={16} color={COLORS.purpleLight} />
+          </View>
+        </Animated.View>
+      ) : null}
 
       {/* Buffering spinner — shown while the active media loads / rebuffers. */}
       {showSpinner ? (
@@ -1622,7 +2025,10 @@ export default function FullScreenPlayer() {
         >
           <Icon name="collapse" size={28} color={COLORS.white} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{nowPlaying.title}</Text>
+        {/* No title here — it already reads large in the bottom info block, and
+            repeating it over the artwork was the only thing in the way. The
+            spacer keeps Repost/Add pinned right. */}
+        <View style={styles.headerSpacer} />
         <TouchableOpacity
           style={styles.repostBtn}
           activeOpacity={0.85}
@@ -1660,21 +2066,19 @@ export default function FullScreenPlayer() {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* ── Credits widget (outside GestureDetector) ── */}
+      {/* ── Track title + credit line + engagement stats ── */}
       <Animated.View
-        style={[styles.creditsPos, { top: safeTop + HEADER_H, opacity: controlsAnim, transform: [{ translateY: controlsTopHide }] }]}
+        style={[styles.bottomInfo, { bottom: bottomInfoBottom, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
         pointerEvents={isImmersive ? 'none' : 'box-none'}
-      >
-        <CreditsWidget nowPlaying={nowPlaying} onNavigateToUser={handleNavigateToUser} />
-      </Animated.View>
-
-      {/* ── Track title + artist + engagement stats ── */}
-      <Animated.View
-        style={[styles.bottomInfo, { bottom: seekRowBottom + 56, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
-        pointerEvents={isImmersive ? 'none' : 'box-none'}
+        // Feeds the audio cover-art box its bottom boundary. Guarded so a
+        // sub-pixel re-measure of the same layout can't loop re-renders.
+        onLayout={e => {
+          const h = Math.round(e.nativeEvent.layout.height);
+          setBottomInfoH(prev => (Math.abs(prev - h) > 1 ? h : prev));
+        }}
       >
         <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
-        <Text style={styles.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+        <CreditLine nowPlaying={nowPlaying} onPress={() => handleTabPress('info')} />
         <CompactStats
           nowPlaying={nowPlaying}
           onCommentsPress={() => setCommentsOpen(true)}
@@ -1705,7 +2109,7 @@ export default function FullScreenPlayer() {
         </GestureDetector>
 
         <View style={styles.panelTabs}>
-          {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
+          {PANEL_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.panelTab, activeTab === tab && styles.panelTabActive]}
@@ -1718,15 +2122,6 @@ export default function FullScreenPlayer() {
           ))}
         </View>
 
-        {activeTab === 'lyrics' && (
-          <ScrollView
-            style={styles.panelScroll}
-            contentContainerStyle={{ paddingBottom: panelScrollPad }}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.placeholderText}>Lyrics coming soon</Text>
-          </ScrollView>
-        )}
         {activeTab === 'queue' && (
           <View style={styles.panelScroll}>
             <QueueList paddingBottom={panelScrollPad} />
@@ -1749,7 +2144,7 @@ export default function FullScreenPlayer() {
         style={[styles.actionRow, { bottom: actionRowBottom, opacity: controlsAnim, transform: [{ translateY: controlsBottomHide }] }]}
         pointerEvents={isImmersive ? 'none' : 'box-none'}
       >
-        {(['lyrics', 'queue', 'info'] as TabId[]).map((tab) => (
+        {PANEL_TABS.map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.actionBtn, activeTab === tab && styles.actionBtnActive]}
@@ -1826,6 +2221,29 @@ function CompactStats({
   const effective = getEffectivePost(nowPlaying);
   const [liked, setLiked] = useState(effective.viewerHasLiked);
   const [count, setCount] = useState(effective.likesCount);
+  const [shareOpen, setShareOpen] = useState(false);
+
+  /**
+   * What sharing from here targets.
+   *
+   * `getEffectivePost` already resolves a repost to the ORIGINAL upload, which is
+   * exactly what the uploads-only rule wants: sharing the song you are listening to
+   * shares the artist's post, not somebody's clip of it. So the only unshareable case
+   * left is an ORPHANED repost — the original was deleted, `originalPostId` is null,
+   * and `effective.postId` falls back to the repost's own id. Sharing that would
+   * produce a public link that resolves to nothing.
+   */
+  const shareable: ShareablePost | null =
+    nowPlaying.kind === 'upload' || nowPlaying.originalPostId
+      ? {
+          id: effective.postId,
+          kind: 'upload',
+          trackId: nowPlaying.trackId,
+          title: nowPlaying.title,
+          artistName: nowPlaying.artistName,
+          coverArtUrl: nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl ?? null,
+        }
+      : null;
 
   useEffect(() => {
     setLiked(effective.viewerHasLiked);
@@ -1836,6 +2254,7 @@ function CompactStats({
     const prev = liked;
     const prevCount = count;
     const next = !prev;
+    if (next) { haptics.toggleOn(); }
     setLiked(next);
     setCount(prevCount + (next ? 1 : -1));
     try {
@@ -1884,6 +2303,18 @@ function CompactStats({
           <Icon name="comment" size={16} color={COLORS.white} />
           <Text style={csSt.val}>{formatCount(effective.commentsCount)}</Text>
         </TouchableOpacity>
+        {shareable ? (
+          <TouchableOpacity
+            style={csSt.item}
+            onPress={() => setShareOpen(true)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${nowPlaying.title}`}
+          >
+            <Icon name="share" size={16} color={COLORS.white} />
+          </TouchableOpacity>
+        ) : null}
       </View>
       {/* Passive pill — plays (cumulative across every post using this track)
           and reposts (always the original post's count). Read-only. */}
@@ -1899,6 +2330,12 @@ function CompactStats({
           <Text style={csSt.pillVal}>{formatCount(effective.repostsCount)}</Text>
         </View>
       </View>
+
+      <SharePostSheet
+        visible={shareOpen}
+        post={shareOpen ? shareable : null}
+        onClose={() => setShareOpen(false)}
+      />
     </View>
   );
 }
@@ -1940,20 +2377,60 @@ const styles = StyleSheet.create({
   // Full-bleed media fills entire container
   albumArt: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   albumArtFallback: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.card, overflow: 'hidden' },
-  fallbackBlobA: {
-    position: 'absolute', width: SCREEN_W * 0.8, height: SCREEN_W * 0.8,
-    borderRadius: SCREEN_W * 0.4, backgroundColor: COLORS.purple, opacity: 0.4,
-    top: -SCREEN_W * 0.2, left: -SCREEN_W * 0.1,
+
+  // Audio artwork: the whole image, centered on the black container.
+  artBox: {
+    position: 'absolute', left: ART_SIDE_PAD, right: ART_SIDE_PAD,
+    alignItems: 'center', justifyContent: 'center',
   },
-  fallbackBlobB: {
-    position: 'absolute', width: SCREEN_W * 0.6, height: SCREEN_W * 0.6,
-    borderRadius: SCREEN_W * 0.3, backgroundColor: '#EC4899', opacity: 0.3,
-    bottom: -SCREEN_W * 0.15, right: -SCREEN_W * 0.1,
+  // The lifted card. Carries the shadow and the fill, and must NOT clip — iOS
+  // clips a view's own shadow when overflow is hidden, so the rounding lives on
+  // the inner surface instead.
+  artCard: {
+    borderRadius: ART_RADIUS,
+    backgroundColor: COLORS.card,
+    // iOS: a soft, slightly-offset cast shadow. Near-black on a near-black page
+    // is subtle by nature — most of the lift comes from the halo pooling below.
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    // Android ignores shadowColor and draws its own. CLAUDE.md bans elevation on
+    // BUTTONS, where the grey smudge lands on a visible surface — here the card
+    // sits on pure #0A0A0F, so the shadow only darkens the halo directly beneath
+    // it, which is exactly the seam that sells the lift. Drop this line if it
+    // ever reads as a smudge; the rim + offset glow carry the effect alone.
+    elevation: 12,
   },
+  // Rounds the picture. Clipping on a parent (rather than borderRadius on the
+  // Image) is the reliable path on Android, where a `contain` Image rounds its
+  // view box inconsistently. The hairline rim catches the glow and keeps the
+  // card's edge legible where artwork is dark.
+  artClip: {
+    flex: 1,
+    borderRadius: ART_RADIUS,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  // The card is cut to the artwork's own ratio, so the picture fills it edge to
+  // edge — no letterbox, and nothing of the image is cropped away.
+  artCentered: { flex: 1 },
   video: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' },
   // Clips the over-scaled (zoomed) video wrapper to the screen so it never bleeds.
   mediaClip: { overflow: 'hidden' },
   bufferOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+
+  // Centred hint pill. Matches the action-row chrome (same translucent dark +
+  // border) so it reads as part of the player, not a system toast.
+  zoomHintWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  zoomHintPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
+    backgroundColor: 'rgba(10,10,15,0.9)',
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  zoomHintText: { color: COLORS.white, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
 
   // Gradient scrims — dark top and bottom bands so text is readable over media
 
@@ -1963,11 +2440,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
   },
   closeBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    flex: 1, color: COLORS.white, fontSize: 13, fontWeight: '600',
-    letterSpacing: 0.3, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
+  headerSpacer: { flex: 1 },
   addBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   repostBtn: {
     flexDirection: 'row',
@@ -1987,17 +2460,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Credits column — top-left below header
-  creditsPos: { position: 'absolute', left: 20, paddingTop: 8 },
-
-  // Bottom overlay — track title + artist + stats
+  // Bottom overlay — track title + credit line + stats
   bottomInfo: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24 },
   trackTitle: {
     color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5,
-    textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
-  },
-  artistName: {
-    color: COLORS.white, fontSize: 15, fontWeight: '500', marginTop: 3,
     textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
   },
 
@@ -2022,7 +2488,6 @@ const styles = StyleSheet.create({
   panelTabTextActive: { color: COLORS.purpleNeon },
   panelScroll: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
 
-  placeholderText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 22 },
 
   actionRow: {
     position: 'absolute', left: 0, right: 0,

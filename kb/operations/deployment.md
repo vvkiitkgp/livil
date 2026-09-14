@@ -97,11 +97,37 @@ code. See [../architecture/playback.md](../architecture/playback.md).
 
 ---
 
-## The marketing site
+## The web surface — marketing site and creator dashboard
 
-`livil-music.com` is served by GitHub Pages from `main/docs`. **A push to `main` that touches
-`docs/` publishes immediately** — no review, no staging. Treat edits there as publishing, not
-committing.
+Since **2026-08-05**, `livil-music.com` is served by **Vercel**, not GitHub Pages
+([ADR-0015](../decisions/0015-web-creator-dashboard.md)). One project, one build, two surfaces:
+
+| URL | What | Built from |
+|---|---|---|
+| `livil-music.com/` | marketing page | `docs/`, copied in by `web/scripts/copy-marketing.mjs` |
+| `livil-music.com/studio` | creator dashboard | `web/`, a Vite SPA |
+
+**A push to `main` deploys both immediately** — no review, no staging, no approval. That
+applies to `docs/` and to `web/`. Treat edits to either as publishing, not committing.
+
+Vercel project settings that are load-bearing and not in the repo:
+
+- **Root directory `web/`**, with *include files outside the root* enabled — `shared/` and
+  `docs/` both live above it.
+- **`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`**, scoped to Production. Vite inlines
+  these at **build** time, so changing them requires a redeploy, and a malformed value fails at
+  request time rather than at build. Verify the bytes of the deployed bundle, not the field in
+  the dashboard.
+
+Everything else — SPA rewrite, security headers, cache policy, the build command — is in
+`web/vercel.json` and is reviewable.
+
+**GitHub Pages is still published**, deliberately. Three URLs registered in the Play Console
+(privacy policy, child safety, account deletion) were pointing at
+`vvkiitkgp.github.io/livil/…`, which redirects to the apex only while Pages and its custom
+domain are configured. Pages retires once the Play declarations naming `livil-music.com` clear
+review. **Do not press "Remove" on the custom domain** — that is what generates the redirect;
+"Unpublish site" is the intended action, and only after review lands.
 
 ---
 
@@ -109,8 +135,12 @@ committing.
 
 Recorded so the gap is deliberate rather than invisible:
 
-- **No CI.** Nothing verifies a commit.
-- **No release automation.** Every step is manual, on one machine.
+- **CI verifies commits but does not ship anything.** Eight jobs run on every push
+  ([infrastructure.md](infrastructure.md)) — typecheck, lint, tests, migrations, schema parity
+  against production, knowledge-base drift and the agent-scope gates. None of them builds an
+  AAB, signs it, or uploads to Play. The **web** deploy is the exception and is fully
+  automated: a push to `main` publishes both surfaces via Vercel.
+- **No Android release automation.** Every step is manual, on one machine.
 - **No staged rollout or release health monitoring.** With no crash reporting, a bad release is
   discovered from user reports.
 - **No rollback path.** Play can halt a rollout, but there is no automated revert.

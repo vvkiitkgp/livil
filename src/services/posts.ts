@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { normalizeTag } from '../../shared/constants/tags';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 import { notifyPostActivity } from './activity';
 import { sendPush } from './pushDispatch';
@@ -26,6 +27,20 @@ export type TrackMedia = {
   durationSeconds: number | null;
 };
 
+/**
+ * Just enough of a credit to draw a face on the card.
+ *
+ * Deliberately NOT the full `TrackCollaboratorInfo`: the card shows an avatar row that
+ * opens the player's Info tab, and the names, roles and role glyphs live there. Carrying
+ * roles in every feed row would pay for data the card never renders.
+ */
+export type CreditFace = {
+  userId: string | null;
+  avatarUrl: string | null;
+  name: string | null;
+  pending: boolean;
+};
+
 export type FeedPost = {
   id: string;
   kind: 'upload' | 'repost';
@@ -46,6 +61,8 @@ export type FeedPost = {
   /** Optional clip window selected during repost (seconds). */
   clipStartSec: number | null;
   clipEndSec: number | null;
+  /** Credited artists, for the avatar row on the card. Empty for an uncredited track. */
+  credits: CreditFace[];
 };
 
 export type ProfileStats = {
@@ -75,6 +92,16 @@ type RawPostRow = {
     cover_art_url: string | null;
     thumbnail_url: string | null;
     duration_seconds: number | null;
+    uploader_id?: string | null;
+    collaborators?: Array<{
+      user_id: string | null;
+      status: string | null;
+      profile: {
+        avatar_url: string | null;
+        display_name: string | null;
+        username: string | null;
+      } | null;
+    }> | null;
   } | null;
   author: {
     id: string;
@@ -110,7 +137,13 @@ const POST_SELECT = `
     video_url,
     cover_art_url,
     thumbnail_url,
-    duration_seconds
+    duration_seconds,
+    uploader_id,
+    collaborators:track_collaborators (
+      user_id,
+      status,
+      profile:profiles ( avatar_url, display_name, username )
+    )
   ),
   author:profiles!posts_author_id_fkey (
     id,
@@ -130,6 +163,29 @@ function toAuthor(row: RawPostRow['author']): AuthorRef {
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
   };
+}
+
+/**
+ * Credits reduced to faces.
+ *
+ * Declined rows are dropped — the named artist said this is not them. Typed-in names are
+ * dropped too, but for a different reason: they have no avatar and no profile to open, so
+ * a face row would be initials that go nowhere. They still appear in full on the Info tab.
+ *
+ * The UPLOADER is dropped as well: their avatar is already at the top of the card, and
+ * "with <the person whose post this is>" is not a sentence. Matched on the TRACK's
+ * uploader rather than the post's author, so a repost still hides the original uploader
+ * (who is credited) and not the reposter (who is not).
+ */
+function toCreditFaces(row: RawPostRow['track']): CreditFace[] {
+  return (row?.collaborators ?? [])
+    .filter(c => c.user_id && c.status !== 'declined' && c.user_id !== row?.uploader_id)
+    .map(c => ({
+      userId: c.user_id,
+      avatarUrl: c.profile?.avatar_url ?? null,
+      name: c.profile?.display_name ?? c.profile?.username ?? null,
+      pending: c.status !== 'accepted',
+    }));
 }
 
 function toTrack(row: RawPostRow['track']): TrackMedia {
@@ -228,6 +284,7 @@ async function hydrateRawPostRows(
     viewerHasLiked: forced ? Boolean(forced.get(r.id)) : likedSet.has(r.id),
     clipStartSec: r.clip_start_sec ?? null,
     clipEndSec: r.clip_end_sec ?? null,
+    credits: toCreditFaces(r.track),
   }));
 }
 
@@ -261,6 +318,7 @@ function mapRpcFeedPost(raw: RpcFeedPostJson): FeedPost {
     viewerHasLiked: Boolean(raw.viewer_has_liked),
     clipStartSec: raw.clip_start_sec ?? null,
     clipEndSec: raw.clip_end_sec ?? null,
+    credits: toCreditFaces(raw.track),
   };
 }
 
@@ -269,6 +327,38 @@ export type HomeFeedCursor = {
   sortKey: number;
   id: string;
 };
+
+/**
+ * One pass through the feed (PROP-0010 phase 2).
+ *
+ * `seed` keys a deterministic per-post nudge, and `startedAt` freezes the instant the
+ * decay is measured from. Sending both with every page is what lets the ranking be STABLE
+ * while the viewer scrolls and DIFFERENT the next time they pull down — the two things a
+ * plain `ORDER BY random()` cannot be at once.
+ *
+ * Freezing the origin is also a pagination fix on its own: with a live `now()` the scores
+ * move between page 1 and page 3, so the cursor is compared against numbers it was never
+ * issued from and rows can be skipped or repeated.
+ */
+export type HomeFeedSession = {
+  seed: number;
+  /** ISO 8601. Clamped server-side to the last hour — it is untrusted input there. */
+  startedAt: string;
+};
+
+/**
+ * Mint a session. Call on cold open and on every pull-to-refresh; keep it for every page
+ * in between.
+ *
+ * Seed 0 is reserved by the RPC to mean "no jitter" (the pre-session ordering), so it is
+ * excluded here — a session that rolled 0 would silently be an unseeded one.
+ */
+export function newHomeFeedSession(): HomeFeedSession {
+  return {
+    seed: 1 + Math.floor(Math.random() * 2147483646),
+    startedAt: new Date().toISOString(),
+  };
+}
 
 type RpcHomeFeedRow = {
   feed_bucket: number;
@@ -280,28 +370,48 @@ type RpcHomeFeedRow = {
 
 /**
  * Home ranking is computed in Postgres (`fetch_home_feed`): mutual friends →
- * starred friends → global trending (time-decayed engagement). Pagination is
- * keyset-based so feeds stay cheap at large scale.
+ * starred friends → global trending (time-decayed engagement) → already-seen.
+ * Pagination is keyset-based so feeds stay cheap at large scale.
+ *
+ * Pass the SAME `session` for every page of one pass through the feed, and a fresh one on
+ * refresh — see `HomeFeedSession`. Omitting it falls back to the unseeded ordering, which
+ * is stable but identical on every refresh.
  */
 export async function fetchHomeFeedPage(options: {
   limit?: number;
   cursor?: HomeFeedCursor | null;
+  session?: HomeFeedSession | null;
 }): Promise<{ posts: FeedPost[]; nextCursor: HomeFeedCursor | null }> {
   const limit = options.limit ?? 12;
   const c = options.cursor ?? null;
+  const session = options.session ?? null;
 
-  const { data, error } = await supabase.rpc('fetch_home_feed', {
+  // Cast the CLIENT, never the method. `const rpc = supabase.rpc` detaches it from the
+  // client, and supabase-js's rpc() uses `this` internally — calling it detached throws
+  // "Cannot read property 'rpc' of undefined" and takes the whole feed down. Every other
+  // service in this repo calls `db.rpc(...)` attached; this must too.
+  //
+  // The cast is only here because the generated Supabase types still describe the
+  // pre-session RPC signature. Regenerate them and it goes away.
+  const db = supabase as unknown as {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message: string } | null }>;
+  };
+
+  const { data, error } = await db.rpc('fetch_home_feed', {
     p_limit: limit,
     p_cursor_bucket: c?.bucket ?? undefined,
     p_cursor_sort_key: c?.sortKey ?? undefined,
     p_cursor_id: c?.id ?? undefined,
+    p_seed: session?.seed ?? undefined,
+    p_session_started_at: session?.startedAt ?? undefined,
   });
   if (error) {
     throw new Error(error.message);
   }
 
-  // Cast via unknown: the generated Supabase types still describe the pre-
-  // consolidation RPC signature. Regenerate types after the migration lands.
   const rows = (data ?? []) as unknown as RpcHomeFeedRow[];
 
   if (rows.length === 0) {
@@ -326,11 +436,37 @@ export type ListPostsOptions = {
 };
 
 /**
+ * Track ids this user is a CONFIRMED collaborator on.
+ *
+ * Accepted only, deliberately. A pending credit is somebody else's claim about you that
+ * you have not answered — putting the track on your profile would publish the claim on
+ * your behalf, which is the exact thing confirmation exists to prevent.
+ */
+async function acceptedCreditTrackIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('track_collaborators')
+    .select('track_id')
+    .eq('user_id', userId)
+    .eq('status', 'accepted');
+  if (error) {throw new Error(error.message);}
+  return [...new Set(((data ?? []) as Array<{ track_id: string }>).map(r => r.track_id))];
+}
+
+/**
  * Fetch posts authored by a user, newest first. When `kind` is set we
  * filter to that kind only (e.g. `upload` for the Uploads tab, `repost` for
  * the Reposts tab). Otherwise we return all posts (uploads + reposts).
  * For reposts we also resolve the original uploader's profile so the UI can
  * show a "Creator" tag.
+ *
+ * UPLOADS ALSO INCLUDE TRACKS THIS USER WAS CREDITED ON. A credit is co-authorship of
+ * that upload, not a separate kind of thing, so the drummer's profile lists the record
+ * they drummed on rather than hiding it behind its own tab. The post still belongs to
+ * whoever uploaded it — this is a second place it is listed, not a copy.
+ *
+ * Two queries rather than one: PostgREST cannot express "author_id = me OR track_id in
+ * (subquery)" without an RPC, and a merge here keeps the shape honest at the cost of one
+ * extra round trip on a profile.
  */
 export async function listPostsForUser(
   userId: string,
@@ -338,24 +474,45 @@ export async function listPostsForUser(
 ): Promise<FeedPost[]> {
   const limit = options.limit ?? 10;
 
-  let query = supabase
-    .from('posts')
-    .select(POST_SELECT)
-    .eq('author_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const build = () => {
+    let q = supabase
+      .from('posts')
+      .select(POST_SELECT)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (options.kind) {q = q.eq('kind', options.kind);}
+    if (options.before) {q = q.lt('created_at', options.before);}
+    return q;
+  };
 
-  if (options.kind) {
-    query = query.eq('kind', options.kind);
+  // Credits only ever attach to uploads, so the Reposts tab has nothing to gain from the
+  // second query and should not pay for it.
+  const wantsCredits = options.kind !== 'repost';
+  const creditTrackIds = wantsCredits ? await acceptedCreditTrackIds(userId) : [];
+
+  const [own, credited] = await Promise.all([
+    build().eq('author_id', userId),
+    creditTrackIds.length > 0
+      ? build().eq('kind', 'upload').in('track_id', creditTrackIds).neq('author_id', userId)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (own.error) {throw new Error(own.error.message);}
+  if (credited.error) {throw new Error(credited.error.message);}
+
+  // Merged, deduped by post id, and re-sorted: two newest-first pages interleave, and the
+  // limit applies to the combined result so a page is the size the caller asked for.
+  const byId = new Map<string, RawPostRow>();
+  for (const row of [
+    ...((own.data ?? []) as unknown as RawPostRow[]),
+    ...((credited.data ?? []) as unknown as RawPostRow[]),
+  ]) {
+    byId.set(row.id, row);
   }
-  if (options.before) {
-    query = query.lt('created_at', options.before);
-  }
+  const rows = [...byId.values()]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+    .slice(0, limit);
 
-  const { data, error } = await query;
-  if (error) {throw new Error(error.message);}
-
-  const rows = (data ?? []) as unknown as RawPostRow[];
   return hydrateRawPostRows(rows);
 }
 
@@ -392,9 +549,68 @@ const SEARCH_POST_SELECT = `
 ` as const;
 
 /**
- * Search upload posts by track title or description (case-insensitive). Reposts
- * are intentionally excluded so each track appears once. Results are newest
- * first and capped at `limit` (default 20).
+ * Same again, but the AUTHOR is inner-joined so the search can filter on their name.
+ *
+ * A second select rather than a flag, because the two searches cannot be one query.
+ * PostgREST applies a `.or` to a single embedded resource, and filters on two different
+ * embedded tables are AND-ed together — so "the track matches OR its uploader matches" is
+ * not expressible, and asking for it in one query silently returns the intersection instead.
+ */
+const SEARCH_POST_BY_AUTHOR_SELECT = SEARCH_POST_SELECT.replace(
+  'author:profiles!posts_author_id_fkey (',
+  'author:profiles!posts_author_id_fkey!inner (',
+);
+
+/**
+ * Same again, reaching through to the ALBUM so the search can filter on its title.
+ *
+ * Searching a record's name should return the record's songs. Only the title track usually
+ * carries the album's name — "Dhurandhar" is 11 tracks of which exactly one is called
+ * "Dhurandhar Title Track" — so matching track text finds the album and one song, and the
+ * other ten are invisible to somebody searching the only name they know.
+ *
+ * `!inner` at BOTH hops: a track with no album must not come back from this query, and an
+ * album whose title does not match must not drag its tracks in.
+ */
+const SEARCH_POST_BY_ALBUM_SELECT = SEARCH_POST_SELECT.replace(
+  `    duration_seconds
+  ),`,
+  `    duration_seconds,
+    album_tracks!inner (
+      albums!inner ( title )
+    )
+  ),`,
+);
+
+/**
+ * Search upload posts by track title, description, tag, OR the uploader's name.
+ * Reposts are intentionally excluded so each track appears once.
+ *
+ * The uploader match is why this runs two queries. Searching an artist and getting only their
+ * profile — none of their music — is the obvious thing to expect and the obvious thing to be
+ * missing; "vvk" should find the person AND what they made. PostgREST cannot express it in
+ * one request (see `SEARCH_POST_BY_AUTHOR_SELECT`), so the two run in parallel and are merged
+ * here. A track matching both ways appears once.
+ *
+ * `limit` therefore caps each MATCH PATH, not the merged result: up to `limit` by track text
+ * and up to `limit` by uploader, so at most 2×. Capping the union instead would mean an exact
+ * title match could be cut by twenty newer tracks from an artist whose name also matched,
+ * which is the one result the searcher was most likely after. Ranking (see
+ * `src/utils/searchRanking.ts`) puts the merged set in order.
+ *
+ * Tags participate in two different ways, and the difference is the leading '#':
+ *
+ *   · `lofi`  — matches title OR description OR an exact tag. Prose search, widened.
+ *   · `#lofi` — matches the tag and nothing else. Typing the '#' is how someone says
+ *     they mean the tag rather than the word, and honouring that is the whole reason
+ *     the prefix is worth reading instead of stripping.
+ *
+ * The tag term goes through `normalizeTag`, the same function both upload screens use.
+ * That is not tidiness — a search box that normalizes differently from the writer cannot
+ * find what the writer stored, and nothing about the failure looks like a failure. It also
+ * means the term reaching the PostgREST filter contains only letters, digits and
+ * underscores, so it cannot carry the commas or parentheses that would break out of the
+ * `or=(...)` grouping.
  */
 export async function searchPosts(
   query: string,
@@ -407,41 +623,123 @@ export async function searchPosts(
   const limit = options.limit ?? 20;
   const pattern = `%${trimmed.replace(/[%_]/g, '\\$&')}%`;
 
-  const { data, error } = await supabase
+  const tagOnly = trimmed.startsWith('#');
+  const tag = normalizeTag(trimmed);
+
+  // A '#' query with nothing usable after it ("#", "#!") would otherwise fall through to a
+  // prose search for the literal text, which is not what was asked for and returns noise.
+  if (tagOnly && !tag) {
+    return [];
+  }
+
+  const terms = tagOnly
+    ? [`tags.cs.{${tag}}`]
+    : [
+        `title.ilike.${pattern}`,
+        `description.ilike.${pattern}`,
+        // Only when the query could BE a tag. A two-word query normalizes to one joined
+        // token that no honest tag would match, and adding it costs a GIN probe per search.
+        ...(tag ? [`tags.cs.{${tag}}`] : []),
+      ];
+
+  const byTrackText = supabase
     .from('posts')
     .select(SEARCH_POST_SELECT)
     .eq('kind', 'upload')
-    .or(`title.ilike.${pattern},description.ilike.${pattern}`, { foreignTable: 'tracks' })
+    .or(terms.join(','), { foreignTable: 'tracks' })
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  // Skipped entirely for a '#tag' query: a tag search means "tracks filed under this word",
+  // and an artist whose handle happens to be that word has not filed anything under it.
+  const byUploader = tagOnly
+    ? null
+    : supabase
+        .from('posts')
+        .select(SEARCH_POST_BY_AUTHOR_SELECT)
+        .eq('kind', 'upload')
+        .or(`username.ilike.${pattern},display_name.ilike.${pattern}`, { foreignTable: 'author' })
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
-  const rows = (data ?? []) as unknown as RawPostRow[];
-  return hydrateRawPostRows(rows);
+  // Skipped for a '#tag' query for the same reason as the uploader path: a tag search means
+  // "tracks filed under this word", and an album whose name happens to be that word has not
+  // filed anything under it.
+  const byAlbum = tagOnly
+    ? null
+    : supabase
+        .from('posts')
+        .select(SEARCH_POST_BY_ALBUM_SELECT)
+        .eq('kind', 'upload')
+        .ilike('tracks.album_tracks.albums.title', pattern)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+  const [textResult, uploaderResult, albumResult] = await Promise.all([
+    byTrackText, byUploader, byAlbum,
+  ]);
+
+  if (textResult.error) {
+    throw new Error(textResult.error.message);
+  }
+  // The uploader half is best-effort. It is an enhancement to a search that already works,
+  // so a failure there should narrow the results rather than replace them with an error.
+  const rows = [
+    ...((textResult.data ?? []) as unknown as RawPostRow[]),
+    ...(uploaderResult && !uploaderResult.error
+      ? ((uploaderResult.data ?? []) as unknown as RawPostRow[])
+      : []),
+    ...(albumResult && !albumResult.error
+      ? ((albumResult.data ?? []) as unknown as RawPostRow[])
+      : []),
+  ];
+
+  // A track whose title AND uploader both match came back from both queries.
+  const seen = new Set<string>();
+  const deduped = rows.filter(row => {
+    if (seen.has(row.id)) { return false; }
+    seen.add(row.id);
+    return true;
+  });
+
+  return hydrateRawPostRows(deduped);
 }
 
 export async function getProfileStats(userId: string): Promise<ProfileStats> {
-  // Two head:true count queries — cheap and accurate.
-  const [{ count: total, error: totalError }, { count: uploads, error: uploadsError }] =
-    await Promise.all([
-      supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('author_id', userId),
-      supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('author_id', userId)
-        .eq('kind', 'upload'),
-    ]);
+  // Credited uploads count toward `uploads`, because they are listed in that tab — a tab
+  // whose number disagrees with its contents reads as a bug in the number.
+  const creditTrackIds = await acceptedCreditTrackIds(userId);
+
+  const [
+    { count: total, error: totalError },
+    { count: uploads, error: uploadsError },
+    { count: credited, error: creditedError },
+  ] = await Promise.all([
+    supabase
+      .from('posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('author_id', userId),
+    supabase
+      .from('posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('author_id', userId)
+      .eq('kind', 'upload'),
+    creditTrackIds.length > 0
+      ? supabase
+          .from('posts')
+          .select('id', { count: 'exact', head: true })
+          .eq('kind', 'upload')
+          .in('track_id', creditTrackIds)
+          .neq('author_id', userId)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
 
   if (totalError) {throw new Error(totalError.message);}
   if (uploadsError) {throw new Error(uploadsError.message);}
+  if (creditedError) {throw new Error(creditedError.message);}
 
-  return { posts: total ?? 0, uploads: uploads ?? 0 };
+  const credits = credited ?? 0;
+  return { posts: (total ?? 0) + credits, uploads: (uploads ?? 0) + credits };
 }
 
 /**

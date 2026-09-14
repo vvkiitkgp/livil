@@ -13,8 +13,11 @@
 //   • Tokens live in `public.device_tokens (user_id, token, device_id, platform, …)`.
 //   • The client renders DATA-ONLY FCM messages itself via notifee
 //     (`displayPushNotification`), and routes taps on `data.route` + remaining keys.
-//     So this function MUST send `message.data` only — never a `notification` block —
-//     or Android will auto-display a second, unstyled card.
+//     So this function MUST NOT send a top-level `notification` block — that is
+//     cross-platform, and Android would auto-display a second, unstyled card.
+//     The `apns` block added in step 6 is NOT that: it is iOS-only and invisible to
+//     Android tokens. iOS needs it because iOS has no equivalent of Android's headless
+//     data-message wake-up — a data-only push there displays nothing at all.
 //
 // ── THE SECURITY MODEL ──────────────────────────────────────────────────────
 // The caller-supplied shape is UNTRUSTED. Three things must hold:
@@ -96,6 +99,34 @@ function json(status: number, payload: Record<string, unknown>): Response {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+// ── Per-category preference. ALLOW BY DEFAULT. ─────────────────────────────
+// Whether the recipient has switched this kind's category off in Livil's settings.
+//
+// Note the polarity is the opposite of authorize(): that one denies by default because
+// it is a security perimeter, this one ALLOWS by default because it is a preference. An
+// absent row, an unreadable table, or a null column all mean "no objection" — a user who
+// has never touched the setting must keep receiving notifications, and a transient
+// database error must not silently stop delivery. Only an explicit `false` suppresses.
+//
+// Selects all four columns and indexes in JS rather than interpolating the category into
+// .select(). channelFor() only ever returns one of four literals so either is safe today,
+// but a fixed select cannot become an injection point if that ever stops being true.
+export async function isCategoryMuted(
+  admin: SupabaseClient,
+  recipient: string,
+  kind: string,
+): Promise<boolean> {
+  const category = channelFor(kind);
+  const { data, error } = await admin
+    .from('notification_preferences')
+    .select('social, activity, messages, jam')
+    .eq('user_id', recipient)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return (data as Record<string, unknown>)[category] === false;
 }
 
 // ── Authorization, per kind. DENY BY DEFAULT. ───────────────────────────────
@@ -235,6 +266,15 @@ export async function handler(req: Request): Promise<Response> {
   const allowed = await authorize(admin, kind, actor, recipient);
   if (!allowed) return json(403, { error: 'not_authorized' });
 
+  // 3b. PREFERENCE — the recipient may have switched this category off. Checked after
+  // authorization (so an unauthorized actor still learns nothing) and before the token
+  // lookup and FCM call, which is the point of doing it server-side: a muted category
+  // costs no send and never wakes the device. Android channels cannot do this — the OS
+  // suppresses display only after delivery, and gives iOS nothing at all.
+  if (await isCategoryMuted(admin, recipient, kind)) {
+    return json(200, { ok: true, sent: 0, reason: 'category_muted' });
+  }
+
   // 4. Look up the recipient's device tokens.
   const { data: tokenRows, error: tokErr } = await admin
     .from('device_tokens')
@@ -243,6 +283,10 @@ export async function handler(req: Request): Promise<Response> {
   if (tokErr) return json(500, { error: 'token_lookup_failed', detail: tokErr.message });
   const tokens = (tokenRows ?? []).map((r: { token: string }) => r.token).filter(Boolean);
   if (tokens.length === 0) return json(200, { ok: true, sent: 0, reason: 'no_tokens' });
+  // `platform` is selected above and, until now, discarded. It earns its place here:
+  // the badge count below is an extra database round-trip that ONLY iOS can use.
+  const hasIosToken = (tokenRows ?? [])
+    .some((r: { platform?: string | null }) => r.platform === 'ios');
 
   // 5. Build the DATA-ONLY FCM payload the client's notifee renderer expects. All FCM
   // data values must be strings. `route` + flattened params drive tap-routing.
@@ -271,6 +315,25 @@ export async function handler(req: Request): Promise<Response> {
     if (typeof v === 'string' && k !== 'route') data[k] = v;
   }
 
+  // 5b. The iOS home-screen badge number.
+  //
+  // iOS cannot count for itself: the badge is whatever the payload says it is, and the
+  // app is not running to work it out. So the SENDER has to know the recipient's unread
+  // total, which only the database can answer -- see the `unread_badge_count_for` SQL
+  // function (20260914000000_unread_badge_count.sql).
+  //
+  // Android needs nothing here: it has no badge-setting API and derives the number from
+  // the notifications in the tray (src/services/appBadge.ts).
+  //
+  // Deliberately fail-safe, matching how this file already treats the preference read: a
+  // missing badge is a cosmetic bug, a dropped notification is a real one. If the count
+  // fails we send without it and iOS leaves the existing number alone.
+  //
+  // Skipped entirely when the recipient has no iOS device, which today is almost all of
+  // them: three COUNT(*)s per notification is not a price to pay for a field nothing
+  // will read.
+  const badge = hasIosToken ? await unreadBadgeCount(admin, recipient) : null;
+
   // 6. Send via FCM HTTP v1, and prune dead tokens.
   const accessToken = await getFcmAccessToken();
   const projectId = Deno.env.get('FCM_PROJECT_ID')!;
@@ -285,7 +348,28 @@ export async function handler(req: Request): Promise<Response> {
         Authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ message: { token, data, android: { priority: 'high' } } }),
+      body: JSON.stringify({
+        message: {
+          token,
+          data,
+          android: { priority: 'high' },
+          // iOS-only; FCM drops it for Android tokens, so one payload serves both.
+          // `thread-id` is the iOS analogue of the Android `groupId`/merged chat card:
+          // it collapses a conversation's notifications into one stack instead of a
+          // column of identical rows.
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: {
+              aps: {
+                alert: { title, body },
+                sound: 'default',
+                'thread-id': data.conversationId ?? kind,
+                ...(badge === null ? {} : { badge }),
+              },
+            },
+          },
+        },
+      }),
     });
     if (res.ok) { sent++; return; }
     // 404 UNREGISTERED / 400 INVALID_ARGUMENT on a token → prune it.
@@ -297,6 +381,27 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   return json(200, { ok: true, sent, pruned: deadTokens.length });
+}
+
+// ── The recipient's unread total, for the iOS badge. ────────────────────────────────
+// service_role is the ONLY role granted EXECUTE on this function: it takes an arbitrary
+// user id, so exposing it to clients would let anyone read anyone's unread counts. See
+// the migration's grants.
+//
+// Never throws. A badge is cosmetic; the notification is not.
+async function unreadBadgeCount(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  userId: string,
+): Promise<number | null> {
+  try {
+    const { data, error } = await admin.rpc('unread_badge_count_for', { p_user_id: userId });
+    if (error) return null;
+    const n = Number(data);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── FCM HTTP v1 auth: mint an access token from the service account (RS256 JWT). ──

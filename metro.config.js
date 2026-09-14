@@ -30,6 +30,7 @@ const config = {
       /.*\/android\/\.gradle\/.*/,
       /.*\/ios\/build\/.*/,
       /.*\/ios\/Pods\/.*/,
+      /.*\/web\/node_modules\/.*/,
     ],
   },
 };

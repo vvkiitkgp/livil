@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-07-24
+last_verified: 2026-09-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,37 +16,44 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-51 document(s) under `kb/`.
+68 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 51 |
-| Drift-proof (tier 1 + 4) | 20 |
-| Hand-maintained (tier 3 + 5) | 24 |
-| Past freshness SLA | 0 |
-| Private-content stubs | 5 |
+| Documents | 68 |
+| Drift-proof (tier 1 + 4) | 35 |
+| Hand-maintained (tier 3 + 5) | 26 |
+| Past freshness SLA | 2 |
+| Private-content stubs | 6 |
 
 Tiers 1 and 4 cannot drift by construction — the first is regenerated, the second is never
 edited. Historical documentation drift in this project occurred entirely in hand-maintained
 content, so the hand-maintained count is the number worth keeping small.
 
+## Past freshness SLA
+
+| Document | Owner | Last verified | SLA |
+|---|---|---|---|
+| `debt/proposals/0005-restore-the-messages-write-boundary.md` | chief-architect | 2026-07-29 | 30d |
+| `debt/register.md` | chief-architect | 2026-07-21 | 30d |
+
 ## Tier 1 — Generated
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-07-24 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-07-24 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-07-24 | 9999d |
-| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-07-24 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-07-24 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-14 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-14 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-09-14 | 9999d |
+| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-14 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-09-10 | 9999d |
 
 ## Tier 2 — Enforced
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `debt/register.md` 🔒 | chief-architect | DC, CA, TR, ALL | 2026-07-21 | 30d |
+| `debt/register.md` 🔒 ⚠️ | chief-architect | DC, CA, TR, ALL | 2026-07-21 | 30d |
 | `standards/coding.md` | principal-client | ALL, CR, RF, FE, BE | 2026-07-21 | 90d |
 | `standards/data-access.md` | principal-data | BE, P-DA, CR, QA | 2026-07-21 | 90d |
 | `standards/design-system.md` | principal-client | FE, RF, CR, P-CL | 2026-07-21 | 90d |
@@ -69,11 +76,13 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/media-pipeline.md` | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
 | `architecture/overview.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `architecture/playback.md` | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
+| `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-09-01 | 90d |
 | `architecture/realtime.md` | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
 | `glossary.md` | chief-architect | ALL | 2026-07-20 | 180d |
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `operations/deployment.md` | principal-platform | DO, P-PF | 2026-07-21 | 90d |
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
+| `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-09 | 90d |
 | `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
 | `operations/runbooks/incident-response.md` | principal-platform | DO, P-PF, P-SE, human | 2026-07-21 | 180d |
 | `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-22 | 180d |
@@ -89,6 +98,14 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0001-hedge-the-patch.md` | principal-playback | CA, TR, ALL | 2026-07-21 | 9999d |
 | `debt/proposals/0002-version-storage-config.md` | principal-data | CA, TR, ALL | 2026-07-21 | 9999d |
 | `debt/proposals/0003-in-app-account-deletion.md` | principal-client | CA, TR, ALL | 2026-07-22 | 9999d |
+| `debt/proposals/0004-harden-stories-backend.md` | principal-data | CA, TR, ALL | 2026-07-24 | 9999d |
+| `debt/proposals/0004-harden-stories-draft.md` | chief-architect | CA, TR, ALL | 2026-07-24 | 9999d |
+| `debt/proposals/0005-restore-the-messages-write-boundary.md` 🔒 ⚠️ | chief-architect | CA, TR, ALL | 2026-07-29 | 30d |
+| `debt/proposals/0006-null-author-rendering.md` | principal-client | CA, TR, ALL | 2026-07-29 | 9999d |
+| `debt/proposals/0007-settings-screen.md` | principal-client | CA, TR, ALL | 2026-07-30 | 9999d |
+| `debt/proposals/0008-delete-account-flow.md` | principal-client | CA, TR, ALL | 2026-07-30 | 9999d |
+| `debt/proposals/0009-cover-cropping-on-mobile.md` | chief-architect | CA, TR, ALL | 2026-08-04 | 9999d |
+| `debt/proposals/0010-home-feed-ranking.md` | principal-data | CA, TR, ALL | 2026-08-16 | 9999d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
@@ -98,7 +115,14 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0006-maintain-patched-video-until-trigger.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0007-storage-policies-unversioned.md` | principal-security | ALL | 2026-07-21 | 9999d |
 | `decisions/0008-notification-recipients-derived-server-side.md` | principal-realtime | ALL | 2026-07-22 | 9999d |
+| `decisions/0009-stories-backend-audit-and-hardening.md` | principal-data | ALL | 2026-07-24 | 9999d |
+| `decisions/0009-stories-harden-draft-declarative-rls.md` | chief-architect | ALL | 2026-07-24 | 9999d |
 | `decisions/0010-transcoding-approach-deferred.md` | principal-platform | ALL | 2026-07-24 | 9999d |
+| `decisions/0011-patch-hedge-ratification-and-scope-correction.md` | principal-playback | ALL | 2026-07-24 | 9999d |
+| `decisions/0012-storage-config-ratification-and-modifications.md` | principal-security | ALL | 2026-07-24 | 9999d |
+| `decisions/0013-story-clip-session.md` | chief-architect | ALL | 2026-07-25 | 9999d |
+| `decisions/0014-reject-widening-msg-update-for-orphaned-messages.md` | chief-architect | ALL | 2026-07-29 | 9999d |
+| `decisions/0015-web-creator-dashboard.md` | chief-architect | ALL | 2026-08-05 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -112,14 +136,14 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 16 |
+| chief-architect | 24 |
 | human | 1 |
-| principal-client | 6 |
-| principal-data | 7 |
-| principal-platform | 7 |
-| principal-playback | 7 |
+| principal-client | 9 |
+| principal-data | 10 |
+| principal-platform | 8 |
+| principal-playback | 8 |
 | principal-realtime | 2 |
-| principal-security | 5 |
+| principal-security | 6 |
 
 Every document has exactly one accountable owner — a surface nobody owns will decay
 (Constitution P48).

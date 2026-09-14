@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -15,12 +16,23 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
+import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
+import { usePlayback } from '../../contexts/PlaybackContext';
 import FormInput from '../../components/FormInput';
+import TagInput from '../../components/TagInput';
+import { EMOTION_TAGS } from '../../../shared/constants/tags';
 import { Button } from '../../components/Button';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import type { RootStackParamList } from '../../navigation/types';
-import { getChipStyle, getChipTone, type PendingCollaborator } from '../../constants/roles';
+import {
+  ROLES,
+  getChipStyle,
+  getChipTone,
+  isPresetRole,
+  type PendingCollaborator,
+} from '../../constants/roles';
 import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
@@ -30,6 +42,19 @@ import { Icon } from '../../components/Icon';
 import AddToAlbumSheet from '../../components/AddToAlbumSheet';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
+
+/**
+ * Where the desktop studio lives.
+ *
+ * The apex, not a subdomain: ADR-0015 decision 6 folds the marketing page into the same
+ * Vercel app and puts the dashboard at `/studio`. One origin means the session, the branding
+ * and the future public track pages all share it, and there is no second migration later.
+ *
+ * So this URL is already correct and does not change at deploy — before the cutover it lands
+ * on the about page, which carries the sign-in entry; after it, the studio is a path on the
+ * same site.
+ */
+const STUDIO_URL = 'https://livil-music.com';
 
 type FileSlot = {
   kind: TrackMediaKind;
@@ -73,6 +98,13 @@ const VIDEO_SLOTS: FileSlot[] = [
   },
 ];
 
+/** m:ss for the preview scrubber's readout. */
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) { return '0:00'; }
+  const total = Math.floor(seconds);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
 function formatBytes(bytes: number | null): string {
   if (bytes == null) {return '';}
   if (bytes < 1024) {return `${bytes} B`;}
@@ -82,6 +114,7 @@ function formatBytes(bytes: number | null): string {
 
 export default function UploadScreen() {
   const navigation = useNavigation<UploadNavigation>();
+  const playback = usePlayback();
 
   const [mode, setMode] = useState<PostMode>('audio');
   const [audio, setAudio] = useState<PickedFile | null>(null);
@@ -93,6 +126,11 @@ export default function UploadScreen() {
   const [description, setDescription] = useState('');
 
   const [collaborators, setCollaborators] = useState<PendingCollaborator[]>([]);
+  // Already normalized — `TagInput` commits the stored form, never the typed form. Seeded
+  // with the emotions, pre-applied: the artist removes the ones this track is not, rather
+  // than opting in to the ones it is.
+  const [tags, setTags] = useState<string[]>(() => [...EMOTION_TAGS]);
+  const [uploaderRole, setUploaderRole] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<{ id: string; title: string } | null>(null);
@@ -106,11 +144,38 @@ export default function UploadScreen() {
   // seconds — so we can persist duration_seconds at upload (feed/profile cards
   // read it to show the track length before the post is ever played).
   const [previewDurationSec, setPreviewDurationSec] = useState<number | null>(null);
+  const [previewPositionSec, setPreviewPositionSec] = useState(0);
   const previewRef = useRef<MediaPlayerHandle>(null);
+  // True for the length of a scrub swipe. While it is set the FINGER owns the
+  // readout, so the player's progress events must not overwrite it.
+  const previewScrubbingRef = useRef(false);
 
   const handlePreviewEnded = useCallback(() => {
     setPreviewPaused(true);
+    setPreviewPositionSec(0);
     previewRef.current?.seek(0);
+  }, []);
+
+  const handlePreviewProgress = useCallback((pos: number) => {
+    if (previewScrubbingRef.current) { return; }
+    setPreviewPositionSec(pos);
+  }, []);
+
+  const handlePreviewScrubStart = useCallback(() => {
+    previewScrubbingRef.current = true;
+  }, []);
+
+  // Readout only while the finger moves — seeking the preview on every gesture
+  // event makes it re-buffer and the scrub visibly stutters. Same rule as the
+  // player and the repost editor.
+  const handlePreviewScrub = useCallback((s: number) => {
+    setPreviewPositionSec(s);
+  }, []);
+
+  const handlePreviewSeekEnd = useCallback((s: number) => {
+    previewScrubbingRef.current = false;
+    setPreviewPositionSec(s);
+    previewRef.current?.seek(s);
   }, []);
 
   const previewMedia: MediaShape | null = useMemo(() => {
@@ -161,10 +226,29 @@ export default function UploadScreen() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => { setPreviewPaused(true); setPreviewDurationSec(null); }, [previewMedia]);
+  useEffect(() => { setPreviewPaused(true); setPreviewDurationSec(null); setPreviewPositionSec(0); }, [previewMedia]);
 
+  // Hide the FloatingPlayer for the length of this screen, and stop whatever it
+  // was controlling on the way in. Hiding it alone would leave music playing with
+  // no visible control — and the preview below is a second player competing for
+  // the same ears. Mirrors RepostScreen.
+  //
+  // NOTE the flag is named for the repost screen because that was its first
+  // caller; it really means "a full-screen compose surface is open". Depending on
+  // the individual callbacks rather than the whole `playback` object matters:
+  // its value memo re-creates constantly, which would re-run this on every
+  // playback state change and re-pause the user's music mid-screen.
+  const { pauseAll, setRepostOpen, handlersRef } = playback;
   useFocusEffect(
-    useCallback(() => () => { setPreviewPaused(true); }, []),
+    useCallback(() => {
+      handlersRef.current?.pause();
+      pauseAll();
+      setRepostOpen(true);
+      return () => {
+        setPreviewPaused(true);
+        setRepostOpen(false);
+      };
+    }, [handlersRef, pauseAll, setRepostOpen]),
   );
 
   const handlePickFile = useCallback(
@@ -208,10 +292,14 @@ export default function UploadScreen() {
   }, []);
 
   const handleAddCollaborator = useCallback(() => {
-    const excludeUserIds = collaborators
-      .filter(c => c.kind === 'user' && c.userId)
-      .map(c => c.userId!) as string[];
-    navigation.navigate('CollaboratorPicker', { excludeUserIds });
+    // Person AND role. Hiding the person outright — what this used to do — meant the
+    // guitarist who also wrote the song could only ever be credited once.
+    const takenRoleKeys = collaborators.map(c =>
+      c.kind === 'user' && c.userId
+        ? `${c.userId}|${c.role}`
+        : `custom:${c.name.trim().toLowerCase()}|${c.role}`,
+    );
+    navigation.navigate('CollaboratorPicker', { takenRoleKeys });
   }, [collaborators, navigation]);
 
   const handleRemoveCollaborator = useCallback((clientId: string) => {
@@ -230,14 +318,20 @@ export default function UploadScreen() {
 
   const canSubmit = useMemo(() => {
     if (submitting || title.trim().length === 0) {return false;}
+    // Your own role is required — see the Your role section.
+    if (uploaderRole.trim().length === 0) {return false;}
     if (mode === 'audio') {return Boolean(audio && cover);}
     return Boolean(video && thumbnail);
-  }, [mode, audio, cover, video, thumbnail, title, submitting]);
+  }, [mode, audio, cover, video, thumbnail, title, uploaderRole, submitting]);
 
   const handleSubmit = useCallback(async () => {
     setPreviewPaused(true);
     if (!title.trim()) {
       setError('Add a title to continue.');
+      return;
+    }
+    if (!uploaderRole.trim()) {
+      setError('Choose what you did on this track.');
       return;
     }
     if (mode === 'audio') {
@@ -268,7 +362,9 @@ export default function UploadScreen() {
               description,
               audio: audio!,
               cover: cover!,
+              uploaderRole,
               collaborators,
+              tags,
               durationSeconds: previewDurationSec,
             }
           : {
@@ -278,7 +374,9 @@ export default function UploadScreen() {
               video: video!,
               cover: cover ?? undefined,
               thumbnail: thumbnail!,
+              uploaderRole,
               collaborators,
+              tags,
               durationSeconds: previewDurationSec,
             },
         ({ stage, fraction }) => {
@@ -291,6 +389,9 @@ export default function UploadScreen() {
       if (selectedAlbum && result?.trackId) {
         addTrackToAlbum(selectedAlbum.id, result.trackId).catch(() => {});
       }
+      // Fires with the success modal, not with the upload finishing — the
+      // buzz and the confirmation land together.
+      haptics.success();
       setShowSuccess(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
@@ -298,7 +399,7 @@ export default function UploadScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, collaborators, previewDurationSec, selectedAlbum]);
+  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, tags, previewDurationSec, selectedAlbum]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -326,6 +427,25 @@ export default function UploadScreen() {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+
+          {/* Deliberately quiet and above the form rather than interrupting it: the artist
+              came here to upload, and a phone upload is a perfectly good outcome. This is
+              for the case where they are on a phone because they did not know there was
+              anywhere else to be. */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => { Linking.openURL(STUDIO_URL).catch(() => {}); }}
+            style={styles.studioCard}
+          >
+            <Text style={styles.studioTitle}>Got a laptop nearby?</Text>
+            <Text style={styles.studioBody}>
+              Livil for Creators publishes from your desktop — masters up to 2 GB, uploads
+              that resume if the connection drops, and a whole folder at once with cover art
+              read straight from your files. It&apos;s also the only place to attach lyrics,
+              edit a track after publishing, and see how each one is doing.
+            </Text>
+            <Text style={styles.studioLink}>livil-music.com →</Text>
+          </TouchableOpacity>
 
           <Text style={styles.sectionLabel}>Post type</Text>
           <View style={styles.modeSegment}>
@@ -448,6 +568,7 @@ export default function UploadScreen() {
                   media={previewMedia}
                   paused={previewPaused}
                   onTogglePaused={() => setPreviewPaused(p => !p)}
+                  onProgress={handlePreviewProgress}
                   onLoaded={setPreviewDurationSec}
                   onEnded={handlePreviewEnded}
                   visible
@@ -458,6 +579,28 @@ export default function UploadScreen() {
                     <Text style={styles.previewTitle} numberOfLines={1}>
                       {title}
                     </Text>
+                  </View>
+                ) : null}
+                {/* Same control the jam room uses: whole track, no clip, swipe to
+                    scrub. Audio and video alike — the preview is one file either
+                    way, and there is nothing to trim at upload. */}
+                {previewDurationSec && previewDurationSec > 0 ? (
+                  <View style={styles.previewSeekWrap}>
+                    <View style={styles.previewTimeRow}>
+                      <Text style={styles.previewTimeText}>{formatClock(0)}</Text>
+                      <Text style={styles.previewTimeNow}>{formatClock(previewPositionSec)}</Text>
+                      <Text style={styles.previewTimeText}>{formatClock(previewDurationSec)}</Text>
+                    </View>
+                    <WaveformScrubber
+                      position={previewPositionSec}
+                      duration={previewDurationSec}
+                      seed={previewMedia.kind === 'audio' ? (audio?.uri ?? '') : (video?.uri ?? '')}
+                      span="full"
+                      height={44}
+                      onSeekStart={handlePreviewScrubStart}
+                      onSeek={handlePreviewScrub}
+                      onSeekEnd={handlePreviewSeekEnd}
+                    />
                   </View>
                 ) : null}
               </View>
@@ -502,6 +645,22 @@ export default function UploadScreen() {
             />
           </View>
 
+          {/* Tags sit with the description, not behind a disclosure. They are the only
+              metadata on this screen that decides whether anyone who is not already
+              following you ever finds the track, and a collapsed section is how a field
+              like that stays empty.
+
+              The hint asks for a removal, not an addition, because that is the action the
+              screen opens on: the emotions arrive already applied. */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Tags · how people find it</Text>
+            <Text style={styles.tagsHint}>
+              Take off the moods this track isn't, and add your own — genre, language,
+              whatever you'd search for. Listeners never see these.
+            </Text>
+            <TagInput tags={tags} onChange={setTags} editable={!submitting} />
+          </View>
+
           {/* Add to album · optional — creators can group this upload with
               their other tracks. Picker lists their existing albums. */}
           <View style={styles.fieldGroup}>
@@ -536,6 +695,44 @@ export default function UploadScreen() {
               )}
             </TouchableOpacity>
           </View>
+
+          {/* The uploader's own credit. Above Collaborators, and required: a credit list
+              that names the guitarist and the mixer but not the person who made the record
+              is not a credit list. */}
+          <Text style={styles.sectionLabel}>Your role</Text>
+          <View style={styles.ownRoleWrap}>
+            {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
+                credited as a collaborator in its own right — "AI vocals" is never an
+                answer to what the person uploading did. */}
+            {ROLES.map(r => {
+              const active = uploaderRole === r;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  activeOpacity={0.85}
+                  disabled={submitting}
+                  onPress={() => setUploaderRole(active ? '' : r)}
+                  style={[styles.roleChip, active && styles.roleChipActive]}
+                >
+                  {active ? <GradientBorder borderRadius={999} /> : null}
+                  <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* The list will always be missing somebody's instrument. A closed list here
+              would mean the wrong credit or, since this field is required, no upload. */}
+          <FormInput
+            value={isPresetRole(uploaderRole) ? '' : uploaderRole}
+            onChangeText={setUploaderRole}
+            placeholder="Or type your own — e.g. Tabla, Additional production"
+            maxLength={40}
+            autoCapitalize="words"
+            editable={!submitting}
+          />
 
           <View style={styles.collabHeader}>
             <Text style={styles.sectionLabel}>Collaborators</Text>
@@ -716,6 +913,33 @@ export default function UploadScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  studioCard: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  studioTitle: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginBottom: 4,
+  },
+  studioBody: {
+    color: COLORS.textSecondary,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  studioLink: {
+    color: COLORS.purpleNeon,
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    marginTop: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
@@ -817,14 +1041,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 24,
   },
+  // Not a card any more — no fill, no outline, no rounding. The media sits
+  // straight on the page and keeps its own square corners.
   previewCard: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    overflow: 'hidden',
     marginBottom: 24,
   },
+  previewSeekWrap: { width: '100%', marginTop: 4, marginBottom: 4 },
+  // start · now · end above the bar, matching FullScreenPlayer — including the
+  // negative pull into the scrubber's transparent top slop.
+  previewTimeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: SCRUBBER_LABEL_PULL },
+  previewTimeText: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'] },
+  previewTimeNow: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
   previewTrackInfo: {
     padding: 14,
     gap: 4,
@@ -886,6 +1113,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
+  tagsHint: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: -4,
+    marginBottom: 10,
+  },
   descriptionWrapper: {
     alignItems: 'flex-start',
   },
@@ -911,6 +1145,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
   },
+  ownRoleWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 4 },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  // Selected state is the gradient outline; no fill — same as the collaborator picker.
+  roleChipActive: { borderColor: 'transparent' },
+  roleChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+  roleChipTextActive: { color: COLORS.purpleNeon, fontWeight: '700' },
   addCollabButton: {
     borderRadius: 999,
     paddingHorizontal: 14,

@@ -117,13 +117,27 @@ export default function WaveVisualizer({
   // Phase integrator (UI thread): phase advances by speed·dt every frame, kept in
   // [0,2π). Lets brightness modulate scroll speed smoothly — unlike a fixed-
   // duration withRepeat loop, there's no seam when the speed changes mid-flight.
-  useFrameCallback(frame => {
+  const phaseTicker = useFrameCallback(frame => {
     'worklet';
     const dt = frame.timeSincePreviousFrame ?? 16;
     let p = phase.value + speed.value * dt;
     if (p >= TWO_PI) { p -= TWO_PI * Math.floor(p / TWO_PI); }
     phase.value = p;
-  });
+  }, false);
+
+  // Run the integrator ONLY while the wave is actually waving. It is the only
+  // shared value still changing once amplitude has eased to zero, so leaving it
+  // on (the default `autostart`) meant every frame rebuilt the <Path> `d` — 41
+  // sine calls and a fresh ~500-char string — to redraw a straight line, on every
+  // screen, for as long as a track was loaded. Stopping it lets the animated props
+  // go quiet: nothing changes, so nothing re-renders.
+  //
+  // The flatten still animates: baseAmp/kick are driven by withTiming below, which
+  // is Reanimated's own loop, not this one. The wave settles to a line and then
+  // goes completely static — it just doesn't keep scrolling sideways while it does.
+  useEffect(() => {
+    phaseTicker.setActive(playing && !suppressed);
+  }, [phaseTicker, playing, suppressed]);
 
   // Amplitude + speed driver, by cause:
   //  • suppressed (FS opening / jam): flatten FAST to a clean line.

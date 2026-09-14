@@ -4,9 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { postIdFromUrl } from '../utils/shareLinks';
+import { navigateWhenReady } from './navigationRef';
+import { resolveSharedPostTarget } from '../services/share';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
+import TermsAcceptScreen from '../screens/auth/TermsAcceptScreen';
+import { hasAcceptedCurrentTerms } from '../services/terms';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import { getUsernameSet } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
@@ -30,6 +35,12 @@ import JamRoomScreen from '../screens/main/JamRoomScreen';
 import FriendRequestsScreen from '../screens/main/FriendRequestsScreen';
 import ActivityCenterScreen from '../screens/main/ActivityCenterScreen';
 import EditProfileScreen from '../screens/main/EditProfileScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import NotificationSettingsScreen from '../screens/main/NotificationSettingsScreen';
+import PrivacyDataScreen from '../screens/main/PrivacyDataScreen';
+import ContactTeamScreen from '../screens/main/ContactTeamScreen';
+import BlockedAccountsScreen from '../screens/main/BlockedAccountsScreen';
+import DeleteAccountScreen from '../screens/main/DeleteAccountScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
@@ -38,12 +49,15 @@ import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
+import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
+import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
 import { COLORS } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
 import { updatePresenceHeartbeat } from '../services/conversations';
 import { messageCache } from '../services/messageCache';
+import { discardImpressions } from '../services/feedImpressions';
 import {
   initPush,
   registerDeviceForUser,
@@ -52,6 +66,7 @@ import {
   requestPushPermissionInteractive,
   deferPushPrompt,
 } from '../services/pushNotifications';
+import { clearAppBadge } from '../services/appBadge';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const { width } = Dimensions.get('window');
@@ -147,6 +162,10 @@ export default function RootNavigator() {
   // null = unknown (checking), true = must choose a username (new OAuth user),
   // false = onboarded. Gates the app behind ChooseUsernameScreen.
   const [needsUsername, setNeedsUsername] = useState<boolean | null>(null);
+  // null = unresolved. Gates the app behind TermsAcceptScreen, ahead of the username
+  // gate: agreeing to use the service comes before setting up an identity within it.
+  // Also fires for EXISTING users when TERMS_VERSION changes, with source 'reaccept'.
+  const [needsTerms, setNeedsTerms] = useState<boolean | null>(null);
   // Set when a livil://auth deep link carries type=recovery (password reset
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
@@ -186,6 +205,21 @@ export default function RootNavigator() {
       clearTimeout(t);
     };
   }, [session?.user?.id]);
+
+  // One welcome email per account, on the first CONFIRMED session rather than at signup
+  // — at signup the address is unverified, and the confirmation email is the one that
+  // has to be acted on. Only a nudge: the edge function takes no input and the database
+  // decides, atomically and once, whether this call is the one that sends, so firing on
+  // every session change (including token refresh) is harmless.
+  //
+  // Gated on `needsUsername === false` so a new Google account is greeted by the name it
+  // chose, not by the `user_xxxxxxxx` placeholder it holds while ChooseUsernameScreen is
+  // still up. `passwordRecoveryPending` is excluded for the same reason in reverse: that
+  // session belongs to someone mid-password-reset, not to a new arrival.
+  useEffect(() => {
+    if (needsUsername !== false || passwordRecoveryPending) return;
+    void nudgeWelcomeEmail(supabase, session);
+  }, [session, needsUsername, passwordRecoveryPending]);
 
   const handleEnableNotifications = async () => {
     const uid = session?.user?.id;
@@ -253,6 +287,27 @@ export default function RootNavigator() {
       // other apps on older Android and by anyone with the device connected.
       // Log only the shape.
       console.log('[deeplink] received (scheme only):', url.split('?')[0].split('#')[0]);
+
+      // A shared post — livil://post/<id>, or https://livil-music.com/p/<id> once
+      // App Links are verified. Checked BEFORE the auth guard below, which returns
+      // early on anything that is not an auth link and would otherwise swallow this.
+      //
+      // There is no PostDetail route: a single post is shown by opening its author's
+      // profile focused on it, which is the same path ActivityCenter notifications
+      // already take. That needs the author id, so the post is resolved first — and
+      // if it cannot be (deleted, or the viewer is signed out and RLS returns
+      // nothing) we say so rather than navigating somewhere blank.
+      const sharedPostId = postIdFromUrl(url);
+      if (sharedPostId) {
+        const target = await resolveSharedPostTarget(sharedPostId);
+        if (target) {
+          navigateWhenReady('UserProfile', target);
+        } else {
+          console.log('[deeplink] shared post not resolvable');
+        }
+        return;
+      }
+
       if (!url.startsWith('livil://auth')) { return; }
 
       // type=recovery marks a password-reset link (present alongside the
@@ -320,8 +375,14 @@ export default function RootNavigator() {
           } catch {
             if (!cancelled) { setNeedsUsername(false); }
           }
+          // Resolved here too, so the splash covers BOTH gates and a returning user
+          // never sees a flash of home before the terms screen. hasAcceptedCurrentTerms
+          // fails open, so a network problem lets them in rather than walling them out.
+          const accepted = await hasAcceptedCurrentTerms(s.user.id);
+          if (!cancelled) { setNeedsTerms(!accepted); }
         } else {
           setNeedsUsername(null);
+          setNeedsTerms(null);
         }
         if (!cancelled) { setSession(s); }
       })
@@ -348,20 +409,32 @@ export default function RootNavigator() {
         // aren't briefly visible if a different user signs in on the same device.
         if (event === 'SIGNED_OUT') {
           void messageCache.clearAll();
+          // Same reason as the line above: the feed-impression buffer is module-global
+          // and the server attributes a flush to whoever is signed in when it lands, so
+          // ids collected by the previous account would be filed against the next one.
+          discardImpressions();
           const prevUserId = pushUserIdRef.current;
           pushUserIdRef.current = null;
           setNeedsUsername(null);
+          setNeedsTerms(null);
           setPasswordRecoveryPending(false);
           if (prevUserId) void unregisterDevice(prevUserId);
+          // Same reasoning as the cache clear above, but for the OS icon: the next
+          // account must not inherit the previous one's number, and the previous
+          // one's notifications must not stay readable from the tray.
+          void clearAppBadge();
         } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
           // Fresh sign-in (new user id) — register push + resolve onboarding.
           // The id guard skips re-checks on resume/token-refresh SIGNED_IN events.
           pushUserIdRef.current = s.user.id;
           void registerDeviceForUser(s.user.id);
           setNeedsUsername(null);
+          setNeedsTerms(null);
           void getUsernameSet(s.user.id)
             .then(set => { if (!cancelled) { setNeedsUsername(!set); } })
             .catch(() => { if (!cancelled) { setNeedsUsername(false); } });
+          void hasAcceptedCurrentTerms(s.user.id)
+            .then(ok => { if (!cancelled) { setNeedsTerms(!ok); } });
         }
       }
     });
@@ -373,7 +446,8 @@ export default function RootNavigator() {
   }, []);
 
   // Splash is showing while we either load or resolve the onboarding gate.
-  const onSplash = loading || (!!session && needsUsername === null);
+  const onSplash =
+    loading || (!!session && (needsUsername === null || needsTerms === null));
 
   // Once that resolves, crossfade the splash overlay out (fade + gentle scale)
   // — dissolving into whatever's underneath: the app, or the username gate.
@@ -400,6 +474,14 @@ export default function RootNavigator() {
             }}
             onCancel={() => setPasswordRecoveryPending(false)}
           />
+        ) : session?.user?.id && needsTerms ? (
+          <TermsAcceptScreen
+            userId={session.user.id}
+            // A user who has no username yet is brand new, so this is their first
+            // acceptance; anyone past that point is re-accepting a changed version.
+            source={needsUsername ? 'signup' : 'reaccept'}
+            onAccepted={() => setNeedsTerms(false)}
+          />
         ) : session && needsUsername ? (
           <ChooseUsernameScreen
             email={session.user?.email ?? null}
@@ -417,6 +499,7 @@ export default function RootNavigator() {
           />
         ) : (
     <JamProvider>
+    <RealtimeConnectionGate />
     <JamRealtimeProvider>
     <RelationshipProvider>
     <StoriesProvider>
@@ -478,6 +561,48 @@ export default function RootNavigator() {
             <Stack.Screen
               name="EditProfile"
               component={EditProfileScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="NotificationSettings"
+              component={NotificationSettingsScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="PrivacyData"
+              component={PrivacyDataScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="ContactTeam"
+              component={ContactTeamScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="BlockedAccounts"
+              component={BlockedAccountsScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="DeleteAccount"
+              component={DeleteAccountScreen}
               options={{
                 animation: 'slide_from_right',
               }}

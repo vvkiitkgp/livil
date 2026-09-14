@@ -6,11 +6,12 @@
  * findings, is written to the public repo.
  */
 
-import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadMigrations, parseFunctions, frontmatter, GENERATED_WARNING,
+  writeGenerated,
 } from '../lib/sql-parse.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -123,9 +124,9 @@ export function generate() {
   );
 
   mkdirSync(dirname(PRIVATE_OUT), { recursive: true });
-  writeFileSync(PRIVATE_OUT, lines.join('\n'));
+  writeGenerated(PRIVATE_OUT, lines.join('\n'));
 
-  writeFileSync(PUBLIC_STUB, buildStub(definer.length));
+  writeGenerated(PUBLIC_STUB, buildStub(definer.length));
 
   return {
     doc: 'rpc-reference',

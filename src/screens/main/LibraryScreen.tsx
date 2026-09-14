@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -156,6 +157,9 @@ export default function LibraryScreen() {
   );
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     setRefreshing(true);
     setRecentLoading(true);
     setPlaylistsLoading(true);

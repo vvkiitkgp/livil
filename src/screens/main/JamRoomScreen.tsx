@@ -25,7 +25,7 @@ import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
 import { GradientBorder } from '../../components/GradientBorder';
 import FormInput from '../../components/FormInput';
-import SeekBar from '../../components/SeekBar';
+import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
 import AddBadge from '../../components/AddBadge';
 import JamExitModal from '../../components/JamExitModal';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
@@ -142,6 +142,10 @@ export default function JamRoomScreen() {
   // (listener via GlobalAudioPlayer driven by the provider's setNowPlaying),
   // so positionRef/durationRef are valid for both.
   const [displayPositionMs, setDisplayPositionMs] = useState(0);
+  // True for the length of a scrub swipe. The 500ms poll below would otherwise
+  // yank the "now" label back to where playback still is — a jam only seeks on
+  // release, so nothing has actually moved yet.
+  const scrubbingRef = useRef(false);
   const [displayDurationMs, setDisplayDurationMs] = useState(0);
 
   const tabRef = useRef<Tab>('chat');
@@ -211,7 +215,7 @@ export default function JamRoomScreen() {
   useEffect(() => {
     if (!activePostId) { return; }
     const id = setInterval(() => {
-      setDisplayPositionMs(positionRef.current * 1000);
+      if (!scrubbingRef.current) { setDisplayPositionMs(positionRef.current * 1000); }
       setDisplayDurationMs(durationRef.current * 1000);
     }, 500);
     return () => clearInterval(id);
@@ -321,7 +325,13 @@ export default function JamRoomScreen() {
     // change and broadcasts within ~one render cycle. No manual call needed.
   }, [permissions, activePostId, handlersRef]);
 
+  const handleScrubStart = useCallback(() => { scrubbingRef.current = true; }, []);
+  const handleScrub = useCallback((seconds: number) => {
+    setDisplayPositionMs(seconds * 1000);
+  }, []);
+
   const handleSeekEnd = useCallback((seconds: number) => {
+    scrubbingRef.current = false;
     if (!permissions.can_seek) { return; }
     handlersRef.current?.seek(seconds);
     setDisplayPositionMs(seconds * 1000);
@@ -518,15 +528,26 @@ export default function JamRoomScreen() {
         {/* Seek bar */}
         {(permissions.can_seek || !isHost) && durationSec > 0 && (
           <View style={styles.seekWrap}>
-            <SeekBar
-              position={positionSec}
-              duration={durationSec}
-              onSeekEnd={permissions.can_seek ? handleSeekEnd : undefined}
-            />
+            {/* Absolute span — a jam plays whole tracks, there is no clip here.
+                No envelope: a guest only has the host's broadcast metadata, not
+                the track row, so the shape stays decorative (seeded by title so
+                it is at least stable for the song everyone is hearing). */}
             <View style={styles.timeRow}>
-              <Text style={styles.timeText}>{msToTime(displayPositionMs)}</Text>
+              <Text style={styles.timeText}>{msToTime(0)}</Text>
+              <Text style={styles.timeNow}>{msToTime(displayPositionMs)}</Text>
               <Text style={styles.timeText}>{msToTime(displayDurationMs)}</Text>
             </View>
+            <WaveformScrubber
+              position={positionSec}
+              duration={durationSec}
+              seed={displayTrack?.title ?? ''}
+              span="full"
+              height={44}
+              seekable={permissions.can_seek}
+              onSeekStart={permissions.can_seek ? handleScrubStart : undefined}
+              onSeek={permissions.can_seek ? handleScrub : undefined}
+              onSeekEnd={permissions.can_seek ? handleSeekEnd : undefined}
+            />
           </View>
         )}
 
@@ -719,8 +740,9 @@ const styles = StyleSheet.create({
   trackArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2, textAlign: 'center' },
   waitingText: { color: COLORS.textMuted, fontSize: 13 },
   seekWrap: { width: '100%', marginBottom: 4 },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  timeText: { color: COLORS.textMuted, fontSize: 11 },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: SCRUBBER_LABEL_PULL },
+  timeText: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'] },
+  timeNow: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
   controls: { flexDirection: 'row', gap: 24, marginBottom: 12 },
   controlBtn: {
     width: 52, height: 52, borderRadius: 26,

@@ -8,13 +8,15 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
-  type ViewToken,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
@@ -33,11 +35,13 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useStories } from '../../contexts/StoriesContext';
 import AddUserSheet from '../../components/AddUserSheet';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -56,6 +60,7 @@ const PAGE_SIZE = 10;
 
 type ListItem =
   | { kind: 'tabs'; key: string }
+  | { kind: 'blocked'; key: string }
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
@@ -113,13 +118,39 @@ export default function UserProfileScreen() {
   const route = useRoute<UserProfileRouteProp>();
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
-  const { userId, focusPostId, openComments, highlightCommentId } = route.params;
+  const { userId, focusPostId, focusPostKind, openComments, highlightCommentId } = route.params;
   const playback = usePlayback();
   const rel = useRelationships();
   const { showToast } = useToast();
+  const { clusters: storyClusters } = useStories();
+
+  // Instagram-style story ring on the profile avatar: if this user has active
+  // stories the viewer can see, the ring becomes tappable and reflects seen state.
+  const storyCluster = useMemo(
+    () => storyClusters.find(c => c.authorId === userId) ?? null,
+    [storyClusters, userId],
+  );
+  const openUserStories = useCallback(() => {
+    if (!storyCluster) { return; }
+    navigation.navigate('StoryViewer', {
+      clusters: [{ authorId: storyCluster.authorId, storyIds: storyCluster.storyIds }],
+      startAuthorIndex: 0,
+      startStoryIndex: storyCluster.firstUnseenIndex,
+    });
+  }, [storyCluster, navigation]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
   const comments = useCommentsCountDeltas();
+  /**
+   * Blocked profiles show one explanation instead of the whole profile body.
+   *
+   * The server already returns nothing — the block-aware SELECT policies hide
+   * their posts, tracks, albums and playlists — so this is not the enforcement.
+   * It exists because WITHOUT it the screen renders correctly-empty tabs, zeroed
+   * counters and "No uploads yet", which looks like the app is broken rather
+   * than like a block being respected.
+   */
+  const blockedView = rel.status(userId) === 'blocked';
   const listRef = useRef<FlatList<ListItem>>(null);
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
   // auto-open comments) have already fired this mount — they're one-shot.
@@ -138,7 +169,12 @@ export default function UserProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
-  const [tab, setTab] = useState<ProfileTab>('reposts');
+  // Provisional only — the real default is resolved from the tab counts in the
+  // initial-load effect, so that the selected pill is always the first pill.
+  // Deep-linked posts ("go to song") pin Uploads and skip that resolution.
+  const [tab, setTab] = useState<ProfileTab>(
+    focusPostKind === 'upload' ? 'uploads' : 'reposts',
+  );
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
@@ -148,9 +184,10 @@ export default function UserProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
-
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 'block' | 'unblock' — which confirmation is showing, if any.
+  const [confirmBlock, setConfirmBlock] = useState<'block' | 'unblock' | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -195,17 +232,6 @@ export default function UserProfileScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, posts, playback.setQueue]);
 
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        const item = v.item as ListItem | undefined;
-        if (item?.kind === 'post' && v.isViewable) { ids.add(item.post.id); }
-      }
-      setVisibleIds(ids);
-    },
-  ).current;
-
   const fetchProfileAndStats = useCallback(async (uid: string) => {
     const [profRes, statsData, follow] = await Promise.all([
       supabase
@@ -236,53 +262,95 @@ export default function UserProfileScreen() {
     [],
   );
 
+  /**
+   * TRUE counts, from a DEFINER RPC rather than `count: 'exact'` queries.
+   *
+   * A count runs under the same RLS as the rows it counts, so once reposts
+   * became friends-only the old queries reported 0 reposts for someone with
+   * plenty — and the tab then said "No reposts yet", which is not a gap in the
+   * UI but a false statement about a person. `profile_tab_counts` reports how
+   * much exists; RLS still decides what can be READ.
+   *
+   * It withholds two things on purpose: private playlists (counted only for
+   * their owner) and everything about a blocked pair (zeros both ways).
+   */
   const fetchTabCounts = useCallback(async (uid: string): Promise<TabCounts> => {
-    const [reposts, uploads, albumsRes, playlistsRes] = await Promise.all([
-      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', uid).eq('kind', 'repost'),
-      supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', uid).eq('kind', 'upload'),
-      supabase.from('albums').select('id', { count: 'exact', head: true }).eq('uploader_id', uid),
-      supabase.from('playlists').select('id', { count: 'exact', head: true }).eq('user_id', uid),
-    ]);
+    const { data, error } = await supabase.rpc('profile_tab_counts', { p_user_id: uid });
+    if (error) { throw new Error(error.message); }
+    const row = (data ?? [])[0];
     return {
-      reposts: reposts.count ?? 0,
-      uploads: uploads.count ?? 0,
-      albums: albumsRes.count ?? 0,
-      playlists: playlistsRes.count ?? 0,
+      reposts: row?.reposts ?? 0,
+      uploads: row?.uploads ?? 0,
+      albums: row?.albums ?? 0,
+      playlists: row?.playlists ?? 0,
     };
   }, []);
+
+  // Just the body of one tab. Split out of refresh() so the initial load can
+  // decide WHICH tab to open before it fetches anything — see the effect below.
+  const loadTabContent = useCallback(
+    async (currentTab: ProfileTab) => {
+      if (currentTab === 'reposts' || currentTab === 'uploads') {
+        const fresh = await fetchPosts(userId, currentTab);
+        setPosts(fresh);
+        setEndReached(fresh.length < PAGE_SIZE);
+      } else if (currentTab === 'albums') {
+        setAlbums(await fetchAlbumsByUser(userId));
+        setEndReached(true);
+      } else {
+        setPlaylists(await fetchPlaylistsForUser(userId));
+        setEndReached(true);
+      }
+    },
+    [userId, fetchPosts],
+  );
 
   const refresh = useCallback(
     async (currentTab: ProfileTab) => {
       setError('');
       try {
         await fetchProfileAndStats(userId);
-        const counts = await fetchTabCounts(userId);
-        setTabCounts(counts);
-
-        if (currentTab === 'reposts' || currentTab === 'uploads') {
-          const fresh = await fetchPosts(userId, currentTab);
-          setPosts(fresh);
-          setEndReached(fresh.length < PAGE_SIZE);
-        } else if (currentTab === 'albums') {
-          setAlbums(await fetchAlbumsByUser(userId));
-          setEndReached(true);
-        } else {
-          setPlaylists(await fetchPlaylistsForUser(userId));
-          setEndReached(true);
-        }
+        setTabCounts(await fetchTabCounts(userId));
+        await loadTabContent(currentTab);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load profile.');
       }
     },
-    [userId, fetchPosts, fetchProfileAndStats, fetchTabCounts],
+    [userId, fetchProfileAndStats, fetchTabCounts, loadTabContent],
   );
 
-  // Initial load
+  // Initial load.
+  //
+  // Counts are fetched BEFORE any tab content, because they decide which tab
+  // opens. ProfileTabBar orders Reposts/Uploads by weight, so initialising the
+  // selection independently left the two disagreeing: an artist with more
+  // uploads than reposts saw Uploads rendered as the first pill while Reposts
+  // was the selected one. Resolving the default from the same visibleTabsFor()
+  // the bar uses keeps them in lock-step by construction.
+  //
+  // A deep link still wins — arriving from "go to song" must land on Uploads
+  // whatever the counts say.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await refresh(tab);
+      setError('');
+      try {
+        await fetchProfileAndStats(userId);
+        const counts = await fetchTabCounts(userId);
+        if (cancelled) { return; }
+        setTabCounts(counts);
+
+        const initial: ProfileTab = focusPostKind === 'upload'
+          ? 'uploads'
+          : visibleTabsFor(counts)[0]?.key ?? 'reposts';
+        setTab(initial);
+        await loadTabContent(initial);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load profile.');
+        }
+      }
       if (!cancelled) { setLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -325,6 +393,9 @@ export default function UserProfileScreen() {
   );
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     setRefreshing(true);
     playback.pauseAll();
     await refresh(tab);
@@ -351,6 +422,32 @@ export default function UserProfileScreen() {
     }
   }, [endReached, fetchPosts, loadingMore, posts, tab, userId]);
 
+  // ── Block / unblock ──
+  // Both routed through ConfirmActionModal rather than acting on the tap: block
+  // is destructive (it silently drops the friendship and both stars) and unblock
+  // is the kind of thing a mis-tap should not undo.
+  const handleConfirmBlock = useCallback(async () => {
+    const unblocking = confirmBlock === 'unblock';
+    setBlockBusy(true);
+    try {
+      if (unblocking) {
+        await rel.unblockUser(userId);
+        showToast('Unblocked.', { kind: 'success' });
+      } else {
+        await rel.blockUser(userId);
+        showToast('Blocked. They can no longer contact you.', { kind: 'success' });
+      }
+      setConfirmBlock(null);
+    } catch {
+      showToast(
+        unblocking ? "Couldn't unblock. Please try again." : "Couldn't block. Please try again.",
+        { kind: 'error' },
+      );
+    } finally {
+      setBlockBusy(false);
+    }
+  }, [confirmBlock, rel, userId, showToast]);
+
   const handleMessage = useCallback(async () => {
     if (messagingBusy) { return; }
     setMessagingBusy(true);
@@ -367,6 +464,11 @@ export default function UserProfileScreen() {
 
   const listData = useMemo<ListItem[]>(() => {
     const head: ListItem = { kind: 'tabs', key: '__tabs__' };
+    // Blocked: no tab bar, no counts, no empty states — one explanation instead.
+    // RLS already returns nothing for a blocked pair, so without this the screen
+    // would render a full set of tabs that are all mysteriously empty, which
+    // reads as a bug rather than as a block.
+    if (blockedView) { return [{ kind: 'blocked', key: '__blocked__' }]; }
     if (loading) { return [head, { kind: 'loading', key: '__loading__' }]; }
     if (tab === 'reposts' || tab === 'uploads') {
       const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
@@ -385,7 +487,7 @@ export default function UserProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -400,10 +502,58 @@ export default function UserProfileScreen() {
       if (item.kind === 'tabs') {
         return <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />;
       }
+      if (item.kind === 'blocked') {
+        return (
+          <View style={styles.blockedWrap}>
+            <View style={styles.blockedIcon}>
+              <Icon name="block" size={30} color={COLORS.textSecondary} />
+            </View>
+            <Text style={styles.blockedTitle}>You blocked this account</Text>
+            <Text style={styles.blockedBody}>
+              You can't see their music, playlists or activity, and they can't see
+              yours or contact you. Unblock to undo this.
+            </Text>
+            <Button
+              label="Unblock"
+              onPress={() => setConfirmBlock('unblock')}
+              variant="secondary"
+              size="md"
+              style={styles.blockedBtn}
+            />
+          </View>
+        );
+      }
       if (item.kind === 'loading') {
         return <View style={styles.emptyWrap}><ActivityIndicator color={COLORS.purpleLight} /></View>;
       }
       if (item.kind === 'empty') {
+        // Nothing to show splits into two very different situations, and saying
+        // the wrong one is worse than saying nothing: "No reposts yet" on a
+        // profile with seventeen reposts is a false statement about a person.
+        // The tab counts come from a DEFINER RPC and are true, so an empty list
+        // with a non-zero count can only mean the rows are friends-only.
+        const hiddenByFriendship =
+          (tab === 'reposts' || tab === 'playlists') && tabCounts[tab] > 0;
+
+        if (hiddenByFriendship) {
+          return (
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyArt}>
+                <Icon name="friends" size={28} color={COLORS.purpleLight} />
+              </View>
+              {/* No button here on purpose — Add is already in the header, a few
+                  centimetres up. A second one competing with it would be noise. */}
+              <Text style={styles.emptyTitle}>
+                {tab === 'reposts' ? 'Reposts are for friends' : 'Playlists are for friends'}
+              </Text>
+              <Text style={styles.emptyBody}>
+                Add {profile?.username ? `@${profile.username}` : 'them'} as a friend to
+                see {tab === 'reposts' ? 'what they repost' : 'their playlists'}.
+              </Text>
+            </View>
+          );
+        }
+
         const tabEmpty = {
           reposts: 'No reposts yet',
           uploads: 'No uploads yet',
@@ -472,13 +622,12 @@ export default function UserProfileScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [tab, tabCounts, handleTabChange, visibleIds, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile],
   );
 
   const renderHeader = useCallback(() => {
@@ -499,12 +648,37 @@ export default function UserProfileScreen() {
             <Icon name="backArrow" size={22} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={styles.screenTitle} numberOfLines={1}>{handle}</Text>
-          <View style={styles.backBtnSpacer} />
+          {relStatus === 'me' ? (
+            <View style={styles.backBtnSpacer} />
+          ) : (
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => setMenuOpen(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="More options"
+            >
+              <Icon name="overflow" size={22} color={COLORS.white} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatarRingGlow} />
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.85}
+            onPress={storyCluster ? openUserStories : undefined}
+            disabled={!storyCluster}
+          >
+            <View
+              style={[
+                styles.avatarRingGlow,
+                storyCluster
+                  ? storyCluster.hasUnseen
+                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
+                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : null,
+              ]}
+            />
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -512,7 +686,7 @@ export default function UserProfileScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               ) : null}
             </View>
-          </View>
+          </TouchableOpacity>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -527,7 +701,21 @@ export default function UserProfileScreen() {
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={3}>{profile.bio}</Text>
           ) : null}
-          {relStatus !== 'me' && (
+          {relStatus === 'blocked' ? (
+            // Replaces BOTH the relationship CTA and Message. Every action they
+            // offered is refused server-side for a blocked pair, so showing them
+            // would be showing buttons that can only fail. One control, and it
+            // leads to the only thing that can change: unblocking.
+            <View style={styles.heroActions}>
+              <Button
+                label="Blocked"
+                onPress={() => setConfirmBlock('unblock')}
+                variant="secondary"
+                size="md"
+                style={styles.ctaBtn}
+              />
+            </View>
+          ) : relStatus !== 'me' ? (
             <View style={styles.heroActions}>
               {renderCta(relStatus, () => setSheetOpen(true))}
               <TouchableOpacity
@@ -543,35 +731,43 @@ export default function UserProfileScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          )}
+          ) : null}
         </View>
 
-        <View style={styles.socialPills}>
-          <View style={styles.socialPill}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
-            <Text style={styles.socialPillLabel}>Fans</Text>
-          </View>
-          <View style={styles.socialPillDivider} />
-          <View style={styles.socialPill}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
-            <Text style={styles.socialPillLabel}>Friends</Text>
-          </View>
-          <View style={styles.socialPillDivider} />
-          <View style={styles.socialPill}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
-            <Text style={styles.socialPillLabel}>Stars</Text>
-          </View>
-        </View>
+        {/* Counts are suppressed for a blocked account rather than shown as
+            zeroes. They are not secret — they are simply wrong: RLS returns no
+            rows, so every figure would read 0 and imply this person has posted
+            nothing, rather than that you cannot see it. */}
+        {!blockedView ? (
+          <>
+            <View style={styles.socialPills}>
+              <View style={styles.socialPill}>
+                <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
+                <Text style={styles.socialPillLabel}>Fans</Text>
+              </View>
+              <View style={styles.socialPillDivider} />
+              <View style={styles.socialPill}>
+                <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
+                <Text style={styles.socialPillLabel}>Friends</Text>
+              </View>
+              <View style={styles.socialPillDivider} />
+              <View style={styles.socialPill}>
+                <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
+                <Text style={styles.socialPillLabel}>Stars</Text>
+              </View>
+            </View>
 
-        <View style={styles.contentStats}>
-          <Text style={styles.contentStatsText}>
-            <Text style={styles.contentStatsValue}>{formatStat(stats.posts)}</Text>
-            {' '}post{stats.posts === 1 ? '' : 's'}
-            <Text style={styles.contentStatsDivider}>  ·  </Text>
-            <Text style={styles.contentStatsValue}>{formatStat(stats.uploads)}</Text>
-            {' '}upload{stats.uploads === 1 ? '' : 's'}
-          </Text>
-        </View>
+            <View style={styles.contentStats}>
+              <Text style={styles.contentStatsText}>
+                <Text style={styles.contentStatsValue}>{formatStat(stats.posts)}</Text>
+                {' '}post{stats.posts === 1 ? '' : 's'}
+                <Text style={styles.contentStatsDivider}>  ·  </Text>
+                <Text style={styles.contentStatsValue}>{formatStat(stats.uploads)}</Text>
+                {' '}upload{stats.uploads === 1 ? '' : 's'}
+              </Text>
+            </View>
+          </>
+        ) : null}
 
         {error ? (
           <View style={styles.errorBox}>
@@ -580,7 +776,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy]);
+  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -626,8 +822,6 @@ export default function UserProfileScreen() {
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
       />
@@ -638,6 +832,78 @@ export default function UserProfileScreen() {
           onClose={() => setSheetOpen(false)}
         />
       )}
+
+      {/* ── Overflow menu ── */}
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setMenuOpen(false)}>
+          <View style={styles.menuBackdrop}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.menuCard}>
+                <TouchableOpacity
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setMenuOpen(false);
+                    setConfirmBlock(rel.status(userId) === 'blocked' ? 'unblock' : 'block');
+                  }}
+                >
+                  <Icon
+                    name="block"
+                    size={20}
+                    color={rel.status(userId) === 'blocked' ? COLORS.white : COLORS.error}
+                  />
+                  <Text
+                    style={[
+                      styles.menuRowText,
+                      rel.status(userId) !== 'blocked' && styles.menuRowTextDanger,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {rel.status(userId) === 'blocked' ? 'Unblock' : 'Block'}
+                    {profile?.username ? ` @${profile.username}` : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <ConfirmActionModal
+        visible={confirmBlock !== null}
+        title={confirmBlock === 'unblock' ? 'Unblock this person?' : 'Block this person?'}
+        message={
+          confirmBlock === 'unblock'
+            ? "You'll be able to see each other's music again, and they'll be able to message you, send a friend request and comment. Your friendship and stars are not restored."
+            : "You won't see each other's music, playlists or activity, and they won't be able to contact you."
+        }
+        bullets={
+          confirmBlock === 'block'
+            // Every line here was false until this commit. The first two flipped
+            // when 20260809000000 made blocking hide content; the third was never
+            // survivable alongside hiding — a person whose profile stops resolving
+            // works out what happened. Promising secrecy we cannot keep is worse
+            // than not promising it.
+            ? [
+                'Any friendship or pending request is removed',
+                "Their uploads, albums, playlists and reposts disappear for you — and yours for them",
+                'You can undo this any time from Settings → Privacy & data',
+              ]
+            : undefined
+        }
+        glyph={confirmBlock === 'unblock' ? '🔓' : '🚫'}
+        tone={confirmBlock === 'unblock' ? 'primary' : 'destructive'}
+        confirmLabel={confirmBlock === 'unblock' ? 'Unblock' : 'Block'}
+        cancelLabel="Cancel"
+        busy={blockBusy}
+        onConfirm={handleConfirmBlock}
+        onCancel={() => setConfirmBlock(null)}
+      />
 
       <CommentsSheet
         visible={comments.commentsPostId !== null}
@@ -676,6 +942,70 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backBtnSpacer: { width: 40 },
+  // ── Overflow menu ──
+  // Anchored top-right under the 3-dots rather than centred: a centred card for
+  // a single row reads as a dialog demanding a decision, which a menu is not.
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 64,
+    paddingRight: 16,
+  },
+  menuCard: {
+    minWidth: 200,
+    maxWidth: 300,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 6,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  menuRowText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  menuRowTextDanger: { color: COLORS.error },
+  // ── Blocked state ──
+  blockedWrap: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingTop: 48,
+    paddingBottom: 24,
+    gap: 10,
+  },
+  blockedIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  blockedTitle: {
+    color: COLORS.white,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  blockedBody: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  blockedBtn: { marginTop: 10 },
   screenTitle: {
     flex: 1, color: COLORS.white, fontSize: 16, fontWeight: '700',
     textAlign: 'center', letterSpacing: -0.2,
@@ -748,6 +1078,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   emptyTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  emptyBody: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+    marginTop: 6,
+  },
 
   listFooter: { height: 40 },
 

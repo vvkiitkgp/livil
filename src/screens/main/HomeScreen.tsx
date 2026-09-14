@@ -20,6 +20,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
 import PostCard from '../../components/PostCard';
 import PostCardSkeleton from '../../components/PostCardSkeleton';
@@ -36,13 +37,18 @@ import { useRelationships } from '../../contexts/RelationshipContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   fetchHomeFeedPage,
+  newHomeFeedSession,
   type FeedPost,
   type HomeFeedCursor,
+  type HomeFeedSession,
 } from '../../services/posts';
+import { recordImpression, flushImpressions } from '../../services/feedImpressions';
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
+import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
+import { setAppBadgeCount } from '../../services/appBadge';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -63,6 +69,17 @@ type FeedListItem =
 const FEED_PAGE_SIZE = 12;
 /** Fetch the next page while the viewer is still a few cards away from the bottom. */
 const PREFETCH_FROM_END = 5;
+
+/**
+ * How long a card must stay on screen before it counts as having been SHOWN (PROP-0010).
+ *
+ * Deliberately not expressed as `minimumViewTime` on the shared `viewabilityConfig`: that
+ * config also drives the pagination prefetch, and raising it to 1.2s would delay every
+ * next-page fetch by the same amount. Dwell is timed here instead, per card, and the timer
+ * is cancelled if the card scrolls away first — so flicking past ten cards to reach the
+ * eleventh records one impression, not eleven.
+ */
+const IMPRESSION_DWELL_MS = 1200;
 
 /**
  * Warm RN's image cache for a freshly-fetched page so cover art / thumbnails /
@@ -90,21 +107,10 @@ function prefetchFeedMedia(posts: FeedPost[]): void {
   }
 }
 
-function visiblePostIdSetsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) {
-    return false;
-  }
-  for (const id of b) {
-    if (!a.has(id)) {
-      return false;
-    }
-  }
-  return true;
-}
 
 
-function storyInitials(story: Story): string {
-  const name = story.author.displayName?.trim() || story.author.username;
+function storyInitials(author: { displayName: string | null; username: string }): string {
+  const name = author.displayName?.trim() || author.username;
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return '?';
@@ -136,7 +142,13 @@ function FriendStoriesRow({
   stories: Story[];
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const storyIds = useMemo(() => stories.map(s => s.id), [stories]);
+  // One ring per author (Instagram-style). The viewer is handed the ordered
+  // clusters so cross-author tap/swipe works; the tapped ring is startAuthorIndex.
+  const clusters = useMemo(() => groupStoriesByAuthor(stories), [stories]);
+  const routeClusters = useMemo(
+    () => clusters.map(c => ({ authorId: c.authorId, storyIds: c.storyIds })),
+    [clusters],
+  );
 
   if (loading) {
     return (
@@ -166,30 +178,47 @@ function FriendStoriesRow({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.storiesRow}
       >
-        {stories.map((item, i) => {
-          const seen = item.viewedAt !== null;
+        {clusters.map((cluster, i) => {
+          const seen = !cluster.hasUnseen;
+          const count = cluster.storyIds.length;
           return (
             <Pressable
-              key={item.id}
+              key={cluster.authorId}
               style={styles.storyCell}
-              onPress={() => navigation.navigate('StoryViewer', { storyIds, startIndex: i })}
+              onPress={() =>
+                navigation.navigate('StoryViewer', {
+                  clusters: routeClusters,
+                  startAuthorIndex: i,
+                  // Open at the first UNWATCHED clip (Instagram), not the start.
+                  startStoryIndex: cluster.firstUnseenIndex,
+                })
+              }
             >
-              <View style={[
-                styles.storyRing,
-                seen
-                  ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
-                  : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
-              ]}>
-                <View style={styles.storyAvatar}>
-                  {item.author.avatarUrl ? (
-                    <Image source={{ uri: item.author.avatarUrl }} style={styles.storyAvatarImg} />
-                  ) : (
-                    <Text style={styles.storyAvatarText}>{storyInitials(item)}</Text>
-                  )}
+              <View style={styles.storyRingWrap}>
+                <View style={[
+                  styles.storyRing,
+                  seen
+                    ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                    : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
+                ]}>
+                  <View style={styles.storyAvatar}>
+                    {cluster.author.avatarUrl ? (
+                      <Image source={{ uri: cluster.author.avatarUrl }} style={styles.storyAvatarImg} />
+                    ) : (
+                      <Text style={styles.storyAvatarText}>
+                        {storyInitials(cluster.author)}
+                      </Text>
+                    )}
+                  </View>
                 </View>
+                {count > 1 ? (
+                  <View style={[styles.storyCountBadge, seen && styles.storyCountBadgeSeen]}>
+                    <Text style={styles.storyCountText}>{count}</Text>
+                  </View>
+                ) : null}
               </View>
               <Text style={styles.storyUsername} numberOfLines={1}>
-                @{item.author.username}
+                @{cluster.author.username}
               </Text>
             </Pressable>
           );
@@ -253,9 +282,16 @@ export default function HomeScreen() {
 
   // Always restore the chrome when leaving Home (e.g. switching tabs while the
   // bar is hidden) so it isn't stuck off-screen on the next screen.
+  //
+  // Leaving is also the moment to send whatever impressions are still buffered: the
+  // viewer may not come back for hours, and a batch that never leaves the device is a
+  // post the feed goes on repeating.
   useFocusEffect(
     useCallback(() => {
-      return () => { showChrome(); };
+      return () => {
+        showChrome();
+        flushImpressions();
+      };
     }, [showChrome]),
   );
 
@@ -269,6 +305,21 @@ export default function HomeScreen() {
   // requests + unread livil Bot activity.
   const notificationCount = totalUnread + pendingIncomingCount + activityUnread;
 
+  // Mirror the in-app badge onto the home-screen icon.
+  //
+  // This screen is the only place all three counts exist at once, and it keeps
+  // them live (realtime subscriptions above + the focus refetch below), so it is
+  // the natural owner. HomeScreen is a bottom-tab screen and therefore stays
+  // mounted while the user is signed in -- the badge keeps tracking on the Search
+  // or Profile tab, not just here.
+  //
+  // iOS gets the exact number. Android cannot be told a number at all and instead
+  // clears when this reaches zero; the rest of the time its launcher sums the
+  // notifications in the tray. See src/services/appBadge.ts.
+  useEffect(() => {
+    void setAppBadgeCount(notificationCount);
+  }, [notificationCount]);
+
   const [storiesLoading, setStoriesLoading] = useState(true);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -281,10 +332,17 @@ export default function HomeScreen() {
   const [endOfFeed, setEndOfFeed] = useState(false);
 
   const nextCursorRef = useRef<HomeFeedCursor | null>(null);
+  // One pass through the feed. Replaced on cold open and on every refresh; every page in
+  // between is fetched with the SAME session, which is what keeps the ranking still while
+  // the viewer scrolls (PROP-0010 phase 2).
+  const feedSessionRef = useRef<HomeFeedSession>(newHomeFeedSession());
   const loadingMoreRef = useRef(false);
   const loadingInitialRef = useRef(true);
 
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  // Viewability feeds ONLY the pagination prefetch (refs, no setState). The former
+  // per-scroll `visibleIds` state re-rendered every mounted PostCard several times a
+  // second while scrolling (the "large list is slow to update" warning) for a
+  // `visible` prop PostCard hasn't read since the single-engine consolidation.
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
     minimumViewTime: 120,
@@ -339,20 +397,51 @@ export default function HomeScreen() {
     async () => {},
   );
 
+  // Cards currently being timed for the dwell threshold, and the ones already counted in
+  // this feed session. `countedRef` is what stops a card being re-armed every time it
+  // re-enters the viewport while the viewer scrolls up and down the same stretch — the
+  // server's 10-minute window would collapse those anyway, but not sending them is cheaper
+  // than having them ignored.
+  const dwellTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const countedRef = useRef(new Set<string>());
+
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
       let maxIndex = 0;
+      const visiblePostIds = new Set<string>();
       for (const v of viewableItems) {
         if (typeof v.index === 'number') {
           maxIndex = Math.max(maxIndex, v.index);
         }
         const row = v.item as FeedListItem | undefined;
-        if (row?.kind === 'post' && v.isViewable) {
-          ids.add(row.post.id);
+        if (row?.kind === 'post') {
+          visiblePostIds.add(row.post.id);
         }
       }
-      setVisibleIds(prev => (visiblePostIdSetsEqual(prev, ids) ? prev : ids));
+
+      // ── Impressions (PROP-0010) ───────────────────────────────────────────
+      // Refs only, no setState: this fires several times a second while scrolling, and
+      // the reason the old `visibleIds` state was removed (see viewabilityConfig above)
+      // applies just as much here.
+      const timers = dwellTimersRef.current;
+      for (const [postId, timer] of timers) {
+        // Scrolled away before it was really looked at — that is not an impression.
+        if (!visiblePostIds.has(postId)) {
+          clearTimeout(timer);
+          timers.delete(postId);
+        }
+      }
+      for (const postId of visiblePostIds) {
+        if (timers.has(postId) || countedRef.current.has(postId)) { continue; }
+        timers.set(
+          postId,
+          setTimeout(() => {
+            timers.delete(postId);
+            countedRef.current.add(postId);
+            recordImpression(postId);
+          }, IMPRESSION_DWELL_MS),
+        );
+      }
 
       const len = postsRef.current.length;
       const nearEnd =
@@ -373,9 +462,20 @@ export default function HomeScreen() {
     },
   ).current;
 
+  // A dwell timer that fires after the screen is gone would record an impression for a
+  // card nobody is looking at, and would do it from an unmounted component.
+  useEffect(() => {
+    const timers = dwellTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) { clearTimeout(timer); }
+      timers.clear();
+      flushImpressions();
+    };
+  }, []);
+
   // Deliberately no pauseAll() on blur — audio should keep playing when the
-  // user navigates to another screen (e.g. UserProfile). PostCard's `visible`
-  // prop already stops inline video when cards leave the viewport.
+  // user navigates to another screen (e.g. UserProfile). Cards render no inline
+  // video (single-engine, ADR-0001), so nothing needs pausing on scroll-away.
 
   // One-time: load my profile for the hero avatar.
   useEffect(() => {
@@ -526,6 +626,21 @@ export default function HomeScreen() {
     if (showSpinner) {
       setLoadingMore(true);
     }
+    if (mode === 'initial' || mode === 'refresh') {
+      // A new pass through the feed gets a new seed and a new decay origin — this is what
+      // makes pulling down actually re-rank rather than hand back the page already on
+      // screen. Minted before the fetch below reads it.
+      feedSessionRef.current = newHomeFeedSession();
+
+      // The list is about to be replaced wholesale, so anything mid-dwell is measuring a
+      // card that is on its way off screen. Send what has been counted and start clean —
+      // a post that comes back in the new page is a new showing, and the server's
+      // 10-minute window decides whether it counts as a separate occasion.
+      for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
+      dwellTimersRef.current.clear();
+      countedRef.current.clear();
+      flushImpressions();
+    }
     if (mode === 'initial') {
       setLoadingInitial(true);
       setFeedError('');
@@ -548,6 +663,7 @@ export default function HomeScreen() {
       const { posts: chunk, nextCursor } = await fetchHomeFeedPage({
         limit: FEED_PAGE_SIZE,
         cursor,
+        session: feedSessionRef.current,
       });
 
       // Warm the cache for this page's media so cards below the fold (and the
@@ -617,6 +733,9 @@ export default function HomeScreen() {
   }, [appendFeedPage, setStories]);
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     playback.pauseAll();
     // The fixed top bar sits above the list at the same spot the pull-to-refresh
     // spinner draws in — slide it out of the way for the duration of the refresh
@@ -665,14 +784,12 @@ export default function HomeScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
-          pauseWhenOffScreen={false}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [visibleIds, comments, handlePostDeleted],
+    [comments, handlePostDeleted],
   );
 
   const feedKeyExtractor = useCallback((item: FeedListItem) => {
@@ -973,6 +1090,32 @@ const styles = StyleSheet.create({
     width: 76,
     alignItems: 'center',
     gap: 8,
+  },
+  storyRingWrap: {
+    width: 74,
+    height: 74,
+  },
+  storyCountBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: COLORS.purple,
+    borderWidth: 2,
+    borderColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storyCountBadgeSeen: {
+    backgroundColor: COLORS.textMuted,
+  },
+  storyCountText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '800',
   },
   storyRing: {
     width: 74,

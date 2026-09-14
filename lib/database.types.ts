@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -152,6 +152,39 @@ export type Database = {
           },
         ]
       }
+      blocked_users: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blocked_users_blocked_id_fkey"
+            columns: ["blocked_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blocked_users_blocker_id_fkey"
+            columns: ["blocker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_members: {
         Row: {
           conversation_id: string
@@ -231,6 +264,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      deleted_accounts: {
+        Row: {
+          deleted_at: string
+          email_sha256: string | null
+          id: number
+          username: string | null
+        }
+        Insert: {
+          deleted_at?: string
+          email_sha256?: string | null
+          id?: never
+          username?: string | null
+        }
+        Update: {
+          deleted_at?: string
+          email_sha256?: string | null
+          id?: never
+          username?: string | null
+        }
+        Relationships: []
       }
       device_tokens: {
         Row: {
@@ -622,6 +676,51 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          activity: boolean
+          jam: boolean
+          messages: boolean
+          social: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity?: boolean
+          jam?: boolean
+          messages?: boolean
+          social?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity?: boolean
+          jam?: boolean
+          messages?: boolean
+          social?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ops_users: {
+        Row: {
+          created_at: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       playlist_posts: {
         Row: {
           added_at: string
@@ -737,6 +836,8 @@ export type Database = {
           id: string
           reason: string
           reporter_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
         }
         Insert: {
           comment_id: string
@@ -745,6 +846,8 @@ export type Database = {
           id?: string
           reason: string
           reporter_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Update: {
           comment_id?: string
@@ -753,6 +856,8 @@ export type Database = {
           id?: string
           reason?: string
           reporter_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Relationships: [
           {
@@ -765,6 +870,13 @@ export type Database = {
           {
             foreignKeyName: "post_comment_reports_reporter_id_fkey"
             columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comment_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -864,6 +976,8 @@ export type Database = {
           post_id: string
           reason: string
           reporter_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
         }
         Insert: {
           created_at?: string
@@ -872,6 +986,8 @@ export type Database = {
           post_id: string
           reason: string
           reporter_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Update: {
           created_at?: string
@@ -880,6 +996,8 @@ export type Database = {
           post_id?: string
           reason?: string
           reporter_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
         }
         Relationships: [
           {
@@ -892,6 +1010,13 @@ export type Database = {
           {
             foreignKeyName: "post_reports_reporter_id_fkey"
             columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1008,9 +1133,9 @@ export type Database = {
         Row: {
           avatar_url: string | null
           bio: string | null
+          comments_friends_only: boolean
           created_at: string | null
           display_name: string | null
-          fans_seen_at: string | null
           followers_count: number | null
           following_count: number | null
           id: string
@@ -1018,13 +1143,14 @@ export type Database = {
           links: string[]
           show_activity: boolean | null
           username: string
+          username_set: boolean
         }
         Insert: {
           avatar_url?: string | null
           bio?: string | null
+          comments_friends_only?: boolean
           created_at?: string | null
           display_name?: string | null
-          fans_seen_at?: string | null
           followers_count?: number | null
           following_count?: number | null
           id: string
@@ -1032,13 +1158,14 @@ export type Database = {
           links?: string[]
           show_activity?: boolean | null
           username: string
+          username_set?: boolean
         }
         Update: {
           avatar_url?: string | null
           bio?: string | null
+          comments_friends_only?: boolean
           created_at?: string | null
           display_name?: string | null
-          fans_seen_at?: string | null
           followers_count?: number | null
           following_count?: number | null
           id?: string
@@ -1046,6 +1173,7 @@ export type Database = {
           links?: string[]
           show_activity?: boolean | null
           username?: string
+          username_set?: boolean
         }
         Relationships: []
       }
@@ -1069,6 +1197,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      search_result_taps: {
+        Row: {
+          created_at: string
+          entity_id: string
+          id: string
+          kind: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          id?: string
+          kind: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          id?: string
+          kind?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_result_taps_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stories: {
         Row: {
@@ -1128,6 +1288,71 @@ export type Database = {
           },
         ]
       }
+      story_reports: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          story_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          story_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason?: string
+          reported_user_id?: string
+          reporter_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          story_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_reports_reported_user_id_fkey"
+            columns: ["reported_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "story_reports_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       story_views: {
         Row: {
           story_id: string
@@ -1155,6 +1380,35 @@ export type Database = {
           {
             foreignKeyName: "story_views_viewer_id_fkey"
             columns: ["viewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          sender_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          sender_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_messages_sender_id_fkey"
+            columns: ["sender_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1213,8 +1467,12 @@ export type Database = {
           created_at: string
           description: string | null
           duration_seconds: number | null
+          file_size_bytes: number | null
           id: string
+          lyrics: string | null
+          lyrics_format: string | null
           media_kind: string
+          tags: string[] | null
           thumbnail_url: string | null
           title: string
           uploader_id: string
@@ -1227,8 +1485,12 @@ export type Database = {
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
+          file_size_bytes?: number | null
           id?: string
+          lyrics?: string | null
+          lyrics_format?: string | null
           media_kind: string
+          tags?: string[] | null
           thumbnail_url?: string | null
           title: string
           uploader_id: string
@@ -1241,8 +1503,12 @@ export type Database = {
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
+          file_size_bytes?: number | null
           id?: string
+          lyrics?: string | null
+          lyrics_format?: string | null
           media_kind?: string
+          tags?: string[] | null
           thumbnail_url?: string | null
           title?: string
           uploader_id?: string
@@ -1292,6 +1558,114 @@ export type Database = {
           },
         ]
       }
+      waitlist: {
+        Row: {
+          created_at: string
+          email: string
+          email_attempts: number
+          email_error: string | null
+          email_sent_at: string | null
+          email_source: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          email_attempts?: number
+          email_error?: string | null
+          email_sent_at?: string | null
+          email_source?: string | null
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          email_attempts?: number
+          email_error?: string | null
+          email_sent_at?: string | null
+          email_source?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      welcome_emails: {
+        Row: {
+          attempts: number
+          claimed_at: string
+          error: string | null
+          sent_at: string | null
+          suppressed_at: string | null
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          claimed_at?: string
+          error?: string | null
+          sent_at?: string | null
+          suppressed_at?: string | null
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          claimed_at?: string
+          error?: string | null
+          sent_at?: string | null
+          suppressed_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      terms_acceptances: {
+        Row: {
+          accepted_at: string
+          app_version: string | null
+          id: string
+          source: string
+          user_id: string
+          version: string
+        }
+        Insert: {
+          accepted_at?: string
+          app_version?: string | null
+          id?: string
+          source: string
+          user_id: string
+          version: string
+        }
+        Update: {
+          accepted_at?: string
+          app_version?: string | null
+          id?: string
+          source?: string
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
+      terms_versions: {
+        Row: {
+          created_at: string
+          effective_at: string
+          sha256: string
+          url: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          effective_at: string
+          sha256: string
+          url: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          effective_at?: string
+          sha256?: string
+          url?: string
+          version?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1308,6 +1682,7 @@ export type Database = {
         Args: { other_user_id: string }
         Returns: undefined
       }
+      account_email_hash: { Args: { p_email: string }; Returns: string }
       activity_list: {
         Args: { p_before?: string; p_limit?: number }
         Returns: {
@@ -1334,32 +1709,21 @@ export type Database = {
         Returns: string
       }
       activity_notify_new_fan: { Args: { p_target: string }; Returns: string }
-      activity_notify_post:
-        | {
-            Args: { p_post_id: string; p_type: string }
-            Returns: {
-              actor_display_name: string
-              agg_count: number
-              notification_id: string
-              recipient_id: string
-              recipient_should_push: boolean
-            }[]
-          }
-        | {
-            Args: {
-              p_comment_id?: string
-              p_comment_text?: string
-              p_post_id: string
-              p_type: string
-            }
-            Returns: {
-              actor_display_name: string
-              agg_count: number
-              notification_id: string
-              recipient_id: string
-              recipient_should_push: boolean
-            }[]
-          }
+      activity_notify_post: {
+        Args: {
+          p_comment_id?: string
+          p_comment_text?: string
+          p_post_id: string
+          p_type: string
+        }
+        Returns: {
+          actor_display_name: string
+          agg_count: number
+          notification_id: string
+          recipient_id: string
+          recipient_should_push: boolean
+        }[]
+      }
       activity_record_play: {
         Args: { p_post_id: string }
         Returns: {
@@ -1370,13 +1734,24 @@ export type Database = {
       }
       activity_unread_count: { Args: never; Returns: number }
       add_star: { Args: { target_user_id: string }; Returns: undefined }
+      are_friends: { Args: { a: string; b: string }; Returns: boolean }
+      assert_analytics_window: {
+        Args: { p_from: string; p_to: string }
+        Returns: undefined
+      }
       assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
+      block_user: { Args: { target_user_id: string }; Returns: undefined }
       broadcast_jam_state: {
         Args: { p_jam_room_id: string; p_payload: Json }
         Returns: undefined
       }
+      can_comment_on_post: { Args: { p_post_id: string }; Returns: boolean }
       cancel_friend_request: {
         Args: { other_user_id: string }
+        Returns: undefined
+      }
+      claim_username: {
+        Args: { p_display_name?: string; p_username: string }
         Returns: undefined
       }
       create_group: {
@@ -1384,6 +1759,57 @@ export type Database = {
         Returns: string
       }
       create_jam_room: { Args: { p_conversation_id: string }; Returns: string }
+      creator_plays_by_day: {
+        Args: {
+          p_exclude_self?: boolean
+          p_from: string
+          p_to: string
+          p_tz?: string
+        }
+        Returns: {
+          day: string
+          listeners: number
+          plays: number
+        }[]
+      }
+      creator_plays_by_hour: {
+        Args: {
+          p_exclude_self?: boolean
+          p_from: string
+          p_to: string
+          p_tz?: string
+        }
+        Returns: {
+          hour: number
+          plays: number
+        }[]
+      }
+      creator_top_tracks: {
+        Args: {
+          p_exclude_self?: boolean
+          p_from: string
+          p_limit?: number
+          p_to: string
+          p_tz?: string
+        }
+        Returns: {
+          cover_art_url: string
+          listeners: number
+          plays: number
+          post_id: string
+          title: string
+          track_id: string
+        }[]
+      }
+      credit_respond: {
+        Args: { p_accept: boolean; p_credit_id: string }
+        Returns: string
+      }
+      delete_my_account: { Args: never; Returns: undefined }
+      dm_blocked_for_sender: {
+        Args: { p_conversation_id: string }
+        Returns: boolean
+      }
       fetch_home_feed: {
         Args: {
           p_cursor_bucket?: number
@@ -1393,29 +1819,20 @@ export type Database = {
         }
         Returns: {
           feed_bucket: number
+          post: Json
           post_id: string
           sort_key: number
-          viewer_has_liked: boolean
         }[]
       }
       get_email_for_username: { Args: { p_username: string }; Returns: string }
       get_jam_snapshot: { Args: { p_jam_room_id: string }; Returns: Json }
-      get_new_fans_summary: {
-        Args: never
-        Returns: {
-          avatar_url: string
-          created_at: string
-          display_name: string
-          recent_user_id: string
-          total_count: number
-          username: string
-        }[]
-      }
       get_or_create_dm: {
         Args: { user_a: string; user_b: string }
         Returns: string
       }
+      is_blocked_between: { Args: { a: string; b: string }; Returns: boolean }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
+      is_ops: { Args: never; Returns: boolean }
       is_username_available: { Args: { p_username: string }; Returns: boolean }
       list_active_stories: {
         Args: never
@@ -1438,6 +1855,16 @@ export type Database = {
           track_video_url: string
           username: string
           viewed_at: string
+        }[]
+      }
+      list_blocked_accounts: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          blocked_id: string
+          created_at: string
+          display_name: string
+          username: string
         }[]
       }
       list_friend_listen_stories: {
@@ -1479,17 +1906,128 @@ export type Database = {
           unread_count: number
         }[]
       }
-      mark_fans_seen: { Args: never; Returns: undefined }
+      list_pending_credits: {
+        Args: never
+        Returns: {
+          cover_art_url: string
+          created_at: string
+          credit_id: string
+          role: string
+          track_id: string
+          track_title: string
+          uploader_avatar: string
+          uploader_id: string
+          uploader_name: string
+        }[]
+      }
+      message_preview: {
+        Args: { p_body: string; p_kind: string }
+        Returns: string
+      }
+      ops_mark_report_reviewed: {
+        Args: { p_id: string; p_kind: string; p_reviewed?: boolean }
+        Returns: undefined
+      }
+      ops_reports_overview: {
+        Args: { p_include_reviewed?: boolean }
+        Returns: {
+          created_at: string
+          details: string
+          id: string
+          kind: string
+          reason: string
+          reported_user_id: string
+          reported_username: string
+          reporter_id: string
+          reporter_username: string
+          reviewed_at: string
+          reviewed_by: string
+          reviewer_username: string
+          target_excerpt: string
+          target_exists: boolean
+          target_id: string
+        }[]
+      }
+      ops_team_messages: {
+        Args: never
+        Returns: {
+          body: string
+          created_at: string
+          id: string
+          sender_email: string
+          sender_name: string
+          sender_username: string
+        }[]
+      }
+      ops_top_search_results: {
+        Args: { p_days?: number; p_kind?: string; p_limit?: number }
+        Returns: {
+          entity_id: string
+          people: number
+          subtitle: string
+          taps: number
+          title: string
+        }[]
+      }
+      ops_users_overview: {
+        Args: never
+        Returns: {
+          created_at: string
+          display_name: string
+          email: string
+          friends_count: number
+          id: string
+          last_seen_at: string
+          posts_count: number
+          stars_count: number
+          tracks_count: number
+          username: string
+        }[]
+      }
+      profile_links_ok: { Args: { p_links: string[] }; Returns: boolean }
+      profile_tab_counts: {
+        Args: { p_user_id: string }
+        Returns: {
+          albums: number
+          playlists: number
+          reposts: number
+          uploads: number
+        }[]
+      }
       reject_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined
       }
       remove_friend: { Args: { other_user_id: string }; Returns: undefined }
       remove_star: { Args: { target_user_id: string }; Returns: undefined }
+      report_story: {
+        Args: { p_details?: string; p_reason: string; p_story_id: string }
+        Returns: undefined
+      }
+      search_result_popularity: {
+        Args: { p_ids: string[]; p_kind: string }
+        Returns: {
+          entity_id: string
+          people: number
+        }[]
+      }
       send_friend_request: {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      shares_conversation_with: {
+        Args: { a: string; b: string }
+        Returns: boolean
+      }
+      track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
+      unblock_user: { Args: { target_user_id: string }; Returns: undefined }
+      waitlist_mark_emailed: {
+        Args: { p_error?: string; p_id: string }
+        Returns: undefined
+      }
+      waitlist_request: { Args: { p_email: string }; Returns: string }
+      welcome_email_claim: { Args: never; Returns: boolean }
+      welcome_email_mark: { Args: { p_error?: string }; Returns: undefined }
     }
     Enums: {
       playlist_visibility: "public" | "friends" | "private"

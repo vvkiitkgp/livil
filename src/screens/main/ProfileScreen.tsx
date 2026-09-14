@@ -10,13 +10,13 @@ import {
   Image,
   Linking,
   Share,
-  type ViewToken,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/Button';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
@@ -28,6 +28,7 @@ import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useStories } from '../../contexts/StoriesContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   listPostsForUser,
@@ -151,6 +152,23 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
+  // Instagram-style story ring on MY OWN avatar: my active stories are in the
+  // story feed (stories_select includes self), so if I have a cluster the ring
+  // is tappable and opens my stories — purple until I've watched them, grey after.
+  const { clusters: storyClusters } = useStories();
+  const myStoryCluster = useMemo(
+    () => (profile ? storyClusters.find(c => c.authorId === profile.id) ?? null : null),
+    [storyClusters, profile],
+  );
+  const openMyStories = useCallback(() => {
+    if (!myStoryCluster) { return; }
+    navigation.navigate('StoryViewer', {
+      clusters: [{ authorId: myStoryCluster.authorId, storyIds: myStoryCluster.storyIds }],
+      startAuthorIndex: 0,
+      startStoryIndex: myStoryCluster.firstUnseenIndex,
+    });
+  }, [myStoryCluster, navigation]);
+
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -162,11 +180,7 @@ export default function ProfileScreen() {
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
 
-  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
-  const [signOutOpen, setSignOutOpen] = useState(false);
-  const [signOutBusy, setSignOutBusy] = useState(false);
   const [allLinksOpen, setAllLinksOpen] = useState(false);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -207,21 +221,8 @@ export default function ProfileScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, posts, playback.setQueue]);
 
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set<string>();
-      for (const v of viewableItems) {
-        const item = v.item as ListItem | undefined;
-        if (item?.kind === 'post' && v.isViewable) {
-          ids.add(item.post.id);
-        }
-      }
-      setVisibleIds(ids);
-    },
-  ).current;
-
   // Deliberately no pauseAll() on blur — audio should keep playing when the
-  // user navigates to another screen. PostCard's `visible` prop handles inline video.
+  // user navigates to another screen. Cards render no inline video (ADR-0001).
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
     const [profRes, statsData, follow] = await Promise.all([
@@ -360,6 +361,9 @@ export default function ProfileScreen() {
   );
 
   const handleRefresh = useCallback(async () => {
+    // Acknowledge the pull the moment it fires — the spinner is at the top
+    // of the screen, often under the user's own thumb.
+    haptics.select();
     setRefreshing(true);
     playback.pauseAll();
     await refresh(tab);
@@ -389,19 +393,6 @@ export default function ProfileScreen() {
       setLoadingMore(false);
     }
   }, [endReached, fetchPosts, loadingMore, posts, tab]);
-
-  const handleSignOut = useCallback(() => {
-    setSignOutOpen(true);
-  }, []);
-
-  const confirmSignOut = useCallback(async () => {
-    if (signOutBusy) { return; }
-    setSignOutBusy(true);
-    playback.pauseAll();
-    await supabase.auth.signOut();
-    setSignOutBusy(false);
-    setSignOutOpen(false);
-  }, [playback, signOutBusy]);
 
   // Build the list data: a sentinel item for the sticky tab bar, then content
   // for the active tab (posts list / album grid / playlist grid) or an
@@ -528,13 +519,12 @@ export default function ProfileScreen() {
       return (
         <PostCard
           post={comments.withDelta(item.post)}
-          visible={visibleIds.has(item.post.id)}
           onCommentsPress={comments.openComments}
           onDeleted={handlePostDeleted}
         />
       );
     },
-    [tab, tabCounts, handleTabChange, visibleIds, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist],
   );
 
   const renderHeader = useCallback(() => {
@@ -547,18 +537,34 @@ export default function ProfileScreen() {
         <View style={styles.topBar}>
           <Text style={styles.brand}>livil</Text>
           <TouchableOpacity
-            style={styles.signOutInline}
-            onPress={handleSignOut}
+            style={styles.headerIconBtn}
+            onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.8}
-            accessibilityLabel="Sign out"
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={styles.signOutInlineText}>Sign out</Text>
+            <Icon name="settings" size={24} color={COLORS.white} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatarRingGlow} />
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.85}
+            onPress={myStoryCluster ? openMyStories : undefined}
+            disabled={!myStoryCluster}
+          >
+            <View
+              style={[
+                styles.avatarRingGlow,
+                myStoryCluster
+                  ? myStoryCluster.hasUnseen
+                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
+                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                  : null,
+              ]}
+            />
             <View style={styles.avatarInner}>
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -566,7 +572,7 @@ export default function ProfileScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               ) : null}
             </View>
-          </View>
+          </TouchableOpacity>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -647,20 +653,13 @@ export default function ProfileScreen() {
         {/* Action buttons */}
         <View style={styles.actionRow}>
           <Button
-            label="Edit profile"
-            variant="primary"
-            size="md"
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('EditProfile')}
-          />
-          <Button
             label="Invite friends"
             variant="secondary"
             size="md"
             style={styles.actionButton}
             onPress={() => {
               Share.share({
-                message: `Join me on Livil — the social music app 🎵\nhttps://livil.app`,
+                message: `Join me on Livil — the social music app 🎵\nhttps://livil-music.com`,
               });
             }}
           />
@@ -676,7 +675,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, error, loading, handleSignOut, navigation]);
+  }, [profile, stats, followCounts, error, loading, navigation]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -721,30 +720,10 @@ export default function ProfileScreen() {
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={handleViewableItemsChanged}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-      />
-
-      <ConfirmActionModal
-        visible={signOutOpen}
-        title="Sign out of Livil?"
-        message="You'll need your password to sign back in."
-        bullets={[
-          'Playback stops on this device',
-          'Push notifications pause until you sign in again',
-          'Your music and friends stay safe',
-        ]}
-        glyph="↪"
-        tone="destructive"
-        confirmLabel="Sign out"
-        cancelLabel="Stay signed in"
-        busy={signOutBusy}
-        onConfirm={confirmSignOut}
-        onCancel={() => setSignOutOpen(false)}
       />
 
       <ConfirmActionModal
@@ -799,17 +778,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -0.5,
   },
-  signOutInline: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  signOutInlineText: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hero: {
     alignItems: 'center',

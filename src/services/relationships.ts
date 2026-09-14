@@ -18,6 +18,13 @@ export type ViewerRelationships = {
   stars: string[];
   pendingOutgoing: string[];
   pendingIncoming: string[];
+  /**
+   * People I have blocked. One-way: this can never contain someone who blocked
+   * ME, because blocked_users_select_own admits the blocker only. That asymmetry
+   * is deliberate — see the migration — so the UI must never try to render "you
+   * are blocked by this person".
+   */
+  blocked: string[];
 };
 
 /**
@@ -28,10 +35,10 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;
   if (!me) {
-    return { friends: [], stars: [], pendingOutgoing: [], pendingIncoming: [] };
+    return { friends: [], stars: [], pendingOutgoing: [], pendingIncoming: [], blocked: [] };
   }
 
-  const [friendshipsRes, starsRes] = await Promise.all([
+  const [friendshipsRes, starsRes, blockedRes] = await Promise.all([
     db
       .from('friendships')
       .select('user_a_id, user_b_id, requested_by, status')
@@ -41,10 +48,17 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
       .select('following_id')
       .eq('follower_id', me)
       .eq('kind', 'star'),
+    // No .eq('blocker_id', me) needed — RLS already scopes this to my own rows —
+    // but it is stated anyway so the query reads correctly against the table.
+    db
+      .from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', me),
   ]);
 
   if (friendshipsRes.error) { throw new Error(friendshipsRes.error.message); }
   if (starsRes.error) { throw new Error(starsRes.error.message); }
+  if (blockedRes.error) { throw new Error(blockedRes.error.message); }
 
   const friends: string[] = [];
   const pendingOutgoing: string[] = [];
@@ -69,7 +83,71 @@ export async function loadViewerRelationships(): Promise<ViewerRelationships> {
   const stars = ((starsRes.data ?? []) as Array<{ following_id: string }>)
     .map(r => r.following_id);
 
-  return { friends, stars, pendingOutgoing, pendingIncoming };
+  const blocked = ((blockedRes.data ?? []) as Array<{ blocked_id: string }>)
+    .map(r => r.blocked_id);
+
+  return { friends, stars, pendingOutgoing, pendingIncoming, blocked };
+}
+
+/**
+ * Blocks a user: severs the friendship (accepted or pending) and drops stars in
+ * both directions, atomically, inside block_user(). Their uploads, reposts,
+ * playlists and albums stay visible — blocking severs contact, not the catalogue.
+ */
+export async function blockUser(userId: string): Promise<void> {
+  const { error } = await db.rpc('block_user', { target_user_id: userId });
+  if (error) { throw new Error(error.message); }
+}
+
+/**
+ * Unblocks. Does NOT restore the friendship or the stars that blocking removed —
+ * the pair go back to strangers, not to friends.
+ */
+export async function unblockUser(userId: string): Promise<void> {
+  const { error } = await db.rpc('unblock_user', { target_user_id: userId });
+  if (error) { throw new Error(error.message); }
+}
+
+export type BlockedAccount = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  blockedAt: string;
+};
+
+/**
+ * The people I have blocked, with enough profile to recognise them.
+ *
+ * WHY THIS EXISTS AS ITS OWN CALL. RelationshipContext already holds the blocked
+ * ids, but ids are not a list a person can read. Blocking severs the friendship,
+ * so a blocked account is by definition no longer anywhere else in the app — not
+ * in friends, not in stars. Without this, the only route to unblock is finding
+ * their profile again, which requires remembering a username you deliberately
+ * pushed out of your life. That is a dead end, not a design.
+ *
+ * WHY AN RPC AND NOT AN EMBED. This used to select `blocked_users` with a
+ * `profiles!blocked_users_blocked_id_fkey(...)` embed. That broke the moment
+ * blocking started hiding profiles (20260809000000): an embed is a join, a join
+ * obeys the joined table's RLS, and every row rendered as "Unknown" with a "U"
+ * avatar — the one list whose whole job is telling you who you blocked became
+ * the one list that could not.
+ *
+ * `list_blocked_accounts()` is SECURITY DEFINER and takes no arguments, so the
+ * exception is scoped to the question "who have I blocked?" rather than
+ * re-opening those profiles everywhere. Ordered newest first server-side.
+ */
+export async function listBlockedAccounts(): Promise<BlockedAccount[]> {
+  const { data, error } = await db.rpc('list_blocked_accounts');
+  if (error) { throw new Error(error.message); }
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map(row => ({
+    userId: row.blocked_id as string,
+    username: (row.username as string | null) ?? '',
+    displayName: (row.display_name as string | null) ?? null,
+    avatarUrl: (row.avatar_url as string | null) ?? null,
+    blockedAt: row.created_at as string,
+  }));
 }
 
 export async function sendFriendRequest(userId: string): Promise<void> {
@@ -128,4 +206,64 @@ export async function listIncomingFriendRequests(): Promise<IncomingFriendReques
     avatarUrl: (row.avatar_url as string | null) ?? null,
     createdAt: row.created_at as string,
   }));
+}
+
+export type FriendRef = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+/**
+ * My accepted friends, as rows renderable directly.
+ *
+ * Friends rather than followers, because a DM write requires an accepted friendship
+ * (`20260809030000_dm_writes_require_friendship`). Listing anyone else in a share
+ * picker would offer a send the database is going to refuse.
+ *
+ * The same query is inlined in `NewConversationScreen`; it is lifted here rather than
+ * copied a second time. That screen is deliberately left alone — rewriting a working
+ * screen is not part of adding a share sheet.
+ */
+export async function listFriends(): Promise<FriendRef[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  if (!me) { return []; }
+
+  const { data, error } = await supabase
+    .from('friendships')
+    .select(`
+      user_a_id, user_b_id,
+      profile_a:profiles!friendships_user_a_id_fkey(id, username, display_name, avatar_url),
+      profile_b:profiles!friendships_user_b_id_fkey(id, username, display_name, avatar_url)
+    `)
+    .eq('status', 'accepted')
+    .or(`user_a_id.eq.${me},user_b_id.eq.${me}`);
+
+  if (error || !data) { return []; }
+
+  type Row = {
+    user_a_id: string;
+    user_b_id: string;
+    profile_a: { id: string; username: string; display_name: string | null; avatar_url: string | null } | null;
+    profile_b: { id: string; username: string; display_name: string | null; avatar_url: string | null } | null;
+  };
+
+  const out: FriendRef[] = [];
+  for (const raw of data as unknown as Row[]) {
+    const other = raw.user_a_id === me ? raw.profile_b : raw.profile_a;
+    if (!other) { continue; }
+    out.push({
+      id: other.id,
+      username: other.username,
+      displayName: other.display_name,
+      avatarUrl: other.avatar_url,
+    });
+  }
+
+  out.sort((a, b) =>
+    (a.displayName || a.username).localeCompare(b.displayName || b.username),
+  );
+  return out;
 }

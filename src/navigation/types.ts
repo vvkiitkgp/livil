@@ -17,7 +17,14 @@ export type RootStackParamList = {
   App: undefined;
   Upload: undefined;
   CollaboratorPicker: {
-    excludeUserIds?: string[];
+    /**
+     * Roles already credited here, as `${userId}|${role}` (or `custom:${name}|${role}`).
+     *
+     * NOT a list of people to hide. One artist is routinely two credits — the guitarist who
+     * also wrote it — and excluding them from the search after their first credit made the
+     * second one impossible to add.
+     */
+    takenRoleKeys?: string[];
   } | undefined;
   UserProfile: {
     userId: string;
@@ -25,6 +32,10 @@ export type RootStackParamList = {
     // the post into view; openComments opens the CommentsSheet for it;
     // highlightCommentId pulses that comment row briefly when the sheet opens.
     focusPostId?: string;
+    // Which profile tab the focused post lives in, so the profile opens on the
+    // right tab (uploads vs reposts) before scrolling — else focusPostId can't be
+    // found in the default tab's list. Used by the story viewer's "go to song".
+    focusPostKind?: 'upload' | 'repost';
     openComments?: boolean;
     highlightCommentId?: string;
   };
@@ -33,6 +44,12 @@ export type RootStackParamList = {
   Following: undefined;
   RecentlyPlayed: undefined;
   EditProfile: undefined;
+  Settings: undefined;
+  NotificationSettings: undefined;
+  PrivacyData: undefined;
+  ContactTeam: undefined;
+  BlockedAccounts: undefined;
+  DeleteAccount: undefined;
   CreatePlaylist: {
     initialPost?: {
       postId: string;
@@ -67,5 +84,12 @@ export type RootStackParamList = {
     seedClipStartSec?: number | null;
     seedClipEndSec?: number | null;
   };
-  StoryViewer: { storyIds: string[]; startIndex: number };
+  // Stories are grouped by author (one tray ring per person). The viewer receives
+  // the ordered clusters plus which ring/story was tapped, and flattens them into
+  // one ordered index space internally (so cross-author tap/swipe works).
+  StoryViewer: {
+    clusters: { authorId: string; storyIds: string[] }[];
+    startAuthorIndex: number;
+    startStoryIndex?: number;
+  };
 };

@@ -8,8 +8,9 @@ import React, {
   useState,
 } from 'react';
 import { View, StyleSheet, Image, Pressable, Text, Platform, ActivityIndicator, type StyleProp, type ViewStyle } from 'react-native';
-import Video, { type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
+import Video, { ViewType, type VideoRef, type OnProgressData, type OnLoadData } from 'react-native-video';
 import { COLORS } from '../theme/colors';
+import CoverFallback from './CoverFallback';
 import { Icon } from './Icon';
 import { usePlayback } from '../contexts/PlaybackContext';
 
@@ -36,7 +37,14 @@ export type MediaPlayerProps = {
    *  so the bar updates smoothly without ping-ponging React. */
   onProgress?: (positionSeconds: number) => void;
   onLoaded?: (durationSeconds: number) => void;
+  /** The media's intrinsic width/height, once the player reports it. Surfaced so
+   *  a parent can reason about how the frame will be cropped elsewhere (the
+   *  repost screen previews the story crop with it). */
+  onNaturalAspect?: (aspect: number) => void;
   onEnded?: () => void;
+  /** Fired when the native surface has painted a frame (onReadyForDisplay). The
+   *  story viewer uses this to hide its clip-start poster deterministically. */
+  onReadyForDisplay?: () => void;
   /** Externally requested seek position in seconds; used after the user drags
    *  the SeekBar thumb. */
   seekTo?: number | null;
@@ -50,6 +58,30 @@ export type MediaPlayerProps = {
    * clips rows — set false there and rely on tab blur (`pauseAll`) instead.
    */
   pauseWhenOffScreen?: boolean;
+  /**
+   * Render as a MUTED, foreground-only video FRAME: produces NO audio, holds NO
+   * background audio focus, and does NOT claim the PlaybackContext active slot.
+   * Set this when the audio is being driven by the single `GlobalAudioPlayer`
+   * engine and this surface only shows the picture — mirroring how
+   * `FullScreenPlayer` slaves a muted frame to the engine.
+   *
+   * Default false so the standalone preview paths (Upload / Repost), which have
+   * no post for GAP to play, keep their own audio unchanged.
+   *
+   * WHY IT EXISTS: mounting a second, audible `<Video>` alongside GAP violates
+   * the single-engine invariant (ADR-0001) — it resurrects audio↔video desync
+   * and the lock-screen notification "carousel". A muted frame cannot.
+   */
+  muted?: boolean;
+  /**
+   * Android video surface type. Default (undefined) keeps RNV's SurfaceView —
+   * cheapest and right for static feed cards. Pass `ViewType.TEXTURE` when the
+   * PARENT ANIMATES this player with transforms (translate/scale/rotate): a
+   * SurfaceView is composited outside the view hierarchy and IGNORES transforms,
+   * so the video pixels stay frozen in place while everything else moves (the
+   * story viewer's drag-dismiss "hang"). TextureView follows transforms.
+   */
+  viewType?: ViewType;
   /** Override the container style — e.g. pass StyleSheet.absoluteFill for full-screen use. */
   style?: StyleProp<ViewStyle>;
 };
@@ -71,10 +103,14 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     onTogglePaused,
     onProgress,
     onLoaded,
+    onNaturalAspect,
     onEnded,
+    onReadyForDisplay,
     seekTo,
     visible,
     pauseWhenOffScreen = true,
+    muted = false,
+    viewType,
     style,
   },
   ref,
@@ -149,7 +185,11 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
   const effectivePaused = paused || (pauseWhenOffScreen && !visibilityGateOpen);
 
   // If we just transitioned from paused to playing, claim the active slot.
+  // A MUTED frame owns no audio, so it must NOT touch the active slot — GAP is
+  // the engine and owns it. Claiming/releasing it here would fight GAP (its
+  // reportPaused stops the queue).
   useEffect(() => {
+    if (muted) { return; }
     if (!effectivePaused) {
       playback.requestPlay(postId);
     } else if (playback.isActive(postId)) {
@@ -157,7 +197,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     }
     // We intentionally exclude `playback` from deps — its methods are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectivePaused, postId]);
+  }, [effectivePaused, postId, muted]);
 
   // Apply an external seek (from SeekBar drag-end).
   useEffect(() => {
@@ -174,9 +214,10 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       const ns = (data as any).naturalSize;
       if (ns && ns.width > 0 && ns.height > 0) {
         setNaturalAspect(ns.width / ns.height);
+        onNaturalAspect?.(ns.width / ns.height);
       }
     },
-    [onLoaded],
+    [onLoaded, onNaturalAspect],
   );
 
   const handleProgress = useCallback(
@@ -191,13 +232,15 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
   const handleEnd = useCallback(() => {
     onEnded?.();
-    playback.reportPaused(postId);
-  }, [onEnded, playback, postId]);
+    // A muted frame owns no playback slot — don't report a pause that would stop
+    // GAP's queue. The caller (e.g. StoryViewer) governs advance itself.
+    if (!muted) { playback.reportPaused(postId); }
+  }, [onEnded, playback, postId, muted]);
 
   const handleError = useCallback(() => {
     setErrored(true);
-    playback.reportPaused(postId);
-  }, [playback, postId]);
+    if (!muted) { playback.reportPaused(postId); }
+  }, [playback, postId, muted]);
 
   // Debounce buffering state to avoid overlay flashing on brief ExoPlayer rebuffer events.
   const bufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -213,7 +256,10 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
 
   const handleReadyForDisplay = useCallback(() => {
     setReadyForDisplay(true);
-  }, []);
+    // Surface the native "first frame painted" signal to the parent — the story
+    // viewer uses it to drop its poster deterministically instead of on a timer.
+    onReadyForDisplay?.();
+  }, [onReadyForDisplay]);
 
   const source = useMemo(() => {
     if (media.kind === 'audio') {return { uri: media.audioUrl };}
@@ -238,7 +284,9 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         rate={effectivePaused ? 0 : rate}
         {...(Platform.OS === 'android'
           ? {
-              disableFocus: effectivePaused,
+              // A muted frame must never grab audio focus — it carries no sound
+              // and GAP owns the session. Otherwise release focus while paused.
+              disableFocus: muted || effectivePaused,
             }
           : {})}
         style={styles.video}
@@ -250,11 +298,14 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         onBuffer={handleBuffer}
         onReadyForDisplay={handleReadyForDisplay}
         progressUpdateInterval={250}
-        playInBackground={media.kind === 'audio'}
-        playWhenInactive={media.kind === 'audio'}
+        // A muted frame is foreground-only picture — it must not play in the
+        // background (GAP is the sole background-audio + MediaSession owner).
+        playInBackground={!muted && media.kind === 'audio'}
+        playWhenInactive={!muted && media.kind === 'audio'}
         ignoreSilentSwitch="ignore"
-        muted={false}
-        volume={1.0}
+        muted={muted}
+        volume={muted ? 0 : 1.0}
+        {...(viewType !== undefined ? { viewType } : {})}
       />
 
       {/* For audio posts we layer the cover (or fallback art) on top of the
@@ -284,8 +335,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
           accessibilityRole="button"
           accessibilityLabel={effectivePaused ? 'Play' : 'Pause'}
         >
-          <View style={styles.fallbackBlobA} pointerEvents="none" />
-          <View style={styles.fallbackBlobB} pointerEvents="none" />
+          <CoverFallback />
         </Pressable>
       ) : null}
 
@@ -358,26 +408,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.card,
     overflow: 'hidden',
-  },
-  fallbackBlobA: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: COLORS.purple,
-    opacity: 0.45,
-    top: -60,
-    left: -40,
-  },
-  fallbackBlobB: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#EC4899',
-    opacity: 0.35,
-    bottom: -50,
-    right: -20,
   },
   playGlyphWrap: {
     ...StyleSheet.absoluteFill,

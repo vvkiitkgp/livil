@@ -13,12 +13,20 @@
  */
 import React from 'react';
 import {
+  AppleLogo,
   ArrowBendUpLeft,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowSquareOut,
   ArrowUp,
   ArrowsClockwise,
+  Clock,
+  ArrowsInSimple,
+  Bell,
+  BellSlash,
+  Broadcast,
+  Camera,
   CaretDown,
   CaretLeft,
   CaretLineLeft,
@@ -35,16 +43,22 @@ import {
   Eye,
   EyeSlash,
   Faders,
+  FileText,
   Flag,
+  Gear,
+  Gift,
   Globe,
   Guitar,
   Handshake,
+  HandTap,
   HandWaving,
   Heart,
   House,
   IconProps as PhProps,
   IconWeight,
   Info,
+  InstagramLogo,
+  Lifebuoy,
   Lock,
   MagnifyingGlass,
   MinusCircle,
@@ -65,14 +79,17 @@ import {
   Queue,
   Repeat,
   RepeatOnce,
-  ShareNetwork,
+  ShieldCheck,
   Shuffle,
+  SignOut,
   SkipBack,
+  Sparkle,
   SkipForward,
   Star,
   Trash,
   User,
   UsersThree,
+  Warning,
   WarningCircle,
   X,
   XCircle,
@@ -85,13 +102,14 @@ export type IconName =
   | 'play' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
-  | 'share' | 'externalLink' | 'tombstone' | 'crown'
+  | 'share' | 'externalLink' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
-  | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp'
+  | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
-  | 'clipStart' | 'clipEnd' | 'minusCircle'
+  | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
-  | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email'
+  | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email' | 'pending'
+  | 'recent'
   // tab bar
   | 'home' | 'search' | 'library' | 'profile'
   // music notes & albums
@@ -100,7 +118,10 @@ export type IconName =
   | 'public' | 'friends' | 'lock'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
-  | 'star' | 'handshake' | 'wave';
+  | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai'
+  // settings
+  | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram' | 'apple'
+  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -123,9 +144,18 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   flag: [Flag, 'regular'],
   trash: [Trash, 'regular'],
   reply: [ArrowBendUpLeft, 'bold'],
-  share: [ShareNetwork, 'regular'],
+  // PaperPlaneTilt, not ShareNetwork. The three-linked-dots glyph is Android's
+  // convention but reads as "network"/"connections" out of context, and it was
+  // genuinely missed on the feed card. The paper plane is what every social app uses
+  // for this exact interaction — a sheet that leads with "send to a friend". Swap to
+  // `Export` (the iOS box-with-up-arrow) by changing this one line; it is already a
+  // phosphor export, and `share` has exactly one call site.
+  share: [PaperPlaneTilt, 'regular'],
   externalLink: [ArrowSquareOut, 'regular'],
   tombstone: [Prohibit, 'regular'],
+  // Same glyph as `tombstone`, deliberately a separate name: one marks removed
+  // content, the other is the block action. They only happen to look alike.
+  block: [Prohibit, 'bold'],
   crown: [Crown, 'fill'],
   // navigation
   back: [CaretLeft, 'bold'],
@@ -134,6 +164,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   send: [PaperPlaneTilt, 'fill'],
   arrowRight: [ArrowRight, 'bold'],
   arrowUp: [ArrowUp, 'bold'],
+  arrowDown: [ArrowDown, 'bold'],
   collapse: [CaretDown, 'bold'],
   close: [X, 'bold'],
   clear: [XCircle, 'fill'],
@@ -144,6 +175,10 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   clipStart: [CaretLineRight, 'bold'],
   clipEnd: [CaretLineLeft, 'bold'],
   minusCircle: [MinusCircle, 'regular'],
+  settings: [Gear, 'regular'],
+  // Same glyph as `forward`, kept separate: a list-row disclosure wants a
+  // lighter weight and should be restyleable without touching nav arrows.
+  disclosure: [CaretRight, 'regular'],
   // status
   check: [Check, 'bold'],
   checkCircle: [CheckCircle, 'fill'],
@@ -175,7 +210,37 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   note: [Note, 'fill'],
   star: [Star, 'fill'],
   handshake: [Handshake, 'fill'],
+  handTap: [HandTap, 'regular'],
+  zoomOut: [ArrowsInSimple, 'bold'],
   wave: [HandWaving, 'fill'],
+  // A credit the named artist has not answered yet. `regular` — this sits next to a name
+  // at 13px, where a filled clock reads as a dot.
+  pending: [Clock, 'regular'],
+  // Same glyph as `pending`, deliberately named separately: `pending` means "awaiting an
+  // answer" (an unconfirmed credit), and a recent search is not waiting for anything. Sharing
+  // the name would make a later change to the pending clock silently restyle search history.
+  recent: [Clock, 'regular'],
+  // Any of the AI_ROLES. One glyph for the whole group on purpose: the point of the mark
+  // is "a tool did this", and six different machine icons would say less, not more.
+  ai: [Sparkle, 'fill'],
+  // settings — `regular` throughout: these sit inside a tinted tile in
+  // SettingsRow, where a filled glyph reads as a solid blob at 20px.
+  bell: [Bell, 'regular'],
+  bellOff: [BellSlash, 'regular'],
+  shield: [ShieldCheck, 'regular'],
+  gift: [Gift, 'regular'],
+  support: [Lifebuoy, 'regular'],
+  instagram: [InstagramLogo, 'regular'],
+  // 'fill' is deliberate: Apple's guidelines show a solid mark on the Sign in
+  // with Apple button, and an outlined logo there reads as a broken glyph.
+  apple: [AppleLogo, 'fill'],
+  // Distinct from `error` (WarningCircle): the triangle is the danger-banner
+  // glyph on DeleteAccountScreen, where it needs to read at 32px.
+  warningTriangle: [Warning, 'regular'],
+  camera: [Camera, 'fill'],
+  document: [FileText, 'regular'],
+  broadcast: [Broadcast, 'regular'],
+  signOut: [SignOut, 'regular'],
 };
 
 export interface IconProps {

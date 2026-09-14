@@ -48,6 +48,42 @@ const NEVER = [
   { re: /^kb\/private\//, why: 'private content must never be committed to this public repo' },
 ];
 
+/**
+ * The one carve-out in NEVER, and why it has to exist.
+ *
+ * build.gradle is on the never-list to protect the SIGNING configuration. But the
+ * documented release process (CLAUDE.md: "Bump versionCode before every Play Store
+ * release") changes versionCode/versionName in that same file — so as written, the
+ * rule made every release PR fail. It did: #115 (1.1.13) went red on this check and
+ * was merged anyway, which is precisely the decay this script's own header warns
+ * about ("a check that fails for reasons unrelated to what it guards is how a gate
+ * becomes noise and then gets disabled").
+ *
+ * So the rule now says what it always meant: version numbers may move, signing may
+ * not. A build.gradle diff passes ONLY if every added/removed line is a versionCode
+ * or versionName line. One line touching signingConfigs, storeFile, storePassword,
+ * keyAlias — or anything else at all — and the file is refused exactly as before.
+ *
+ * Fails CLOSED: if the diff cannot be read for any reason, the file stays refused.
+ */
+const VERSION_LINE = /^[+-]\s*(versionCode\s+\d+|versionName\s+"[^"]*")\s*$/;
+
+function isVersionBumpOnly(range, mode) {
+  let diff;
+  try {
+    diff = mode === 'staged'
+      ? sh('git diff --cached -U0 -- android/app/build.gradle')
+      : sh(`git diff -U0 ${range} -- android/app/build.gradle`);
+  } catch {
+    return false;
+  }
+  const touched = diff
+    .split('\n')
+    // Real content lines only: skip the +++/--- headers and @@ hunk markers.
+    .filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
+  return touched.length > 0 && touched.every(l => VERSION_LINE.test(l));
+}
+
 const args = process.argv.slice(2);
 const mode = args.includes('--staged') ? 'staged' : 'range';
 const range = args[args.indexOf('--range') + 1];
@@ -121,9 +157,15 @@ const failures = [];
 // Rule 1 — universal: nobody touches these, board or not.
 for (const f of files) {
   for (const n of NEVER) {
-    if (n.re.test(f)) {
-      failures.push(`${f}\n        never modifiable by an agent: ${n.why}`);
+    if (!n.re.test(f)) continue;
+    // The single carve-out: a build.gradle diff that moves only the version
+    // numbers. Anything touching signing is refused as before. See the comment
+    // on isVersionBumpOnly for why this exists.
+    if (f === 'android/app/build.gradle' && isVersionBumpOnly(range, mode)) {
+      console.log('note  android/app/build.gradle: version bump only — signing untouched');
+      continue;
     }
+    failures.push(`${f}\n        never modifiable by an agent: ${n.why}`);
   }
 }
 

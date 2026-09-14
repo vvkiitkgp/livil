@@ -47,9 +47,10 @@ Also **not** present, despite appearing in older documentation as plans:
    │  Realtime · Edge  │
    └───────────────────┘
              ▲
-             │ (marketing site is independent)
+             │ the dashboard talks to Supabase directly, same as the app
    ┌───────────────────┐
-   │  GitHub Pages     │  livil-music.com — static, from docs/
+   │  Vercel           │  livil-music.com        — marketing, static, from docs/
+   │                   │  livil-music.com/studio — creator dashboard, from web/
    └───────────────────┘
 ```
 
@@ -86,12 +87,35 @@ certificate in the cloud console.
 | `vvkiitkgp/livil` | **public** | The application |
 | `vvkiitkgp/livil-kb-private` | private | Sensitive knowledge base content |
 
-**GitHub Pages serves `livil-music.com` from `main/docs`.** That directory is a published
-website — engineering documentation must never go there. It is why the knowledge base lives at
-`kb/`.
+**`docs/` is a published website.** Engineering documentation must never go there — it is why
+the knowledge base lives at `kb/`. Since 2026-08-05 it is published by **Vercel** rather than
+GitHub Pages ([deployment.md](deployment.md)); the directory's status as public did not change,
+only who serves it.
 
-**There is no CI.** No Actions, no automation of any kind. Nothing runs tests, lint, or type
-checking on any commit.
+**GitHub Pages is still enabled**, serving the redirect that keeps three Play-registered policy
+URLs alive until the listing points at `livil-music.com`. It is a retirement in progress, not a
+second hosting strategy.
+
+**CI runs on every push, on every branch** — `.github/workflows/ci.yml`, plus `ai-review.yml`
+and `edge-function-parity.yml`. Not only on pull requests: feature branches are pushed and
+reviewed directly here, so gating on PRs would leave most pushes unverified.
+
+Eight jobs, and they check more than code:
+
+| Job | What it defends |
+|---|---|
+| `typecheck · lint · test` | the obvious one |
+| `knowledge base` | link validity, and that generated docs are not stale |
+| `version drift` | `CLAUDE.md` still matches `build.gradle` |
+| `migrations apply cleanly` | every migration in order against a shim, then the authorization, RPC-contract, stories, messages, deletion and comments suites, plus a `SECURITY DEFINER` `search_path` lint |
+| `production matches the repo` | schema parity against the live database — **also on a 07:00 UTC schedule**, because drift can start without a push |
+| `board is proposal-only` | the Architecture Board cannot write code |
+| `agents write only where tests exist` | [autonomy-config.yml](../../.claude/autonomy-config.yml), enforced rather than asserted |
+
+The scope gate has a **known limitation**: it identifies agent work by `agent/*` branch names
+and `Agent-Implemented:` trailers, so an agent using neither is not detected. It is a
+convention gate, not a cryptographic one — `scripts/enforce-agent-scope.mjs` says so itself,
+and the never-lists apply to every author regardless.
 
 ### Google Play
 
