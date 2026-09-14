@@ -822,7 +822,12 @@ export default function WaveformScrubber({
             const bar = barIndexAt(dragged);
             const now = Date.now();
             if (bar !== lastTickBarRef.current && now - lastTickAtRef.current >= TICK_MIN_INTERVAL_MS) {
-              haptics.select();
+              // `tick`, not `select`: this fires up to ~22x/second, and the two
+              // intents are tuned apart for it. On iOS `select` used to land on
+              // `selection` (intensity 0.2), far below what a hand holding a
+              // phone can feel -- so the ratchet appeared to be missing entirely
+              // and a handle drag felt like the single buzz of the initial grab.
+              haptics.tick();
               // Jump straight to the bar under the finger. Ticks dropped by the rate
               // floor are skipped, not queued — a flick must not leave a rattle
               // playing out after the finger has stopped.
