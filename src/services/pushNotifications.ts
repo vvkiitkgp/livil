@@ -16,6 +16,7 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
 import { navigateWhenReady } from '../navigation/navigationRef';
+import { LIVIL_NOTIFICATION_ID_PREFIX } from './appBadge';
 import type { RootStackParamList } from '../navigation/types';
 
 const DEVICE_ID_KEY = 'livil.device_id';
@@ -318,6 +319,9 @@ function handleNotificationData(data: Record<string, string> | undefined): void 
  */
 const CHAT_KINDS = new Set(['message', 'reaction', 'jam_invite_dm']);
 
+/** Monotonic tail for non-chat notification ids -- see the id built below. */
+let nonChatSeq = 0;
+
 /**
  * Create the per-category channels so users can mute by category from Android
  * settings. Defined by NOTIFICATION_CHANNELS — add a channel there, not here.
@@ -330,6 +334,12 @@ async function ensureChannels(): Promise<void> {
       name: channel.name,
       importance: channel.importance,
       description: channel.description,
+      // Already the default, but stated because the launcher badge depends on
+      // it: with `badge: false` a channel's notifications contribute nothing to
+      // the icon, and the setting CANNOT be changed after a channel is created.
+      // Leaving it implicit makes the badge one upstream default change away
+      // from silently disappearing, with no call site to grep for.
+      badge: true,
     });
   }
 }
@@ -378,8 +388,12 @@ export async function displayPushNotification(
     //
     // The id is per-conversation, so different chats stay separate. For
     // events without a conversation (rare), fall back to actorUserId.
+    //
+    // The `livil:` prefix lets appBadge.ts cancel our notifications without
+    // touching the media3 lock-screen player card, which the same app posts under
+    // the raw player's hashCode. See LIVIL_NOTIFICATION_ID_PREFIX.
     const conversationId = data.conversationId ?? data.actorUserId ?? 'default';
-    const notifId = `chat:${conversationId}`;
+    const notifId = `${LIVIL_NOTIFICATION_ID_PREFIX}chat:${conversationId}`;
 
     let prior: Array<{ text: string; timestamp: number }> = [];
     try {
@@ -403,6 +417,11 @@ export async function displayPushNotification(
       android: {
         ...baseAndroid,
         groupId: 'chats',
+        // Android has no "set the app's badge to N" API: the launcher SUMS the
+        // `number` of every notification in the tray. This card merges every
+        // unread message from one conversation, so its number is that message
+        // count -- which makes the sum across cards the true unread total.
+        badgeCount: prior.length + 1,
         style: {
           type: AndroidStyle.MESSAGING,
           person: {
@@ -420,11 +439,18 @@ export async function displayPushNotification(
   }
 
   await notifee.displayNotification({
+    // Prefixed so appBadge.ts can clear it; sequenced so two notifications that
+    // land in the same millisecond don't replace one another. Unlike chat, these
+    // are deliberately NOT merged -- a like and a new fan are separate events.
+    id: `${LIVIL_NOTIFICATION_ID_PREFIX}${kind || 'push'}:${Date.now()}:${nonChatSeq++}`,
     title,
     body,
     data: tapData,
     android: {
       ...baseAndroid,
+      // One event, one unit of badge. See the chat card's badgeCount for why the
+      // launcher's sum is what we are steering here.
+      badgeCount: 1,
       ...(actorAvatarUrl ? { largeIcon: actorAvatarUrl } : {}),
     },
   });

@@ -40,6 +40,7 @@
     "react-native-app-auth": "^8.4.0",
     "react-native-audio-api": "0.12.2",
     "react-native-gesture-handler": "^2.24.0",
+    "react-native-haptic-feedback": "3.0.0",
     "react-native-image-crop-picker": "^0.51.1",
     "react-native-keyboard-controller": "^1.21.9",
     "react-native-reanimated": "^4.4.0",
