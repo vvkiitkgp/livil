@@ -66,6 +66,7 @@ import {
   requestPushPermissionInteractive,
   deferPushPrompt,
 } from '../services/pushNotifications';
+import { clearAppBadge } from '../services/appBadge';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const { width } = Dimensions.get('window');
@@ -418,6 +419,10 @@ export default function RootNavigator() {
           setNeedsTerms(null);
           setPasswordRecoveryPending(false);
           if (prevUserId) void unregisterDevice(prevUserId);
+          // Same reasoning as the cache clear above, but for the OS icon: the next
+          // account must not inherit the previous one's number, and the previous
+          // one's notifications must not stay readable from the tray.
+          void clearAppBadge();
         } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
           // Fresh sign-in (new user id) — register push + resolve onboarding.
           // The id guard skips re-checks on resume/token-refresh SIGNED_IN events.

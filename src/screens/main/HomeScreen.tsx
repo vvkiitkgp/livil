@@ -48,6 +48,7 @@ import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
+import { setAppBadgeCount } from '../../services/appBadge';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -303,6 +304,21 @@ export default function HomeScreen() {
   // Total badge count shown on the 💬 button = unread messages + incoming friend
   // requests + unread livil Bot activity.
   const notificationCount = totalUnread + pendingIncomingCount + activityUnread;
+
+  // Mirror the in-app badge onto the home-screen icon.
+  //
+  // This screen is the only place all three counts exist at once, and it keeps
+  // them live (realtime subscriptions above + the focus refetch below), so it is
+  // the natural owner. HomeScreen is a bottom-tab screen and therefore stays
+  // mounted while the user is signed in -- the badge keeps tracking on the Search
+  // or Profile tab, not just here.
+  //
+  // iOS gets the exact number. Android cannot be told a number at all and instead
+  // clears when this reaches zero; the rest of the time its launcher sums the
+  // notifications in the tray. See src/services/appBadge.ts.
+  useEffect(() => {
+    void setAppBadgeCount(notificationCount);
+  }, [notificationCount]);
 
   const [storiesLoading, setStoriesLoading] = useState(true);
 
