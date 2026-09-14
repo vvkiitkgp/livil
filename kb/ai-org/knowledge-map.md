@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-68 document(s) under `kb/`.
+69 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 68 |
-| Drift-proof (tier 1 + 4) | 35 |
+| Documents | 69 |
+| Drift-proof (tier 1 + 4) | 36 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -106,6 +106,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0008-delete-account-flow.md` | principal-client | CA, TR, ALL | 2026-07-30 | 9999d |
 | `debt/proposals/0009-cover-cropping-on-mobile.md` | chief-architect | CA, TR, ALL | 2026-08-04 | 9999d |
 | `debt/proposals/0010-home-feed-ranking.md` | principal-data | CA, TR, ALL | 2026-08-16 | 9999d |
+| `debt/proposals/0011-copyright-risk-signal-on-upload.md` | chief-architect | CA, TR, ALL | 2026-09-14 | 30d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
@@ -136,7 +137,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 25 |
+| chief-architect | 26 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
