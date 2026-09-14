@@ -286,3 +286,12 @@ canvas loads Sora / Manrope / Instrument Serif and looks sharper than these prev
 > **Reference note.** The older PNGs at the top of this folder (`home-feed.png`, `player.png`,
 > …) predate the outlined-button design, the anchored waveform scrubber and the two-tab
 > player. The panels in `store/` were rebuilt from the September 2026 UI and the screen source.
+
+## Ready-to-upload files
+
+- `store/play/livil-play-1..6.png` — **1080 × 1920**, 9:16, for Google Play (centre crop of the master, no scaling of content beyond the 1320→1080 resize).
+- `store/appstore/livil-appstore-1..6.png` — **1320 × 2868**, for App Store Connect (iPhone 6.9″).
+
+Both sets are rendered headless from the same artboards with the real display fonts. Upload in
+numeric order. Do not use the canvas's "@2x" export for the stores: at 2640 × 5736 it exceeds
+Play's 3840 px side limit and its 1:2.17 shape is not 9:16, and Apple wants the exact 1320 × 2868.

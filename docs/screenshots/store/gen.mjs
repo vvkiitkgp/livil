@@ -370,34 +370,34 @@ P.Panel1 = page('1', `
   ${glow(W, 1420, 1000, 820, 0.6)}
   ${pulseLine(`M-10 200 H520 L580 120 L640 260 L700 150 L740 200 H1060 L1160 40 L1320 200`)}
   ${headline([{ t: 'Press play ' }, { t: 'here', g: true }, { t: '…' }], '', { size: 140, top: SAFE_TOP + 110 })}
-  <div style="position:absolute;left:100px;top:${SAFE_TOP + 470}px;color:${C.light};font-size:36px;font-weight:600;display:flex;align-items:center;gap:18px;">${I.crown(40, C.warning)}Your phone · hosting</div>
-  <div style="position:absolute;left:280px;top:${SAFE_TOP + 600}px;">${phone(jamScreen({ host: true }), { tilt: -6 })}</div>
+  <div style="position:absolute;left:100px;top:${SAFE_TOP + 330}px;color:${C.light};font-size:36px;font-weight:600;display:flex;align-items:center;gap:18px;">${I.crown(40, C.warning)}Your phone · hosting</div>
+  <div style="position:absolute;left:280px;top:${SAFE_TOP + 520}px;">${phone(jamScreen({ host: true }), { tilt: -6, h: 1600 })}</div>
 `);
 P.Panel2 = page('2', `
   ${glow(0, 1420, 1000, 820, 0.6)}
   ${pulseLine(`M0 200 L120 320 L220 200 H700 L760 110 L820 270 L880 200 H1330`)}
   ${headline([{ t: '…and it plays ' }, { t: 'there', g: true }, { t: '.' }], 'Jam Rooms keep everyone on the same beat — in real time.', { size: 140, top: SAFE_TOP + 110 })}
   <div style="position:absolute;left:100px;top:${SAFE_TOP + 640}px;color:${C.light};font-size:36px;font-weight:600;display:flex;align-items:center;gap:18px;">${I.users(40, C.neon)}Your friend's phone · same second</div>
-  <div style="position:absolute;left:260px;top:${SAFE_TOP + 760}px;">${phone(jamScreen({ host: false }), { tilt: 6, h: 1560 })}</div>
+  <div style="position:absolute;left:260px;top:${SAFE_TOP + 720}px;">${phone(jamScreen({ host: false }), { tilt: 6, h: 1500 })}</div>
 `);
 P.Panel3 = page('3', `
   ${glow(660, 1900, 900, 760, 0.5)}
   ${pulseLine(`M-10 200 H430 L480 130 L540 280 L600 160 L650 200 H1330`)}
   ${headline([{ t: 'See what your friends are ' }, { t: 'playing', g: true }, { t: '.' }], 'Friends\' stories up top. A feed built from people you know — not an algorithm.', { size: 118, align: 'center', top: SAFE_TOP + 80 })}
-  <div style="position:absolute;left:256px;top:${SAFE_TOP + 680}px;">${phone(homeScreen())}</div>
+  <div style="position:absolute;left:256px;top:${SAFE_TOP + 540}px;">${phone(homeScreen())}</div>
 `);
 P.Panel4 = page('4', `
   ${glow(660, 1750, 820, 700, 0.62)}
   ${pulseLine(`M-10 200 H560 L610 60 L660 340 L710 90 L760 200 H1330`)}
   ${headline([{ t: 'Share the 15 seconds that gave you ' }, { t: 'chills', g: true }, { t: '.' }], 'Clip any moment. Repost it with your take, or post it as a Story.', { size: 112, align: 'center', top: SAFE_TOP + 80 })}
-  <div style="position:absolute;left:256px;top:${SAFE_TOP + 720}px;">${phone(repostScreen(), { h: 1560 })}</div>
+  <div style="position:absolute;left:256px;top:${SAFE_TOP + 640}px;">${phone(repostScreen(), { h: 1560 })}</div>
 `);
 P.Panel5 = page('5', `
   ${glow(120, 2500, 1000, 800, 0.55)}
   ${pulseLine(`M-10 200 H300 L350 120 L410 270 L470 150 L520 200 H1330`)}
   ${headline([{ t: 'Built for the people who ' }, { t: 'make', g: true }, { t: ' the music.' }], 'Upload audio or video. Credit your collaborators. Be heard by people who actually listen.', { size: 112, top: SAFE_TOP + 80 })}
-  <div style="position:absolute;left:120px;top:${SAFE_TOP + 720}px;">${phone(profileScreen())}</div>
-  <div style="position:absolute;right:-30px;top:${SAFE_TOP + 1540}px;transform:rotate(4deg);">${uploadCard()}</div>
+  <div style="position:absolute;left:120px;top:${SAFE_TOP + 560}px;">${phone(profileScreen())}</div>
+  <div style="position:absolute;right:-30px;top:${SAFE_TOP + 1380}px;transform:rotate(4deg);">${uploadCard()}</div>
 `);
 P.Panel6 = page('6', `
   ${glow(1200, 2500, 1000, 800, 0.55)}
@@ -405,9 +405,9 @@ P.Panel6 = page('6', `
   ${headline([{ t: 'Your music. ' }, { t: 'Everywhere', g: true }, { t: ' you are.' }], 'A full-screen player. Lock-screen controls. Playlists you build with friends.', { size: 112, align: 'center', top: SAFE_TOP + 80 })}
   <div style="position:absolute;left:-60px;top:${SAFE_TOP + 940}px;transform:rotate(-8deg);">${lockCard()}</div>
   <div style="position:absolute;right:-90px;top:${SAFE_TOP + 760}px;transform:rotate(7deg);">${playlistCard()}</div>
-  <div style="position:absolute;left:270px;top:${SAFE_TOP + 600}px;">${phone(playerScreen(), { h: 1300 })}</div>
+  <div style="position:absolute;left:270px;top:${SAFE_TOP + 560}px;">${phone(playerScreen(), { h: 1260 })}</div>
   <div style="position:absolute;left:0;right:0;bottom:0;height:520px;background:linear-gradient(180deg,rgba(10,10,15,0) 0%,rgba(10,10,15,0.95) 45%,${C.bg} 100%);"></div>
-  <div style="position:absolute;left:0;right:0;bottom:${SAFE_TOP + 10}px;display:flex;flex-direction:column;align-items:center;gap:18px;">
+  <div style="position:absolute;left:0;right:0;bottom:${SAFE_TOP + 170}px;display:flex;flex-direction:column;align-items:center;gap:18px;">
     ${wordmark(400)}
     <div style="font-family:'Instrument Serif',Georgia,serif;font-style:italic;font-size:64px;letter-spacing:0.06em;background:linear-gradient(92deg,${C.royal},${C.neon});-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:${C.neon};">Live · Vibe · Link</div>
     <div style="color:${C.sec};font-size:34px;font-weight:600;">Free to download</div>
