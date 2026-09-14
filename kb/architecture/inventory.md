@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-10
+last_verified: 2026-09-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-210 TypeScript file(s) under `src/`, 56,650 lines.
+213 TypeScript file(s) under `src/`, 57,135 lines.
 
 ## Size hotspots
 
@@ -31,8 +31,8 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/components/PostCard.tsx` | 1373 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
-| `src/screens/main/HomeScreen.tsx` | 1231 |
-| `src/components/WaveformScrubber.tsx` | 1145 |
+| `src/screens/main/HomeScreen.tsx` | 1247 |
+| `src/components/WaveformScrubber.tsx` | 1150 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
@@ -96,14 +96,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 21,593 lines.
+43 file(s), 21,609 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 1613 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1604 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
-| `src/screens/main/HomeScreen.tsx` | 1231 |
+| `src/screens/main/HomeScreen.tsx` | 1247 |
 | `src/screens/main/UserProfileScreen.tsx` | 1131 |
 | `src/screens/main/ProfileScreen.tsx` | 1040 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
@@ -146,13 +146,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-75 file(s), 18,537 lines.
+75 file(s), 18,542 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2512 |
 | `src/components/PostCard.tsx` | 1373 |
-| `src/components/WaveformScrubber.tsx` | 1145 |
+| `src/components/WaveformScrubber.tsx` | 1150 |
 | `src/components/FloatingPlayer.tsx` | 912 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 541 |
@@ -228,13 +228,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-41 file(s), 9,657 lines.
+43 file(s), 9,900 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1104 |
 | `src/services/tracks.ts` | 822 |
-| `src/services/pushNotifications.ts` | 615 |
+| `src/services/pushNotifications.ts` | 641 |
 | `src/services/albums.ts` | 497 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
@@ -259,8 +259,10 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
+| `src/services/__tests__/appBadge.test.ts` | 113 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
+| `src/services/appBadge.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
@@ -304,13 +306,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-21 file(s), 2,509 lines.
+22 file(s), 2,725 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/__tests__/playTracker.test.ts` | 226 |
 | `src/utils/searchRanking.ts` | 219 |
 | `src/utils/__tests__/searchRanking.test.ts` | 212 |
+| `src/utils/haptics.ts` | 201 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
@@ -318,9 +321,9 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/groupStoriesByAuthor.ts` | 125 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
 | `src/utils/mentions.ts` | 105 |
+| `src/utils/__tests__/haptics.test.ts` | 101 |
 | `src/utils/storyPlayback.ts` | 98 |
 | `src/utils/playTracker.ts` | 90 |
-| `src/utils/haptics.ts` | 86 |
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/__tests__/recentSearches.test.ts` | 78 |
 | `src/utils/__tests__/shareLinks.test.ts` | 74 |
@@ -357,6 +360,7 @@ version is not the version running (Constitution P52).
 | `react-native-app-auth` | `^8.4.0` | 8.4.0 |
 | `react-native-audio-api` | `0.12.2` | 0.12.2 |
 | `react-native-gesture-handler` | `^2.24.0` | **2.31.2** |
+| `react-native-haptic-feedback` | `3.0.0` | 3.0.0 |
 | `react-native-image-crop-picker` | `^0.51.1` | 0.51.1 |
 | `react-native-keyboard-controller` | `^1.21.9` | 1.21.9 |
 | `react-native-reanimated` | `^4.4.0` | 4.4.0 |
