@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-67 document(s) under `kb/`.
+68 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 67 |
-| Drift-proof (tier 1 + 4) | 34 |
+| Documents | 68 |
+| Drift-proof (tier 1 + 4) | 35 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -117,6 +117,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0008-notification-recipients-derived-server-side.md` | principal-realtime | ALL | 2026-07-22 | 9999d |
 | `decisions/0009-stories-backend-audit-and-hardening.md` | principal-data | ALL | 2026-07-24 | 9999d |
 | `decisions/0009-stories-harden-draft-declarative-rls.md` | chief-architect | ALL | 2026-07-24 | 9999d |
+| `decisions/0010-transcoding-approach-deferred.md` | principal-platform | ALL | 2026-07-24 | 9999d |
 | `decisions/0011-patch-hedge-ratification-and-scope-correction.md` | principal-playback | ALL | 2026-07-24 | 9999d |
 | `decisions/0012-storage-config-ratification-and-modifications.md` | principal-security | ALL | 2026-07-24 | 9999d |
 | `decisions/0013-story-clip-session.md` | chief-architect | ALL | 2026-07-25 | 9999d |
@@ -139,7 +140,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
-| principal-platform | 7 |
+| principal-platform | 8 |
 | principal-playback | 8 |
 | principal-realtime | 2 |
 | principal-security | 6 |
