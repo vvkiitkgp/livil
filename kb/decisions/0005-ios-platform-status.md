@@ -7,21 +7,32 @@ verify_every: 9999d
 verified_by: manual
 visibility: public
 supersedes: []
-related_adrs: []
+superseded_by: 0016
+related_adrs: [0016]
 ---
 
 # ADR-0005 — iOS platform status
 
 | | |
 |---|---|
-| **Status** | **Proposed — awaiting a decision** |
+| **Status** | **Superseded by ADR-0016** — decided as Option B (Revive) |
 | **Date** | 2026-07-21 |
 | **Domain** | platform |
 | **Decided by** | *Not yet decided* |
 
-> **This ADR records an open question, not a decision.** It exists because the ambiguity is
-> itself a cost: agents currently cannot tell whether iOS regressions matter, and every
-> cross-platform change carries an unanswerable question about whether to handle iOS.
+> **SUPERSEDED. Do not quote this as current.** This ADR recorded an open question and
+> asked to be decided rather than revisited. It was decided on 2026-09-08 as **Option B
+> (Revive)** — see [ADR-0016](./0016-ship-ios.md). iOS builds, ships, and its regressions
+> matter.
+>
+> The evidence table below was accurate when written (2026-07-21) and is kept as the record
+> of what was true then. Every row of it has since been addressed.
+>
+> ---
+>
+> *Original note:* This ADR records an open question, not a decision. It exists because the
+> ambiguity is itself a cost: agents currently cannot tell whether iOS regressions matter, and
+> every cross-platform change carries an unanswerable question about whether to handle iOS.
 
 ---
 
@@ -52,7 +63,8 @@ iOS tax in code complexity while getting no iOS product.**
 
 ## Decision
 
-**Undecided.** Two coherent options:
+**Decided 2026-09-08: Option B (Revive).** See [ADR-0016](./0016-ship-ios.md).
+The two options as they were framed:
 
 ### Option A — Formally Android-only
 
@@ -104,6 +116,5 @@ that investment; choosing Option B builds on it. Neither is free.
 
 ## Revisit when
 
-**This ADR should not be revisited — it should be decided**, and superseded by an ADR that
-records the choice. It is filed as `Proposed` precisely so the open question is visible rather
-than tacit.
+Done. It asked to be decided rather than revisited, and to be superseded by an ADR
+recording the choice — [ADR-0016](./0016-ship-ios.md) is that ADR.

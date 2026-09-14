@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-67 document(s) under `kb/`.
+68 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 67 |
-| Drift-proof (tier 1 + 4) | 34 |
+| Documents | 68 |
+| Drift-proof (tier 1 + 4) | 35 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -122,6 +122,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0013-story-clip-session.md` | chief-architect | ALL | 2026-07-25 | 9999d |
 | `decisions/0014-reject-widening-msg-update-for-orphaned-messages.md` | chief-architect | ALL | 2026-07-29 | 9999d |
 | `decisions/0015-web-creator-dashboard.md` | chief-architect | ALL | 2026-08-05 | 9999d |
+| `decisions/0016-ship-ios.md` | chief-architect | ALL | 2026-09-08 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -135,7 +136,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 24 |
+| chief-architect | 25 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
