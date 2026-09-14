@@ -63,11 +63,11 @@
 	     with ITMS-90683 for its absence: the check is on what the BINARY REFERENCES,
 	     not on what our code calls. react-native-audio-api's AudioSessionManager.mm
 	     calls requestRecordPermission, and it is linked in because we use that
-	     library's standalone decodeAudioData for waveform analysis -- never as a
+	     library's standalone decodeAudioData for waveform analysis — never as a
 	     recorder. Apple's own words: "While your app might not use these APIs, a
 	     purpose string is still required."
 	     The prompt this text belongs to will never actually appear, since nothing
-	     requests microphone access -- so it says so plainly rather than inventing a
+	     requests microphone access — so it says so plainly rather than inventing a
 	     recording feature that does not exist. Removing this re-breaks the upload. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Livil does not record audio. An audio component used to draw track waveforms references the microphone, so iOS requires this notice — you will never be asked for microphone access.</string>
@@ -94,8 +94,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>

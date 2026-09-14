@@ -1,0 +1,31 @@
+diff --git a/node_modules/react-native-haptic-feedback/ios/RNHapticFeedback/RNHapticFeedback.mm b/node_modules/react-native-haptic-feedback/ios/RNHapticFeedback/RNHapticFeedback.mm
+index a8de79d..28118d9 100644
+--- a/node_modules/react-native-haptic-feedback/ios/RNHapticFeedback/RNHapticFeedback.mm
++++ b/node_modules/react-native-haptic-feedback/ios/RNHapticFeedback/RNHapticFeedback.mm
+@@ -36,6 +36,26 @@ - (void)initEngine
+         return;
+     }
+ 
++    // ── Livil patch ──────────────────────────────────────────────────────────
++    // Upstream never sets this, so it defaults to NO and the haptic engine joins
++    // the AUDIO SESSION. Two things follow, and both bite this app:
++    //
++    //   1. Haptics are gated on the audio route. With the ring switch on silent
++    //      the engine produces nothing at all -- not "weaker", NOTHING -- no
++    //      matter how high the event intensity is. That is why an iPhone 16 Pro
++    //      Max felt dead at intensity 1.0 while the JS side was firing correctly.
++    //
++    //   2. It makes CHHapticEngine a SECOND participant in the audio session of an
++    //      app whose whole playback architecture rests on there being exactly one
++    //      (see the single-engine rule in CLAUDE.md). An engine that can activate
++    //      and deactivate the session is a latent way to duck or interrupt
++    //      GlobalAudioPlayer, which owns the MediaSession and background audio.
++    //
++    // YES fixes both: the engine renders haptics only, ignores audio entirely, and
++    // no longer needs -- or touches -- the audio session. This is also what Apple
++    // recommends for haptics-only use. Must be set BEFORE startAndReturnError:.
++    _engine.playsHapticsOnly = YES;
++
+     __weak __typeof__(self) weakSelf = self;
+     _engine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) {
+         __strong __typeof__(weakSelf) strongSelf = weakSelf;
