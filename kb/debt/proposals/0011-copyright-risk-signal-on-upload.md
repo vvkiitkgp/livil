@@ -22,6 +22,12 @@ related_adrs: [0004]
 
 ---
 
+> **System design:** the mechanism, the two journeys end to end, capacity math and failure
+> modes are in [0011-copyright-risk-signal-system-design.md](0011-copyright-risk-signal-system-design.md).
+> This document carries the vendor evaluation and the decision to be ratified.
+
+---
+
 ## Problem
 
 Livil accepts arbitrary audio and video from any signed-in user and publishes it to a public

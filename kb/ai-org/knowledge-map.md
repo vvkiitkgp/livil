@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-09-14
+last_verified: 2026-09-15
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-69 document(s) under `kb/`.
+70 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 69 |
-| Drift-proof (tier 1 + 4) | 36 |
+| Documents | 70 |
+| Drift-proof (tier 1 + 4) | 37 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -45,7 +45,7 @@ content, so the hand-maintained count is the number worth keeping small.
 |---|---|---|---|---|
 | `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-14 | 9999d |
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-14 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-09-14 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-09-15 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-14 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-09-10 | 9999d |
 
@@ -107,6 +107,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `debt/proposals/0009-cover-cropping-on-mobile.md` | chief-architect | CA, TR, ALL | 2026-08-04 | 9999d |
 | `debt/proposals/0010-home-feed-ranking.md` | principal-data | CA, TR, ALL | 2026-08-16 | 9999d |
 | `debt/proposals/0011-copyright-risk-signal-on-upload.md` | chief-architect | CA, TR, ALL | 2026-09-14 | 30d |
+| `debt/proposals/0011-copyright-risk-signal-system-design.md` | chief-architect | CA, TR, ALL | 2026-09-15 | 30d |
 | `debt/proposals/TEMPLATE.md` | chief-architect | CA, TR, ALL | 2026-07-21 | 9999d |
 | `decisions/0001-single-audio-engine.md` | principal-playback | ALL | 2026-07-21 | 9999d |
 | `decisions/0002-patched-video-library.md` | principal-playback | ALL | 2026-07-21 | 9999d |
@@ -137,7 +138,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 26 |
+| chief-architect | 27 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
