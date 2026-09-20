@@ -14,6 +14,7 @@ import { TrackDetail } from './screens/TrackDetail';
 import { Upload } from './screens/Upload';
 import { Profile } from './screens/Profile';
 import { Ops } from './screens/Ops';
+import { OpsUser } from './screens/OpsUser';
 import { Contact } from './screens/Contact';
 import type { Session } from '@supabase/supabase-js';
 
@@ -54,6 +55,10 @@ function routerFor(session: Session) {
           // table. Guarding in the router would only hide a link, and would invite the
           // assumption that the guard is what protects the data.
           { path: 'ops', element: <Ops /> },
+          // Same no-guard reasoning as `ops` above, and it holds even harder here: every
+          // track on this page is already readable by any signed-in account, and the grant
+          // button calls an is_ops()-gated function that raises for anyone else.
+          { path: 'ops/user/:userId', element: <OpsUser /> },
           { path: '*', element: <Navigate to="/" replace /> },
         ],
       },

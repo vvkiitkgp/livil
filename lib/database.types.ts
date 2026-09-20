@@ -152,6 +152,30 @@ export type Database = {
           },
         ]
       }
+      badge_kinds: {
+        Row: {
+          badge: string
+          created_at: string
+          reclaim_on_delete: boolean
+          reclaim_on_revoke: boolean
+          slot_limit: number | null
+        }
+        Insert: {
+          badge: string
+          created_at?: string
+          reclaim_on_delete?: boolean
+          reclaim_on_revoke?: boolean
+          slot_limit?: number | null
+        }
+        Update: {
+          badge?: string
+          created_at?: string
+          reclaim_on_delete?: boolean
+          reclaim_on_revoke?: boolean
+          slot_limit?: number | null
+        }
+        Relationships: []
+      }
       blocked_users: {
         Row: {
           blocked_id: string
@@ -1129,6 +1153,39 @@ export type Database = {
           },
         ]
       }
+      profile_badges: {
+        Row: {
+          awarded_at: string
+          awarded_by: string | null
+          badge: string
+          id: string
+          ordinal: number | null
+          revoked_at: string | null
+          revoked_by: string | null
+          user_id: string | null
+        }
+        Insert: {
+          awarded_at?: string
+          awarded_by?: string | null
+          badge: string
+          id?: string
+          ordinal?: number | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          awarded_at?: string
+          awarded_by?: string | null
+          badge?: string
+          id?: string
+          ordinal?: number | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1740,6 +1797,32 @@ export type Database = {
         Returns: undefined
       }
       assert_friendship: { Args: { a: string; b: string }; Returns: undefined }
+      badge_grant_occupies_slot: {
+        Args: {
+          p_reclaim_on_delete: boolean
+          p_reclaim_on_revoke: boolean
+          p_revoked_at: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      badge_status: {
+        Args: { p_badge: string }
+        Returns: {
+          granted_ever: number
+          live: number
+          occupied: number
+          remaining: number
+          slot_limit: number
+        }[]
+      }
+      badges_for_profiles: {
+        Args: { p_user_ids: string[] }
+        Returns: {
+          badge: string
+          user_id: string
+        }[]
+      }
       block_user: { Args: { target_user_id: string }; Returns: undefined }
       broadcast_jam_state: {
         Args: { p_jam_room_id: string; p_payload: Json }
@@ -1830,6 +1913,7 @@ export type Database = {
         Args: { user_a: string; user_b: string }
         Returns: string
       }
+      grant_badge: { Args: { p_badge: string; p_user_id: string }; Returns: string }
       is_blocked_between: { Args: { a: string; b: string }; Returns: boolean }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
       is_ops: { Args: never; Returns: boolean }
@@ -1969,6 +2053,31 @@ export type Database = {
           title: string
         }[]
       }
+      ops_profile_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          avatar_url: string
+          bio: string
+          display_name: string
+          id: string
+          username: string
+        }[]
+      }
+      ops_tracks_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          audio_url: string
+          cover_art_url: string
+          created_at: string
+          description: string
+          duration_seconds: number
+          id: string
+          media_kind: string
+          thumbnail_url: string
+          title: string
+          video_url: string
+        }[]
+      }
       ops_users_overview: {
         Args: never
         Returns: {
@@ -2004,6 +2113,7 @@ export type Database = {
         Args: { p_details?: string; p_reason: string; p_story_id: string }
         Returns: undefined
       }
+      revoke_badge: { Args: { p_badge: string; p_user_id: string }; Returns: string }
       search_result_popularity: {
         Args: { p_ids: string[]; p_kind: string }
         Returns: {

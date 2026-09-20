@@ -37,6 +37,8 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
+import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
+import ProfileBadgeRail from '../../components/ProfileBadgeRail';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -151,6 +153,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
+  const [badges, setBadges] = useState<ProfileBadge[]>([]);
 
   // Instagram-style story ring on MY OWN avatar: my active stories are in the
   // story feed (stories_select includes self), so if I have a cluster the ring
@@ -225,7 +228,7 @@ export default function ProfileScreen() {
   // user navigates to another screen. Cards render no inline video (ADR-0001).
 
   const fetchProfileAndStats = useCallback(async (userId: string) => {
-    const [profRes, statsData, follow] = await Promise.all([
+    const [profRes, statsData, follow, badgeList] = await Promise.all([
       supabase
         .from('profiles')
         .select('id, username, display_name, bio, avatar_url, links')
@@ -233,6 +236,9 @@ export default function ProfileScreen() {
         .maybeSingle(),
       getProfileStats(userId),
       getFollowCounts(userId),
+      // Fail-safe inside, so it resolves to [] rather than rejecting the whole
+      // Promise.all and blanking a profile over a decoration.
+      fetchBadgesForUser(userId),
     ]);
     if (profRes.error) {throw new Error(profRes.error.message);}
     // profRes.data is null if the profile row hasn't been created yet for some
@@ -241,6 +247,7 @@ export default function ProfileScreen() {
     setProfile(profRes.data ? (profRes.data as ProfileRow) : null);
     setStats(statsData);
     setFollowCounts(follow);
+    setBadges(badgeList);
   }, []);
 
   const fetchPosts = useCallback(
@@ -549,6 +556,13 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.hero}>
+          {/*
+            The rail is absolutely positioned against this wrapper and is a
+            SIBLING of the avatar's touchable, never a child — see
+            ProfileBadgeRail. Wrapping rather than adding a row keeps the avatar
+            on the header's centre axis whether or not there are badges.
+          */}
+          <View style={styles.avatarSlot}>
           <TouchableOpacity
             style={styles.avatarRing}
             activeOpacity={0.85}
@@ -573,6 +587,8 @@ export default function ProfileScreen() {
               ) : null}
             </View>
           </TouchableOpacity>
+            <ProfileBadgeRail badges={badges} avatarSize={AVATAR_RING_D} />
+          </View>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -675,7 +691,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, error, loading, navigation]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -753,6 +769,9 @@ export default function ProfileScreen() {
   );
 }
 
+/** Avatar ring diameter. Shared with ProfileBadgeRail so the rail lands on its edge. */
+const AVATAR_RING_D = 116;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -789,13 +808,15 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 20,
   },
+  // Positioning context for ProfileBadgeRail. Carries the avatar's bottom
+  // margin so wrapping does not change the header's spacing.
+  avatarSlot: { position: 'relative', width: AVATAR_RING_D, marginBottom: 14 },
   avatarRing: {
-    width: 116,
-    height: 116,
-    borderRadius: 58,
+    width: AVATAR_RING_D,
+    height: AVATAR_RING_D,
+    borderRadius: AVATAR_RING_D / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
   },
   avatarRingGlow: {
     position: 'absolute',

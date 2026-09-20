@@ -33,6 +33,8 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
+import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
+import ProfileBadgeRail from '../../components/ProfileBadgeRail';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -166,6 +168,7 @@ export default function UserProfileScreen() {
   }, []);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [badges, setBadges] = useState<ProfileBadge[]>([]);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
@@ -233,7 +236,7 @@ export default function UserProfileScreen() {
   }, [playback.activePostId, posts, playback.setQueue]);
 
   const fetchProfileAndStats = useCallback(async (uid: string) => {
-    const [profRes, statsData, follow] = await Promise.all([
+    const [profRes, statsData, follow, badgeList] = await Promise.all([
       supabase
         .from('profiles')
         .select('id, username, display_name, bio, avatar_url')
@@ -241,11 +244,15 @@ export default function UserProfileScreen() {
         .maybeSingle(),
       getProfileStats(uid),
       getFollowCounts(uid),
+      // Fail-safe inside, so it resolves to [] rather than rejecting the whole
+      // Promise.all and blanking a profile over a decoration.
+      fetchBadgesForUser(uid),
     ]);
     if (profRes.error) { throw new Error(profRes.error.message); }
     setProfile(profRes.data ? (profRes.data as ProfileRow) : null);
     setStats(statsData);
     setFollowCounts(follow);
+    setBadges(badgeList);
   }, []);
 
   const fetchPosts = useCallback(
@@ -663,6 +670,12 @@ export default function UserProfileScreen() {
         </View>
 
         <View style={styles.hero}>
+          {/*
+            Sibling of the avatar's touchable and absolutely positioned against
+            this wrapper — see ProfileBadgeRail. Keeps the avatar on the header's
+            centre axis whether or not there are badges.
+          */}
+          <View style={styles.avatarSlot}>
           <TouchableOpacity
             style={styles.avatarRing}
             activeOpacity={0.85}
@@ -687,6 +700,8 @@ export default function UserProfileScreen() {
               ) : null}
             </View>
           </TouchableOpacity>
+            <ProfileBadgeRail badges={badges} avatarSize={RING_D} />
+          </View>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -776,7 +791,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -1012,9 +1027,12 @@ const styles = StyleSheet.create({
   },
 
   hero: { alignItems: 'center', paddingTop: 8, paddingBottom: 16 },
+  // Positioning context for ProfileBadgeRail. Carries the avatar's bottom margin
+  // so wrapping does not change the header's spacing.
+  avatarSlot: { position: 'relative', width: RING_D, marginBottom: 12 },
   avatarRing: {
     width: RING_D, height: RING_D, borderRadius: RING_D / 2,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    alignItems: 'center', justifyContent: 'center',
   },
   avatarRingGlow: {
     position: 'absolute', width: RING_D, height: RING_D, borderRadius: RING_D / 2,

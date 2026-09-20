@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-14
+last_verified: 2026-09-20
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 96 migration(s) in `supabase/migrations/`.
+Reconstructed from 99 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-42 table(s).
+44 table(s).
 
 ### `activity_notifications`
 
@@ -95,6 +95,35 @@ RLS enabled · defined in `20260616000000_albums_and_playlist_visibility.sql`
 **Indexes**
 
 - `albums_uploader_idx` `(uploader_id, created_at desc)`
+
+### `badge_kinds`
+
+RLS enabled · defined in `20260919000000_profile_badges_first_100.sql`
+
+| Column | Definition |
+|---|---|
+| `badge` | `text primary key` |
+| `slot_limit` | `integer` |
+| `slots_reclaimable` | `boolean not null default false` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `constraint badge_kinds_slot_limit_positive
+    check (slot_limit is null or slot_limit >= 1)`
+- `constraint badge_kinds_reclaim_needs_a_cap
+    check (slot_limit is not null or slots_reclaimable = false)`
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reclaim_on_revoke` | `boolean not null default false` | `20260920000000_badge_slot_reclaim_split.sql` |
+| `reclaim_on_delete` | `boolean not null default false` | `20260920000000_badge_slot_reclaim_split.sql` |
+
+**Triggers**
+
+- `trg_badge_kinds_guard_reclaim` — before update (`20260919000000_profile_badges_first_100.sql`)
 
 ### `blocked_users`
 
@@ -660,6 +689,37 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_posts_clamp_counters_on_insert` — before insert (`20260722160000_counters_are_not_client_writable.sql`)
 - `notify_track_credits` — after insert (`20260806130000_credit_accept_decline.sql`)
 
+### `profile_badges`
+
+RLS enabled · defined in `20260919000000_profile_badges_first_100.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `user_id` | `uuid references auth.users(id) on delete set null` |
+| `badge` | `text not null references public.badge_kinds(badge)` |
+| `ordinal` | `integer` |
+| `awarded_at` | `timestamptz not null default now()` |
+| `awarded_by` | `uuid references auth.users(id) on delete set null` |
+| `revoked_at` | `timestamptz` |
+| `revoked_by` | `uuid references auth.users(id) on delete set null` |
+
+**Table constraints**
+
+- `constraint profile_badges_ordinal_positive check (ordinal is null or ordinal >= 1)`
+
+**Indexes**
+
+- **unique** `profile_badges_badge_ordinal_key` `(badge, ordinal)`
+- **unique** `profile_badges_live_holder_key` `(user_id, badge) where revoked_at is null and user_id is not null`
+- `profile_badges_live_lookup_idx` `(badge, user_id) where revoked_at is null and user_id is not null`
+
+**Triggers**
+
+- `trg_profile_badges_no_orphan_revoke` — before update (`20260920000000_badge_slot_reclaim_split.sql`)
+- `trg_profile_badges_no_orphan_delete` — before delete (`20260920000000_badge_slot_reclaim_split.sql`)
+- `trg_profile_badges_no_truncate` — before truncate (`20260920000000_badge_slot_reclaim_split.sql`)
+
 ### `profiles`
 
 RLS enabled · defined in `00000000000000_baseline_schema.sql`
@@ -1003,6 +1063,7 @@ same row-level security policies that gate ordinary reads.
 
 | Trigger | Table | Timing | Migration |
 |---|---|---|---|
+| `trg_badge_kinds_guard_reclaim` | `badge_kinds` | before update | `20260919000000_profile_badges_first_100.sql` |
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
@@ -1019,6 +1080,9 @@ same row-level security policies that gate ordinary reads.
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
 | `notify_track_credits` | `posts` | after insert | `20260806130000_credit_accept_decline.sql` |
+| `trg_profile_badges_no_orphan_revoke` | `profile_badges` | before update | `20260920000000_badge_slot_reclaim_split.sql` |
+| `trg_profile_badges_no_orphan_delete` | `profile_badges` | before delete | `20260920000000_badge_slot_reclaim_split.sql` |
+| `trg_profile_badges_no_truncate` | `profile_badges` | before truncate | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
