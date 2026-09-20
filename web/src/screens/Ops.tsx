@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { fetchWaitlist, recordSendResult, type WaitlistEntry } from '../data/waitlist';
 import { sendInvite } from '../data/invite';
@@ -7,6 +8,14 @@ import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
 import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
 import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
+import {
+  FIRST_100,
+  fetchBadgeHolders,
+  fetchBadgeStatus,
+  grantBadge,
+  revokeBadge,
+  type BadgeStatus,
+} from '../data/profileBadges';
 
 /**
  * Waitlist ops.
@@ -42,6 +51,10 @@ export function Ops() {
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [showReviewed, setShowReviewed] = useState(false);
   const [reportBusyId, setReportBusyId] = useState<string | null>(null);
+  const [first100, setFirst100] = useState<Set<string> | null>(null);
+  const [first100Status, setFirst100Status] = useState<BadgeStatus | null>(null);
+  const [badgeBusyId, setBadgeBusyId] = useState<string | null>(null);
+  const [badgeError, setBadgeError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -65,6 +78,53 @@ export function Ops() {
         setUsersError(e?.message ?? 'Could not load users.');
       });
   }, []);
+
+  // Depends on the roster, so it runs after `users` lands rather than on mount.
+  // Deliberately NOT folded into fetchOpsUsers: the roster is a different function
+  // with a different shape, and threading badges through it would put award-order
+  // columns one join away from a surface that has no business holding them.
+  const loadBadges = useCallback((roster: OpsUser[]) => {
+    setBadgeError(null);
+    Promise.all([fetchBadgeHolders(roster.map(u => u.id), FIRST_100), fetchBadgeStatus(FIRST_100)])
+      .then(([holders, status]) => {
+        setFirst100(holders);
+        setFirst100Status(status);
+      })
+      .catch(e => {
+        setFirst100(new Set());
+        setBadgeError(e?.message ?? 'Could not load First 100 badges.');
+      });
+  }, []);
+
+  useEffect(() => {
+    if (users && users.length > 0) loadBadges(users);
+  }, [users, loadBadges]);
+
+  // Optimistic would be wrong here: the cap lives in the database, so the only
+  // honest answer to "did that work" is the one the grant returns. A button that
+  // flips to "First 100" and then silently isn't would be worse than a slow one.
+  const handleToggleBadge = useCallback(
+    async (u: OpsUser) => {
+      if (!first100) return;
+      setBadgeBusyId(u.id);
+      setBadgeError(null);
+      try {
+        const held = first100.has(u.id);
+        const result = held ? await revokeBadge(u.id, FIRST_100) : await grantBadge(u.id, FIRST_100);
+        if (result === 'full') {
+          setBadgeError(
+            'Every slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.',
+          );
+        }
+        if (users) loadBadges(users);
+      } catch (e) {
+        setBadgeError(e instanceof Error ? e.message : 'Could not change that badge.');
+      } finally {
+        setBadgeBusyId(null);
+      }
+    },
+    [first100, users, loadBadges],
+  );
 
   const loadReports = useCallback(() => {
     setReportsError(null);
@@ -490,9 +550,29 @@ export function Ops() {
         {users !== null && users.length > 0 && (
           <p className="hint">
             {users.length} account{users.length === 1 ? '' : 's'}
+            {first100Status && (
+              <>
+                {' · '}
+                {first100Status.live} First 100 live
+                {first100Status.remaining != null && (
+                  <>
+                    {', '}
+                    {first100Status.remaining} slot
+                    {first100Status.remaining === 1 ? '' : 's'} left
+                  </>
+                )}
+              </>
+            )}
           </p>
         )}
       </header>
+
+      {badgeError && (
+        <div className="empty panel">
+          <p className="empty__title">First 100</p>
+          <p className="hint">{badgeError}</p>
+        </div>
+      )}
 
       {usersError && (
         <div className="empty panel">
@@ -516,6 +596,7 @@ export function Ops() {
                     kind='star', so they are the same relationship under a different word. */}
                 <th className="num">Stars</th>
                 <th className="num">Friends</th>
+                <th>First 100</th>
               </tr>
             </thead>
             <tbody>
@@ -535,9 +616,41 @@ export function Ops() {
                     )}
                   </td>
                   <td>{formatDate(u.createdAt)}</td>
-                  <td className="num">{u.tracksCount}</td>
+                  {/* The count is the way in to reviewing the work behind it. Zero stays
+                      plain text — a link to an empty page is a dead end, not an affordance. */}
+                  <td className="num">
+                    {u.tracksCount > 0 ? (
+                      <Link className="linkish" to={`/ops/user/${u.id}`}>
+                        {u.tracksCount}
+                      </Link>
+                    ) : (
+                      u.tracksCount
+                    )}
+                  </td>
                   <td className="num">{u.starsCount}</td>
                   <td className="num">{u.friendsCount}</td>
+                  <td>
+                    {first100 === null ? (
+                      <span className="hint">unavailable</span>
+                    ) : (
+                      <Button
+                        variant={first100.has(u.id) ? 'secondary' : 'ghost'}
+                        size="sm"
+                        busy={badgeBusyId === u.id}
+                        // Out of slots, nobody new can be granted — but an existing
+                        // holder must still be revocable, or a mistaken grant is
+                        // permanent. Hence the holder check, not a flat disable.
+                        disabled={
+                          !first100.has(u.id) &&
+                          first100Status?.remaining != null &&
+                          first100Status.remaining <= 0
+                        }
+                        onClick={() => handleToggleBadge(u)}
+                      >
+                        {first100.has(u.id) ? 'Revoke' : 'Grant'}
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

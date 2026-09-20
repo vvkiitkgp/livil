@@ -13,6 +13,14 @@ export const COLORS = {
   purpleLight: '#C9B6FF',  // accent text on dark
   purpleDim: 'rgba(139, 61, 255, 0.15)',
   purpleGlow: 'rgba(139, 61, 255, 0.3)',
+  // Badge gold. DISTINCT FROM `warning` (#F59E0B) on purpose: amber already means
+  // "pending / unconfirmed" in this app — CollabAvatar draws a dashed amber ring
+  // around an avatar for an unaccepted credit, which is the very surface the First
+  // 100 badge sits on. A badge in the same tone would read as "not confirmed yet".
+  // Champagne is cooler and less orange, and means exactly one thing: awarded.
+  gold: '#E8B84B',
+  goldLight: '#FFEDB0',  // bevel highlight, top of the seal gradient
+  goldDeep: '#8A5E12',   // bevel floor and the seal's outline
   white: '#FFFFFF',
   // True black, distinct from `bg` (#0A0A0F). Exists for Apple's Sign in with
   // Apple button, whose appearance Apple specifies exactly: on the white

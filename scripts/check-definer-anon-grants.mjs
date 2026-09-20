@@ -145,12 +145,26 @@ const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort();
 const declared = new Map();
 /** names revoked from anon anywhere. */
 const revokedFromAnon = new Set();
+/**
+ * name -> file of the LAST `revoke ... from authenticated`, and of the LAST
+ * `grant ... to authenticated`, for CLIENT_UNREACHABLE below.
+ *
+ * BY FILENAME, NOT A FLAT SET. A set can only answer "was this ever revoked", and a later
+ * migration granting the permission back would leave the earlier revoke in it — so the
+ * lint would pass while the endpoint was open. That failure mode is theoretical for the
+ * `anon` rule (granting to anon is rare and conspicuous) and entirely ordinary for this
+ * one. Filenames sort in apply order, so the last one wins, same as `dropped`.
+ */
+const revokedFromAuthenticated = new Map();
+const grantedToAuthenticated = new Map();
 /** name -> file of the LAST drop. Compared against the last declaration by
  *  filename, which sorts in apply order, so a function dropped after its final
  *  CREATE is gone and a function re-created after a drop is not. */
 const dropped = new Map();
 /** `REVOKE ... FROM public` sightings, for the "this is not a guard" hint. */
 const revokedFromPublicOnly = new Map();
+/** migrations containing a blanket grant to authenticated over all of `public`. */
+const blanketGrants = [];
 
 for (const f of files) {
   const raw = readFileSync(join(MIGRATIONS, f), 'utf8');
@@ -174,8 +188,26 @@ for (const f of files) {
   )) {
     const name = r[2].toLowerCase();
     const roles = r[3].toLowerCase();
+    if (/\bauthenticated\b/.test(roles)) { revokedFromAuthenticated.set(name, f); }
     if (/\banon\b/.test(roles)) { revokedFromAnon.add(name); }
     else if (/\bpublic\b/.test(roles)) { revokedFromPublicOnly.set(name, f); }
+  }
+
+  // GRANT [EXECUTE|ALL] ON FUNCTION public.name(...) TO roles
+  for (const g of sql.matchAll(
+    /grant\s+(?:execute|all)[\s\S]{0,80}?on\s+function\s+(?:public\.)?("?)([a-z0-9_]+)\1\s*\([^)]*\)\s*to\s+([a-z_, ]+)/gi,
+  )) {
+    if (/\bauthenticated\b/.test(g[3].toLowerCase())) {
+      grantedToAuthenticated.set(g[2].toLowerCase(), f);
+    }
+  }
+
+  // A blanket `grant execute on all functions in schema public to authenticated` inside a
+  // MIGRATION would defeat every CLIENT_UNREACHABLE entry at once and match no per-function
+  // pattern. CI issues one, but from the workflow, not from a migration — so seeing one
+  // here means the schema itself re-opens them.
+  if (/grant\s+(?:execute|all)[\s\S]{0,60}?on\s+all\s+functions\s+in\s+schema\s+public[\s\S]{0,40}?to\s+[a-z_, ]*\bauthenticated\b/i.test(sql)) {
+    blanketGrants.push(f);
   }
 
   for (const d of sql.matchAll(
@@ -183,6 +215,70 @@ for (const f of files) {
   )) {
     dropped.set(d[2].toLowerCase(), f);
   }
+}
+
+/**
+ * Functions NO CLIENT may execute — not anon, not authenticated.
+ *
+ * Almost every function here is meant to be callable by a signed-in user, which is why the
+ * rule above is about `anon` alone. A handful are pure internals: called only from inside
+ * other functions, with the definer's rights, so no caller needs a grant and exposing one
+ * only publishes another PostgREST endpoint.
+ *
+ * WHY THIS NEEDS A TEXT LINT TOO, and cannot be a runtime assertion — the same fidelity
+ * problem as the anon rule, in the opposite direction. Supabase's default privilege grants
+ * EXECUTE to `authenticated` on every new function in `public`, so DECLINING TO GRANT
+ * achieves nothing; only an explicit revoke does. CI's Postgres carries no such default, so
+ * a migration that drops its revoke looks identical to one that keeps it — and worse, CI
+ * then issues its own blanket `grant execute on all functions ... to authenticated` after
+ * migrations, which re-opens it. A live `has_function_privilege` check therefore cannot
+ * fail in the direction that matters. The mistake is only visible in the text.
+ */
+const CLIENT_UNREACHABLE = new Map([
+  ['badge_grant_occupies_slot',
+   'pure predicate over its 4 arguments; called only inside grant_badge and badge_status, both SECURITY DEFINER'],
+]);
+
+const unreachableViolations = [];
+for (const [name, why] of CLIENT_UNREACHABLE) {
+  if (!declared.has(name)) { continue; }          // not created yet, or removed
+  if ((dropped.get(name) ?? '') > declared.get(name).file) { continue; }
+  const revokedIn = revokedFromAuthenticated.get(name) ?? '';
+  const grantedIn = grantedToAuthenticated.get(name) ?? '';
+  if (revokedIn && revokedIn > grantedIn) { continue; }
+  unreachableViolations.push({ name, why, revokedIn, grantedIn });
+}
+
+if (blanketGrants.length) {
+  console.error(
+    '\nFAIL  a migration grants EXECUTE on ALL functions in schema public to authenticated\n',
+  );
+  for (const f of blanketGrants) { console.error(`  ✗ ${f}`); }
+  console.error(
+    '\n  That re-opens every CLIENT_UNREACHABLE function at once and matches no\n' +
+    '  per-function revoke, so the rule below cannot see it. Grant per function.\n',
+  );
+  process.exit(1);
+}
+
+if (unreachableViolations.length) {
+  console.error('\nFAIL  functions that no client may execute are reachable by authenticated\n');
+  for (const v of unreachableViolations) {
+    console.error(`  ✗ public.${v.name}   — ${v.why}`);
+    if (v.grantedIn && v.grantedIn > v.revokedIn) {
+      console.error(
+        `      ${v.grantedIn} GRANTS it back` +
+        (v.revokedIn ? ` after ${v.revokedIn} revoked it.` : ' and nothing revokes it.'),
+      );
+    }
+    console.error(
+      `      Add:  revoke execute on function public.${v.name}(...) from authenticated;\n` +
+      '      Not granting is NOT enough: Supabase grants EXECUTE to `authenticated` by\n' +
+      '      default on every new function in public, so the absence of a grant leaves\n' +
+      '      the default in place. Only an explicit revoke closes it.\n',
+    );
+  }
+  process.exit(1);
 }
 
 const violations = [];
@@ -222,5 +318,6 @@ if (violations.length) {
 const definerCount = [...declared.values()].filter(d => d.definer).length;
 console.log(
   `PASS  ${definerCount} SECURITY DEFINER function(s); ` +
-  `${revokedFromAnon.size} revoked from anon, ${BASELINE.size} baselined`,
+  `${revokedFromAnon.size} revoked from anon, ${BASELINE.size} baselined; ` +
+  `${CLIENT_UNREACHABLE.size} client-unreachable function(s) still revoked from authenticated`,
 );

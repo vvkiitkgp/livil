@@ -344,6 +344,30 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/track-tags.test.sql
 
+      # Three First 100 rules that all fail SILENTLY: a cap enforced anywhere but the
+      # database produces a 101st badge nobody notices; a policy added to profile_badges
+      # in good faith publishes the award order while every screen still looks right; and
+      # ON DELETE CASCADE quietly returns a deleted holder's slot to the pool, so "first
+      # 100" drifts into meaning something else. Asserts all three plus the ops boundary.
+      - name: First 100 badge tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/first-100-badges.test.sql
+
+      # A count and the list behind it were computed under different authority — the
+      # roster's count is SECURITY DEFINER, the list ran as the operator — so a block
+      # between them made an artist with 19 tracks render as "No uploads", with no error.
+      # Pins that an operator reviews the work regardless of blocks, that the two numbers
+      # agree, and that nobody else can call it.
+      - name: Ops track review tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/ops-track-review.test.sql
+
       # Feed suppression fails SILENTLY when it fails. `fetch_home_feed` is SECURITY
       # INVOKER, so a missing own-row SELECT policy on post_impressions or post_views
       # makes the join read zero rows: the feed still renders, the shape is still right,
