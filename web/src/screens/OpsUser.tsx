@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { sendBadgePush } from '../data/push';
 import { formatDate, formatDuration } from '../format';
 import {
   fetchArtistForOps,
@@ -103,6 +104,10 @@ export function OpsUser() {
     try {
       const isHeld = held[badge] ?? false;
       const result = isHeld ? await revokeBadge(userId, badge) : await grantBadge(userId, badge);
+      // Only on a real grant. 'already' means they had it — re-announcing would buzz
+      // somebody's phone about news they got days ago — and a revoke is not news we have
+      // decided to send at all.
+      if (result === 'granted') { void sendBadgePush(userId, label); }
       // Named in every message: with two badges, "Granted." leaves you guessing which.
       if (result === 'full') {
         setBadgeError(

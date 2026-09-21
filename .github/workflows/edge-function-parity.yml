@@ -55,6 +55,32 @@ jobs:
       - name: Self-test parsing logic
         run: node scripts/check-edge-functions.mjs --self-test
 
+      # send-push's authorize() IS the perimeter: it decides who may make anyone's phone
+      # buzz, and its own header says a wrong change there "silently opens" it. The suite
+      # guarding those gates existed and was run by NOTHING — written, then never executed
+      # by CI. Found while adding the badge_granted gate.
+      #
+      # --no-config because Deno otherwise reads the repo's root tsconfig.json, whose
+      # `jsx: react-native` it rejects. The function has no imports needing permissions, so
+      # the default sandbox is correct; do not add --allow-all to "make it work".
+      #
+      # --lock/--frozen because --no-config ALSO disables lockfile discovery: without it
+      # every run resolves jsr:@std/assert and jsr:@supabase/supabase-js (plus its npm
+      # transitive) to whatever is latest at that moment, unpinned, on a pull_request
+      # trigger. Small blast radius — one sandboxed step, no secrets — but it is still
+      # unpinned third-party code on every PR. Do NOT "fix" --no-config by adding a
+      # deno.json instead: that trips a different failure, because the flag is also
+      # suppressing npm/node_modules discovery.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: send-push authorization tests
+        run: |
+          deno test --no-config \
+            --lock=supabase/functions/send-push/deno.lock --frozen \
+            supabase/functions/send-push/index.test.ts
+
       # The LIVE check. Gated OFF for pull_request so the account-level PAT is never exposed to
       # PR-branch-controlled code — see the SECURITY note on the triggers above.
       # The token is a Supabase personal access token (account-level), NOT a project API key.
