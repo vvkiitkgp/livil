@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { sendBadgePush } from '../data/push';
 import { fetchWaitlist, recordSendResult, type WaitlistEntry } from '../data/waitlist';
 import { sendInvite } from '../data/invite';
 import { formatDate } from '../format';
@@ -120,6 +121,10 @@ export function Ops() {
       try {
         const held = holders[badge]?.has(u.id) ?? false;
         const result = held ? await revokeBadge(u.id, badge) : await grantBadge(u.id, badge);
+        // Only on a real grant. 'already' means they had it — re-announcing would buzz
+        // somebody's phone about news they got days ago — and a revoke is not news we have
+        // decided to send at all.
+        if (result === 'granted') { void sendBadgePush(u.id, label); }
         if (result === 'full') {
           setBadgeError(
             `Every ${label} slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.`,

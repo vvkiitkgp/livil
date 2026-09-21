@@ -39,11 +39,17 @@
 
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
-// The 14 kinds pushDispatch.ts can emit. Anything else is rejected.
-const KINDS = new Set([
+// The kinds a client may emit. Anything else is rejected.
+//
+// 14 come from pushDispatch.ts on the mobile app. `badge_granted` is the first that comes
+// from the OPS DASHBOARD instead: a badge is awarded by an operator on the web, not by
+// anything happening on the recipient's device, so there is no phone in the loop to
+// dispatch it the way every other kind is dispatched.
+export const KINDS = new Set([
   'friend_request', 'friend_accepted', 'new_follower', 'new_fan', 'message',
   'reaction', 'jam_invite_dm', 'jam_started', 'jam_join', 'jam_ended',
   'activity_like', 'activity_comment', 'activity_repost', 'activity_milestone',
+  'badge_granted',
 ]);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,7 +59,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function channelFor(kind: string): string {
   if (kind === 'message' || kind === 'reaction') return 'messages';
   if (kind.startsWith('jam_')) return 'jam';
-  if (kind.startsWith('activity_')) return 'activity';
+  // Explicit rather than a prefix match: badge_granted lands in the activity feed and
+  // belongs on the same channel, but it does not carry the `activity_` prefix.
+  if (kind.startsWith('activity_') || kind === 'badge_granted') return 'activity';
   return 'social'; // friend_request, friend_accepted, new_follower, new_fan
 }
 
@@ -75,6 +83,10 @@ export function defaultBody(kind: string): string {
     case 'jam_started': return 'started a Jam';
     case 'jam_join': return 'joined your Jam';
     case 'jam_ended': return 'ended the Jam';
+    // Deliberately generic. The dashboard sends its own title/body naming the badge; this
+    // is only the floor if it ever stops doing so, and naming a badge we did not verify
+    // here would be asserting something this function cannot check.
+    case 'badge_granted': return 'You received a badge on Livil';
     default: return 'sent you a notification';
   }
 }
@@ -129,6 +141,52 @@ export async function isCategoryMuted(
   return (data as Record<string, unknown>)[category] === false;
 }
 
+/**
+ * Who may announce a badge, and about whom.
+ *
+ * TWO CONDITIONS, BOTH REQUIRED — and they do different jobs:
+ *
+ *   1. THE AUTHORIZATION. The actor is in `ops_users`. Granting is ops-only at the
+ *      database level (`grant_badge` raises `not_authorized` otherwise), so anyone else
+ *      sending this is describing something they could not have done. This condition, and
+ *      only this one, is what closes the spam vector.
+ *   2. TRACEABILITY, not authorization — worth being precise, because the next reader will
+ *      take this as a reason to look no further. The recipient must hold a live badge. An
+ *      operator determined to lie controls both sides (grant, push, revoke), so this cannot
+ *      stop them. What it buys is that a false announcement leaves a RECORD: awarded_by,
+ *      revoked_by, a consumed slot on a capped badge, and an in-app notice written by
+ *      notify_badge_granted. Worth keeping for that, not for the gate.
+ *
+ * `admin` is the service-role client, so both reads bypass RLS — which is the point:
+ * `ops_users` and `profile_badges` are both deny-all, and neither is readable by the
+ * operator's own session. This check IS the perimeter, not a convenience.
+ *
+ * FAILS CLOSED. A missing row yields count 0; an errored read yields null, and `?? 0`
+ * turns that into a denial. That polarity is deliberate and is the opposite of
+ * isCategoryMuted below, which allows by default — a preference that fails closed silences
+ * someone with no error, whereas an authorization that fails open lets anyone in.
+ *
+ * DOES NOT CHECK WHICH BADGE. An ops caller who can grant `verified` outright gains nothing
+ * by mislabelling it, so checking the specific badge would buy precision, not security. (It
+ * would be safe to add — a `.eq('badge', …)` NARROWS the query, so a caller naming a badge
+ * the recipient lacks is denied. It is simply not load-bearing.)
+ */
+async function authorizeBadgeGranted(
+  admin: SupabaseClient,
+  actor: string,
+  recipient: string,
+): Promise<boolean> {
+  const [ops, badge] = await Promise.all([
+    admin.from('ops_users').select('user_id', { count: 'exact', head: true }).eq('user_id', actor),
+    admin
+      .from('profile_badges')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', recipient)
+      .is('revoked_at', null),
+  ]);
+  return (ops.count ?? 0) > 0 && (badge.count ?? 0) > 0;
+}
+
 // ── Authorization, per kind. DENY BY DEFAULT. ───────────────────────────────
 // Returns true only if `actor` is allowed to notify `recipient` for `kind`. Uses the
 // service-role client to read relationship tables (RLS-independent), so the checks here
@@ -140,6 +198,24 @@ export async function authorize(
   actor: string,
   recipient: string,
 ): Promise<boolean> {
+  // CHECKED BEFORE THE SELF-TARGET SHORTCUT, deliberately, and it is the only kind that
+  // is. `selfTargetAllowed` is a heuristic standing in for "we have no stronger check" —
+  // for a badge we do: the actor must be an operator, and the recipient must really hold
+  // the badge. Both are verifiable facts, and both are strictly stronger than the
+  // heuristic. Letting the shortcut run first would mean an operator granting a badge to
+  // THEMSELVES (which happens — the first account tested with is usually your own) fell
+  // through to `selfTargetAllowed('badge_granted')`, and whichever way that answered would
+  // be wrong: false breaks a legitimate grant, true lets ANY signed-in user push
+  // themselves a fake badge notice.
+  //
+  // THE UNCONDITIONAL RETURN IS LOAD-BEARING. Change this to fall through on false —
+  // `if (kind === 'badge_granted' && await authorizeBadgeGranted(...)) return true;` — and
+  // a denied self-targeting call drops into the shortcut below, where selfTargetAllowed
+  // answers instead. The whole argument above inverts.
+  if (kind === 'badge_granted') {
+    return await authorizeBadgeGranted(admin, actor, recipient);
+  }
+
   if (actor === recipient) return selfTargetAllowed(kind);
 
   switch (kind) {
@@ -308,8 +384,19 @@ export async function handler(req: Request): Promise<Response> {
     channelId: channelFor(kind),
     title,
     body,
-    actorUserId: actor,
   };
+  // WITHHELD FOR badge_granted, and only for it. notify_badge_granted writes the in-app
+  // notification with a NULL actor on purpose — a badge comes from Livil, and which staff
+  // account granted it is ops-only (it lives in profile_badges.awarded_by). Shipping the
+  // operator's uuid in the push payload would undo that at the transport: the client copies
+  // every string key into tapData, and `profiles` is readable by any authenticated user, so
+  // resolving it names an operator. `ops_users` is deny-all precisely so the roster is not
+  // enumerable.
+  //
+  // Nothing consumes it for this kind: the chat-grouping fallback that reads actorUserId is
+  // inside a CHAT_KINDS branch badge_granted never enters, and the APNs thread-id already
+  // falls back to `kind`.
+  if (kind !== 'badge_granted') { data.actorUserId = actor; }
   if (payload.data?.route) data.route = payload.data.route;
   for (const [k, v] of Object.entries(payload.data?.params ?? {})) {
     if (typeof v === 'string' && k !== 'route') data[k] = v;

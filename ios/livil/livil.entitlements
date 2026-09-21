@@ -10,5 +10,30 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- Push notifications. Without this entitlement iOS refuses to issue an APNs token
+	     and does so SILENTLY: registerForRemoteNotifications succeeds, no token arrives,
+	     and device_tokens stays empty. That is the state this app shipped in — 48 Android
+	     tokens and zero iOS. Firebase is configured and the JS registration path already
+	     runs; the entitlement is the missing half.
+
+	     `development` IS NOT "correct for TestFlight" — TestFlight builds are App Store
+	     distribution builds and use the PRODUCTION APNs environment. Committing
+	     `development` is still the conventional choice, but only because Xcode-managed
+	     signing substitutes the value from the distribution provisioning profile at sign
+	     time. That substitution is not yet guaranteed here: CODE_SIGN_STYLE is unset (so
+	     Automatic by default) and Release still signs with "iPhone Developer". If signing
+	     ever moves to manual or a CI pipeline with explicit profiles, the literal
+	     `development` ships, the device registers against the APNs SANDBOX, FCM sends to
+	     production, and every iOS push silently disappears — the same silence, from the
+	     other direction, as the missing entitlement this fixes. Verify on a real archive:
+
+	         codesign -d --entitlements :- <Release .app>   # must read `production`
+
+	     The matching Push Notifications capability must ALSO be enabled on the com.livil
+	     App ID in the developer portal, and an APNs auth key (.p8) uploaded to the Firebase
+	     iOS app. Without that key getToken() fails and device_tokens stays empty with no
+	     error — both halves are required, exactly as with Sign in with Apple above. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>
