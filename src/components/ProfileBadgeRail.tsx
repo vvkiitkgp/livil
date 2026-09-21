@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import FirstHundredBadge from './FirstHundredBadge';
+import VerifiedBadge from './VerifiedBadge';
 import type { ProfileBadge } from '../services/profileBadges';
 
 /**
@@ -44,7 +45,39 @@ const BADGES: Record<ProfileBadge, BadgeSpec> = {
     label: 'First 100 badge',
     render: size => <FirstHundredBadge size={size} />,
   },
+  verified: {
+    title: 'Verified',
+    line: 'Livil has confirmed this is who they say they are.',
+    label: 'Verified badge',
+    render: size => <VerifiedBadge size={size} />,
+  },
 };
+
+/**
+ * BADGE PRECEDENCE, highest first — First 100 outranks Verified.
+ *
+ * Two jobs, and they must not diverge. Here it fixes the render order so everyone holding
+ * the same pair sees the same arrangement. Elsewhere — a feed card or a comment, where
+ * there is room for ONE mark beside a username — the same ranking decides which one wins.
+ * Both readings have to come from this array, or a profile and a feed card will disagree
+ * about who someone is.
+ *
+ * Badges outside this list sort last in their own order, so adding one to BADGES and
+ * forgetting this array degrades to "appears at the bottom" rather than "disappears".
+ */
+export const BADGE_PRECEDENCE: ProfileBadge[] = ['first_100', 'verified'];
+
+/** The highest-ranked badge someone holds, for surfaces with room for exactly one. */
+export function topBadge(badges: ProfileBadge[]): ProfileBadge | null {
+  return BADGE_PRECEDENCE.find(b => badges.includes(b))
+    ?? (badges.length > 0 ? badges[0] : null);
+}
+
+function railOrder(a: ProfileBadge, b: ProfileBadge): number {
+  const ia = BADGE_PRECEDENCE.indexOf(a);
+  const ib = BADGE_PRECEDENCE.indexOf(b);
+  return (ia < 0 ? BADGE_PRECEDENCE.length : ia) - (ib < 0 ? BADGE_PRECEDENCE.length : ib);
+}
 
 const BADGE_SIZE = 24;
 /** Gap between the avatar's right edge and the rail. */
@@ -86,7 +119,7 @@ export default function ProfileBadgeRail({
   return (
     <>
       <View style={railStyle} pointerEvents="box-none">
-        {badges.map(badge => (
+        {[...badges].sort(railOrder).map(badge => (
           <Pressable
             key={badge}
             onPress={() => setOpen(badge)}
