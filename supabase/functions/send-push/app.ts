@@ -106,10 +106,33 @@ type PushRequest = {
   data?: { route?: string; params?: Record<string, string> };
 };
 
+/**
+ * CORS, needed only because a BROWSER now calls this.
+ *
+ * Every caller until badge_granted was React Native, which issues no preflight — so the
+ * function never handled OPTIONS and nobody noticed. The ops dashboard is a browser: it
+ * sends `OPTIONS` first, got `405 method_not_allowed`, and never sent the POST at all.
+ * Observed in production as two 405s exactly matching two badge grants, with no error
+ * anywhere on the client because a failed preflight is not an application error.
+ *
+ * `*` is correct here rather than lax: the function authenticates from the Authorization
+ * header on every request and authorizes per kind, so the origin is not part of the
+ * perimeter. Allowing one origin would only mean re-deploying whenever the dashboard moves
+ * between localhost, a Vercel preview and production — three origins that are all the same
+ * caller. Note this endpoint is not cookie-authenticated, so `*` carries none of the
+ * credentialed-request risk it would on a session-cookie API.
+ */
+const CORS_HEADERS: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
+  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-max-age': '86400',
+};
+
 function json(status: number, payload: Record<string, unknown>): Response {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...CORS_HEADERS },
   });
 }
 
@@ -309,6 +332,12 @@ function checkRateLimit(actor: string): boolean {
 }
 
 export async function handler(req: Request): Promise<Response> {
+  // Preflight, BEFORE the method check — a browser sends this before every cross-origin
+  // POST carrying an Authorization header, and answering 405 stops the real request from
+  // ever being made. 204 with the headers above is the whole contract.
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
   // 1. AUTHENTICATION — resolve the actor from the JWT, not the body.
