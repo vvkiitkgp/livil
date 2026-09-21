@@ -16,6 +16,7 @@ import {
   isCategoryMuted,
   isValidKind,
   KINDS,
+  handler,
   isValidRecipient,
   selfTargetAllowed,
 } from './app.ts';
@@ -327,4 +328,35 @@ Deno.test('badge_granted: a revoked badge cannot be announced', async () => {
     return { count: 0 };
   });
   assertEquals(await authorize(admin, 'badge_granted', A, B), false);
+});
+
+// ── CORS: the ops dashboard is the first BROWSER caller ─────────────────────
+//
+// Every caller before badge_granted was React Native, which issues no preflight, so the
+// function never handled OPTIONS. The dashboard's grant produced `OPTIONS | 405` in
+// production and the POST was never sent — a failed preflight raises no application error,
+// so the only trace was the edge log.
+
+Deno.test('OPTIONS preflight is answered, not rejected as a bad method', async () => {
+  const res = await handler(new Request('https://x/send-push', { method: 'OPTIONS' }));
+  assertEquals(res.status, 204);
+  assertEquals(res.headers.get('access-control-allow-origin'), '*');
+  // The browser refuses to send an Authorization header unless the preflight names it.
+  const allowed = res.headers.get('access-control-allow-headers') ?? '';
+  assertEquals(allowed.includes('authorization'), true);
+  assertEquals(allowed.includes('content-type'), true);
+});
+
+Deno.test('a genuinely wrong method is still refused', async () => {
+  // The preflight branch must not become a catch-all for anything that is not POST.
+  const res = await handler(new Request('https://x/send-push', { method: 'GET' }));
+  assertEquals(res.status, 405);
+});
+
+Deno.test('error responses carry CORS headers too', async () => {
+  // Without these the browser hides the real status behind an opaque CORS failure, and a
+  // 401 or 403 becomes impossible to debug from the dashboard.
+  const res = await handler(new Request('https://x/send-push', { method: 'POST' }));
+  assertEquals(res.status, 401);
+  assertEquals(res.headers.get('access-control-allow-origin'), '*');
 });
