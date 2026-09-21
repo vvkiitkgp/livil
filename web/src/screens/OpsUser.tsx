@@ -9,8 +9,8 @@ import {
   type OpsTrack,
 } from '../data/opsTracks';
 import {
-  FIRST_100,
-  fetchBadgeHolders,
+  OPS_BADGES,
+  fetchAllBadgeHolders,
   fetchBadgeStatus,
   grantBadge,
   revokeBadge,
@@ -47,9 +47,10 @@ export function OpsUser() {
   const [tracks, setTracks] = useState<OpsTrack[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [held, setHeld] = useState<boolean | null>(null);
-  const [status, setStatus] = useState<BadgeStatus | null>(null);
-  const [badgeBusy, setBadgeBusy] = useState(false);
+  /** badge -> does this artist hold it. Null until loaded. */
+  const [held, setHeld] = useState<Record<string, boolean> | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, BadgeStatus | null>>({});
+  const [badgeBusy, setBadgeBusy] = useState<string | null>(null);
   const [badgeError, setBadgeError] = useState<string | null>(null);
   const [badgeNote, setBadgeNote] = useState<string | null>(null);
 
@@ -73,14 +74,19 @@ export function OpsUser() {
   const loadBadge = useCallback(() => {
     if (!userId) return;
     setBadgeError(null);
-    Promise.all([fetchBadgeHolders([userId], FIRST_100), fetchBadgeStatus(FIRST_100)])
-      .then(([holders, s]) => {
-        setHeld(holders.has(userId));
-        setStatus(s);
+    Promise.all([
+      fetchAllBadgeHolders([userId]),
+      Promise.all(OPS_BADGES.map(b => fetchBadgeStatus(b.badge).then(st => [b.badge, st] as const))),
+    ])
+      .then(([byBadge, statusPairs]) => {
+        setHeld(Object.fromEntries(
+          OPS_BADGES.map(b => [b.badge, byBadge[b.badge]?.has(userId) ?? false]),
+        ));
+        setStatuses(Object.fromEntries(statusPairs));
       })
       .catch(e => {
         setHeld(null);
-        setBadgeError(e?.message ?? 'Could not load First 100 state.');
+        setBadgeError(e?.message ?? 'Could not load badge state.');
       });
   }, [userId]);
 
@@ -89,37 +95,39 @@ export function OpsUser() {
   // Never optimistic: the cap lives in the database, so the only honest answer to "did that
   // work" is the one the grant returns. A button that flips to Revoke and then silently
   // hasn't granted is worse than one that takes a moment.
-  const toggleBadge = useCallback(async () => {
+  const toggleBadge = useCallback(async (badge: string, label: string) => {
     if (held === null) return;
-    setBadgeBusy(true);
+    setBadgeBusy(badge);
     setBadgeError(null);
     setBadgeNote(null);
     try {
-      const result = held ? await revokeBadge(userId, FIRST_100) : await grantBadge(userId, FIRST_100);
+      const isHeld = held[badge] ?? false;
+      const result = isHeld ? await revokeBadge(userId, badge) : await grantBadge(userId, badge);
+      // Named in every message: with two badges, "Granted." leaves you guessing which.
       if (result === 'full') {
         setBadgeError(
-          'Every slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.',
+          `Every ${label} slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.`,
         );
       } else if (result === 'already') {
-        setBadgeNote('They already held it.');
+        setBadgeNote(`They already held ${label}.`);
       } else if (result === 'not_held') {
-        setBadgeNote('They did not hold it.');
+        setBadgeNote(`They did not hold ${label}.`);
       } else if (result === 'granted') {
-        setBadgeNote('Granted.');
+        // NOT "they have been notified" — that reads as a phone buzz. The grant writes an
+        // activity row; push is fired client-side elsewhere and the dashboard fires none.
+        setBadgeNote(`${label} granted — it will show in their activity feed.`);
       } else if (result === 'revoked') {
-        setBadgeNote('Revoked. The slot is back in the pool and can be granted to someone else.');
+        setBadgeNote(`${label} revoked. Any slot it held is back in the pool.`);
       }
       loadBadge();
     } catch (e) {
       setBadgeError(e instanceof Error ? e.message : 'Could not change that badge.');
     } finally {
-      setBadgeBusy(false);
+      setBadgeBusy(null);
     }
   }, [held, userId, loadBadge]);
 
   const name = profile?.displayName ?? profile?.username ?? 'This artist';
-  // `remaining` is null for an uncapped badge — which is not the same as none left.
-  const outOfSlots = held === false && status?.remaining != null && status.remaining <= 0;
 
   return (
     <div className="page">
@@ -129,32 +137,45 @@ export function OpsUser() {
 
       <header className="page__head">
         <div>
-          <p className="kicker">Reviewing for First 100</p>
+          <p className="kicker">Reviewing for badges</p>
           <h1 className="display page__title">{name}</h1>
           {profile?.username && <p className="hint">@{profile.username}</p>}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
           {held === null ? (
-            <Button variant="ghost" disabled>First 100 unavailable</Button>
+            <Button variant="ghost" disabled>Badges unavailable</Button>
           ) : (
-            <Button
-              variant={held ? 'secondary' : 'primary'}
-              busy={badgeBusy}
+            OPS_BADGES.map(({ badge, label }) => {
+              const isHeld = held[badge] ?? false;
+              const st = statuses[badge];
               // Out of slots blocks a new grant but must never block a revoke, or a
-              // mistaken grant made at slot 100 could never be undone.
-              disabled={outOfSlots}
-              onClick={toggleBadge}
-            >
-              {held ? 'Revoke First 100' : 'Grant First 100'}
-            </Button>
-          )}
-          {status && (
-            <span className="hint">
-              {status.live} live
-              {status.remaining != null
-                && ` · ${status.remaining} slot${status.remaining === 1 ? '' : 's'} left`}
-            </span>
+              // mistaken grant made at the cap could never be undone. `remaining` is null
+              // for an uncapped badge, which is not the same as none left.
+              const outOfSlots = !isHeld && st?.remaining != null && st.remaining <= 0;
+              return (
+                <div
+                  key={badge}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}
+                >
+                  <Button
+                    variant={isHeld ? 'secondary' : 'primary'}
+                    busy={badgeBusy === badge}
+                    disabled={outOfSlots}
+                    onClick={() => toggleBadge(badge, label)}
+                  >
+                    {isHeld ? `Revoke ${label}` : `Grant ${label}`}
+                  </Button>
+                  {st && (
+                    <span className="hint">
+                      {st.live} live
+                      {st.remaining != null
+                        && ` · ${st.remaining} slot${st.remaining === 1 ? '' : 's'} left`}
+                    </span>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </header>

@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { sendPush, type PushKind } from './pushDispatch';
+import { isProfileBadge, type ProfileBadge } from './profileBadges';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -19,7 +20,8 @@ export type ActivityType =
   | 'friend_rejected'
   | 'credited'
   | 'credit_accepted'
-  | 'credit_declined';
+  | 'credit_declined'
+  | 'badge_granted';
 
 export type ActivityActor = {
   id: string;
@@ -47,6 +49,10 @@ export type ActivityItem = ActivityBase &
     | { type: 'comment'; actor: ActivityActor; post: ActivityPostRef; commentText: string | null; commentId: string | null }
     | { type: 'repost'; actor: ActivityActor; post: ActivityPostRef }
     | { type: 'play_milestone'; post: ActivityPostRef; threshold: number }
+    // No actor and no post: Livil telling you it gave you something, the same shape as
+    // play_milestone. `badge` is the key from badge_kinds, not display copy — an
+    // unrecognised one is dropped rather than rendered as itself.
+    | { type: 'badge_granted'; badge: ProfileBadge }
     | { type: 'new_fan'; actor: ActivityActor }
     | { type: 'friend_accepted'; actor: ActivityActor }
     | { type: 'friend_rejected'; actor: ActivityActor }
@@ -81,6 +87,8 @@ type RawActivityRow = {
     role?: string;
     credit_id?: string;
     answered?: 'accepted' | 'declined';
+    /** badge_granted: the badge_kinds key. Validated before use — see rowToItem. */
+    badge?: string;
   } | null;
   actor_username: string | null;
   actor_display_name: string | null;
@@ -106,7 +114,11 @@ function rowToPost(row: RawActivityRow): ActivityPostRef {
   };
 }
 
-function rowToItem(row: RawActivityRow): ActivityItem {
+/**
+ * Null when the row cannot be rendered — today only a badge this client does not know. The
+ * caller filters, so an unknown type never reaches the list as a blank bubble.
+ */
+function rowToItem(row: RawActivityRow): ActivityItem | null {
   const base: ActivityBase = {
     id: row.id,
     isRead: row.is_read,
@@ -129,6 +141,13 @@ function rowToItem(row: RawActivityRow): ActivityItem {
       return { ...base, type: 'repost', actor: rowToActor(row), post: rowToPost(row) };
     case 'play_milestone':
       return { ...base, type: 'play_milestone', post: rowToPost(row), threshold: Number(row.payload?.threshold ?? 0) };
+    case 'badge_granted': {
+      const badge = row.payload?.badge;
+      // A badge the app cannot draw is a badge shipped server-side before this client knew
+      // it. Dropping the row is better than an item that renders as blank text.
+      if (!isProfileBadge(badge)) { return null; }
+      return { ...base, type: 'badge_granted', badge };
+    }
     case 'new_fan':
       return { ...base, type: 'new_fan', actor: rowToActor(row) };
     case 'friend_accepted':
@@ -206,6 +225,12 @@ export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
       return { actor: item.actor, text: ' reposted your track' };
     case 'play_milestone':
       return { actor: null, text: `Your track hit ${formatPlayThreshold(item.threshold)} plays 🎉` };
+    // Livil speaking, not a person — hence actor: null and a whole sentence rather than a
+    // fragment that expects a bold name in front of it.
+    case 'badge_granted':
+      return item.badge === 'verified'
+        ? { actor: null, text: 'Your account is now verified ✓' }
+        : { actor: null, text: 'You\'re one of the First 100 on Livil 🎉' };
     case 'new_fan':
       return { actor: item.actor, text: ' starred you' };
     case 'friend_accepted':
@@ -246,7 +271,13 @@ export async function listActivity(beforeUpdatedAt?: string): Promise<ActivityIt
     p_before: beforeUpdatedAt ?? null,
   });
   if (error) { throw error; }
-  return ((data ?? []) as RawActivityRow[]).map(rowToItem);
+  return ((data ?? []) as RawActivityRow[])
+    .map(rowToItem)
+    // `!=` not `!==`, deliberately: an unrecognised activity TYPE falls out of the switch
+    // as `undefined`, not `null`, and `undefined !== null` is true — so a strict filter
+    // passes it straight through to ActivityBubble, which throws on it. That is the exact
+    // scenario this guard exists for: a type added server-side ahead of a client release.
+    .filter((item): item is ActivityItem => item != null);
 }
 
 export async function getActivityUnreadCount(): Promise<number> {

@@ -82,6 +82,7 @@ import {
   ShieldCheck,
   Shuffle,
   SignOut,
+  Seal,
   SkipBack,
   Sparkle,
   SkipForward,
@@ -118,7 +119,7 @@ export type IconName =
   | 'public' | 'friends' | 'lock'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
-  | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai'
+  | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram' | 'apple'
   | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
@@ -209,6 +210,10 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   pencilLine: [PencilSimpleLine, 'fill'],
   note: [Note, 'fill'],
   star: [Star, 'fill'],
+  // Generic "awarded" mark for the activity feed. NOT the badge artwork — the marks
+  // themselves are gradient SVGs (FirstHundredBadge, VerifiedBadge) and would read as mud
+  // in a 20px monochrome slot. This says "a badge", the bubble copy says which.
+  seal: [Seal, 'fill'],
   handshake: [Handshake, 'fill'],
   handTap: [HandTap, 'regular'],
   zoomOut: [ArrowsInSimple, 'bold'],

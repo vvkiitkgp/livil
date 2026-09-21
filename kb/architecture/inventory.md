@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-20
+last_verified: 2026-09-21
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-218 TypeScript file(s) under `src/`, 57,836 lines.
+220 TypeScript file(s) under `src/`, 57,991 lines.
 
 ## Size hotspots
 
@@ -146,7 +146,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-78 file(s), 18,940 lines.
+80 file(s), 19,054 lines.
 
 | File | Lines |
 |---|---:|
@@ -165,16 +165,17 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostLikersSheet.tsx` | 356 |
 | `src/components/TrackContextMenu.tsx` | 306 |
 | `src/components/CommentItem.tsx` | 271 |
-| `src/components/Icon.tsx` | 266 |
+| `src/components/Icon.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
 | `src/components/StoryReportModal.tsx` | 236 |
+| `src/components/ActivityBubble.tsx` | 234 |
 | `src/components/WaveVisualizer.tsx` | 233 |
-| `src/components/ActivityBubble.tsx` | 229 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
+| `src/components/ProfileBadgeRail.tsx` | 207 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
 | `src/components/ConfirmActionModal.tsx` | 192 |
@@ -183,7 +184,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
 | `src/components/GradientBorder.tsx` | 181 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
-| `src/components/ProfileBadgeRail.tsx` | 174 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
 | `src/components/TagInput.tsx` | 167 |
 | `src/components/MentionSuggestions.tsx` | 160 |
@@ -208,7 +208,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
-| `src/components/FirstHundredBadge.tsx` | 74 |
 | `src/components/GradientFill.tsx` | 74 |
 | `src/components/PostCardSkeleton.tsx` | 74 |
 | `src/components/SwipeRevealRow.tsx` | 74 |
@@ -221,17 +220,20 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
+| `src/components/FirstHundredBadge.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
+| `src/components/VerifiedBadge.tsx` | 58 |
 | `src/components/__tests__/amplitudeBars.test.ts` | 57 |
 | `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
+| `src/components/badgeShapes.ts` | 24 |
 | `src/components/Logo.tsx` | 22 |
 
 ## Services
 
-45 file(s), 10,075 lines.
+45 file(s), 10,111 lines.
 
 | File | Lines |
 |---|---:|
@@ -239,11 +241,11 @@ case the call fails silently wherever its result is discarded.
 | `src/services/tracks.ts` | 822 |
 | `src/services/pushNotifications.ts` | 641 |
 | `src/services/albums.ts` | 497 |
+| `src/services/activity.ts` | 395 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/profileService.ts` | 374 |
 | `src/services/messages.ts` | 366 |
-| `src/services/activity.ts` | 364 |
 | `src/services/share.ts` | 358 |
 | `src/services/jamRooms.ts` | 325 |
 | `src/services/conversations.ts` | 291 |
@@ -272,8 +274,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/terms.ts` | 78 |
 | `src/services/searchAnalytics.ts` | 72 |
+| `src/services/profileBadges.ts` | 70 |
 | `src/services/waveform.ts` | 66 |
-| `src/services/profileBadges.ts` | 65 |
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |

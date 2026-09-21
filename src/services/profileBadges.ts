@@ -18,10 +18,15 @@ const db = supabase as any;
  * passed through — a badge added server-side and released before the app knows it
  * would otherwise reach the rail, take a slot and a tap target, and render nothing.
  */
-export const PROFILE_BADGES = ['first_100'] as const;
+export const PROFILE_BADGES = ['first_100', 'verified'] as const;
 export type ProfileBadge = (typeof PROFILE_BADGES)[number];
 
-function isProfileBadge(value: unknown): value is ProfileBadge {
+/**
+ * Exported so `activity.ts` can drop a badge notification for a badge this client cannot
+ * draw. Re-listing the badges there would let the two lists drift, which shows up as a
+ * notification the app renders as blank.
+ */
+export function isProfileBadge(value: unknown): value is ProfileBadge {
   return typeof value === 'string' && (PROFILE_BADGES as readonly string[]).includes(value);
 }
 

@@ -237,6 +237,8 @@ for (const f of files) {
 const CLIENT_UNREACHABLE = new Map([
   ['badge_grant_occupies_slot',
    'pure predicate over its 4 arguments; called only inside grant_badge and badge_status, both SECURITY DEFINER'],
+  ['notify_badge_granted',
+   'writes an activity notification as Livil; a caller could post themselves a notice claiming any badge'],
 ]);
 
 const unreachableViolations = [];

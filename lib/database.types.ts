@@ -2053,6 +2053,7 @@ export type Database = {
           title: string
         }[]
       }
+      notify_badge_granted: { Args: { p_badge: string; p_user_id: string }; Returns: undefined }
       ops_profile_for_user: {
         Args: { p_user_id: string }
         Returns: {

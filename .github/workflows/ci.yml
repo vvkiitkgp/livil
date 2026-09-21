@@ -368,6 +368,17 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/ops-track-review.test.sql
 
+      # Verified is the first uncapped badge, and an uncapped badge that quietly acquires a
+      # cap starts refusing grants at a number nobody chose. The notice is the other half:
+      # it must name no actor (or the granting operator lands in the recipient's inbox) and
+      # must never be able to roll back the grant it describes.
+      - name: Verified badge and grant notice tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/badge-verified-and-notice.test.sql
+
       # Feed suppression fails SILENTLY when it fails. `fetch_home_feed` is SECURITY
       # INVOKER, so a missing own-row SELECT policy on post_impressions or post_views
       # makes the join read zero rows: the feed still renders, the shape is still right,

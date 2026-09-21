@@ -18,8 +18,23 @@
  */
 import { supabase } from '../supabase';
 
-/** The badges this dashboard knows how to grant. Add a row in `badge_kinds` to match. */
+/**
+ * The badges this dashboard can grant, in the order the roster shows them.
+ *
+ * Adding one is an entry here plus a row in `badge_kinds`; the ops table builds its columns
+ * from this list, so nothing else changes. `label` is what the operator reads — it appears
+ * in the column header AND inside the button ("Grant First 100"), because a button reading
+ * just "Grant" in a table with two badge columns tells you nothing without counting across.
+ */
 export const FIRST_100 = 'first_100';
+export const VERIFIED = 'verified';
+
+export type OpsBadge = { badge: string; label: string };
+
+export const OPS_BADGES: OpsBadge[] = [
+  { badge: FIRST_100, label: 'First 100' },
+  { badge: VERIFIED, label: 'Verified' },
+];
 
 export type GrantResult = 'granted' | 'already' | 'full';
 export type RevokeResult = 'revoked' | 'not_held';
@@ -93,14 +108,34 @@ export async function fetchBadgeStatus(badge: string): Promise<BadgeStatus | nul
  * as good a leak as an API response.
  */
 export async function fetchBadgeHolders(userIds: string[], badge: string): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set();
+  const byBadge = await fetchAllBadgeHolders(userIds);
+  return byBadge[badge] ?? new Set();
+}
+
+/**
+ * Every badge, for every given profile, in ONE call.
+ *
+ * `badges_for_profiles` already returns all of a person's badges, so asking per badge would
+ * be N round trips for data one request carries — and the roster asks about every account
+ * on the page at once.
+ */
+export async function fetchAllBadgeHolders(
+  userIds: string[],
+): Promise<Record<string, Set<string>>> {
+  const byBadge: Record<string, Set<string>> = {};
+  for (const { badge } of OPS_BADGES) { byBadge[badge] = new Set(); }
+  if (userIds.length === 0) return byBadge;
+
   const { data, error } = await supabase.rpc('badges_for_profiles', { p_user_ids: userIds });
   if (error) throw badgeError(error);
-  return new Set(
-    (data ?? [])
-      .filter((r: { badge: string }) => r.badge === badge)
-      .map((r: { user_id: string }) => r.user_id),
-  );
+
+  for (const row of (data ?? []) as { user_id: string; badge: string }[]) {
+    // A badge the server knows and this dashboard does not still gets an entry here — it
+    // simply never surfaces, because the table builds its columns from OPS_BADGES rather
+    // than from this map.
+    (byBadge[row.badge] ??= new Set()).add(row.user_id);
+  }
+  return byBadge;
 }
 
 export async function grantBadge(userId: string, badge: string): Promise<GrantResult> {

@@ -9,8 +9,8 @@ import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
 import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
 import {
-  FIRST_100,
-  fetchBadgeHolders,
+  OPS_BADGES,
+  fetchAllBadgeHolders,
   fetchBadgeStatus,
   grantBadge,
   revokeBadge,
@@ -51,9 +51,10 @@ export function Ops() {
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [showReviewed, setShowReviewed] = useState(false);
   const [reportBusyId, setReportBusyId] = useState<string | null>(null);
-  const [first100, setFirst100] = useState<Set<string> | null>(null);
-  const [first100Status, setFirst100Status] = useState<BadgeStatus | null>(null);
-  const [badgeBusyId, setBadgeBusyId] = useState<string | null>(null);
+  const [holders, setHolders] = useState<Record<string, Set<string>> | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, BadgeStatus | null>>({});
+  /** `${userId}:${badge}` — so one row's two buttons spin independently. */
+  const [badgeBusyKey, setBadgeBusyKey] = useState<string | null>(null);
   const [badgeError, setBadgeError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -85,14 +86,22 @@ export function Ops() {
   // columns one join away from a surface that has no business holding them.
   const loadBadges = useCallback((roster: OpsUser[]) => {
     setBadgeError(null);
-    Promise.all([fetchBadgeHolders(roster.map(u => u.id), FIRST_100), fetchBadgeStatus(FIRST_100)])
-      .then(([holders, status]) => {
-        setFirst100(holders);
-        setFirst100Status(status);
+    Promise.all([
+      fetchAllBadgeHolders(roster.map(u => u.id)),
+      // One status call per badge: each has its own cap and its own remaining count, and
+      // an uncapped badge reports NULL rather than a number.
+      Promise.all(OPS_BADGES.map(b => fetchBadgeStatus(b.badge).then(st => [b.badge, st] as const))),
+    ])
+      .then(([byBadge, statusPairs]) => {
+        setHolders(byBadge);
+        setStatuses(Object.fromEntries(statusPairs));
       })
       .catch(e => {
-        setFirst100(new Set());
-        setBadgeError(e?.message ?? 'Could not load First 100 badges.');
+        // NULL, not {}. An empty map reads as "nobody holds anything", so every row would
+        // offer "Grant First 100" next to people who already have it. Null is the state the
+        // cell's "unavailable" branch tests for — matching OpsUser.
+        setHolders(null);
+        setBadgeError(e?.message ?? 'Could not load badges.');
       });
   }, []);
 
@@ -104,26 +113,26 @@ export function Ops() {
   // honest answer to "did that work" is the one the grant returns. A button that
   // flips to "First 100" and then silently isn't would be worse than a slow one.
   const handleToggleBadge = useCallback(
-    async (u: OpsUser) => {
-      if (!first100) return;
-      setBadgeBusyId(u.id);
+    async (u: OpsUser, badge: string, label: string) => {
+      if (!holders) return;
+      setBadgeBusyKey(`${u.id}:${badge}`);
       setBadgeError(null);
       try {
-        const held = first100.has(u.id);
-        const result = held ? await revokeBadge(u.id, FIRST_100) : await grantBadge(u.id, FIRST_100);
+        const held = holders[badge]?.has(u.id) ?? false;
+        const result = held ? await revokeBadge(u.id, badge) : await grantBadge(u.id, badge);
         if (result === 'full') {
           setBadgeError(
-            'Every slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.',
+            `Every ${label} slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.`,
           );
         }
         if (users) loadBadges(users);
       } catch (e) {
         setBadgeError(e instanceof Error ? e.message : 'Could not change that badge.');
       } finally {
-        setBadgeBusyId(null);
+        setBadgeBusyKey(null);
       }
     },
-    [first100, users, loadBadges],
+    [holders, users, loadBadges],
   );
 
   const loadReports = useCallback(() => {
@@ -550,19 +559,20 @@ export function Ops() {
         {users !== null && users.length > 0 && (
           <p className="hint">
             {users.length} account{users.length === 1 ? '' : 's'}
-            {first100Status && (
-              <>
-                {' · '}
-                {first100Status.live} First 100 live
-                {first100Status.remaining != null && (
-                  <>
-                    {', '}
-                    {first100Status.remaining} slot
-                    {first100Status.remaining === 1 ? '' : 's'} left
-                  </>
-                )}
-              </>
-            )}
+            {OPS_BADGES.map(({ badge, label }) => {
+              const st = statuses[badge];
+              if (!st) { return null; }
+              return (
+                <span key={badge}>
+                  {' · '}
+                  {st.live} {label} live
+                  {/* Only a capped badge has slots to run out of. Verified reports NULL
+                      here, and "0 slots left" would be a lie about an unlimited badge. */}
+                  {st.remaining != null
+                    && `, ${st.remaining} slot${st.remaining === 1 ? '' : 's'} left`}
+                </span>
+              );
+            })}
           </p>
         )}
       </header>
@@ -596,7 +606,7 @@ export function Ops() {
                     kind='star', so they are the same relationship under a different word. */}
                 <th className="num">Stars</th>
                 <th className="num">Friends</th>
-                <th>First 100</th>
+                {OPS_BADGES.map(({ badge, label }) => <th key={badge}>{label}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -629,28 +639,35 @@ export function Ops() {
                   </td>
                   <td className="num">{u.starsCount}</td>
                   <td className="num">{u.friendsCount}</td>
-                  <td>
-                    {first100 === null ? (
-                      <span className="hint">unavailable</span>
-                    ) : (
-                      <Button
-                        variant={first100.has(u.id) ? 'secondary' : 'ghost'}
-                        size="sm"
-                        busy={badgeBusyId === u.id}
-                        // Out of slots, nobody new can be granted — but an existing
-                        // holder must still be revocable, or a mistaken grant is
-                        // permanent. Hence the holder check, not a flat disable.
-                        disabled={
-                          !first100.has(u.id) &&
-                          first100Status?.remaining != null &&
-                          first100Status.remaining <= 0
-                        }
-                        onClick={() => handleToggleBadge(u)}
-                      >
-                        {first100.has(u.id) ? 'Revoke' : 'Grant'}
-                      </Button>
-                    )}
-                  </td>
+                  {OPS_BADGES.map(({ badge, label }) => {
+                    const held = holders?.[badge]?.has(u.id) ?? false;
+                    const st = statuses[badge];
+                    return (
+                      <td key={badge}>
+                        {holders === null ? (
+                          <span className="hint">unavailable</span>
+                        ) : (
+                          <Button
+                            variant={held ? 'secondary' : 'ghost'}
+                            size="sm"
+                            busy={badgeBusyKey === `${u.id}:${badge}`}
+                            // Out of slots, nobody new can be granted — but an existing
+                            // holder must still be revocable, or a mistaken grant is
+                            // permanent. Hence the holder check, not a flat disable.
+                            // `remaining` is null for an uncapped badge, which is not
+                            // the same as none left.
+                            disabled={!held && st?.remaining != null && st.remaining <= 0}
+                            onClick={() => handleToggleBadge(u, badge, label)}
+                          >
+                            {/* Named, not just "Grant". With two badge columns a bare
+                                verb makes you count across the header to know which
+                                one you are about to hand out. */}
+                            {held ? `Revoke ${label}` : `Grant ${label}`}
+                          </Button>
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

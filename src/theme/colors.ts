@@ -37,6 +37,11 @@ export const COLORS = {
   warningBg: 'rgba(245, 158, 11, 0.12)',
   warningBorder: 'rgba(245, 158, 11, 0.35)',
   info: '#22D3EE',
+  // Verified-badge ramp, mirroring the gold one. Cyan rather than purple: purple is the
+  // primary accent and already surrounds the avatar as the story ring, so a purple badge
+  // would vanish into it.
+  infoLight: '#A5F3FC',
+  infoDeep: '#0E7490',
   infoBg: 'rgba(34, 211, 238, 0.12)',
   infoBorder: 'rgba(34, 211, 238, 0.35)',
 };

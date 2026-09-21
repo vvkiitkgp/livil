@@ -41,6 +41,11 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
     case 'repost':
     case 'play_milestone':
       return { format: 'post', post: item.post };
+    // Text, not 'post': there is no track behind a badge. The icon is the generic award
+    // mark rather than the badge artwork — the bubble is a 20px monochrome slot and the
+    // marks are gradient SVGs that would read as mud at that size.
+    case 'badge_granted':
+      return { format: 'text', icon: 'seal' };
     case 'new_fan':
       return { format: 'text', icon: 'star' };
     case 'friend_accepted':
