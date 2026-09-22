@@ -223,7 +223,8 @@ a{color:inherit}
   display:block}
 video.art{aspect-ratio:9/16;max-height:60dvh;width:auto;border-radius:16px}
 .title{font-size:22px;font-weight:800;margin:20px 0 4px;text-align:center;line-height:1.25}
-.artist{font-size:15px;color:#C9B6FF;font-weight:600;margin:0;text-align:center}
+.artist{font-size:16px;color:#fff;font-weight:700;margin:0;text-align:center}
+.handle{font-size:14px;color:#C9B6FF;font-weight:600;margin:3px 0 0;text-align:center}
 .badge{vertical-align:-3px;margin-left:5px}
 .caption{font-size:14px;color:#9a9aa8;margin:12px 0 0;text-align:center;line-height:1.5}
 .player{width:100%;margin-top:22px;display:flex;align-items:center;gap:14px}
@@ -324,7 +325,9 @@ function renderUnavailable(): string {
 }
 
 function renderPost(post: SharedPost): string {
-  const artist = (post.author_display_name || '').trim() || post.author_username;
+  const displayName = (post.author_display_name || '').trim();
+  const handle = `@${post.author_username}`;
+  const artist = displayName || post.author_username;
   const isVideo = post.track_media_kind === 'video';
   const mediaUrl = safeUrl(isVideo ? post.track_video_url : post.track_audio_url);
   const poster = safeUrl(post.track_thumbnail_url) ?? safeUrl(post.track_cover_art_url);
@@ -367,9 +370,29 @@ function renderPost(post: SharedPost): string {
       : `${cover ? `<img class="art" src="${escapeHtml(cover)}" alt="">` : '<div class="art"></div>'}
 <audio id="m" preload="none" src="${escapeHtml(mediaUrl)}"></audio>`;
 
+  /**
+   * Both names, stacked — the display name, then the handle under it.
+   *
+   * The page showed only `@handle`, so someone arriving from WhatsApp saw "@test1" and
+   * had no idea whose track they were listening to. Nothing else works that way: every
+   * row in the app leads with the display name and puts the handle beneath it, and the
+   * `og:title` this same function builds has always been "<track> — <display name>".
+   * The visible page was the one place the name was missing.
+   *
+   * The badges go on the NAME line, which is where they sit everywhere else.
+   *
+   * WHEN THERE IS NO DISPLAY NAME the handle IS the name: one line, badges beside it.
+   * Rendering an empty first line and a handle under it would open a gap under the title
+   * for every artist who never set a name.
+   */
+  const byline = displayName
+    ? `<p class="artist">${escapeHtml(displayName)}${renderBadges(post.author_badges)}</p>
+<p class="handle">${escapeHtml(handle)}</p>`
+    : `<p class="artist">${escapeHtml(handle)}${renderBadges(post.author_badges)}</p>`;
+
   const body = `${mediaEl}
 <h1 class="title">${escapeHtml(post.track_title)}</h1>
-<p class="artist">@${escapeHtml(post.author_username)}${renderBadges(post.author_badges)}</p>
+${byline}
 ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
 
 <div class="player">

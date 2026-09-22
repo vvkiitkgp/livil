@@ -246,6 +246,41 @@ describe('share page — a post that is not there', () => {
   });
 });
 
+describe('share page — who made it', () => {
+  it('shows the display name and the handle, not just the handle', async () => {
+    const res = await render(POST_ID, [POST]);
+    // "@riya" alone tells a stranger arriving from WhatsApp nothing about whose track
+    // this is. Both, stacked, the way every row in the app renders a person.
+    expect(res.body).toContain('<p class="artist">Riya');
+    expect(res.body).toContain('<p class="handle">@riya</p>');
+  });
+
+  it('puts the badges on the NAME line, where they sit everywhere else', async () => {
+    const res = await render(POST_ID, [{ ...POST, author_badges: ['first_100'] }]);
+    const name = res.body.indexOf('<p class="artist">');
+    const handle = res.body.indexOf('<p class="handle">');
+    const badge = res.body.indexOf('aria-label="First 100"');
+    expect(name).toBeLessThan(badge);
+    expect(badge).toBeLessThan(handle);
+  });
+
+  it('falls back to the handle alone when there is no display name', async () => {
+    const res = await render(POST_ID, [{ ...POST, author_display_name: null }]);
+    expect(res.body).toContain('<p class="artist">@riya');
+    // NOT an empty name line with the handle under it — that would open a gap under the
+    // title for every artist who never set a display name.
+    expect(res.body).not.toContain('<p class="handle">');
+  });
+
+  it('keeps the badges beside the handle when that is the only name there is', async () => {
+    const res = await render(
+      POST_ID,
+      [{ ...POST, author_display_name: null, author_badges: ['verified'] }],
+    );
+    expect(res.body).toContain('aria-label="Verified Artist"');
+  });
+});
+
 /**
  * The badge is the reason the badge exists: a link shared to WhatsApp is the one page a
  * stranger sees, and a founder who is marked everywhere inside the app and bare here has
