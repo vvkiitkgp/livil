@@ -51,9 +51,13 @@ const BADGES: Record<ProfileBadge, BadgeSpec> = {
     render: size => <FirstHundredBadge size={size} />,
   },
   verified: {
-    title: 'Verified',
+    // "Verified Artist", not "Verified". A bare check mark is the internet's shorthand
+    // for "this is a real celebrity"; this badge means something narrower and Livil-
+    // specific — somebody who makes their own music — and the name is where that gets
+    // said. Livil has no identity-verification process and should not imply one.
+    title: 'Verified Artist',
     line: 'Livil has confirmed this is who they say they are.',
-    label: 'Verified badge',
+    label: 'Verified Artist badge',
     render: size => <VerifiedBadge size={size} />,
   },
 };

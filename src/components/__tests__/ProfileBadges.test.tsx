@@ -52,6 +52,19 @@ function pressables(tree: ReactTestRenderer.ReactTestRenderer) {
   );
 }
 
+/**
+ * The popup's VISIBLE COPY ONLY. Serialising the whole tree would drag in hex colours
+ * (which look like "#1") and the seal's path data, so an assertion about the copy would
+ * fail on its own noise rather than on what it is checking.
+ */
+function popupCopy(tree: ReactTestRenderer.ReactTestRenderer) {
+  return tree.root
+    .findAllByType(Text)
+    .flatMap(n => React.Children.toArray(n.props.children))
+    .filter((c): c is string => typeof c === 'string')
+    .join(' ');
+}
+
 function gradientIds(tree: ReactTestRenderer.ReactTestRenderer) {
   return tree.root
     .findAll(n => typeof n.type !== 'string'
@@ -118,19 +131,24 @@ describe('ProfileBadges', () => {
     expect(modal().props.visible).toBe(false);
   });
 
+  /**
+   * The badge is called "Verified Artist", not "Verified". A bare check mark is the
+   * internet's shorthand for "this is a real celebrity", and Livil runs no identity
+   * check — the name is the only place that distinction gets made, so it is pinned.
+   */
+  it('calls the verified badge what it is: a Verified Artist', () => {
+    const tree = render(['verified']);
+    expect(pressables(tree)[0].props.accessibilityLabel).toMatch(/Verified Artist/);
+
+    ReactTestRenderer.act(() => { pressables(tree)[0].props.onPress(); });
+    expect(popupCopy(tree)).toContain('Verified Artist');
+  });
+
   it('says nothing about rank in the popup', () => {
     const tree = render(['first_100']);
     ReactTestRenderer.act(() => { pressables(tree)[0].props.onPress(); });
 
-    // VISIBLE COPY ONLY. Serialising the whole tree would drag in hex colours (which
-    // look like "#1") and the seal's path data, so the assertion would fail on its own
-    // noise rather than on a rank.
-    const copy = tree.root
-      .findAllByType(Text)
-      .flatMap(n => React.Children.toArray(n.props.children))
-      .filter((c): c is string => typeof c === 'string')
-      .join(' ');
-
+    const copy = popupCopy(tree);
     expect(copy).toContain('First 100');
     // An ORDINAL is what must never appear — "#23", "23 of 100", "23/100", "No. 23".
     // The cohort size itself is fine, which is why this needs a digit in front of it:

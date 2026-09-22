@@ -33,7 +33,7 @@ export type OpsBadge = { badge: string; label: string };
 
 export const OPS_BADGES: OpsBadge[] = [
   { badge: FIRST_100, label: 'First 100' },
-  { badge: VERIFIED, label: 'Verified' },
+  { badge: VERIFIED, label: 'Verified Artist' },
 ];
 
 export type GrantResult = 'granted' | 'already' | 'full';

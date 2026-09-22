@@ -261,7 +261,7 @@ describe('share page — the author badges', () => {
   it('marks a First 100 founder', async () => {
     const res = await render(POST_ID, [{ ...POST, author_badges: ['first_100'] }]);
     expect(res.body).toContain('aria-label="First 100"');
-    expect(res.body).not.toContain('aria-label="Verified"');
+    expect(res.body).not.toContain('aria-label="Verified Artist"');
     // The gold ramp, not the cyan one — the two marks differ only by colour and glyph.
     expect(res.body).toContain('#E8B84B');
   });
@@ -269,7 +269,7 @@ describe('share page — the author badges', () => {
   it('shows First 100 before Verified however the database ordered them', async () => {
     const res = await render(POST_ID, [{ ...POST, author_badges: ['verified', 'first_100'] }]);
     const first = res.body.indexOf('aria-label="First 100"');
-    const verified = res.body.indexOf('aria-label="Verified"');
+    const verified = res.body.indexOf('aria-label="Verified Artist"');
     expect(first).toBeGreaterThan(-1);
     expect(verified).toBeGreaterThan(first);
   });

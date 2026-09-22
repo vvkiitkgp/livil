@@ -126,7 +126,7 @@ function renderBadges(badges: string[] | null): string {
   const held = new Set(badges);
   return BADGE_MARKS
     .filter(m => held.has(m.badge))
-    .map(m => `<svg class="badge" viewBox="0 0 100 100" width="16" height="16" role="img" aria-label="${m.badge === 'first_100' ? 'First 100' : 'Verified'}">`
+    .map(m => `<svg class="badge" viewBox="0 0 100 100" width="16" height="16" role="img" aria-label="${m.badge === 'first_100' ? 'First 100' : 'Verified Artist'}">`
       + `<linearGradient id="g-${m.badge}" x1="0" y1="0" x2="0" y2="1">`
       + `<stop offset="0" stop-color="${m.light}"/><stop offset="0.45" stop-color="${m.mid}"/>`
       + `<stop offset="1" stop-color="${m.deep}"/></linearGradient>`

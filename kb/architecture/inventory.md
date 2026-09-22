@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-225 TypeScript file(s) under `src/`, 58,681 lines.
+225 TypeScript file(s) under `src/`, 58,703 lines.
 
 ## Size hotspots
 
@@ -146,7 +146,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-83 file(s), 19,283 lines.
+83 file(s), 19,305 lines.
 
 | File | Lines |
 |---|---:|
@@ -175,9 +175,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
+| `src/components/ProfileBadges.tsx` | 203 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
-| `src/components/ProfileBadges.tsx` | 199 |
 | `src/components/ConfirmActionModal.tsx` | 192 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/JamExitModal.tsx` | 188 |
@@ -187,9 +187,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/NotificationPermissionModal.tsx` | 168 |
 | `src/components/TagInput.tsx` | 167 |
 | `src/components/MentionSuggestions.tsx` | 166 |
+| `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
-| `src/components/__tests__/ProfileBadges.test.tsx` | 141 |
 | `src/components/ProfileTabBar.tsx` | 140 |
 | `src/components/AppleSignInButton.tsx` | 135 |
 | `src/components/StoryCard.tsx` | 131 |
