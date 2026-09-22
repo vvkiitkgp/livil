@@ -26,6 +26,7 @@ import {
 } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
+import UsernameBadges from '../../components/UsernameBadges';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -258,6 +259,7 @@ export default function GroupInfoScreen() {
         <View style={styles.memberInfo}>
           <View style={styles.nameRowInline}>
             <Text style={styles.memberName}>{item.displayName || item.username}</Text>
+            <UsernameBadges userId={item.userId} size={14} />
             <AddBadge userId={item.userId} size="sm" />
           </View>
           <Text style={styles.memberUsername}>@{item.username}</Text>

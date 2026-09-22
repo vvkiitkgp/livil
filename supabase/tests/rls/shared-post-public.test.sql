@@ -86,11 +86,32 @@ values
    'https://example.invalid/cover.jpg', 214, '{"version":1,"hz":10,"peaks":[0.5]}'::jsonb)
 on conflict do nothing;
 
+-- Badges the artist holds. One live (First 100) and one REVOKED (Verified), so the
+-- exclusion of revoked grants is tested by the same read that tests the inclusion of
+-- live ones — a suite where every badge is live would pass with the filter deleted.
+insert into profile_badges (id, user_id, badge, ordinal, revoked_at)
+values
+  ('d4000000-0000-0000-0000-00000000000a', 'd1000000-0000-0000-0000-000000000001',
+   'first_100', 1, null),
+  ('d4000000-0000-0000-0000-00000000000b', 'd1000000-0000-0000-0000-000000000001',
+   'verified', null, now())
+on conflict do nothing;
+
+-- Sam's own upload. Sam holds no badges, which is the common case and the one where an
+-- empty array must not arrive as NULL.
+insert into tracks (id, uploader_id, title, media_kind, audio_url, duration_seconds)
+values
+  ('d2000000-0000-0000-0000-0000000000bb', 'd1000000-0000-0000-0000-000000000002',
+   'First Take', 'audio', 'https://example.invalid/first-take.mp3', 98)
+on conflict do nothing;
+
 insert into posts (id, author_id, kind, track_id, caption, likes_count, comments_count,
                    views_count)
 values
   ('d3000000-0000-0000-0000-00000000000a', 'd1000000-0000-0000-0000-000000000001',
-   'upload', 'd2000000-0000-0000-0000-0000000000aa', 'made this at 4am', 42, 7, 999)
+   'upload', 'd2000000-0000-0000-0000-0000000000aa', 'made this at 4am', 42, 7, 999),
+  ('d3000000-0000-0000-0000-00000000000c', 'd1000000-0000-0000-0000-000000000002',
+   'upload', 'd2000000-0000-0000-0000-0000000000bb', null, 0, 0, 0)
 on conflict do nothing;
 
 insert into posts (id, author_id, kind, track_id, original_post_id, clip_start_sec,
@@ -143,6 +164,50 @@ select pg_temp.assert_count(
   (select count(*) from public.shared_post_public('d3000000-0000-0000-0000-0000000000ff')),
   0);
 
+-- ── 2b. The author's badges travel with the post, minus everything private ──
+-- The badge is why a founder is a founder. It has to reach the one page strangers see,
+-- and it has to arrive without the ordinal — nobody may learn they were #2 or #99.
+select pg_temp.assert(
+  'a live badge comes back',
+  (select author_badges = array['first_100']
+     from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
+  true);
+
+-- The revoked Verified grant is in the table and must not be in the array. If this ever
+-- passes with the filter removed, the fixture stopped having a revoked row.
+select pg_temp.assert(
+  'a revoked badge does not come back',
+  (select 'verified' = any(author_badges)
+     from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
+  false);
+
+-- An author with nothing holds an EMPTY array, never NULL: the page renders one shape.
+select pg_temp.assert(
+  'no badges is an empty array, not null',
+  (select author_badges is not null and cardinality(author_badges) = 0
+     from public.shared_post_public('d3000000-0000-0000-0000-00000000000c')),
+  true);
+
+reset role;
+
+-- Now re-grant Verified live, so both marks are held at once and the order is testable.
+insert into profile_badges (id, user_id, badge, ordinal, revoked_at)
+values ('d4000000-0000-0000-0000-00000000000c',
+        'd1000000-0000-0000-0000-000000000001', 'verified', null, null)
+on conflict do nothing;
+
+set local role anon;
+
+-- Deterministic order, and NOT the order they were awarded in. Without an ORDER BY,
+-- Postgres returns an append-only table in heap order, which IS award order — the leak
+-- found in review on badges_for_profiles, where heap position tracked the ordinal at a
+-- correlation of 1.0. Here Verified was granted last and must still sort second.
+select pg_temp.assert(
+  'both badges come back in a stable order that is not award order',
+  (select author_badges = array['first_100', 'verified']
+     from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
+  true);
+
 -- ── 3. The tables themselves stay shut ──────────────────────────────────────
 -- If any of these flip to true, the function stopped being the boundary and the
 -- design's central refusal — never widen posts_select_authenticated to anon — was
@@ -171,11 +236,11 @@ select pg_temp.assert_count(
 reset role;
 
 select pg_temp.assert_count(
-  'the return type is the seventeen enumerated columns, plus the one input parameter',
+  'the return type is the eighteen enumerated columns, plus the one input parameter',
   (select cardinality(p.proargnames)::bigint
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'shared_post_public'),
-  18);
+  19);
 
 select pg_temp.assert(
   'views_count is absent from the return type',
@@ -191,7 +256,23 @@ select pg_temp.assert(
     where n.nspname = 'public' and p.proname = 'shared_post_public'),
   false);
 
--- The guard that makes the two above meaningful: prove the mechanism can SEE a column
+-- The badge bookkeeping columns. `ordinal` is the founder's number and `awarded_at` is
+-- an ordinal with extra steps — sort the founders by it and you have the order back.
+select pg_temp.assert(
+  'the founder ordinal is absent from the return type',
+  (select 'ordinal' = any(p.proargnames)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'shared_post_public'),
+  false);
+
+select pg_temp.assert(
+  'the award time is absent from the return type',
+  (select 'awarded_at' = any(p.proargnames)
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'shared_post_public'),
+  false);
+
+-- The guard that makes the four above meaningful: prove the mechanism can SEE a column
 -- that is present. Without this, a typo in the function name would make every
 -- "absent" assertion pass for the same reason the old ones did.
 select pg_temp.assert(

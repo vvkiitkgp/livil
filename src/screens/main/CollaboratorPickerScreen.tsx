@@ -15,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import FormInput from '../../components/FormInput';
 import AddBadge from '../../components/AddBadge';
+import UsernameBadges from '../../components/UsernameBadges';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { AI_ROLES, ROLES, isPresetRole, type PendingCollaborator } from '../../constants/roles';
@@ -255,6 +256,7 @@ export default function CollaboratorPickerScreen() {
                           <Text style={styles.resultName} numberOfLines={1}>
                             {p.displayName ?? p.username}
                           </Text>
+                          <UsernameBadges userId={p.id} size={14} />
                           <AddBadge userId={p.id} size="sm" />
                         </View>
                         <Text style={styles.resultUsername} numberOfLines={1}>

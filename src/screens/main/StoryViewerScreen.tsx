@@ -33,6 +33,7 @@ import Reanimated, {
 import { ViewType } from 'react-native-video';
 
 import { COLORS } from '../../theme/colors';
+import UsernameBadges from '../../components/UsernameBadges';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
@@ -190,6 +191,7 @@ function AuthorFacePreview({ item }: { item: ViewerItem }) {
           )}
         </View>
         <Text style={styles.authorUsername}>@{s.author.username}</Text>
+        <UsernameBadges userId={s.author.id} size={14} />
       </SafeAreaView>
     </View>
   );
@@ -1109,10 +1111,13 @@ export default function StoryViewerScreen() {
                     </Text>
                   )}
                 </View>
-                <View>
-                  <Text style={styles.authorUsername} numberOfLines={1}>
-                    @{story.author.username}
-                  </Text>
+                <View style={styles.authorMeta}>
+                  <View style={styles.authorNameLine}>
+                    <Text style={styles.authorUsername} numberOfLines={1}>
+                      @{story.author.username}
+                    </Text>
+                    <UsernameBadges userId={story.author.id} size={14} />
+                  </View>
                   <Text style={styles.authorTime}>{relativeTime(story.createdAt)}</Text>
                 </View>
               </TouchableOpacity>
@@ -1444,6 +1449,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 6,
   },
+  authorMeta: { flexShrink: 1, minWidth: 0 },
+  authorNameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',

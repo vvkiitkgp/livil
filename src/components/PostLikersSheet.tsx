@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
+import UsernameBadges from './UsernameBadges';
 import { Icon } from './Icon';
 import { Button } from './Button';
 import { useToast } from '../contexts/ToastContext';
@@ -155,7 +156,10 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
           )}
         </View>
         <View style={styles.meta}>
-          <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+          <View style={styles.nameLine}>
+            <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>{displayName}</Text>
+            <UsernameBadges userId={item.userId} size={15} />
+          </View>
           <Text style={styles.handle} numberOfLines={1}>@{item.username}</Text>
         </View>
         {chip ? (
@@ -334,6 +338,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameFlex: { flexShrink: 1 },
   name: {
     color: COLORS.white,
     fontSize: 15,

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
+import UsernameBadges from './UsernameBadges';
 import {
   searchUsernamesForMention,
   type MentionProfile,
@@ -91,9 +92,12 @@ export default function MentionSuggestions({ query, onSelect }: Props) {
                 </View>
               )}
               <View style={styles.text}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {p.displayName || p.username}
-                </Text>
+                <View style={styles.nameLine}>
+                  <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>
+                    {p.displayName || p.username}
+                  </Text>
+                  <UsernameBadges userId={p.id} size={14} />
+                </View>
                 <Text style={styles.handle} numberOfLines={1}>@{p.username}</Text>
               </View>
             </TouchableOpacity>
@@ -147,6 +151,8 @@ const styles = StyleSheet.create({
   text: {
     flex: 1,
   },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameFlex: { flexShrink: 1 },
   name: {
     color: COLORS.white,
     fontSize: 14,

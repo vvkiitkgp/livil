@@ -22,6 +22,7 @@ import { messageCache } from '../../services/messageCache';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import AddBadge from '../../components/AddBadge';
+import UsernameBadges from '../../components/UsernameBadges';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -89,6 +90,9 @@ function ConversationRow({
           <Text style={styles.nameText} numberOfLines={1}>
             {displayName}
           </Text>
+          {/* DM only: a group has no single owner to badge. Badges go with the name;
+              AddBadge is an action and stays last. */}
+          {isDm && item.otherUserId ? <UsernameBadges userId={item.otherUserId} size={15} /> : null}
           {isDm && item.otherUserId ? <AddBadge userId={item.otherUserId} size="sm" /> : null}
           <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
         </View>

@@ -59,6 +59,8 @@ type SharedPost = {
   author_username: string;
   author_display_name: string | null;
   author_avatar_url: string | null;
+  /** Badge kinds the author currently holds. Empty array when they hold none. */
+  author_badges: string[] | null;
   track_title: string;
   track_media_kind: 'audio' | 'video';
   track_audio_url: string | null;
@@ -67,6 +69,71 @@ type SharedPost = {
   track_thumbnail_url: string | null;
   track_duration_seconds: number | null;
 };
+
+/**
+ * The badge marks, inlined.
+ *
+ * COPIES of `src/components/badgeShapes.ts`, `FirstHundredBadge` and `VerifiedBadge`,
+ * not imports. This file is a cold-start-sensitive serverless function that deliberately
+ * has no dependency on the React Native tree (or on anything else — see the header), and
+ * the mobile components are `react-native-svg` elements, which do not render to a string.
+ *
+ * THE COPY IS GUARDED, NOT TRUSTED. `src/components/__tests__/shareBadgeParity.test.ts`
+ * reads both files and fails if any path or colour here drifts from the mobile source.
+ * Change the mark in one place and that test tells you about the other.
+ */
+const SEAL_PATH =
+  'M50.00,2.50 L54.11,4.38 L57.50,8.68 L60.36,12.46 L63.68,13.54 L68.22,12.16 L73.49,10.68 ' +
+  'L77.92,11.57 L80.14,15.51 L80.36,20.98 L80.45,25.72 L82.50,28.54 L86.98,30.10 L92.12,32.00 ' +
+  'L95.18,35.32 L94.66,39.81 L91.62,44.36 L88.91,48.25 L88.50,50.00 L90.03,53.60 L93.29,57.86 ' +
+  'L95.36,62.52 L94.05,66.53 L89.64,69.09 L84.50,70.62 L81.15,72.63 L80.27,76.45 L80.41,81.80 ' +
+  'L79.34,86.79 L75.92,89.27 L70.85,88.75 L65.80,86.96 L61.90,86.62 L58.94,89.19 L55.91,93.60 ' +
+  'L52.11,97.01 L50.00,97.50 L45.89,95.62 L42.50,91.32 L39.64,87.54 L36.32,86.46 L31.78,87.84 ' +
+  'L26.51,89.32 L22.08,88.43 L19.86,84.49 L19.64,79.02 L19.55,74.28 L17.50,71.46 L13.02,69.90 ' +
+  'L7.88,68.00 L4.82,64.68 L5.34,60.19 L8.38,55.64 L11.09,51.75 L11.50,50.00 L9.97,46.40 ' +
+  'L6.71,42.14 L4.64,37.48 L5.95,33.47 L10.36,30.91 L15.50,29.38 L18.85,27.37 L19.73,23.55 ' +
+  'L19.59,18.20 L20.66,13.21 L24.08,10.73 L29.15,11.25 L34.20,13.04 L38.10,13.38 L41.06,10.81 ' +
+  'L44.09,6.40 L47.89,2.99 Z';
+
+const STAR_PATH =
+  'M50.00,19.00 L42.40,39.54 L20.52,40.42 L37.71,53.99 L31.78,75.08 L50.00,62.93 ' +
+  'L68.22,75.08 L62.29,53.99 L79.48,40.42 L57.60,39.54 Z';
+
+const CHECK_PATH =
+  'M31.5,51.5 L44,64 L69,36 L76,42.5 L44,78 L24.5,58 Z';
+
+/**
+ * Keyed by the `badge` value the database stores, and ORDERED: First 100 outranks
+ * Verified, the hierarchy the app renders by. Anything the database returns that is not
+ * listed here is dropped rather than guessed at — a new badge kind reaches the share page
+ * when somebody draws its mark, not before.
+ */
+const BADGE_MARKS: { badge: string; glyph: string; light: string; mid: string; deep: string }[] = [
+  { badge: 'first_100', glyph: STAR_PATH,  light: '#FFEDB0', mid: '#E8B84B', deep: '#8A5E12' },
+  { badge: 'verified',  glyph: CHECK_PATH, light: '#A5F3FC', mid: '#22D3EE', deep: '#0E7490' },
+];
+
+/**
+ * The author's badges as inline SVG, in precedence order, or '' when they hold none.
+ *
+ * `aria-label` rather than decorative: to a screen reader "First 100" is information about
+ * the artist, not ornament. The gradient ids are fixed because this page renders at most
+ * one of each mark — the per-instance counter the mobile components need exists because a
+ * feed can mount fifty.
+ */
+function renderBadges(badges: string[] | null): string {
+  if (!badges || badges.length === 0) { return ''; }
+  const held = new Set(badges);
+  return BADGE_MARKS
+    .filter(m => held.has(m.badge))
+    .map(m => `<svg class="badge" viewBox="0 0 100 100" width="16" height="16" role="img" aria-label="${m.badge === 'first_100' ? 'First 100' : 'Verified'}">`
+      + `<linearGradient id="g-${m.badge}" x1="0" y1="0" x2="0" y2="1">`
+      + `<stop offset="0" stop-color="${m.light}"/><stop offset="0.45" stop-color="${m.mid}"/>`
+      + `<stop offset="1" stop-color="${m.deep}"/></linearGradient>`
+      + `<path d="${SEAL_PATH}" fill="url(#g-${m.badge})" stroke="${m.deep}" stroke-width="2"/>`
+      + `<path d="${m.glyph}" fill="#fff"/></svg>`)
+    .join('');
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -157,6 +224,7 @@ a{color:inherit}
 video.art{aspect-ratio:9/16;max-height:60dvh;width:auto;border-radius:16px}
 .title{font-size:22px;font-weight:800;margin:20px 0 4px;text-align:center;line-height:1.25}
 .artist{font-size:15px;color:#C9B6FF;font-weight:600;margin:0;text-align:center}
+.badge{vertical-align:-3px;margin-left:5px}
 .caption{font-size:14px;color:#9a9aa8;margin:12px 0 0;text-align:center;line-height:1.5}
 .player{width:100%;margin-top:22px;display:flex;align-items:center;gap:14px}
 .play{width:52px;height:52px;flex:0 0 52px;border-radius:50%;border:1.5px solid #8B3DFF;
@@ -301,7 +369,7 @@ function renderPost(post: SharedPost): string {
 
   const body = `${mediaEl}
 <h1 class="title">${escapeHtml(post.track_title)}</h1>
-<p class="artist">@${escapeHtml(post.author_username)}</p>
+<p class="artist">@${escapeHtml(post.author_username)}${renderBadges(post.author_badges)}</p>
 ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
 
 <div class="player">

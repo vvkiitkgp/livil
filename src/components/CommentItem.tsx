@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import UsernameBadges from './UsernameBadges';
 import { Icon } from './Icon';
 import { renderCommentBody } from '../utils/mentions';
 import type { CommentNode } from '../services/comments';
@@ -87,6 +88,8 @@ export default function CommentItem(props: Props) {
       <View style={styles.body}>
         <View style={styles.headerRow}>
           <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+          {/* 13 to match the name beside it. headerRow already sets gap: 4. */}
+          <UsernameBadges userId={node.authorId} size={13} />
           <Text style={styles.time}>· {relativeTime(node.createdAt)}</Text>
           <View style={{ flex: 1 }} />
           <TouchableOpacity

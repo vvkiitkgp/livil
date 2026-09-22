@@ -29,6 +29,7 @@ import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
 import { canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
+import UsernameBadges from './UsernameBadges';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -483,6 +484,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
                 <Text style={styles.displayName} numberOfLines={1}>
                   {headerAuthor.displayName ?? headerAuthor.username}
                 </Text>
+                {/* Sibling of the Text, never inside it — these are SVGs, and RN will not
+                    lay one out in a text run. displayName already has flexShrink: 1, so a
+                    long name truncates and the badges stay whole. */}
+                <UsernameBadges userId={headerAuthor.id} size={15} />
               </View>
               <View style={styles.handleRow}>
                 <Text style={styles.handleText} numberOfLines={1}>
@@ -649,6 +654,11 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               <Text style={styles.displayName} numberOfLines={1}>
                 {headerAuthor.displayName ?? headerAuthor.username}
               </Text>
+              {/* Badges sit with the NAME; AddBadge is an action and stays last. Sibling of
+                  the Text, never inside it — these are SVGs, and RN will not lay one out in
+                  a text run. displayName has flexShrink: 1, so a long name truncates and
+                  the badges stay whole. */}
+              <UsernameBadges userId={headerAuthor.id} size={15} />
               <AddBadge userId={headerAuthor.id} size="sm" />
             </View>
             <View style={styles.handleRow}>

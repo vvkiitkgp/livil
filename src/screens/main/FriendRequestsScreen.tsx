@@ -11,6 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../theme/colors';
+import UsernameBadges from '../../components/UsernameBadges';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import {
   listIncomingFriendRequests,
@@ -85,7 +86,10 @@ export default function FriendRequestsScreen() {
           </View>
         )}
         <View style={styles.body}>
-          <Text style={styles.name} numberOfLines={1}>{name}</Text>
+          <View style={styles.nameLine}>
+            <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>{name}</Text>
+            <UsernameBadges userId={item.otherUserId} size={15} />
+          </View>
           <Text style={styles.subtitle} numberOfLines={1}>
             @{item.username} · wants to be friends
           </Text>
@@ -199,6 +203,8 @@ const styles = StyleSheet.create({
   },
   avatarInitial: { color: COLORS.purpleLight, fontWeight: '700', fontSize: 18 },
   body: { flex: 1, gap: 2 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameFlex: { flexShrink: 1 },
   name: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   subtitle: { color: COLORS.textSecondary, fontSize: 12 },
   actions: { flexDirection: 'row', gap: 8 },

@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import UsernameBadges from '../../components/UsernameBadges';
 import FormInput from '../../components/FormInput';
 import { getOrCreateDm, createGroup } from '../../services/conversations';
 import { supabase } from '../../../lib/supabase';
@@ -202,7 +203,12 @@ export default function NewConversationScreen() {
     >
       <Avatar friend={item} />
       <View style={styles.info}>
-        <Text style={styles.name}>{item.displayName || item.username}</Text>
+        <View style={styles.nameLine}>
+          <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>
+            {item.displayName || item.username}
+          </Text>
+          <UsernameBadges userId={item.id} size={15} />
+        </View>
         <Text style={styles.username}>@{item.username}</Text>
       </View>
       {startingId === item.id && (
@@ -221,7 +227,12 @@ export default function NewConversationScreen() {
       >
         <Avatar friend={item} />
         <View style={styles.info}>
-          <Text style={styles.name}>{item.displayName || item.username}</Text>
+          <View style={styles.nameLine}>
+            <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>
+              {item.displayName || item.username}
+            </Text>
+            <UsernameBadges userId={item.id} size={15} />
+          </View>
           <Text style={styles.username}>@{item.username}</Text>
         </View>
         <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
@@ -438,7 +449,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: COLORS.purpleLight, fontSize: 15, fontWeight: '700' },
-  info: { flex: 1 },
+  info: { flex: 1, minWidth: 0 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameFlex: { flexShrink: 1 },
   name: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   username: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   checkbox: {
