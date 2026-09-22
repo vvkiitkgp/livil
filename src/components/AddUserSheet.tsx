@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
+import UsernameBadges from './UsernameBadges';
 import { Button } from './Button';
 import { useRelationships } from '../contexts/RelationshipContext';
 
@@ -148,7 +149,10 @@ export default function AddUserSheet({
             </View>
           )}
           <View style={styles.headerText}>
-            <Text style={styles.name} numberOfLines={1}>{name || 'User'}</Text>
+            <View style={styles.nameLine}>
+              <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>{name || 'User'}</Text>
+              <UsernameBadges userId={userId} size={17} />
+            </View>
             {handle ? <Text style={styles.handle} numberOfLines={1}>{handle}</Text> : null}
           </View>
         </View>
@@ -372,7 +376,9 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarInitial: { color: COLORS.purpleLight, fontWeight: '700', fontSize: 18 },
-  headerText: { flex: 1 },
+  headerText: { flex: 1, minWidth: 0 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameFlex: { flexShrink: 1 },
   name: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
   handle: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
   muted: { color: COLORS.textSecondary, fontSize: 13, marginBottom: 8, textAlign: 'center' },

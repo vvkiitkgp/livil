@@ -107,7 +107,7 @@ export function OpsUser() {
       // Only on a real grant. 'already' means they had it — re-announcing would buzz
       // somebody's phone about news they got days ago — and a revoke is not news we have
       // decided to send at all.
-      if (result === 'granted') { void sendBadgePush(userId, label); }
+      if (result === 'granted') { void sendBadgePush(userId, badge, label); }
       // Named in every message: with two badges, "Granted." leaves you guessing which.
       if (result === 'full') {
         setBadgeError(

@@ -13,10 +13,10 @@ const db = supabase as any;
  * and who was 99th. Do not add an `awardedAt` here; there is nothing to read.
  *
  * ADDING A BADGE: a row in `badge_kinds` server-side, then an entry here and a
- * renderer in ProfileBadgeRail's registry. This list is the CLIENT's registry of
+ * renderer in ProfileBadges' registry. This list is the CLIENT's registry of
  * badges it can draw, which is why an unrecognised badge is dropped rather than
  * passed through — a badge added server-side and released before the app knows it
- * would otherwise reach the rail, take a slot and a tap target, and render nothing.
+ * would otherwise reach the header, take a slot and a tap target, and render nothing.
  */
 export const PROFILE_BADGES = ['first_100', 'verified'] as const;
 export type ProfileBadge = (typeof PROFILE_BADGES)[number];

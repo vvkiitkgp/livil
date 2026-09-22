@@ -6,19 +6,24 @@ import VerifiedBadge from './VerifiedBadge';
 import type { ProfileBadge } from '../services/profileBadges';
 
 /**
- * The column of badges beside a profile avatar.
+ * The badges on a profile header — the tappable ones, with the explainer popup.
  *
- * POSITIONED ABSOLUTELY, and that is not a detail. Both profile headers are
- * centred stacks (`hero: { alignItems: 'center' }`) with the avatar, display
- * name and handle on one vertical axis. A rail laid out in a row beside the
- * avatar would centre the ROW, sliding the avatar left by half the rail's width
- * — and by a different amount depending on whether the person has any badges.
- * Out of flow, the avatar never moves and an empty rail costs nothing.
+ * SITS BESIDE THE DISPLAY NAME, in a row, exactly like `UsernameBadges` does on every
+ * other surface in the app. This was originally a vertical RAIL pinned beside the avatar;
+ * it was moved because a mark that appears next to the name in the feed, in comments, in
+ * chat and in search, and then next to the *picture* on a profile, reads as two different
+ * marks. One position everywhere is the point of a badge.
  *
- * Mount it inside the avatar's own container, which supplies the positioning
- * context. It is a SIBLING of the avatar's touchable, never a child: the avatar
- * is already pressable (it opens stories) and nested touchables swallow each
- * other's taps unpredictably on Android.
+ * WHY THIS IS NOT JUST `UsernameBadges`. That one is inert decoration — it renders and
+ * nothing more, because a feed of twenty cards should not carry twenty modals. This one is
+ * the only place a badge can be TAPPED to find out what it means, so it owns the popup.
+ * The artwork and the ordering are shared; only the interaction differs.
+ *
+ * MOUNT IT IN A ROW WITH THE NAME, and give the NAME `flexShrink: 1` while this keeps 0 —
+ * a long display name must truncate rather than squash the mark. The old rail carried a
+ * warning about the avatar sliding off the header's centre axis; that no longer applies
+ * here, because the row this lives in is the name's row, and the name is already centred
+ * by the hero. The avatar is untouched above it.
  */
 
 type BadgeSpec = {
@@ -46,9 +51,13 @@ const BADGES: Record<ProfileBadge, BadgeSpec> = {
     render: size => <FirstHundredBadge size={size} />,
   },
   verified: {
-    title: 'Verified',
+    // "Verified Artist", not "Verified". A bare check mark is the internet's shorthand
+    // for "this is a real celebrity"; this badge means something narrower and Livil-
+    // specific — somebody who makes their own music — and the name is where that gets
+    // said. Livil has no identity-verification process and should not imply one.
+    title: 'Verified Artist',
     line: 'Livil has confirmed this is who they say they are.',
-    label: 'Verified badge',
+    label: 'Verified Artist badge',
     render: size => <VerifiedBadge size={size} />,
   },
 };
@@ -73,42 +82,30 @@ export function topBadge(badges: ProfileBadge[]): ProfileBadge | null {
     ?? (badges.length > 0 ? badges[0] : null);
 }
 
-function railOrder(a: ProfileBadge, b: ProfileBadge): number {
+function badgeOrder(a: ProfileBadge, b: ProfileBadge): number {
   const ia = BADGE_PRECEDENCE.indexOf(a);
   const ib = BADGE_PRECEDENCE.indexOf(b);
   return (ia < 0 ? BADGE_PRECEDENCE.length : ia) - (ib < 0 ? BADGE_PRECEDENCE.length : ib);
 }
 
-const BADGE_SIZE = 24;
-/** Gap between the avatar's right edge and the rail. */
-const RAIL_GAP = 8;
+/**
+ * Sized to the display name it sits beside, not to the avatar. 20 matches the smaller of
+ * the two profile headers; the larger one passes 22.
+ */
+const BADGE_SIZE = 20;
 
-export default function ProfileBadgeRail({
+export default function ProfileBadges({
   badges,
-  avatarSize,
   size = BADGE_SIZE,
 }: {
   badges: ProfileBadge[];
-  /**
-   * Width of the avatar this rail hangs off, in dp. REQUIRED, and not a default:
-   * the two profile screens use different avatars (116 and 88), so a constant here
-   * would be silently wrong on one of them.
-   *
-   * This used to be `left: '100%'`, which reads better and was the only percentage
-   * position offset in the whole codebase — no precedent, and it did not place the
-   * rail on a device. A number resolves against nothing and cannot be mismeasured.
-   */
-  avatarSize: number;
+  /** Match the font size of the display name beside it. */
   size?: number;
 }) {
   const [open, setOpen] = useState<ProfileBadge | null>(null);
   const close = useCallback(() => setOpen(null), []);
 
-  // Computed rather than inline so the style prop is not a fresh literal each render.
-  const railStyle = useMemo(
-    () => [styles.rail, { left: avatarSize + RAIL_GAP }],
-    [avatarSize],
-  );
+  const sorted = useMemo(() => [...badges].sort(badgeOrder), [badges]);
 
   if (badges.length === 0) {
     return null;
@@ -118,12 +115,12 @@ export default function ProfileBadgeRail({
 
   return (
     <>
-      <View style={railStyle} pointerEvents="box-none">
-        {[...badges].sort(railOrder).map(badge => (
+      <View style={styles.row}>
+        {sorted.map(badge => (
           <Pressable
             key={badge}
             onPress={() => setOpen(badge)}
-            // A 24px mark is well under the 44px minimum touch target, so the
+            // A 20px mark is well under the 44px minimum touch target, so the
             // slop is what actually makes it hittable. Not decoration.
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
@@ -162,14 +159,13 @@ export default function ProfileBadgeRail({
 }
 
 const styles = StyleSheet.create({
-  rail: {
-    // Out of flow, so the avatar keeps its place on the header's centre axis
-    // whether or not there are badges. `left` is supplied by the caller's avatar
-    // width — see the avatarSize prop for why it is not a percentage.
-    position: 'absolute',
-    top: 0,
-    flexDirection: 'column',
-    gap: 6,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // Two seals touching read as one object; 5 separates them without looking like a gap.
+    gap: 5,
+    // NEVER shrink: the display name gives way, not the badge. See the header comment.
+    flexShrink: 0,
   },
   pressed: { opacity: 0.7 },
   backdrop: {

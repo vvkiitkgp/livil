@@ -245,3 +245,42 @@ describe('share page — a post that is not there', () => {
     expect(res.body).not.toContain('ECONNREFUSED');
   });
 });
+
+/**
+ * The badge is the reason the badge exists: a link shared to WhatsApp is the one page a
+ * stranger sees, and a founder who is marked everywhere inside the app and bare here has
+ * not really been marked. The geometry itself is checked against the mobile source in
+ * src/components/__tests__/shareBadgeParity.test.ts — these are about which marks appear.
+ */
+describe('share page — the author badges', () => {
+  it('renders nothing at all for an author with no badges', async () => {
+    const res = await render(POST_ID, [POST]);
+    expect(res.body).not.toContain('class="badge"');
+  });
+
+  it('marks a First 100 founder', async () => {
+    const res = await render(POST_ID, [{ ...POST, author_badges: ['first_100'] }]);
+    expect(res.body).toContain('aria-label="First 100"');
+    expect(res.body).not.toContain('aria-label="Verified Artist"');
+    // The gold ramp, not the cyan one — the two marks differ only by colour and glyph.
+    expect(res.body).toContain('#E8B84B');
+  });
+
+  it('shows First 100 before Verified however the database ordered them', async () => {
+    const res = await render(POST_ID, [{ ...POST, author_badges: ['verified', 'first_100'] }]);
+    const first = res.body.indexOf('aria-label="First 100"');
+    const verified = res.body.indexOf('aria-label="Verified Artist"');
+    expect(first).toBeGreaterThan(-1);
+    expect(verified).toBeGreaterThan(first);
+  });
+
+  /**
+   * A badge kind added to the database before anyone has drawn its mark must render as
+   * nothing, not as a broken `<svg>` with an empty path — the share page ships on Vercel's
+   * clock, and the database's on whoever runs the migration.
+   */
+  it('ignores a badge kind it has no artwork for', async () => {
+    const res = await render(POST_ID, [{ ...POST, author_badges: ['moderator'] }]);
+    expect(res.body).not.toContain('class="badge"');
+  });
+});

@@ -16,6 +16,7 @@ import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import UsernameBadges from '../../components/UsernameBadges';
 import { haptics } from '../../utils/haptics';
 import { fetchStarredUsers, type StarredUser } from '../../services/playlists';
 import { Icon } from '../../components/Icon';
@@ -59,7 +60,10 @@ function UserRow({
         )}
       </View>
       <View style={styles.meta}>
-        <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+        <View style={styles.nameLine}>
+          <Text style={[styles.name, styles.nameFlex]} numberOfLines={1}>{displayName}</Text>
+          <UsernameBadges userId={item.userId} size={15} />
+        </View>
         <Text style={styles.sub} numberOfLines={1}>
           @{item.username} · {subtitle}
         </Text>
@@ -214,6 +218,8 @@ const styles = StyleSheet.create({
   avatarInitials: { color: COLORS.purpleLight, fontSize: 15, fontWeight: '700' },
 
   meta: { flex: 1, minWidth: 0 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameFlex: { flexShrink: 1 },
   name: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
   sub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
 

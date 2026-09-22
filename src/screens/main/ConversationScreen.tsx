@@ -60,6 +60,7 @@ import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
 import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
+import UsernameBadges from '../../components/UsernameBadges';
 import { Button } from '../../components/Button';
 import { GradientBorder } from '../../components/GradientBorder';
 import ChatTimeSeparator from '../../components/ChatTimeSeparator';
@@ -245,6 +246,9 @@ function MessageBubble({
             <Text style={styles.senderName}>
               {msg.senderDisplayName || msg.senderUsername}
             </Text>
+            {/* 12, not 11 to match senderName: below about 12 the seal's scallops merge
+                into the glyph and both badges read as the same grey dot. */}
+            {msg.senderId ? <UsernameBadges userId={msg.senderId} size={12} /> : null}
             {msg.senderId ? <AddBadge userId={msg.senderId} size="sm" /> : null}
           </View>
         )}
@@ -1046,6 +1050,8 @@ export default function ConversationScreen() {
               )
             )}
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+            {/* DM only — a group title is not a person. headerTitleRow sets gap: 8. */}
+            {!isGroup && otherUserId ? <UsernameBadges userId={otherUserId} size={15} /> : null}
           </View>
           {isGroup ? (
             memberCount !== null ? (

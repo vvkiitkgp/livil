@@ -18,8 +18,13 @@
  * promise their phone rang.
  */
 import { supabase } from '../supabase';
+import { VERIFIED } from './profileBadges';
 
-export async function sendBadgePush(recipientUserId: string, badgeLabel: string): Promise<void> {
+export async function sendBadgePush(
+  recipientUserId: string,
+  badge: string,
+  badgeLabel: string,
+): Promise<void> {
   try {
     const { error } = await supabase.functions.invoke('send-push', {
       body: {
@@ -28,7 +33,11 @@ export async function sendBadgePush(recipientUserId: string, badgeLabel: string)
         // The server authorizes on WHO is sending and whether the recipient really holds a
         // badge; it does not read these strings for anything but display, and clamps them.
         title: 'Livil',
-        body: badgeLabel === 'Verified'
+        // Branch on the badge KEY, never on the label. This compared `badgeLabel ===
+        // 'Verified'` until the badge was renamed to "Verified Artist", at which point the
+        // comparison would have quietly stopped matching and the verified branch would have
+        // died with nothing failing — a display string is not an identifier.
+        body: badge === VERIFIED
           ? 'Your account is now verified ✓'
           : `You received the ${badgeLabel} badge 🎉`,
         data: { route: 'ActivityCenter' },

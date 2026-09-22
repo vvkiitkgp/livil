@@ -124,7 +124,7 @@ export function Ops() {
         // Only on a real grant. 'already' means they had it — re-announcing would buzz
         // somebody's phone about news they got days ago — and a revoke is not news we have
         // decided to send at all.
-        if (result === 'granted') { void sendBadgePush(u.id, label); }
+        if (result === 'granted') { void sendBadgePush(u.id, badge, label); }
         if (result === 'full') {
           setBadgeError(
             `Every ${label} slot is held. Revoke one to free it — slots left by deleted accounts cannot be recovered.`,

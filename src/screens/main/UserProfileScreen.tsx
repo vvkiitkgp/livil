@@ -34,7 +34,7 @@ import {
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
-import ProfileBadgeRail from '../../components/ProfileBadgeRail';
+import ProfileBadges from '../../components/ProfileBadges';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -670,12 +670,6 @@ export default function UserProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          {/*
-            Sibling of the avatar's touchable and absolutely positioned against
-            this wrapper — see ProfileBadgeRail. Keeps the avatar on the header's
-            centre axis whether or not there are badges.
-          */}
-          <View style={styles.avatarSlot}>
           <TouchableOpacity
             style={styles.avatarRing}
             activeOpacity={0.85}
@@ -700,8 +694,6 @@ export default function UserProfileScreen() {
               ) : null}
             </View>
           </TouchableOpacity>
-            <ProfileBadgeRail badges={badges} avatarSize={RING_D} />
-          </View>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -709,7 +701,11 @@ export default function UserProfileScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
+              {/* Beside the name, as everywhere else — see ProfileScreen's note. */}
+              <View style={styles.nameLine}>
+                <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
+                <ProfileBadges badges={badges} size={20} />
+              </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
             </>
           )}
@@ -1027,10 +1023,10 @@ const styles = StyleSheet.create({
   },
 
   hero: { alignItems: 'center', paddingTop: 8, paddingBottom: 16 },
-  // Positioning context for ProfileBadgeRail. Carries the avatar's bottom margin
-  // so wrapping does not change the header's spacing.
-  avatarSlot: { position: 'relative', width: RING_D, marginBottom: 12 },
   avatarRing: {
+    // The 12 used to live on a wrapper that existed only to position the badge rail.
+    // The rail is gone; the margin is the header's spacing and has to stay.
+    marginBottom: 12,
     width: RING_D, height: RING_D, borderRadius: RING_D / 2,
     alignItems: 'center', justifyContent: 'center',
   },
@@ -1047,7 +1043,16 @@ const styles = StyleSheet.create({
   },
   avatarImg: { width: '100%', height: '100%' },
   avatarText: { color: COLORS.purpleLight, fontSize: 26, fontWeight: '800' },
-  displayName: { color: COLORS.white, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  nameLine: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    // See ProfileScreen.nameLine — stretch + centre so a long name truncates.
+    alignSelf: 'stretch', paddingHorizontal: 24, gap: 6,
+  },
+  // The NAME gives way, never the badge.
+  displayName: {
+    color: COLORS.white, fontSize: 20, fontWeight: '800', letterSpacing: -0.3,
+    flexShrink: 1,
+  },
   handle: { color: COLORS.textMuted, fontSize: 14, marginTop: 2 },
   bio: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center' },
 

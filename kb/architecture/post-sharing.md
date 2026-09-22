@@ -235,6 +235,7 @@ send is in flight; that is the whole concurrency control, and it is enough for a
   "author_username": "riya",
   "author_display_name": "Riya",
   "author_avatar_url": "https://…/avatars/…/avatar.jpg",
+  "author_badges": ["first_100"],
   "track_title": "Neon Rain",
   "track_media_kind": "audio",
   "track_audio_url": "https://…/tracks-media/…/audio.mp3",
@@ -249,10 +250,19 @@ send is in flight; that is the whole concurrency control, and it is enough for a
 |---|---|---|
 | `kind <> 'upload'` | Zero rows | **This is where "uploads only" is enforced.** A UI-only rule is not a rule |
 | Post deleted | Zero rows | N6 — the page renders a tombstone, not a 500 |
-| Any other field | Not returned | `waveform_peaks`, lyrics, comments, collaborator rows, `views_count`, viewer state |
+| Any other field | Not returned | `waveform_peaks`, lyrics, comments, collaborator rows, `views_count`, badge `ordinal`, viewer state |
 
 **Not returned, on purpose:** `views_count`. Likes and comments are social proof a stranger
 should see; play count is business intelligence about an artist, handed to anyone with a link.
+
+**`author_badges`** (added 2026-09-22, migration `20260922000000`) carries the badge KINDS the
+author currently holds, ordered by name and never by award time — an empty array when they hold
+none. The shared link is the one page people without accounts ever see, so a First 100 founder
+who is marked everywhere inside the app and bare here has not really been marked. What does not
+travel with it: the founder `ordinal` (all hundred are the same badge; nobody learns they were
+#2 or #99), `awarded_at` (an ordinal with extra steps — sort by it and the order is back), and
+revoked grants. The existing reader `badges_for_profiles` cannot serve this page: it returns
+nothing when `auth.uid()` is null, which is exactly what the share page is.
 
 > **Out loud —** *"The temptation with a function like this is `select *` and let the page pick.
 > I'm listing columns instead, because the return type of this function is a **published API

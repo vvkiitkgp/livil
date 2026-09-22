@@ -1,24 +1,25 @@
 /**
- * Contract tests for the profile badge rail.
+ * Contract tests for the profile header's badges.
  *
  * WHY A COMPONENT TEST HERE, WHEN THEY ARE OTHERWISE RARE
  *
  * kb/standards/testing.md limits component tests to components where logic actually
- * lives. Three properties qualify, and each one regresses INVISIBLY — the screen still
+ * lives. Four properties qualify, and each one regresses INVISIBLY — the screen still
  * renders, it is just wrong:
  *
- *   1. AN EMPTY RAIL MUST OCCUPY NOTHING, and the rail must stay out of layout flow.
- *      Both profile headers are centred stacks; a rail laid out beside the avatar
- *      centres the ROW instead, sliding the avatar off the header's axis by half the
- *      rail's width — and by a different amount for a user with badges than one
- *      without. Nothing errors. The avatar is just subtly misaligned, for some people.
+ *   1. NO BADGES MUST RENDER NOTHING — not an empty box, which would still be a layout
+ *      participant and would open a gap after the name on most profiles in the app.
  *
- *   2. GRADIENT IDS MUST BE UNIQUE PER INSTANCE. react-native-svg resolves url(#id)
+ *   2. THE BADGES MUST NOT SHRINK. They sit in a row with the display name, which is
+ *      allowed to truncate. Flip the flexShrink and a long name squashes the seal into
+ *      an unreadable smear instead of ellipsising itself.
+ *
+ *   3. GRADIENT IDS MUST BE UNIQUE PER INSTANCE. react-native-svg resolves url(#id)
  *      against one document, so two badges sharing an id make the second paint with
  *      the first's gradient, and unmounting the first leaves the survivor unfilled.
  *      This is the same trap GradientBorder counts ids for.
  *
- *   3. THE POPUP CARRIES NO ORDINAL. "All 100 are treated the same" is a product rule
+ *   4. THE POPUP CARRIES NO ORDINAL. "All 100 are treated the same" is a product rule
  *      enforced server-side by badges_for_profiles returning no ordering column — but
  *      a future edit could reintroduce a rank in the copy without any server change.
  */
@@ -26,29 +27,22 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Modal, Text } from 'react-native';
-import ProfileBadgeRail from '../ProfileBadgeRail';
+import ProfileBadges from '../ProfileBadges';
 
-const AVATAR = 116;
-
-function render(
-  badges: React.ComponentProps<typeof ProfileBadgeRail>['badges'],
-  avatarSize = AVATAR,
-) {
+function render(badges: React.ComponentProps<typeof ProfileBadges>['badges']) {
   let tree!: ReactTestRenderer.ReactTestRenderer;
   ReactTestRenderer.act(() => {
-    tree = ReactTestRenderer.create(
-      <ProfileBadgeRail badges={badges} avatarSize={avatarSize} />,
-    );
+    tree = ReactTestRenderer.create(<ProfileBadges badges={badges} />);
   });
   return tree;
 }
 
-/** Flattened style of the rail container, whatever array form it was written in. */
-function railStyle(tree: ReactTestRenderer.ReactTestRenderer) {
-  const rail = tree.root.findAll(
-    n => n.props?.pointerEvents === 'box-none' && n.props?.style != null,
+/** Flattened style of the row, whatever array form it was written in. */
+function rowStyle(tree: ReactTestRenderer.ReactTestRenderer) {
+  const row = tree.root.findAll(
+    n => n.props?.style != null && n.props?.accessibilityRole !== 'button',
   )[0];
-  return Object.assign({}, ...[rail.props.style].flat(Infinity).filter(Boolean));
+  return Object.assign({}, ...[row.props.style].flat(Infinity).filter(Boolean));
 }
 
 function pressables(tree: ReactTestRenderer.ReactTestRenderer) {
@@ -58,6 +52,19 @@ function pressables(tree: ReactTestRenderer.ReactTestRenderer) {
   );
 }
 
+/**
+ * The popup's VISIBLE COPY ONLY. Serialising the whole tree would drag in hex colours
+ * (which look like "#1") and the seal's path data, so an assertion about the copy would
+ * fail on its own noise rather than on what it is checking.
+ */
+function popupCopy(tree: ReactTestRenderer.ReactTestRenderer) {
+  return tree.root
+    .findAllByType(Text)
+    .flatMap(n => React.Children.toArray(n.props.children))
+    .filter((c): c is string => typeof c === 'string')
+    .join(' ');
+}
+
 function gradientIds(tree: ReactTestRenderer.ReactTestRenderer) {
   return tree.root
     .findAll(n => typeof n.type !== 'string'
@@ -65,32 +72,29 @@ function gradientIds(tree: ReactTestRenderer.ReactTestRenderer) {
     .map(n => n.props.id as string);
 }
 
-describe('ProfileBadgeRail', () => {
+describe('ProfileBadges', () => {
   it('renders nothing at all when there are no badges', () => {
     // Not "renders an empty box" — an empty View would still be a layout participant.
     expect(render([]).toJSON()).toBeNull();
   });
 
-  it('keeps the rail out of layout flow, pinned past the avatar’s right edge', () => {
-    const style = railStyle(render(['first_100']));
-    expect(style.position).toBe('absolute');
-    expect(style.top).toBe(0);
-    // A NUMBER, not '100%'. The percentage read better and did not place the rail on a
-    // device — it was the only percentage position offset in the codebase. `left` must
-    // clear the avatar plus the gap, so the rail sits beside it rather than over it.
-    expect(style.left).toBe(AVATAR + 8);
+  it('lays the badges out in a row beside the name, in flow', () => {
+    const style = rowStyle(render(['first_100']));
+    expect(style.flexDirection).toBe('row');
+    // NOT absolute any more. This used to be a rail pinned past the avatar's right edge;
+    // it now sits in the name's row so a badge is in the same place here as in the feed.
+    expect(style.position).toBeUndefined();
   });
 
-  it('tracks the avatar it is given, because the two profile screens differ', () => {
-    // 116 on your own profile, 88 on someone else's. A constant here would be silently
-    // wrong on one of them — which is why avatarSize has no default.
-    expect(railStyle(render(['first_100'], 88)).left).toBe(96);
+  it('never shrinks — the display name is what gives way', () => {
+    // Flip this and a long name squashes the seal instead of ellipsising itself.
+    expect(rowStyle(render(['first_100', 'verified'])).flexShrink).toBe(0);
   });
 
   it('gives the badge a real touch target and a label', () => {
     const [badge] = pressables(render(['first_100']));
     expect(badge.props.accessibilityLabel).toMatch(/First 100/i);
-    // 24px is well under the 44px minimum; the slop is what makes it hittable.
+    // 20px is well under the 44px minimum; the slop is what makes it hittable.
     expect(badge.props.hitSlop).toEqual({ top: 12, bottom: 12, left: 12, right: 12 });
   });
 
@@ -127,19 +131,24 @@ describe('ProfileBadgeRail', () => {
     expect(modal().props.visible).toBe(false);
   });
 
+  /**
+   * The badge is called "Verified Artist", not "Verified". A bare check mark is the
+   * internet's shorthand for "this is a real celebrity", and Livil runs no identity
+   * check — the name is the only place that distinction gets made, so it is pinned.
+   */
+  it('calls the verified badge what it is: a Verified Artist', () => {
+    const tree = render(['verified']);
+    expect(pressables(tree)[0].props.accessibilityLabel).toMatch(/Verified Artist/);
+
+    ReactTestRenderer.act(() => { pressables(tree)[0].props.onPress(); });
+    expect(popupCopy(tree)).toContain('Verified Artist');
+  });
+
   it('says nothing about rank in the popup', () => {
     const tree = render(['first_100']);
     ReactTestRenderer.act(() => { pressables(tree)[0].props.onPress(); });
 
-    // VISIBLE COPY ONLY. Serialising the whole tree would drag in hex colours (which
-    // look like "#1") and the seal's path data, so the assertion would fail on its own
-    // noise rather than on a rank.
-    const copy = tree.root
-      .findAllByType(Text)
-      .flatMap(n => React.Children.toArray(n.props.children))
-      .filter((c): c is string => typeof c === 'string')
-      .join(' ');
-
+    const copy = popupCopy(tree);
     expect(copy).toContain('First 100');
     // An ORDINAL is what must never appear — "#23", "23 of 100", "23/100", "No. 23".
     // The cohort size itself is fine, which is why this needs a digit in front of it:

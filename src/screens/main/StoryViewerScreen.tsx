@@ -15,7 +15,7 @@ import {
   AppState,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -33,6 +33,7 @@ import Reanimated, {
 import { ViewType } from 'react-native-video';
 
 import { COLORS } from '../../theme/colors';
+import UsernameBadges from '../../components/UsernameBadges';
 import MediaPlayer, { type MediaShape } from '../../components/MediaPlayer';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useStories } from '../../contexts/StoriesContext';
@@ -102,6 +103,17 @@ const ART_LIFT = 56;
 const ART_RADIUS = 22;
 
 /**
+ * Chrome padding measured from the safe area, not from the screen edge.
+ *
+ * Both used to be the `paddingTop`/`paddingBottom` of a `<SafeAreaView>`, which ADDS the
+ * inset to whatever padding the style already carries. They are applied by hand now (see
+ * the note on `useSafeAreaInsets` below), so the addition has to be written out or the
+ * chrome moves up by an inset's worth.
+ */
+const PREVIEW_HEADER_PAD = 18;
+const BOTTOM_PAD = 18;
+
+/**
  * Scales the artwork up until it hits whichever limit binds first: a wide cover
  * runs out of width, a tall one runs out of the band between the chrome. Whole
  * dp so the rounded corners and the 1px rim land on pixel boundaries.
@@ -154,6 +166,7 @@ function AuthorFacePreview({ item }: { item: ViewerItem }) {
   // back — a transient face mid-swipe is better than a black one, and it is gone
   // before a late resize could register.
   const isAudio = s.track.mediaKind !== 'video';
+  const insets = useSafeAreaInsets();
   const previewAR = useImageAspect(isAudio ? s.track.coverArtUrl : null);
   const { w: pW, h: pH } = fitArt(previewAR);
   return (
@@ -179,7 +192,7 @@ function AuthorFacePreview({ item }: { item: ViewerItem }) {
         <View style={styles.previewFallback} />
       )}
       <Scrim edge="top" height={150} peakOpacity={0.72} />
-      <SafeAreaView style={styles.previewHeader} edges={['top']} pointerEvents="none">
+      <View style={[styles.previewHeader, { paddingTop: insets.top + PREVIEW_HEADER_PAD }]} pointerEvents="none">
         <View style={styles.authorAvatar}>
           {s.author.avatarUrl ? (
             <Image source={{ uri: s.author.avatarUrl }} style={styles.authorAvatarImg} />
@@ -190,7 +203,8 @@ function AuthorFacePreview({ item }: { item: ViewerItem }) {
           )}
         </View>
         <Text style={styles.authorUsername}>@{s.author.username}</Text>
-      </SafeAreaView>
+        <UsernameBadges userId={s.author.id} size={14} />
+      </View>
     </View>
   );
 }
@@ -949,6 +963,27 @@ export default function StoryViewerScreen() {
     [cubeX, ty, scale, hasNext, hasPrev, commitCube, close, menuOpenSv, panEngagedSv],
   );
 
+  /**
+   * The inset comes from the HOOK, not from `<SafeAreaView>`, and that is the whole fix
+   * for this screen.
+   *
+   * StoryViewer is the app's only `presentation: 'transparentModal'`. On iOS that means
+   * react-native-screens presents it in its OWN view controller, detached from the app's
+   * native view tree — and `SafeAreaView` is a NATIVE component that finds its insets by
+   * walking up the native superview chain looking for the provider. From inside the modal
+   * that walk never reaches the provider App.tsx mounts, so it fell back to itself and
+   * reported ZERO on every edge: the progress pills and the author row drew underneath the
+   * clock and the notch, and the song bar sat on top of the home indicator.
+   *
+   * `useSafeAreaInsets()` reads the same provider through REACT context instead, and React
+   * context does not care that the modal lives in a different view controller — the screen
+   * is still a child of the navigator in the React tree. So the numbers arrive correctly.
+   *
+   * Do not "simplify" this back to `<SafeAreaView>`. The sheet-style `presentation: 'modal'`
+   * screens elsewhere get away with it because a card modal never reaches the notch.
+   */
+  const insets = useSafeAreaInsets();
+
   const composedGesture = useMemo(
     () => Gesture.Race(panGesture, longPressGesture, tapGesture),
     [panGesture, longPressGesture, tapGesture],
@@ -1074,7 +1109,7 @@ export default function StoryViewerScreen() {
         {/* Chrome — OUTSIDE the GestureDetector so its buttons get reliable taps;
             fades out on hold via chromeStyle. */}
         <Reanimated.View style={[StyleSheet.absoluteFill, chromeStyle]} pointerEvents="box-none">
-          <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
+          <View style={[styles.overlay, { paddingTop: insets.top }]} pointerEvents="box-none">
             {/* Segmented progress — the CURRENT author's stories only. */}
             <View style={styles.progressRow}>
               {authorItems.map((it, i) => (
@@ -1109,10 +1144,13 @@ export default function StoryViewerScreen() {
                     </Text>
                   )}
                 </View>
-                <View>
-                  <Text style={styles.authorUsername} numberOfLines={1}>
-                    @{story.author.username}
-                  </Text>
+                <View style={styles.authorMeta}>
+                  <View style={styles.authorNameLine}>
+                    <Text style={styles.authorUsername} numberOfLines={1}>
+                      @{story.author.username}
+                    </Text>
+                    <UsernameBadges userId={story.author.id} size={14} />
+                  </View>
                   <Text style={styles.authorTime}>{relativeTime(story.createdAt)}</Text>
                 </View>
               </TouchableOpacity>
@@ -1136,10 +1174,13 @@ export default function StoryViewerScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          </SafeAreaView>
+          </View>
 
           {/* Bottom stack: comment → glowing go-to-song bar */}
-          <SafeAreaView style={styles.bottomArea} edges={['bottom']} pointerEvents="box-none">
+          <View
+            style={[styles.bottomArea, { paddingBottom: insets.bottom + BOTTOM_PAD }]}
+            pointerEvents="box-none"
+          >
             {story.comment ? (
               <Text style={styles.commentText}>{story.comment}</Text>
             ) : null}
@@ -1171,7 +1212,7 @@ export default function StoryViewerScreen() {
                 <Icon name="arrowRight" size={18} color={COLORS.purpleLight} />
               </TouchableOpacity>
             </View>
-          </SafeAreaView>
+          </View>
         </Reanimated.View>
 
         {/* Purple gradient glow around the zoomed-out card (house GradientBorder),
@@ -1196,7 +1237,7 @@ export default function StoryViewerScreen() {
             <TouchableOpacity style={styles.menuShadeTap} activeOpacity={1} onPress={closeMenu} />
           </Reanimated.View>
           <Reanimated.View style={[styles.sheet, menuSheetStyle]}>
-            <SafeAreaView edges={['bottom']}>
+            <View style={{ paddingBottom: insets.bottom }}>
               <View style={styles.sheetHandle} />
               <TouchableOpacity style={styles.sheetRow} activeOpacity={0.7} onPress={openSong}>
                 <Icon name="musicNotes" size={20} color={COLORS.white} />
@@ -1247,7 +1288,7 @@ export default function StoryViewerScreen() {
                   <Text style={[styles.sheetRowText, styles.sheetRowDanger]}>Delete story</Text>
                 </TouchableOpacity>
               ) : null}
-            </SafeAreaView>
+            </View>
           </Reanimated.View>
         </>
       ) : null}
@@ -1400,7 +1441,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
-    paddingTop: 18,
+    // paddingTop is applied inline as `insets.top + PREVIEW_HEADER_PAD` — see the note on
+    // the inset hook. It lands this face's header within ~3dp of the live one's, so the
+    // cube swipe does not visibly jump when it settles.
   },
   overlay: {
     position: 'absolute',
@@ -1444,6 +1487,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 6,
   },
+  authorMeta: { flexShrink: 1, minWidth: 0 },
+  authorNameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1498,7 +1543,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 14,
-    paddingBottom: 18,
+    // paddingBottom is applied inline as `insets.bottom + BOTTOM_PAD`: it has to clear the
+    // home indicator, which the old <SafeAreaView> was failing to measure inside the modal.
     gap: 10,
   },
   commentText: {

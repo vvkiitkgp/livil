@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-21
+last_verified: 2026-09-22
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-220 TypeScript file(s) under `src/`, 57,991 lines.
+225 TypeScript file(s) under `src/`, 58,703 lines.
 
 ## Size hotspots
 
@@ -26,24 +26,24 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2512 |
-| `src/screens/main/ConversationScreen.tsx` | 1677 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1604 |
-| `src/components/PostCard.tsx` | 1373 |
+| `src/components/FullScreenPlayer.tsx` | 2528 |
+| `src/screens/main/ConversationScreen.tsx` | 1683 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1650 |
+| `src/components/PostCard.tsx` | 1383 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
+| `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/components/WaveformScrubber.tsx` | 1150 |
-| `src/screens/main/UserProfileScreen.tsx` | 1149 |
-| `src/screens/main/ProfileScreen.tsx` | 1061 |
+| `src/screens/main/ProfileScreen.tsx` | 1074 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 912 |
-| `src/screens/main/JamRoomScreen.tsx` | 843 |
+| `src/screens/main/JamRoomScreen.tsx` | 851 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
-| `src/screens/main/SearchScreen.tsx` | 657 |
+| `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
-| `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
+| `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
 
 > 18 file(s) over the threshold against **5 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
@@ -96,27 +96,27 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 21,729 lines.
+43 file(s), 21,847 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1677 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1604 |
+| `src/screens/main/ConversationScreen.tsx` | 1683 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1650 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
-| `src/screens/main/UserProfileScreen.tsx` | 1149 |
-| `src/screens/main/ProfileScreen.tsx` | 1061 |
+| `src/screens/main/UserProfileScreen.tsx` | 1154 |
+| `src/screens/main/ProfileScreen.tsx` | 1074 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/screens/main/JamRoomScreen.tsx` | 843 |
+| `src/screens/main/JamRoomScreen.tsx` | 851 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
-| `src/screens/main/SearchScreen.tsx` | 657 |
+| `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
-| `src/screens/main/CollaboratorPickerScreen.tsx` | 605 |
-| `src/screens/main/GroupInfoScreen.tsx` | 582 |
+| `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
+| `src/screens/main/GroupInfoScreen.tsx` | 584 |
+| `src/screens/main/NewConversationScreen.tsx` | 475 |
 | `src/screens/auth/SignUpScreen.tsx` | 467 |
-| `src/screens/main/NewConversationScreen.tsx` | 462 |
-| `src/screens/main/InboxScreen.tsx` | 425 |
+| `src/screens/main/InboxScreen.tsx` | 429 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/SignInScreen.tsx` | 357 |
@@ -132,9 +132,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
-| `src/screens/main/FollowingScreen.tsx` | 225 |
+| `src/screens/main/FollowingScreen.tsx` | 231 |
+| `src/screens/main/FriendRequestsScreen.tsx` | 223 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
-| `src/screens/main/FriendRequestsScreen.tsx` | 217 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 201 |
@@ -146,12 +146,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-80 file(s), 19,054 lines.
+83 file(s), 19,305 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2512 |
-| `src/components/PostCard.tsx` | 1373 |
+| `src/components/FullScreenPlayer.tsx` | 2528 |
+| `src/components/PostCard.tsx` | 1383 |
 | `src/components/WaveformScrubber.tsx` | 1150 |
 | `src/components/FloatingPlayer.tsx` | 912 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -159,12 +159,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SharePostSheet.tsx` | 511 |
 | `src/components/QueueList.tsx` | 475 |
 | `src/components/MediaPlayer.tsx` | 449 |
-| `src/components/AddUserSheet.tsx` | 401 |
+| `src/components/AddUserSheet.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/DetailView.tsx` | 395 |
-| `src/components/PostLikersSheet.tsx` | 356 |
+| `src/components/PostLikersSheet.tsx` | 362 |
 | `src/components/TrackContextMenu.tsx` | 306 |
-| `src/components/CommentItem.tsx` | 271 |
+| `src/components/CommentItem.tsx` | 274 |
 | `src/components/Icon.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
@@ -175,7 +175,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
-| `src/components/ProfileBadgeRail.tsx` | 207 |
+| `src/components/ProfileBadges.tsx` | 203 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
 | `src/components/ConfirmActionModal.tsx` | 192 |
@@ -186,9 +186,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
 | `src/components/TagInput.tsx` | 167 |
-| `src/components/MentionSuggestions.tsx` | 160 |
+| `src/components/MentionSuggestions.tsx` | 166 |
+| `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/ErrorBoundary.tsx` | 153 |
-| `src/components/__tests__/ProfileBadgeRail.test.tsx` | 150 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/ProfileTabBar.tsx` | 140 |
 | `src/components/AppleSignInButton.tsx` | 135 |
@@ -207,6 +207,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
+| `src/components/UsernameBadges.tsx` | 78 |
+| `src/components/__tests__/shareBadgeParity.test.ts` | 78 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
 | `src/components/GradientFill.tsx` | 74 |
 | `src/components/PostCardSkeleton.tsx` | 74 |
@@ -226,6 +228,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/amplitudeBars.test.ts` | 57 |
 | `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/GoogleGlyph.tsx` | 46 |
+| `src/components/__tests__/UsernameBadges.integration.test.tsx` | 43 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/badgeShapes.ts` | 24 |
@@ -285,7 +288,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-9 file(s), 2,320 lines.
+11 file(s), 2,663 lines.
 
 | File | Lines |
 |---|---:|
@@ -293,6 +296,8 @@ case the call fails silently wherever its result is discarded.
 | `src/contexts/JamRealtimeContext.tsx` | 389 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/ToastContext.tsx` | 190 |
+| `src/contexts/ProfileBadgesContext.tsx` | 172 |
+| `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |
 | `src/contexts/ChromeVisibilityContext.tsx` | 69 |

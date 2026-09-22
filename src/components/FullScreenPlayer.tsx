@@ -45,6 +45,7 @@ import { ScrubTimeLabel } from './ScrubTimeLabel';
 import { useTrackWaveform } from '../hooks/useTrackWaveform';
 import CoverFallback from './CoverFallback';
 import CollabAvatar from './CollabAvatar';
+import UsernameBadges from './UsernameBadges';
 import QueueList from './QueueList';
 import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
@@ -649,7 +650,12 @@ function InfoContent({
           size={52}
         />
         <View style={infoSt.artistMeta}>
-          <Text style={infoSt.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+          <View style={infoSt.artistNameRow}>
+            <Text style={infoSt.artistName} numberOfLines={1}>{nowPlaying.artistName}</Text>
+            {/* 16 to match the name. Sibling of the Text — these are SVGs and RN will not
+                lay one out inside a text run. */}
+            <UsernameBadges userId={nowPlaying.authorId} size={16} />
+          </View>
           {/* What they did, in place of the handle — the artist is already named on the
               line above, so the handle was repeating it in a second alphabet. Falls back
               to the handle for tracks uploaded before uploader roles existed, because a
@@ -716,7 +722,12 @@ function InfoContent({
                   pending={c.status === 'pending'}
                 />
                 <View style={infoSt.roleNameCol}>
-                  <Text style={infoSt.collabName} numberOfLines={1}>{c.display.name}</Text>
+                  <View style={infoSt.collabNameRow}>
+                    <Text style={infoSt.collabName} numberOfLines={1}>{c.display.name}</Text>
+                    {/* userId is nullable: a credit may name somebody with no account yet,
+                        and an invited name has no badges by definition. */}
+                    {c.userId ? <UsernameBadges userId={c.userId} size={14} /> : null}
+                  </View>
                   <Text style={infoSt.roleName} numberOfLines={1}>{c.role}</Text>
                 </View>
                 {/* A clock, not the words "awaiting confirmation": the row already carries
@@ -806,7 +817,11 @@ const infoSt = StyleSheet.create({
   albumLabel: { color: COLORS.purpleLight, fontSize: 10, fontWeight: '700', letterSpacing: 1.4 },
   albumTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700', marginTop: 1 },
   artistMeta: { flex: 1, minWidth: 0 },
-  artistName: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  artistName: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: -0.2, flexShrink: 1 },
+  // Rows so a badge can sit beside the name. flexShrink on the name above means a long
+  // name truncates and the badges stay whole, rather than the other way round.
+  artistNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  collabNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   artistHandle: { color: COLORS.textMuted, fontSize: 13, marginTop: 2 },
 
   creditsBlock: { marginBottom: 24 },
@@ -820,7 +835,8 @@ const infoSt = StyleSheet.create({
   },
   roleEmoji: { width: 32, alignItems: 'center' },
   roleNameCol: { flex: 1 },
-  collabName: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  // flexShrink so a long collaborator name truncates and the badge beside it stays whole.
+  collabName: { color: COLORS.white, fontSize: 14, fontWeight: '700', flexShrink: 1 },
   roleName: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
 
   statsRow: {

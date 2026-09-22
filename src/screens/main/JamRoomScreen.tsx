@@ -27,6 +27,7 @@ import { GradientBorder } from '../../components/GradientBorder';
 import FormInput from '../../components/FormInput';
 import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
 import AddBadge from '../../components/AddBadge';
+import UsernameBadges from '../../components/UsernameBadges';
 import JamExitModal from '../../components/JamExitModal';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { usePlayback } from '../../contexts/PlaybackContext';
@@ -450,7 +451,12 @@ export default function JamRoomScreen() {
       <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
           {!isMe && (
-            <Text style={styles.bubbleSender}>{item.senderDisplayName || item.senderUsername}</Text>
+            <View style={styles.bubbleSenderLine}>
+              <Text style={[styles.bubbleSender, styles.bubbleSenderFlex]} numberOfLines={1}>
+                {item.senderDisplayName || item.senderUsername}
+              </Text>
+              <UsernameBadges userId={item.senderId} size={12} />
+            </View>
           )}
           <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{item.body}</Text>
         </View>
@@ -807,6 +813,8 @@ const styles = StyleSheet.create({
   },
   bubbleMe: { backgroundColor: COLORS.purple, borderBottomRightRadius: 4 },
   bubbleThem: { borderBottomLeftRadius: 4 },
+  bubbleSenderLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
+  bubbleSenderFlex: { flexShrink: 1, marginBottom: 0 },
   bubbleSender: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', marginBottom: 2 },
   bubbleText: { color: COLORS.white, fontSize: 14 },
   bubbleTextMe: { color: COLORS.white },

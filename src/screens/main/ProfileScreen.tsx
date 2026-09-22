@@ -38,7 +38,7 @@ import {
 } from '../../services/posts';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
-import ProfileBadgeRail from '../../components/ProfileBadgeRail';
+import ProfileBadges from '../../components/ProfileBadges';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -556,13 +556,6 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.hero}>
-          {/*
-            The rail is absolutely positioned against this wrapper and is a
-            SIBLING of the avatar's touchable, never a child — see
-            ProfileBadgeRail. Wrapping rather than adding a row keeps the avatar
-            on the header's centre axis whether or not there are badges.
-          */}
-          <View style={styles.avatarSlot}>
           <TouchableOpacity
             style={styles.avatarRing}
             activeOpacity={0.85}
@@ -587,8 +580,6 @@ export default function ProfileScreen() {
               ) : null}
             </View>
           </TouchableOpacity>
-            <ProfileBadgeRail badges={badges} avatarSize={AVATAR_RING_D} />
-          </View>
           {isProfileLoading ? (
             <>
               <View style={styles.skeletonLine} />
@@ -596,7 +587,16 @@ export default function ProfileScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
+              {/*
+                The badges sit beside the NAME, not beside the avatar — the same place
+                they appear on every other surface. The row stretches and centres its
+                own content so the name can truncate at the screen edge instead of
+                pushing the marks off it.
+              */}
+              <View style={styles.nameLine}>
+                <Text style={styles.displayName} numberOfLines={1}>{display}</Text>
+                <ProfileBadges badges={badges} size={22} />
+              </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
             </>
           )}
@@ -769,7 +769,7 @@ export default function ProfileScreen() {
   );
 }
 
-/** Avatar ring diameter. Shared with ProfileBadgeRail so the rail lands on its edge. */
+/** Avatar ring diameter. */
 const AVATAR_RING_D = 116;
 
 const styles = StyleSheet.create({
@@ -808,10 +808,10 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 20,
   },
-  // Positioning context for ProfileBadgeRail. Carries the avatar's bottom
-  // margin so wrapping does not change the header's spacing.
-  avatarSlot: { position: 'relative', width: AVATAR_RING_D, marginBottom: 14 },
   avatarRing: {
+    // The 14 used to live on a wrapper that existed only to position the badge rail.
+    // The rail is gone; the margin is the header's spacing and has to stay.
+    marginBottom: 14,
     width: AVATAR_RING_D,
     height: AVATAR_RING_D,
     borderRadius: AVATAR_RING_D / 2,
@@ -852,11 +852,24 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.2,
   },
+  nameLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Stretch + centre rather than a percentage max-width: the hero has no horizontal
+    // padding of its own, so without this the row is only as wide as its content and a
+    // long name runs off the screen instead of truncating.
+    alignSelf: 'stretch',
+    paddingHorizontal: 24,
+    gap: 6,
+  },
   displayName: {
     color: COLORS.white,
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.5,
+    // The NAME gives way, never the badge.
+    flexShrink: 1,
   },
   handle: {
     color: COLORS.purpleLight,

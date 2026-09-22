@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import FormInput from '../../components/FormInput';
 import AddBadge from '../../components/AddBadge';
+import UsernameBadges from '../../components/UsernameBadges';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
@@ -364,7 +365,12 @@ export default function SearchScreen() {
               </View>
             )}
             <View style={styles.rowBody}>
-              <Text style={styles.rowTitle} numberOfLines={1}>{name}</Text>
+              {/* rowBody is a column, so the name needs a row of its own for the badge to
+                  sit beside it rather than under it. */}
+              <View style={styles.rowTitleLine}>
+                <Text style={styles.rowTitle} numberOfLines={1}>{name}</Text>
+                <UsernameBadges userId={person.id} size={15} />
+              </View>
               <Text style={styles.rowSubtitle} numberOfLines={1}>@{person.username}</Text>
             </View>
             <AddBadge userId={person.id} size="md" />
@@ -576,6 +582,7 @@ const styles = StyleSheet.create({
   /** Touch feedback: the same border, dimmer. No ripple, no wash, no opacity fade. */
   rowPressed: { borderColor: COLORS.purpleDeep },
   rowBody: { flex: 1, minWidth: 0 },
+  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rowTitle: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
   rowTitleActive: { color: COLORS.purpleLight },
   rowSubtitle: { color: COLORS.textSecondary, fontSize: 12.5, flexShrink: 1 },

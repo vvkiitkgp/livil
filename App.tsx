@@ -8,6 +8,7 @@ import {startMapper, stopMapper} from 'react-native-reanimated';
 import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
 import {ToastProvider} from './src/contexts/ToastContext';
+import {ProfileBadgesProvider} from './src/contexts/ProfileBadgesContext';
 import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
 import {hideNativeSplash} from './src/native/splashScreen';
 import {ErrorBoundary} from './src/components/ErrorBoundary';
@@ -74,7 +75,11 @@ export default function App(): React.JSX.Element {
               }
             }}>
             <ToastProvider>
-              <RootNavigator />
+              {/* One cache for every screen: a user seen in the feed is already known by
+                  the time their comment or their profile renders. */}
+              <ProfileBadgesProvider>
+                <RootNavigator />
+              </ProfileBadgesProvider>
             </ToastProvider>
           </NavigationContainer>
         </PlaybackProvider>
