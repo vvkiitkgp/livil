@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import FirstHundredBadge from './FirstHundredBadge';
 import VerifiedBadge from './VerifiedBadge';
-import { BADGE_PRECEDENCE } from './ProfileBadgeRail';
+import { BADGE_PRECEDENCE } from './ProfileBadges';
 import { useBadgesFor } from '../contexts/ProfileBadgesContext';
 import type { ProfileBadge } from '../services/profileBadges';
 

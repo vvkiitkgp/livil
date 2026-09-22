@@ -7,9 +7,9 @@ import { SEAL_PATH } from './badgeShapes';
  * The verified mark: the shared seal in cyan with a white check.
  *
  * PLACEHOLDER ARTWORK, deliberately. The final look is not decided, and this exists so the
- * grant path, the rail, the popup and the notification can be built and tested against a
- * real mark rather than a box. Swapping it is this one file — nothing else references the
- * artwork, only `BADGES.verified.render` in ProfileBadgeRail.
+ * grant path, the header badges, the popup and the notification can be built and tested
+ * against a real mark rather than a box. Swapping it is this one file — nothing else
+ * references the artwork, only `BADGES.verified.render` in ProfileBadges.
  *
  * WHY IT SHARES THE SEAL. Shape says "Livil badge", colour and glyph say which one. Same
  * outline as First 100, cyan instead of gold, a check instead of a star — related at a

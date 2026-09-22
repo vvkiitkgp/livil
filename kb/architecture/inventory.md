@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-225 TypeScript file(s) under `src/`, 58,680 lines.
+225 TypeScript file(s) under `src/`, 58,681 lines.
 
 ## Size hotspots
 
@@ -32,9 +32,9 @@ reading alone (Constitution P28).
 | `src/components/PostCard.tsx` | 1383 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
+| `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/components/WaveformScrubber.tsx` | 1150 |
-| `src/screens/main/UserProfileScreen.tsx` | 1149 |
-| `src/screens/main/ProfileScreen.tsx` | 1061 |
+| `src/screens/main/ProfileScreen.tsx` | 1074 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 912 |
 | `src/screens/main/JamRoomScreen.tsx` | 851 |
@@ -96,7 +96,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 21,829 lines.
+43 file(s), 21,847 lines.
 
 | File | Lines |
 |---|---:|
@@ -104,8 +104,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/StoryViewerScreen.tsx` | 1650 |
 | `src/screens/main/UploadScreen.tsx` | 1343 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
-| `src/screens/main/UserProfileScreen.tsx` | 1149 |
-| `src/screens/main/ProfileScreen.tsx` | 1061 |
+| `src/screens/main/UserProfileScreen.tsx` | 1154 |
+| `src/screens/main/ProfileScreen.tsx` | 1074 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 851 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
@@ -146,7 +146,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-83 file(s), 19,300 lines.
+83 file(s), 19,283 lines.
 
 | File | Lines |
 |---|---:|
@@ -175,9 +175,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
 | `src/components/CommentReportModal.tsx` | 208 |
-| `src/components/ProfileBadgeRail.tsx` | 207 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
+| `src/components/ProfileBadges.tsx` | 199 |
 | `src/components/ConfirmActionModal.tsx` | 192 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/JamExitModal.tsx` | 188 |
@@ -188,8 +188,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TagInput.tsx` | 167 |
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/ErrorBoundary.tsx` | 153 |
-| `src/components/__tests__/ProfileBadgeRail.test.tsx` | 150 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
+| `src/components/__tests__/ProfileBadges.test.tsx` | 141 |
 | `src/components/ProfileTabBar.tsx` | 140 |
 | `src/components/AppleSignInButton.tsx` | 135 |
 | `src/components/StoryCard.tsx` | 131 |
