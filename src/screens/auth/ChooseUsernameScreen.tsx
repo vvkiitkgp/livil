@@ -10,7 +10,7 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../../lib/supabase';
-import { claimUsername } from '../../services/profileService';
+import { claimUsername, getMyProfile } from '../../services/profileService';
 import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
 import FormInput from '../../components/FormInput';
@@ -23,6 +23,16 @@ type Props = {
   displayName?: string | null;
   /** Google profile photo, if any. */
   avatarUrl?: string | null;
+  /**
+   * Whether to ask for a name. FALSE for Sign in with Apple: App Review
+   * (guideline 4) rejects asking for a name or email the Apple sheet already
+   * covered — even when the user chose not to share it. The display name then
+   * comes from the one Apple gave us (seeded at sign-in, see appleAuth.ts) or
+   * falls back to the username; it can be changed later in Edit Profile.
+   */
+  askForName?: boolean;
+  /** Needed to read back the Apple-seeded display name when `askForName` is false. */
+  userId?: string | null;
   /** Called once the account has been finalized with a username. */
   onComplete: () => void;
 };
@@ -42,6 +52,8 @@ export default function ChooseUsernameScreen({
   email,
   displayName: initialDisplayName,
   avatarUrl,
+  askForName = true,
+  userId,
   onComplete,
 }: Props) {
   const [displayName, setDisplayName] = useState(initialDisplayName?.trim() ?? '');
@@ -87,7 +99,7 @@ export default function ChooseUsernameScreen({
   }, [cleanedUsername]);
 
   const handleCreate = async () => {
-    if (!displayName.trim()) {
+    if (askForName && !displayName.trim()) {
       setError('Please enter your name.');
       return;
     }
@@ -102,7 +114,10 @@ export default function ChooseUsernameScreen({
     setLoading(true);
     setError('');
     try {
-      await claimUsername(cleanedUsername, displayName);
+      await claimUsername(
+        cleanedUsername,
+        askForName ? displayName : await appleDisplayName(userId, email, cleanedUsername),
+      );
       onComplete();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not create your account. Please try again.');
@@ -120,9 +135,9 @@ export default function ChooseUsernameScreen({
     usernameStatus === 'taken' ||
     usernameStatus === 'invalid' ||
     cleanedUsername.length === 0 ||
-    displayName.trim().length === 0;
+    (askForName && displayName.trim().length === 0);
 
-  const initial = (displayName.trim()[0] || email?.trim()[0] || '♪').toUpperCase();
+  const initial = (displayName.trim()[0] || cleanedUsername[0] || email?.trim()[0] || '♪').toUpperCase();
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -172,15 +187,17 @@ export default function ChooseUsernameScreen({
             </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Name</Text>
-            <FormInput
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Your name"
-              autoCorrect={false}
-            />
-          </View>
+          {askForName ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Name</Text>
+              <FormInput
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Your name"
+                autoCorrect={false}
+              />
+            </View>
+          ) : null}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Username</Text>
@@ -214,6 +231,31 @@ export default function ChooseUsernameScreen({
       </KeyboardAwareScrollView>
     </SafeAreaView>
   );
+}
+
+/**
+ * The display name to claim with for a Sign in with Apple account.
+ *
+ * `undefined` keeps what the profile already holds — `claim_username` coalesces
+ * a missing name to the current one — which is right when appleAuth.ts seeded
+ * the name Apple shared. Without that seed the profile holds `handle_new_user`'s
+ * email-prefix fallback, which for "Hide My Email" is a relay id like
+ * `8kd93jf0q1`; the chosen username is a far better name than that.
+ */
+async function appleDisplayName(
+  userId: string | null | undefined,
+  email: string | null | undefined,
+  username: string,
+): Promise<string | undefined> {
+  if (!userId) { return username; }
+  try {
+    const current = (await getMyProfile(userId)).display_name?.trim() ?? '';
+    const emailPrefix = email?.split('@')[0] ?? '';
+    return !current || current === emailPrefix ? username : undefined;
+  } catch {
+    // Unreadable profile: the username is a safe name; never block account creation.
+    return username;
+  }
 }
 
 function UsernameStatusLine({ status }: { status: UsernameStatus }) {

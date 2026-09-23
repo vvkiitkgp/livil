@@ -495,6 +495,10 @@ export default function RootNavigator() {
               (session.user?.user_metadata?.picture as string | undefined) ??
               null
             }
+            // Sign in with Apple already covered name + email; App Review rejects
+            // asking again (guideline 4).
+            askForName={session.user?.app_metadata?.provider !== 'apple'}
+            userId={session.user?.id ?? null}
             onComplete={() => setNeedsUsername(false)}
           />
         ) : (
