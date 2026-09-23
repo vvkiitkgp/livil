@@ -161,7 +161,8 @@ jobs:
           -- `email` and its unique index mirror the real auth.users. LIV-74's deletion
           -- ledger hashes the address, and the re-signup test needs the uniqueness to be
           -- present for "the address is free again" to mean anything.
-          create table if not exists auth.users (id uuid primary key, email text);
+          create table if not exists auth.users (id uuid primary key, email text,
+            raw_user_meta_data jsonb default '{}'::jsonb);
           create unique index if not exists users_email_key on auth.users (email);
           create or replace function auth.uid() returns uuid
             language sql stable as $$ select null::uuid $$;
@@ -187,8 +188,30 @@ jobs:
             end if;
           end $$;
           create publication supabase_realtime;
-          SQL
 
+          -- `on_auth_user_created` exists in PRODUCTION ONLY: it was created through the
+          -- Supabase dashboard and no migration creates it. Every replay before this one
+          -- therefore ran against an auth.users with NO trigger, and anything depending on
+          -- it was untestable here by construction.
+          --
+          -- Not hypothetical. A migration whose own self-test inserted a profile row
+          -- passed locally AND in CI, then failed against the real database with a
+          -- duplicate key — production's trigger had already created that profile.
+          --
+          -- The trigger is installed HERE, before the migrations, so their self-tests run
+          -- under the same conditions production imposes. It points at a no-op stub
+          -- because the real `handle_new_user()` is itself created by a migration further
+          -- down the chain; `create or replace` there swaps the body in underneath without
+          -- touching the trigger.
+          --
+          -- It is REMOVED again after the migrations, before the RLS tests — see that
+          -- step for why.
+          create or replace function public.handle_new_user() returns trigger
+            language plpgsql as $stub$ begin return new; end $stub$;
+          create trigger on_auth_user_created
+            after insert on auth.users
+            for each row execute function public.handle_new_user();
+          SQL
       - name: Apply every migration in order
         env:
           PGPASSWORD: postgres
@@ -200,10 +223,24 @@ jobs:
           done
           echo "All migrations applied cleanly."
 
-      # The authorization tests `set role authenticated` and attempt REAL writes, so
-      # that role needs table privileges — otherwise every denial would come from a
-      # missing GRANT rather than from RLS, and the tests would pass for the wrong
-      # reason. Run after migrations so it covers every table they created.
+      # The trigger goes again before the tests run.
+      #
+      # It belongs during the replay, because a migration's own self-test must face what
+      # production imposes — that is the gap that let a duplicate-key failure through to
+      # the live database. It does NOT belong during the RLS tests: sixteen of those
+      # files predate it and build their fixtures by inserting an auth.users row AND its
+      # profile explicitly. With the trigger live, the profile is created twice and every
+      # one of them dies on `profiles_username_key` before its first assertion.
+      #
+      # Rewriting sixteen unrelated fixtures to accommodate a test-harness detail would
+      # be a far larger and riskier change than the gap it closes, and would couple every
+      # future fixture to this decision. Scope it to the replay instead.
+      - name: Remove the auth trigger before the RLS tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -c "drop trigger if exists on_auth_user_created on auth.users;"
       - name: Grant table access to the app roles
         env:
           PGPASSWORD: postgres
@@ -378,6 +415,44 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/badge-verified-and-notice.test.sql
+
+      # The copyright scan is only worth anything if the verdict cannot be authored by
+      # the person it describes. There is no INSERT policy at all, and the uploader's
+      # UPDATE policy is narrowed to the acknowledgement columns by a trigger — a policy
+      # cannot express "these columns only". Both halves are asserted here, plus the
+      # check constraints that stop a FAILED scan from being stored as a clean one: if
+      # those ever relax, a provider outage silently clears every upload made during it.
+      - name: Copyright scan tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/copyright-scans.test.sql
+
+      # The first capability in Livil that removes somebody else's content, so the
+      # assertions are about what it must REFUSE. Three of the defects this file caught
+      # were silent and in the safe-looking direction — the operator screen read "Taken
+      # down" while the audio was streaming again — and none of them is expressible in
+      # TypeScript, which is why review, typecheck, lint and 636 Jest tests all missed
+      # them.
+      - name: Takedown tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/takedown.test.sql
+
+      # The media freeze is the join between "we scanned this file" and "this is the file
+      # we scanned". Its first version passed review and was still wrong: it compared a
+      # NULL slot with `=`, got NULL rather than FALSE, and so declined to raise for
+      # exactly the slot it had never seen filled. These assert by WRITING — a test that
+      # restated the predicate would have agreed with the bug.
+      - name: Media freeze tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/media-freeze.test.sql
 
       # Feed suppression fails SILENTLY when it fails. `fetch_home_feed` is SECURITY
       # INVOKER, so a missing own-row SELECT policy on post_impressions or post_views

@@ -7,12 +7,14 @@
  */
 import {
   publishTrack,
+  type CopyrightMatchPrompt,
   type PublishCollaborator,
   type PublishProgress,
   type PublishTrackResult,
 } from '@shared/services/publishTrack';
 import type { TrackMediaKind } from '@shared/services/media';
 import { backfillWaveformPeaks } from '@shared/services/waveformStore';
+import { TERMS_VERSION } from '@shared/constants/terms';
 import { uploadFileResumable } from './tusUpload';
 import { analyzeLocalFile } from './waveform';
 
@@ -92,6 +94,12 @@ export type PublishHandle = {
 export function startPublish(
   picked: PickedMedia,
   onProgress: (p: PublishProgress) => void,
+  /**
+   * Asked when the copyright scan matches a known recording. Omit and the scan is not
+   * run at all — the studio always passes one, so this stays optional only for the
+   * existing tests that call `startPublish` directly.
+   */
+  onCopyrightMatch?: CopyrightMatchPrompt,
 ): PublishHandle {
   const imageKind: TrackMediaKind = picked.mode === 'audio' ? 'cover' : 'thumbnail';
   const files = new Map<TrackMediaKind, File>([
@@ -118,6 +126,10 @@ export function startPublish(
         uploaderRole: picked.uploaderRole,
         collaborators: picked.collaborators,
         tags: picked.tags,
+        // The studio and the phone must record the SAME version string, so this comes
+        // from the shared constant rather than a literal typed twice.
+        termsVersion: TERMS_VERSION,
+        appVersion: null,
         assets: [...files.entries()].map(([kind, file]) => ({
           kind,
           fileName: file.name,
@@ -133,6 +145,7 @@ export function startPublish(
         return handle.done;
       },
       onProgress,
+      onCopyrightMatch,
     );
 
     // Fire-and-forget: the track is already published and playable. A missing envelope

@@ -49,6 +49,9 @@ exception
   -- Section 7's refusal IS a CHECK constraint, so without this the statement it puts
   -- under test raises straight past the handler and aborts the file.
   when check_violation        then return false;
+  -- Section 8 tests IDEMPOTENCY, whose refusal is a unique index rather than a policy or
+  -- a trigger. Without this the duplicate insert escapes the handler and kills the file.
+  when unique_violation       then return false;
 end $$;
 
 -- The insert policy and the pin trigger both call auth.uid(), and the trigger is NOT
@@ -223,5 +226,99 @@ select pg_temp.assert(
     values ('9.9', now(), 'https://example.com', 'PENDING')
   $$),
   false);
+
+-- ── 8. The per-upload streaming grant ──────────────────────────────────────
+--
+-- `source='upload'` was reserved from the beginning, with three stated preconditions: the
+-- value, a track_id, and a unique index. The fourth thing the original header could not
+-- do was pin the track — the server has no way to know which one was meant — so a client
+-- could have logged a confirmation naming somebody else's upload. That is what section 3
+-- of 20260923030000 closes, and it is what these assert.
+set local role postgres;
+-- This file's own fixtures create auth.users but no profiles, and `tracks.uploader_id`
+-- references profiles.
+insert into public.profiles (id, username) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'ta_owner'),
+  ('bbbbbbbb-0000-0000-0000-000000000002', 'ta_other')
+on conflict (id) do nothing;
+
+insert into public.tracks (id, uploader_id, title, media_kind, audio_url)
+values ('0a1c0000-0000-0000-0000-00000000c001', 'aaaaaaaa-0000-0000-0000-000000000001',
+        'mine', 'audio', 'https://example.test/mine.mp3'),
+       ('0a1c0000-0000-0000-0000-00000000c002', 'bbbbbbbb-0000-0000-0000-000000000002',
+        'theirs', 'audio', 'https://example.test/theirs.mp3')
+on conflict (id) do nothing;
+
+set local role authenticated;
+select pg_temp.set_user('aaaaaaaa-0000-0000-0000-000000000001');
+
+select pg_temp.assert(
+  'an uploader can grant the streaming licence for their own track',
+  pg_temp.allows($$
+    insert into public.terms_acceptances (user_id, version, source, track_id)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '1.0', 'upload',
+            '0a1c0000-0000-0000-0000-00000000c001')
+  $$),
+  true);
+
+-- THE HOLE THE BOARD NAMED. Without the verify trigger this succeeds, and the table ends
+-- up holding a confirmation about a track the confirmer has nothing to do with.
+select pg_temp.assert(
+  'nobody can grant a licence for SOMEBODY ELSE''S track',
+  pg_temp.allows($$
+    insert into public.terms_acceptances (user_id, version, source, track_id)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '1.0', 'upload',
+            '0a1c0000-0000-0000-0000-00000000c002')
+  $$),
+  false);
+
+-- An 'upload' row with no track names nothing, which is the unbounded row type the
+-- original header refused to admit early.
+select pg_temp.assert(
+  'an upload grant must name a track',
+  pg_temp.allows($$
+    insert into public.terms_acceptances (user_id, version, source)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '1.0', 'upload')
+  $$),
+  false);
+
+select pg_temp.assert(
+  'a signup acceptance must NOT name a track',
+  pg_temp.allows($$
+    insert into public.terms_acceptances (user_id, version, source, track_id)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '0.9', 'signup',
+            '0a1c0000-0000-0000-0000-00000000c001')
+  $$),
+  false);
+
+-- Idempotent: a retry after a timeout that actually succeeded is not a second grant.
+select pg_temp.assert(
+  'the same grant twice is refused by the unique index',
+  pg_temp.allows($$
+    insert into public.terms_acceptances (user_id, version, source, track_id)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', '1.0', 'upload',
+            '0a1c0000-0000-0000-0000-00000000c001')
+  $$),
+  false);
+
+-- THE RULING THE ORIGINAL MIGRATION DEFERRED TO THE BOARD: deleting a track must not
+-- destroy its attestation. `on delete set null` cannot deliver that — it runs as an
+-- UPDATE, which the append-only trigger vetoes, aborting the parent delete — and CASCADE
+-- would destroy the record at the moment somebody most wants it gone. So: no FK at all.
+set local role postgres;
+select pg_temp.assert(
+  'deleting the track still works',
+  pg_temp.allows($$
+    delete from public.tracks where id = '0a1c0000-0000-0000-0000-00000000c001'
+  $$),
+  true);
+
+select pg_temp.assert(
+  'and the grant SURVIVES the track it describes',
+  exists (
+    select 1 from public.terms_acceptances
+     where source = 'upload' and track_id = '0a1c0000-0000-0000-0000-00000000c001'
+  ),
+  true);
 
 rollback;

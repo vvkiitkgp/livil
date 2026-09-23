@@ -513,6 +513,262 @@ a {
   transition: width 180ms ease;
 }
 
+/* The copyright question.
+
+   Purple-bordered, not red: a fingerprint match is a question, not a verdict, and
+   painting it as an error would tell a legitimate artist they have done something wrong.
+   Sits inside the row rather than in a page-level dialog because several items can be
+   waiting at once -- the batch uploader runs three at a time.
+
+   `.queue__row` is `display: flex` with no wrapping, so this panel arrived as a THIRD
+   COLUMN and crushed the title/description stack to one character per line. The wrap is
+   scoped to this status rather than applied to every row, so no other state's layout can
+   shift as a side effect. */
+.queue__row[data-status='awaiting_rights'] {
+  flex-wrap: wrap;
+  border-color: var(--purple);
+}
+
+.queue__rights {
+  /* Its own full-width line beneath the row's existing columns. */
+  flex: 0 0 100%;
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--purple);
+  border-radius: 12px;
+  background: var(--purple-dim);
+}
+
+.queue__rightstitle {
+  margin: 0 0 4px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--white);
+}
+
+.queue__rightsbody {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.queue__rightsbody strong {
+  color: var(--white);
+}
+
+/* The rights declaration form. Purple, never red: a match is a question, not a verdict,
+   and painting it as an error tells a legitimate artist they have done something wrong. */
+.rights__title {
+  margin: 0 0 4px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--white);
+}
+
+.rights__body {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.rights__choices,
+.rights__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.rights__legend,
+.rights__group > .rights__legend {
+  margin: 6px 0 2px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--white);
+}
+
+.rights__help {
+  margin: -2px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.rights__choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rights__choice[data-compact='true'] { padding: 7px 11px; }
+
+.rights__choice:hover { border-color: var(--purple-royal); }
+
+.rights__choice[data-selected='true'] {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+
+/* The control, and it has to be VISIBLE WHEN UNSELECTED.
+   The first version drew it with `--border` (#252545) on a `--card` (#1A1A2E) row, which
+   is a perfectly good container edge and an unreadable form control — the unchecked
+   options simply looked like text. Controls need contrast against the surface, not
+   against the page, so this uses the secondary text colour instead.
+
+   Filled when selected is the design system's documented indicator exception to the
+   no-solid-purple rule: a hollow 18px shape reads as unchecked. */
+.rights__dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--text-secondary);
+  background: transparent;
+}
+
+/* Round for "pick one", square for "pick any". */
+.rights__choice[data-shape='radio'] .rights__dot { border-radius: 50%; }
+.rights__choice[data-shape='checkbox'] .rights__dot { border-radius: 5px; }
+
+.rights__choice:hover .rights__dot { border-color: var(--purple-neon); }
+
+.rights__choice[data-selected='true'] .rights__dot { border-color: var(--purple); }
+
+/* A radio fills from the centre, leaving its ring visible — the shape stays legible as a
+   radio whether or not it is on. */
+.rights__choice[data-shape='radio'][data-selected='true'] .rights__dot::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--purple);
+}
+
+/* A checkbox fills solid and carries a tick. */
+.rights__choice[data-shape='checkbox'][data-selected='true'] .rights__dot {
+  background: var(--purple);
+}
+
+.rights__choice[data-shape='checkbox'][data-selected='true'] .rights__dot::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 5px;
+  height: 10px;
+  border: solid var(--white);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.rights__choicetext { display: flex; flex-direction: column; gap: 2px; }
+
+.rights__choicelabel { font-size: 13px; font-weight: 600; color: var(--white); }
+
+.rights__choice[data-selected='true'] .rights__choicelabel { color: var(--purple-light); }
+
+.rights__choicehint { font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
+
+/* A blocked row. Tinted rather than greyed out: greying reads as "disabled, try again
+   later", and this is not coming back on its own. The row still shows its cover art and
+   title because the owner is looking for a track they recognise, not for a placeholder. */
+.table tr[data-blocked='true'] {
+  background: var(--purple-dim);
+}
+
+.table tr[data-blocked='true'] .table__title {
+  color: var(--purple-light);
+}
+
+.badge[data-kind='blocked'] {
+  border-color: var(--purple);
+  color: var(--purple-light);
+}
+
+/* Removal notices. Purple-bordered rather than red: the person reading this did not
+   necessarily do anything wrong — a reposter loses their post because somebody else's
+   track went, and styling it as an error would say otherwise. */
+.removals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: var(--space-6);
+}
+
+.removal {
+  padding: 14px 16px;
+  border: 1px solid var(--purple);
+  border-radius: var(--radius-md);
+  background: var(--purple-dim);
+}
+
+.removal__title {
+  margin: 0 0 6px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--white);
+}
+
+/* The operator's own words, set apart so it reads as a quotation rather than as ours. */
+.removal__reason {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--purple);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--white);
+}
+
+.removal__note {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.removal__actions { margin-top: 8px; }
+
+/* "Nothing published" has to be readable at a glance — skimming past a zero is exactly
+   how the wrong row got taken down. */
+.hint[data-empty='true'] {
+  color: var(--purple-light);
+  font-weight: 700;
+}
+
+.rights__consent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.rights__notice {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.rights__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /*
  * Progress fill uses the same deep->neon ramp as the button outlines, for the same reason
  * the mobile app uses GradientFill: a flat purple slab reads as a leftover block. The
@@ -2742,4 +2998,116 @@ a.btn {
   resize: vertical;
   min-height: 120px;
   line-height: 1.5;
+}
+
+/* ── Takedown / restore dialog ──────────────────────────────────────────────
+   Wider than `.confirm` because it carries a list of reasons rather than a sentence,
+   and `overflow-y` because the eight presets plus a warning plus a note box exceed a
+   laptop viewport once the browser chrome is counted. `align-items: stretch` so the
+   fieldset and the textarea fill the panel instead of centring at their own widths. */
+.takedown {
+  max-width: 520px;
+  width: 100%;
+  align-items: stretch;
+  text-align: left;
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+
+/* The panel is a flex COLUMN with a max-height, so every child is `flex-shrink: 1` by
+   default and gets squashed to make the content fit — which silently collapsed the
+   3-row note box to a single 22px line, and would have eaten the reason list next on a
+   short viewport. The panel scrolls, so nothing here should ever shrink. */
+.takedown > * { flex-shrink: 0; }
+
+.takedown__id {
+  margin: -8px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The "this removes nothing" case. Amber rather than red: it is a question about whether
+   the operator meant this row, not a failure — and a red block here would read as an
+   error the operator had already caused. */
+.takedown__warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warning, #E8A33D);
+  border-radius: var(--radius-sm);
+  background: rgba(232, 163, 61, 0.1);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.takedown__reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.takedown__notelabel {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.takedown__note {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.takedown__note:focus-visible {
+  outline: none;
+  border-color: var(--purple);
+}
+
+/* ── Reviewing a report: the media, inline ─────────────────────────────────
+   A report row used to be an accusation with no way to check it. `max-width` keeps a
+   video from taking the whole column on a wide screen, and the audio element is left at
+   the browser's native control set deliberately — a bespoke transport here would be a
+   second player to keep in sync with nothing. */
+.msg__media {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 2px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.msg__media img {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.msg__media audio { width: 100%; }
+
+.msg__media video {
+  width: 100%;
+  max-width: 320px;
+  border-radius: var(--radius-sm);
+  background: #000;
+}
+
+.msg__mediatext {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
 }

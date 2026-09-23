@@ -13,6 +13,8 @@ import { filesFromDataTransfer, pairAssets } from '../upload/files';
 import { mergeCredits } from '../upload/credits';
 import { describeQuality } from '../upload/quality';
 import { itemsFromPaired, useUploadQueue, type QueueItem } from '../upload/queue';
+import type { RightsDeclaration } from '@shared/services/copyrightScan';
+import { RightsDeclarationForm } from '../components/RightsDeclarationForm';
 import { ROLES, getChipTone, isPresetRole } from '@shared/constants/roles';
 import { mergeTags } from '@shared/constants/tags';
 import { ROLE_MAX_LENGTH } from '@shared/services/publishTrack';
@@ -282,6 +284,7 @@ export function Upload() {
                 coverForId.current = item.id;
                 coverInput.current?.click();
               }}
+              onAnswerRights={answer => queue.answerRights(item.id, answer)}
             />
           ))}
         </ul>
@@ -434,6 +437,7 @@ function QueueRow({
   onUploaderRole,
   onRemove,
   onPickCover,
+  onAnswerRights,
 }: {
   item: QueueItem;
   onWatch: () => void;
@@ -450,8 +454,12 @@ function QueueRow({
   onUploaderRole: (role: string) => void;
   onRemove: () => void;
   onPickCover: () => void;
+  onAnswerRights: (answer: RightsDeclaration) => void;
 }) {
-  const locked = item.status === 'uploading' || item.status === 'done';
+  // `awaiting_rights` locks the fields too: the file is already uploaded and the row is
+  // mid-publish, so editing the title here would show one thing and store another.
+  const locked =
+    item.status === 'uploading' || item.status === 'done' || item.status === 'awaiting_rights';
   // Typing rather than picking. Sticky once chosen, and true on load for a role that is
   // not in the list — otherwise re-rendering would snap a typed role back to the dropdown.
   const [ownRoleCustom, setOwnRoleCustom] = useState(false);
@@ -657,6 +665,21 @@ function QueueRow({
       {item.status === 'uploading' && (
         <div className="queue__bar">
           <div className="queue__barfill" style={{ width: `${item.fraction * 100}%` }} />
+        </div>
+      )}
+
+      {/*
+        The rights declaration. Deliberately NOT styled as an error: a fingerprint match
+        is not a finding of infringement, and this artist may well own the recording or
+        hold a licence. Covers never reach here at all -- fingerprinting matches one
+        specific master, and a cover is a different recording.
+      */}
+      {item.status === 'awaiting_rights' && (
+        <div className="queue__rights">
+          <RightsDeclarationForm
+            matchDescription={item.matchDescription ?? 'an existing commercial recording'}
+            onAnswer={onAnswerRights}
+          />
         </div>
       )}
     </li>

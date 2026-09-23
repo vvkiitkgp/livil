@@ -21,7 +21,8 @@ export type ActivityType =
   | 'credited'
   | 'credit_accepted'
   | 'credit_declined'
-  | 'badge_granted';
+  | 'badge_granted'
+  | 'content_removed';
 
 export type ActivityActor = {
   id: string;
@@ -53,6 +54,13 @@ export type ActivityItem = ActivityBase &
     // play_milestone. `badge` is the key from badge_kinds, not display copy — an
     // unrecognised one is dropped rather than rendered as itself.
     | { type: 'badge_granted'; badge: ProfileBadge }
+    // Livil telling you something of yours was removed, and why. No actor, DELIBERATELY:
+    // naming the operator would put a real person's profile in front of somebody who has
+    // just lost content, which is an invitation to retaliate.
+    //
+    // `kind` distinguishes losing your own upload from losing a repost of somebody else's
+    // track — the second is not the person's fault and must not read like an accusation.
+    | { type: 'content_removed'; kind: 'upload' | 'repost'; trackTitle: string | null; reason: string | null }
     | { type: 'new_fan'; actor: ActivityActor }
     | { type: 'friend_accepted'; actor: ActivityActor }
     | { type: 'friend_rejected'; actor: ActivityActor }
@@ -89,6 +97,12 @@ type RawActivityRow = {
     answered?: 'accepted' | 'declined';
     /** badge_granted: the badge_kinds key. Validated before use — see rowToItem. */
     badge?: string;
+    /** content_removed: 'upload' | 'repost'. Anything else is read as 'upload'. */
+    kind?: string;
+    /** content_removed: copied at removal time, so it survives the track being deleted. */
+    track_title?: string;
+    /** content_removed: the operator's own words, shown verbatim. */
+    reason?: string;
   } | null;
   actor_username: string | null;
   actor_display_name: string | null;
@@ -147,6 +161,12 @@ function rowToItem(row: RawActivityRow): ActivityItem | null {
       // it. Dropping the row is better than an item that renders as blank text.
       if (!isProfileBadge(badge)) { return null; }
       return { ...base, type: 'badge_granted', badge };
+    }
+    case 'content_removed': {
+      const kind = row.payload?.kind === 'repost' ? 'repost' : 'upload';
+      const title = typeof row.payload?.track_title === 'string' ? row.payload.track_title : null;
+      const reason = typeof row.payload?.reason === 'string' ? row.payload.reason : null;
+      return { ...base, type: 'content_removed', kind, trackTitle: title, reason };
     }
     case 'new_fan':
       return { ...base, type: 'new_fan', actor: rowToActor(row) };
@@ -231,6 +251,17 @@ export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
       return item.badge === 'verified'
         ? { actor: null, text: 'Your account is now verified ✓' }
         : { actor: null, text: 'You\'re one of the First 100 on Livil 🎉' };
+    // Livil speaking. A whole sentence, and the operator's own reason quoted after it so
+    // the person is not left guessing — the entire point of the notice is that they learn
+    // WHY, from a screen rather than from noticing a gap.
+    case 'content_removed': {
+      const what = item.trackTitle ? `“${item.trackTitle}”` : 'one of your posts';
+      const lead =
+        item.kind === 'repost'
+          ? `Your repost of ${what} was removed — the original is no longer on Livil`
+          : `${what} was removed from Livil`;
+      return { actor: null, text: item.reason ? `${lead}. ${item.reason}` : `${lead}.` };
+    }
     case 'new_fan':
       return { actor: item.actor, text: ' starred you' };
     case 'friend_accepted':

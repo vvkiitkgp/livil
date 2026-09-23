@@ -35,6 +35,22 @@ export type OpsReport = {
   /** Track title, comment excerpt, or story caption — whatever still exists. */
   targetExcerpt: string | null;
   /**
+   * The track behind the report, so it can be PLAYED and acted on rather than only read
+   * about. Null when there is no track to reach: a deleted post, an expired story, or a
+   * comment whose post has gone.
+   *
+   * For a comment report this is the track the comment sits UNDER — judging a remark
+   * without the thing it was a remark about is judging half the exchange.
+   */
+  trackId: string | null;
+  trackTitle: string | null;
+  mediaKind: string | null;
+  /** A public object URL, the same one a listener's player fetches. */
+  mediaUrl: string | null;
+  coverUrl: string | null;
+  /** Set when this track is ALREADY down — the action button says "Restore" instead. */
+  trackTakenDownAt: string | null;
+  /**
    * False when the reported thing is gone: a deleted post, or a story past its 24 hours.
    * The report is still actionable — the reported USER is still there — so this drives a
    * label rather than hiding the row.
@@ -63,6 +79,12 @@ export async function fetchOpsReports(includeReviewed = false): Promise<OpsRepor
     reportedUsername: r.reported_username,
     targetId: r.target_id,
     targetExcerpt: r.target_excerpt,
+    trackId: r.track_id,
+    trackTitle: r.track_title,
+    mediaKind: r.media_kind,
+    mediaUrl: r.media_url,
+    coverUrl: r.cover_url,
+    trackTakenDownAt: r.track_taken_down_at,
     targetExists: Boolean(r.target_exists),
     reviewedAt: r.reviewed_at,
     reviewedBy: r.reviewed_by,

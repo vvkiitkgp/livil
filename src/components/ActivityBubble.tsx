@@ -46,6 +46,14 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
     // marks are gradient SVGs that would read as mud at that size.
     case 'badge_granted':
       return { format: 'text', icon: 'seal' };
+    // Text, not 'post': the post is gone — that is the whole message. A 'post' format
+    // would try to render a tappable card for something that no longer exists.
+    //
+    // `warningTriangle` rather than `block` or `error`: the person reading this may have
+    // done nothing wrong at all — a reposter loses their post because somebody else's
+    // track went — and a red stop sign would say otherwise before they read a word.
+    case 'content_removed':
+      return { format: 'text', icon: 'warningTriangle' };
     case 'new_fan':
       return { format: 'text', icon: 'star' };
     case 'friend_accepted':

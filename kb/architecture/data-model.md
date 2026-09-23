@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-22
+last_verified: 2026-09-23
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 101 migration(s) in `supabase/migrations/`.
+Reconstructed from 112 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-44 table(s).
+47 table(s).
 
 ### `activity_notifications`
 
@@ -394,6 +394,31 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 - `trg_messages_freeze_identity` — before update (`20260729000000_liv78_msg_update_with_check.sql`)
 - `after_message_delete` — after delete (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
 
+### `moderation_actions`
+
+RLS enabled · defined in `20260923010000_track_takedown.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `actor_id` | `uuid` |
+| `action` | `text not null check (action in ('takedown', 'restore', 'purge_media'))` |
+| `track_id` | `uuid` |
+| `target_owner_id` | `uuid` |
+| `reason` | `text check (reason is null or char_length(reason) <= 1000)` |
+| `snapshot` | `jsonb` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Indexes**
+
+- `moderation_actions_track_idx` `(track_id, created_at desc)`
+- `moderation_actions_owner_idx` `(target_owner_id, created_at desc)`
+
+**Triggers**
+
+- `trg_moderation_actions_append_only` — BEFORE UPDATE OR DELETE (`20260923010000_track_takedown.sql`)
+- `trg_moderation_actions_pin` — BEFORE INSERT (`20260923010000_track_takedown.sql`)
+
 ### `notification_preferences`
 
 RLS enabled · defined in `20260803120000_notification_preferences.sql`
@@ -578,6 +603,29 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `trg_post_likes_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 
+### `post_removals`
+
+RLS enabled · defined in `20260923050000_post_removals_and_notice.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `post_id` | `uuid not null` |
+| `author_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `track_id` | `uuid not null` |
+| `kind` | `text not null check (kind in ('upload', 'repost'))` |
+| `track_title` | `text` |
+| `caption` | `text` |
+| `clip_start_sec` | `numeric(10,3)` |
+| `clip_end_sec` | `numeric(10,3)` |
+| `reason` | `text` |
+| `removed_at` | `timestamptz not null default now()` |
+
+**Indexes**
+
+- `post_removals_author_idx` `(author_id, removed_at desc)`
+- `post_removals_track_idx` `(track_id)`
+
 ### `post_reports`
 
 RLS enabled · defined in `20260607000007_post_reports.sql`
@@ -688,6 +736,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_posts_freeze_counter_identity` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
 - `trg_posts_clamp_counters_on_insert` — before insert (`20260722160000_counters_are_not_client_writable.sql`)
 - `notify_track_credits` — after insert (`20260806130000_credit_accept_decline.sql`)
+- `trg_posts_block_taken_down` — BEFORE INSERT (`20260923010000_track_takedown.sql`)
 
 ### `profile_badges`
 
@@ -894,15 +943,23 @@ RLS enabled · defined in `20260907000000_terms_acceptance_log.sql`
 | `source` | `text not null check (source in ('signup', 'reaccept'))` |
 | `app_version` | `text` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `track_id` | `uuid` | `20260923030000_upload_terms_acceptance.sql` |
+
 **Indexes**
 
 - **unique** `terms_acceptances_one_per_version` `(user_id, version) where source in ('signup', 'reaccept')`
 - `terms_acceptances_user_idx` `(user_id, version)`
+- **unique** `terms_acceptances_one_per_upload` `(user_id, version, track_id) where source = 'upload'`
 
 **Triggers**
 
 - `trg_terms_acceptances_no_update` — BEFORE UPDATE (`20260907000000_terms_acceptance_log.sql`)
 - `trg_terms_acceptances_pin` — BEFORE INSERT (`20260907000000_terms_acceptance_log.sql`)
+- `trg_terms_acceptances_verify` — BEFORE INSERT (`20260923030000_upload_terms_acceptance.sql`)
 
 ### `terms_versions`
 
@@ -948,6 +1005,70 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `track_collab_track_idx` `(track_id)`
 - `track_collab_user_status_idx` `(user_id, status) where user_id is not null`
 
+### `track_copyright_scans`
+
+RLS enabled · defined in `20260922100000_track_copyright_scans.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `track_id` | `uuid not null references public.tracks(id) on delete cascade` |
+| `provider` | `text not null` |
+| `provider_scan_id` | `text` |
+| `scanned_media_url` | `text not null` |
+| `status` | `text not null check (status in ('complete', 'failed', 'skipped'))` |
+| `match_found` | `boolean` |
+| `confidence` | `numeric(5,4) check (confidence is null or (confidence >= 0 and confidence <= 1))` |
+| `matched_title` | `text` |
+| `matched_artist` | `text` |
+| `matched_isrc` | `text` |
+| `matched_metadata` | `jsonb` |
+| `acknowledgement` | `text check (acknowledgement in ('owner', 'permission', 'cancelled'))` |
+| `acknowledged_at` | `timestamptz` |
+| `acknowledged_by` | `uuid references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+| `completed_at` | `timestamptz` |
+
+**Table constraints**
+
+- `constraint track_copyright_scans_ack_shape check (
+    (acknowledgement is null and acknowledged_at is null and acknowledged_by is null)
+    or (acknowledgement is not null and acknowledged_at is not null and acknowledged_by is not null)
+  )`
+- `constraint track_copyright_scans_match_requires_complete check (
+    match_found is null or status = 'complete'
+  )`
+- `constraint track_copyright_scans_complete_has_verdict check (
+    status <> 'complete' or match_found is not null
+  )`
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `claim_basis` | `text check (claim_basis is null or claim_basis in ('assigned'` | `20260923000000_copyright_claim_details.sql` |
+| `claim_grantor` | `text check (claim_grantor is null or char_length(claim_grantor) between 1 and 200)` | `20260923000000_copyright_claim_details.sql` |
+| `claim_scope` | `text[]` | `20260923000000_copyright_claim_details.sql` |
+| `claim_territory` | `text check (claim_territory is null or char_length(claim_territory) <= 200)` | `20260923000000_copyright_claim_details.sql` |
+| `claim_term` | `text check (claim_term is null or char_length(claim_term) <= 200)` | `20260923000000_copyright_claim_details.sql` |
+| `claim_reference` | `text check (claim_reference is null or char_length(claim_reference) <= 120)` | `20260923000000_copyright_claim_details.sql` |
+| `claim_note` | `text check (claim_note is null or char_length(claim_note) <= 2000)` | `20260923000000_copyright_claim_details.sql` |
+| `accepted_responsibility` | `boolean` | `20260923020000_upload_consent.sql` |
+| `granted_streaming_licence` | `boolean` | `20260923020000_upload_consent.sql` |
+| `track_title` | `text` | `20260923070000_freeze_the_empty_slot_and_keep_the_record.sql` |
+| `track_uploader_id` | `uuid` | `20260923070000_freeze_the_empty_slot_and_keep_the_record.sql` |
+
+**Indexes**
+
+- **unique** `track_copyright_scans_track_provider_uq` `(track_id, provider)`
+- `track_copyright_scans_track_idx` `(track_id)`
+- `track_copyright_scans_open_matches_idx` `(created_at desc) where match_found is true and acknowledgement is null`
+
+**Triggers**
+
+- `trg_track_copyright_scans_guard` — BEFORE UPDATE (`20260922100000_track_copyright_scans.sql`)
+- `trg_track_copyright_scans_snapshot` — BEFORE INSERT (`20260923070000_freeze_the_empty_slot_and_keep_the_record.sql`)
+
 ### `tracks`
 
 RLS enabled · defined in `00000000000000_baseline_schema.sql`
@@ -986,11 +1107,22 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `lyrics` | `text` | `20260805030000_track_lyrics.sql` |
 | `lyrics_format` | `text` | `20260805030000_track_lyrics.sql` |
 | `tags` | `text[]` | `20260807000000_track_tags.sql` |
+| `taken_down_at` | `timestamptz` | `20260923010000_track_takedown.sql` |
+| `taken_down_by` | `uuid` | `20260923010000_track_takedown.sql` |
+| `taken_down_reason` | `text check (taken_down_reason is null or char_length(taken_down_reason) <= 1000)` | `20260923010000_track_takedown.sql` |
 
 **Indexes**
 
 - `tracks_uploader_created_idx` `(uploader_id, created_at desc)`
 - `tracks_tags_gin` `using gin (tags)`
+- `tracks_taken_down_idx` `(taken_down_at desc) where taken_down_at is not null`
+
+**Triggers**
+
+- `trg_tracks_freeze_media` — BEFORE UPDATE (`20260922100000_track_copyright_scans.sql`)
+- `trg_tracks_freeze_takedown` — BEFORE UPDATE (`20260923010000_track_takedown.sql`)
+- `trg_tracks_block_taken_down_delete` — BEFORE DELETE (`20260923010000_track_takedown.sql`)
+- `trg_track_scans_drop_unanswered` — AFTER DELETE (`20260923090000_an_unanswered_scan_is_not_a_record.sql`)
 
 ### `user_recent_tracks`
 
@@ -1071,6 +1203,8 @@ same row-level security policies that gate ordinary reads.
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
 | `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
+| `trg_moderation_actions_append_only` | `moderation_actions` | BEFORE UPDATE OR DELETE | `20260923010000_track_takedown.sql` |
+| `trg_moderation_actions_pin` | `moderation_actions` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
@@ -1080,6 +1214,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
 | `notify_track_credits` | `posts` | after insert | `20260806130000_credit_accept_decline.sql` |
+| `trg_posts_block_taken_down` | `posts` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
 | `trg_profile_badges_no_orphan_revoke` | `profile_badges` | before update | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_orphan_delete` | `profile_badges` | before delete | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_truncate` | `profile_badges` | before truncate | `20260920000000_badge_slot_reclaim_split.sql` |
@@ -1089,7 +1224,14 @@ same row-level security policies that gate ordinary reads.
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 | `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |
 | `trg_terms_acceptances_pin` | `terms_acceptances` | BEFORE INSERT | `20260907000000_terms_acceptance_log.sql` |
+| `trg_terms_acceptances_verify` | `terms_acceptances` | BEFORE INSERT | `20260923030000_upload_terms_acceptance.sql` |
 | `trg_terms_versions_immutable` | `terms_versions` | BEFORE UPDATE OR DELETE | `20260907000000_terms_acceptance_log.sql` |
+| `trg_track_copyright_scans_guard` | `track_copyright_scans` | BEFORE UPDATE | `20260922100000_track_copyright_scans.sql` |
+| `trg_track_copyright_scans_snapshot` | `track_copyright_scans` | BEFORE INSERT | `20260923070000_freeze_the_empty_slot_and_keep_the_record.sql` |
+| `trg_tracks_freeze_media` | `tracks` | BEFORE UPDATE | `20260922100000_track_copyright_scans.sql` |
+| `trg_tracks_freeze_takedown` | `tracks` | BEFORE UPDATE | `20260923010000_track_takedown.sql` |
+| `trg_tracks_block_taken_down_delete` | `tracks` | BEFORE DELETE | `20260923010000_track_takedown.sql` |
+| `trg_track_scans_drop_unanswered` | `tracks` | AFTER DELETE | `20260923090000_an_unanswered_scan_is_not_a_record.sql` |
 
 ## Related
 

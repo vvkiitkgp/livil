@@ -2,7 +2,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import type { Session } from '@supabase/supabase-js';
 import { Button } from '../components/Button';
-import { fetchCreatorPosts, attachSearchOpens, type CreatorPost } from '../data/creator';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import {
+  fetchCreatorPosts,
+  attachSearchOpens,
+  deleteBlockedTrack,
+  fetchMyBlockedTracks,
+  type BlockedTrack,
+  type CreatorPost,
+} from '../data/creator';
+import {
+  dismissRemoval,
+  fetchMyRemovals,
+  removalBody,
+  removalHeadline,
+  type PostRemoval,
+} from '@shared/services/postRemovals';
+import { supabase } from '../supabase';
 import {
   bitrateKbps,
   formatBitrate,
@@ -35,12 +51,28 @@ export function Catalogue() {
   const { session } = useOutletContext<Ctx>();
   const navigate = useNavigate();
   const [posts, setPosts] = useState<CreatorPost[] | null>(null);
+  // Removed posts do not appear above: a takedown DELETES the post, so the catalogue —
+  // which reads posts — simply stops seeing it. Without this section the track would
+  // vanish with no explanation, which is the whole complaint this answers.
+  const [removals, setRemovals] = useState<PostRemoval[]>([]);
+  // Blocked tracks are absent from `posts` by construction — a takedown deletes the post —
+  // so they are fetched separately and rendered as rows of their own. Without this the
+  // owner's upload disappears from the owner's own catalogue with no explanation.
+  const [blocked, setBlocked] = useState<BlockedTrack[]>([]);
+  /** The blocked track the creator has asked to delete, while they confirm it. */
+  const [confirmDelete, setConfirmDelete] = useState<BlockedTrack | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [sort, setSort] = useState<SortKey>('publishedAt');
   const [asc, setAsc] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
 
   useEffect(() => {
     let cancelled = false;
+    // Never blocks the catalogue: `fetchMyRemovals` resolves to [] on any failure, so a
+    // notice query that errors costs a notice rather than the page.
+    fetchMyRemovals(supabase).then(setRemovals);
+    fetchMyBlockedTracks(supabase, session.user.id).then(setBlocked);
+
     fetchCreatorPosts(session.user.id, 200)
       .then(p => {
         if (!cancelled) setPosts(p);
@@ -125,9 +157,48 @@ export function Catalogue() {
         </div>
       </header>
 
+      {/* REPOSTS ONLY. A removed repost has no track of yours to list, so it needs a
+          notice of its own. A removed UPLOAD does have one — it appears as a blocked row
+          in the table below, which is where its owner will look for it. */}
+      {removals.filter(r => r.kind === 'repost').length > 0 && (
+        <div className="removals">
+          {removals.filter(r => r.kind === 'repost').map(r => (
+            <div className="removal panel" key={r.id}>
+              <p className="removal__title">
+                {removalHeadline(r)}
+                {r.trackTitle ? ` — “${r.trackTitle}”` : ''}
+              </p>
+              {r.reason && <p className="removal__reason">{r.reason}</p>}
+              <p className="removal__note">{removalBody(r)}</p>
+              {r.caption && <p className="removal__note">Your caption: “{r.caption}”</p>}
+              <div className="removal__actions">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // Dismisses the NOTICE. The post is already gone and the moderation
+                    // ledger is untouched — nobody clears a strike by tidying up here.
+                    void dismissRemoval(supabase, r.id).then(ok => {
+                      if (ok) setRemovals(list => list.filter(x => x.id !== r.id));
+                    });
+                  }}
+                >
+                  Delete this notice
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {posts === null && <div className="skeleton skeleton--rows" />}
 
-      {posts !== null && rows.length === 0 && (
+      {/* `blocked.length` is part of this condition, and leaving it out was a real bug:
+          a creator whose ONLY upload had been taken down was told "Nothing published yet"
+          while their blocked row sat in a table that never rendered — the exact silent
+          disappearance the blocked card exists to prevent. The mobile profile guarded
+          this; the web catalogue did not. */}
+      {posts !== null && rows.length === 0 && blocked.length === 0 && (
         <div className="empty panel">
           <p className="empty__title">
             {filter === 'all' ? 'Nothing published yet' : `No ${filter} tracks`}
@@ -145,7 +216,7 @@ export function Catalogue() {
         </div>
       )}
 
-      {posts !== null && rows.length > 0 && (
+      {posts !== null && (rows.length > 0 || blocked.length > 0) && (
         <div className="tablewrap panel">
           <table className="table">
             <thead>
@@ -167,6 +238,51 @@ export function Catalogue() {
               </tr>
             </thead>
             <tbody>
+              {/* Blocked first: somebody whose upload was removed is looking for it, and
+                  burying it under everything still live is the wrong way round. */}
+              {blocked.map(b => (
+                <tr key={b.trackId} data-blocked="true">
+                  <td className="table__art">
+                    {b.coverUrl ? (
+                      <img src={b.coverUrl} alt="" />
+                    ) : (
+                      <span className="stripes table__art-empty" />
+                    )}
+                  </td>
+                  <td>
+                    {/* Not a link. There is no post to open, and a dead link would be a
+                        second small mystery on top of the first. */}
+                    <span className="table__title">{b.title}</span>
+                    <div className="removal__reason">{b.reason ?? 'No reason was recorded.'}</div>
+                    <div className="hint">
+                      Hidden from your followers and from everyone else — only you can see
+                      this. It cannot be played.
+                    </div>
+                    <div className="removal__actions">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setConfirmDelete(b)}
+                      >
+                        Delete permanently
+                      </Button>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="badge" data-kind="blocked">Blocked</span>
+                  </td>
+                  <td className="num">{formatDuration(b.durationSeconds)}</td>
+                  <td className="num">—</td>
+                  <td className="num">—</td>
+                  <td>{formatDate(b.takenDownAt)}</td>
+                  <td className="num">—</td>
+                  <td className="num">—</td>
+                  <td className="num">—</td>
+                  <td className="num">—</td>
+                  <td className="num">—</td>
+                </tr>
+              ))}
+
               {rows.map(p => (
                 <tr key={p.postId}>
                   <td className="table__art">
@@ -202,6 +318,37 @@ export function Catalogue() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* `window.confirm` is banned here for the same reason `Alert.alert` is banned in
+          the app — see ConfirmDialog's header. This one is destructive and irreversible,
+          so it says what survives as well as what goes. */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete “${confirmDelete.title}” permanently?`}
+          body={
+            'This removes the track for good and cannot be undone. It does not lift the '
+            + 'block, and it does not remove the record of why the track was taken down — '
+            + 'that is kept separately.'
+          }
+          confirmLabel="Delete permanently"
+          destructive
+          busy={deleting}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            const target = confirmDelete;
+            setDeleting(true);
+            // Permitted since the strike moved to the moderation ledger: deleting the
+            // track can no longer erase the record of why it went.
+            void deleteBlockedTrack(supabase, target.trackId)
+              .then(() => setBlocked(list => list.filter(x => x.trackId !== target.trackId)))
+              .catch(() => {/* row stays on screen; nothing was deleted */})
+              .finally(() => {
+                setDeleting(false);
+                setConfirmDelete(null);
+              });
+          }}
+        />
       )}
     </div>
   );
