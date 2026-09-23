@@ -294,3 +294,11 @@ export async function fetchProfileLinks(userId: string): Promise<string[]> {
   if (error || !data) return [];
   return (data.links as string[] | null) ?? [];
 }
+
+/**
+ * Blocked tracks and their deletion moved to `@shared/services/blockedTracks` when the
+ * phone needed the same card. Re-exported rather than re-implemented: a creator seeing a
+ * blocked upload on web and not on their phone would have two contradictory pictures of
+ * their own catalogue, and two copies of this query is how that happens.
+ */
+export { fetchMyBlockedTracks, deleteBlockedTrack, type BlockedTrack } from '@shared/services/blockedTracks';

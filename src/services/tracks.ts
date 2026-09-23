@@ -2,7 +2,22 @@ import { supabase } from '../../lib/supabase';
 import type { Json } from '../../lib/database.types';
 import type { PendingCollaborator } from '../constants/roles';
 import { MAX_TAGS_PER_TRACK, normalizeTags } from '../../shared/constants/tags';
-import { uploadTrackFile, resolveReadableUri, type PickedFile } from './uploads';
+import {
+  uploadTrackFile,
+  resolveReadableUri,
+  TRACKS_MEDIA_BUCKET,
+  type PickedFile,
+} from './uploads';
+import {
+  acknowledgeScan,
+  needsAcknowledgement,
+  scanUpload,
+  type RightsDeclaration,
+  type ScanResult,
+} from '../../shared/services/copyrightScan';
+import { recordUploadConsent } from '../../shared/services/uploadConsent';
+import { TERMS_VERSION } from '../constants/termsContent';
+import { APP_VERSION_NAME } from '../constants/appVersion';
 import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
 import { resolveAuthorById, resolveAuthorDisplay, type AuthorDisplay } from '../utils/authorDisplay';
 
@@ -64,11 +79,64 @@ export type CreateTrackProgress = {
 
 export type CreateTrackProgressCallback = (progress: CreateTrackProgress) => void;
 
+/**
+ * Asked when an upload matches a known commercial recording — see
+ * `shared/services/copyrightScan.ts`.
+ *
+ * Resolve with what the uploader chose. `'cancelled'` aborts the publish: it throws
+ * inside `createTrack`, which routes into the existing catch and its `safeDeleteTrack`
+ * cleanup, so the track is removed and NO post is ever created. That ordering is the
+ * whole reason the question is asked here rather than after publishing — a post that
+ * appears and is then withdrawn has already been in somebody's feed.
+ *
+ * A match is not a finding of infringement. The uploader may legitimately own the
+ * recording or hold permission, and the answer is recorded either way.
+ */
+export type CopyrightMatchPrompt = (result: ScanResult) => Promise<RightsDeclaration>;
+
+/** Thrown when the uploader backs out at the copyright question. */
+export class UploadCancelledError extends Error {
+  constructor() {
+    super('Upload cancelled.');
+    this.name = 'UploadCancelledError';
+  }
+}
+
 async function safeDeleteTrack(trackId: string): Promise<void> {
   try {
     await supabase.from('tracks').delete().eq('id', trackId);
   } catch {
     // Best-effort cleanup; the orphan row will fail RLS for everyone but the uploader anyway.
+  }
+}
+
+/**
+ * Remove objects uploaded by a publish that then failed or was cancelled.
+ *
+ * Mirrors `safeRemoveObjects` in `shared/services/publishTrack.ts`, which fixed this on
+ * web and describes it as "the worst kind of leak": deleting the row leaves the FILES —
+ * a full master in a public bucket with nothing referencing it. The uploader cannot see
+ * it (no row), no cleanup path touches it, and account deletion does not reach storage
+ * objects, so it survives indefinitely at a URL anyone holding it can fetch.
+ *
+ * Mobile never had this half, so every failed upload since launch has leaked. Added with
+ * the copyright scan because the scan introduces a route that leaks BY DESIGN otherwise:
+ * an uploader shown a match and choosing to back out is precisely the case where the
+ * file must not remain fetchable.
+ *
+ * Best-effort. It runs while already handling a failure, so it must never throw and mask
+ * the real error. Removing a path that was never written is a no-op, so the planned
+ * paths can be passed without tracking which uploads actually completed.
+ */
+async function safeRemoveUploadedObjects(userId: string, trackId: string): Promise<void> {
+  try {
+    const prefix = `${userId}/${trackId}`;
+    const { data } = await supabase.storage.from(TRACKS_MEDIA_BUCKET).list(prefix);
+    const paths = (data ?? []).map(o => `${prefix}/${o.name}`);
+    if (paths.length === 0) { return; }
+    await supabase.storage.from(TRACKS_MEDIA_BUCKET).remove(paths);
+  } catch {
+    // Best-effort; nothing downstream depends on this having succeeded.
   }
 }
 
@@ -318,6 +386,7 @@ function computeWeights(plan: UploadPlan): {
 export async function createTrack(
   input: CreateTrackInput,
   onProgress?: CreateTrackProgressCallback,
+  onCopyrightMatch?: CopyrightMatchPrompt,
 ): Promise<CreateTrackResult> {
   const title = input.title.trim();
   if (!title) {
@@ -451,6 +520,57 @@ export async function createTrack(
       throw new Error(`Failed to finalize track: ${updateError.message}`);
     }
 
+    // ── The streaming grant ──────────────────────────────────────────────────
+    //
+    // Recorded on EVERY upload, which is the point: the copyright form only appears when
+    // a scan matches, so a grant captured there alone would cover the exception and miss
+    // the rule.
+    //
+    // Fire-and-forget by design. The media is uploaded and the post is moments away —
+    // failing the publish because a consent row did not land would cost a creator their
+    // upload over bookkeeping. A missing row shows as an absence in the operator view,
+    // which is the honest way for this to fail.
+    void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
+      if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
+    });
+
+    // ── Copyright scan ───────────────────────────────────────────────────────
+    //
+    // HERE, and not earlier or later. Earlier there is no final URL for the provider
+    // to fetch (the row still holds its `pending://` placeholder); later the post row
+    // exists, and a post that is published and then withdrawn has already been seen.
+    //
+    // Entirely fail-safe. `scanUpload` resolves rather than throwing, so a provider
+    // outage or an undeployed function costs a `failed` row and nothing else — the
+    // upload proceeds. The ONLY path that stops a publish is the uploader choosing to
+    // stop it, and that throw routes into the catch below, whose `safeDeleteTrack`
+    // already knows how to undo everything written so far.
+    //
+    // A match is not a finding of infringement: covers do not match at all, and a
+    // creator may legitimately own or be licensed for the recording. It asks; it does
+    // not judge.
+    if (onCopyrightMatch) {
+      const scan = await scanUpload(supabase, trackId);
+      if (needsAcknowledgement(scan)) {
+        const answer = await onCopyrightMatch(scan);
+        if (answer.acknowledgement === 'cancelled') {
+          // Deliberately NOT recorded. The catch below deletes the track, and the scan
+          // row cascades with it — so a write here would be undone microseconds later.
+          // Keeping "this person started an upload that matched, then thought better of
+          // it" would mean retaining a behavioural note about somebody who published
+          // nothing, which is a surveillance question and not this feature's to answer.
+          throw new UploadCancelledError();
+        }
+        // Not awaited: an acknowledgement that fails to land must not cost a creator an
+        // upload they were entitled to make. It is logged rather than surfaced, because
+        // this is the half of the feature with evidential value and a silent loss here
+        // should still be visible to us.
+        void acknowledgeScan(supabase, trackId, answer).then(ok => {
+          if (!ok) { console.log('[LIVIL][copyright] acknowledgement not recorded', trackId); }
+        });
+      }
+    }
+
     // Compute the beat-synced loudness envelope from the LOCAL file (no
     // re-download) and persist it. Fire-and-forget: a slow/failed decode must
     // never delay or break the post — old/unanalyzed audio tracks backfill lazily
@@ -516,6 +636,7 @@ export async function createTrack(
     };
   } catch (err) {
     await safeDeleteTrack(trackId);
+    await safeRemoveUploadedObjects(user.id, trackId);
     throw err;
   }
 }

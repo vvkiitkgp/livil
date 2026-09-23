@@ -33,7 +33,18 @@ import {
   isPresetRole,
   type PendingCollaborator,
 } from '../../constants/roles';
-import { createTrack, type CreateTrackStage, type PostMode } from '../../services/tracks';
+import {
+  createTrack,
+  UploadCancelledError,
+  type CreateTrackStage,
+  type PostMode,
+} from '../../services/tracks';
+import CopyrightMatchModal from '../../components/CopyrightMatchModal';
+import {
+  describeMatch,
+  type RightsDeclaration,
+  type ScanResult,
+} from '../../../shared/services/copyrightScan';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
@@ -139,6 +150,33 @@ export default function UploadScreen() {
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // The copyright question, if the scan raised one. `createTrack` awaits the promise
+  // below, so the upload genuinely pauses here rather than racing the modal — holding
+  // the resolver in a ref keeps that promise alive across the re-render the modal
+  // causes, which a state-only version would drop.
+  const [pendingMatch, setPendingMatch] = useState<ScanResult | null>(null);
+  const matchResolverRef = useRef<((answer: RightsDeclaration) => void) | null>(null);
+
+  // Bumped for every question asked. It is the modal's `key`, so React discards the
+  // previous instance rather than reusing it — see the mount site at the bottom of this
+  // file for why that matters more than it looks.
+  const [matchSeq, setMatchSeq] = useState(0);
+
+  const askAboutMatch = useCallback((result: ScanResult) => {
+    setMatchSeq(n => n + 1);
+    setPendingMatch(result);
+    return new Promise<RightsDeclaration>(resolve => {
+      matchResolverRef.current = resolve;
+    });
+  }, []);
+
+  const answerMatch = useCallback((answer: RightsDeclaration) => {
+    setPendingMatch(null);
+    const resolve = matchResolverRef.current;
+    matchResolverRef.current = null;
+    resolve?.(answer);
+  }, []);
   const [previewPaused, setPreviewPaused] = useState(true);
   // Captured from the preview player's onLoad — the picked file's length in
   // seconds — so we can persist duration_seconds at upload (feed/profile cards
@@ -383,6 +421,7 @@ export default function UploadScreen() {
           setProgressStage(stage);
           setProgressFraction(fraction);
         },
+        askAboutMatch,
       );
       // Tag into the selected album if the user picked one. Fire-and-forget —
       // a failed album tag shouldn't block the success state of the upload.
@@ -394,12 +433,22 @@ export default function UploadScreen() {
       haptics.success();
       setShowSuccess(true);
     } catch (err) {
+      // Backing out at the copyright question is a choice, not a failure. Showing it
+      // as an error would tell someone who just decided not to publish that something
+      // went wrong — the form stays as it was, ready to edit or abandon.
+      if (err instanceof UploadCancelledError) {
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Something went wrong.';
       setError(message);
     } finally {
+      // Clears whether the upload finished, failed, or was cancelled — and drops any
+      // resolver still held, so an unanswered question cannot strand the next attempt.
+      matchResolverRef.current = null;
+      setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, tags, previewDurationSec, selectedAlbum]);
+  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, tags, previewDurationSec, selectedAlbum, askAboutMatch]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -906,6 +955,23 @@ export default function UploadScreen() {
         mode="pick"
         onClose={() => setAlbumSheetOpen(false)}
         onPicked={album => setSelectedAlbum({ id: album.id, title: album.title })}
+      />
+
+      {/* Only reached when the scan actually matched something. A clean scan, a failed
+          one, and an undeployed scanner all publish without ever showing this.
+
+          `key` IS LOAD-BEARING. This modal is mounted for the life of the screen and only
+          toggled with `visible`, so its internal state — the chosen option, the licence
+          fields, and BOTH consent checkboxes — outlived the upload that set them. A
+          second matched upload in the same session opened pre-filled with the previous
+          track's declaration, already valid, already submittable: one tap away from
+          recording a rights statement about the wrong song, under the uploader's name.
+          Keying it on the question number makes React throw the instance away instead. */}
+      <CopyrightMatchModal
+        key={matchSeq}
+        visible={pendingMatch !== null}
+        matchDescription={describeMatch(pendingMatch)}
+        onAnswer={answerMatch}
       />
     </SafeAreaView>
   );

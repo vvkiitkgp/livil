@@ -28,6 +28,28 @@ export type UploadProgressCallback = (fraction: number) => void;
  */
 export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
+/**
+ * How long the upload may make NO progress before it is treated as dead.
+ *
+ * This is an idle limit, not a total one — see the watchdog in
+ * `uploadFileUriWithProgress`. A 500 MB video on a poor connection is fine; a connection
+ * that has moved zero bytes for this long is not coming back, and waiting on it silently
+ * is what left an upload frozen at 80% with no way out but force-quitting.
+ *
+ * 45s rather than something tighter because mobile networks stall for real during a
+ * handover between cells, and a spurious failure costs the user the whole upload.
+ */
+export const STALL_TIMEOUT_MS = 45_000;
+
+/**
+ * How long the server may take to answer AFTER the last byte is sent.
+ *
+ * Progress events stop at that point while storage finishes writing the object, so the
+ * stall watchdog would otherwise fire during normal, healthy work on a large file. Longer
+ * than STALL_TIMEOUT_MS for exactly that reason.
+ */
+export const RESPONSE_TIMEOUT_MS = 120_000;
+
 /** User-facing "this file is too big" copy, tailored to the media kind. */
 export function tooLargeMessage(kind: TrackMediaKind): string {
   const limitMb = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
@@ -147,13 +169,50 @@ function uploadFileUriWithProgress(
     xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
     xhr.setRequestHeader('x-upsert', 'false');
 
+    // ── STALL DETECTION ──────────────────────────────────────────────────────
+    //
+    // `onerror` catches a connection that FAILS and `onabort` one the user cancels. A
+    // connection that simply goes quiet — phone loses signal mid-upload, or a carrier
+    // proxy holds the socket open — fires neither, and an XHR has no time limit unless
+    // one is set. The upload sat at whatever percent it had reached, forever, with no
+    // error and no way out but force-quitting the app. That is a real report, at 80%.
+    //
+    // `xhr.timeout` is deliberately NOT used: it caps the TOTAL request, so any value
+    // safe for a 500 MB video on a slow connection is far too long to be useful, and any
+    // value that feels responsive would kill legitimate large uploads. What matters is
+    // not how long the upload takes but whether it is still MOVING.
+    //
+    // So: a watchdog re-armed on every progress event. It fires only when nothing has
+    // moved for STALL_MS, which a healthy upload never triggers no matter how slow.
+    let stalled = false;
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const clearWatchdog = () => {
+      if (watchdog) { clearTimeout(watchdog); watchdog = undefined; }
+    };
+    const armWatchdog = (ms: number) => {
+      clearWatchdog();
+      watchdog = setTimeout(() => {
+        stalled = true;
+        // Aborting routes into `onabort`, which reads `stalled` to tell a dead connection
+        // apart from a user cancelling.
+        xhr.abort();
+      }, ms);
+    };
+
     xhr.upload.onprogress = event => {
+      armWatchdog(STALL_TIMEOUT_MS);
       if (event.lengthComputable && event.total > 0) {
         onProgress(event.loaded / event.total);
       }
     };
 
+    // Once the last byte is sent, progress events stop and the server starts writing the
+    // object — which for a large file legitimately takes longer than the stall window.
+    // Re-arm with the response budget so this phase is covered without being cut short.
+    xhr.upload.onloadend = () => armWatchdog(RESPONSE_TIMEOUT_MS);
+
     xhr.onload = () => {
+      clearWatchdog();
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress(1);
         resolve();
@@ -180,17 +239,41 @@ function uploadFileUriWithProgress(
       }
       reject(new Error(message));
     };
-    xhr.onerror = () => reject(new Error('Network error during upload.'));
-    xhr.onabort = () => reject(new Error('Upload aborted.'));
+    xhr.onerror = () => {
+      clearWatchdog();
+      reject(new Error('Network error during upload.'));
+    };
+    xhr.onabort = () => {
+      clearWatchdog();
+      // Worth distinguishing: "aborted" reads as something the user did, and someone
+      // whose signal died would be left wondering what they pressed.
+      reject(new Error(
+        stalled
+          ? 'The connection stalled and the upload stopped. Check your signal and try again.'
+          : 'Upload aborted.',
+      ));
+    };
 
     // Field order matters: cacheControl before the file part, mirroring supabase-js — storage-api's
     // streaming multipart parser reads the leading fields, then the trailing file stream.
     const formData = new FormData();
     formData.append('cacheControl', '3600');
     formData.append('', { uri: fileUri, name: fileName, type: contentType } as any);
+    // Armed before the first byte: a connection that never opens at all produces no
+    // progress event, so without this the watchdog would never start.
+    armWatchdog(STALL_TIMEOUT_MS);
     xhr.send(formData);
   });
 }
+
+/**
+ * Exported for `uploadStallWatchdog.test.ts` ONLY.
+ *
+ * The watchdog is the half of this file that runs only when a connection misbehaves, so
+ * it cannot be reached through `uploadTrackFile` without a real network. Named so that
+ * nothing reaches for it by accident.
+ */
+export const __uploadFileUriWithProgressForTest = uploadFileUriWithProgress;
 
 export async function uploadTrackFile(
   file: PickedFile,

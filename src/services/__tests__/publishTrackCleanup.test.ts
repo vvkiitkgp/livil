@@ -90,6 +90,8 @@ const INPUT = {
   mode: 'audio' as const,
   title: 'Probe',
   uploaderRole: 'Production',
+  // Required since the streaming grant is recorded on every upload.
+  termsVersion: '1.0',
   assets: [
     { kind: 'audio' as const, fileName: 'a.mp3', contentType: 'audio/mpeg', sizeBytes: 100 },
     { kind: 'cover' as const, fileName: 'c.jpg', contentType: 'image/jpeg', sizeBytes: 10 },

@@ -7,7 +7,14 @@
  * without re-uploading what already succeeded.
  */
 import { useCallback, useRef, useState } from 'react';
-import type { PublishProgress } from '@shared/services/publishTrack';
+import {
+  UploadCancelledError,
+  type PublishProgress,
+} from '@shared/services/publishTrack';
+import {
+  describeMatch,
+  type RightsDeclaration,
+} from '@shared/services/copyrightScan';
 import { readMediaMeta, startPublish } from './publish';
 import type { PendingCollaborator } from '@shared/constants/roles';
 import { EMOTION_TAGS } from '@shared/constants/tags';
@@ -24,7 +31,13 @@ import type { PairedItem } from './files';
  */
 const MAX_CONCURRENT = 3;
 
-export type ItemStatus = 'pending' | 'uploading' | 'done' | 'failed';
+/**
+ * `awaiting_rights` — the copyright scan matched a known recording and this item is
+ * paused on the uploader's answer. It is NOT a failure and NOT a verdict: covers never
+ * reach it, and the uploader may own the recording or hold a licence. The item's publish
+ * promise is genuinely suspended here, so nothing is written until they answer.
+ */
+export type ItemStatus = 'pending' | 'uploading' | 'awaiting_rights' | 'done' | 'failed';
 
 export type QueueItem = {
   id: string;
@@ -38,6 +51,11 @@ export type QueueItem = {
   stage: PublishProgress['stage'] | null;
   error: string | null;
   postId: string | null;
+  /**
+   * What the scan matched, already formatted for display. Set only while status is
+   * `awaiting_rights`; cleared once answered so a finished row carries no stale prompt.
+   */
+  matchDescription: string | null;
   /** Filled in asynchronously once the browser has read the file's metadata. */
   duration: number | null;
   /** Frame size, video only. Null for audio and for files the browser cannot probe. */
@@ -77,6 +95,7 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     stage: null,
     error: null,
     postId: null,
+    matchDescription: null,
     duration: null,
     width: null,
     height: null,
@@ -94,6 +113,14 @@ export function useUploadQueue() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [running, setRunning] = useState(false);
   const abortsRef = useRef(new Map<string, () => void>());
+  /**
+   * Resolvers for items paused on the copyright question, keyed by item id.
+   *
+   * A ref rather than state because the promise these resolve must survive every
+   * re-render the prompt causes — holding them in state would drop the resolver and
+   * strand the upload forever, with the row stuck on `awaiting_rights`.
+   */
+  const rightsResolversRef = useRef(new Map<string, (a: RightsDeclaration) => void>());
 
   const patch = useCallback((id: string, changes: Partial<QueueItem>) => {
     setItems(prev => prev.map(it => (it.id === id ? { ...it, ...changes } : it)));
@@ -169,6 +196,15 @@ export function useUploadQueue() {
   const remove = useCallback((id: string) => {
     abortsRef.current.get(id)?.();
     abortsRef.current.delete(id);
+    // Removing a row that is paused on the copyright question must also settle its
+    // promise, or `publishOne` awaits forever on an item that no longer exists — a leak
+    // with no UI left to reveal it. Resolving as 'cancelled' routes it through the same
+    // rollback a deliberate cancellation takes.
+    const resolve = rightsResolversRef.current.get(id);
+    if (resolve) {
+      rightsResolversRef.current.delete(id);
+      resolve({ acknowledgement: 'cancelled' });
+    }
     setItems(prev => prev.filter(it => it.id !== id));
   }, []);
 
@@ -206,19 +242,50 @@ export function useUploadQueue() {
           })),
         },
         (p: PublishProgress) => patch(item.id, { stage: p.stage, fraction: p.fraction }),
+        // The copyright question. Suspends THIS item only — the other workers carry on,
+        // which is why the resolver is keyed by item id rather than held as one global.
+        result => {
+          patch(item.id, {
+            status: 'awaiting_rights',
+            matchDescription: describeMatch(result),
+          });
+          return new Promise<RightsDeclaration>(resolve => {
+            rightsResolversRef.current.set(item.id, resolve);
+          });
+        },
       );
       abortsRef.current.set(item.id, handle.abort);
 
       try {
         const result = await handle.result;
-        patch(item.id, { status: 'done', fraction: 1, postId: result.postId });
+        patch(item.id, {
+          status: 'done',
+          fraction: 1,
+          postId: result.postId,
+          matchDescription: null,
+        });
       } catch (err) {
+        // Backing out at the copyright question is a choice, not a failure. The row
+        // returns to `pending` so it can be removed or retried, with no red error text
+        // telling someone who just decided not to publish that something broke.
+        if (err instanceof UploadCancelledError) {
+          patch(item.id, {
+            status: 'pending',
+            fraction: 0,
+            stage: null,
+            error: null,
+            matchDescription: null,
+          });
+          return;
+        }
         patch(item.id, {
           status: 'failed',
           error: err instanceof Error ? err.message : 'Upload failed.',
+          matchDescription: null,
         });
       } finally {
         abortsRef.current.delete(item.id);
+        rightsResolversRef.current.delete(item.id);
       }
     },
     [patch],
@@ -262,7 +329,32 @@ export function useUploadQueue() {
   const cancelAll = useCallback(() => {
     for (const abort of abortsRef.current.values()) abort();
     abortsRef.current.clear();
+    // Same reasoning as `remove`: an item suspended on the copyright question holds a
+    // promise that `abort()` cannot reach, so it must be settled explicitly or the
+    // worker never returns and `running` never clears.
+    for (const resolve of rightsResolversRef.current.values()) {
+      resolve({ acknowledgement: 'cancelled' });
+    }
+    rightsResolversRef.current.clear();
   }, []);
+
+  /**
+   * Answer the copyright question for one paused item.
+   *
+   * Flips the row back to `uploading` BEFORE resolving, so the moment the publish
+   * resumes the UI is already showing progress rather than a prompt it has answered.
+   * A missing resolver is a no-op — a double click, or an item cancelled underneath.
+   */
+  const answerRights = useCallback(
+    (id: string, answer: RightsDeclaration) => {
+      const resolve = rightsResolversRef.current.get(id);
+      if (!resolve) return;
+      rightsResolversRef.current.delete(id);
+      patch(id, { status: 'uploading', matchDescription: null });
+      resolve(answer);
+    },
+    [patch],
+  );
 
   return {
     items,
@@ -275,5 +367,6 @@ export function useUploadQueue() {
     clearFinished,
     start,
     cancelAll,
+    answerRights,
   };
 }

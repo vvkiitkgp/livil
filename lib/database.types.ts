@@ -700,6 +700,39 @@ export type Database = {
           },
         ]
       }
+      moderation_actions: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          reason: string | null
+          snapshot: Json | null
+          target_owner_id: string | null
+          track_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          reason?: string | null
+          snapshot?: Json | null
+          target_owner_id?: string | null
+          track_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          reason?: string | null
+          snapshot?: Json | null
+          target_owner_id?: string | null
+          track_id?: string | null
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           activity: boolean
@@ -959,6 +992,42 @@ export type Database = {
           },
         ]
       }
+      post_impressions: {
+        Row: {
+          last_seen_at: string
+          post_id: string
+          seen_count: number
+          user_id: string
+        }
+        Insert: {
+          last_seen_at?: string
+          post_id: string
+          seen_count?: number
+          user_id: string
+        }
+        Update: {
+          last_seen_at?: string
+          post_id?: string
+          seen_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_impressions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_impressions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_likes: {
         Row: {
           created_at: string
@@ -986,6 +1055,56 @@ export type Database = {
           {
             foreignKeyName: "post_likes_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_removals: {
+        Row: {
+          author_id: string
+          caption: string | null
+          clip_end_sec: number | null
+          clip_start_sec: number | null
+          id: string
+          kind: string
+          post_id: string
+          reason: string | null
+          removed_at: string
+          track_id: string
+          track_title: string | null
+        }
+        Insert: {
+          author_id: string
+          caption?: string | null
+          clip_end_sec?: number | null
+          clip_start_sec?: number | null
+          id?: string
+          kind: string
+          post_id: string
+          reason?: string | null
+          removed_at?: string
+          track_id: string
+          track_title?: string | null
+        }
+        Update: {
+          author_id?: string
+          caption?: string | null
+          clip_end_sec?: number | null
+          clip_start_sec?: number | null
+          id?: string
+          kind?: string
+          post_id?: string
+          reason?: string | null
+          removed_at?: string
+          track_id?: string
+          track_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_removals_author_id_fkey"
+            columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1091,6 +1210,8 @@ export type Database = {
           clip_start_sec: number | null
           comments_count: number
           created_at: string
+          hot_score: number
+          hot_score_updated_at: string | null
           id: string
           kind: string
           likes_count: number
@@ -1106,6 +1227,8 @@ export type Database = {
           clip_start_sec?: number | null
           comments_count?: number
           created_at?: string
+          hot_score?: number
+          hot_score_updated_at?: string | null
           id?: string
           kind: string
           likes_count?: number
@@ -1121,6 +1244,8 @@ export type Database = {
           clip_start_sec?: number | null
           comments_count?: number
           created_at?: string
+          hot_score?: number
+          hot_score_updated_at?: string | null
           id?: string
           kind?: string
           likes_count?: number
@@ -1184,7 +1309,15 @@ export type Database = {
           revoked_by?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profile_badges_badge_fkey"
+            columns: ["badge"]
+            isOneToOne: false
+            referencedRelation: "badge_kinds"
+            referencedColumns: ["badge"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1472,6 +1605,68 @@ export type Database = {
           },
         ]
       }
+      terms_acceptances: {
+        Row: {
+          accepted_at: string
+          app_version: string | null
+          id: string
+          source: string
+          track_id: string | null
+          user_id: string
+          version: string
+        }
+        Insert: {
+          accepted_at?: string
+          app_version?: string | null
+          id?: string
+          source: string
+          track_id?: string | null
+          user_id: string
+          version: string
+        }
+        Update: {
+          accepted_at?: string
+          app_version?: string | null
+          id?: string
+          source?: string
+          track_id?: string | null
+          user_id?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "terms_acceptances_version_fkey"
+            columns: ["version"]
+            isOneToOne: false
+            referencedRelation: "terms_versions"
+            referencedColumns: ["version"]
+          },
+        ]
+      }
+      terms_versions: {
+        Row: {
+          created_at: string
+          effective_at: string
+          sha256: string
+          url: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          effective_at: string
+          sha256: string
+          url: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          effective_at?: string
+          sha256?: string
+          url?: string
+          version?: string
+        }
+        Relationships: []
+      }
       track_collaborators: {
         Row: {
           created_at: string
@@ -1517,6 +1712,114 @@ export type Database = {
           },
         ]
       }
+      track_copyright_scans: {
+        Row: {
+          accepted_responsibility: boolean | null
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          acknowledgement: string | null
+          claim_basis: string | null
+          claim_grantor: string | null
+          claim_note: string | null
+          claim_reference: string | null
+          claim_scope: string[] | null
+          claim_term: string | null
+          claim_territory: string | null
+          completed_at: string | null
+          confidence: number | null
+          created_at: string
+          granted_streaming_licence: boolean | null
+          id: string
+          match_found: boolean | null
+          matched_artist: string | null
+          matched_isrc: string | null
+          matched_metadata: Json | null
+          matched_title: string | null
+          provider: string
+          provider_scan_id: string | null
+          scanned_media_url: string
+          status: string
+          track_id: string
+          track_title: string | null
+          track_uploader_id: string | null
+        }
+        Insert: {
+          accepted_responsibility?: boolean | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          acknowledgement?: string | null
+          claim_basis?: string | null
+          claim_grantor?: string | null
+          claim_note?: string | null
+          claim_reference?: string | null
+          claim_scope?: string[] | null
+          claim_term?: string | null
+          claim_territory?: string | null
+          completed_at?: string | null
+          confidence?: number | null
+          created_at?: string
+          granted_streaming_licence?: boolean | null
+          id?: string
+          match_found?: boolean | null
+          matched_artist?: string | null
+          matched_isrc?: string | null
+          matched_metadata?: Json | null
+          matched_title?: string | null
+          provider: string
+          provider_scan_id?: string | null
+          scanned_media_url: string
+          status: string
+          track_id: string
+          track_title?: string | null
+          track_uploader_id?: string | null
+        }
+        Update: {
+          accepted_responsibility?: boolean | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          acknowledgement?: string | null
+          claim_basis?: string | null
+          claim_grantor?: string | null
+          claim_note?: string | null
+          claim_reference?: string | null
+          claim_scope?: string[] | null
+          claim_term?: string | null
+          claim_territory?: string | null
+          completed_at?: string | null
+          confidence?: number | null
+          created_at?: string
+          granted_streaming_licence?: boolean | null
+          id?: string
+          match_found?: boolean | null
+          matched_artist?: string | null
+          matched_isrc?: string | null
+          matched_metadata?: Json | null
+          matched_title?: string | null
+          provider?: string
+          provider_scan_id?: string | null
+          scanned_media_url?: string
+          status?: string
+          track_id?: string
+          track_title?: string | null
+          track_uploader_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "track_copyright_scans_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "track_copyright_scans_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tracks: {
         Row: {
           audio_url: string | null
@@ -1530,6 +1833,9 @@ export type Database = {
           lyrics_format: string | null
           media_kind: string
           tags: string[] | null
+          taken_down_at: string | null
+          taken_down_by: string | null
+          taken_down_reason: string | null
           thumbnail_url: string | null
           title: string
           uploader_id: string
@@ -1548,6 +1854,9 @@ export type Database = {
           lyrics_format?: string | null
           media_kind: string
           tags?: string[] | null
+          taken_down_at?: string | null
+          taken_down_by?: string | null
+          taken_down_reason?: string | null
           thumbnail_url?: string | null
           title: string
           uploader_id: string
@@ -1566,6 +1875,9 @@ export type Database = {
           lyrics_format?: string | null
           media_kind?: string
           tags?: string[] | null
+          taken_down_at?: string | null
+          taken_down_by?: string | null
+          taken_down_reason?: string | null
           thumbnail_url?: string | null
           title?: string
           uploader_id?: string
@@ -1672,62 +1984,12 @@ export type Database = {
         }
         Relationships: []
       }
-      terms_acceptances: {
-        Row: {
-          accepted_at: string
-          app_version: string | null
-          id: string
-          source: string
-          user_id: string
-          version: string
-        }
-        Insert: {
-          accepted_at?: string
-          app_version?: string | null
-          id?: string
-          source: string
-          user_id: string
-          version: string
-        }
-        Update: {
-          accepted_at?: string
-          app_version?: string | null
-          id?: string
-          source?: string
-          user_id?: string
-          version?: string
-        }
-        Relationships: []
-      }
-      terms_versions: {
-        Row: {
-          created_at: string
-          effective_at: string
-          sha256: string
-          url: string
-          version: string
-        }
-        Insert: {
-          created_at?: string
-          effective_at: string
-          sha256: string
-          url: string
-          version: string
-        }
-        Update: {
-          created_at?: string
-          effective_at?: string
-          sha256?: string
-          url?: string
-          version?: string
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      _dm_lock_key: { Args: { a: string; b: string }; Returns: number }
       _friendship_pair: {
         Args: { a: string; b: string }
         Returns: {
@@ -1829,6 +2091,10 @@ export type Database = {
         Returns: undefined
       }
       can_comment_on_post: { Args: { p_post_id: string }; Returns: boolean }
+      can_write_to_conversation: {
+        Args: { p_conversation_id: string }
+        Returns: boolean
+      }
       cancel_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined
@@ -1889,16 +2155,14 @@ export type Database = {
         Returns: string
       }
       delete_my_account: { Args: never; Returns: undefined }
-      dm_blocked_for_sender: {
-        Args: { p_conversation_id: string }
-        Returns: boolean
-      }
       fetch_home_feed: {
         Args: {
           p_cursor_bucket?: number
           p_cursor_id?: string
           p_cursor_sort_key?: number
           p_limit?: number
+          p_seed?: number
+          p_session_started_at?: string
         }
         Returns: {
           feed_bucket: number
@@ -1913,7 +2177,10 @@ export type Database = {
         Args: { user_a: string; user_b: string }
         Returns: string
       }
-      grant_badge: { Args: { p_badge: string; p_user_id: string }; Returns: string }
+      grant_badge: {
+        Args: { p_badge: string; p_user_id: string }
+        Returns: string
+      }
       is_blocked_between: { Args: { a: string; b: string }; Returns: boolean }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }
       is_ops: { Args: never; Returns: boolean }
@@ -2008,17 +2275,89 @@ export type Database = {
         Args: { p_body: string; p_kind: string }
         Returns: string
       }
+      moderating_now: { Args: never; Returns: boolean }
+      notify_badge_granted: {
+        Args: { p_badge: string; p_user_id: string }
+        Returns: undefined
+      }
+      notify_content_removed: {
+        Args: {
+          p_kind: string
+          p_reason: string
+          p_track_title: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      ops_copyright_scans: {
+        Args: { p_include_answered?: boolean }
+        Returns: {
+          accepted_responsibility: boolean
+          acknowledged_at: string
+          acknowledgement: string
+          claim_basis: string
+          claim_grantor: string
+          claim_note: string
+          claim_reference: string
+          claim_scope: string[]
+          claim_term: string
+          claim_territory: string
+          confidence: number
+          created_at: string
+          granted_streaming_licence: boolean
+          id: string
+          live_reposts: number
+          live_uploads: number
+          match_found: boolean
+          matched_artist: string
+          matched_isrc: string
+          matched_title: string
+          media_kind: string
+          provider: string
+          reference_matches_isrc: boolean
+          scanned_media_url: string
+          status: string
+          taken_down_at: string
+          track_id: string
+          track_title: string
+          uploader_id: string
+          uploader_takedowns: number
+          uploader_username: string
+        }[]
+      }
       ops_mark_report_reviewed: {
         Args: { p_id: string; p_kind: string; p_reviewed?: boolean }
         Returns: undefined
       }
+      ops_moderation_history: {
+        Args: { p_track_id: string }
+        Returns: {
+          action: string
+          actor_username: string
+          created_at: string
+          reason: string
+        }[]
+      }
+      ops_profile_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          avatar_url: string
+          bio: string
+          display_name: string
+          id: string
+          username: string
+        }[]
+      }
       ops_reports_overview: {
         Args: { p_include_reviewed?: boolean }
         Returns: {
+          cover_url: string
           created_at: string
           details: string
           id: string
           kind: string
+          media_kind: string
+          media_url: string
           reason: string
           reported_user_id: string
           reported_username: string
@@ -2030,6 +2369,26 @@ export type Database = {
           target_excerpt: string
           target_exists: boolean
           target_id: string
+          track_id: string
+          track_taken_down_at: string
+          track_title: string
+        }[]
+      }
+      ops_restore_track: {
+        Args: { p_reason?: string; p_track_id: string }
+        Returns: string
+      }
+      ops_take_down_track: {
+        Args: { p_reason?: string; p_track_id: string }
+        Returns: number
+      }
+      ops_takedown_counts: {
+        Args: never
+        Returns: {
+          latest: string
+          takedowns: number
+          uploader_id: string
+          username: string
         }[]
       }
       ops_team_messages: {
@@ -2053,17 +2412,6 @@ export type Database = {
           title: string
         }[]
       }
-      notify_badge_granted: { Args: { p_badge: string; p_user_id: string }; Returns: undefined }
-      ops_profile_for_user: {
-        Args: { p_user_id: string }
-        Returns: {
-          avatar_url: string
-          bio: string
-          display_name: string
-          id: string
-          username: string
-        }[]
-      }
       ops_tracks_for_user: {
         Args: { p_user_id: string }
         Returns: {
@@ -2077,6 +2425,14 @@ export type Database = {
           thumbnail_url: string
           title: string
           video_url: string
+        }[]
+      }
+      ops_upload_consent: {
+        Args: { p_track_id: string }
+        Returns: {
+          accepted_at: string
+          app_version: string
+          version: string
         }[]
       }
       ops_users_overview: {
@@ -2104,6 +2460,11 @@ export type Database = {
           uploads: number
         }[]
       }
+      record_post_impressions: {
+        Args: { p_post_ids: string[] }
+        Returns: undefined
+      }
+      refresh_post_hot_scores: { Args: never; Returns: number }
       reject_friend_request: {
         Args: { other_user_id: string }
         Returns: undefined
@@ -2114,7 +2475,10 @@ export type Database = {
         Args: { p_details?: string; p_reason: string; p_story_id: string }
         Returns: undefined
       }
-      revoke_badge: { Args: { p_badge: string; p_user_id: string }; Returns: string }
+      revoke_badge: {
+        Args: { p_badge: string; p_user_id: string }
+        Returns: string
+      }
       search_result_popularity: {
         Args: { p_ids: string[]; p_kind: string }
         Returns: {
@@ -2126,12 +2490,36 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      shared_post_public: {
+        Args: { p_post_id: string }
+        Returns: {
+          author_avatar_url: string
+          author_badges: string[]
+          author_display_name: string
+          author_username: string
+          caption: string
+          clip_end_sec: number
+          clip_start_sec: number
+          comments_count: number
+          created_at: string
+          likes_count: number
+          post_id: string
+          track_audio_url: string
+          track_cover_art_url: string
+          track_duration_seconds: number
+          track_media_kind: string
+          track_thumbnail_url: string
+          track_title: string
+          track_video_url: string
+        }[]
+      }
       shares_conversation_with: {
         Args: { a: string; b: string }
         Returns: boolean
       }
       track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
       unblock_user: { Args: { target_user_id: string }; Returns: undefined }
+      unread_badge_count_for: { Args: { p_user_id: string }; Returns: number }
       waitlist_mark_emailed: {
         Args: { p_error?: string; p_id: string }
         Returns: undefined
@@ -2157,12 +2545,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2186,11 +2574,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2211,11 +2599,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2236,11 +2624,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2253,11 +2641,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

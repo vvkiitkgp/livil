@@ -100,6 +100,8 @@ const inputWith = (collaborators: PublishCollaborator[]) => ({
   title: 'Probe',
   assets: ASSETS,
   uploaderRole: 'Production',
+  // Required since the streaming grant is recorded on every upload.
+  termsVersion: '1.0',
   collaborators,
 });
 
@@ -121,7 +123,12 @@ describe('publishTrack — credits', () => {
     // down. Reversed, a failure would strand a live, uncredited track.
     rec = stubClient('none');
     await publishTrack(inputWith([PROFILE, TYPED]), uploader);
-    expect(rec.inserts).toEqual(['tracks', 'track_collaborators', 'posts']);
+    // `terms_acceptances` is filtered out rather than pinned in sequence: the streaming
+    // grant is fire-and-forget, so WHERE it lands relative to the others is a race and
+    // asserting it would make this test flaky for no gain. What this test is about is
+    // that credits precede the post.
+    expect(rec.inserts.filter(t => t !== 'terms_acceptances'))
+      .toEqual(['tracks', 'track_collaborators', 'posts']);
   });
 
   it('stores a profile credit and a typed credit as different columns', async () => {
@@ -142,7 +149,8 @@ describe('publishTrack — credits', () => {
     // the record is not a credit list. There is no such thing as an uncredited upload.
     rec = stubClient('none');
     await publishTrack(inputWith([]), uploader);
-    expect(rec.inserts).toEqual(['tracks', 'track_collaborators', 'posts']);
+    expect(rec.inserts.filter(t => t !== 'terms_acceptances'))
+      .toEqual(['tracks', 'track_collaborators', 'posts']);
     expect(rec.collaboratorRows).toEqual([
       {
         track_id: TRACK_ID, user_id: USER_ID, custom_name: null,

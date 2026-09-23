@@ -23,6 +23,14 @@
  */
 import { livil } from '../client';
 import { MAX_TAGS_PER_TRACK, normalizeTags } from '../constants/tags';
+import { recordUploadConsent } from './uploadConsent';
+import {
+  acknowledgeScan,
+  needsAcknowledgement,
+  scanUpload,
+  type RightsDeclaration,
+  type ScanResult,
+} from './copyrightScan';
 import {
   resolveContentType,
   resolveExtension,
@@ -90,6 +98,16 @@ export type PublishTrackInput = {
    * "no tags" has one representation rather than two.
    */
   tags?: string[];
+  /**
+   * The Terms version the uploader is granting under, and the build they are on.
+   *
+   * Passed in rather than imported: the version is generated from `docs/terms.html` into
+   * a MOBILE constant, and `shared/` must not reach into either app. Each client supplies
+   * its own, which also means a client running an old build records the version it
+   * actually displayed rather than the one currently published.
+   */
+  termsVersion: string;
+  appVersion?: string | null;
 };
 
 /**
@@ -197,10 +215,30 @@ async function safeRemoveObjects(paths: string[]): Promise<void> {
   }
 }
 
+/**
+ * Asked when an upload matches a known commercial recording — see `./copyrightScan`.
+ *
+ * Resolve with what the uploader chose. `'cancelled'` throws `UploadCancelledError`,
+ * which lands in the same catch as every other failure here: objects removed, track row
+ * deleted, no post ever created. That is why the question is asked at this point and
+ * not after publishing — a post that appears and is then withdrawn has already been
+ * seen.
+ */
+export type CopyrightMatchPrompt = (result: ScanResult) => Promise<RightsDeclaration>;
+
+/** Thrown when the uploader backs out at the copyright question. */
+export class UploadCancelledError extends Error {
+  constructor() {
+    super('Upload cancelled.');
+    this.name = 'UploadCancelledError';
+  }
+}
+
 export async function publishTrack(
   input: PublishTrackInput,
   uploadAsset: AssetUploader,
   onProgress?: (p: PublishProgress) => void,
+  onCopyrightMatch?: CopyrightMatchPrompt,
 ): Promise<PublishTrackResult> {
   const problem = validate(input);
   if (problem) throw new Error(problem);
@@ -300,6 +338,35 @@ export async function publishTrack(
       .eq('id', trackId);
 
     if (updateError) throw new Error(`Failed to finalize track: ${updateError.message}`);
+
+    /*
+     * The streaming grant, on EVERY upload — see `./uploadConsent`. Fire-and-forget:
+     * the media is up and the post is moments away, and failing a publish over a
+     * bookkeeping row would cost a creator their upload.
+     */
+    void recordUploadConsent(db, trackId, input.termsVersion, input.appVersion);
+
+    /*
+     * Copyright scan. Same position as mobile's `createTrack`, deliberately: after the
+     * media has a final URL for the provider to fetch, and before the post row exists.
+     *
+     * Fail-safe throughout. `scanUpload` resolves rather than throwing, so a provider
+     * outage or an undeployed function costs a `failed` row and nothing else. The only
+     * thing that stops a publish is the uploader choosing to stop it.
+     *
+     * A cancellation is NOT recorded: the catch below deletes the track and the scan row
+     * cascades with it, so the write would be undone immediately — and retaining "this
+     * person started an upload that matched, then stopped" is a note about somebody who
+     * published nothing.
+     */
+    if (onCopyrightMatch) {
+      const scan = await scanUpload(db, trackId);
+      if (needsAcknowledgement(scan)) {
+        const answer = await onCopyrightMatch(scan);
+        if (answer.acknowledgement === 'cancelled') throw new UploadCancelledError();
+        void acknowledgeScan(db, trackId, answer);
+      }
+    }
 
     /*
      * Credits go in BEFORE the post row, and that ordering is the point.

@@ -18,6 +18,17 @@ import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
+import RemovedContentCard from '../../components/RemovedContentCard';
+import {
+  deleteBlockedTrack,
+  fetchMyBlockedTracks,
+  type BlockedTrack,
+} from '../../../shared/services/blockedTracks';
+import {
+  dismissRemoval,
+  fetchMyRemovals,
+  type PostRemoval,
+} from '../../../shared/services/postRemovals';
 import { Button } from '../../components/Button';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import PostCard from '../../components/PostCard';
@@ -78,6 +89,10 @@ type ListItem =
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
+  // Removed content has no post — a takedown deletes it — so it cannot ride the 'post'
+  // branch and needs kinds of its own.
+  | { kind: 'blocked'; track: BlockedTrack; key: string }
+  | { kind: 'removed-repost'; removal: PostRemoval; key: string }
   | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
   | { kind: 'playlist-row'; a: UserPlaylist; b: UserPlaylist | null; key: string };
 
@@ -175,6 +190,11 @@ export default function ProfileScreen() {
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  // Neither of these comes back from a post query: a takedown deletes the post, so the
+  // track would otherwise vanish from its own owner's profile with no explanation.
+  const [blocked, setBlocked] = useState<BlockedTrack[]>([]);
+  const [removals, setRemovals] = useState<PostRemoval[]>([]);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,15 +287,23 @@ export default function ProfileScreen() {
   // Cheap count queries so the tab bar can decide which tabs to render
   // (Uploads + Albums auto-hide at 0).
   const fetchTabCounts = useCallback(async (userId: string): Promise<TabCounts> => {
-    const [reposts, uploads, albumsRes, playlistsRes] = await Promise.all([
+    const [reposts, uploads, albumsRes, playlistsRes, blockedRes, removedRes] = await Promise.all([
       supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).eq('kind', 'repost'),
       supabase.from('posts').select('id', { count: 'exact', head: true }).eq('author_id', userId).eq('kind', 'upload'),
       supabase.from('albums').select('id', { count: 'exact', head: true }).eq('uploader_id', userId),
       supabase.from('playlists').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+      // Removed content counts toward its tab, and this is NOT cosmetic: Uploads
+      // auto-hides at zero, so somebody whose only upload was taken down would lose the
+      // tab entirely and have no route to the card explaining why. The explanation would
+      // be unreachable precisely for the person who most needs it.
+      supabase.from('tracks').select('id', { count: 'exact', head: true })
+        .eq('uploader_id', userId).not('taken_down_at', 'is', null),
+      supabase.from('post_removals').select('id', { count: 'exact', head: true })
+        .eq('author_id', userId).eq('kind', 'repost'),
     ]);
     return {
-      reposts: reposts.count ?? 0,
-      uploads: uploads.count ?? 0,
+      reposts: (reposts.count ?? 0) + (removedRes.count ?? 0),
+      uploads: (uploads.count ?? 0) + (blockedRes.count ?? 0),
       albums: albumsRes.count ?? 0,
       playlists: playlistsRes.count ?? 0,
     };
@@ -293,6 +321,12 @@ export default function ProfileScreen() {
         await fetchProfileAndStats(me);
         const counts = await fetchTabCounts(me);
         setTabCounts(counts);
+
+        // Both resolve to [] on failure, so a profile never fails to render because a
+        // notice query errored. Not awaited together with the posts: a slow notice must
+        // not delay the content people actually came for.
+        void fetchMyBlockedTracks(supabase, me).then(setBlocked);
+        void fetchMyRemovals(supabase).then(setRemovals);
 
         if (currentTab === 'reposts' || currentTab === 'uploads') {
           const fresh = await fetchPosts(me, currentTab);
@@ -412,8 +446,22 @@ export default function ProfileScreen() {
     }
     if (tab === 'reposts' || tab === 'uploads') {
       const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
-      if (visiblePosts.length > 0) {
-        return [head, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
+
+      // Removed content leads the tab. Somebody whose upload disappeared is looking for
+      // it, and burying the explanation under everything still live is the wrong way
+      // round — the same reasoning the studio catalogue uses.
+      const notices: ListItem[] = tab === 'uploads'
+        ? blocked.map(t => ({ kind: 'blocked', track: t, key: `blocked-${t.trackId}` }))
+        : removals
+            .filter(r => r.kind === 'repost')
+            .map(r => ({ kind: 'removed-repost', removal: r, key: `removed-${r.id}` }));
+
+      if (notices.length > 0 || visiblePosts.length > 0) {
+        return [
+          head,
+          ...notices,
+          ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id })),
+        ];
       }
       return [head, { kind: 'empty', key: '__empty__' }];
     }
@@ -428,7 +476,7 @@ export default function ProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -443,6 +491,49 @@ export default function ProfileScreen() {
       if (item.kind === 'tabs') {
         return (
           <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />
+        );
+      }
+      if (item.kind === 'blocked') {
+        const t = item.track;
+        return (
+          <RemovedContentCard
+            coverUrl={t.coverUrl}
+            title={t.title}
+            reason={t.reason}
+            kind="upload"
+            busy={removingId === t.trackId}
+            onDelete={() => {
+              setRemovingId(t.trackId);
+              // Permitted since the strike moved to the moderation ledger: deleting the
+              // track can no longer erase the record of why it went.
+              deleteBlockedTrack(supabase, t.trackId)
+                .then(() => setBlocked(list => list.filter(x => x.trackId !== t.trackId)))
+                .catch(() => { /* card stays; nothing was deleted */ })
+                .finally(() => setRemovingId(null));
+            }}
+          />
+        );
+      }
+      if (item.kind === 'removed-repost') {
+        const r = item.removal;
+        return (
+          <RemovedContentCard
+            title={r.trackTitle ?? 'A track you reposted'}
+            reason={r.reason}
+            kind="repost"
+            caption={r.caption}
+            busy={removingId === r.id}
+            onDelete={() => {
+              setRemovingId(r.id);
+              // Dismisses the NOTICE only. The repost is already gone and the ledger is
+              // untouched, so nobody clears a strike by tidying their profile.
+              void dismissRemoval(supabase, r.id)
+                .then(ok => {
+                  if (ok) { setRemovals(list => list.filter(x => x.id !== r.id)); }
+                })
+                .finally(() => setRemovingId(null));
+            }}
+          />
         );
       }
       if (item.kind === 'loading') {
@@ -531,7 +622,12 @@ export default function ProfileScreen() {
         />
       );
     },
-    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist],
+    // `removingId` drives the spinner on the two RemovedContentCards. Omitting it did
+    // not just trip the linter: renderItem was memoised without it, so the card never
+    // re-rendered after the delete started and the button sat there looking idle while
+    // the request was in flight.
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist,
+     removingId],
   );
 
   const renderHeader = useCallback(() => {

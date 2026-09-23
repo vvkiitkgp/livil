@@ -9,6 +9,18 @@ import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
 import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
 import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
+import { TakedownDialog } from '../components/TakedownDialog';
+import {
+  claimLabel,
+  concernLabel,
+  fetchOpsCopyrightScans,
+  liveLabel,
+  restoreTrack,
+  scopeLabel,
+  shortId,
+  takeDownTrack,
+  type OpsCopyrightScan,
+} from '../data/opsCopyright';
 import {
   OPS_BADGES,
   fetchAllBadgeHolders,
@@ -35,6 +47,24 @@ import {
  * the operator's own session against `is_ops()`-gated RLS, so a non-ops visitor loading this
  * URL sees an empty table rather than data. That is why there is no route guard.
  */
+/**
+ * A takedown or restore that has been started but not yet confirmed.
+ *
+ * `resultKey` is the row the outcome gets written back to, and it is NOT the track id:
+ * the same track can appear in the copyright queue and the report queue at once, and the
+ * operator needs the answer under the row they actually clicked.
+ */
+type PendingAction = {
+  mode: 'takedown' | 'restore';
+  trackId: string;
+  title: string;
+  idShort: string;
+  resultKey: string;
+  source: 'copyright' | 'report';
+  warning?: string | null;
+  impact?: string | null;
+};
+
 export function Ops() {
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -69,6 +99,168 @@ export function Ops() {
   }, []);
 
   useEffect(load, [load]);
+
+  // Copyright matches. Loaded independently for the same reason as everything else here:
+  // one failing RPC must not blank the rest of the page.
+  const [scans, setScans] = useState<OpsCopyrightScan[] | null>(null);
+  const [scansError, setScansError] = useState<string | null>(null);
+
+  const loadScans = useCallback(() => {
+    setScansError(null);
+    fetchOpsCopyrightScans(true)
+      .then(setScans)
+      .catch(e => {
+        setScans([]);
+        setScansError(e?.message ?? 'Could not load copyright matches.');
+      });
+  }, []);
+
+  useEffect(loadScans, [loadScans]);
+
+  const loadReports = useCallback(() => {
+    setReportsError(null);
+    fetchOpsReports(showReviewed)
+      .then(setReports)
+      .catch(e => {
+        setReports([]);
+        setReportsError(e?.message ?? 'Could not load reports.');
+      });
+  }, [showReviewed]);
+
+  useEffect(loadReports, [loadReports]);
+
+
+  // Which row is mid-action. Not optimistic: the only honest answer to "did that work" is
+  // the one the database returns, and a row that flips to "Taken down" and silently was
+  // not is worse than a slow button.
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  /**
+   * The takedown / restore question, while it is being asked.
+   *
+   * One piece of state for BOTH queues — the copyright matches and the reports — because
+   * they end in the same two RPCs. Two dialogs would be two chances for the wording of a
+   * takedown to drift, and the wording is what the creator reads.
+   */
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  // Outcome per ROW, not one banner at the top of the section. The first real use of the
+  // actuator put the result in a page-level line the operator never saw, so a takedown
+  // that correctly removed nothing read as a broken feature.
+  const [rowResult, setRowResult] = useState<Record<string, string>>({});
+
+  const onTakeDown = useCallback((row: OpsCopyrightScan) => {
+    const live = row.liveUploads + row.liveReposts;
+    setPending({
+      mode: 'takedown',
+      trackId: row.trackId,
+      title: row.trackTitle,
+      idShort: shortId(row.trackId),
+      resultKey: row.id,
+      source: 'copyright',
+      // Nothing to remove is almost always a misclick — and it is exactly the misclick
+      // that happened, between two rows with the same title. Say so before acting, and
+      // name the track id, because the title alone did not distinguish them.
+      warning:
+        live === 0
+          ? 'Nothing is published for this track. Taking it down removes no posts and '
+            + 'changes nothing anyone can see — it only marks the track and counts as a '
+            + 'strike against the artist. Two uploads can share a title: did you mean a '
+            + 'different row?'
+          : null,
+      impact:
+        live === 0
+          ? null
+          : `This removes ${liveLabel(row)}`
+            + (row.liveReposts > 0
+              ? " — including other people's reposts, which do NOT come back on restore."
+              : '.'),
+    });
+  }, []);
+
+  const onRestore = useCallback((row: OpsCopyrightScan) => {
+    setPending({
+      mode: 'restore',
+      trackId: row.trackId,
+      title: row.trackTitle,
+      idShort: shortId(row.trackId),
+      resultKey: row.id,
+      source: 'copyright',
+      impact:
+        "The uploader's own post comes back with its caption and clip. Likes, comments "
+        + 'and other people\'s reposts do NOT — they were deleted and cannot be recovered.',
+    });
+  }, []);
+
+  /** Take down the track behind a REPORT. Same two RPCs, different queue. */
+  const onReportAction = useCallback((r: OpsReport) => {
+    if (!r.trackId) return;
+    const down = r.trackTakenDownAt !== null;
+    setPending({
+      mode: down ? 'restore' : 'takedown',
+      trackId: r.trackId,
+      title: r.trackTitle ?? '(untitled)',
+      idShort: shortId(r.trackId),
+      resultKey: `${r.kind}-${r.id}`,
+      source: 'report',
+      // The reporter already said why. Carrying it in stops the operator retyping it and,
+      // more usefully, puts the accusation next to the categories so a mismatch is
+      // visible — "reported as spam" against a copyright takedown is worth noticing.
+      impact: down
+        ? "The uploader's own post comes back. Likes, comments and other people's reposts "
+          + 'do NOT.'
+        : `Reported as “${r.reason}”. Taking the track down removes the uploader's post `
+          + 'and every repost of it.',
+    });
+  }, []);
+
+  /**
+   * Runs whichever question the dialog was asking.
+   *
+   * The outcome is written per ROW rather than into a page-level banner: the first version
+   * of this put the result in a line at the top of the section that the operator never
+   * scrolled to, so a takedown that correctly removed nothing read as a broken feature.
+   */
+  const runPending = useCallback(
+    async (reason: string) => {
+      if (!pending) return;
+      setActingId(pending.resultKey);
+      try {
+        if (pending.mode === 'takedown') {
+          const removed = await takeDownTrack(pending.trackId, reason);
+          setRowResult(r => ({
+            ...r,
+            [pending.resultKey]:
+              removed === 0
+                ? 'Marked down. Nothing was published, so nothing was removed.'
+                : `Taken down — ${removed} post${removed === 1 ? '' : 's'} removed.`,
+          }));
+        } else {
+          await restoreTrack(pending.trackId, reason);
+          setRowResult(r => ({
+            ...r,
+            [pending.resultKey]: "Restored — the uploader's post is back.",
+          }));
+        }
+        setPending(null);
+        // Both queues can show the same track, so both are refreshed whichever one the
+        // action was started from.
+        loadScans();
+        loadReports();
+      } catch (e) {
+        setRowResult(r => ({
+          ...r,
+          [pending.resultKey]: (e as Error)?.message ?? 'That did not work.',
+        }));
+        setPending(null);
+      } finally {
+        setActingId(null);
+      }
+    },
+    [pending, loadScans, loadReports],
+  );
+
+  // Loaded independently of the waitlist: a failure in one should not blank the other, and
+  // the same is_ops() gate covers both, so there is nothing to sequence.
 
   // Loaded independently of the waitlist: a failure in one should not blank the other, and
   // the same is_ops() gate covers both, so there is nothing to sequence.
@@ -139,18 +331,6 @@ export function Ops() {
     },
     [holders, users, loadBadges],
   );
-
-  const loadReports = useCallback(() => {
-    setReportsError(null);
-    fetchOpsReports(showReviewed)
-      .then(setReports)
-      .catch(e => {
-        setReports([]);
-        setReportsError(e?.message ?? 'Could not load reports.');
-      });
-  }, [showReviewed]);
-
-  useEffect(loadReports, [loadReports]);
 
   // Optimistic, then reload: the row must leave the open queue the instant it is
   // actioned, or an operator working down a list re-reads rows they just cleared.
@@ -335,6 +515,159 @@ export function Ops() {
           Play's UGC policy expects reports to be acted on, and the queue that gets
           scrolled past is the queue that rots — which is how post_reports sat
           unread for two months. */}
+      {/* ── Copyright matches ──────────────────────────────────────────────
+          Ordered by how much each row wants a human, not by time: a queue sorted
+          newest-first makes an operator read everything to find the one thing that
+          matters. A match is NOT a verdict — fingerprinting has real false positives on
+          covers, live takes and sampled material — so nothing here is phrased as an
+          accusation, and "Never answered" ranks top simply because nobody has explained
+          themselves. */}
+      <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
+        <div>
+          <h2 className="page__title">Copyright matches</h2>
+          <p className="page__sub">
+            Uploads that sound like a known recording, and what the uploader said about
+            them. A match is a reason to look, not proof of anything.
+          </p>
+        </div>
+      </header>
+
+      {scansError && <p className="error">{scansError}</p>}
+
+      {scans !== null && scans.length === 0 && !scansError && (
+        <div className="empty panel">
+          <p className="empty__title">No matches yet</p>
+          <p className="hint">
+            Uploads are checked as they finish. Nothing has matched a known recording.
+          </p>
+        </div>
+      )}
+
+      {scans !== null && scans.length > 0 && (
+        <div className="tablewrap panel">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Upload</th>
+                <th>Sounds like</th>
+                <th>They said</th>
+                <th>Concern</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scans.map(s => (
+                <tr key={s.id} data-concern={s.concern}>
+                  <td>
+                    <span className="table__title">{s.trackTitle}</span>
+                    <div className="hint">
+                      {s.uploaderUsername ? `@${s.uploaderUsername}` : 'unknown'}
+                      {' · '}
+                      {s.mediaKind ?? 'audio'}
+                      {' · '}
+                      {formatDate(s.createdAt)}
+                    </div>
+                    {/* The two facts that would have prevented the first misclick: what
+                        is actually serving, and a handle that distinguishes two uploads
+                        sharing a title. */}
+                    <div className="hint" data-empty={s.liveUploads + s.liveReposts === 0}>
+                      {liveLabel(s)}
+                    </div>
+                    <div className="hint">{shortId(s.trackId)}</div>
+                  </td>
+
+                  <td>
+                    <span className="table__title">{s.matchedTitle ?? '—'}</span>
+                    {s.matchedArtist && <div className="hint">{s.matchedArtist}</div>}
+                    {s.matchedIsrc && <div className="hint">ISRC {s.matchedIsrc}</div>}
+                  </td>
+
+                  <td>
+                    <span className="table__title">{claimLabel(s.claim)}</span>
+                    {s.claimBasis && <div className="hint">{s.claimBasis}</div>}
+                    {s.claimGrantor && <div className="hint">from {s.claimGrantor}</div>}
+                    {s.claimScope && s.claimScope.length > 0 && (
+                      <div className="hint">covers {s.claimScope.map(scopeLabel).join(', ')}</div>
+                    )}
+                    {(s.claimTerritory || s.claimTerm) && (
+                      <div className="hint">
+                        {[s.claimTerritory, s.claimTerm].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                    {s.claimReference && (
+                      <div className="hint">
+                        ref {s.claimReference}
+                        {/* The one automatic check worth making: is the claimant even
+                            talking about the recording we matched? Null means one side is
+                            absent, which most legitimate creators are — no badge shown. */}
+                        {s.referenceMatchesIsrc === true && ' — matches'}
+                        {s.referenceMatchesIsrc === false && ' — different recording'}
+                      </div>
+                    )}
+                    {s.claimNote && <div className="hint">&ldquo;{s.claimNote}&rdquo;</div>}
+                    {s.answeredAt && <div className="hint">{formatDate(s.answeredAt)}</div>}
+                  </td>
+
+                  <td>
+                    <span className="badge" data-kind={s.concern}>
+                      {s.takenDownAt ? 'Taken down' : concernLabel(s.concern)}
+                    </span>
+
+                    {/* The repeat-infringer signal, on the row where the decision is made
+                        rather than a screen away. */}
+                    {s.uploaderTakedowns > 0 && (
+                      <div className="hint">
+                        {s.uploaderTakedowns} takedown
+                        {s.uploaderTakedowns === 1 ? '' : 's'} for this artist
+                      </div>
+                    )}
+
+                    {/* Absence is shown rather than rendered as a tick: rows answered
+                        before the boxes existed carry neither, and that should be
+                        visible. */}
+                    {s.claim && s.claim !== 'cancelled' && (
+                      <div className="hint">
+                        {s.acceptedResponsibility === true && s.grantedStreamingLicence === true
+                          ? 'Accepted responsibility · granted streaming'
+                          : 'Predates the consent boxes'}
+                      </div>
+                    )}
+
+                    <div className="rights__actions" style={{ marginTop: 'var(--space-2)' }}>
+                      {s.takenDownAt ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          busy={actingId === s.id}
+                          onClick={() => void onRestore(s)}
+                        >
+                          Restore
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          busy={actingId === s.id}
+                          onClick={() => void onTakeDown(s)}
+                        >
+                          Take down
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* The outcome, on the row that produced it. */}
+                    {rowResult[s.id] && <div className="hint">{rowResult[s.id]}</div>}
+
+                    {/* Stated plainly. An operator who believes the audio is gone when it
+                        is still fetchable would give a rights holder a wrong answer. */}
+                    <div className="hint">Files stay online until a purge exists</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <header className="page__head" style={{ marginTop: 'var(--space-12)' }}>
         <div>
           <p className="kicker">Needs a decision</p>
@@ -398,6 +731,30 @@ export function Ops() {
                 {r.targetExcerpt || '(nothing to show)'}
               </p>
 
+              {/* THE REPORTED THING, PLAYABLE. Without this the queue was an accusation
+                  and a username, and the only honest action was "I looked at some text".
+                  `preload="none"` because a page of reports would otherwise open a
+                  connection per row on load. A comment report plays the track the comment
+                  sits under — the remark is what was reported, but the remark is not
+                  judgeable on its own. */}
+              {r.mediaUrl && (
+                <div className="msg__media">
+                  {r.coverUrl && <img src={r.coverUrl} alt="" />}
+                  <div className="msg__mediatext">
+                    <span className="hint">
+                      {r.trackTitle ?? '(untitled)'}
+                      {r.kind === 'comment' && ' — the post this comment is on'}
+                      {r.trackTakenDownAt && ' · already taken down'}
+                    </span>
+                    {r.mediaKind === 'video' ? (
+                      <video src={r.mediaUrl} controls preload="none" />
+                    ) : (
+                      <audio src={r.mediaUrl} controls preload="none" />
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="msg__head">
                 <span className="hint">
                   reported by {r.reporterUsername ? `@${r.reporterUsername}` : 'a deleted account'}
@@ -409,6 +766,24 @@ export function Ops() {
                   </span>
                 )}
                 <div className="filters" style={{ marginLeft: 'auto' }}>
+                  {/* Only when there is a track to act on. A comment report offers this
+                      too — a comment can be reported ON an upload that is itself the
+                      problem — but the button says what it actually does, because taking
+                      down the track does NOT delete the comment. */}
+                  {r.trackId && (
+                    <Button
+                      variant={r.trackTakenDownAt ? 'secondary' : 'destructive'}
+                      size="sm"
+                      busy={actingId === `${r.kind}-${r.id}`}
+                      onClick={() => onReportAction(r)}
+                    >
+                      {r.trackTakenDownAt
+                        ? 'Restore track'
+                        : r.kind === 'comment'
+                          ? 'Take down the track'
+                          : 'Take down'}
+                    </Button>
+                  )}
                   <Button
                     variant={r.reviewedAt ? 'secondary' : 'primary'}
                     size="sm"
@@ -419,6 +794,12 @@ export function Ops() {
                   </Button>
                 </div>
               </div>
+
+              {/* Per row, not a page-level banner: an operator working down a list never
+                  scrolls back up to find out whether the last click did anything. */}
+              {rowResult[`${r.kind}-${r.id}`] && (
+                <p className="hint">{rowResult[`${r.kind}-${r.id}`]}</p>
+              )}
 
               {r.details && <p className="hint">{r.details}</p>}
             </article>
@@ -678,6 +1059,22 @@ export function Ops() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* One dialog, both queues. It replaces a `window.confirm` stacked in front of a
+          `window.prompt` — two questions for one decision, in browser chrome, producing
+          whatever was typed in a hurry as the sentence the creator would be shown. */}
+      {pending && (
+        <TakedownDialog
+          mode={pending.mode}
+          trackTitle={pending.title}
+          trackIdShort={pending.idShort}
+          warning={pending.warning}
+          impact={pending.impact}
+          busy={actingId === pending.resultKey}
+          onConfirm={runPending}
+          onCancel={() => setPending(null)}
+        />
       )}
     </div>
   );

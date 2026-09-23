@@ -81,6 +81,14 @@ jobs:
             --lock=supabase/functions/send-push/deno.lock --frozen \
             supabase/functions/send-push/index.test.ts
 
+      # These 24 existed and were never wired into any workflow, so they had never run in
+      # CI — which is how a broken quota query reached production. `--allow-read` is for
+      # the one contract test that reads app.ts; the rest need no permissions at all.
+      - name: scan-upload tests
+        run: |
+          deno test --no-config --allow-read \
+            supabase/functions/scan-upload/index.test.ts
+
       # The LIVE check. Gated OFF for pull_request so the account-level PAT is never exposed to
       # PR-branch-controlled code — see the SECURITY note on the triggers above.
       # The token is a Supabase personal access token (account-level), NOT a project API key.
