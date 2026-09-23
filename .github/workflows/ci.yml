@@ -203,6 +203,9 @@ jobs:
           -- because the real `handle_new_user()` is itself created by a migration further
           -- down the chain; `create or replace` there swaps the body in underneath without
           -- touching the trigger.
+          --
+          -- It is REMOVED again after the migrations, before the RLS tests — see that
+          -- step for why.
           create or replace function public.handle_new_user() returns trigger
             language plpgsql as $stub$ begin return new; end $stub$;
           create trigger on_auth_user_created
@@ -219,6 +222,25 @@ jobs:
             psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
           echo "All migrations applied cleanly."
+
+      # The trigger goes again before the tests run.
+      #
+      # It belongs during the replay, because a migration's own self-test must face what
+      # production imposes — that is the gap that let a duplicate-key failure through to
+      # the live database. It does NOT belong during the RLS tests: sixteen of those
+      # files predate it and build their fixtures by inserting an auth.users row AND its
+      # profile explicitly. With the trigger live, the profile is created twice and every
+      # one of them dies on `profiles_username_key` before its first assertion.
+      #
+      # Rewriting sixteen unrelated fixtures to accommodate a test-harness detail would
+      # be a far larger and riskier change than the gap it closes, and would couple every
+      # future fixture to this decision. Scope it to the replay instead.
+      - name: Remove the auth trigger before the RLS tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -c "drop trigger if exists on_auth_user_created on auth.users;"
       - name: Grant table access to the app roles
         env:
           PGPASSWORD: postgres
