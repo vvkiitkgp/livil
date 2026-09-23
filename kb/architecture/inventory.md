@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-229 TypeScript file(s) under `src/`, 60,107 lines.
+230 TypeScript file(s) under `src/`, 60,251 lines.
 
 ## Size hotspots
 
@@ -39,7 +39,7 @@ reading alone (Constitution P28).
 | `src/components/FloatingPlayer.tsx` | 912 |
 | `src/screens/main/JamRoomScreen.tsx` | 851 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 745 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
@@ -96,7 +96,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 22,009 lines.
+43 file(s), 22,053 lines.
 
 | File | Lines |
 |---|---:|
@@ -108,7 +108,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 851 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 745 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/screens/main/LibraryScreen.tsx` | 608 |
@@ -119,9 +119,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/InboxScreen.tsx` | 429 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
+| `src/screens/auth/ChooseUsernameScreen.tsx` | 373 |
 | `src/screens/auth/SignInScreen.tsx` | 357 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
-| `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 318 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
@@ -238,7 +238,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-47 file(s), 10,710 lines.
+48 file(s), 10,806 lines.
 
 | File | Lines |
 |---|---:|
@@ -279,6 +279,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
+| `src/services/googleAuth.ts` | 79 |
 | `src/services/terms.ts` | 78 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
@@ -286,8 +287,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
+| `src/services/authSession.ts` | 36 |
 | `src/services/friendActivity.ts` | 33 |
-| `src/services/googleAuth.ts` | 19 |
 | `src/services/uploadEvents.ts` | 15 |
 
 ## Contexts

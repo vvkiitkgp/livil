@@ -27,7 +27,7 @@ import { BackstagePass, MiniPass, type PassRole } from '../../components/onboard
 import { Crowd } from '../../components/onboarding/Crowd';
 import { ScreenBackdrop } from '../../components/onboarding/ScreenBackdrop';
 import { StageLamp } from '../../components/onboarding/StageLamp';
-import { signInWithGoogle } from '../../services/googleAuth';
+import { GoogleSignInCancelled, signInWithGoogle } from '../../services/googleAuth';
 import { useToast } from '../../contexts/ToastContext';
 import AppleSignInButton from '../../components/AppleSignInButton';
 import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
@@ -124,6 +124,8 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
     try {
       await signInWithGoogle();
     } catch (e) {
+      // Closing the iOS sign-in sheet is deliberate, not an error.
+      if (e instanceof GoogleSignInCancelled) { return; }
       const msg = e instanceof Error ? e.message : '';
       showToast(msg || 'Google sign-in failed. Please try again.', { kind: 'error' });
     } finally {
