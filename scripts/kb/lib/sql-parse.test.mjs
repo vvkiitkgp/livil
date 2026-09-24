@@ -63,3 +63,59 @@ test('regenerating twice on different days is stable', () => {
 
   assert.equal(readFileSync(p, 'utf8'), day1, 'the file must not drift with the calendar');
 });
+
+/**
+ * Drop replay.
+ *
+ * These pin the property every generated document depends on and none of them stated:
+ * the parsers describe the schema as it is AFTER the last migration, not the union of
+ * everything ever created. Two of the three were broken when written —
+ * `parseTables` never replayed drops at all, and `parseFunctions` could not see the
+ * `public.` prefix that most drops in this repository actually use, so a dropped
+ * function stayed in the RPC reference and in the security review that reads it.
+ */
+import { parseTables, parseRls, parseFunctions } from './sql-parse.mjs';
+
+const mig = (file, sql) => ({ file, sql });
+
+test('a dropped table leaves the data model', () => {
+  const tables = parseTables([
+    mig('001_create.sql', 'create table public.waitlist (id uuid primary key, email text);'),
+    mig('002_drop.sql', 'drop table if exists public.waitlist;'),
+  ]);
+  assert.equal(tables.has('waitlist'), false, 'a dropped table must not be documented as live');
+});
+
+test('a table recreated after a drop is live again', () => {
+  const tables = parseTables([
+    mig('001.sql', 'create table public.t (id uuid primary key);'),
+    mig('002.sql', 'drop table public.t;'),
+    mig('003.sql', 'create table public.t (id uuid primary key, extra text);'),
+  ]);
+  assert.equal(tables.has('t'), true, 'apply order decides, and the last word was CREATE');
+});
+
+test('dropping a table drops its policies without naming them', () => {
+  // Postgres removes them with the table, so a migration has no reason to name them.
+  const { policies, rlsEnabled } = parseRls([
+    mig('001.sql', [
+      'alter table public.waitlist enable row level security;',
+      'create policy waitlist_insert_anon on public.waitlist for insert to anon with check (true);',
+      'create policy keep_me on public.other for select to authenticated using (true);',
+    ].join('\n')),
+    mig('002.sql', 'drop table if exists public.waitlist;'),
+  ]);
+  assert.deepEqual(policies.map(p => p.name), ['keep_me'],
+    'only the dropped table’s policies go');
+  assert.equal(rlsEnabled.has('waitlist'), false);
+});
+
+test('a drop qualified with public. is seen — the prefix most migrations actually use', () => {
+  const body = "$$ begin insert into t values (1); end $$";
+  const fns = parseFunctions([
+    mig('001.sql', `create function public.waitlist_request(p_email text) returns text language plpgsql as ${body};`),
+    mig('002.sql', 'drop function if exists public.waitlist_request(p_email text);'),
+  ]);
+  assert.equal(fns.has('waitlist_request'), false,
+    'the public. prefix must not hide the drop');
+});

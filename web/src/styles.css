@@ -1522,6 +1522,75 @@ a.btn {
   color: var(--purple-neon);
 }
 
+/* ── Ops tabs ───────────────────────────────────────────────────────────── */
+
+/*
+ * The backstage ops page holds six tables. Stacked, the one with a deadline on it sat
+ * below two that never need reading. These are the tabs that split them, styled off the
+ * same selected-state vocabulary as .chip and .navlink so the page does not acquire a
+ * third way of saying "you are here".
+ */
+.opstabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.opstab {
+  font: inherit;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-cta);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--dur-fast) ease, background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+
+.opstab:hover {
+  color: var(--white);
+}
+
+.opstab[data-active] {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+  color: var(--purple-neon);
+}
+
+/*
+ * How many rows behind this tab are still waiting on someone. Filled rather than
+ * outlined: it is an indicator, not a control, and an outlined two-digit pill at this
+ * size reads as a second button sitting inside the first.
+ */
+.opstab__count {
+  font-size: var(--text-2xs);
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--purple);
+  color: var(--white);
+  text-align: center;
+}
+
+/*
+ * Sections stacked inside one tab. The GROUP owns the gap, not the individual headers:
+ * whichever section renders first sits tight under the tabs, and reordering them — or
+ * moving one to another tab — cannot leave a stray margin at the top of a page.
+ */
+.opsgroup > * + .page__head {
+  margin-top: var(--space-12);
+}
+
 /* ── Chips, badges ──────────────────────────────────────────────────────── */
 
 .filters {

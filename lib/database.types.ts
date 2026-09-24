@@ -1927,36 +1927,6 @@ export type Database = {
           },
         ]
       }
-      waitlist: {
-        Row: {
-          created_at: string
-          email: string
-          email_attempts: number
-          email_error: string | null
-          email_sent_at: string | null
-          email_source: string | null
-          id: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          email_attempts?: number
-          email_error?: string | null
-          email_sent_at?: string | null
-          email_source?: string | null
-          id?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          email_attempts?: number
-          email_error?: string | null
-          email_sent_at?: string | null
-          email_source?: string | null
-          id?: string
-        }
-        Relationships: []
-      }
       welcome_emails: {
         Row: {
           attempts: number
@@ -2520,11 +2490,6 @@ export type Database = {
       track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
       unblock_user: { Args: { target_user_id: string }; Returns: undefined }
       unread_badge_count_for: { Args: { p_user_id: string }; Returns: number }
-      waitlist_mark_emailed: {
-        Args: { p_error?: string; p_id: string }
-        Returns: undefined
-      }
-      waitlist_request: { Args: { p_email: string }; Returns: string }
       welcome_email_claim: { Args: never; Returns: boolean }
       welcome_email_mark: { Args: { p_error?: string }; Returns: undefined }
     }
