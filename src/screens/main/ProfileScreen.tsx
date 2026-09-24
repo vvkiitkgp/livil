@@ -52,7 +52,7 @@ import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBad
 import ProfileBadges from '../../components/ProfileBadges';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -187,6 +187,8 @@ export default function ProfileScreen() {
     });
   }, [myStoryCluster, navigation]);
 
+  // Provisional only — the real default is resolved from the tab counts on the initial
+  // load, so that the selected pill is always the first pill. See initialTabFor.
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -310,7 +312,7 @@ export default function ProfileScreen() {
   }, []);
 
   const refresh = useCallback(
-    async (currentTab: ProfileTab) => {
+    async (currentTab: ProfileTab, opts?: { resolveTab?: boolean }) => {
       setError('');
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -322,17 +324,24 @@ export default function ProfileScreen() {
         const counts = await fetchTabCounts(me);
         setTabCounts(counts);
 
+        // On the very first load the selection has not been decided yet: counts are what
+        // decide it, and they only exist now. Pull-to-refresh and tab switches pass no
+        // flag on purpose — re-resolving there would yank the reader off the tab they
+        // chose the moment their own counts crossed over.
+        const activeTab = opts?.resolveTab ? initialTabFor(counts) : currentTab;
+        if (activeTab !== currentTab) { setTab(activeTab); }
+
         // Both resolve to [] on failure, so a profile never fails to render because a
         // notice query errored. Not awaited together with the posts: a slow notice must
         // not delay the content people actually came for.
         void fetchMyBlockedTracks(supabase, me).then(setBlocked);
         void fetchMyRemovals(supabase).then(setRemovals);
 
-        if (currentTab === 'reposts' || currentTab === 'uploads') {
-          const fresh = await fetchPosts(me, currentTab);
+        if (activeTab === 'reposts' || activeTab === 'uploads') {
+          const fresh = await fetchPosts(me, activeTab);
           setPosts(fresh);
           setEndReached(fresh.length < PAGE_SIZE);
-        } else if (currentTab === 'albums') {
+        } else if (activeTab === 'albums') {
           setAlbums(await fetchAlbumsByUser(me));
           setEndReached(true);
         } else {
@@ -352,7 +361,7 @@ export default function ProfileScreen() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await refresh(tab);
+      await refresh(tab, { resolveTab: true });
       if (!cancelled) {setLoading(false);}
     })();
     return () => {
