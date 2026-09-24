@@ -7,7 +7,7 @@
  * more leads. Getting the interaction wrong is silent: the bar still renders, it just
  * shows the wrong thing first, or drops a tab nobody notices is missing.
  */
-import { visibleTabsFor, type TabCounts } from '../ProfileTabBar';
+import { initialTabFor, visibleTabsFor, type TabCounts } from '../ProfileTabBar';
 
 const counts = (over: Partial<TabCounts> = {}): TabCounts => ({
   reposts: 0,
@@ -66,5 +66,48 @@ describe('visibleTabsFor — order follows the counts', () => {
   it('reorders correctly when Uploads is the only weighted tab visible', () => {
     // Reposts is always visible, so this is really "uploads present, reposts empty".
     expect(keys(counts({ uploads: 4 }))).toEqual(['uploads', 'reposts', 'playlists']);
+  });
+});
+
+/**
+ * The selected pill must be the first pill.
+ *
+ * This is the half that used to be missing: the bar already ordered itself by weight,
+ * but the screens opened on a hard-coded 'reposts', so an artist landed on a profile
+ * whose leading tab was Uploads with Reposts highlighted next to it. Pinning it here
+ * rather than in a screen test keeps the rule where the ordering rule already lives —
+ * the two can only drift apart if someone changes one and not the other in this file.
+ */
+describe('initialTabFor — the profile opens on the leading tab', () => {
+  it('opens an artist on Uploads', () => {
+    expect(initialTabFor(counts({ uploads: 12, reposts: 2 }))).toBe('uploads');
+  });
+
+  it('opens a curator on Reposts', () => {
+    expect(initialTabFor(counts({ uploads: 2, reposts: 12 }))).toBe('reposts');
+  });
+
+  it('opens an empty profile on Reposts', () => {
+    expect(initialTabFor(counts())).toBe('reposts');
+  });
+
+  it('opens on Reposts when the two are tied, matching the no-jitter order', () => {
+    expect(initialTabFor(counts({ uploads: 5, reposts: 5 }))).toBe('reposts');
+  });
+
+  it('agrees with the rendered order for every count shape', () => {
+    const shapes: Partial<TabCounts>[] = [
+      {},
+      { uploads: 1 },
+      { reposts: 1 },
+      { uploads: 4 },
+      { uploads: 5, reposts: 5 },
+      { uploads: 99, reposts: 1, albums: 3, playlists: 40 },
+      { reposts: 99, uploads: 1, albums: 3, playlists: 40 },
+    ];
+    for (const shape of shapes) {
+      const c = counts(shape);
+      expect(initialTabFor(c)).toBe(visibleTabsFor(c)[0]!.key);
+    }
   });
 });
