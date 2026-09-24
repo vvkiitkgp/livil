@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-23
+last_verified: 2026-09-24
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-229 TypeScript file(s) under `src/`, 60,137 lines.
+229 TypeScript file(s) under `src/`, 60,207 lines.
 
 ## Size hotspots
 
@@ -32,7 +32,7 @@ reading alone (Constitution P28).
 | `src/screens/main/UploadScreen.tsx` | 1409 |
 | `src/components/PostCard.tsx` | 1383 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
-| `src/screens/main/ProfileScreen.tsx` | 1170 |
+| `src/screens/main/ProfileScreen.tsx` | 1179 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/components/WaveformScrubber.tsx` | 1150 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
@@ -96,7 +96,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 22,039 lines.
+43 file(s), 22,048 lines.
 
 | File | Lines |
 |---|---:|
@@ -104,7 +104,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/StoryViewerScreen.tsx` | 1650 |
 | `src/screens/main/UploadScreen.tsx` | 1409 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
-| `src/screens/main/ProfileScreen.tsx` | 1170 |
+| `src/screens/main/ProfileScreen.tsx` | 1179 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/main/JamRoomScreen.tsx` | 851 |
@@ -146,7 +146,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-85 file(s), 19,948 lines.
+85 file(s), 20,009 lines.
 
 | File | Lines |
 |---|---:|
@@ -190,9 +190,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
+| `src/components/ProfileTabBar.tsx` | 158 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
-| `src/components/ProfileTabBar.tsx` | 140 |
 | `src/components/AppleSignInButton.tsx` | 135 |
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
@@ -200,6 +200,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/StageLamp.tsx` | 121 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
+| `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
 | `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/ProgressiveImage.tsx` | 99 |
@@ -217,7 +218,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SwipeRevealRow.tsx` | 74 |
 | `src/components/FeedEndMessage.tsx` | 73 |
 | `src/components/ScrubTimeLabel.tsx` | 73 |
-| `src/components/__tests__/ProfileTabBar.test.tsx` | 71 |
 | `src/components/FormInput.tsx` | 69 |
 | `src/components/onboarding/StripedFill.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
