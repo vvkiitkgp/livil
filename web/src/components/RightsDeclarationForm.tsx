@@ -13,6 +13,13 @@ type Props = {
   /** What was matched, already formatted — see `describeMatch`. */
   matchDescription: string;
   onAnswer: (declaration: RightsDeclaration) => void;
+  /**
+   * The submit button's label. Defaults to "Submit and publish"; the stepped upload passes
+   * its own because there answering does not publish — the artist still presses Publish.
+   */
+  submitLabel?: string;
+  /** A previously saved answer to reopen for editing — every field starts from it. */
+  initial?: RightsDeclaration | null;
 };
 
 /**
@@ -41,17 +48,22 @@ type Props = {
  * says nothing about who may distribute it — friction and a cross-check, never a
  * credential. The helper text says so, deliberately.
  */
-export function RightsDeclarationForm({ matchDescription, onAnswer }: Props) {
-  const [choice, setChoice] = useState<Acknowledgement | null>(null);
-  const [basis, setBasis] = useState<ClaimBasis | null>(null);
-  const [grantor, setGrantor] = useState('');
-  const [scope, setScope] = useState<ClaimScope[]>([]);
-  const [territory, setTerritory] = useState('');
-  const [term, setTerm] = useState('');
-  const [reference, setReference] = useState('');
-  const [note, setNote] = useState('');
-  const [responsible, setResponsible] = useState(false);
-  const [licence, setLicence] = useState(false);
+export function RightsDeclarationForm({
+  matchDescription,
+  onAnswer,
+  submitLabel = 'Submit and publish',
+  initial = null,
+}: Props) {
+  const [choice, setChoice] = useState<Acknowledgement | null>(initial?.acknowledgement ?? null);
+  const [basis, setBasis] = useState<ClaimBasis | null>(initial?.basis ?? null);
+  const [grantor, setGrantor] = useState(initial?.grantor ?? '');
+  const [scope, setScope] = useState<ClaimScope[]>(initial?.scope ?? []);
+  const [territory, setTerritory] = useState(initial?.territory ?? '');
+  const [term, setTerm] = useState(initial?.term ?? '');
+  const [reference, setReference] = useState(initial?.reference ?? '');
+  const [note, setNote] = useState(initial?.note ?? '');
+  const [responsible, setResponsible] = useState(initial?.acceptedResponsibility === true);
+  const [licence, setLicence] = useState(initial?.grantedStreamingLicence === true);
 
   const declaration = useMemo<RightsDeclaration | null>(
     () =>
@@ -195,8 +207,9 @@ export function RightsDeclarationForm({ matchDescription, onAnswer }: Props) {
           disabled={!ready}
           onClick={() => declaration && onAnswer(declaration)}
         >
-          Submit and publish
+          {submitLabel}
         </Button>
+
         <Button
           variant="ghost"
           size="sm"
@@ -252,3 +265,4 @@ export function Choice({
     </button>
   );
 }
+

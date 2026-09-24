@@ -210,6 +210,189 @@ a {
   gap: 12px;
 }
 
+/* ── Upload steps ────────────────────────────────────────────────────────── */
+
+/* The upload card, stepped. Wider than `.card--wide` because the step rail has seven
+   stops; the meter's gutter offset in `.stage .meter` is half of this width. */
+.wizard {
+  max-width: 640px;
+  gap: 16px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 14px;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.steps__item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.steps__btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  font: inherit;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.steps__btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.steps__btn:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+}
+
+/* A numbered dot. Outlined, never filled — the no-solid-purple rule applies to anything
+   that reads as a control. */
+.steps__num {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.steps__label {
+  max-width: 100%;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.steps__btn:not(:disabled):hover .steps__num {
+  border-color: var(--purple-deep);
+}
+
+.steps__btn[data-complete] {
+  color: var(--text-secondary);
+}
+
+.steps__btn[data-complete] .steps__num {
+  border-color: var(--purple-deep);
+  color: var(--purple-light);
+}
+
+.steps__btn[data-state='current'] {
+  color: var(--white);
+}
+
+.steps__btn[data-state='current'] .steps__num {
+  border-color: var(--purple);
+  color: var(--purple-neon);
+  background: var(--purple-dim);
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+.steps__count {
+  margin: -6px 0 0;
+}
+
+.stepintro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stepintro__body {
+  line-height: 1.5;
+}
+
+.wizard__nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* The summary line under the copyright check. Purple for "needs you", never red: a match
+   is a question, not a verdict. */
+.stepnote {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: var(--text-base);
+  line-height: 1.5;
+  border-radius: 10px;
+  border: 1px solid var(--purple-deep);
+  background: var(--purple-dim);
+  color: var(--purple-light);
+}
+
+.stepnote[data-tone='good'] {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+/* One track's copyright-check result. */
+.checkstatus {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.checkstatus__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--text-muted);
+}
+
+.checkstatus[data-tone='good'] .checkstatus__dot { background: var(--info); }
+.checkstatus[data-tone='attention'] { color: var(--purple-light); }
+.checkstatus[data-tone='attention'] .checkstatus__dot { background: var(--purple-neon); }
+.checkstatus[data-tone='working'] .checkstatus__dot {
+  background: var(--purple-neon);
+  animation: checkpulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes checkpulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkstatus[data-tone='working'] .checkstatus__dot { animation: none; }
+}
+
+/* Phone: the step names go, the numbers stay — seven labels do not fit, and the heading
+   of the step below says where you are. */
+@media (max-width: 560px) {
+  .steps__label { display: none; }
+  /* The only label left may spill over its hidden neighbours rather than truncate. */
+  .steps__btn[data-state='current'] .steps__label { display: block; overflow: visible; }
+}
+
 /* ── Upload queue ────────────────────────────────────────────────────────── */
 
 .queue {
@@ -223,6 +406,11 @@ a {
      less than three of them visible before the list started scrolling. */
   max-height: 440px;
   overflow-y: auto;
+}
+
+.queue--uncapped {
+  max-height: none;
+  overflow-y: visible;
 }
 
 .queue__row {
@@ -289,6 +477,40 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The track's name, read-only, on the steps that are not about naming it. */
+.queue__name {
+  font-weight: 650;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Review lines can be long (a full credit list); let them wrap rather than hiding who is
+   credited behind an ellipsis on the one screen meant for checking it. */
+.queue__main > .hint.queue__wrap,
+.queue__main > .hint.queue__quote {
+  white-space: normal;
+}
+
+.queue__quote {
+  font-style: italic;
+}
+
+.queue__locked {
+  color: var(--text-muted);
+}
+
+/* A row missing something this step asks for. Warning-toned, not error: nothing failed,
+   the step just is not finished. */
+.queue__row[data-missing] {
+  border-color: var(--warning-border);
+}
+
+.queue__row[data-status='ready'] {
+  border-color: var(--purple-deep);
 }
 
 /* These read as fields at rest — filled, outlined, and captioned.
@@ -2202,6 +2424,28 @@ a.btn {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  /* The same field treatment as `.queue__field`, so the chips sit inside a box that is
+     recognisably something you type into. */
+  padding: 6px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: text;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+
+.tags__row:hover:not([data-disabled]) {
+  border-color: var(--purple-deep);
+}
+
+.tags__row:focus-within {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--purple-dim);
+}
+
+.tags__row[data-disabled] {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .tag {
@@ -2224,7 +2468,7 @@ a.btn {
 }
 
 /* Sits in the chip row rather than beside it, so the caret lands where the next chip will
-   appear. Unbordered: a box around it would read as a second, separate field. */
+   appear. Unbordered: the row is the box, and a second box would read as a separate field. */
 .tags__input {
   flex: 1;
   min-width: 120px;
@@ -2238,7 +2482,12 @@ a.btn {
 }
 
 .tags__input::placeholder {
-  color: var(--text-muted);
+  color: var(--purple-light);
+  opacity: 0.75;
+}
+
+.tags__input:focus::placeholder {
+  opacity: 0.4;
 }
 
 .tags__error {
@@ -2246,10 +2495,10 @@ a.btn {
   color: var(--warning);
 }
 
-/* The batch field sits between the card header and the dropzone, where the two "for all"
-   buttons above it set the expectation that this scope means the whole queue. */
+/* The batch field sits above the per-track list on the Tags step, where its caption says
+   the scope is the whole queue. */
 .batchtags {
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 /* ── Collaborator picker ─────────────────────────────────────────────────── */
@@ -2725,8 +2974,8 @@ a.btn {
   .stage .meter {
     position: absolute;
     top: 0;
-    /* Into the gutter to the right of the centred card. */
-    left: calc(50% + 280px + var(--space-6));
+    /* Into the gutter to the right of the centred card — half the upload card's width. */
+    left: calc(50% + 320px + var(--space-6));
     width: 176px;
     display: flex;
     flex-direction: column;
@@ -2763,7 +3012,7 @@ a.btn {
 @media (max-width: 1080px) {
   .stage .meter {
     width: 100%;
-    max-width: 560px;
+    max-width: 640px;
     margin: 0 auto var(--space-4);
   }
 }

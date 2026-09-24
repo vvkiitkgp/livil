@@ -10,7 +10,7 @@
  * Committing on space as well as Enter is what makes "lofi latenight bedroom" behave the way
  * it does everywhere else hashtags exist. A tag can never contain a space, so nothing is lost.
  */
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { MAX_TAGS_PER_TRACK, addTags, formatTag } from '@shared/constants/tags';
 
 export function TagField({
@@ -18,17 +18,24 @@ export function TagField({
   onChange,
   disabled = false,
   placeholder = 'Add a tag',
+  morePlaceholder = '+ Add a tag',
   label,
 }: {
   tags: string[];
   onChange: (tags: string[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  /**
+   * Shown after the chips once there are some. Without it the field looked finished: the
+   * pre-applied moods fill the row, and nothing said the space after them takes typing.
+   */
+  morePlaceholder?: string;
   /** Names the field for screen readers, and captions it when it stands alone. */
   label: string;
 }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const commit = (raw: string) => {
     const result = addTags(tags, raw);
@@ -60,7 +67,19 @@ export function TagField({
 
   return (
     <div className="tags">
-      <div className="tags__row">
+      {/* Boxed like any other field so it reads as one input with chips inside, and the
+          whole box focuses the input — the typing area itself is only as wide as the space
+          left after the last chip, which is easy to miss. */}
+      <div
+        className="tags__row"
+        data-disabled={disabled || undefined}
+        onMouseDown={e => {
+          if (e.target === e.currentTarget) {
+            e.preventDefault();
+            inputRef.current?.focus();
+          }
+        }}
+      >
         {tags.map(tag => (
           <span key={tag} className="tag">
             <span className="tag__text">{formatTag(tag)}</span>
@@ -81,10 +100,11 @@ export function TagField({
         ))}
         {!disabled && !full && (
           <input
+            ref={inputRef}
             className="tags__input"
             value={draft}
             aria-label={label}
-            placeholder={tags.length === 0 ? placeholder : ''}
+            placeholder={tags.length === 0 ? placeholder : morePlaceholder}
             onChange={e => {
               setDraft(e.target.value);
               if (error) setError(null);
