@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-23
+last_verified: 2026-09-24
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 113 migration(s) in `supabase/migrations/`.
+Reconstructed from 114 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-47 table(s).
+46 table(s).
 
 ### `activity_notifications`
 
@@ -1141,29 +1141,6 @@ RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_track
 **Indexes**
 
 - `idx_user_recent_tracks_user_played` `(user_id, played_at DESC)`
-
-### `waitlist`
-
-RLS enabled · defined in `20260718000000_waitlist_table.sql`
-
-| Column | Definition |
-|---|---|
-| `id` | `uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
-| `email` | `text NOT NULL UNIQUE` |
-| `created_at` | `timestamptz NOT NULL DEFAULT now()` |
-
-**Added by later migrations**
-
-| Column | Definition | Migration |
-|---|---|---|
-| `email_sent_at` | `timestamptz` | `20260805000000_waitlist_ops_dashboard.sql` |
-| `email_error` | `text` | `20260805000000_waitlist_ops_dashboard.sql` |
-| `email_attempts` | `integer NOT NULL DEFAULT 0` | `20260805000000_waitlist_ops_dashboard.sql` |
-| `email_source` | `text CONSTRAINT waitlist_email_source_check CHECK (email_source IN ('auto'` | `20260806000000_waitlist_self_serve_invite.sql` |
-
-**Indexes**
-
-- `waitlist_created_at_desc_idx` `(created_at DESC)`
 
 ### `welcome_emails`
 

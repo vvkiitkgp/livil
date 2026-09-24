@@ -243,6 +243,17 @@ persist — which is why it can sit there permanently where the card could not.
 
 ---
 
+## Outcome — 2026-09-24 — the backend retires too
+
+Appended, not edited. The "Kept, deliberately" paragraph above is now historical: the `waitlist`
+table, its policies, `waitlist_request` / `waitlist_mark_emailed` and both edge functions have
+been removed, along with the `/ops` roster that read them. The separate decision that paragraph
+called for is **ADR-0021**, which carries the reasoning, the alternatives and the archive step.
+
+Read that paragraph as what was true between 2026-09-02 and 2026-09-24, not as current state.
+
+---
+
 > **ADRs are append-only.** Do not edit an accepted ADR to reflect a new decision — write a new
 > one and mark this one `Superseded by ADR-NNNN`. The record of what we believed and when is
 > the point.
