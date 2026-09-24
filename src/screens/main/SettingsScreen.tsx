@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -166,12 +166,18 @@ export default function SettingsScreen() {
             subtitle="Bugs, ideas, or what nearly made you give up"
             onPress={() => navigation.navigate('ContactTeam')}
           />
-          <SettingsRow
-            icon="star"
-            label="Rate Livil on the Play Store"
-            external
-            onPress={() => void openUrl(PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL)}
-          />
+          {/* Android only. App Review guideline 2.3.10 rejects an iOS build that names
+              another platform's store. Once the App Store listing exists this becomes
+              "Rate Livil on the App Store" on iOS, opening
+              itms-apps://apps.apple.com/app/id<ID>?action=write-review. */}
+          {Platform.OS === 'android' && (
+            <SettingsRow
+              icon="star"
+              label="Rate Livil on the Play Store"
+              external
+              onPress={() => void openUrl(PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL)}
+            />
+          )}
         </SettingsSection>
 
         <SettingsSection title="About">

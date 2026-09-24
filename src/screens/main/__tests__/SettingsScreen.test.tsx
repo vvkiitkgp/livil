@@ -7,7 +7,7 @@
 
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Linking, Share, Text } from 'react-native';
+import { Linking, Platform, Share, Text } from 'react-native';
 
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
@@ -94,6 +94,12 @@ function pressable(t: TestRenderer.ReactTestRenderer, label: string) {
 }
 
 describe('SettingsScreen', () => {
+  // The jest preset reports iOS. Android is the shipping platform, so the suite
+  // runs as Android and the iOS-only differences get their own cases.
+  const realOS = Platform.OS;
+  beforeAll(() => { (Platform as { OS: string }).OS = 'android'; });
+  afterAll(() => { (Platform as { OS: string }).OS = realOS; });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockShare.mockResolvedValue({ action: 'sharedAction' });
@@ -177,6 +183,24 @@ describe('SettingsScreen', () => {
     expect(mockOpenURL).toHaveBeenLastCalledWith(
       expect.stringContaining('play.google.com'),
     );
+  });
+
+  it('offers the Play Store rating row on Android', async () => {
+    expect(texts(await mount())).toContain('Rate Livil on the Play Store');
+  });
+
+  // App Review guideline 2.3.10: an iOS build must not name another platform's store.
+  it('hides the Play Store rating row on iOS', async () => {
+    (Platform as { OS: string }).OS = 'ios';
+    try {
+      const tree = await mount();
+      expect(texts(tree).join(' ')).not.toMatch(/play store/i);
+      expect(tree.root.findAll(
+        n => n.props?.accessibilityLabel === 'Rate Livil on the Play Store',
+      )).toHaveLength(0);
+    } finally {
+      (Platform as { OS: string }).OS = 'android';
+    }
   });
 
   it('does not sign out until the confirmation is accepted', async () => {
