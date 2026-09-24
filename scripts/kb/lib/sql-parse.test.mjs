@@ -119,3 +119,66 @@ test('a drop qualified with public. is seen — the prefix most migrations actua
   assert.equal(fns.has('waitlist_request'), false,
     'the public. prefix must not hide the drop');
 });
+
+/**
+ * Dates in the BODY that are as incidental as the one in the frontmatter.
+ *
+ * The knowledge map tabulates every document's `last_verified`, its own row included.
+ * That row cannot be read off disk and be right — before the write, the file still holds
+ * the previous run's value — so the generator renders it with the date this run will
+ * stamp, and hands `writeGenerated` a way to ignore it when deciding whether anything
+ * actually changed.
+ *
+ * Both halves matter and they pull against each other. Without the ignore, the document
+ * rewrites itself every day and the "knowledge base" gate fails on every branch that has
+ * not been rebased today — the twelve-day outage the tests above exist for. With the
+ * ignore but without rendering today's date, the header says today and the row says
+ * yesterday, and a SECOND run is needed to settle: that cost a red check on PR #223 and
+ * a merge conflict on #224 before it was understood.
+ */
+const ignoreRowDates = text =>
+  text.replace(/^\| `self\.md`.*$/gm, row => row.replace(/\d{4}-\d{2}-\d{2}/g, '-'));
+
+const mapDoc = (headerDate, rowDate, body = 'docs: 73') =>
+  ['---', 'tier: 1', `last_verified: ${headerDate}`, 'verify_every: 9999d', '---', '',
+    `| \`self.md\` | chief-architect | DS, CA | ${rowDate} | 9999d |`, body].join('\n');
+
+test('a body date the caller marks incidental does not force a write', () => {
+  const p = join(scratch(), 'map.md');
+  writeFileSync(p, mapDoc('2026-09-23', '2026-09-23'));
+
+  const rewrote = writeGenerated(p, mapDoc('2026-09-24', '2026-09-24'), {
+    alsoIgnoreDates: ignoreRowDates,
+  });
+
+  assert.equal(rewrote, false, 'only the two dates moved — nothing to write');
+  assert.match(readFileSync(p, 'utf8'), /last_verified: 2026-09-23/);
+});
+
+test('the two dates stay in step, so one run is enough', () => {
+  const p = join(scratch(), 'map.md');
+  writeFileSync(p, mapDoc('2026-09-23', '2026-09-23', 'docs: 73'));
+
+  // Real content change: the document count moved.
+  writeGenerated(p, mapDoc('2026-09-24', '2026-09-24', 'docs: 74'), {
+    alsoIgnoreDates: ignoreRowDates,
+  });
+  const afterOneRun = readFileSync(p, 'utf8');
+
+  assert.match(afterOneRun, /last_verified: 2026-09-24/);
+  assert.match(afterOneRun, /\| 2026-09-24 \| 9999d \|/,
+    'the row must carry the date the header was stamped with, not the previous one');
+
+  // Regenerating finds nothing left to do — the fixed point was reached in one pass.
+  const again = writeGenerated(p, mapDoc('2026-09-24', '2026-09-24', 'docs: 74'), {
+    alsoIgnoreDates: ignoreRowDates,
+  });
+  assert.equal(again, false, 'a second pass must be unnecessary');
+});
+
+test('without the option, behaviour is exactly as before', () => {
+  const p = join(scratch(), 'doc.md');
+  writeFileSync(p, doc('2026-08-19', 'tables: 40'));
+  assert.equal(writeGenerated(p, doc('2026-09-01', 'tables: 40')), false);
+  assert.equal(writeGenerated(p, doc('2026-09-01', 'tables: 41')), true);
+});
