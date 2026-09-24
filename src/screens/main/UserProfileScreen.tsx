@@ -37,7 +37,7 @@ import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBad
 import ProfileBadges from '../../components/ProfileBadges';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -350,7 +350,7 @@ export default function UserProfileScreen() {
 
         const initial: ProfileTab = focusPostKind === 'upload'
           ? 'uploads'
-          : visibleTabsFor(counts)[0]?.key ?? 'reposts';
+          : initialTabFor(counts);
         setTab(initial);
         await loadTabContent(initial);
       } catch (err) {
