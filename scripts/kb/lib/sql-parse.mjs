@@ -516,8 +516,27 @@ export function frontmatter({ tier, owner, consumers, visibility, verifiedBy = '
  *
  * Returns true when the file was actually rewritten.
  */
-export function writeGenerated(path, content) {
-  if (existsSync(path) && sameButForDate(readFileSync(path, 'utf8'), content)) return false;
+/**
+ * `alsoIgnoreDates` extends the same exemption to dates that live in the BODY.
+ *
+ * One document reports its own freshness — the knowledge map tabulates every doc's
+ * `last_verified`, its own row included. That row is as incidental to the content as the
+ * frontmatter line is, and for the same reason: if it forces a write, the document is
+ * rewritten daily and the gate above fails on every stale branch again. Ignoring it here
+ * lets the writer skip the file entirely, leaving BOTH dates at their old value — which
+ * is what keeps the row and the frontmatter agreeing with each other.
+ *
+ * Without this the generator needed TWO runs to settle: the first wrote today into the
+ * frontmatter while the body still said yesterday, and only the second squared them up.
+ * That cost a red `knowledge base` check on one PR and a merge conflict on its sibling
+ * before anyone noticed the fixed point was being reached by luck.
+ */
+export function writeGenerated(path, content, { alsoIgnoreDates } = {}) {
+  const blank = s => {
+    const t = s.replace(VERIFIED_LINE, 'last_verified: -');
+    return alsoIgnoreDates ? alsoIgnoreDates(t) : t;
+  };
+  if (existsSync(path) && blank(readFileSync(path, 'utf8')) === blank(content)) return false;
   writeFileSync(path, content);
   return true;
 }

@@ -13,7 +13,7 @@
     "start:android": "npx react-native run-android",
     "test": "jest",
     "test:tracker": "node --test scripts/tracker/*.test.mjs",
-    "test:kb": "node --test scripts/kb/lib/*.test.mjs",
+    "test:kb": "node --test scripts/kb/lib/*.test.mjs scripts/kb/generate/*.test.mjs",
     "postinstall": "patch-package",
     "prebuild:android": "node scripts/bump-version.mjs",
     "version:sync": "node scripts/bump-version.mjs --sync",
