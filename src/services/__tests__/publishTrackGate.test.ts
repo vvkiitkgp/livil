@@ -146,7 +146,8 @@ describe('publishTrack — the Publish gate', () => {
 
     release();
     await expect(published).resolves.toMatchObject({ trackId: TRACK_ID, postId: 'post-1' });
-    expect(rec.inserts.slice(-3)).toEqual(['terms_acceptances', 'track_collaborators', 'posts']);
+    // The grant is recorded only once the post exists.
+    expect(rec.inserts.slice(-3)).toEqual(['track_collaborators', 'posts', 'terms_acceptances']);
   });
 
   it('rolls everything back when the artist withdraws at the gate', async () => {

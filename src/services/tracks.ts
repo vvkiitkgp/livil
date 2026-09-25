@@ -39,6 +39,12 @@ export type CreateTrackInput =
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
       durationSeconds?: number | null;
+      /**
+       * The per-upload streaming grant, ticked by the uploader beside the post button.
+       * Must be `true`: `createTrack` refuses to upload anything without it, so the
+       * `terms_acceptances` row it writes is never a consent nobody was asked for.
+       */
+      streamingGrantAccepted: boolean;
     }
   | {
       mode: 'video';
@@ -59,6 +65,12 @@ export type CreateTrackInput =
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
       durationSeconds?: number | null;
+      /**
+       * The per-upload streaming grant, ticked by the uploader beside the post button.
+       * Must be `true`: `createTrack` refuses to upload anything without it, so the
+       * `terms_acceptances` row it writes is never a consent nobody was asked for.
+       */
+      streamingGrantAccepted: boolean;
     };
 
 export type CreateTrackResult = {
@@ -401,6 +413,12 @@ export async function createTrack(
     if (!input.thumbnail) {throw new Error('Thumbnail image is required for video posts.');}
   }
 
+  // The screen disables its button until this is ticked; checked again here so a future
+  // caller cannot upload — and record a consent row — without having asked.
+  if (input.streamingGrantAccepted !== true) {
+    throw new Error('Tick the box to let Livil stream this recording.');
+  }
+
   // Before anything uploads, like every other check here. `normalizeTags` guarantees the
   // rest of `tracks_tags_valid` by construction, so the cap is the only rule the database
   // could still reject — and rejecting it here costs a message instead of a whole upload.
@@ -520,20 +538,6 @@ export async function createTrack(
       throw new Error(`Failed to finalize track: ${updateError.message}`);
     }
 
-    // ── The streaming grant ──────────────────────────────────────────────────
-    //
-    // Recorded on EVERY upload, which is the point: the copyright form only appears when
-    // a scan matches, so a grant captured there alone would cover the exception and miss
-    // the rule.
-    //
-    // Fire-and-forget by design. The media is uploaded and the post is moments away —
-    // failing the publish because a consent row did not land would cost a creator their
-    // upload over bookkeeping. A missing row shows as an absence in the operator view,
-    // which is the honest way for this to fail.
-    void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
-      if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
-    });
-
     // ── Copyright scan ───────────────────────────────────────────────────────
     //
     // HERE, and not earlier or later. Earlier there is no final URL for the provider
@@ -625,6 +629,24 @@ export async function createTrack(
     if (postError || !postRow) {
       throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
     }
+
+    // ── The streaming grant ──────────────────────────────────────────────────
+    //
+    // Recorded on EVERY upload, which is the point: the copyright form only appears when
+    // a scan matches, so a grant captured there alone would cover the exception and miss
+    // the rule. The uploader ticked it beside the post button — see the guard at the top.
+    //
+    // AFTER the post exists, not before. `terms_acceptances` is append-only with no
+    // foreign key to `tracks`, so a row written earlier would outlive a track that was
+    // then cancelled at the copyright question or rolled back on a failed insert —
+    // recording a grant for something that was never published.
+    //
+    // Fire-and-forget by design: failing the publish because a consent row did not land
+    // would cost a creator their upload over bookkeeping. A missing row shows as an
+    // absence in the operator view, which is the honest way for this to fail.
+    void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
+      if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
+    });
 
     return {
       trackId,

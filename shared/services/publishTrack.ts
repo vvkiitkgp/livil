@@ -383,19 +383,6 @@ export async function publishTrack(
     if (beforePost) await beforePost(scan);
 
     /*
-     * The streaming grant, on EVERY upload — see `./uploadConsent`. Fire-and-forget:
-     * the media is up and the post is moments away, and failing a publish over a
-     * bookkeeping row would cost a creator their upload.
-     *
-     * AFTER the Publish gate, not before it. The studio asks for the grant as a ticked box
-     * next to its Publish button, so this row must be written when that press happens —
-     * and `terms_acceptances` is append-only with no foreign key to `tracks`, so a row
-     * written earlier would outlive a track the artist then withdrew, recording a grant
-     * for something that was never published.
-     */
-    void recordUploadConsent(db, trackId, input.termsVersion, input.appVersion);
-
-    /*
      * Credits go in BEFORE the post row, and that ordering is the point.
      *
      * `createTrack` on mobile writes them after the post is already live, so a failed
@@ -443,6 +430,21 @@ export async function publishTrack(
     if (postError || !postRow) {
       throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
     }
+
+    /*
+     * The streaming grant, on EVERY upload — see `./uploadConsent`. The studio asks for it
+     * as a ticked box beside Publish.
+     *
+     * AFTER the post exists. `terms_acceptances` is append-only with no foreign key to
+     * `tracks`, so a row written any earlier would outlive a track the artist withdrew at
+     * the Publish gate, or one rolled back on a failed credits/post insert — recording a
+     * grant for something that was never published. Mobile's `createTrack` records it at
+     * the same point.
+     *
+     * Fire-and-forget: failing a publish over a bookkeeping row would cost a creator their
+     * upload.
+     */
+    void recordUploadConsent(db, trackId, input.termsVersion, input.appVersion);
 
     return { trackId, postId: postRow.id, urls };
   } catch (err) {

@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-24
+last_verified: 2026-09-25
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-230 TypeScript file(s) under `src/`, 60,381 lines.
+233 TypeScript file(s) under `src/`, 60,700 lines.
 
 ## Size hotspots
 
@@ -29,7 +29,7 @@ reading alone (Constitution P28).
 | `src/components/FullScreenPlayer.tsx` | 2528 |
 | `src/screens/main/ConversationScreen.tsx` | 1683 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1650 |
-| `src/screens/main/UploadScreen.tsx` | 1409 |
+| `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1383 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
 | `src/screens/main/ProfileScreen.tsx` | 1179 |
@@ -96,13 +96,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 22,048 lines.
+43 file(s), 22,178 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 1683 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1650 |
-| `src/screens/main/UploadScreen.tsx` | 1409 |
+| `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
 | `src/screens/main/ProfileScreen.tsx` | 1179 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
@@ -146,7 +146,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-85 file(s), 20,009 lines.
+86 file(s), 20,018 lines.
 
 | File | Lines |
 |---|---:|
@@ -158,11 +158,11 @@ case the call fails silently wherever its result is discarded.
 | `src/components/GlobalAudioPlayer.tsx` | 541 |
 | `src/components/SharePostSheet.tsx` | 511 |
 | `src/components/QueueList.tsx` | 475 |
-| `src/components/CopyrightMatchModal.tsx` | 470 |
 | `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/AddUserSheet.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/DetailView.tsx` | 395 |
+| `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/PostLikersSheet.tsx` | 362 |
 | `src/components/TrackContextMenu.tsx` | 306 |
 | `src/components/CommentItem.tsx` | 274 |
@@ -202,6 +202,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ArtGlow.tsx` | 116 |
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
 | `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
+| `src/components/Choice.tsx` | 108 |
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
@@ -238,12 +239,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-48 file(s), 10,884 lines.
+50 file(s), 11,064 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1104 |
-| `src/services/tracks.ts` | 943 |
+| `src/services/tracks.ts` | 965 |
 | `src/services/pushNotifications.ts` | 641 |
 | `src/services/albums.ts` | 497 |
 | `src/services/activity.ts` | 426 |
@@ -263,7 +264,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/stories.ts` | 209 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/tags.test.ts` | 180 |
-| `src/services/__tests__/publishTrackGate.test.ts` | 174 |
+| `src/services/__tests__/publishTrackGate.test.ts` | 175 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
@@ -278,12 +279,14 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
 | `src/services/appBadge.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
+| `src/services/mediaPicks.ts` | 93 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/terms.ts` | 78 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
 | `src/services/waveform.ts` | 66 |
+| `src/services/__tests__/createTrackStreamingGrant.test.ts` | 64 |
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
