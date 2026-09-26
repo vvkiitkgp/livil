@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-24
+last_verified: 2026-09-25
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 114 migration(s) in `supabase/migrations/`.
+Reconstructed from 117 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-46 table(s).
+47 table(s).
 
 ### `activity_notifications`
 
@@ -340,7 +340,7 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 
 ### `listen_sessions`
 
-RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_tracks.sql`
+RLS enabled · realtime · defined in `20260515120000_home_feed_listen_sessions_recent_tracks.sql`
 
 | Column | Definition |
 |---|---|
@@ -348,6 +348,17 @@ RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_track
 | `track_title` | `text NOT NULL` |
 | `artist_name` | `text NOT NULL` |
 | `updated_at` | `timestamptz NOT NULL DEFAULT timezone('utc', now())` |
+
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `playing` | `boolean not null default false` | `20260925000000_listening_now.sql` |
+| `post_id` | `uuid references public.posts(id) on delete set null` | `20260925000000_listening_now.sql` |
+
+**Triggers**
+
+- `listen_sessions_stamp` — before insert or update (`20260925000000_listening_now.sql`)
 
 ### `message_reactions`
 
@@ -387,6 +398,7 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 **Indexes**
 
 - `(unnamed)` `(conversation_id, created_at desc)`
+- `messages_conversation_sender_created_idx` `(conversation_id, sender_id, created_at desc)`
 
 **Triggers**
 
@@ -809,6 +821,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_enforce_username_immutable` — BEFORE UPDATE (`20260628000000_profiles_username_set_and_oauth_onboarding.sql`)
 - `trg_profiles_freeze_counters` — before update (`20260722160000_counters_are_not_client_writable.sql`)
 - `trg_enforce_username_reservation` — before insert or update (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
+- `trg_profiles_redirect_last_seen` — before insert or update of last_seen_at (`20260925010000_last_seen_is_ops_only.sql`)
 
 ### `profiles_private`
 
@@ -1124,6 +1137,15 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_tracks_block_taken_down_delete` — BEFORE DELETE (`20260923010000_track_takedown.sql`)
 - `trg_track_scans_drop_unanswered` — AFTER DELETE (`20260923090000_an_unanswered_scan_is_not_a_record.sql`)
 
+### `user_last_seen`
+
+RLS enabled · defined in `20260925010000_last_seen_is_ops_only.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid primary key references public.profiles(id) on delete cascade` |
+| `last_seen_at` | `timestamptz not null` |
+
 ### `user_recent_tracks`
 
 RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_tracks.sql`
@@ -1163,6 +1185,7 @@ same row-level security policies that gate ordinary reads.
 - `activity_notifications`
 - `conversation_members`
 - `friendships`
+- `listen_sessions`
 - `message_reactions`
 - `messages`
 - `post_comment_likes`
@@ -1177,6 +1200,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |
+| `listen_sessions_stamp` | `listen_sessions` | before insert or update | `20260925000000_listening_now.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
 | `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
@@ -1198,6 +1222,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_enforce_username_immutable` | `profiles` | BEFORE UPDATE | `20260628000000_profiles_username_set_and_oauth_onboarding.sql` |
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
+| `trg_profiles_redirect_last_seen` | `profiles` | before insert or update of last_seen_at | `20260925010000_last_seen_is_ops_only.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 | `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |
 | `trg_terms_acceptances_pin` | `terms_acceptances` | BEFORE INSERT | `20260907000000_terms_acceptance_log.sql` |

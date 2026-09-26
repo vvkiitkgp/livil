@@ -532,6 +532,38 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/dm-on-friend-accept.test.sql
 
+      # The chat "listening now" indicator. The audience (accepted friends only — not
+      # stars — and the Activity status switch enforced by the database), pause and
+      # missed-heartbeat liveness, a paused row that reveals nothing, and the product rule
+      # that the inbox never reveals "app open" — the Play Store build still draws a dot
+      # from list_my_conversations.other_user_online.
+      - name: Listening-now tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/listening-now.test.sql
+
+      # Same rule, other leak: profiles.last_seen_at was readable by every signed-in
+      # user. It now lives in user_last_seen (no user access), fed by touch_last_seen()
+      # and by a trigger that redirects the Play Store build's direct profile write.
+      - name: Last-seen ops-only tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/last-seen-ops-only.test.sql
+
+      # The group picture: up to six members' faces, most recent speaker first. Only a
+      # member gets anything back (list_group_faces is INVOKER — RLS is the boundary);
+      # system rows and deleted messages do not count as speaking; DMs are not groups.
+      - name: Group-faces tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/group-faces.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added

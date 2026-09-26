@@ -43,10 +43,10 @@ import {
 import { messageCache } from '../../services/messageCache';
 import {
   markAsRead,
-  getFriendActivity,
   getOtherMemberReadAt,
-  type FriendActivity,
 } from '../../services/conversations';
+import NowPlayingPill from '../../components/NowPlayingPill';
+import { useListeningNow } from '../../hooks/useListeningNow';
 import {
   subscribeToConversation,
   unsubscribeFromConversation,
@@ -61,6 +61,8 @@ import { haptics } from '../../utils/haptics';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
+import GroupAvatarCluster from '../../components/GroupAvatarCluster';
+import { useGroupFaces } from '../../hooks/useGroupFaces';
 import { Button } from '../../components/Button';
 import { GradientBorder } from '../../components/GradientBorder';
 import ChatTimeSeparator from '../../components/ChatTimeSeparator';
@@ -472,10 +474,14 @@ export default function ConversationScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [myId, setMyId] = useState<string>('');
   const [myProfile, setMyProfile] = useState<{ username: string | null; displayName: string | null; avatarUrl: string | null }>({ username: null, displayName: null, avatarUrl: null });
-  const [friendActivity, setFriendActivity] = useState<FriendActivity | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserAvatarUrl, setOtherUserAvatarUrl] = useState<string | null>(null);
+  // Groups: the members ARE the picture. One random arrangement per visit to this
+  // screen; faces reorder live as messages arrive (useGroupFaces).
+  const [groupVisitSeed] = useState(() => Math.floor(Math.random() * 2 ** 31));
+  const groupFaceIds = useMemo(() => (isGroup ? [conversationId] : []), [isGroup, conversationId]);
+  const groupFaces = useGroupFaces(groupFaceIds).get(conversationId);
   const rel = useRelationships();
 
   /**
@@ -728,10 +734,11 @@ export default function ConversationScreen() {
     return () => unsubscribeFromConversation(conversationId);
   }, [conversationId, myId]);
 
-  // For groups: fetch member count. For DMs: fetch friend activity.
-  const friendActivityLoadedRef = useRef(false);
+  // For groups: fetch member count. For DMs: resolve the other member (their avatar,
+  // and whose listening status the now-playing pill follows).
+  const headerLoadedRef = useRef(false);
   useEffect(() => {
-    if (friendActivityLoadedRef.current) { return; }
+    if (headerLoadedRef.current) { return; }
     if (isGroup) {
       // Fetch member count for group header subtitle
       db
@@ -739,11 +746,11 @@ export default function ConversationScreen() {
         .select('user_id', { count: 'exact', head: true })
         .eq('conversation_id', conversationId)
         .then(({ count }: { count: number | null }) => {
-          friendActivityLoadedRef.current = true;
+          headerLoadedRef.current = true;
           if (count !== null) { setMemberCount(count); }
         });
     } else {
-      // DM: fetch other user's activity
+      // DM: resolve the other member
       db
         .from('conversation_members')
         .select('user_id')
@@ -753,13 +760,9 @@ export default function ConversationScreen() {
         .maybeSingle()
         .then(async ({ data }: { data: { user_id: string } | null }) => {
           if (!data?.user_id) { return; }
-          friendActivityLoadedRef.current = true;
+          headerLoadedRef.current = true;
           setOtherUserId(data.user_id);
-          const [activity, profileRes] = await Promise.all([
-            getFriendActivity(data.user_id),
-            db.from('profiles').select('avatar_url').eq('id', data.user_id).maybeSingle(),
-          ]);
-          setFriendActivity(activity);
+          const profileRes = await db.from('profiles').select('avatar_url').eq('id', data.user_id).maybeSingle();
           const avatarUrl = (profileRes.data as { avatar_url: string | null } | null)?.avatar_url ?? null;
           if (avatarUrl) { setOtherUserAvatarUrl(avatarUrl); }
         });
@@ -1008,14 +1011,11 @@ export default function ConversationScreen() {
     [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
-  const headerSubtitle = useMemo(() => {
-    if (!friendActivity) { return null; }
-    if (friendActivity.nowPlaying) {
-      return `🎵 ${friendActivity.nowPlaying.trackTitle} · ${friendActivity.nowPlaying.artistName}`;
-    }
-    if (friendActivity.isOnline) { return 'Online'; }
-    return null;
-  }, [friendActivity]);
+  // The other person's now-playing, live. Only "playing music now" is ever shown —
+  // whether they have the app open is deliberately not indicated anywhere. Groups
+  // are skipped: a group has no single person to show.
+  const listeningIds = useMemo(() => (!isGroup && otherUserId ? [otherUserId] : []), [isGroup, otherUserId]);
+  const otherListening = useListeningNow(listeningIds).get(otherUserId ?? '') ?? null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -1040,6 +1040,15 @@ export default function ConversationScreen() {
           }
         >
           <View style={styles.headerTitleRow}>
+            {isGroup && (
+              <GroupAvatarCluster
+                conversationId={conversationId}
+                faces={groupFaces}
+                size={32}
+                visitSeed={groupVisitSeed}
+                fallbackLabel={title}
+              />
+            )}
             {!isGroup && (
               otherUserAvatarUrl ? (
                 <Image source={{ uri: otherUserAvatarUrl }} style={styles.headerAvatar} />
@@ -1059,15 +1068,6 @@ export default function ConversationScreen() {
                 {memberCount} member{memberCount !== 1 ? 's' : ''}
               </Text>
             ) : null
-          ) : headerSubtitle ? (
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {headerSubtitle}
-            </Text>
-          ) : friendActivity?.isOnline ? (
-            <View style={styles.onlineRow}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.onlineText}>Online</Text>
-            </View>
           ) : null}
         </TouchableOpacity>
         {/* Same gate as the composer: a jam is a shared listening session, so offering
@@ -1109,6 +1109,19 @@ export default function ConversationScreen() {
         )}
       </View>
 
+      {otherListening ? (
+        <NowPlayingPill
+          listening={otherListening}
+          name={title}
+          playingHere={
+            !!otherListening.postId &&
+            nowPlaying?.postId === otherListening.postId &&
+            activePostId === otherListening.postId
+          }
+          onListen={handlePlaySharedPost}
+        />
+      ) : null}
+
       {/* Gate the FlatList render on myId being resolved too. Otherwise the
           first paint runs with myId='', so isMe=false for every row → all
           bubbles render left-aligned, then snap right once auth lands. */}
@@ -1145,12 +1158,25 @@ export default function ConversationScreen() {
                   // message and could never be empty, which is why there was no empty
                   // state here — an empty thread showed a blank void above the composer.
                   //
-                  // styles.emptyThread carries `scaleY: -1` to cancel the FlatList's
-                  // `inverted` transform. Without it this block renders MIRRORED —
-                  // upside-down text — because inverted flips the whole content view and
-                  // the empty component is not exempt from that.
+                  // NO transform of our own here. VirtualizedList already un-flips the
+                  // empty component: it clones it with
+                  // `style: compose(inversionStyle, element.props.style)`, using the SAME
+                  // per-platform inversion as the list — `scaleY: -1` on iOS but
+                  // `scale: -1` (both axes) on Android. A `transform` in our style REPLACES
+                  // that one rather than adding to it, so a hand-written `scaleY: -1` was
+                  // right on iOS and left Android's text mirrored left-to-right.
                   <View style={styles.emptyThread}>
-                    {!isGroup && otherUserAvatarUrl ? (
+                    {isGroup ? (
+                      <View style={styles.emptyThreadCluster}>
+                        <GroupAvatarCluster
+                          conversationId={conversationId}
+                          faces={groupFaces}
+                          size={72}
+                          visitSeed={groupVisitSeed}
+                          fallbackLabel={title}
+                        />
+                      </View>
+                    ) : otherUserAvatarUrl ? (
                       <Image source={{ uri: otherUserAvatarUrl }} style={styles.emptyThreadAvatar} />
                     ) : (
                       <View style={styles.emptyThreadAvatarFallback}>
@@ -1318,15 +1344,11 @@ const styles = StyleSheet.create({
   headerAvatarText: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '700' },
   headerTitle: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   headerSubtitle: { color: COLORS.purple, fontSize: 12, marginTop: 1 },
-  onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#22C55E' },
-  onlineText: { color: '#22C55E', fontSize: 11 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 6 },
-  // scaleY: -1 undoes the FlatList `inverted` transform — see the comment at the
-  // ListEmptyComponent. Everything else here is ordinary centred column layout.
+  // Deliberately no `transform`: the inverted FlatList un-flips its empty component
+  // itself, per platform — see the comment at the ListEmptyComponent.
   emptyThread: {
-    transform: [{ scaleY: -1 }],
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
@@ -1334,6 +1356,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   emptyThreadAvatar: { width: 72, height: 72, borderRadius: 36, marginBottom: 4 },
+  emptyThreadCluster: { marginBottom: 4 },
   emptyThreadAvatarFallback: {
     width: 72,
     height: 72,

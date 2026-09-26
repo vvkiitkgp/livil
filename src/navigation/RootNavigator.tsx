@@ -49,6 +49,7 @@ import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
+import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
@@ -156,6 +157,8 @@ function SplashScreen() {
   );
 }
 
+const LAST_SEEN_HEARTBEAT_MS = 5 * 60_000;
+
 export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,7 +244,9 @@ export default function RootNavigator() {
     void deferPushPrompt();
   };
 
-  // Presence heartbeat: update last_seen_at every 30s while app is foregrounded
+  // last_seen_at heartbeat while the app is foregrounded. Only the ops users overview
+  // ("last active") reads it — chat no longer shows "online" at all — so minute-level
+  // freshness buys nothing; every 5 min instead of every 30s.
   useEffect(() => {
     if (!session) {
       if (heartbeatRef.current) {
@@ -252,13 +257,13 @@ export default function RootNavigator() {
     }
 
     void updatePresenceHeartbeat();
-    heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), 30_000);
+    heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), LAST_SEEN_HEARTBEAT_MS);
 
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         void updatePresenceHeartbeat();
         if (!heartbeatRef.current) {
-          heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), 30_000);
+          heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), LAST_SEEN_HEARTBEAT_MS);
         }
       } else {
         if (heartbeatRef.current) {
@@ -717,6 +722,7 @@ export default function RootNavigator() {
       {session && (
         <>
           <GlobalAudioPlayer />
+          <ListeningStatusReporter />
           <FullScreenPlayer />
           <FloatingPlayer />
         </>

@@ -94,15 +94,44 @@ heartbeat interval. That is a known cost, recorded in the debt register.
 Two different things share the word:
 
 - **Realtime presence** — Jam Room membership, ephemeral, dies with the connection
-- **Heartbeat presence** — a periodic write of `last_seen_at` while the app is foregrounded,
-  used for friends' activity
+- **Heartbeat presence** — `touch_last_seen()` every 5 minutes while the app is
+  foregrounded, into `user_last_seen` (RLS on, zero policies — **no user can read it**).
+  Only the ops users overview ("last active") reads it. `profiles.last_seen_at` is kept
+  but always NULL: a trigger redirects the Play Store build's direct write
+  (`20260925010000_last_seen_is_ops_only`).
 
-The heartbeat is a **write per foregrounded user per interval** against a single table. It is
-fine at current scale and has an obvious ceiling; the number is in
-[../operations/scaling-assumptions.md](../operations/scaling-assumptions.md).
+**Whether someone has the app open is never indicated to other users** — a product rule, not
+an omission. The chat indicator is "listening now" only (below). `list_my_conversations`
+still returns a column named `other_user_online`, but since `20260925000000_listening_now`
+it means "listening now"; it is kept only for builds already on the Play Store.
 
-A **listen session** is the durable record of what someone played, and is what friends'
-activity is built from. It is distinct from presence.
+### Listening now (chat indicator)
+
+`listen_sessions` holds one row per user: `playing`, the track, and the `post_id` a
+friend's **Listen** opens.
+
+- **Write:** `ListeningStatusReporter` publishes play/pause/track-change from the playback
+  state (`activePostId === nowPlaying.postId`; stories and jams are not reported).
+  `GlobalAudioPlayer`'s progress callback drives a **60s re-stamp** via `listeningTick` —
+  progress events keep firing on the lock screen, where JS timers do not reliably run.
+  `updated_at` is stamped by a trigger (server clock).
+- **Liveness:** live = `playing and updated_at > now() - 150s`. A pause is an UPDATE to
+  `playing = false` (never a DELETE — realtime delivers DELETE payloads without an RLS
+  check). A process that dies mid-song drops out within 150s with no write at all.
+  The trigger **scrubs a paused row** (title/artist blanked, `post_id` null, `updated_at`
+  = epoch): the audience can still SELECT it, and it must not become a "last listened at"
+  record.
+- **Read:** `list_listening_now(uuid[])` (invoker) returns live rows plus `expires_in`, so
+  viewers expire entries without trusting their own clock. `useListeningNow` subscribes to
+  postgres changes on the row and applies heartbeats **locally**; it refetches only on a
+  track change (for the cover art).
+- **Audience:** `can_see_listening(owner)` — the owner, or **accepted friends only**, and
+  only while the owner's `show_activity` (Privacy → "Show what I'm listening to") is on. Stars are excluded on
+  purpose: a star needs no approval, so it would let any stranger watch.
+  Enforced by the select policy (and therefore by realtime delivery) and inside the
+  DEFINER `list_my_conversations`.
+
+A **listen session** is this row. It is distinct from presence.
 
 ---
 
