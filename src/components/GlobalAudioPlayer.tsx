@@ -5,6 +5,8 @@ import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
 import { backfillTrackDuration } from '../services/tracks';
+import { listeningTick, setListeningTrack } from '../services/listeningStatus';
+import { listeningTrackFor } from '../utils/listeningStatus';
 import { fetchAlbumForTrack } from '../services/albums';
 import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson, buildMediaSessionStateJson } from '../utils/nowPlayingMetadata';
 import type { RepeatMode } from '../contexts/PlaybackContext';
@@ -84,6 +86,9 @@ export default function GlobalAudioPlayer() {
   // isPlaying=false during buffering — which must NOT be mistaken for a
   // lock-screen pause, or switching tracks self-pauses the new track.
   const bufferingRef = useRef(false);
+  // Last playhead seen by onProgress. A playhead that ADVANCES means media is playing,
+  // so the engine cannot be buffering — see handleProgress.
+  const lastProgressTimeRef = useRef(-1);
   // Timestamp until which a new track is considered "loading"; the pause-sync is
   // suppressed in this window (covers the gap before onBuffer even fires).
   const loadGuardUntilRef = useRef(0);
@@ -110,6 +115,18 @@ export default function GlobalAudioPlayer() {
   // Read repeatMode through a ref so the progress callback stays stable.
   const repeatModeRef = useRef(repeatMode);
   repeatModeRef.current = repeatMode;
+
+  // For the chat "listening now" status, read synchronously inside native-event
+  // callbacks. Those callbacks run while the app is BACKGROUNDED (notification, lock
+  // screen, headset, auto-advance), where Android does not flush React effects — so
+  // ListeningStatusReporter alone would only tell the server when the app is next
+  // opened, and friends would keep seeing a paused song. The lock-screen pause/play
+  // branches of handlePlaybackStateChanged and the next/prev handlers (publishQueueTrack)
+  // report those moments directly; the Reporter still covers in-app changes.
+  const nowPlayingRef = useRef(nowPlaying);
+  nowPlayingRef.current = nowPlaying;
+  const storyOpenRef = useRef(isStoryViewerOpen);
+  storyOpenRef.current = isStoryViewerOpen;
 
   // Activate for ANY playable track — GAP is the single audio engine for both
   // audio posts and the audio track of video posts (source = audioUrl ?? videoUrl).
@@ -250,6 +267,8 @@ export default function GlobalAudioPlayer() {
     console.log(`[LIVIL][GAP] onLoad duration=${dur.toFixed(1)}s seekTo=${positionRef.current.toFixed(1)}s`);
     updateDuration(dur);
     setIsBuffering(false);
+    bufferingRef.current = false;
+    lastProgressTimeRef.current = -1;
     // Committed start first. `positionRef` is shared with progress reporting, and the
     // outgoing track keeps writing to it while the new one prepares — which is how a new
     // track ended up starting at the previous track's playhead (and, when that exceeded the
@@ -267,9 +286,24 @@ export default function GlobalAudioPlayer() {
 
   const handleProgress = useCallback((data: OnProgressData) => {
     const t = data.currentTime ?? 0;
+    // iOS never reports the end of buffering: RNV's iOS side sets `onBuffer(true)` and
+    // later resets its own `_isBuffering` WITHOUT emitting `onBuffer(false)`. The stale
+    // `bufferingRef` then made handlePlaybackStateChanged discard EVERY notification /
+    // lock-screen pause as a load-time report, so the app kept showing the pause icon
+    // and the listening status stayed up. An advancing playhead is proof of playback,
+    // so clear it here (a no-op on Android, whose onBuffer(false) already did).
+    if (bufferingRef.current && lastProgressTimeRef.current >= 0 && t > lastProgressTimeRef.current + 0.05) {
+      bufferingRef.current = false;
+      setIsBuffering(false);
+    }
+    lastProgressTimeRef.current = t;
     updatePosition(t);
     const mine = myPostIdRef.current;
     if (mine) { trackPlayProgress(mine, t); }
+    // Keeps the chat "listening now" status live. Rides this callback rather than a
+    // timer because progress events keep arriving on the lock screen; a no-op except
+    // once a minute (see planListeningWrite).
+    listeningTick();
 
     // Clip-end enforcement. On ANDROID this is owned by the native
     // VideoPlaybackService clip-end watcher (so it works while backgrounded, and
@@ -291,7 +325,7 @@ export default function GlobalAudioPlayer() {
         }
       }
     }
-  }, [updatePosition, positionRef, clipWindowRef, playNext]);
+  }, [updatePosition, positionRef, clipWindowRef, playNext, setIsBuffering]);
 
   const handleBuffer = useCallback((e: { isBuffering: boolean }) => {
     bufferingRef.current = e.isBuffering;
@@ -325,6 +359,10 @@ export default function GlobalAudioPlayer() {
         console.log('[LIVIL][GAP] lock-screen PLAY → sync');
         setPaused(false);
         resumePlay(mine);
+        const np = nowPlayingRef.current;
+        if (np && np.postId === mine && !storyOpenRef.current) {
+          setListeningTrack(listeningTrackFor(np));
+        }
       } else if (!e.isPlaying && !pausedRef.current) {
         // A not-playing report during buffering, a fresh track load, or while we
         // are deliberately holding audio for the buffering video frame is NOT a
@@ -336,6 +374,7 @@ export default function GlobalAudioPlayer() {
         console.log('[LIVIL][GAP] lock-screen PAUSE → sync');
         setPaused(true);
         reportPaused(mine);
+        setListeningTrack(null);
       }
     },
     [resumePlay, reportPaused],
@@ -375,15 +414,32 @@ export default function GlobalAudioPlayer() {
   }, [showToast, setIsBuffering, playNext]);
 
   // Lock-screen / notification / headset next & previous-track presses.
+  // After a skip that may happen in the background, publish the new track directly.
+  // playNext/playPrev move `currentIndexRef` synchronously, so the queue entry it points
+  // at IS the new track. A skip served from the user's "play next" list does not move
+  // the index; that case is left to ListeningStatusReporter (next foreground), since
+  // guessing here could publish the wrong song.
+  const publishQueueTrack = useCallback((beforePostId: string | null) => {
+    if (storyOpenRef.current) { return; }
+    const track = queueRef.current[currentIndexRef.current];
+    if (track && track.postId !== beforePostId) {
+      setListeningTrack(listeningTrackFor(track));
+    }
+  }, [queueRef, currentIndexRef]);
+
   const handleNextTrack = useCallback(() => {
     console.log('[LIVIL][GAP] onNextTrack → playNext');
+    const before = queueRef.current[currentIndexRef.current]?.postId ?? null;
     playNext();
-  }, [playNext]);
+    publishQueueTrack(before);
+  }, [playNext, publishQueueTrack, queueRef, currentIndexRef]);
 
   const handlePrevTrack = useCallback(() => {
     console.log('[LIVIL][GAP] onPreviousTrack → playPrev');
+    const before = queueRef.current[currentIndexRef.current]?.postId ?? null;
     playPrev();
-  }, [playPrev]);
+    publishQueueTrack(before);
+  }, [playPrev, publishQueueTrack, queueRef, currentIndexRef]);
 
   // Lock-screen / Bluetooth car HU / Wear OS / Assistant shuffle/repeat toggles.
   // PlaybackContext's setters are idempotent — they no-op when the value already

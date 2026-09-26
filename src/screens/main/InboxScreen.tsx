@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -27,8 +27,15 @@ import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import { Button } from '../../components/Button';
+import GroupAvatarCluster from '../../components/GroupAvatarCluster';
+import { useGroupFaces } from '../../hooks/useGroupFaces';
+import type { GroupFace } from '../../services/groupFaces';
+import EqualizerBars from '../../components/EqualizerBars';
+import { useListeningNow } from '../../hooks/useListeningNow';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+const AVATAR_SIZE = 52;
 
 function formatTime(iso: string | null): string {
   if (!iso) { return ''; }
@@ -54,9 +61,17 @@ function initials(name: string | null, username: string | null): string {
 
 function ConversationRow({
   item,
+  listening,
+  groupFaces,
+  visitSeed,
   onPress,
 }: {
   item: ConversationSummary;
+  /** The other person is playing music in Livil right now. DMs only. */
+  listening: boolean;
+  /** Groups only: members most-recent-speaker first, for the group picture. */
+  groupFaces: GroupFace[] | undefined;
+  visitSeed: number;
   onPress: () => void;
 }) {
   const isDm = item.kind === 'dm';
@@ -64,7 +79,6 @@ function ConversationRow({
     ? (item.otherUserName || item.otherUserUsername || 'Unknown')
     : (item.name || 'Group');
   const avatarUrl = isDm ? item.otherUserAvatar : item.avatarUrl;
-  const online = isDm && item.otherUserOnline;
 
   return (
     <TouchableOpacity
@@ -73,7 +87,16 @@ function ConversationRow({
       onPress={onPress}
     >
       <View style={styles.avatarWrap}>
-        {avatarUrl ? (
+        {/* Groups have no picture of their own — their members ARE the picture. */}
+        {!isDm ? (
+          <GroupAvatarCluster
+            conversationId={item.id}
+            faces={groupFaces}
+            size={AVATAR_SIZE}
+            visitSeed={visitSeed}
+            fallbackLabel={displayName}
+          />
+        ) : avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatar} />
         ) : (
           <View style={styles.avatarPlaceholder}>
@@ -82,7 +105,16 @@ function ConversationRow({
             </Text>
           </View>
         )}
-        {online && <View style={styles.onlineDot} />}
+        {/* Only "playing music now" — whether they have the app open is never shown. */}
+        {listening && (
+          <View
+            style={styles.listeningBadge}
+            accessible
+            accessibilityLabel="Listening now"
+          >
+            <EqualizerBars height={10} barWidth={2} />
+          </View>
+        )}
       </View>
 
       <View style={styles.rowBody}>
@@ -264,11 +296,44 @@ export default function InboxScreen() {
     navigation.navigate('Conversation', { conversationId: item.id, title, kind: item.kind });
   }, [navigation]);
 
+  // Groups are skipped: a group has no single person to show.
+  // Capped at 100 for the same Realtime `in`-filter limit as the group faces below.
+  const dmUserIds = useMemo(
+    () => conversations
+      .filter(c => c.kind === 'dm' && c.otherUserId)
+      .slice(0, 100)
+      .map(c => c.otherUserId as string),
+    [conversations],
+  );
+  const listening = useListeningNow(dmUserIds);
+
+  // The group picture reshuffles once per VISIT (not per render): a new random
+  // arrangement each time this screen gains focus, still while you look at it.
+  const [visitSeed, setVisitSeed] = useState(() => Math.floor(Math.random() * 2 ** 31));
+  useFocusEffect(useCallback(() => {
+    setVisitSeed(Math.floor(Math.random() * 2 ** 31));
+  }, []));
+
+  // Capped at 100: Realtime's `in` filter takes at most 100 values, and
+  // list_group_faces reads at most 100 ids. The inbox is newest-first, so the cut falls
+  // on the stalest groups, which keep the initials fallback.
+  const groupIds = useMemo(
+    () => conversations.filter(c => c.kind === 'group').slice(0, 100).map(c => c.id),
+    [conversations],
+  );
+  const groupFaces = useGroupFaces(groupIds);
+
   const renderItem = useCallback(
     ({ item }: { item: ConversationSummary }) => (
-      <ConversationRow item={item} onPress={() => openConversation(item)} />
+      <ConversationRow
+        item={item}
+        listening={item.kind === 'dm' && !!item.otherUserId && listening.has(item.otherUserId)}
+        groupFaces={item.kind === 'group' ? groupFaces.get(item.id) : undefined}
+        visitSeed={visitSeed}
+        onPress={() => openConversation(item)}
+      />
     ),
-    [openConversation],
+    [openConversation, listening, groupFaces, visitSeed],
   );
 
   return (
@@ -377,7 +442,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatarWrap: { position: 'relative' },
-  avatar: { width: 52, height: 52, borderRadius: 26 },
+  avatar: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 },
   avatarPlaceholder: {
     width: 52,
     height: 52,
@@ -389,14 +454,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: COLORS.purpleLight, fontSize: 16, fontWeight: '700' },
-  onlineDot: {
+  // Sits on the avatar's bottom-right corner where the old online dot was. The
+  // page-coloured border cuts it out of the avatar so it reads as a badge.
+  listeningBadge: {
     position: 'absolute',
-    bottom: 1,
-    right: 1,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#22C55E',
+    bottom: -2,
+    right: -4,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
     borderWidth: 2,
     borderColor: COLORS.bg,
   },

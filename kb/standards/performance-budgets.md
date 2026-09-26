@@ -102,7 +102,8 @@ Structural estimates, not measurements. Listed so they are not rediscovered as n
 |---|---|
 | `PlaybackContext` re-render fan-out | 55-entry dependency array; any change re-renders every consumer |
 | Jam heartbeat | Sets state on an interval → all consumers re-render while a jam is active |
-| Presence heartbeat | One write per foregrounded user per interval |
+| Presence heartbeat | One `last_seen_at` write per foregrounded user per 5 min |
+| Listening re-stamp | One write per user playing music per 60s, fanned out over realtime to viewers |
 | Unbounded queries | Several; the worst fetches many rows to compute one number |
 | Media download | Whole-file, no adaptive bitrate — a 4K video is hundreds of MB |
 | Production logging | 112 `console.log` calls ship, some on realtime hot paths |

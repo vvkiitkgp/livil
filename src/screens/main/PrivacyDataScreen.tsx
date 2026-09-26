@@ -19,6 +19,7 @@ import {
   updateCommentsFriendsOnly,
   updateShowActivity,
 } from '../../services/profileService';
+import { setShareListening } from '../../services/listeningStatus';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '../../constants/links';
 import { supabase } from '../../../lib/supabase';
 
@@ -119,8 +120,12 @@ export default function PrivacyDataScreen() {
       persistToggle(
         next,
         setShowActivity,
-        updateShowActivity,
-        'Could not update your activity status.',
+        async (uid: string, value: boolean) => {
+          await updateShowActivity(uid, value);
+          // Takes a live "listening now" status down immediately when switched off.
+          setShareListening(value);
+        },
+        "Couldn't update who can see your listening.",
       ),
     [persistToggle],
   );
@@ -164,10 +169,14 @@ export default function PrivacyDataScreen() {
         </View>
 
         <SettingsSection title="Visibility">
+          {/* The ONLY thing Livil shows other people about you in real time. Whether you
+              have the app open is never shown, so there is no separate "online" switch.
+              Backed by profiles.show_activity, enforced by the database
+              (can_see_listening), and taken down immediately via setShareListening. */}
           <SettingsRow
-            icon="broadcast"
-            label="Activity status"
-            subtitle="Let friends see when you were last active and what you're playing"
+            icon="musicNote"
+            label="Show what I'm listening to"
+            subtitle="Friends see the song while you're playing it. Turn off to keep your listening private."
             toggle={{
               value: showActivity,
               onValueChange: onToggleActivity,

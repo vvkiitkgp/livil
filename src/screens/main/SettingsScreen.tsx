@@ -16,6 +16,7 @@ import { FLOATING_PLAYER_HEIGHT } from '../../constants/layout';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
 import { getMyProfile, type MyProfile } from '../../services/profileService';
+import { stopListeningNow } from '../../services/listeningStatus';
 import { APP_VERSION_LABEL } from '../../constants/appVersion';
 import {
   CHILD_SAFETY_URL,
@@ -110,6 +111,9 @@ export default function SettingsScreen() {
     }
     setSignOutBusy(true);
     playback.pauseAll();
+    // While the session still exists — after sign-out the write would be refused and
+    // friends would keep seeing the track until it expires on its own.
+    await stopListeningNow();
     await supabase.auth.signOut();
     setSignOutBusy(false);
     setSignOutOpen(false);
@@ -147,7 +151,7 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="shield"
             label="Privacy & data"
-            subtitle="Activity status, your data, account deletion"
+            subtitle="Listening visibility, your data, account deletion"
             onPress={() => navigation.navigate('PrivacyData')}
           />
         </SettingsSection>

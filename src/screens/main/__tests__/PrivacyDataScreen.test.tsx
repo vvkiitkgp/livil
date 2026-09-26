@@ -1,7 +1,8 @@
 /**
- * `profiles.show_activity` already gates presence in conversations.ts — this
- * screen is the first UI that can write it, so the optimistic toggle and its
- * rollback are the behaviour worth pinning.
+ * "Show what I'm listening to" writes `profiles.show_activity`, which the database
+ * enforces for the chat listening indicator (can_see_listening). This screen is the
+ * only UI that can write it, so the optimistic toggle, its rollback, and taking a live
+ * status down immediately are the behaviour worth pinning.
  */
 
 import React from 'react';
@@ -25,6 +26,11 @@ jest.mock('../../../services/profileService', () => ({
   updateShowActivity: (...a: unknown[]) => mockUpdateShowActivity(...(a as [])),
   getCommentsFriendsOnly: (...a: unknown[]) => mockGetCommentsFriendsOnly(...(a as [])),
   updateCommentsFriendsOnly: (...a: unknown[]) => mockUpdateCommentsFriendsOnly(...(a as [])),
+}));
+
+const mockSetShareListening = jest.fn();
+jest.mock('../../../services/listeningStatus', () => ({
+  setShareListening: (...a: unknown[]) => mockSetShareListening(...(a as [])),
 }));
 
 const mockGetUser = jest.fn().mockResolvedValue({ data: { user: { id: 'u1' } } });
@@ -76,17 +82,37 @@ describe('PrivacyDataScreen', () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
   });
 
-  it('reflects the stored activity-status value', async () => {
+  it('labels the switch "Show what I\'m listening to"', async () => {
+    const tree = await mount();
+    const texts = tree.root.findAllByType(Text).map(n => n.props.children).flat();
+    expect(texts).toContain("Show what I'm listening to");
+    expect(texts).not.toContain('Activity status');
+  });
+
+  it('reflects the stored listening-visibility value', async () => {
     mockGetShowActivity.mockResolvedValue(false);
     const tree = await mount();
     expect(activitySwitch(tree).props.value).toBe(false);
   });
 
-  it('persists a change to activity status', async () => {
+  it('persists a change to listening visibility', async () => {
     const tree = await mount();
     await act(async () => { activitySwitch(tree).props.onValueChange(false); });
     expect(mockUpdateShowActivity).toHaveBeenCalledWith('u1', false);
     expect(activitySwitch(tree).props.value).toBe(false);
+  });
+
+  it('takes a live listening status down as soon as it is switched off', async () => {
+    const tree = await mount();
+    await act(async () => { activitySwitch(tree).props.onValueChange(false); });
+    expect(mockSetShareListening).toHaveBeenCalledWith(false);
+  });
+
+  it('does not touch the live status when the write fails', async () => {
+    mockUpdateShowActivity.mockRejectedValueOnce(new Error('offline'));
+    const tree = await mount();
+    await act(async () => { activitySwitch(tree).props.onValueChange(false); });
+    expect(mockSetShareListening).not.toHaveBeenCalled();
   });
 
   it('rolls the switch back and warns when the write fails', async () => {
@@ -96,7 +122,7 @@ describe('PrivacyDataScreen', () => {
 
     expect(activitySwitch(tree).props.value).toBe(true);
     expect(mockShowToast).toHaveBeenCalledWith(
-      'Could not update your activity status.',
+      "Couldn't update who can see your listening.",
       { kind: 'error' },
     );
   });

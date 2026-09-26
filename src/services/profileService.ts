@@ -136,9 +136,9 @@ export async function updateProfile(
 }
 
 /**
- * Whether the user broadcasts "last seen" / now-playing to friends.
- *
- * Read side already exists: `conversations.ts` gates presence on this column.
+ * "Show what I'm listening to" (Privacy): whether friends see the user's live
+ * now-playing. Enforced by the database (`can_see_listening`), not only here.
+ * It does NOT control "last seen" — that is shown to no user at all.
  * Defaults to `true` on any error so a transient failure never silently
  * presents the user as having opted out of something they didn't.
  */
