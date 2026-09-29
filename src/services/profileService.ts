@@ -1,3 +1,4 @@
+import { DeviceEventEmitter, type EmitterSubscription } from 'react-native';
 import ImagePicker, {
   type Image as CroppedImage,
 } from 'react-native-image-crop-picker';
@@ -133,6 +134,22 @@ export async function updateProfile(
     })
     .eq('id', userId);
   if (error) {throw error;}
+  emitMyAvatarChanged(patch.avatar_url ?? null);
+}
+
+const MY_AVATAR_CHANGED = 'livil:profile:my-avatar-changed';
+
+/**
+ * The signed-in user's avatar changed. Lets surfaces that show it outside the profile
+ * screens (the tab bar) update without refetching. Only updateProfile emits it, and
+ * updateProfile is only ever called for the signed-in user's own row.
+ */
+function emitMyAvatarChanged(url: string | null): void {
+  DeviceEventEmitter.emit(MY_AVATAR_CHANGED, url);
+}
+
+export function onMyAvatarChanged(listener: (url: string | null) => void): EmitterSubscription {
+  return DeviceEventEmitter.addListener(MY_AVATAR_CHANGED, listener);
 }
 
 /**

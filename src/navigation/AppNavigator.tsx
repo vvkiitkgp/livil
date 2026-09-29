@@ -15,6 +15,7 @@ import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import { AppTabParamList } from './types';
 import { Icon } from '../components/Icon';
+import TabAvatar from '../components/TabAvatar';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
@@ -33,7 +34,7 @@ function LibraryIcon({ color, focused }: TabIconProps) {
 }
 
 function ProfileIcon({ color, focused }: TabIconProps) {
-  return <Icon name="profile" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
+  return <TabAvatar color={color} focused={focused} />;
 }
 
 // Bottom tab bar wrapped in an Animated.View so it can slide off the bottom edge
