@@ -28,7 +28,7 @@ import {
 } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import { supabase } from '../../../lib/supabase';
-import { useToast } from '../../contexts/ToastContext';
+import { usePlayRecentlyPlayed } from '../../hooks/usePlayRecentlyPlayed';
 import type { RootStackParamList } from '../../navigation/types';
 
 const FALLBACK_COVER_ACCENTS: [string, string][] = [
@@ -91,16 +91,11 @@ export default function LibraryScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const { showToast } = useToast();
-
-  // A history row opens the post it was last played through.
+  // Tapping a history row plays it, with the rest of the list queued in the same order.
+  const playRecent = usePlayRecentlyPlayed();
   const openRecent = useCallback((track: LibraryRecentTrack) => {
-    if (!track.postId) {
-      showToast('That post is no longer available', { kind: 'info' });
-      return;
-    }
-    navigation.navigate('PostDetail', { postId: track.postId });
-  }, [navigation, showToast]);
+    void playRecent(recent, recent.indexOf(track));
+  }, [playRecent, recent]);
 
   const loadRecent = useCallback(async () => {
     setRecentError('');

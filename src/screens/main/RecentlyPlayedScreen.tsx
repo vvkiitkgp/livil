@@ -19,7 +19,7 @@ import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
 import { Icon } from '../../components/Icon';
-import { useToast } from '../../contexts/ToastContext';
+import { usePlayRecentlyPlayed } from '../../hooks/usePlayRecentlyPlayed';
 
 const PAGE_SIZE = 30;
 
@@ -73,7 +73,6 @@ export default function RecentlyPlayedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
-  const { showToast } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -114,13 +113,11 @@ export default function RecentlyPlayedScreen() {
     }
   }, [loadingMore, endReached, tracks]);
 
+  // Play the tapped row, with the whole list queued in the same order.
+  const playRecent = usePlayRecentlyPlayed();
   const handleOpen = useCallback((item: LibraryRecentTrack) => {
-    if (!item.postId) {
-      showToast('That post is no longer available', { kind: 'info' });
-      return;
-    }
-    navigation.navigate('PostDetail', { postId: item.postId });
-  }, [navigation, showToast]);
+    void playRecent(tracks, tracks.indexOf(item));
+  }, [playRecent, tracks]);
 
   const handleRefresh = useCallback(async () => {
     // Acknowledge the pull the moment it fires — the spinner is at the top
