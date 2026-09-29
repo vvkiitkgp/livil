@@ -163,7 +163,7 @@ export async function findMyActiveJam(): Promise<{ jamRoomId: string; conversati
 
   const { data, error } = await db
     .from('jam_room_members')
-    .select('jam_room_id, joined_at, jam_rooms!inner(conversation_id, status, host_clock_at, started_at)')
+    .select('jam_room_id, role, joined_at, jam_rooms!inner(conversation_id, status, host_clock_at, started_at)')
     .eq('user_id', me)
     .eq('jam_rooms.status', 'active')
     .order('joined_at', { ascending: false })
@@ -171,13 +171,16 @@ export async function findMyActiveJam(): Promise<{ jamRoomId: string; conversati
   if (error) { throw error; }
   const row = (data as Array<{
     jam_room_id: string;
+    role: string | null;
     jam_rooms: { conversation_id: string; host_clock_at: string | null; started_at: string } | null;
   }> | null)?.[0];
   if (!row?.jam_rooms?.conversation_id) { return null; }
 
   // A jam whose host never sent a heartbeat (older builds) is invisible to the stale
-  // check, so it would stay "active" forever. Only trust one that started recently.
-  if (!row.jam_rooms.host_clock_at
+  // check, so it would stay "active" forever: as a listener, only trust one that started
+  // recently. The HOST reopening the app is itself proof the host is back — re-link, and
+  // the heartbeat starts from here.
+  if (row.role !== 'host' && !row.jam_rooms.host_clock_at
       && Date.now() - new Date(row.jam_rooms.started_at).getTime() > 10 * 60_000) {
     return null;
   }

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-256 TypeScript file(s) under `src/`, 64,372 lines.
+256 TypeScript file(s) under `src/`, 64,381 lines.
 
 ## Size hotspots
 
@@ -250,7 +250,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-56 file(s), 11,751 lines.
+56 file(s), 11,760 lines.
 
 | File | Lines |
 |---|---:|
@@ -262,7 +262,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/profileService.ts` | 391 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
-| `src/services/jamRooms.ts` | 366 |
+| `src/services/jamRooms.ts` | 369 |
 | `src/services/messages.ts` | 366 |
 | `src/services/share.ts` | 358 |
 | `src/services/uploads.ts` | 301 |
@@ -296,8 +296,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
+| `src/services/__tests__/findMyActiveJam.test.ts` | 78 |
 | `src/services/terms.ts` | 78 |
-| `src/services/__tests__/findMyActiveJam.test.ts` | 72 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
 | `src/services/waveform.ts` | 66 |

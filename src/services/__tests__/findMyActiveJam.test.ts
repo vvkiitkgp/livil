@@ -8,6 +8,7 @@
 
 type Row = {
   jam_room_id: string;
+  role?: string;
   jam_rooms: { conversation_id: string; host_clock_at: string | null; started_at: string };
 };
 let mockRows: Row[] = [];
@@ -64,8 +65,13 @@ it('does not re-link a jam the server just ended as stale', async () => {
   await expect(findMyActiveJam()).resolves.toBeNull();
 });
 
-it('does not re-link an old jam that never recorded a heartbeat', async () => {
+it('as a listener, does not re-link an old jam that never recorded a heartbeat', async () => {
   mockRows = [{ jam_room_id: 'jam-1', jam_rooms: { conversation_id: 'c-1', host_clock_at: null, started_at: old() } }];
   await expect(findMyActiveJam()).resolves.toBeNull();
   expect(mockRpc).not.toHaveBeenCalled();
+});
+
+it('as the host, re-links your own jam even before its first heartbeat', async () => {
+  mockRows = [{ jam_room_id: 'jam-1', role: 'host', jam_rooms: { conversation_id: 'c-1', host_clock_at: null, started_at: old() } }];
+  await expect(findMyActiveJam()).resolves.toEqual({ jamRoomId: 'jam-1', conversationId: 'c-1' });
 });
