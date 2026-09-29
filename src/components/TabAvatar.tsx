@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
@@ -8,16 +8,21 @@ import { onMyAvatarChanged } from '../services/profileService';
 const SIZE = 28;
 const RING = 2;
 
-async function fetchMyAvatar(): Promise<string | null> {
+type Me = { avatarUrl: string | null; letter: string | null };
+
+async function fetchMe(): Promise<Me> {
   const { data } = await supabase.auth.getSession();
   const uid = data.session?.user?.id;
-  if (!uid) { return null; }
-  const { data: row } = await supabase
+  if (!uid) { return { avatarUrl: null, letter: null }; }
+  const { data: row, error } = await supabase
     .from('profiles')
-    .select('avatar_url')
+    .select('avatar_url, display_name, username')
     .eq('id', uid)
     .maybeSingle();
-  return (row as { avatar_url: string | null } | null)?.avatar_url ?? null;
+  if (error) { throw error; }
+  const r = row as { avatar_url: string | null; display_name: string | null; username: string | null } | null;
+  const name = (r?.display_name || r?.username || '').trim();
+  return { avatarUrl: r?.avatar_url ?? null, letter: name ? name.charAt(0).toUpperCase() : null };
 }
 
 /**
@@ -25,8 +30,8 @@ async function fetchMyAvatar(): Promise<string | null> {
  * account switch, and replaced in place when EditProfile saves a new one
  * (updateProfile emits onMyAvatarChanged), so the tab never shows a stale photo.
  */
-function useMyAvatar(): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+function useMe(): Me {
+  const [me, setMe] = useState<Me>({ avatarUrl: null, letter: null });
 
   useEffect(() => {
     let cancelled = false;
@@ -37,10 +42,10 @@ function useMyAvatar(): string | null {
     // So retry a few times with backoff, and re-read on every session event below.
     const refresh = () => {
       if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-      fetchMyAvatar()
+      fetchMe()
         .then(next => {
           if (cancelled) { return; }
-          setUrl(next);
+          setMe(next);
           attempts = 0;
         })
         .catch(() => {
@@ -53,9 +58,14 @@ function useMyAvatar(): string | null {
     const { data: auth } = supabase.auth.onAuthStateChange(event => {
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN'
           || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') { refresh(); }
-      if (event === 'SIGNED_OUT') { setUrl(null); }
+      if (event === 'SIGNED_OUT') { setMe({ avatarUrl: null, letter: null }); }
     });
-    const sub = onMyAvatarChanged(next => setUrl(next));
+    // A saved profile edit: show the new photo at once, then re-read (the name — and so
+    // the letter — may have changed too).
+    const sub = onMyAvatarChanged(next => {
+      setMe(prev => ({ ...prev, avatarUrl: next }));
+      refresh();
+    });
     return () => {
       cancelled = true;
       if (retryTimer) { clearTimeout(retryTimer); }
@@ -64,16 +74,16 @@ function useMyAvatar(): string | null {
     };
   }, []);
 
-  return url;
+  return me;
 }
 
 /**
  * The Profile tab's icon: your own photo in a circle, with a purpleNeon ring while the
- * tab is selected. Falls back to the profile glyph when there is no photo, or it fails
- * to load, so the tab is never blank.
+ * tab is selected. With no photo (or while it fails to load), the first letter of your
+ * name in a translucent bubble; the plain glyph only until the profile has loaded.
  */
 export default function TabAvatar({ color, focused }: { color: string; focused: boolean }) {
-  const url = useMyAvatar();
+  const { avatarUrl: url, letter } = useMe();
   const [failed, setFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
 
@@ -88,6 +98,17 @@ export default function TabAvatar({ color, focused }: { color: string; focused: 
   }, [failed, loadAttempt]);
 
   if (!url || failed) {
+    // No photo: the first letter in a see-through bubble, as elsewhere in the app.
+    // Only before the profile has loaded at all does the tab show the glyph.
+    if (letter) {
+      return (
+        <View style={[styles.ring, focused && styles.ringFocused]}>
+          <View style={[styles.photo, styles.letterBubble, !focused && styles.photoIdle]}>
+            <Text style={[styles.letter, focused && styles.letterFocused]}>{letter}</Text>
+          </View>
+        </View>
+      );
+    }
     return <Icon name="profile" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
   }
   return (
@@ -121,4 +142,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   photoIdle: { opacity: 0.85 },
+  letterBubble: {
+    backgroundColor: COLORS.purpleDim,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  letter: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '800' },
+  letterFocused: { color: COLORS.white },
 });
