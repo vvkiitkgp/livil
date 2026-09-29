@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-platform
 consumers: [DO, P-PF]
-last_verified: 2026-07-21
+last_verified: 2026-09-30
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -15,6 +15,12 @@ related_adrs: []
 How a release actually reaches users. The process is entirely manual and this document
 describes it as it is, not as it should be.
 
+**Where it is live (2026-09-30):** production on all three platforms — Google Play
+(`com.livil`, since 2026-08-14), the Apple App Store ("Livil Music", Apple ID `6809119164`,
+iPhone only; see [ADR-0016](../decisions/0016-ship-ios.md)), and the web app at
+`livil-music.com/studio`. The process below is the Android one; the iOS build is archived in
+Xcode and uploaded to App Store Connect by hand, equally ungated.
+
 ---
 
 ## The process
@@ -23,7 +29,7 @@ describes it as it is, not as it should be.
 npm run prebuild:android     # bumps versionCode and the versionName patch digit
 npm run build:android        # cd android && ./gradlew bundleRelease
 # → android/app/build/outputs/bundle/release/app-release.aab
-# → upload by hand in Play Console → Closed testing → Create new release
+# → upload by hand in Play Console → Production (Closed testing first when a tester pass is wanted) → Create new release
 ```
 
 That is the whole pipeline. **Nothing gates it.** No tests run, no lint, no type check, no

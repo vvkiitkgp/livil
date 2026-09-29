@@ -26,7 +26,7 @@ Creators upload their tracks (audio **and** video). Listeners follow each other,
 
 It’s a creator network, a listening party, and a chat app fused into a single React Native codebase running on the **New Architecture (Fabric)**.
 
-> **By the numbers:** ~37,500 lines of TypeScript · 28 screens · 40+ reusable components · 21 backend services · 30+ database migrations · shipping on the Google Play Store.
+> **By the numbers:** ~37,500 lines of TypeScript · 28 screens · 40+ reusable components · 21 backend services · 30+ database migrations · live on the App Store, Google Play, and the web.
 
 ---
 
@@ -182,7 +182,15 @@ cd android && ./gradlew bundleRelease
 
 ## 📦 Status
 
-Livil is in **active development** and live on **Google Play (Closed Testing)** — package `com.livil`, with **40+ releases** shipped to testers.
+**Livil Music is live in production** — free on all three platforms:
+
+| Platform | Where |
+|---|---|
+| 📱 iPhone | [App Store](https://apps.apple.com/app/id6809119164) — "Livil Music" |
+| 🤖 Android | [Google Play](https://play.google.com/store/apps/details?id=com.livil) — package `com.livil` |
+| 🌐 Web | [livil-music.com/studio](https://livil-music.com/studio) — web app + creator dashboard |
+
+Still in **active development**, with new releases shipping to both stores.
 
 <div align="center">
 
