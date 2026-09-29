@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-09-26
+last_verified: 2026-09-29
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-245 TypeScript file(s) under `src/`, 62,151 lines.
+247 TypeScript file(s) under `src/`, 62,743 lines.
 
 ## Size hotspots
 
@@ -30,19 +30,19 @@ reading alone (Constitution P28).
 | `src/screens/main/ConversationScreen.tsx` | 1706 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1650 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
-| `src/components/PostCard.tsx` | 1383 |
+| `src/components/PostCard.tsx` | 1394 |
 | `src/screens/main/HomeScreen.tsx` | 1247 |
 | `src/screens/main/ProfileScreen.tsx` | 1179 |
+| `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/components/WaveformScrubber.tsx` | 1150 |
+| `src/screens/main/JamRoomScreen.tsx` | 989 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 912 |
-| `src/screens/main/JamRoomScreen.tsx` | 851 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
-| `src/screens/main/LibraryScreen.tsx` | 608 |
+| `src/screens/main/LibraryScreen.tsx` | 629 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 
@@ -70,6 +70,7 @@ case the call fails silently wherever its result is discarded.
 | `EditPlaylist` | `{ playlistId: string }` |
 | `Following` | `undefined` |
 | `RecentlyPlayed` | `undefined` |
+| `PostDetail` | `{ postId: string` |
 | `EditProfile` | `undefined` |
 | `Settings` | `undefined` |
 | `NotificationSettings` | `undefined` |
@@ -97,7 +98,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-43 file(s), 22,327 lines.
+44 file(s), 22,720 lines.
 
 | File | Lines |
 |---|---:|
@@ -107,12 +108,12 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/HomeScreen.tsx` | 1247 |
 | `src/screens/main/ProfileScreen.tsx` | 1179 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
+| `src/screens/main/JamRoomScreen.tsx` | 989 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/screens/main/JamRoomScreen.tsx` | 851 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
-| `src/screens/main/LibraryScreen.tsx` | 608 |
+| `src/screens/main/LibraryScreen.tsx` | 629 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 | `src/screens/main/InboxScreen.tsx` | 496 |
@@ -123,13 +124,14 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 357 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
-| `src/screens/main/ActivityCenterScreen.tsx` | 318 |
+| `src/screens/main/ActivityCenterScreen.tsx` | 315 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/SettingsScreen.tsx` | 281 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 277 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 268 |
+| `src/screens/main/RecentlyPlayedScreen.tsx` | 256 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
@@ -139,21 +141,21 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 216 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
-| `src/screens/main/RecentlyPlayedScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 201 |
+| `src/screens/main/PostDetailScreen.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 118 |
 
 ## Components
 
-90 file(s), 20,419 lines.
+91 file(s), 20,537 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2528 |
-| `src/components/PostCard.tsx` | 1383 |
-| `src/components/WaveformScrubber.tsx` | 1150 |
+| `src/components/PostCard.tsx` | 1394 |
+| `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 912 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 597 |
@@ -208,6 +210,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
+| `src/components/TabAvatar.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/EqualizerBars.tsx` | 89 |
@@ -244,18 +247,18 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-52 file(s), 11,332 lines.
+52 file(s), 11,365 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1104 |
-| `src/services/tracks.ts` | 965 |
+| `src/services/tracks.ts` | 981 |
 | `src/services/pushNotifications.ts` | 641 |
 | `src/services/albums.ts` | 497 |
 | `src/services/activity.ts` | 426 |
+| `src/services/profileService.ts` | 391 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
-| `src/services/profileService.ts` | 374 |
 | `src/services/messages.ts` | 366 |
 | `src/services/share.ts` | 358 |
 | `src/services/jamRooms.ts` | 325 |
@@ -303,12 +306,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-11 file(s), 2,663 lines.
+11 file(s), 2,693 lines.
 
 | File | Lines |
 |---|---:|
 | `src/contexts/PlaybackContext.tsx` | 977 |
-| `src/contexts/JamRealtimeContext.tsx` | 389 |
+| `src/contexts/JamRealtimeContext.tsx` | 419 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/ToastContext.tsx` | 190 |
 | `src/contexts/ProfileBadgesContext.tsx` | 172 |

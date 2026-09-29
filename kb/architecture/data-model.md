@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-25
+last_verified: 2026-09-29
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 117 migration(s) in `supabase/migrations/`.
+Reconstructed from 119 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -614,6 +614,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_post_likes_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
+- `trg_post_likes_activity_removed` — after delete (`20260929010000_like_notifications_follow_real_likes.sql`)
 
 ### `post_removals`
 
@@ -690,6 +691,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_post_views_count` — after insert (`20260722120000_capture_counter_triggers.sql`)
+- `trg_post_views_recent_tracks` — after insert (`20260929000000_recently_played_is_recorded.sql`)
 
 ### `posts`
 
@@ -1160,6 +1162,12 @@ RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_track
 
 - `PRIMARY KEY (user_id, track_id)`
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `last_post_id` | `uuid references public.posts (id) on delete set null` | `20260929000000_recently_played_is_recorded.sql` |
+
 **Indexes**
 
 - `idx_user_recent_tracks_user_played` `(user_id, played_at DESC)`
@@ -1210,7 +1218,9 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_views_recent_tracks` | `post_views` | after insert | `20260929000000_recently_played_is_recorded.sql` |
 | `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
