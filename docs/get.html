@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <!-- Safari's Smart App Banner: "OPEN / VIEW in the App Store" across the top on iOS. -->
+    <meta name="apple-itunes-app" content="app-id=6809119164" />
+    <title>Get Livil — Music is better together</title>
+    <meta name="description" content="Download Livil, free, for iPhone and Android. Listen with your friends in real time, share the moment of a song, and see what they're playing. Live · Vibe · Link." />
+
+    <!--
+      THE INVITE LINK. livil-music.com/get is what the app's "Invite your friends" shares,
+      and it is one link for both stores:
+
+        · a phone is sent straight to its store by the script at the bottom (Android → Google
+          Play, iPhone/iPad → the App Store), so a friend never sees this page;
+        · everything else — a laptop, a tablet browser without a store, a crawler — gets the
+          page below with both badges.
+
+      The preview card WhatsApp / iMessage / Slack show is built from the og:* tags here. Those
+      apps fetch this HTML without running JavaScript, so the redirect never gets in the way
+      of the card, and the card is the same one the marketing page uses (docs/og.png).
+
+      The redirect is client-side on purpose: a server-side 302 to a store would ALSO be what
+      the crawlers follow, and they cannot read og:* from the Play Store. Keep it in JS.
+    -->
+    <link rel="canonical" href="https://livil-music.com/get" />
+    <meta property="og:title" content="Livil — Music is better together" />
+    <meta property="og:description" content="Come listen with me on Livil. Free on iPhone and Android — jam in real time, share the moment of a song, and see what your friends are playing." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://livil-music.com/get" />
+    <meta property="og:site_name" content="Livil" />
+    <meta property="og:image" content="https://livil-music.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Livil — Music is better together. Live · Vibe · Link." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Livil — Music is better together" />
+    <meta name="twitter:description" content="Come listen with me on Livil. Free on iPhone and Android." />
+    <meta name="twitter:image" content="https://livil-music.com/og.png" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+    <style>
+      :root {
+        --bg: #07070B;
+        --surface: #12121C;
+        --border: #252545;
+        --white: #FFFFFF;
+        --secondary: #8B90A7;
+        --purple: #7C3AED;
+        --purple-light: #A78BFA;
+        --purple-glow: rgba(124, 58, 237, 0.35);
+        --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --serif: "Instrument Serif", Georgia, serif;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--white); font-family: var(--sans); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+      body::before {
+        content: ""; position: fixed; top: -220px; left: 50%; transform: translateX(-50%);
+        width: 820px; height: 820px; pointer-events: none; z-index: 0;
+        background: radial-gradient(circle at center, var(--purple-glow) 0%, transparent 60%);
+      }
+      main { position: relative; z-index: 1; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 20px 64px; }
+      .mark { width: 120px; height: auto; filter: drop-shadow(0 0 22px rgba(167, 139, 250, 0.55)); margin-bottom: 28px; }
+      .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .26em; text-transform: uppercase; color: var(--purple-light); margin: 0 0 14px; }
+      h1 { font-size: clamp(38px, 8vw, 60px); line-height: 1.02; letter-spacing: -0.03em; font-weight: 800; margin: 0 0 16px; }
+      h1 em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--purple-light); }
+      p.lead { max-width: 440px; color: var(--secondary); font-size: 17px; margin: 0 auto 34px; }
+      .stores { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+      .btn.store {
+        display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--white);
+        background: transparent; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 100px;
+        padding: 12px 26px; text-align: left; line-height: 1.15;
+        transition: transform .18s cubic-bezier(.2,.8,.2,1), border-color .2s, background .2s;
+      }
+      .btn.store:hover { background: rgba(255, 255, 255, 0.05); border-color: var(--purple-light); transform: translateY(-1px); }
+      .btn.store svg { flex: none; width: 23px; height: 25px; }
+      .btn.store .st { display: flex; flex-direction: column; gap: 1px; }
+      .btn.store .st i { font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--secondary); }
+      .btn.store .st b { font-size: 16px; font-weight: 600; }
+      .fine { margin-top: 40px; font-size: 13px; color: var(--secondary); }
+      .fine a { color: var(--purple-light); text-decoration: none; }
+      .fine a:hover { text-decoration: underline; }
+      /* Shown only while a phone is being sent to its store. */
+      .sending { display: none; color: var(--secondary); font-size: 14px; margin-top: 18px; }
+      body.redirecting .sending { display: block; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="mark" src="/favicon.svg" alt="" width="120" height="120" />
+      <p class="eyebrow">Live · Vibe · Link</p>
+      <h1>Music is better <em>together.</em></h1>
+      <p class="lead">Livil is a place to listen <strong>with</strong> people. Jam in real time, share the moment of a song, and see what your friends are playing. Free on iPhone and Android.</p>
+
+      <div class="stores">
+        <a data-store="apple" href="https://apps.apple.com/app/id6809119164" class="btn store" rel="noopener" aria-label="Download Livil for iPhone on the App Store"><svg viewBox="0 0 384 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg><span class="st"><i>Download on the</i><b>App Store</b></span></a>
+        <a data-store="play" href="https://play.google.com/store/apps/details?id=com.livil" class="btn store" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
+      </div>
+
+      <p class="sending">Taking you to the store…</p>
+      <p class="fine">Already have Livil? Open the app. &nbsp;·&nbsp; <a href="/">livil-music.com</a></p>
+    </main>
+
+    <script>
+      // A phone goes straight to its store. `location.replace` keeps this page out of the
+      // back stack, so "back" from the store returns to the chat the link came from.
+      (function () {
+        var ua = navigator.userAgent || '';
+        var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var isAndroid = /Android/.test(ua);
+        var href = isIOS ? 'https://apps.apple.com/app/id6809119164'
+          : isAndroid ? 'https://play.google.com/store/apps/details?id=com.livil'
+          : null;
+        if (!href) { return; }
+        document.body.classList.add('redirecting');
+        setTimeout(function () { window.location.replace(href); }, 150);
+      })();
+    </script>
+  </body>
+</html>

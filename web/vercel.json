@@ -9,6 +9,10 @@
       "destination": "/api/share?id=:id"
     },
     {
+      "source": "/get",
+      "destination": "/get.html"
+    },
+    {
       "source": "/studio/:path*",
       "destination": "/studio/index.html"
     }

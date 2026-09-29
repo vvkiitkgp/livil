@@ -28,9 +28,27 @@ export const INSTAGRAM_URL = 'https://instagram.com/livil_music';
 export const PLAY_STORE_APP_URL = `market://details?id=${ANDROID_PACKAGE}`;
 export const PLAY_STORE_WEB_URL = `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
 
-/** Body of the "Invite friends" share sheet. */
+/** App Store Connect id for Livil Music. */
+export const APP_STORE_ID = '6809119164';
+export const APP_STORE_URL = `https://apps.apple.com/app/id${APP_STORE_ID}`;
+/** Opens the App Store's review sheet directly (Rate row on iOS). */
+export const APP_STORE_REVIEW_URL = `itms-apps://apps.apple.com/app/id${APP_STORE_ID}?action=write-review`;
+
+/**
+ * The invite link: ONE URL for both stores. docs/get.html sends a phone straight to its
+ * own store and shows both badges to anyone else, and carries the og:* tags that give
+ * WhatsApp / iMessage a real preview card. Never share a bare store URL from the app
+ * again — it is the wrong store for half the recipients, and store pages have no card.
+ * Routed by the `/get` rewrite in web/vercel.json.
+ */
+export const INVITE_URL = 'https://livil-music.com/get';
+
+/**
+ * Body of the "Invite friends" share sheet. The URL goes last and on its own line so
+ * chat apps unfurl it into the card rather than burying it mid-sentence.
+ */
 export const INVITE_SHARE_MESSAGE =
-  `Come listen with me on Livil — upload your music, jam in real time, and see what your friends are playing.\n\n${PLAY_STORE_WEB_URL}`;
+  `Come listen with me on Livil — jam in real time, share the moment of a song, and see what your friends are playing. Free on iPhone and Android.\n\n${INVITE_URL}`;
 
 // ── Post sharing ────────────────────────────────────────────────────────────
 // See kb/architecture/post-sharing.md for the design these three constants encode.

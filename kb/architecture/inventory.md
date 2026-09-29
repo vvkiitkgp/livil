@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-257 TypeScript file(s) under `src/`, 64,814 lines.
+257 TypeScript file(s) under `src/`, 64,845 lines.
 
 ## Size hotspots
 
@@ -100,7 +100,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-45 file(s), 23,252 lines.
+45 file(s), 23,265 lines.
 
 | File | Lines |
 |---|---:|
@@ -127,9 +127,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 315 |
+| `src/screens/main/SettingsScreen.tsx` | 288 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 282 |
-| `src/screens/main/SettingsScreen.tsx` | 281 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 277 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
@@ -139,8 +139,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
 | `src/screens/main/FollowingScreen.tsx` | 231 |
+| `src/screens/main/__tests__/SettingsScreen.test.tsx` | 227 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 223 |
-| `src/screens/main/__tests__/SettingsScreen.test.tsx` | 221 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 216 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
