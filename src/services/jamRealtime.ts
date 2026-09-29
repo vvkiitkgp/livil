@@ -23,6 +23,19 @@ export type PlaybackBroadcast = {
   author_id?: string;
   author_username?: string;
   author_avatar_url?: string | null;
+  /**
+   * The HOST's queue from the current track on (capped), so every listener's Queue tab
+   * shows what the host will play next rather than their own local queue. Lightweight on
+   * purpose: display fields only — a listener never plays from it.
+   */
+  queue?: JamQueueItem[];
+};
+
+export type JamQueueItem = {
+  post_id: string;
+  title: string;
+  artist: string;
+  cover: string | null;
 };
 
 export type JamHandlers = {

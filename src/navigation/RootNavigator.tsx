@@ -44,6 +44,7 @@ import BlockedAccountsScreen from '../screens/main/BlockedAccountsScreen';
 import DeleteAccountScreen from '../screens/main/DeleteAccountScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
+import { JamSuggestionsProvider } from '../contexts/JamSuggestionsContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
 import { StoriesProvider } from '../contexts/StoriesContext';
 import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
@@ -507,6 +508,7 @@ export default function RootNavigator() {
     <JamProvider>
     <RealtimeConnectionGate />
     <JamRealtimeProvider>
+    <JamSuggestionsProvider>
     <RelationshipProvider>
     <StoriesProvider>
     <ChromeVisibilityProvider>
@@ -746,6 +748,7 @@ export default function RootNavigator() {
     </ChromeVisibilityProvider>
     </StoriesProvider>
     </RelationshipProvider>
+    </JamSuggestionsProvider>
     </JamRealtimeProvider>
     </JamProvider>
         ))}

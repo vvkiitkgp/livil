@@ -19,9 +19,11 @@ import {
   subscribeToJam,
   unsubscribeFromJam,
   broadcastPlaybackState,
+  type JamQueueItem,
   type PlaybackBroadcast,
   type PresenceMember,
 } from '../services/jamRealtime';
+import { useToast } from './ToastContext';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -46,6 +48,8 @@ type JamRealtimeContextValue = {
   hostUsername: string | null;
   presenceMembers: PresenceMember[];
   remotePlayback: RemotePlayback | null;
+  /** Listener: the host's queue from the current track on, as last broadcast. */
+  remoteQueue: JamQueueItem[];
   jamState: JamRoomState | null;
   synced: boolean;
 };
@@ -70,6 +74,11 @@ const JamRealtimeContext = createContext<JamRealtimeContextValue | null>(null);
  * playlist → profile) and every track change still propagates to listeners.
  * Listeners likewise keep hearing the host on any screen.
  */
+/** Host → database heartbeat, and how often members ask whether the jam went stale. */
+const JAM_HEARTBEAT_MS = 30_000;
+const JAM_STALE_CHECK_MS = 60_000;
+/** How many upcoming tracks of the host's queue ride along in each broadcast. */
+const JAM_QUEUE_BROADCAST_MAX = 25;
 /** A listener further than this from the host re-seeks to the host's position. */
 const DRIFT_THRESHOLD_MS = 1000;
 /** Minimum gap between two drift-correction seeks, so a slow load can finish. */
@@ -89,7 +98,11 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
     setJamLocked,
     markSeekTarget,
     isBuffering,
+    runAsJamSync,
+    queueRef,
+    currentIndexRef,
   } = usePlayback();
+  const { showToast } = useToast();
 
   const [isHost, setIsHost] = useState(false);
   const [hostId, setHostId] = useState<string | null>(null);
@@ -98,6 +111,8 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
   const [presenceMembers, setPresenceMembers] = useState<PresenceMember[]>([]);
   const [remotePlayback, setRemotePlayback] = useState<RemotePlayback | null>(null);
   const [synced, setSynced] = useState(false);
+  // Listener: the host's queue as last broadcast (see PlaybackBroadcast.queue).
+  const [remoteQueue, setRemoteQueue] = useState<JamQueueItem[]>([]);
 
   // Host side: URLs to broadcast — taken from nowPlaying if present, else
   // looked up from the tracks table by trackId.
@@ -145,8 +160,16 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
       author_id: np?.authorId,
       author_username: np?.authorUsername,
       author_avatar_url: np?.authorAvatarUrl,
+      queue: queueRef.current
+        .slice(Math.max(0, currentIndexRef.current), Math.max(0, currentIndexRef.current) + JAM_QUEUE_BROADCAST_MAX)
+        .map(t => ({
+          post_id: t.postId,
+          title: t.title,
+          artist: t.artistName,
+          cover: t.coverArtUrl ?? t.thumbnailUrl ?? null,
+        })),
     });
-  }, [activeJam, positionRef]);
+  }, [activeJam, positionRef, queueRef, currentIndexRef]);
 
   const broadcastRef = useRef(broadcast);
   useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
@@ -161,6 +184,7 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
       setJamState(null);
       setPresenceMembers([]);
       setRemotePlayback(null);
+      setRemoteQueue([]);
       setSynced(false);
       setResolvedAudioUrl(null);
       setResolvedVideoUrl(null);
@@ -218,6 +242,8 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
           if (cancelled) { return; }
           const adjustedMs = bc.position_ms + (Date.now() - bc.host_ts);
 
+          if (!isHostRef.current) { setRemoteQueue(bc.queue ?? []); }
+
           setRemotePlayback({
             isPlaying: bc.is_playing,
             positionMs: adjustedMs,
@@ -239,7 +265,7 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
               bc.track_id &&
               (!currentNp || currentNp.trackId !== bc.track_id)
             ) {
-              setNowPlaying({
+              runAsJamSync(() => setNowPlaying({
                 postId: bc.post_id ?? '',
                 trackId: bc.track_id,
                 title: bc.track_title ?? 'Unknown',
@@ -255,8 +281,8 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
                 likesCount: 0, commentsCount: 0, repostsCount: 0, viewsCount: 0,
                 viewerHasLiked: false, clipStartSec: null, clipEndSec: null,
                 kind: 'upload', originalPostId: null, knownDurationSec: 0,
-              });
-              if (bc.post_id) { requestPlay(bc.post_id); }
+              }));
+              if (bc.post_id) { runAsJamSync(() => requestPlay(bc.post_id!)); }
               loadedFromJamRef.current = true;
               setSynced(true);
               return;
@@ -393,6 +419,49 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
     return () => clearInterval(id);
   }, [isHost, activeJam]);
 
+  // ── A jam ends itself when the host is gone or silent ───────────────────
+  // The host's app records a heartbeat in the database every 30s (and whether anything
+  // is playing); every member's app asks once a minute whether the jam should end —
+  // 3 min without a heartbeat (app swiped away, phone off) or 10 min with nothing
+  // playing. The server decides (jam_end_if_stale); whichever member asks first ends
+  // it for everyone. 20260930000000_jam_suggestions.sql.
+  useEffect(() => {
+    if (!isHost || !activeJam) { return; }
+    const jamRoomId = activeJam.jamRoomId;
+    const beat = () => {
+      void db.rpc('jam_host_heartbeat', {
+        p_jam_room_id: jamRoomId,
+        p_is_playing: !!activePostIdRef.current,
+      });
+    };
+    beat();
+    const id = setInterval(beat, JAM_HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [isHost, activeJam]);
+
+  useEffect(() => {
+    if (!activeJam) { return; }
+    const jamRoomId = activeJam.jamRoomId;
+    let stopped = false;
+    const check = async () => {
+      const { data } = await db.rpc('jam_end_if_stale', { p_jam_room_id: jamRoomId });
+      if (stopped || data !== true) { return; }
+      stopped = true;
+      console.log('[JamRealtime] jam ended — host away or idle');
+      if (!isHostRef.current) {
+        pauseAll();
+        clearNowPlaying();
+        loadedFromJamRef.current = false;
+        leaveJamRoom(jamRoomId).catch(() => {});
+        showToast('The jam ended because the host was away', { kind: 'info' });
+      }
+      clearActiveJam();
+    };
+    const id = setInterval(() => { void check(); }, JAM_STALE_CHECK_MS);
+    return () => { stopped = true; clearInterval(id); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJam?.jamRoomId]);
+
   const value = useMemo<JamRealtimeContextValue>(
     () => ({
       isHost,
@@ -400,10 +469,11 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
       hostUsername,
       presenceMembers,
       remotePlayback,
+      remoteQueue,
       jamState,
       synced,
     }),
-    [isHost, hostId, hostUsername, presenceMembers, remotePlayback, jamState, synced],
+    [isHost, hostId, hostUsername, presenceMembers, remotePlayback, remoteQueue, jamState, synced],
   );
 
   return (
