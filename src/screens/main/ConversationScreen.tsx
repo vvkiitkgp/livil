@@ -1206,7 +1206,16 @@ export default function ConversationScreen() {
             </SwipeRevealGestureView>
           </SwipeRevealProvider>
 
-          <KeyboardStickyView offset={{ closed: 0 }}>
+          {/* The composer pads itself by the home-indicator inset so it clears the
+              iPhone home bar while the keyboard is down. When the keyboard is up
+              that inset is already inside the keyboard's height, so sliding the
+              bar up by the full height would stack both: a ~34pt dead band
+              between the input and the keyboard. `opened: insets.bottom` sinks
+              the bar back by that inset so the padding tucks under the keyboard.
+              Android: keyboard-controller keeps the root above the nav bar and
+              reports a nav-bar-free height, so insets.bottom is ~0 and this is a
+              no-op there — correct either way. */}
+          <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
             {replyingTo ? (
               <View style={styles.replyPreview}>
                 <View style={styles.replyPreviewBar} />
