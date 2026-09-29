@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-73 document(s) under `kb/`.
+75 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 73 |
-| Drift-proof (tier 1 + 4) | 40 |
+| Documents | 75 |
+| Drift-proof (tier 1 + 4) | 42 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -128,6 +128,8 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0019-rights-declaration-for-a-cover-friendly-platform.md` | chief-architect | ALL | 2026-09-22 | 9999d |
 | `decisions/0020-rights-flow-review-and-the-freeze-that-does-not-freeze.md` | chief-architect | ALL | 2026-09-23 | 9999d |
 | `decisions/0021-retire-the-waitlist-backend.md` | chief-architect | ALL | 2026-09-24 | 9999d |
+| `decisions/0022-jam-suggestions-store-authorization-delivery.md` | chief-architect | ALL | 2026-09-29 | 9999d |
+| `decisions/0023-listener-tap-routing-in-a-jam.md` | chief-architect | ALL | 2026-09-29 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -141,7 +143,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 30 |
+| chief-architect | 32 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
