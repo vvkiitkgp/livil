@@ -30,6 +30,9 @@ import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
 import JamExitModal from '../../components/JamExitModal';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import { Button } from '../../components/Button';
+import { useToast } from '../../contexts/ToastContext';
+import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { useJamRealtime } from '../../contexts/JamRealtimeContext';
@@ -76,6 +79,59 @@ function PresenceAvatar({ member }: { member: PresenceMember }) {
   );
 }
 
+/**
+ * A song shared into the jam's conversation. The host gets Play now / Add to queue;
+ * everyone else sees who suggested it. The sender is labelled even on the host's own
+ * shares so the chat reads as a list of suggestions.
+ */
+function JamTrackCard({
+  msg,
+  isMe,
+  canPlay,
+  onPlay,
+  onQueue,
+}: {
+  msg: ChatMessage;
+  isMe: boolean;
+  canPlay: boolean;
+  onPlay: (postId: string) => void;
+  onQueue: (postId: string) => void;
+}) {
+  const meta = msg.metadata ?? {};
+  const postId = typeof meta.post_id === 'string' ? meta.post_id : null;
+  const title = typeof meta.title === 'string' ? meta.title : 'Shared track';
+  const artist = typeof meta.artist_name === 'string' ? meta.artist_name : '';
+  const cover = typeof meta.cover_art_url === 'string' ? meta.cover_art_url : null;
+  const who = isMe ? 'You' : (msg.senderDisplayName || msg.senderUsername || 'Someone');
+
+  return (
+    <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+      <View style={styles.trackShare}>
+        <Text style={styles.trackShareWho} numberOfLines={1}>{who} suggested</Text>
+        <View style={styles.trackShareRow}>
+          {cover ? (
+            <Image source={{ uri: cover }} style={styles.trackShareArt} />
+          ) : (
+            <View style={[styles.trackShareArt, styles.trackShareArtEmpty]}>
+              <Icon name="musicNote" size={22} color={COLORS.textSecondary} />
+            </View>
+          )}
+          <View style={styles.trackShareMeta}>
+            <Text style={styles.trackShareTitle} numberOfLines={2}>{title}</Text>
+            {artist ? <Text style={styles.trackShareArtist} numberOfLines={1}>{artist}</Text> : null}
+          </View>
+        </View>
+        {canPlay && postId ? (
+          <View style={styles.trackShareActions}>
+            <Button label="Play now" icon="play" size="sm" onPress={() => onPlay(postId)} />
+            <Button label="Add to queue" variant="secondary" size="sm" onPress={() => onQueue(postId)} />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export default function JamRoomScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -87,7 +143,13 @@ export default function JamRoomScreen() {
     positionRef,
     durationRef,
     activePostId,
+    setNowPlaying,
+    markSeekTarget,
+    requestPlay,
+    addToQueue,
+    clipWindowRef,
   } = usePlayback();
+  const { showToast } = useToast();
   const { activeJam, setActiveJam, clearActiveJam } = useJam();
   // All realtime state — owned by the global JamRealtimeProvider so it keeps
   // running when the host navigates to Home / Search / Profile to find a song.
@@ -261,8 +323,10 @@ export default function JamRoomScreen() {
             profiles: { username: string; display_name: string | null; avatar_url: string | null } | null;
           };
 
-          // Skip own messages — already in the list as optimistic
-          if (raw.sender_id === myIdRef.current) { return; }
+          // Skip own TEXT messages — already in the list as optimistic. Anything else I
+          // send (a song shared from a profile while the jam runs) is sent from another
+          // screen, so this insert is the only way it reaches this list.
+          if (raw.sender_id === myIdRef.current && raw.kind === 'text') { return; }
 
           const msg: ChatMessage = {
             id: raw.id,
@@ -280,7 +344,7 @@ export default function JamRoomScreen() {
             reactions: [],
           };
 
-          setMessages(prev => [msg, ...prev]);
+          setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [msg, ...prev]));
 
           if (tabRef.current === 'queue') {
             setChatUnread(n => n + 1);
@@ -331,14 +395,28 @@ export default function JamRoomScreen() {
     setDisplayPositionMs(seconds * 1000);
   }, []);
 
+  const handleSeekCancel = useCallback(() => { scrubbingRef.current = false; }, []);
+
   const handleSeekEnd = useCallback((seconds: number) => {
     scrubbingRef.current = false;
     if (!permissions.can_seek) { return; }
-    handlersRef.current?.seek(seconds);
-    setDisplayPositionMs(seconds * 1000);
+    // The bar spans the FULL track, but a clipped post only plays its clip: landing
+    // past the clip end tripped the native clip-end watcher, which snapped straight
+    // back to the clip start (or stopped) — so the song seemed to play a moment and
+    // jump back. Keep the seek inside the window that will actually play.
+    const clip = clipWindowRef.current;
+    const target = clip
+      ? Math.min(Math.max(seconds, clip.start), Math.max(clip.start, clip.end - 1))
+      : seconds;
+    // Guard first (as FullScreenPlayer does), so progress samples from before the seek
+    // cannot snap the position back — the heartbeat would broadcast that stale position
+    // and pull every listener back with it.
+    markSeekTarget(target);
+    handlersRef.current?.seek(target);
+    setDisplayPositionMs(target * 1000);
     // The next 2s heartbeat will broadcast the new position. Listeners will
     // drift-correct on the next tick.
-  }, [permissions, handlersRef]);
+  }, [permissions, handlersRef, clipWindowRef, markSeekTarget]);
 
   const handleEnd = useCallback(() => {
     setExitModalOpen(true);
@@ -434,6 +512,39 @@ export default function JamRoomScreen() {
     if (t === 'chat') { setChatUnread(0); }
   }, []);
 
+  // Host (or a listener allowed to change the track) acting on a song shared into the
+  // jam. "Play now" is the same load the chat's own "Tap to listen" does, minus opening
+  // the full-screen player — the host stays in the room, and the jam provider broadcasts
+  // the new track to every listener on its own.
+  const handlePlayShared = useCallback(async (postId: string) => {
+    try {
+      const post = await fetchPostById(postId);
+      if (!post) {
+        showToast('That track is no longer available', { kind: 'info' });
+        return;
+      }
+      setNowPlaying(feedPostToNowPlaying(post));
+      markSeekTarget(post.clipStartSec ?? 0);
+      requestPlay(post.id);
+    } catch {
+      showToast("Couldn't play that track", { kind: 'error' });
+    }
+  }, [setNowPlaying, markSeekTarget, requestPlay, showToast]);
+
+  const handleQueueShared = useCallback(async (postId: string) => {
+    try {
+      const post = await fetchPostById(postId);
+      if (!post) {
+        showToast('That track is no longer available', { kind: 'info' });
+        return;
+      }
+      addToQueue(feedPostToNowPlaying(post));
+      showToast(`Added “${post.track.title}” to the queue`, { kind: 'success' });
+    } catch {
+      showToast("Couldn't add that track", { kind: 'error' });
+    }
+  }, [addToQueue, showToast]);
+
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     // System messages render as centered muted text, not a chat bubble.
     if (item.kind === 'system') {
@@ -443,7 +554,21 @@ export default function JamRoomScreen() {
         </View>
       );
     }
-    // Skip non-text messages that have no body (jam_invite, sticker, etc.)
+    // A song shared into this conversation — from a profile's share sheet, or the
+    // chat — is a suggestion for the jam. It used to be dropped here with the other
+    // non-text kinds, so the host never saw it unless they left the jam.
+    if (item.kind === 'track_share' && item.metadata) {
+      return (
+        <JamTrackCard
+          msg={item}
+          isMe={item.senderId === myIdRef.current}
+          canPlay={isHost || permissions.can_change_track}
+          onPlay={handlePlayShared}
+          onQueue={handleQueueShared}
+        />
+      );
+    }
+    // Skip other non-text messages that have no body (jam_invite, sticker, etc.)
     // — they'd render as empty bubbles.
     if (item.kind !== 'text' || !item.body) { return null; }
     const isMe = item.senderId === myIdRef.current;
@@ -462,7 +587,7 @@ export default function JamRoomScreen() {
         </View>
       </View>
     );
-  }, []);
+  }, [isHost, permissions.can_change_track, handlePlayShared, handleQueueShared]);
 
   // Track to display in the player panel: host uses their own nowPlaying;
   // listener uses what the host broadcast.
@@ -553,6 +678,7 @@ export default function JamRoomScreen() {
               onSeekStart={permissions.can_seek ? handleScrubStart : undefined}
               onSeek={permissions.can_seek ? handleScrub : undefined}
               onSeekEnd={permissions.can_seek ? handleSeekEnd : undefined}
+              onSeekCancel={permissions.can_seek ? handleSeekCancel : undefined}
             />
           </View>
         )}
@@ -818,6 +944,18 @@ const styles = StyleSheet.create({
   bubbleSender: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', marginBottom: 2 },
   bubbleText: { color: COLORS.white, fontSize: 14 },
   bubbleTextMe: { color: COLORS.white },
+  trackShare: {
+    maxWidth: '80%', padding: 10, borderRadius: 14, gap: 8,
+    backgroundColor: COLORS.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+  },
+  trackShareWho: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  trackShareRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trackShareArt: { width: 48, height: 48, borderRadius: 8 },
+  trackShareArtEmpty: { backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+  trackShareMeta: { flexShrink: 1 },
+  trackShareTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  trackShareArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  trackShareActions: { flexDirection: 'row', gap: 8 },
   systemRow: {
     alignItems: 'center',
     paddingVertical: 6,

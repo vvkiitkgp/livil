@@ -146,6 +146,12 @@ export type WaveformScrubberProps = {
   /** The swipe ended here. The one place a surface must commit the position. */
   onSeekEnd?: (seconds: number) => void;
   /**
+   * The scrub gesture was taken away (onPanResponderTerminate) before it ended. No seek
+   * is committed, but a caller that paused its own position updates on onSeekStart
+   * needs this to resume them — without it the bar froze on the dragged-to time.
+   */
+  onSeekCancel?: () => void;
+  /**
    * Which control the finger is currently on, or null on release.
    *
    * Exists so a surface can emphasise the READOUT for the thing being dragged — the
@@ -501,6 +507,7 @@ export default function WaveformScrubber({
   onSeekStart,
   onSeek,
   onSeekEnd,
+  onSeekCancel,
   onActiveHandleChange,
 }: WaveformScrubberProps) {
   const containerRef = useRef<View>(null);
@@ -913,6 +920,7 @@ export default function WaveformScrubber({
         onPanResponderTerminate: () => {
           // A stolen gesture must clear the emphasis too — a label left large forever
           // is a worse failure than one that never grew.
+          if (activeHandleRef.current === 'scrub') { onSeekCancel?.(); }
           stopCrawl();
           setSeekDragPos(null);
           activeHandleRef.current = null;
@@ -921,7 +929,7 @@ export default function WaveformScrubber({
       }),
     [refreshMeasure, localX, secondsFromAbsX, scrubTo, clampLeft, barIndexAt,
      slideStartTo, commitEnd, commitClip, startCrawl, stopCrawl, onClipChangeEnd,
-     onSeekStart, onSeek, onSeekEnd, onActiveHandleChange],
+     onSeekStart, onSeek, onSeekEnd, onSeekCancel, onActiveHandleChange],
   );
 
   /* ── Bars ─────────────────────────────────────────────────────────────── */

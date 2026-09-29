@@ -70,6 +70,11 @@ const JamRealtimeContext = createContext<JamRealtimeContextValue | null>(null);
  * playlist → profile) and every track change still propagates to listeners.
  * Listeners likewise keep hearing the host on any screen.
  */
+/** A listener further than this from the host re-seeks to the host's position. */
+const DRIFT_THRESHOLD_MS = 1000;
+/** Minimum gap between two drift-correction seeks, so a slow load can finish. */
+const DRIFT_COOLDOWN_MS = 5000;
+
 export function JamRealtimeProvider({ children }: { children: React.ReactNode }) {
   const { activeJam, clearActiveJam } = useJam();
   const {
@@ -82,6 +87,8 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
     requestPlay,
     pauseAll,
     setJamLocked,
+    markSeekTarget,
+    isBuffering,
   } = usePlayback();
 
   const [isHost, setIsHost] = useState(false);
@@ -109,6 +116,11 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
   const loadedFromJamRef = useRef(false);
 
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
+
+  // Listener drift correction state — see the "Same track" branch below.
+  const isBufferingRef = useRef(isBuffering);
+  useEffect(() => { isBufferingRef.current = isBuffering; }, [isBuffering]);
+  const lastDriftSeekAtRef = useRef(0);
   useEffect(() => { nowPlayingRef.current = nowPlaying; }, [nowPlaying]);
   useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
   useEffect(() => { resolvedAudioUrlRef.current = resolvedAudioUrl; }, [resolvedAudioUrl]);
@@ -262,8 +274,26 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
             }
 
             // Same track — drift correct, play/pause mirror.
+            //
+            // Not while the listener is still loading audio, and not twice within
+            // DRIFT_COOLDOWN_MS. A seek into unbuffered audio parks the listener's
+            // position at the target while it loads; the next heartbeat then saw it
+            // >1s behind the host and seeked AGAIN, which restarted the load — a loop
+            // that played a second or two and jumped, for as long as the connection
+            // was slower than the heartbeat. Worst right after the host scrubs.
+            //
+            // markSeekTarget arms the seek guard so progress samples from before the
+            // seek cannot snap positionRef back and read as fresh drift.
             const localMs = positionRef.current * 1000;
-            if (handlersRef.current && Math.abs(localMs - adjustedMs) > 1000) {
+            const now = Date.now();
+            if (
+              handlersRef.current &&
+              Math.abs(localMs - adjustedMs) > DRIFT_THRESHOLD_MS &&
+              !isBufferingRef.current &&
+              now - lastDriftSeekAtRef.current > DRIFT_COOLDOWN_MS
+            ) {
+              lastDriftSeekAtRef.current = now;
+              markSeekTarget(adjustedMs / 1000);
               handlersRef.current.seek(adjustedMs / 1000);
             }
             // Mirror play/pause every tick. We don't guard on activePostId
