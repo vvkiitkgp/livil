@@ -19,6 +19,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
+import { useJamRealtime } from '../contexts/JamRealtimeContext';
+import { useJamSuggestions } from '../contexts/JamSuggestionsContext';
+import JamPillAvatar from './JamPillAvatar';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { useTrackWaveform } from '../hooks/useTrackWaveform';
@@ -165,6 +168,9 @@ export default function FloatingPlayer() {
   } = usePlayback();
 
   const { activeJam } = useJam();
+  const { isHost } = useJamRealtime();
+  // The host's jam pill counts new suggestions while they browse elsewhere.
+  const { unreadCount: suggestsUnread } = useJamSuggestions();
 
   // ─── Beat-synced visualizer envelope ───────────────────────────────────────────
   // Resolve the ACTIVE track's loudness envelope (cache → DB → analyze-on-device)
@@ -630,8 +636,6 @@ export default function FloatingPlayer() {
 
   if ((!shouldShow && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
 
-  // First letter of jam room title for the avatar
-  const avatarLetter = (activeJam?.conversationTitle ?? '?')[0].toUpperCase();
 
   return (
     <Animated.View
@@ -667,10 +671,18 @@ export default function FloatingPlayer() {
             {activeJam && <Icon name="musicNote" size={13} color={COLORS.white} />}
             {activeJam && (
               <View style={styles.avatarWrap}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarLetter}>{avatarLetter}</Text>
-                </View>
+                {/* Same faces as the chat list: a group's members, or the DM partner. */}
+                <JamPillAvatar
+                  conversationId={activeJam.conversationId}
+                  title={activeJam.conversationTitle}
+                  size={AV}
+                />
                 <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
+                {suggestsUnread > 0 && isHost ? (
+                  <View style={styles.suggestBadge}>
+                    <Text style={styles.suggestBadgeText}>{suggestsUnread > 9 ? '9+' : suggestsUnread}</Text>
+                  </View>
+                ) : null}
               </View>
             )}
           </View>
@@ -828,22 +840,21 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
 
-  avatar: {
-    width: AV,
-    height: AV,
-    borderRadius: AV / 2,
-    backgroundColor: COLORS.purpleDim,
-    borderWidth: 1.5,
-    borderColor: COLORS.purpleNeon,
+
+
+  suggestBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: COLORS.error,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  avatarLetter: {
-    color: COLORS.purpleLight,
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  suggestBadgeText: { color: COLORS.white, fontSize: 9, fontWeight: '800' },
 
   liveDot: {
     position: 'absolute',

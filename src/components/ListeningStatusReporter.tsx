@@ -20,8 +20,9 @@ import { listeningTrackFor } from '../utils/listeningStatus';
  * `activePostId === nowPlaying.postId`. Deliberately NOT reported:
  *   - a story (clip session): not "listening to music", and ADR-0013 keeps stories off
  *     every surface outside the viewer;
- *   - a jam (`engineDriving`): the jam engine plays, not GAP, and a jam is already a
- *     visible shared session.
+ *   - `engineDriving`: reserved for a separate playback engine. Nothing sets it today,
+ *     so a JAM IS reported — a listener's GAP plays the host's track, and friends see
+ *     that song in chat, which is the intended behaviour.
  */
 export default function ListeningStatusReporter() {
   const { nowPlaying, activePostId, engineDriving, isStoryViewerOpen } = usePlayback();

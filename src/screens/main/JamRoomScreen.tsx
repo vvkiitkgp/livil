@@ -31,6 +31,9 @@ import UsernameBadges from '../../components/UsernameBadges';
 import JamExitModal from '../../components/JamExitModal';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { Button } from '../../components/Button';
+import JamSuggestsTab from '../../components/JamSuggestsTab';
+import { useJamSuggestions } from '../../contexts/JamSuggestionsContext';
+import type { DisplayItem } from '../../components/QueueList';
 import { useToast } from '../../contexts/ToastContext';
 import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
 import { usePlayback } from '../../contexts/PlaybackContext';
@@ -57,7 +60,7 @@ const db = supabase as any;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'JamRoom'>;
 
-type Tab = 'chat' | 'queue';
+type Tab = 'chat' | 'queue' | 'suggests';
 
 function msToTime(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -158,8 +161,10 @@ export default function JamRoomScreen() {
     hostUsername,
     presenceMembers,
     remotePlayback,
+    remoteQueue,
     synced,
   } = useJamRealtime();
+  const { unreadCount: suggestsUnread, markSeen: markSuggestsSeen } = useJamSuggestions();
 
   const [permissions, setPermissions] = useState<JamPermissions>({
     can_play_pause: false, can_seek: false, can_skip: false,
@@ -346,7 +351,7 @@ export default function JamRoomScreen() {
 
           setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [msg, ...prev]));
 
-          if (tabRef.current === 'queue') {
+          if (tabRef.current !== 'chat') {
             setChatUnread(n => n + 1);
           }
         },
@@ -512,6 +517,33 @@ export default function JamRoomScreen() {
     if (t === 'chat') { setChatUnread(0); }
   }, []);
 
+  // While Suggests is on screen, everything that arrives counts as seen.
+  useEffect(() => {
+    if (tab === 'suggests') { markSuggestsSeen(); }
+  }, [tab, suggestsUnread, markSuggestsSeen]);
+
+  const hostName = hostUsername ? `@${hostUsername}` : 'the host';
+
+  // A listener's Queue tab shows the HOST's queue (as broadcast), read-only: the host
+  // decides what plays. Display items only need title/artist/cover.
+  const listenerQueue = useMemo<DisplayItem[]>(() => remoteQueue.map((q, i) => ({
+    track: {
+      postId: q.post_id, trackId: '', title: q.title, artistName: q.artist,
+      authorId: '', authorUsername: '', authorAvatarUrl: null,
+      coverArtUrl: q.cover, thumbnailUrl: null, mediaKind: 'audio',
+      likesCount: 0, commentsCount: 0, repostsCount: 0, viewsCount: 0,
+      viewerHasLiked: false, clipStartSec: null, clipEndSec: null,
+      kind: 'upload', originalPostId: null, knownDurationSec: 0,
+    },
+    queueIndex: i,
+    displayIndex: i,
+    isCurrent: i === 0,
+  })), [remoteQueue]);
+
+  const onlyHostCanPlay = useCallback(() => {
+    showToast(`Only the jam host ${hostName} can play songs`, { kind: 'info' });
+  }, [hostName, showToast]);
+
   // Host (or a listener allowed to change the track) acting on a song shared into the
   // jam. "Play now" is the same load the chat's own "Tap to listen" does, minus opening
   // the full-screen player — the host stays in the room, and the jam provider broadcasts
@@ -562,7 +594,7 @@ export default function JamRoomScreen() {
         <JamTrackCard
           msg={item}
           isMe={item.senderId === myIdRef.current}
-          canPlay={isHost || permissions.can_change_track}
+          canPlay={isHost}
           onPlay={handlePlayShared}
           onQueue={handleQueueShared}
         />
@@ -587,7 +619,7 @@ export default function JamRoomScreen() {
         </View>
       </View>
     );
-  }, [isHost, permissions.can_change_track, handlePlayShared, handleQueueShared]);
+  }, [isHost, handlePlayShared, handleQueueShared]);
 
   // Track to display in the player panel: host uses their own nowPlaying;
   // listener uses what the host broadcast.
@@ -742,6 +774,21 @@ export default function JamRoomScreen() {
           {tab === 'queue' ? <GradientBorder borderRadius={8} /> : null}
           <Text style={[styles.tabLabel, tab === 'queue' && styles.tabLabelActive]}>Queue</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === 'suggests' && styles.tabBtnActive]}
+          onPress={() => handleTabChange('suggests')}
+          activeOpacity={0.8}
+        >
+          {tab === 'suggests' ? <GradientBorder borderRadius={8} /> : null}
+          <View style={styles.tabLabelWrap}>
+            <Text style={[styles.tabLabel, tab === 'suggests' && styles.tabLabelActive]}>Suggests</Text>
+            {suggestsUnread > 0 && tab !== 'suggests' && (
+              <View style={styles.chatBadge}>
+                <Text style={styles.chatBadgeText}>{suggestsUnread > 99 ? '99+' : suggestsUnread}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Chat tab */}
@@ -789,16 +836,27 @@ export default function JamRoomScreen() {
         </View>
       )}
 
-      {/* Queue tab — same PlaybackContext queue as FullScreenPlayer */}
+      {/* Queue tab — the host's own queue for the host; the host's broadcast queue,
+          read-only, for listeners. */}
       {tab === 'queue' && (
         <View style={styles.flex}>
-          <QueueList
-            canTap={isHost || permissions.can_change_track}
-            canSwipe={isHost || permissions.can_change_track}
-            canReorder={isHost || permissions.can_change_track}
-            paddingBottom={80}
-          />
+          {isHost ? (
+            <QueueList paddingBottom={80} />
+          ) : (
+            <QueueList
+              externalData={listenerQueue}
+              onTap={onlyHostCanPlay}
+              canSwipe={false}
+              canReorder={false}
+              paddingBottom={80}
+            />
+          )}
         </View>
+      )}
+
+      {/* Suggests tab */}
+      {tab === 'suggests' && (
+        <JamSuggestsTab isHost={isHost} hostName={hostName} />
       )}
 
       <JamExitModal
