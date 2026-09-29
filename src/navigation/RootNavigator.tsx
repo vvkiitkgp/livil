@@ -161,6 +161,27 @@ function SplashScreen() {
 
 const LAST_SEEN_HEARTBEAT_MS = 5 * 60_000;
 
+/**
+ * Finishing a sign-in from a deep link (Google / magic link / password reset) makes a
+ * network call the instant the OS brings the app back from the browser — and iOS often
+ * has not reconnected the app's network yet, so a single attempt failed with "Network
+ * request failed" and the sign-in was simply lost. Retry transient network failures a
+ * few times with backoff; any other error (bad or expired code) returns at once.
+ */
+async function withNetworkRetry<T extends { error: { message: string } | null }>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  let result = await fn();
+  for (const waitMs of [800, 1600, 3200]) {
+    if (!result.error || !/network request failed|failed to fetch|network/i.test(result.error.message)) {
+      return result;
+    }
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    result = await fn();
+  }
+  return result;
+}
+
 // iOS 26 turned on swipe-ANYWHERE-to-go-back by default (fullScreenGestureEnabled). On a
 // screen with a horizontal scrubber (song cards, the jam seek bar) every rightward drag
 // then popped the screen instead of seeking. Those screens keep only the edge swipe.
@@ -332,7 +353,7 @@ export default function RootNavigator() {
 
       // PKCE flow: code arrives as a query param (?code=…)
       if (url.includes('code=')) {
-        const { error } = await supabase.auth.exchangeCodeForSession(url);
+        const { error } = await withNetworkRetry(() => supabase.auth.exchangeCodeForSession(url));
         if (error) { console.error('[deeplink] exchangeCodeForSession error:', error.message, error.status); }
         else if (isRecovery) { setPasswordRecoveryPending(true); }
         return;
@@ -344,7 +365,8 @@ export default function RootNavigator() {
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
         if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          const { error } = await withNetworkRetry(() =>
+            supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }));
           if (error) { console.error('[deeplink] setSession error:', error.message); }
           else if (isRecovery) { setPasswordRecoveryPending(true); }
           return;
