@@ -334,6 +334,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/account-deletion-liv74.test.sql
 
+      # First-run guide — profiles.guide_seen_at. The owner stamps their own row when
+      # the tour is finished or skipped; nobody else can clear it (which would force
+      # the tour back onto them) or rewrite it.
+      - name: first-run guide tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/first-run-guide.test.sql
+
       # profiles.comments_friends_only shipped in 1.1.14 with a Settings switch and NO
       # enforcement — post_comments_insert_self checked only `author_id = auth.uid()`,
       # so the control looked like protection and was not one. Step 1 is that exact
@@ -746,6 +756,28 @@ jobs:
             BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
           fi
           node scripts/enforce-board-readonly.mjs --range "$BASE..HEAD"
+
+  guide-drift:
+    name: first-run guide still true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The first-run guide draws fifteen real behaviours of the app. A guide that
+      # nobody re-checks describes the app as it was the day it shipped. This fails
+      # when a change touches a file a card depicts (src/components/guide/coverage.json)
+      # unless the guide changed too, or the PR says `Guide: reviewed`.
+      - name: Depicted behaviour changed → guide updated or reviewed
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          node scripts/check-guide-drift.mjs --range "$BASE..HEAD"
 
   agent-scope:
     name: agents write only where tests exist

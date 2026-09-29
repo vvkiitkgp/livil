@@ -13,7 +13,8 @@ import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
 import TermsAcceptScreen from '../screens/auth/TermsAcceptScreen';
 import { hasAcceptedCurrentTerms } from '../services/terms';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
-import { getUsernameSet } from '../services/profileService';
+import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
+import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
 import RepostScreen from '../screens/main/RepostScreen';
 import StoryViewerScreen from '../screens/main/StoryViewerScreen';
@@ -188,6 +189,11 @@ async function withNetworkRetry<T extends { error: { message: string } | null }>
 // then popped the screen instead of seeking. Those screens keep only the edge swipe.
 const SCRUBBER_SCREEN = { animation: 'slide_from_right', fullScreenGestureEnabled: false } as const;
 
+/** Settings → "Replay the guide": the same screen as a pushed route, closing on done. */
+function FirstRunGuideReplay({ navigation }: { navigation: { goBack: () => void } }) {
+  return <FirstRunGuideScreen mode="replay" onDone={() => navigation.goBack()} />;
+}
+
 export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -198,6 +204,11 @@ export default function RootNavigator() {
   // gate: agreeing to use the service comes before setting up an identity within it.
   // Also fires for EXISTING users when TERMS_VERSION changes, with source 'reaccept'.
   const [needsTerms, setNeedsTerms] = useState<boolean | null>(null);
+  // null = unresolved. Gates the app behind the first-run guide, AFTER terms and the
+  // username: it is the last thing before Home, and only ever once per account
+  // (`profiles.guide_seen_at`). Resolved alongside the other two so the splash covers
+  // it and a new user never sees a flash of Home before their tour.
+  const [needsGuide, setNeedsGuide] = useState<boolean | null>(null);
   // Set when a livil://auth deep link carries type=recovery (password reset
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
@@ -418,9 +429,18 @@ export default function RootNavigator() {
           // fails open, so a network problem lets them in rather than walling them out.
           const accepted = await hasAcceptedCurrentTerms(s.user.id);
           if (!cancelled) { setNeedsTerms(!accepted); }
+          // getGuideSeen fails closed, so a network problem skips the tour rather than
+          // replaying it on a returning user; Settings can always bring it back.
+          try {
+            const seen = await getGuideSeen(s.user.id);
+            if (!cancelled) { setNeedsGuide(!seen); }
+          } catch {
+            if (!cancelled) { setNeedsGuide(false); }
+          }
         } else {
           setNeedsUsername(null);
           setNeedsTerms(null);
+          setNeedsGuide(null);
         }
         if (!cancelled) { setSession(s); }
       })
@@ -455,6 +475,7 @@ export default function RootNavigator() {
           pushUserIdRef.current = null;
           setNeedsUsername(null);
           setNeedsTerms(null);
+          setNeedsGuide(null);
           setPasswordRecoveryPending(false);
           if (prevUserId) void unregisterDevice(prevUserId);
           // Same reasoning as the cache clear above, but for the OS icon: the next
@@ -468,11 +489,15 @@ export default function RootNavigator() {
           void registerDeviceForUser(s.user.id);
           setNeedsUsername(null);
           setNeedsTerms(null);
+          setNeedsGuide(null);
           void getUsernameSet(s.user.id)
             .then(set => { if (!cancelled) { setNeedsUsername(!set); } })
             .catch(() => { if (!cancelled) { setNeedsUsername(false); } });
           void hasAcceptedCurrentTerms(s.user.id)
             .then(ok => { if (!cancelled) { setNeedsTerms(!ok); } });
+          void getGuideSeen(s.user.id)
+            .then(seen => { if (!cancelled) { setNeedsGuide(!seen); } })
+            .catch(() => { if (!cancelled) { setNeedsGuide(false); } });
         }
       }
     });
@@ -485,7 +510,7 @@ export default function RootNavigator() {
 
   // Splash is showing while we either load or resolve the onboarding gate.
   const onSplash =
-    loading || (!!session && (needsUsername === null || needsTerms === null));
+    loading || (!!session && (needsUsername === null || needsTerms === null || needsGuide === null));
 
   // Once that resolves, crossfade the splash overlay out (fade + gentle scale)
   // — dissolving into whatever's underneath: the app, or the username gate.
@@ -534,6 +559,17 @@ export default function RootNavigator() {
               null
             }
             onComplete={() => setNeedsUsername(false)}
+          />
+        ) : session?.user?.id && needsGuide ? (
+          <FirstRunGuideScreen
+            onDone={() => {
+              // Drop the gate first: the stamp is a courtesy write, and a slow network
+              // must not hold a new user on the last card. If it fails they may see the
+              // tour once more on another device — acceptable; the reverse (a tour that
+              // never ends) is not.
+              setNeedsGuide(false);
+              void markGuideSeen(session.user.id).catch(() => {});
+            }}
           />
         ) : (
     <JamProvider>
@@ -612,6 +648,13 @@ export default function RootNavigator() {
               component={SettingsScreen}
               options={{
                 animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="FirstRunGuide"
+              component={FirstRunGuideReplay}
+              options={{
+                animation: 'slide_from_bottom',
               }}
             />
             <Stack.Screen

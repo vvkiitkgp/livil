@@ -201,6 +201,31 @@ export async function getCommentsFriendsOnly(userId: string): Promise<boolean> {
   return (data as { comments_friends_only: boolean | null } | null)?.comments_friends_only ?? false;
 }
 
+/**
+ * Whether the first-run guide (the animated tour shown once after sign-up) has been
+ * finished or skipped. NULL on a brand-new account; the migration stamped every
+ * account that predates the guide. Fails CLOSED (returns true) so a transient
+ * network error never shows a returning user a tour they already sat through.
+ */
+export async function getGuideSeen(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('guide_seen_at')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return (data as { guide_seen_at: string | null } | null)?.guide_seen_at != null;
+}
+
+/** Stamps the guide as seen. Idempotent; the owner's own row only (profiles_update_own). */
+export async function markGuideSeen(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ guide_seen_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) {throw error;}
+}
+
 export async function updateCommentsFriendsOnly(
   userId: string,
   friendsOnly: boolean,

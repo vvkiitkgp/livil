@@ -156,6 +156,12 @@ export default function SettingsScreen() {
             subtitle="Listening visibility, your data, account deletion"
             onPress={() => navigation.navigate('PrivacyData')}
           />
+          <SettingsRow
+            icon="handTap"
+            label="Replay the guide"
+            subtitle="The quick tour from your first day, any time"
+            onPress={() => navigation.navigate('FirstRunGuide')}
+          />
         </SettingsSection>
 
         <SettingsSection title="Support">
