@@ -15,7 +15,14 @@ import {
   KeyboardStickyView,
   useKeyboardHandler,
 } from 'react-native-keyboard-controller';
-import { runOnJS } from 'react-native-reanimated';
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,6 +30,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import FormInput from '../../components/FormInput';
 import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
@@ -179,6 +187,10 @@ export default function JamRoomScreen() {
   const [chatText, setChatText] = useState('');
   const [sending, setSending] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // The user's choice: tabs at full height (player panel tucked away) or the default
+  // half height. The keyboard always forces full height, whatever this says.
+  const [tabsExpanded, setTabsExpanded] = useState(false);
+  const panelCollapsed = keyboardOpen || tabsExpanded;
   const [exitModalOpen, setExitModalOpen] = useState(false);
   const [exitInFlight, setExitInFlight] = useState(false);
   const [jamEndedOpen, setJamEndedOpen] = useState(false);
@@ -386,6 +398,8 @@ export default function JamRoomScreen() {
 
   const handlePlayPause = useCallback(() => {
     if (!permissions.can_play_pause) { return; }
+    // Same tap the play buttons give elsewhere in the app (Android + iOS).
+    haptics.tap();
     if (activePostId) {
       handlersRef.current?.pause();
     } else {
@@ -637,6 +651,56 @@ export default function JamRoomScreen() {
     return null;
   }, [isHost, nowPlaying, remotePlayback]);
 
+  // ── Half ↔ full height for the tab area ─────────────────────────────────
+  const panelHeight = useSharedValue(0);      // measured natural height of the panel
+  const panelProgress = useSharedValue(0);    // 0 = panel shown, 1 = tucked away
+  useEffect(() => {
+    panelProgress.value = withTiming(panelCollapsed ? 1 : 0, {
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [panelCollapsed, panelProgress]);
+  const panelWrapStyle = useAnimatedStyle(() => {
+    // Before the first measurement, let the panel size itself naturally.
+    if (panelHeight.value === 0) { return {}; }
+    return {
+      height: panelHeight.value * (1 - panelProgress.value),
+      opacity: 1 - panelProgress.value,
+      overflow: 'hidden',
+    };
+  });
+  // Scrolling INTO a list (away from its start) tucks the panel away; scrolling back
+  // to the start brings it back — but only if scrolling is what hid it, so a handle
+  // choice is never undone by a scroll.
+  const expandedByScrollRef = useRef(false);
+  const onTabListScroll = useCallback((offsetY: number) => {
+    if (offsetY > 60) {
+      setTabsExpanded(prev => {
+        if (!prev) { expandedByScrollRef.current = true; }
+        return true;
+      });
+    } else if (offsetY <= 0 && expandedByScrollRef.current) {
+      expandedByScrollRef.current = false;
+      setTabsExpanded(false);
+    }
+  }, []);
+
+  const handleGesture = useMemo(() => {
+    const tap = Gesture.Tap().runOnJS(true).onEnd(() => {
+      expandedByScrollRef.current = false;
+      setTabsExpanded(v => !v);
+    });
+    const pan = Gesture.Pan()
+      .runOnJS(true)
+      .activeOffsetY([-10, 10])
+      .onEnd(e => {
+        expandedByScrollRef.current = false;
+        if (e.translationY < -20 || e.velocityY < -300) { setTabsExpanded(true); }
+        else if (e.translationY > 20 || e.velocityY > 300) { setTabsExpanded(false); }
+      });
+    return Gesture.Exclusive(pan, tap);
+  }, []);
+
   const durationSec = displayDurationMs / 1000;
   const positionSec = displayPositionMs / 1000;
 
@@ -660,9 +724,17 @@ export default function JamRoomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Playback panel — collapsed while keyboard is open to free space for chat */}
-      {!keyboardOpen && (
-      <View style={styles.playerPanel}>
+      {/* Playback panel — slides away while the keyboard is open or the user has
+          dragged the tabs to full height. Kept mounted so its height is known and the
+          slide is smooth both ways. */}
+      <Reanimated.View style={panelWrapStyle}>
+      <View
+        style={styles.playerPanel}
+        onLayout={e => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) { panelHeight.value = h; }
+        }}
+      >
         {/* Album art */}
         <View style={styles.artWrap}>
           {displayTrack?.coverArt ? (
@@ -747,7 +819,18 @@ export default function JamRoomScreen() {
           )}
         </View>
       </View>
-      )}
+      </Reanimated.View>
+
+      {/* Drag handle: up (or tap) = tabs at full height, down (or tap) = half. */}
+      <GestureDetector gesture={handleGesture}>
+        <View
+          style={styles.handleHit}
+          accessibilityRole="button"
+          accessibilityLabel={panelCollapsed ? 'Show the player' : 'Expand chat, queue and suggestions'}
+        >
+          <View style={styles.handleBar} />
+        </View>
+      </GestureDetector>
 
       {/* Tab toggle */}
       <View style={styles.tabRow}>
@@ -806,6 +889,8 @@ export default function JamRoomScreen() {
               renderScrollComponent={renderChatScrollComponent}
               inverted
               contentContainerStyle={styles.chatList}
+              onScroll={e => onTabListScroll(e.nativeEvent.contentOffset.y)}
+              scrollEventThrottle={32}
             />
           )}
           <KeyboardStickyView offset={{ closed: 0 }}>
@@ -856,7 +941,7 @@ export default function JamRoomScreen() {
 
       {/* Suggests tab */}
       {tab === 'suggests' && (
-        <JamSuggestsTab isHost={isHost} hostName={hostName} />
+        <JamSuggestsTab isHost={isHost} hostName={hostName} onListScroll={onTabListScroll} />
       )}
 
       <JamExitModal
@@ -908,6 +993,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   endBtnText: { color: COLORS.error, fontSize: 13, fontWeight: '700' },
+
+  // Tab-area height handle
+  handleHit: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
+  handleBar: { width: 38, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted },
 
   // Player panel
   playerPanel: {

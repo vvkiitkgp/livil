@@ -81,9 +81,12 @@ function Cover({ post }: { post: FeedPost }) {
 export default function JamSuggestsTab({
   isHost,
   hostName,
+  onListScroll,
 }: {
   isHost: boolean;
   hostName: string;
+  /** Scroll offset of the list, so the jam room can give it full height. */
+  onListScroll?: (offsetY: number) => void;
 }) {
   const { groups, suggest, playNow, addToQueue, dismiss } = useJamSuggestions();
   const { showToast } = useToast();
@@ -235,6 +238,8 @@ export default function JamSuggestsTab({
           keyExtractor={g => g.postId}
           renderItem={renderGroup}
           contentContainerStyle={styles.list}
+          onScroll={e => onListScroll?.(e.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={32}
           ListEmptyComponent={empty}
         />
       )}
