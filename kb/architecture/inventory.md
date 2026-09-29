@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-256 TypeScript file(s) under `src/`, 64,402 lines.
+256 TypeScript file(s) under `src/`, 64,420 lines.
 
 ## Size hotspots
 
@@ -27,15 +27,15 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 1706 |
+| `src/screens/main/ConversationScreen.tsx` | 1715 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
 | `src/screens/main/ProfileScreen.tsx` | 1181 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
+| `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/screens/main/JamRoomScreen.tsx` | 1147 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -99,17 +99,17 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-44 file(s), 22,918 lines.
+44 file(s), 22,936 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1706 |
+| `src/screens/main/ConversationScreen.tsx` | 1715 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
 | `src/screens/main/ProfileScreen.tsx` | 1181 |
+| `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/screens/main/JamRoomScreen.tsx` | 1147 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
