@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-256 TypeScript file(s) under `src/`, 64,420 lines.
+257 TypeScript file(s) under `src/`, 64,732 lines.
 
 ## Size hotspots
 
@@ -32,10 +32,10 @@ reading alone (Constitution P28).
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
-| `src/screens/main/ProfileScreen.tsx` | 1181 |
+| `src/screens/main/ProfileScreen.tsx` | 1186 |
+| `src/screens/main/UserProfileScreen.tsx` | 1158 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
-| `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
@@ -70,6 +70,7 @@ case the call fails silently wherever its result is discarded.
 | `PlaylistDetail` | `{ playlistId: string` |
 | `EditPlaylist` | `{ playlistId: string }` |
 | `Following` | `undefined` |
+| `ProfileFriends` | `{ userId: string` |
 | `RecentlyPlayed` | `undefined` |
 | `PostDetail` | `{ postId: string` |
 | `EditProfile` | `undefined` |
@@ -99,7 +100,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-44 file(s), 22,936 lines.
+45 file(s), 23,191 lines.
 
 | File | Lines |
 |---|---:|
@@ -107,9 +108,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
-| `src/screens/main/ProfileScreen.tsx` | 1181 |
+| `src/screens/main/ProfileScreen.tsx` | 1186 |
+| `src/screens/main/UserProfileScreen.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
-| `src/screens/main/UserProfileScreen.tsx` | 1154 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -133,6 +134,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 268 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 255 |
+| `src/screens/main/ProfileFriendsScreen.tsx` | 246 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
@@ -250,7 +252,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-56 file(s), 11,776 lines.
+56 file(s), 11,822 lines.
 
 | File | Lines |
 |---|---:|
@@ -292,6 +294,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
 | `src/services/appBadge.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
+| `src/services/follows.ts` | 94 |
 | `src/services/mediaPicks.ts` | 93 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
@@ -304,7 +307,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/createTrackStreamingGrant.test.ts` | 64 |
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
-| `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
 | `src/services/jamHeartbeat.ts` | 43 |
 | `src/services/friendActivity.ts` | 33 |

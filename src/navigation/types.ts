@@ -42,6 +42,9 @@ export type RootStackParamList = {
   PlaylistDetail: { playlistId: string; playlistName: string };
   EditPlaylist: { playlistId: string };
   Following: undefined;
+  // Anyone's accepted friends — public to every signed-in viewer. `username` is only
+  // for the header before the list loads; omit it for your own profile.
+  ProfileFriends: { userId: string; username?: string };
   RecentlyPlayed: undefined;
   // A single post on its own page. Where post notifications land: `openComments`
   // opens the comments (pulsing `highlightCommentId`), `openLikers` opens the likes

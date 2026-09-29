@@ -751,7 +751,12 @@ export default function ProfileScreen() {
             <Text style={styles.socialPillLabel}>Fans</Text>
           </TouchableOpacity>
           <View style={styles.socialPillDivider} />
-          <TouchableOpacity style={styles.socialPill} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.socialPill}
+            activeOpacity={0.85}
+            onPress={() => profile?.id && navigation.navigate('ProfileFriends', { userId: profile.id })}
+            disabled={!profile?.id}
+          >
             <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
             <Text style={styles.socialPillLabel}>Friends</Text>
           </TouchableOpacity>

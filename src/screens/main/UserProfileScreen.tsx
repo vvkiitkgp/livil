@@ -757,10 +757,14 @@ export default function UserProfileScreen() {
                 <Text style={styles.socialPillLabel}>Fans</Text>
               </View>
               <View style={styles.socialPillDivider} />
-              <View style={styles.socialPill}>
+              <TouchableOpacity
+                style={styles.socialPill}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ProfileFriends', { userId, username: profile?.username })}
+              >
                 <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
                 <Text style={styles.socialPillLabel}>Friends</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.socialPillDivider} />
               <View style={styles.socialPill}>
                 <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
