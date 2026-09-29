@@ -70,17 +70,29 @@ export default function PostDetailScreen({ navigation, route }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // One-shot arrival intent. The short delay lets the push animation settle first, so
-  // the sheet slides up over a page that is already there.
+  // The comments and likes sheets are RN <Modal>s, and iOS silently refuses to present a
+  // modal while the native-stack push is still animating — a fixed delay opened the
+  // sheet into nothing whenever the post loaded before the slide-in finished. So wait
+  // for the push to end (transitionEnd), with a fallback in case that event is missed.
+  const [settled, setSettled] = useState(false);
   useEffect(() => {
-    if (arrivalHandledRef.current || !post) { return; }
+    const unsub = navigation.addListener('transitionEnd', e => {
+      if (!e.data.closing) { setSettled(true); }
+    });
+    const fallback = setTimeout(() => setSettled(true), 900);
+    return () => { unsub(); clearTimeout(fallback); };
+  }, [navigation]);
+
+  // One-shot arrival intent: once the post is loaded AND the page is settled.
+  useEffect(() => {
+    if (arrivalHandledRef.current || !post || !settled) { return; }
     arrivalHandledRef.current = true;
     if (!openComments && !openLikers) { return; }
     arrivalTimerRef.current = setTimeout(() => {
       if (openComments) { setCommentsOpen(true); }
       else if (openLikers && post.likesCount > 0) { setLikersOpen(true); }
-    }, 350);
-  }, [post, openComments, openLikers]);
+    }, 50);
+  }, [post, settled, openComments, openLikers]);
 
   const handleRefresh = useCallback(async () => {
     haptics.select();
