@@ -28,5 +28,15 @@ export function jamHeartbeatTick(isPlaying: boolean): void {
   const now = Date.now();
   if (now - lastBeatAt < JAM_HEARTBEAT_MS) { return; }
   lastBeatAt = now;
-  void db.rpc('jam_host_heartbeat', { p_jam_room_id: target, p_is_playing: isPlaying });
+  // A supabase-js query is LAZY: it is only sent when something awaits / .then()s it.
+  // `void db.rpc(...)` alone never left the phone, so no heartbeat was ever recorded and
+  // no jam could end as "host away". Subscribe to send it; failures are harmless — the
+  // next beat 30s later retries.
+  db.rpc('jam_host_heartbeat', { p_jam_room_id: target, p_is_playing: isPlaying })
+    .then(
+      ({ error }: { error: { message: string } | null }) => {
+        if (error) { console.warn('[jam] heartbeat failed', error.message); }
+      },
+      () => { /* offline — the next beat retries */ },
+    );
 }
