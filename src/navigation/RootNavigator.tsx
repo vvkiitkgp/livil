@@ -161,6 +161,11 @@ function SplashScreen() {
 
 const LAST_SEEN_HEARTBEAT_MS = 5 * 60_000;
 
+// iOS 26 turned on swipe-ANYWHERE-to-go-back by default (fullScreenGestureEnabled). On a
+// screen with a horizontal scrubber (song cards, the jam seek bar) every rightward drag
+// then popped the screen instead of seeking. Those screens keep only the edge swipe.
+const SCRUBBER_SCREEN = { animation: 'slide_from_right', fullScreenGestureEnabled: false } as const;
+
 export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -562,16 +567,12 @@ export default function RootNavigator() {
             <Stack.Screen
               name="UserProfile"
               component={UserProfileScreen}
-              options={{
-                animation: 'slide_from_right',
-              }}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="PostDetail"
               component={PostDetailScreen}
-              options={{
-                animation: 'slide_from_right',
-              }}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="EditProfile"
@@ -710,7 +711,7 @@ export default function RootNavigator() {
             <Stack.Screen
               name="JamRoom"
               component={JamRoomScreen}
-              options={{ animation: 'slide_from_right' }}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="FriendRequests"
