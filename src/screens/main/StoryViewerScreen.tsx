@@ -209,7 +209,29 @@ function AuthorFacePreview({ item }: { item: ViewerItem }) {
   );
 }
 
+/**
+ * A jam LISTENER cannot open stories: a story drives the single engine (clip session),
+ * which would pull the listener off the host's track — and the playback guard would
+ * divert the story's own loads into jam suggestions. Checked here, before the viewer
+ * mounts, so none of its effects run. ADR-0023.
+ */
 export default function StoryViewerScreen() {
+  const { jamLocked } = usePlayback();
+  if (jamLocked) { return <JamBlockedStoryViewer />; }
+  return <StoryViewerContent />;
+}
+
+function JamBlockedStoryViewer() {
+  const navigation = useNavigation<StoryViewerNav>();
+  const { showToast } = useToast();
+  useEffect(() => {
+    showToast("You're in a jam — stories are paused until you leave it", { kind: 'info' });
+    navigation.goBack();
+  }, [navigation, showToast]);
+  return null;
+}
+
+function StoryViewerContent() {
   const route = useRoute<StoryViewerRoute>();
   const navigation = useNavigation<StoryViewerNav>();
   const playback = usePlayback();

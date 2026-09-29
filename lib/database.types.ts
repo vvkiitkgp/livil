@@ -1932,21 +1932,31 @@ export type Database = {
       }
       user_recent_tracks: {
         Row: {
+          last_post_id: string | null
           played_at: string
           track_id: string
           user_id: string
         }
         Insert: {
+          last_post_id?: string | null
           played_at?: string
           track_id: string
           user_id: string
         }
         Update: {
+          last_post_id?: string | null
           played_at?: string
           track_id?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "user_recent_tracks_last_post_id_fkey"
+            columns: ["last_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_recent_tracks_track_id_fkey"
             columns: ["track_id"]

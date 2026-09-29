@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -232,6 +233,14 @@ type PlaybackContextValue = {
   // --- jam lock (disables FloatingPlayer gestures while listening in a jam) ---
   jamLocked: boolean;
   setJamLocked: (locked: boolean) => void;
+  /**
+   * While jamLocked (a jam LISTENER), a user's "play this" never reaches the engine:
+   * setNowPlaying / addToQueue hand the track to this handler instead (the jam's
+   * Suggests), and requestPlay / setQueue / openFullScreenPlayer do nothing. ADR-0023.
+   */
+  registerListenerTapHandler: (handler: ((info: NowPlayingInfo) => void) | null) => void;
+  /** Run the JAM'S OWN sync calls (loading the host's track) past the listener guard. */
+  runAsJamSync: (fn: () => void) => void;
 
   // --- shuffle / repeat ---
   shuffleEnabled: boolean;
@@ -271,7 +280,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const activeRef = useRef<string | null>(null);
 
+  // The post currently loaded. A setNowPlaying for the SAME post is a patch of the track
+  // already playing (GAP adds albumTitle on load, the full-screen player refreshes like
+  // counts) — never a listener's tap — so the guard lets it through. Without this, a
+  // listener "suggested" the host's current song the moment it loaded.
+  const nowPlayingPostIdRef = useRef<string | null>(null);
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
+  useEffect(() => { nowPlayingPostIdRef.current = nowPlaying?.postId ?? null; }, [nowPlaying]);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isImmersive, setIsImmersiveState] = useState(false);
@@ -279,6 +294,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [clipSessionPrevTrack, setClipSessionPrevTrack] = useState<NowPlayingInfo | null>(null);
   const [isRepostOpen, setIsRepostOpenState] = useState(false);
   const [jamLocked, setJamLockedState] = useState(false);
+  // Refs for the listener guard: read synchronously inside the (stable) setters below.
+  const jamLockedRef = useRef(false);
+  const jamSyncRef = useRef(false);
+  const listenerTapHandlerRef = useRef<((info: NowPlayingInfo) => void) | null>(null);
+  /** True when a user action must be diverted rather than played (a jam listener). */
+  const listenerGuarded = () => jamLockedRef.current && !jamSyncRef.current;
   const [shuffleEnabled, setShuffleEnabledState] = useState(false);
   const [repeatMode, setRepeatModeState] = useState<RepeatMode>('off');
   const [isBuffering, setIsBufferingState] = useState(false);
@@ -332,6 +353,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- existing ---
 
   const requestPlay = useCallback((postId: string) => {
+    if (listenerGuarded()) { return; }
     if (activeRef.current === postId) { return; }
     console.log(`[LIVIL][CTX] requestPlay postId=${postId}`);
     playSourceRef.current = 'user';
@@ -364,6 +386,10 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- now playing ---
 
   const setNowPlaying = useCallback((info: NowPlayingInfo) => {
+    if (listenerGuarded() && info.postId !== nowPlayingPostIdRef.current) {
+      listenerTapHandlerRef.current?.(info);
+      return;
+    }
     setNowPlayingState(prev => {
       const isNewPost = prev?.postId !== info.postId;
       if (isNewPost) {
@@ -526,6 +552,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setQueue = useCallback((posts: NowPlayingInfo[], startIndex: number, source: string) => {
+    if (listenerGuarded()) { return; }
     // Orphaned reposts (original upload deleted → originalPostId null) keep a
     // valid track_id, so they'd play fine from the queue even though their feed
     // card is a non-playable tombstone. Strip them here — the single chokepoint
@@ -637,11 +664,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, [playTrackAtIndex, generateShuffleOrder]);
 
   const addToQueue = useCallback((track: NowPlayingInfo) => {
+    if (listenerGuarded()) { listenerTapHandlerRef.current?.(track); return; }
     userQueueRef.current = [...userQueueRef.current, track];
     bumpQueue();
   }, [bumpQueue]);
 
   const playTrackNextFn = useCallback((track: NowPlayingInfo) => {
+    if (listenerGuarded()) { listenerTapHandlerRef.current?.(track); return; }
     userQueueRef.current = [track, ...userQueueRef.current];
     bumpQueue();
   }, [bumpQueue]);
@@ -684,6 +713,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [pendingTab, setPendingTab] = useState<'queue' | 'info' | null>(null);
 
   const openFullScreenPlayer = useCallback((tab?: 'queue' | 'info') => {
+    if (listenerGuarded()) { return; }
     setPendingTab(tab ?? null);
     setIsFullScreenOpen(true);
   }, []);
@@ -714,7 +744,20 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setJamLocked = useCallback((locked: boolean) => {
+    jamLockedRef.current = locked;
     setJamLockedState(locked);
+  }, []);
+
+  const registerListenerTapHandler = useCallback(
+    (handler: ((info: NowPlayingInfo) => void) | null) => {
+      listenerTapHandlerRef.current = handler;
+    },
+    [],
+  );
+
+  const runAsJamSync = useCallback((fn: () => void) => {
+    jamSyncRef.current = true;
+    try { fn(); } finally { jamSyncRef.current = false; }
   }, []);
 
   // Idempotent: the controller→JS event path (car HU shuffle toggle → native
@@ -895,6 +938,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setRepostOpen,
       jamLocked,
       setJamLocked,
+      registerListenerTapHandler,
+      runAsJamSync,
       shuffleEnabled,
       toggleShuffle,
       repeatMode,
@@ -957,6 +1002,8 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       setRepostOpen,
       jamLocked,
       setJamLocked,
+      registerListenerTapHandler,
+      runAsJamSync,
       shuffleEnabled,
       toggleShuffle,
       repeatMode,

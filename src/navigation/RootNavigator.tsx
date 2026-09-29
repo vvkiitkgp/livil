@@ -26,6 +26,7 @@ import EditAlbumScreen from '../screens/main/EditAlbumScreen';
 import EditPlaylistScreen from '../screens/main/EditPlaylistScreen';
 import FollowingScreen from '../screens/main/FollowingScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
+import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
 import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
@@ -43,6 +44,7 @@ import BlockedAccountsScreen from '../screens/main/BlockedAccountsScreen';
 import DeleteAccountScreen from '../screens/main/DeleteAccountScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
+import { JamSuggestionsProvider } from '../contexts/JamSuggestionsContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
 import { StoriesProvider } from '../contexts/StoriesContext';
 import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
@@ -158,6 +160,32 @@ function SplashScreen() {
 }
 
 const LAST_SEEN_HEARTBEAT_MS = 5 * 60_000;
+
+/**
+ * Finishing a sign-in from a deep link (Google / magic link / password reset) makes a
+ * network call the instant the OS brings the app back from the browser — and iOS often
+ * has not reconnected the app's network yet, so a single attempt failed with "Network
+ * request failed" and the sign-in was simply lost. Retry transient network failures a
+ * few times with backoff; any other error (bad or expired code) returns at once.
+ */
+async function withNetworkRetry<T extends { error: { message: string } | null }>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  let result = await fn();
+  for (const waitMs of [800, 1600, 3200]) {
+    if (!result.error || !/network request failed|failed to fetch|network/i.test(result.error.message)) {
+      return result;
+    }
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    result = await fn();
+  }
+  return result;
+}
+
+// iOS 26 turned on swipe-ANYWHERE-to-go-back by default (fullScreenGestureEnabled). On a
+// screen with a horizontal scrubber (song cards, the jam seek bar) every rightward drag
+// then popped the screen instead of seeking. Those screens keep only the edge swipe.
+const SCRUBBER_SCREEN = { animation: 'slide_from_right', fullScreenGestureEnabled: false } as const;
 
 export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
@@ -297,9 +325,9 @@ export default function RootNavigator() {
       // App Links are verified. Checked BEFORE the auth guard below, which returns
       // early on anything that is not an auth link and would otherwise swallow this.
       //
-      // There is no PostDetail route: a single post is shown by opening its author's
-      // profile focused on it, which is the same path ActivityCenter notifications
-      // already take. That needs the author id, so the post is resolved first — and
+      // Shown by opening its author's profile focused on it (the PostDetail route is
+      // where ActivityCenter notifications land; shared links have not moved to it).
+      // That needs the author id, so the post is resolved first — and
       // if it cannot be (deleted, or the viewer is signed out and RLS returns
       // nothing) we say so rather than navigating somewhere blank.
       const sharedPostId = postIdFromUrl(url);
@@ -324,6 +352,9 @@ export default function RootNavigator() {
         new URLSearchParams(fragment).get('type') === 'recovery';
 
       // PKCE flow: code arrives as a query param (?code=…)
+      // Not retried: a failed exchange deletes the stored PKCE code verifier (auth-js
+      // clears it in its catch), so every retry would fail with "code verifier not
+      // found". setSession below has no such one-shot state and IS retried.
       if (url.includes('code=')) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
         if (error) { console.error('[deeplink] exchangeCodeForSession error:', error.message, error.status); }
@@ -337,7 +368,8 @@ export default function RootNavigator() {
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
         if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          const { error } = await withNetworkRetry(() =>
+            supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }));
           if (error) { console.error('[deeplink] setSession error:', error.message); }
           else if (isRecovery) { setPasswordRecoveryPending(true); }
           return;
@@ -506,6 +538,7 @@ export default function RootNavigator() {
     <JamProvider>
     <RealtimeConnectionGate />
     <JamRealtimeProvider>
+    <JamSuggestionsProvider>
     <RelationshipProvider>
     <StoriesProvider>
     <ChromeVisibilityProvider>
@@ -559,9 +592,12 @@ export default function RootNavigator() {
             <Stack.Screen
               name="UserProfile"
               component={UserProfileScreen}
-              options={{
-                animation: 'slide_from_right',
-              }}
+              options={SCRUBBER_SCREEN}
+            />
+            <Stack.Screen
+              name="PostDetail"
+              component={PostDetailScreen}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="EditProfile"
@@ -700,7 +736,7 @@ export default function RootNavigator() {
             <Stack.Screen
               name="JamRoom"
               component={JamRoomScreen}
-              options={{ animation: 'slide_from_right' }}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="FriendRequests"
@@ -738,6 +774,7 @@ export default function RootNavigator() {
     </ChromeVisibilityProvider>
     </StoriesProvider>
     </RelationshipProvider>
+    </JamSuggestionsProvider>
     </JamRealtimeProvider>
     </JamProvider>
         ))}

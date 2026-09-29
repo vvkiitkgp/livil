@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-25
+last_verified: 2026-09-29
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 117 migration(s) in `supabase/migrations/`.
+Reconstructed from 120 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-47 table(s).
+48 table(s).
 
 ### `activity_notifications`
 
@@ -317,6 +317,10 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 
 - `primary key (jam_room_id, user_id)`
 
+**Triggers**
+
+- `trg_jam_room_members_insert_guard` — before insert (`20260930000000_jam_suggestions.sql`)
+
 ### `jam_rooms`
 
 RLS enabled · defined in `20260528000000_chat_jam.sql`
@@ -334,9 +338,46 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 | `started_at` | `timestamptz default now()` |
 | `ended_at` | `timestamptz` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `last_played_at` | `timestamptz` | `20260930000000_jam_suggestions.sql` |
+
 **Indexes**
 
 - `(unnamed)` `(conversation_id) where status = 'active'`
+
+**Triggers**
+
+- `trg_jam_rooms_clear_suggestions` — after update of status (`20260930000000_jam_suggestions.sql`)
+- `trg_jam_rooms_guard` — before update (`20260930000000_jam_suggestions.sql`)
+
+### `jam_suggestions`
+
+RLS enabled · realtime · defined in `20260930000000_jam_suggestions.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `jam_room_id` | `uuid not null references public.jam_rooms (id) on delete cascade` |
+| `post_id` | `uuid not null references public.posts (id) on delete cascade` |
+| `suggested_by` | `uuid not null references public.profiles (id) on delete cascade` |
+| `status` | `text not null default 'waiting' check (status in ('waiting', 'queued', 'played'))` |
+| `created_at` | `timestamptz not null default now()` |
+| `status_at` | `timestamptz` |
+
+**Table constraints**
+
+- `unique (jam_room_id, post_id, suggested_by)`
+
+**Indexes**
+
+- `jam_suggestions_room_created_idx` `(jam_room_id, created_at desc)`
+
+**Triggers**
+
+- `trg_jam_suggestions_guard` — before insert or update (`20260930000000_jam_suggestions.sql`)
 
 ### `listen_sessions`
 
@@ -614,6 +655,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_post_likes_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
+- `trg_post_likes_activity_removed` — after delete (`20260929010000_like_notifications_follow_real_likes.sql`)
 
 ### `post_removals`
 
@@ -690,6 +732,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_post_views_count` — after insert (`20260722120000_capture_counter_triggers.sql`)
+- `trg_post_views_recent_tracks` — after insert (`20260929000000_recently_played_is_recorded.sql`)
 
 ### `posts`
 
@@ -1160,6 +1203,12 @@ RLS enabled · defined in `20260515120000_home_feed_listen_sessions_recent_track
 
 - `PRIMARY KEY (user_id, track_id)`
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `last_post_id` | `uuid references public.posts (id) on delete set null` | `20260929000000_recently_played_is_recorded.sql` |
+
 **Indexes**
 
 - `idx_user_recent_tracks_user_played` `(user_id, played_at DESC)`
@@ -1185,6 +1234,7 @@ same row-level security policies that gate ordinary reads.
 - `activity_notifications`
 - `conversation_members`
 - `friendships`
+- `jam_suggestions`
 - `listen_sessions`
 - `message_reactions`
 - `messages`
@@ -1200,6 +1250,10 @@ same row-level security policies that gate ordinary reads.
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |
+| `trg_jam_room_members_insert_guard` | `jam_room_members` | before insert | `20260930000000_jam_suggestions.sql` |
+| `trg_jam_rooms_clear_suggestions` | `jam_rooms` | after update of status | `20260930000000_jam_suggestions.sql` |
+| `trg_jam_rooms_guard` | `jam_rooms` | before update | `20260930000000_jam_suggestions.sql` |
+| `trg_jam_suggestions_guard` | `jam_suggestions` | before insert or update | `20260930000000_jam_suggestions.sql` |
 | `listen_sessions_stamp` | `listen_sessions` | before insert or update | `20260925000000_listening_now.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
@@ -1210,7 +1264,9 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
+| `trg_post_views_recent_tracks` | `post_views` | after insert | `20260929000000_recently_played_is_recorded.sql` |
 | `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |

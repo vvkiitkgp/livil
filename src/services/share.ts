@@ -333,9 +333,9 @@ export async function shareToConversations(
 /**
  * Where a shared post opens.
  *
- * There is no PostDetail route: a single post is shown by opening its author's profile
- * focused on it, which is the path ActivityCenter notifications already take. That needs
- * the author id, so the post has to be resolved first.
+ * A shared post is shown by opening its author's profile focused on it (ActivityCenter
+ * notifications use the PostDetail route instead; shared links have not moved to it).
+ * That needs the author id, so the post has to be resolved first.
  *
  * Shared by the deep-link handler (`livil://post/<id>` and the https App Link) and the
  * `track_share` chat bubble, so a link and a DM land in exactly the same place. Returns

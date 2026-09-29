@@ -42,5 +42,18 @@ target 'livil' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Xcode refuses pod targets whose iOS deployment target is below its supported
+    # range, and several pods (and their privacy resource bundles) still declare
+    # 8.0–13.4 — the build failed with nine "IPHONEOS_DEPLOYMENT_TARGET is set to 8.0,
+    # but the range..." errors. Lift them all to the app's own minimum (15.1, as in
+    # livil.xcodeproj), which changes nothing at runtime: the app already requires it.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |cfg|
+        if cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.1
+          cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        end
+      end
+    end
   end
 end

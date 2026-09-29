@@ -891,6 +891,11 @@ function toResult(p: { id: string; username: string; display_name: string | null
 
 export type LibraryRecentTrack = {
   trackId: string;
+  /**
+   * The post this track was last played through — what a tap opens. Null when that
+   * post has since been deleted; the caller then has nothing to open.
+   */
+  postId: string | null;
   title: string;
   artistLabel: string;
   coverArtUrl: string | null;
@@ -898,10 +903,29 @@ export type LibraryRecentTrack = {
 };
 
 /**
- * Recently played rows for the Library tab (server-backed so history survives
- * reinstall once playback hooks write to `user_recent_tracks`).
+ * Recently played rows for the Library tab, newest first. Server-backed, so history
+ * survives a reinstall: every counted play (post_views) writes its row via the
+ * `trg_post_views_recent_tracks` trigger (20260929000000_recently_played_is_recorded.sql).
+ *
+ * `before` pages backwards by `playedAt` for "See all".
  */
-export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRecentTrack[]> {
+export async function listRecentTracksForLibrary(
+  limit = 24,
+  before?: string,
+): Promise<LibraryRecentTrack[]> {
+  return (await listRecentTracksPage(limit, before)).items;
+}
+
+/**
+ * One page of Recently Played, plus the cursor for the next page. Rows whose track you
+ * can no longer read (taken down, uploader blocked) are dropped from `items`, so the
+ * paging decision must come from the RAW rows: `nextBefore` is the last raw row's
+ * `played_at`, or null when the database returned a short page (no more history).
+ */
+export async function listRecentTracksPage(
+  limit = 24,
+  before?: string,
+): Promise<{ items: LibraryRecentTrack[]; nextBefore: string | null }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData.user) {
@@ -910,25 +934,32 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
 
   const me = userData.user.id;
 
-  const { data, error } = await supabase
-    .from('user_recent_tracks')
-    .select(
-      `
-      played_at,
-      track:tracks (
-        id,
-        title,
-        cover_art_url,
-        uploader:profiles!tracks_uploader_id_fkey (
-          username,
-          display_name
-        )
+  const TRACK = `
+    track:tracks (
+      id,
+      title,
+      cover_art_url,
+      uploader:profiles!tracks_uploader_id_fkey (
+        username,
+        display_name
       )
-    `,
-    )
-    .eq('user_id', me)
-    .order('played_at', { ascending: false })
-    .limit(limit);
+    )`;
+  const run = (withPost: boolean) => {
+    let query = supabase
+      .from('user_recent_tracks')
+      .select(withPost ? `played_at, last_post_id, ${TRACK}` : `played_at, ${TRACK}`)
+      .eq('user_id', me);
+    if (before) { query = query.lt('played_at', before); }
+    return query.order('played_at', { ascending: false }).limit(limit);
+  };
+
+  // `last_post_id` arrives with 20260929000000_recently_played_is_recorded.sql. If the
+  // app ships before that migration is applied, read the list without it (rows just
+  // aren't tappable) rather than failing the whole strip with a column error.
+  let { data, error } = await run(true);
+  if (error && /last_post_id/.test(error.message)) {
+    ({ data, error } = await run(false));
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -936,6 +967,7 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
 
   type Row = {
     played_at: string;
+    last_post_id?: string | null;
     track: {
       id: string;
       title: string;
@@ -944,7 +976,9 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
     } | null;
   };
 
-  return (data ?? [])
+  const raws = (data ?? []) as unknown as Row[];
+  const nextBefore = raws.length < limit ? null : raws[raws.length - 1]!.played_at;
+  const items = raws
     .map((raw: Row) => {
       const t = raw.track;
       if (!t) {
@@ -954,6 +988,7 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
       const artistLabel = up?.display_name?.trim() || up?.username || 'Artist';
       return {
         trackId: t.id,
+        postId: raw.last_post_id ?? null,
         title: t.title,
         artistLabel,
         coverArtUrl: t.cover_art_url,
@@ -961,4 +996,5 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
       } satisfies LibraryRecentTrack;
     })
     .filter(Boolean) as LibraryRecentTrack[];
+  return { items, nextBefore };
 }

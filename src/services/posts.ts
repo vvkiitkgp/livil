@@ -854,6 +854,24 @@ export async function fetchPostById(postId: string): Promise<FeedPost | null> {
 }
 
 /**
+ * Fetch several posts by id, returned in the SAME ORDER as `postIds` (the database
+ * returns them in any order). Ids that cannot be read — deleted, or hidden from this
+ * viewer — are simply absent. Used to turn Recently Played into a play queue.
+ */
+export async function fetchPostsByIds(postIds: string[]): Promise<FeedPost[]> {
+  const unique = [...new Set(postIds)];
+  if (unique.length === 0) { return []; }
+  const { data, error } = await supabase
+    .from('posts')
+    .select(POST_SELECT)
+    .in('id', unique);
+  if (error) {throw new Error(error.message);}
+  const hydrated = await hydrateRawPostRows((data ?? []) as unknown as RawPostRow[]);
+  const byId = new Map(hydrated.map(p => [p.id, p]));
+  return postIds.map(id => byId.get(id)).filter((p): p is FeedPost => !!p);
+}
+
+/**
  * Return the total cumulative plays (sum of views_count) across every post that
  * uses the given track — displayed as a badge on the cover art in RepostScreen.
  */

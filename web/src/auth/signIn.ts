@@ -8,6 +8,22 @@ import { studioUrl } from '../basePath';
 export const PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.livil';
 
+/** The App Store listing (iPhone only — no iPad build). Public, like the Play listing. */
+export const APP_STORE_URL = 'https://apps.apple.com/app/id6809119164';
+
+export type AppStore = 'apple' | 'play';
+
+/**
+ * Which store badge goes first. Both are always shown; this only puts the one that works
+ * on the visitor's device in front. iPad and iPod are included deliberately: an iPad can
+ * still install the iPhone build, and "App Store first" is right for them either way.
+ */
+export function storeOrder(
+  userAgent: string = typeof navigator === 'undefined' ? '' : navigator.userAgent,
+): AppStore[] {
+  return /iPhone|iPad|iPod/.test(userAgent) ? ['apple', 'play'] : ['play', 'apple'];
+}
+
 export type SignInResult = { ok: true } | { ok: false; message: string };
 
 /**

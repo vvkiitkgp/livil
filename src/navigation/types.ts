@@ -43,6 +43,15 @@ export type RootStackParamList = {
   EditPlaylist: { playlistId: string };
   Following: undefined;
   RecentlyPlayed: undefined;
+  // A single post on its own page. Where post notifications land: `openComments`
+  // opens the comments (pulsing `highlightCommentId`), `openLikers` opens the likes
+  // list. Both are one-shot arrival intents.
+  PostDetail: {
+    postId: string;
+    openComments?: boolean;
+    highlightCommentId?: string;
+    openLikers?: boolean;
+  };
   EditProfile: undefined;
   Settings: undefined;
   NotificationSettings: undefined;

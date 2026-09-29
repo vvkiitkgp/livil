@@ -15,7 +15,14 @@ import {
   KeyboardStickyView,
   useKeyboardHandler,
 } from 'react-native-keyboard-controller';
-import { runOnJS } from 'react-native-reanimated';
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,6 +30,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { Icon } from '../../components/Icon';
+import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import FormInput from '../../components/FormInput';
 import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
@@ -30,6 +38,12 @@ import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
 import JamExitModal from '../../components/JamExitModal';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import { Button } from '../../components/Button';
+import JamSuggestsTab from '../../components/JamSuggestsTab';
+import { useJamSuggestions } from '../../contexts/JamSuggestionsContext';
+import type { DisplayItem } from '../../components/QueueList';
+import { useToast } from '../../contexts/ToastContext';
+import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useJam } from '../../contexts/JamContext';
 import { useJamRealtime } from '../../contexts/JamRealtimeContext';
@@ -54,7 +68,7 @@ const db = supabase as any;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'JamRoom'>;
 
-type Tab = 'chat' | 'queue';
+type Tab = 'chat' | 'queue' | 'suggests';
 
 function msToTime(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -76,6 +90,59 @@ function PresenceAvatar({ member }: { member: PresenceMember }) {
   );
 }
 
+/**
+ * A song shared into the jam's conversation. The host gets Play now / Add to queue;
+ * everyone else sees who suggested it. The sender is labelled even on the host's own
+ * shares so the chat reads as a list of suggestions.
+ */
+function JamTrackCard({
+  msg,
+  isMe,
+  canPlay,
+  onPlay,
+  onQueue,
+}: {
+  msg: ChatMessage;
+  isMe: boolean;
+  canPlay: boolean;
+  onPlay: (postId: string) => void;
+  onQueue: (postId: string) => void;
+}) {
+  const meta = msg.metadata ?? {};
+  const postId = typeof meta.post_id === 'string' ? meta.post_id : null;
+  const title = typeof meta.title === 'string' ? meta.title : 'Shared track';
+  const artist = typeof meta.artist_name === 'string' ? meta.artist_name : '';
+  const cover = typeof meta.cover_art_url === 'string' ? meta.cover_art_url : null;
+  const who = isMe ? 'You' : (msg.senderDisplayName || msg.senderUsername || 'Someone');
+
+  return (
+    <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+      <View style={styles.trackShare}>
+        <Text style={styles.trackShareWho} numberOfLines={1}>{who} suggested</Text>
+        <View style={styles.trackShareRow}>
+          {cover ? (
+            <Image source={{ uri: cover }} style={styles.trackShareArt} />
+          ) : (
+            <View style={[styles.trackShareArt, styles.trackShareArtEmpty]}>
+              <Icon name="musicNote" size={22} color={COLORS.textSecondary} />
+            </View>
+          )}
+          <View style={styles.trackShareMeta}>
+            <Text style={styles.trackShareTitle} numberOfLines={2}>{title}</Text>
+            {artist ? <Text style={styles.trackShareArtist} numberOfLines={1}>{artist}</Text> : null}
+          </View>
+        </View>
+        {canPlay && postId ? (
+          <View style={styles.trackShareActions}>
+            <Button label="Play now" icon="play" size="sm" onPress={() => onPlay(postId)} />
+            <Button label="Add to queue" variant="secondary" size="sm" onPress={() => onQueue(postId)} />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export default function JamRoomScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -87,7 +154,13 @@ export default function JamRoomScreen() {
     positionRef,
     durationRef,
     activePostId,
+    setNowPlaying,
+    markSeekTarget,
+    requestPlay,
+    addToQueue,
+    clipWindowRef,
   } = usePlayback();
+  const { showToast } = useToast();
   const { activeJam, setActiveJam, clearActiveJam } = useJam();
   // All realtime state — owned by the global JamRealtimeProvider so it keeps
   // running when the host navigates to Home / Search / Profile to find a song.
@@ -96,8 +169,10 @@ export default function JamRoomScreen() {
     hostUsername,
     presenceMembers,
     remotePlayback,
+    remoteQueue,
     synced,
   } = useJamRealtime();
+  const { unreadCount: suggestsUnread, markSeen: markSuggestsSeen } = useJamSuggestions();
 
   const [permissions, setPermissions] = useState<JamPermissions>({
     can_play_pause: false, can_seek: false, can_skip: false,
@@ -112,6 +187,10 @@ export default function JamRoomScreen() {
   const [chatText, setChatText] = useState('');
   const [sending, setSending] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // The user's choice: tabs at full height (player panel tucked away) or the default
+  // half height. The keyboard always forces full height, whatever this says.
+  const [tabsExpanded, setTabsExpanded] = useState(false);
+  const panelCollapsed = keyboardOpen || tabsExpanded;
   const [exitModalOpen, setExitModalOpen] = useState(false);
   const [exitInFlight, setExitInFlight] = useState(false);
   const [jamEndedOpen, setJamEndedOpen] = useState(false);
@@ -261,8 +340,10 @@ export default function JamRoomScreen() {
             profiles: { username: string; display_name: string | null; avatar_url: string | null } | null;
           };
 
-          // Skip own messages — already in the list as optimistic
-          if (raw.sender_id === myIdRef.current) { return; }
+          // Skip own TEXT messages — already in the list as optimistic. Anything else I
+          // send (a song shared from a profile while the jam runs) is sent from another
+          // screen, so this insert is the only way it reaches this list.
+          if (raw.sender_id === myIdRef.current && raw.kind === 'text') { return; }
 
           const msg: ChatMessage = {
             id: raw.id,
@@ -280,9 +361,9 @@ export default function JamRoomScreen() {
             reactions: [],
           };
 
-          setMessages(prev => [msg, ...prev]);
+          setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [msg, ...prev]));
 
-          if (tabRef.current === 'queue') {
+          if (tabRef.current !== 'chat') {
             setChatUnread(n => n + 1);
           }
         },
@@ -317,6 +398,8 @@ export default function JamRoomScreen() {
 
   const handlePlayPause = useCallback(() => {
     if (!permissions.can_play_pause) { return; }
+    // Same tap the play buttons give elsewhere in the app (Android + iOS).
+    haptics.tap();
     if (activePostId) {
       handlersRef.current?.pause();
     } else {
@@ -331,14 +414,28 @@ export default function JamRoomScreen() {
     setDisplayPositionMs(seconds * 1000);
   }, []);
 
+  const handleSeekCancel = useCallback(() => { scrubbingRef.current = false; }, []);
+
   const handleSeekEnd = useCallback((seconds: number) => {
     scrubbingRef.current = false;
     if (!permissions.can_seek) { return; }
-    handlersRef.current?.seek(seconds);
-    setDisplayPositionMs(seconds * 1000);
+    // The bar spans the FULL track, but a clipped post only plays its clip: landing
+    // past the clip end tripped the native clip-end watcher, which snapped straight
+    // back to the clip start (or stopped) — so the song seemed to play a moment and
+    // jump back. Keep the seek inside the window that will actually play.
+    const clip = clipWindowRef.current;
+    const target = clip
+      ? Math.min(Math.max(seconds, clip.start), Math.max(clip.start, clip.end - 1))
+      : seconds;
+    // Guard first (as FullScreenPlayer does), so progress samples from before the seek
+    // cannot snap the position back — the heartbeat would broadcast that stale position
+    // and pull every listener back with it.
+    markSeekTarget(target);
+    handlersRef.current?.seek(target);
+    setDisplayPositionMs(target * 1000);
     // The next 2s heartbeat will broadcast the new position. Listeners will
     // drift-correct on the next tick.
-  }, [permissions, handlersRef]);
+  }, [permissions, handlersRef, clipWindowRef, markSeekTarget]);
 
   const handleEnd = useCallback(() => {
     setExitModalOpen(true);
@@ -434,6 +531,66 @@ export default function JamRoomScreen() {
     if (t === 'chat') { setChatUnread(0); }
   }, []);
 
+  // While Suggests is on screen, everything that arrives counts as seen.
+  useEffect(() => {
+    if (tab === 'suggests') { markSuggestsSeen(); }
+  }, [tab, suggestsUnread, markSuggestsSeen]);
+
+  const hostName = hostUsername ? `@${hostUsername}` : 'the host';
+
+  // A listener's Queue tab shows the HOST's queue (as broadcast), read-only: the host
+  // decides what plays. Display items only need title/artist/cover.
+  const listenerQueue = useMemo<DisplayItem[]>(() => remoteQueue.map((q, i) => ({
+    track: {
+      postId: q.post_id, trackId: '', title: q.title, artistName: q.artist,
+      authorId: '', authorUsername: '', authorAvatarUrl: null,
+      coverArtUrl: q.cover, thumbnailUrl: null, mediaKind: 'audio',
+      likesCount: 0, commentsCount: 0, repostsCount: 0, viewsCount: 0,
+      viewerHasLiked: false, clipStartSec: null, clipEndSec: null,
+      kind: 'upload', originalPostId: null, knownDurationSec: 0,
+    },
+    queueIndex: i,
+    displayIndex: i,
+    isCurrent: i === 0,
+  })), [remoteQueue]);
+
+  const onlyHostCanPlay = useCallback(() => {
+    showToast(`Only the jam host ${hostName} can play songs`, { kind: 'info' });
+  }, [hostName, showToast]);
+
+  // Host (or a listener allowed to change the track) acting on a song shared into the
+  // jam. "Play now" is the same load the chat's own "Tap to listen" does, minus opening
+  // the full-screen player — the host stays in the room, and the jam provider broadcasts
+  // the new track to every listener on its own.
+  const handlePlayShared = useCallback(async (postId: string) => {
+    try {
+      const post = await fetchPostById(postId);
+      if (!post) {
+        showToast('That track is no longer available', { kind: 'info' });
+        return;
+      }
+      setNowPlaying(feedPostToNowPlaying(post));
+      markSeekTarget(post.clipStartSec ?? 0);
+      requestPlay(post.id);
+    } catch {
+      showToast("Couldn't play that track", { kind: 'error' });
+    }
+  }, [setNowPlaying, markSeekTarget, requestPlay, showToast]);
+
+  const handleQueueShared = useCallback(async (postId: string) => {
+    try {
+      const post = await fetchPostById(postId);
+      if (!post) {
+        showToast('That track is no longer available', { kind: 'info' });
+        return;
+      }
+      addToQueue(feedPostToNowPlaying(post));
+      showToast(`Added “${post.track.title}” to the queue`, { kind: 'success' });
+    } catch {
+      showToast("Couldn't add that track", { kind: 'error' });
+    }
+  }, [addToQueue, showToast]);
+
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     // System messages render as centered muted text, not a chat bubble.
     if (item.kind === 'system') {
@@ -443,7 +600,21 @@ export default function JamRoomScreen() {
         </View>
       );
     }
-    // Skip non-text messages that have no body (jam_invite, sticker, etc.)
+    // A song shared into this conversation — from a profile's share sheet, or the
+    // chat — is a suggestion for the jam. It used to be dropped here with the other
+    // non-text kinds, so the host never saw it unless they left the jam.
+    if (item.kind === 'track_share' && item.metadata) {
+      return (
+        <JamTrackCard
+          msg={item}
+          isMe={item.senderId === myIdRef.current}
+          canPlay={isHost}
+          onPlay={handlePlayShared}
+          onQueue={handleQueueShared}
+        />
+      );
+    }
+    // Skip other non-text messages that have no body (jam_invite, sticker, etc.)
     // — they'd render as empty bubbles.
     if (item.kind !== 'text' || !item.body) { return null; }
     const isMe = item.senderId === myIdRef.current;
@@ -462,7 +633,7 @@ export default function JamRoomScreen() {
         </View>
       </View>
     );
-  }, []);
+  }, [isHost, handlePlayShared, handleQueueShared]);
 
   // Track to display in the player panel: host uses their own nowPlaying;
   // listener uses what the host broadcast.
@@ -480,6 +651,56 @@ export default function JamRoomScreen() {
     return null;
   }, [isHost, nowPlaying, remotePlayback]);
 
+  // ── Half ↔ full height for the tab area ─────────────────────────────────
+  const panelHeight = useSharedValue(0);      // measured natural height of the panel
+  const panelProgress = useSharedValue(0);    // 0 = panel shown, 1 = tucked away
+  useEffect(() => {
+    panelProgress.value = withTiming(panelCollapsed ? 1 : 0, {
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [panelCollapsed, panelProgress]);
+  const panelWrapStyle = useAnimatedStyle(() => {
+    // Before the first measurement, let the panel size itself naturally.
+    if (panelHeight.value === 0) { return {}; }
+    return {
+      height: panelHeight.value * (1 - panelProgress.value),
+      opacity: 1 - panelProgress.value,
+      overflow: 'hidden',
+    };
+  });
+  // Scrolling INTO a list (away from its start) tucks the panel away; scrolling back
+  // to the start brings it back — but only if scrolling is what hid it, so a handle
+  // choice is never undone by a scroll.
+  const expandedByScrollRef = useRef(false);
+  const onTabListScroll = useCallback((offsetY: number) => {
+    if (offsetY > 60) {
+      setTabsExpanded(prev => {
+        if (!prev) { expandedByScrollRef.current = true; }
+        return true;
+      });
+    } else if (offsetY <= 0 && expandedByScrollRef.current) {
+      expandedByScrollRef.current = false;
+      setTabsExpanded(false);
+    }
+  }, []);
+
+  const handleGesture = useMemo(() => {
+    const tap = Gesture.Tap().runOnJS(true).onEnd(() => {
+      expandedByScrollRef.current = false;
+      setTabsExpanded(v => !v);
+    });
+    const pan = Gesture.Pan()
+      .runOnJS(true)
+      .activeOffsetY([-10, 10])
+      .onEnd(e => {
+        expandedByScrollRef.current = false;
+        if (e.translationY < -20 || e.velocityY < -300) { setTabsExpanded(true); }
+        else if (e.translationY > 20 || e.velocityY > 300) { setTabsExpanded(false); }
+      });
+    return Gesture.Exclusive(pan, tap);
+  }, []);
+
   const durationSec = displayDurationMs / 1000;
   const positionSec = displayPositionMs / 1000;
 
@@ -494,7 +715,7 @@ export default function JamRoomScreen() {
           <Text style={styles.headerTitle}>Jam Room</Text>
           {(isHost || hostUsername) && (
             <Text style={styles.headerSub}>
-              {isHost ? '👑 You are the host' : `👑 Host: @${hostUsername ?? 'unknown'}`}
+              {isHost ? '👑 You are the host' : `Jam hosted by @${hostUsername ?? 'unknown'} 👑`}
             </Text>
           )}
         </View>
@@ -503,9 +724,17 @@ export default function JamRoomScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Playback panel — collapsed while keyboard is open to free space for chat */}
-      {!keyboardOpen && (
-      <View style={styles.playerPanel}>
+      {/* Playback panel — slides away while the keyboard is open or the user has
+          dragged the tabs to full height. Kept mounted so its height is known and the
+          slide is smooth both ways. */}
+      <Reanimated.View style={panelWrapStyle}>
+      <View
+        style={styles.playerPanel}
+        onLayout={e => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) { panelHeight.value = h; }
+        }}
+      >
         {/* Album art */}
         <View style={styles.artWrap}>
           {displayTrack?.coverArt ? (
@@ -553,6 +782,7 @@ export default function JamRoomScreen() {
               onSeekStart={permissions.can_seek ? handleScrubStart : undefined}
               onSeek={permissions.can_seek ? handleScrub : undefined}
               onSeekEnd={permissions.can_seek ? handleSeekEnd : undefined}
+              onSeekCancel={permissions.can_seek ? handleSeekCancel : undefined}
             />
           </View>
         )}
@@ -589,7 +819,21 @@ export default function JamRoomScreen() {
           )}
         </View>
       </View>
-      )}
+      </Reanimated.View>
+
+      {/* Drag handle: up (or tap) = tabs at full height, down (or tap) = half. */}
+      <GestureDetector gesture={handleGesture}>
+        <View
+          style={styles.handleHit}
+          // Android flattens a View that draws nothing, and a flattened view has no
+          // native node for the gesture to attach to — the handle did nothing there.
+          collapsable={false}
+          accessibilityRole="button"
+          accessibilityLabel={panelCollapsed ? 'Show the player' : 'Expand chat, queue and suggestions'}
+        >
+          <View style={styles.handleBar} />
+        </View>
+      </GestureDetector>
 
       {/* Tab toggle */}
       <View style={styles.tabRow}>
@@ -616,6 +860,21 @@ export default function JamRoomScreen() {
           {tab === 'queue' ? <GradientBorder borderRadius={8} /> : null}
           <Text style={[styles.tabLabel, tab === 'queue' && styles.tabLabelActive]}>Queue</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === 'suggests' && styles.tabBtnActive]}
+          onPress={() => handleTabChange('suggests')}
+          activeOpacity={0.8}
+        >
+          {tab === 'suggests' ? <GradientBorder borderRadius={8} /> : null}
+          <View style={styles.tabLabelWrap}>
+            <Text style={[styles.tabLabel, tab === 'suggests' && styles.tabLabelActive]}>Suggests</Text>
+            {suggestsUnread > 0 && tab !== 'suggests' && (
+              <View style={styles.chatBadge}>
+                <Text style={styles.chatBadgeText}>{suggestsUnread > 99 ? '99+' : suggestsUnread}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Chat tab */}
@@ -633,6 +892,8 @@ export default function JamRoomScreen() {
               renderScrollComponent={renderChatScrollComponent}
               inverted
               contentContainerStyle={styles.chatList}
+              onScroll={e => onTabListScroll(e.nativeEvent.contentOffset.y)}
+              scrollEventThrottle={32}
             />
           )}
           <KeyboardStickyView offset={{ closed: 0 }}>
@@ -663,16 +924,27 @@ export default function JamRoomScreen() {
         </View>
       )}
 
-      {/* Queue tab — same PlaybackContext queue as FullScreenPlayer */}
+      {/* Queue tab — the host's own queue for the host; the host's broadcast queue,
+          read-only, for listeners. */}
       {tab === 'queue' && (
         <View style={styles.flex}>
-          <QueueList
-            canTap={isHost || permissions.can_change_track}
-            canSwipe={isHost || permissions.can_change_track}
-            canReorder={isHost || permissions.can_change_track}
-            paddingBottom={80}
-          />
+          {isHost ? (
+            <QueueList paddingBottom={80} />
+          ) : (
+            <QueueList
+              externalData={listenerQueue}
+              onTap={onlyHostCanPlay}
+              canSwipe={false}
+              canReorder={false}
+              paddingBottom={80}
+            />
+          )}
         </View>
+      )}
+
+      {/* Suggests tab */}
+      {tab === 'suggests' && (
+        <JamSuggestsTab isHost={isHost} hostName={hostName} onListScroll={onTabListScroll} />
       )}
 
       <JamExitModal
@@ -724,6 +996,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   endBtnText: { color: COLORS.error, fontSize: 13, fontWeight: '700' },
+
+  // Tab-area height handle
+  // A generous, full-width hit area (the visible bar stays small): Android does not
+  // forgive near-misses the way iOS does.
+  handleHit: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 26,
+    backgroundColor: 'transparent',
+  },
+  handleBar: { width: 38, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted },
 
   // Player panel
   playerPanel: {
@@ -818,6 +1102,18 @@ const styles = StyleSheet.create({
   bubbleSender: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', marginBottom: 2 },
   bubbleText: { color: COLORS.white, fontSize: 14 },
   bubbleTextMe: { color: COLORS.white },
+  trackShare: {
+    maxWidth: '80%', padding: 10, borderRadius: 14, gap: 8,
+    backgroundColor: COLORS.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+  },
+  trackShareWho: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  trackShareRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trackShareArt: { width: 48, height: 48, borderRadius: 8 },
+  trackShareArtEmpty: { backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+  trackShareMeta: { flexShrink: 1 },
+  trackShareTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  trackShareArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
+  trackShareActions: { flexDirection: 'row', gap: 8 },
   systemRow: {
     alignItems: 'center',
     paddingVertical: 6,

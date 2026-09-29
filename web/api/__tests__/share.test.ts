@@ -98,6 +98,7 @@ describe('share page — a post that exists', () => {
     const res = await render(POST_ID, [POST]);
     expect(res.body).toContain(`livil://post/${POST_ID}`);
     expect(res.body).toContain('play.google.com/store/apps/details?id=com.livil');
+    expect(res.body).toContain('apps.apple.com/app/id6809119164');
   });
 
   it('carries a seekable progress control, not just a progress indicator', async () => {

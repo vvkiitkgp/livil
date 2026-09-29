@@ -68,6 +68,9 @@ import type { ShareablePost } from '../services/share';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+/** iOS back gesture: width of the invisible left-edge strip that catches it. */
+const EDGE_BACK_ZONE = 20;
+const IS_IOS = Platform.OS === 'ios';
 
 const FLOAT_D = 60;
 
@@ -1633,6 +1636,26 @@ export default function FullScreenPlayer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toggleImmersive, closeFullScreenPlayer]);
 
+  // ── iOS back gesture: swipe in from the left edge to minimise ────────────
+  // The player is an overlay, not a stack screen, so the native-stack edge swipe
+  // never reaches it (Android's back is the hardwareBackPress handler above). A
+  // dedicated strip on the left edge, rendered ABOVE every control, owns the
+  // gesture — the media-background pan cannot, because the details/seek/controls
+  // block covers the lower half of the screen and takes any touch that starts there.
+  const edgeBackGesture = useMemo(() => Gesture.Pan()
+    .activeOffsetX(12)
+    .failOffsetY([-24, 24])
+    .onEnd((e) => {
+      'worklet';
+      if (panelOpenSV.value || immersiveSV.value) { return; }
+      if (e.translationX > 60 || e.velocityX > 400) {
+        runOnJS(closeFullScreenPlayer)();
+      }
+    }),
+  // Shared values + closeFullScreenPlayer are stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [closeFullScreenPlayer]);
+
   // ── Swipe-down the panel handle to dismiss the panel ─────────────────────
   const panelDismissGesture = Gesture.Pan()
     .runOnJS(true)
@@ -2202,6 +2225,15 @@ export default function FullScreenPlayer() {
         />
       )}
 
+      {IS_IOS ? (
+        <GestureDetector gesture={edgeBackGesture}>
+          <View
+            style={[styles.edgeBackStrip, { top: safeTop + HEADER_H }]}
+            pointerEvents={activeTab !== null || isImmersive ? 'none' : 'auto'}
+          />
+        </GestureDetector>
+      ) : null}
+
       <CommentsSheet
         visible={commentsOpen}
         postId={getEffectivePost(nowPlaying).postId}
@@ -2388,6 +2420,7 @@ const csSt = StyleSheet.create({
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  edgeBackStrip: { position: 'absolute', left: 0, bottom: 0, width: EDGE_BACK_ZONE },
   container: { ...StyleSheet.absoluteFill, backgroundColor: '#000' },
 
   // Full-bleed media fills entire container
