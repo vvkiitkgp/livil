@@ -12,13 +12,16 @@ import {
   ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
 import { Icon } from '../../components/Icon';
+import { useToast } from '../../contexts/ToastContext';
+
+const PAGE_SIZE = 30;
 
 const FALLBACK_ACCENTS: [string, string][] = [
   ['#8B3DFF', '#3B1E6E'],
@@ -30,17 +33,21 @@ const FALLBACK_ACCENTS: [string, string][] = [
 function TrackRow({
   item,
   index,
+  onPress,
 }: {
   item: LibraryRecentTrack;
   index: number;
+  onPress: (item: LibraryRecentTrack) => void;
 }) {
   const accents = FALLBACK_ACCENTS[index % FALLBACK_ACCENTS.length]!;
   const initials = item.title.trim().charAt(0).toUpperCase() || '♪';
 
   return (
     <Pressable
-      style={styles.row}
-      android_ripple={{ color: COLORS.purpleDim }}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={() => onPress(item)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title} by ${item.artistLabel}`}
     >
       <View style={[styles.cover, { backgroundColor: accents[0] }]}>
         <View style={[styles.coverAccent, { backgroundColor: accents[1] }]} />
@@ -64,13 +71,18 @@ export default function RecentlyPlayedScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [endReached, setEndReached] = useState(false);
+  const { showToast } = useToast();
 
   const load = useCallback(async () => {
-    setError('');
     try {
-      const data = await listRecentTracksForLibrary();
+      const data = await listRecentTracksForLibrary(PAGE_SIZE);
       setTracks(data);
+      setEndReached(data.length < PAGE_SIZE);
+      setError('');
     } catch (err) {
+      // Keep whatever is already on screen; only an empty list shows the error.
       setError(err instanceof Error ? err.message : 'Could not load recently played.');
     } finally {
       setLoading(false);
@@ -78,6 +90,37 @@ export default function RecentlyPlayedScreen() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Coming back from a post you just played should show it at the top.
+  const firstFocus = React.useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) { firstFocus.current = false; return; }
+      void load();
+    }, [load]),
+  );
+
+  const handleEndReached = useCallback(async () => {
+    if (loadingMore || endReached || tracks.length === 0) { return; }
+    setLoadingMore(true);
+    try {
+      const more = await listRecentTracksForLibrary(PAGE_SIZE, tracks[tracks.length - 1]!.playedAt);
+      setTracks(prev => [...prev, ...more.filter(m => !prev.some(p => p.trackId === m.trackId))]);
+      if (more.length < PAGE_SIZE) { setEndReached(true); }
+    } catch {
+      // Silent: the next scroll to the end retries.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, endReached, tracks]);
+
+  const handleOpen = useCallback((item: LibraryRecentTrack) => {
+    if (!item.postId) {
+      showToast('That post is no longer available', { kind: 'info' });
+      return;
+    }
+    navigation.navigate('PostDetail', { postId: item.postId });
+  }, [navigation, showToast]);
 
   const handleRefresh = useCallback(async () => {
     // Acknowledge the pull the moment it fires — the spinner is at the top
@@ -89,8 +132,8 @@ export default function RecentlyPlayedScreen() {
   }, [load]);
 
   const renderItem = useCallback(({ item, index }: ListRenderItemInfo<LibraryRecentTrack>) => (
-    <TrackRow item={item} index={index} />
-  ), []);
+    <TrackRow item={item} index={index} onPress={handleOpen} />
+  ), [handleOpen]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -104,8 +147,10 @@ export default function RecentlyPlayedScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Recently Played</Text>
-          {!loading && (
-            <Text style={styles.headerSubtitle}>{tracks.length} tracks</Text>
+          {!loading && tracks.length > 0 && (
+            <Text style={styles.headerSubtitle}>
+              {tracks.length}{endReached ? '' : '+'} {tracks.length === 1 ? 'track' : 'tracks'}
+            </Text>
           )}
         </View>
         <View style={styles.backBtn} />
@@ -113,14 +158,19 @@ export default function RecentlyPlayedScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color={COLORS.purpleLight} style={styles.loader} />
-      ) : error ? (
+      ) : error && tracks.length === 0 ? (
         <Text style={styles.errorText}>{error}</Text>
       ) : (
         <FlatList
           data={tracks}
-          keyExtractor={item => `${item.trackId}-${item.playedAt}`}
+          keyExtractor={item => item.trackId}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator color={COLORS.purpleLight} style={styles.more} /> : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -133,7 +183,7 @@ export default function RecentlyPlayedScreen() {
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No listening history yet</Text>
               <Text style={styles.emptyBody}>
-                Play a track from the home feed — it will show up here.
+                Play a track for a few seconds — it will show up here.
               </Text>
             </View>
           }
@@ -172,6 +222,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: 12,
   },
+  rowPressed: { opacity: 0.6 },
+  more: { marginVertical: 16 },
 
   cover: {
     width: 52,

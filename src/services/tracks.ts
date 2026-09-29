@@ -891,6 +891,11 @@ function toResult(p: { id: string; username: string; display_name: string | null
 
 export type LibraryRecentTrack = {
   trackId: string;
+  /**
+   * The post this track was last played through — what a tap opens. Null when that
+   * post has since been deleted; the caller then has nothing to open.
+   */
+  postId: string | null;
   title: string;
   artistLabel: string;
   coverArtUrl: string | null;
@@ -898,10 +903,16 @@ export type LibraryRecentTrack = {
 };
 
 /**
- * Recently played rows for the Library tab (server-backed so history survives
- * reinstall once playback hooks write to `user_recent_tracks`).
+ * Recently played rows for the Library tab, newest first. Server-backed, so history
+ * survives a reinstall: every counted play (post_views) writes its row via the
+ * `trg_post_views_recent_tracks` trigger (20260929000000_recently_played_is_recorded.sql).
+ *
+ * `before` pages backwards by `playedAt` for "See all".
  */
-export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRecentTrack[]> {
+export async function listRecentTracksForLibrary(
+  limit = 24,
+  before?: string,
+): Promise<LibraryRecentTrack[]> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData.user) {
@@ -910,11 +921,12 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
 
   const me = userData.user.id;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('user_recent_tracks')
     .select(
       `
       played_at,
+      last_post_id,
       track:tracks (
         id,
         title,
@@ -926,7 +938,9 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
       )
     `,
     )
-    .eq('user_id', me)
+    .eq('user_id', me);
+  if (before) { query = query.lt('played_at', before); }
+  const { data, error } = await query
     .order('played_at', { ascending: false })
     .limit(limit);
 
@@ -936,6 +950,7 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
 
   type Row = {
     played_at: string;
+    last_post_id: string | null;
     track: {
       id: string;
       title: string;
@@ -954,6 +969,7 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
       const artistLabel = up?.display_name?.trim() || up?.username || 'Artist';
       return {
         trackId: t.id,
+        postId: raw.last_post_id,
         title: t.title,
         artistLabel,
         coverArtUrl: t.cover_art_url,
