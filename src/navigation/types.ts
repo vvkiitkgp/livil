@@ -42,9 +42,10 @@ export type RootStackParamList = {
   PlaylistDetail: { playlistId: string; playlistName: string };
   EditPlaylist: { playlistId: string };
   Following: undefined;
-  // Anyone's accepted friends — public to every signed-in viewer. `username` is only
-  // for the header before the list loads; omit it for your own profile.
-  ProfileFriends: { userId: string; username?: string };
+  // A profile's Friends / Stars (public to every signed-in viewer) or Fans (OWNER ONLY —
+  // 'fans' always lists the caller's own; never navigate here with another user's id).
+  // `username` is only for the header; omit it for your own profile.
+  ProfilePeople: { userId: string; username?: string; kind: 'friends' | 'stars' | 'fans' };
   RecentlyPlayed: undefined;
   // A single post on its own page. Where post notifications land: `openComments`
   // opens the comments (pulsing `highlightCommentId`), `openLikers` opens the likes

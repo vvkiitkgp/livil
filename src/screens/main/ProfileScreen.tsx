@@ -746,25 +746,22 @@ export default function ProfileScreen() {
 
         {/* Primary social stats */}
         <View style={styles.socialPills}>
-          <TouchableOpacity style={styles.socialPill} activeOpacity={0.85}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
-            <Text style={styles.socialPillLabel}>Fans</Text>
-          </TouchableOpacity>
-          <View style={styles.socialPillDivider} />
-          <TouchableOpacity
-            style={styles.socialPill}
-            activeOpacity={0.85}
-            onPress={() => profile?.id && navigation.navigate('ProfileFriends', { userId: profile.id })}
-            disabled={!profile?.id}
-          >
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
-            <Text style={styles.socialPillLabel}>Friends</Text>
-          </TouchableOpacity>
-          <View style={styles.socialPillDivider} />
-          <TouchableOpacity style={styles.socialPill} activeOpacity={0.85}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
-            <Text style={styles.socialPillLabel}>Stars</Text>
-          </TouchableOpacity>
+          {(['fans', 'friends', 'stars'] as const).map((kind, i) => (
+            <React.Fragment key={kind}>
+              {i > 0 ? <View style={styles.socialPillDivider} /> : null}
+              <TouchableOpacity
+                style={styles.socialPill}
+                activeOpacity={0.85}
+                onPress={() => profile?.id && navigation.navigate('ProfilePeople', { userId: profile.id, kind })}
+                disabled={!profile?.id}
+              >
+                <Text style={styles.socialPillValue}>{formatStat(followCounts[kind])}</Text>
+                <Text style={styles.socialPillLabel}>
+                  {kind === 'fans' ? 'Fans' : kind === 'friends' ? 'Friends' : 'Stars'}
+                </Text>
+              </TouchableOpacity>
+            </React.Fragment>
+          ))}
         </View>
 
         {/* Secondary stats */}

@@ -19,8 +19,13 @@ import { COLORS } from '../../theme/colors';
 import UsernameBadges from '../../components/UsernameBadges';
 import FormInput from '../../components/FormInput';
 import { haptics } from '../../utils/haptics';
-import { listProfileFriends, type ProfileFriend } from '../../services/follows';
-import { Icon } from '../../components/Icon';
+import {
+  listProfileFriends,
+  listProfileStars,
+  listMyFans,
+  type ProfilePerson,
+} from '../../services/follows';
+import { Icon, type IconName } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 
 function avatarInitials(name: string): string {
@@ -30,7 +35,31 @@ function avatarInitials(name: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-function FriendRow({ item, onPress }: { item: ProfileFriend; onPress: () => void }) {
+export type ProfilePeopleKind = 'friends' | 'stars' | 'fans';
+
+const COPY: Record<ProfilePeopleKind, {
+  title: string;
+  one: string;
+  many: string;
+  search: string;
+  empty: string;
+  emptyIcon: IconName;
+}> = {
+  friends: { title: 'Friends', one: 'friend', many: 'friends', search: 'Search friends…', empty: 'No friends yet', emptyIcon: 'friends' },
+  stars:   { title: 'Stars',   one: 'star',   many: 'stars',   search: 'Search stars…',   empty: 'Not starring anyone yet', emptyIcon: 'star' },
+  fans:    { title: 'Fans',    one: 'fan',    many: 'fans',    search: 'Search fans…',    empty: 'No fans yet', emptyIcon: 'star' },
+};
+
+function fetchList(kind: ProfilePeopleKind, userId: string): Promise<ProfilePerson[]> {
+  switch (kind) {
+    case 'friends': return listProfileFriends(userId);
+    case 'stars': return listProfileStars(userId);
+    // Only ever the caller's own — there is no way to list someone else's fans.
+    case 'fans': return listMyFans();
+  }
+}
+
+function PersonRow({ item, onPress }: { item: ProfilePerson; onPress: () => void }) {
   const displayName = item.displayName || item.username;
   return (
     <Pressable
@@ -57,62 +86,69 @@ function FriendRow({ item, onPress }: { item: ProfileFriend; onPress: () => void
 }
 
 /**
- * Anyone's friends list. Public to every signed-in viewer — with no suggestions
- * graph yet, browsing a friend's friends is how people find each other. Tapping a
- * row opens that profile, where Add Friend lives.
+ * A profile's Friends, Stars, or (own profile only) Fans, with a search box.
  *
- * The whole list is fetched once and searched client-side: friend lists are small,
+ * Friends and Stars are public to every signed-in viewer — with no suggestions
+ * graph yet, browsing a friend's friends and the artists they star is how people
+ * find each other. Fans are owner-only (product decision 2026-09-30): another
+ * person's Fans pill shows a notice instead of navigating here.
+ *
+ * The whole list is fetched once and searched client-side: these lists are small,
  * and filtering locally keeps typing instant with no request per keystroke.
  */
-export default function ProfileFriendsScreen() {
+export default function ProfilePeopleScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { params } = useRoute<RouteProp<RootStackParamList, 'ProfileFriends'>>();
+  const { params } = useRoute<RouteProp<RootStackParamList, 'ProfilePeople'>>();
+  const copy = COPY[params.kind];
+  // 'fans' always lists the CALLER's own fans (the RPC takes no user id), so never
+  // label it with another person's username.
+  const headerUsername = params.kind === 'fans' ? undefined : params.username;
   const insets = useSafeAreaInsets();
-  const [friends, setFriends] = useState<ProfileFriend[]>([]);
+  const [people, setPeople] = useState<ProfilePerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
 
-  const load = useCallback(async () => {
+  const fetchPeople = useCallback(async () => {
     setError('');
     try {
-      setFriends(await listProfileFriends(params.userId));
+      setPeople(await fetchList(params.kind, params.userId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load friends.');
+      setError(err instanceof Error ? err.message : `Could not load ${copy.many}.`);
     } finally {
       setLoading(false);
     }
-  }, [params.userId]);
+  }, [params.kind, params.userId, copy.many]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void fetchPeople(); }, [fetchPeople]);
 
   const handleRefresh = useCallback(async () => {
     haptics.select();
     setRefreshing(true);
-    await load();
+    await fetchPeople();
     setRefreshing(false);
-  }, [load]);
+  }, [fetchPeople]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase().replace(/^@/, '');
-    if (!q) { return friends; }
-    return friends.filter(f =>
+    if (!q) { return people; }
+    return people.filter(f =>
       f.username.toLowerCase().includes(q) ||
       (f.displayName ?? '').toLowerCase().includes(q),
     );
-  }, [friends, query]);
+  }, [people, query]);
 
-  const renderItem = useCallback(({ item }: ListRenderItemInfo<ProfileFriend>) => (
-    <FriendRow
+  const renderItem = useCallback(({ item }: ListRenderItemInfo<ProfilePerson>) => (
+    <PersonRow
       item={item}
       onPress={() => navigation.dispatch(StackActions.push('UserProfile', { userId: item.userId }))}
     />
   ), [navigation]);
 
   const subtitle = loading
-    ? params.username ? `@${params.username}` : null
-    : `${params.username ? `@${params.username} · ` : ''}${friends.length} ${friends.length === 1 ? 'friend' : 'friends'}`;
+    ? headerUsername ? `@${headerUsername}` : null
+    : `${headerUsername ? `@${headerUsername} · ` : ''}${people.length} ${people.length === 1 ? copy.one : copy.many}`;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -125,7 +161,7 @@ export default function ProfileFriendsScreen() {
           <Icon name="back" size={32} color={COLORS.white} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Friends</Text>
+          <Text style={styles.headerTitle}>{copy.title}</Text>
           {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
         </View>
         <View style={styles.backBtn} />
@@ -135,7 +171,7 @@ export default function ProfileFriendsScreen() {
         <FormInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search friends…"
+          placeholder={copy.search}
           placeholderTextColor={COLORS.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
@@ -166,10 +202,10 @@ export default function ProfileFriendsScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              {friends.length === 0 ? (
+              {people.length === 0 ? (
                 <>
-                  <Icon name="friends" size={28} color={COLORS.purpleLight} />
-                  <Text style={styles.emptyTitle}>No friends yet</Text>
+                  <Icon name={copy.emptyIcon} size={28} color={COLORS.purpleLight} />
+                  <Text style={styles.emptyTitle}>{copy.empty}</Text>
                 </>
               ) : (
                 <>

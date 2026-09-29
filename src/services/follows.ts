@@ -63,12 +63,31 @@ async function getFriendCount(userId: string): Promise<number> {
   return fallback.count ?? 0;
 }
 
-export type ProfileFriend = {
+/** A person row in a profile's Friends / Stars / Fans list. */
+export type ProfilePerson = {
   userId: string;
   username: string;
   displayName: string | null;
   avatarUrl: string | null;
 };
+
+type PersonRow = {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+async function callPeopleRpc(fn: string, args?: Record<string, unknown>): Promise<ProfilePerson[]> {
+  const { data, error } = await (supabase as any).rpc(fn, args);
+  if (error) { throw new Error(error.message); }
+  return ((data ?? []) as PersonRow[]).map(r => ({
+    userId: r.user_id,
+    username: r.username,
+    displayName: r.display_name,
+    avatarUrl: r.avatar_url,
+  }));
+}
 
 /**
  * Accepted friends of any profile, newest friendship first. Visible to every
@@ -76,18 +95,19 @@ export type ProfileFriend = {
  * while there is no suggestions graph). A blocked pair gets an empty list; friends
  * blocked with the viewer are omitted server-side.
  */
-export async function listProfileFriends(userId: string): Promise<ProfileFriend[]> {
-  const { data, error } = await (supabase as any).rpc('list_profile_friends', { p_user_id: userId });
-  if (error) { throw new Error(error.message); }
-  return ((data ?? []) as Array<{
-    user_id: string;
-    username: string;
-    display_name: string | null;
-    avatar_url: string | null;
-  }>).map(r => ({
-    userId: r.user_id,
-    username: r.username,
-    displayName: r.display_name,
-    avatarUrl: r.avatar_url,
-  }));
+export function listProfileFriends(userId: string): Promise<ProfilePerson[]> {
+  return callPeopleRpc('list_profile_friends', { p_user_id: userId });
+}
+
+/** Artists any profile stars, newest first. Public to every signed-in viewer. */
+export function listProfileStars(userId: string): Promise<ProfilePerson[]> {
+  return callPeopleRpc('list_profile_stars', { p_user_id: userId });
+}
+
+/**
+ * The signed-in user's OWN fans. There is deliberately no way to list another
+ * person's fans (product decision 2026-09-30): the RPC takes no user id.
+ */
+export function listMyFans(): Promise<ProfilePerson[]> {
+  return callPeopleRpc('list_my_fans');
 }
