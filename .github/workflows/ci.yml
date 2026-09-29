@@ -554,6 +554,15 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/like-notifications.test.sql
 
+      # Jam Suggests: only members suggest, only the host acts, a listener cannot edit
+      # their own jam permissions, and ending the jam clears the list.
+      - name: Jam suggestions tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/jam-suggestions.test.sql
+
       # Same rule, other leak: profiles.last_seen_at was readable by every signed-in
       # user. It now lives in user_last_seen (no user access), fed by touch_last_seen()
       # and by a trigger that redirects the Play Store build's direct profile write.
