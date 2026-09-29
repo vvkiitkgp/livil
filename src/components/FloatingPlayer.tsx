@@ -697,12 +697,15 @@ export default function FloatingPlayer() {
               <TouchableOpacity
                 style={styles.returnChip}
                 activeOpacity={0.75}
-                onPress={() =>
+                onPress={() => {
+                  // The full-screen player is an overlay above every screen, so the jam
+                  // room would open UNDER it. Minimise first, then go to the room.
+                  if (isFullScreenOpen) { closeFullScreenPlayer(); }
                   navigation.navigate('JamRoom', {
                     jamRoomId: activeJam.jamRoomId,
                     conversationId: activeJam.conversationId,
-                  })
-                }
+                  });
+                }}
               >
                 <Text style={styles.returnText}>↑ Jam</Text>
               </TouchableOpacity>
