@@ -30,19 +30,35 @@ function useMyAvatar(): string | null {
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    // A cold start can run this before the session is restored or the network is up
+    // (seen on Android: the one fetch failed and the tab kept the glyph until restart).
+    // So retry a few times with backoff, and re-read on every session event below.
     const refresh = () => {
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
       fetchMyAvatar()
-        .then(next => { if (!cancelled) { setUrl(next); } })
-        .catch(() => { /* keep the icon */ });
+        .then(next => {
+          if (cancelled) { return; }
+          setUrl(next);
+          attempts = 0;
+        })
+        .catch(() => {
+          if (cancelled || attempts >= 4) { return; }
+          attempts += 1;
+          retryTimer = setTimeout(refresh, 2000 * attempts);
+        });
     };
     refresh();
     const { data: auth } = supabase.auth.onAuthStateChange(event => {
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') { refresh(); }
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN'
+          || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') { refresh(); }
       if (event === 'SIGNED_OUT') { setUrl(null); }
     });
     const sub = onMyAvatarChanged(next => setUrl(next));
     return () => {
       cancelled = true;
+      if (retryTimer) { clearTimeout(retryTimer); }
       auth.subscription.unsubscribe();
       sub.remove();
     };
@@ -59,8 +75,17 @@ function useMyAvatar(): string | null {
 export default function TabAvatar({ color, focused }: { color: string; focused: boolean }) {
   const url = useMyAvatar();
   const [failed, setFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  useEffect(() => { setFailed(false); }, [url]);
+  useEffect(() => { setFailed(false); setLoadAttempt(0); }, [url]);
+
+  // A failed image load shows the glyph, then tries again (a remount via `key`) a few
+  // times — one flaky load at startup must not cost the photo until the next restart.
+  useEffect(() => {
+    if (!failed || loadAttempt >= 3) { return; }
+    const t = setTimeout(() => { setFailed(false); setLoadAttempt(a => a + 1); }, 4000);
+    return () => clearTimeout(t);
+  }, [failed, loadAttempt]);
 
   if (!url || failed) {
     return <Icon name="profile" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
@@ -68,6 +93,7 @@ export default function TabAvatar({ color, focused }: { color: string; focused: 
   return (
     <View style={[styles.ring, focused && styles.ringFocused]}>
       <Image
+        key={loadAttempt}
         source={{ uri: url }}
         style={[styles.photo, !focused && styles.photoIdle]}
         onError={() => setFailed(true)}
