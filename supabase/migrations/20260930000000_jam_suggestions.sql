@@ -217,7 +217,9 @@ create trigger trg_jam_rooms_clear_suggestions
 
 -- ── Realtime ─────────────────────────────────────────────────────────────────
 -- Everyone in the jam sees suggestions and status changes live. REPLICA IDENTITY FULL
--- so UPDATE/DELETE events carry jam_room_id for the client's filter.
+-- so UPDATE events carry jam_room_id for the client's filter. DELETE events are the
+-- exception: with RLS on, Supabase sends only the primary key and cannot filter them, so
+-- the client listens for DELETE unfiltered and simply reloads (only a row id leaks).
 alter table public.jam_suggestions replica identity full;
 do $$
 begin
@@ -257,12 +259,15 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  -- The ONLY writer of host_clock_at / last_played_at (see jam_rooms_guard).
+  perform set_config('livil.jam_heartbeat', 'on', true);
   update jam_rooms
      set host_clock_at  = now(),
          last_played_at = case when p_is_playing then now() else last_played_at end
    where id = p_jam_room_id
      and host_id = auth.uid()
      and status = 'active';
+  perform set_config('livil.jam_heartbeat', 'off', true);
 end;
 $$;
 
@@ -294,8 +299,14 @@ begin
   if not found then return true; end if;
   if v_room.status = 'ended' then return true; end if;
 
-  if coalesce(v_room.host_clock_at, v_room.started_at) < now() - interval '3 minutes'
-     or coalesce(v_room.last_played_at, v_room.started_at) < now() - interval '10 minutes'
+  -- Only a host that has PROVEN it heartbeats (host_clock_at set) can be judged away or
+  -- idle. A host on an app version older than the heartbeat never writes it, and must not
+  -- have their live jam ended three minutes in; their abandoned jams still go through the
+  -- 1-hour cleanup in create_jam_room.
+  if v_room.host_clock_at is not null and (
+       v_room.host_clock_at < now() - interval '3 minutes'
+       or coalesce(v_room.last_played_at, v_room.started_at) < now() - interval '10 minutes'
+     )
   then
     update jam_rooms set status = 'ended', ended_at = now() where id = p_jam_room_id;
     if v_room.conversation_id is not null then
@@ -314,13 +325,88 @@ revoke execute on function public.jam_end_if_stale(uuid) from public;
 revoke execute on function public.jam_end_if_stale(uuid) from anon;
 grant execute on function public.jam_end_if_stale(uuid) to authenticated;
 
+-- ── 4. Hardening found in security review ────────────────────────────────────
+--
+-- (a) Leave-and-rejoin bypass: jmem_delete lets a member delete their own row and the
+--     self-join branch of jmem_insert did not constrain role/permissions, so a listener
+--     could re-insert themselves with every permission. A member row inserted by anyone
+--     other than the jam's host is now forced to a plain listener.
+create or replace function public.jam_room_members_insert_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then return new; end if;  -- migrations / service role
+  if exists (select 1 from jam_rooms r
+             where r.id = new.jam_room_id and r.host_id = auth.uid()) then
+    return new;                                     -- the host (incl. create_jam_room)
+  end if;
+  new.role := 'listener';
+  new.permissions := '{"can_play_pause":false,"can_seek":false,"can_skip":false,"can_change_track":false,"can_suggest":true}'::jsonb;
+  return new;
+end;
+$$;
+
+revoke execute on function public.jam_room_members_insert_guard() from public;
+revoke execute on function public.jam_room_members_insert_guard() from anon, authenticated;
+
+drop trigger if exists trg_jam_room_members_insert_guard on public.jam_room_members;
+create trigger trg_jam_room_members_insert_guard
+  before insert on public.jam_room_members
+  for each row execute function public.jam_room_members_insert_guard();
+
+-- (b) jam_update (host) had no column restriction: the host could re-point a jam at
+--     another conversation (planting it in a group they were removed from), revive an
+--     ended jam, or backdate host_clock_at to trigger jam_end_if_stale. Identity is now
+--     frozen, ended is final, and the liveness columns are written only by
+--     jam_host_heartbeat (transaction-local flag) or the server itself.
+create or replace function public.jam_rooms_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.id              is distinct from old.id
+     or new.conversation_id is distinct from old.conversation_id
+     -- host_id may only go to NULL: the ON DELETE SET NULL cascade when the host deletes
+     -- their account (delete_my_account). Never to another user.
+     or (new.host_id is distinct from old.host_id and new.host_id is not null)
+     or new.started_at      is distinct from old.started_at then
+    raise exception 'jam_room_identity_is_immutable' using errcode = '42501';
+  end if;
+  if old.status = 'ended' and new.status is distinct from 'ended' then
+    raise exception 'jam_room_ended_is_final' using errcode = '42501';
+  end if;
+  if auth.uid() is not null
+     and coalesce(current_setting('livil.jam_heartbeat', true), 'off') <> 'on'
+     and (new.host_clock_at  is distinct from old.host_clock_at
+          or new.last_played_at is distinct from old.last_played_at) then
+    raise exception 'jam_room_liveness_is_server_written' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.jam_rooms_guard() from public;
+revoke execute on function public.jam_rooms_guard() from anon, authenticated;
+
+drop trigger if exists trg_jam_rooms_guard on public.jam_rooms;
+create trigger trg_jam_rooms_guard
+  before update on public.jam_rooms
+  for each row execute function public.jam_rooms_guard();
+
 -- ── Self-test ───────────────────────────────────────────────────────────────
 -- Structure only; behaviour (who may insert/update/delete) is covered by
 -- supabase/tests/rls/jam-suggestions.test.sql, which needs an authenticated caller.
 do $verify$
 begin
   if has_function_privilege('anon', 'public.jam_suggestions_guard()', 'EXECUTE')
-     or has_function_privilege('anon', 'public.jam_suggestions_clear_on_end()', 'EXECUTE') then
+     or has_function_privilege('anon', 'public.jam_suggestions_clear_on_end()', 'EXECUTE')
+     or has_function_privilege('anon', 'public.jam_rooms_guard()', 'EXECUTE')
+     or has_function_privilege('anon', 'public.jam_room_members_insert_guard()', 'EXECUTE') then
     raise exception 'VERIFY: a jam_suggestions trigger function is anon-callable';
   end if;
   if (select count(*) from pg_policies

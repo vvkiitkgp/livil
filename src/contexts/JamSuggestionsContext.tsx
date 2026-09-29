@@ -92,7 +92,20 @@ export function JamSuggestionsProvider({ children }: { children: React.ReactNode
       .channel(`jam:suggestions:${jamRoomId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'jam_suggestions', filter: `jam_room_id=eq.${jamRoomId}` },
+        { event: 'INSERT', schema: 'public', table: 'jam_suggestions', filter: `jam_room_id=eq.${jamRoomId}` },
+        scheduleReload,
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'jam_suggestions', filter: `jam_room_id=eq.${jamRoomId}` },
+        scheduleReload,
+      )
+      // DELETE events cannot be filtered (with RLS on they carry only the row id), so a
+      // host's dismissal would never reach listeners through the filter above. Listen
+      // unfiltered and reload: deletes are rare, and all that arrives is a random id.
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'jam_suggestions' },
         scheduleReload,
       )
       .subscribe();

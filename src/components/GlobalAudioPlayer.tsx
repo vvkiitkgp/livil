@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { trackPlayProgress } from '../utils/playTracker';
 import { backfillTrackDuration } from '../services/tracks';
 import { listeningTick, setListeningTrack } from '../services/listeningStatus';
+import { jamHeartbeatTick } from '../services/jamHeartbeat';
 import { listeningTrackFor } from '../utils/listeningStatus';
 import { fetchAlbumForTrack } from '../services/albums';
 import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson, buildMediaSessionStateJson } from '../utils/nowPlayingMetadata';
@@ -304,6 +305,9 @@ export default function GlobalAudioPlayer() {
     // timer because progress events keep arriving on the lock screen; a no-op except
     // once a minute (see planListeningWrite).
     listeningTick();
+    // Jam host "still here" heartbeat — same reason as listeningTick: progress keeps
+    // arriving on the lock screen. A no-op unless this device hosts a jam.
+    jamHeartbeatTick(true);
 
     // Clip-end enforcement. On ANDROID this is owned by the native
     // VideoPlaybackService clip-end watcher (so it works while backgrounded, and

@@ -223,7 +223,8 @@ export async function updatePlaybackState(
     .update({
       playback_position_ms: state.positionMs,
       is_playing: state.isPlaying,
-      host_clock_at: new Date().toISOString(),
+      // host_clock_at is server-written only (jam_host_heartbeat; the jam_rooms_guard
+      // trigger refuses it from anywhere else).
     })
     .eq('id', jamRoomId);
 }

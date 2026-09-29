@@ -24,6 +24,11 @@ import {
   type PresenceMember,
 } from '../services/jamRealtime';
 import { useToast } from './ToastContext';
+import {
+  JAM_HEARTBEAT_MS,
+  jamHeartbeatTick,
+  setJamHeartbeatTarget,
+} from '../services/jamHeartbeat';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -74,8 +79,7 @@ const JamRealtimeContext = createContext<JamRealtimeContextValue | null>(null);
  * playlist → profile) and every track change still propagates to listeners.
  * Listeners likewise keep hearing the host on any screen.
  */
-/** Host → database heartbeat, and how often members ask whether the jam went stale. */
-const JAM_HEARTBEAT_MS = 30_000;
+/** How often members ask whether the jam went stale (host heartbeat: jamHeartbeat.ts). */
 const JAM_STALE_CHECK_MS = 60_000;
 /** How many upcoming tracks of the host's queue ride along in each broadcast. */
 const JAM_QUEUE_BROADCAST_MAX = 25;
@@ -426,17 +430,12 @@ export function JamRealtimeProvider({ children }: { children: React.ReactNode })
   // playing. The server decides (jam_end_if_stale); whichever member asks first ends
   // it for everyone. 20260930000000_jam_suggestions.sql.
   useEffect(() => {
-    if (!isHost || !activeJam) { return; }
-    const jamRoomId = activeJam.jamRoomId;
-    const beat = () => {
-      void db.rpc('jam_host_heartbeat', {
-        p_jam_room_id: jamRoomId,
-        p_is_playing: !!activePostIdRef.current,
-      });
-    };
+    if (!isHost || !activeJam) { setJamHeartbeatTarget(null); return; }
+    setJamHeartbeatTarget(activeJam.jamRoomId);
+    const beat = () => jamHeartbeatTick(!!activePostIdRef.current);
     beat();
     const id = setInterval(beat, JAM_HEARTBEAT_MS);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); setJamHeartbeatTarget(null); };
   }, [isHost, activeJam]);
 
   useEffect(() => {

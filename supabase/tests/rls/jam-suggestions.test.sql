@@ -245,7 +245,9 @@ select pg_temp.assert('#5 a non-member learns nothing',
   jam_end_if_stale('a5333333-0000-0000-0000-000000000002') is null, true);
 reset role;
 
--- Host silent for 4 minutes (app swiped away).
+-- Host silent for 4 minutes (app swiped away). Backdated as the server (no auth.uid()),
+-- since clients cannot write the liveness columns.
+select pg_temp.set_user(null);
 update jam_rooms set host_clock_at = now() - interval '4 minutes'
  where id = 'a5333333-0000-0000-0000-000000000002';
 select pg_temp.set_user('a5111111-0000-0000-0000-000000000002');
@@ -260,6 +262,19 @@ select pg_temp.assert_int('#5 and the chat says so',
     where conversation_id = 'a5222222-0000-0000-0000-000000000001'
       and kind = 'system' and metadata ->> 'reason' = 'host_away'), 1);
 
+-- A host on an app version without the heartbeat (host_clock_at never set) is NOT
+-- judged away, however old the jam.
+insert into jam_rooms (id, conversation_id, host_id, status, started_at) values
+  ('a5333333-0000-0000-0000-000000000004', 'a5222222-0000-0000-0000-000000000001',
+   'a5111111-0000-0000-0000-000000000001', 'active', now() - interval '30 minutes');
+insert into jam_room_members (jam_room_id, user_id, role) values
+  ('a5333333-0000-0000-0000-000000000004', 'a5111111-0000-0000-0000-000000000002', 'listener');
+select pg_temp.set_user('a5111111-0000-0000-0000-000000000002');
+set role authenticated;
+select pg_temp.assert('#5 a jam whose host never heartbeat (old app) is not ended',
+  jam_end_if_stale('a5333333-0000-0000-0000-000000000004'), false);
+reset role;
+
 -- Host present but nothing played for 11 minutes.
 insert into jam_rooms (id, conversation_id, host_id, status, host_clock_at, last_played_at) values
   ('a5333333-0000-0000-0000-000000000003', 'a5222222-0000-0000-0000-000000000001',
@@ -270,6 +285,42 @@ select pg_temp.set_user('a5111111-0000-0000-0000-000000000002');
 set role authenticated;
 select pg_temp.assert('#5 an idle jam (nothing played for 10+ min) ends',
   jam_end_if_stale('a5333333-0000-0000-0000-000000000003'), true);
+reset role;
+
+-- ============================================================================
+-- 6. Security-review hardening
+-- ============================================================================
+-- (a) Leave-and-rejoin cannot mint permissions.
+select pg_temp.set_user('a5111111-0000-0000-0000-000000000002');
+set role authenticated;
+delete from jam_room_members
+ where jam_room_id = 'a5333333-0000-0000-0000-000000000004'
+   and user_id = 'a5111111-0000-0000-0000-000000000002';
+insert into jam_room_members (jam_room_id, user_id, role, permissions) values
+  ('a5333333-0000-0000-0000-000000000004', 'a5111111-0000-0000-0000-000000000002', 'host',
+   '{"can_play_pause":true,"can_seek":true,"can_skip":true,"can_change_track":true,"can_suggest":true}');
+reset role;
+select pg_temp.assert('#6a a re-inserted member row is forced back to a plain listener',
+  (select role = 'listener' and (permissions ->> 'can_seek')::boolean = false
+     from jam_room_members
+    where jam_room_id = 'a5333333-0000-0000-0000-000000000004'
+      and user_id = 'a5111111-0000-0000-0000-000000000002'), true);
+
+-- (b) The host cannot re-point, revive, or backdate a jam.
+select pg_temp.set_user('a5111111-0000-0000-0000-000000000001');
+set role authenticated;
+select pg_temp.assert('#6b the host cannot move a jam into another conversation', pg_temp.allows($s$
+  update jam_rooms set conversation_id = gen_random_uuid()
+   where id = 'a5333333-0000-0000-0000-000000000004' $s$), false);
+select pg_temp.assert('#6b the host cannot backdate the heartbeat', pg_temp.allows($s$
+  update jam_rooms set host_clock_at = now() - interval '1 day'
+   where id = 'a5333333-0000-0000-0000-000000000004' $s$), false);
+select pg_temp.assert('#6b the host can still end their jam', pg_temp.allows($s$
+  update jam_rooms set status = 'ended', ended_at = now()
+   where id = 'a5333333-0000-0000-0000-000000000004' $s$), true);
+select pg_temp.assert('#6b an ended jam cannot be revived', pg_temp.allows($s$
+  update jam_rooms set status = 'active'
+   where id = 'a5333333-0000-0000-0000-000000000004' $s$), false);
 reset role;
 
 rollback;
