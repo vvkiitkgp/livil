@@ -1,4 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { findMyActiveJam } from '../services/jamRooms';
 
 export type ActiveJam = {
   jamRoomId: string;
@@ -23,6 +25,31 @@ export function JamProvider({ children }: { children: React.ReactNode }) {
 
   const clearActiveJam = useCallback(() => {
     setActiveJamState(null);
+  }, []);
+
+  // Re-link to a jam you are still in after the app restarts (or you sign in again):
+  // the membership survives in the database, this pointer does not. Host or listener,
+  // the Jam pill and the live sync come back on their own.
+  useEffect(() => {
+    let cancelled = false;
+    const restore = () => {
+      findMyActiveJam()
+        .then(found => {
+          if (cancelled || !found) { return; }
+          // Never override a jam started or joined while this was in flight.
+          setActiveJamState(prev => prev ?? { ...found, conversationTitle: 'Jam Room' });
+        })
+        .catch(e => console.warn('[jam] restore failed', e));
+    };
+    restore();
+    const { data: auth } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_IN') { restore(); }
+      if (event === 'SIGNED_OUT') { setActiveJamState(null); }
+    });
+    return () => {
+      cancelled = true;
+      auth.subscription.unsubscribe();
+    };
   }, []);
 
   const value = useMemo<JamContextValue>(

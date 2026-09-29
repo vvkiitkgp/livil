@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-254 TypeScript file(s) under `src/`, 63,959 lines.
+256 TypeScript file(s) under `src/`, 64,372 lines.
 
 ## Size hotspots
 
@@ -35,9 +35,9 @@ reading alone (Constitution P28).
 | `src/screens/main/ProfileScreen.tsx` | 1181 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/screens/main/JamRoomScreen.tsx` | 1047 |
+| `src/screens/main/JamRoomScreen.tsx` | 1147 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/components/FloatingPlayer.tsx` | 923 |
+| `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -99,7 +99,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-44 file(s), 22,816 lines.
+44 file(s), 22,916 lines.
 
 | File | Lines |
 |---|---:|
@@ -109,7 +109,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/HomeScreen.tsx` | 1252 |
 | `src/screens/main/ProfileScreen.tsx` | 1181 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/screens/main/JamRoomScreen.tsx` | 1047 |
+| `src/screens/main/JamRoomScreen.tsx` | 1147 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -150,14 +150,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-93 file(s), 20,974 lines.
+93 file(s), 21,038 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 923 |
+| `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
 | `src/components/SharePostSheet.tsx` | 511 |
@@ -169,7 +169,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/PostLikersSheet.tsx` | 362 |
 | `src/components/TrackContextMenu.tsx` | 306 |
-| `src/components/JamSuggestsTab.tsx` | 298 |
+| `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/CommentItem.tsx` | 274 |
 | `src/components/Icon.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
@@ -197,6 +197,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/RemovedContentCard.tsx` | 165 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/ProfileTabBar.tsx` | 158 |
+| `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/AppleSignInButton.tsx` | 135 |
@@ -212,7 +213,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
-| `src/components/TabAvatar.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/EqualizerBars.tsx` | 89 |
@@ -250,7 +250,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-54 file(s), 11,574 lines.
+56 file(s), 11,751 lines.
 
 | File | Lines |
 |---|---:|
@@ -262,9 +262,9 @@ case the call fails silently wherever its result is discarded.
 | `src/services/profileService.ts` | 391 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
+| `src/services/jamRooms.ts` | 366 |
 | `src/services/messages.ts` | 366 |
 | `src/services/share.ts` | 358 |
-| `src/services/jamRooms.ts` | 326 |
 | `src/services/uploads.ts` | 301 |
 | `src/services/relationships.ts` | 270 |
 | `src/services/jamRealtime.ts` | 264 |
@@ -297,25 +297,27 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
 | `src/services/terms.ts` | 78 |
+| `src/services/__tests__/findMyActiveJam.test.ts` | 72 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
 | `src/services/waveform.ts` | 66 |
 | `src/services/__tests__/createTrackStreamingGrant.test.ts` | 64 |
 | `src/services/teamMessages.ts` | 57 |
+| `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
+| `src/services/jamHeartbeat.ts` | 43 |
 | `src/services/friendActivity.ts` | 33 |
-| `src/services/jamHeartbeat.ts` | 33 |
 | `src/services/googleAuth.ts` | 19 |
 | `src/services/uploadEvents.ts` | 15 |
 
 ## Contexts
 
-13 file(s), 3,112 lines.
+13 file(s), 3,161 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 1017 |
+| `src/contexts/PlaybackContext.tsx` | 1024 |
 | `src/contexts/JamRealtimeContext.tsx` | 488 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/JamSuggestionsContext.tsx` | 200 |
@@ -323,11 +325,11 @@ case the call fails silently wherever its result is discarded.
 | `src/contexts/ProfileBadgesContext.tsx` | 172 |
 | `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
-| `src/contexts/__tests__/PlaybackContext.jamListenerGuard.test.tsx` | 110 |
+| `src/contexts/__tests__/PlaybackContext.jamListenerGuard.test.tsx` | 125 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |
 | `src/contexts/ChromeVisibilityContext.tsx` | 69 |
+| `src/contexts/JamContext.tsx` | 68 |
 | `src/contexts/StoriesContext.tsx` | 54 |
-| `src/contexts/JamContext.tsx` | 41 |
 
 ## Hooks
 

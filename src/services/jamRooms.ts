@@ -148,6 +148,46 @@ export async function leaveJamRoom(jamRoomId: string): Promise<void> {
     .eq('user_id', me);
 }
 
+/**
+ * The jam you are still in, if any — for re-linking the app to it after a restart.
+ * Membership lives in the database, the "which jam am I in" pointer only in memory, so
+ * swiping the app away used to leave you in a live jam with no Jam pill to get back to.
+ *
+ * Asks the server to end the jam first if its host has gone quiet (the same check every
+ * member runs once a minute), so a restart never re-links you to a dead jam.
+ */
+export async function findMyActiveJam(): Promise<{ jamRoomId: string; conversationId: string } | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  if (!me) { return null; }
+
+  const { data, error } = await db
+    .from('jam_room_members')
+    .select('jam_room_id, joined_at, jam_rooms!inner(conversation_id, status, host_clock_at, started_at)')
+    .eq('user_id', me)
+    .eq('jam_rooms.status', 'active')
+    .order('joined_at', { ascending: false })
+    .limit(1);
+  if (error) { throw error; }
+  const row = (data as Array<{
+    jam_room_id: string;
+    jam_rooms: { conversation_id: string; host_clock_at: string | null; started_at: string } | null;
+  }> | null)?.[0];
+  if (!row?.jam_rooms?.conversation_id) { return null; }
+
+  // A jam whose host never sent a heartbeat (older builds) is invisible to the stale
+  // check, so it would stay "active" forever. Only trust one that started recently.
+  if (!row.jam_rooms.host_clock_at
+      && Date.now() - new Date(row.jam_rooms.started_at).getTime() > 10 * 60_000) {
+    return null;
+  }
+
+  const { data: ended } = await db.rpc('jam_end_if_stale', { p_jam_room_id: row.jam_room_id });
+  if (ended === true) { return null; }
+
+  return { jamRoomId: row.jam_room_id, conversationId: row.jam_rooms.conversation_id };
+}
+
 export async function isJamRoomEnded(jamRoomId: string): Promise<boolean> {
   const { data } = await db
     .from('jam_rooms')
