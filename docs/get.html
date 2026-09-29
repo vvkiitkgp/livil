@@ -114,10 +114,13 @@
       // back stack, so "back" from the store returns to the chat the link came from.
       (function () {
         var ua = navigator.userAgent || '';
-        var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        // Android FIRST. The iPad test below (iPadOS 13+ reports itself as a Mac, so the
+        // platform + touch check is the only way to catch it) also matches a desktop
+        // browser emulating a touch phone — which is exactly how this page gets tested.
         var isAndroid = /Android/.test(ua);
-        var href = isIOS ? 'https://apps.apple.com/app/id6809119164'
-          : isAndroid ? 'https://play.google.com/store/apps/details?id=com.livil'
+        var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var href = isAndroid ? 'https://play.google.com/store/apps/details?id=com.livil'
+          : isIOS ? 'https://apps.apple.com/app/id6809119164'
           : null;
         if (!href) { return; }
         document.body.classList.add('redirecting');
