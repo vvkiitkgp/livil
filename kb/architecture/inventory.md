@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-257 TypeScript file(s) under `src/`, 64,814 lines.
+266 TypeScript file(s) under `src/`, 67,149 lines.
 
 ## Size hotspots
 
@@ -42,12 +42,13 @@ reading alone (Constitution P28).
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
+| `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/screens/main/LibraryScreen.tsx` | 624 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
 
-> 20 file(s) over the threshold against **8 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 21 file(s) over the threshold against **8 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -75,6 +76,7 @@ case the call fails silently wherever its result is discarded.
 | `PostDetail` | `{ postId: string` |
 | `EditProfile` | `undefined` |
 | `Settings` | `undefined` |
+| `FirstRunGuide` | `undefined` |
 | `NotificationSettings` | `undefined` |
 | `PrivacyData` | `undefined` |
 | `ContactTeam` | `undefined` |
@@ -100,7 +102,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-45 file(s), 23,252 lines.
+46 file(s), 23,461 lines.
 
 | File | Lines |
 |---|---:|
@@ -127,9 +129,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 331 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 315 |
+| `src/screens/main/SettingsScreen.tsx` | 287 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 282 |
-| `src/screens/main/SettingsScreen.tsx` | 281 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 277 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
@@ -144,6 +146,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 216 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
+| `src/screens/auth/FirstRunGuideScreen.tsx` | 203 |
 | `src/screens/main/PostDetailScreen.tsx` | 202 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 201 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
@@ -152,7 +155,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-93 file(s), 21,038 lines.
+101 file(s), 23,091 lines.
 
 | File | Lines |
 |---|---:|
@@ -161,21 +164,25 @@ case the call fails silently wherever its result is discarded.
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
+| `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
 | `src/components/SharePostSheet.tsx` | 511 |
 | `src/components/MediaPlayer.tsx` | 449 |
+| `src/components/guide/cardsFeed.tsx` | 440 |
 | `src/components/QueueList.tsx` | 414 |
 | `src/components/DetailView.tsx` | 409 |
 | `src/components/AddUserSheet.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/PostLikersSheet.tsx` | 362 |
+| `src/components/guide/primitives.tsx` | 316 |
 | `src/components/TrackContextMenu.tsx` | 306 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/CommentItem.tsx` | 274 |
 | `src/components/Icon.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/Button.tsx` | 247 |
+| `src/components/guide/cardsPlayer.tsx` | 247 |
 | `src/components/ActivityBubble.tsx` | 242 |
 | `src/components/StoryReportModal.tsx` | 236 |
 | `src/components/WaveVisualizer.tsx` | 233 |
@@ -201,8 +208,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProfileTabBar.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
+| `src/components/guide/cardWelcome.tsx` | 148 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/AppleSignInButton.tsx` | 135 |
+| `src/components/guide/cards.ts` | 132 |
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
@@ -222,6 +231,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
+| `src/components/guide/__tests__/timeline.test.ts` | 80 |
 | `src/components/UsernameBadges.tsx` | 78 |
 | `src/components/__tests__/shareBadgeParity.test.ts` | 78 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
@@ -239,6 +249,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
 | `src/components/FirstHundredBadge.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
+| `src/components/guide/timeline.ts` | 60 |
 | `src/components/VerifiedBadge.tsx` | 58 |
 | `src/components/__tests__/amplitudeBars.test.ts` | 57 |
 | `src/components/CollabAvatar.tsx` | 55 |
@@ -252,7 +263,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-56 file(s), 11,842 lines.
+56 file(s), 11,867 lines.
 
 | File | Lines |
 |---|---:|
@@ -261,7 +272,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/pushNotifications.ts` | 641 |
 | `src/services/albums.ts` | 497 |
 | `src/services/activity.ts` | 426 |
-| `src/services/profileService.ts` | 391 |
+| `src/services/profileService.ts` | 416 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/jamRooms.ts` | 369 |

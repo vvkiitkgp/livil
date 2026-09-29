@@ -1,0 +1,19 @@
+{
+  "$comment": "What each first-run guide card DEPICTS. When a PR changes one of these files without touching the guide, CI asks whether the card is still true. Keys must match GUIDE_CARDS in cards.ts (a unit test enforces it); paths must exist (scripts/check-guide-drift.mjs enforces it). Ack a PR that changes behaviour the guide doesn't show with a `Guide: reviewed` line in the PR body or a commit message.",
+  "welcome": [],
+  "tap": ["src/components/FloatingPlayer.tsx"],
+  "up": ["src/components/FloatingPlayer.tsx", "src/components/FullScreenPlayer.tsx"],
+  "flick": ["src/components/FloatingPlayer.tsx"],
+  "drag": ["src/components/FloatingPlayer.tsx"],
+  "moments": ["src/components/PostCard.tsx", "src/components/WaveformScrubber.tsx"],
+  "like": ["src/components/PostCard.tsx", "src/components/CommentsSheet.tsx"],
+  "repost": ["src/screens/main/RepostScreen.tsx"],
+  "share": ["src/components/SharePostSheet.tsx"],
+  "stories": ["src/screens/main/StoryViewerScreen.tsx", "src/components/StoryCard.tsx"],
+  "friends": ["src/components/AddUserSheet.tsx", "src/services/follows.ts", "src/screens/main/UserProfileScreen.tsx"],
+  "chat": ["src/screens/main/ConversationScreen.tsx", "src/screens/main/InboxScreen.tsx"],
+  "jam": ["src/screens/main/JamRoomScreen.tsx", "src/components/JamSuggestsTab.tsx"],
+  "listening": ["src/components/ListeningStatusReporter.tsx", "src/services/listeningStatus.ts", "src/screens/main/PrivacyDataScreen.tsx"],
+  "library": ["src/screens/main/LibraryScreen.tsx"],
+  "notify": ["src/screens/main/NotificationSettingsScreen.tsx", "src/components/NotificationPermissionModal.tsx"]
+}

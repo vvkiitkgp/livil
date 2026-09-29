@@ -1341,6 +1341,7 @@ export type Database = {
           display_name: string | null
           followers_count: number | null
           following_count: number | null
+          guide_seen_at: string | null
           id: string
           last_seen_at: string | null
           links: string[]
@@ -1356,6 +1357,7 @@ export type Database = {
           display_name?: string | null
           followers_count?: number | null
           following_count?: number | null
+          guide_seen_at?: string | null
           id: string
           last_seen_at?: string | null
           links?: string[]
@@ -1371,6 +1373,7 @@ export type Database = {
           display_name?: string | null
           followers_count?: number | null
           following_count?: number | null
+          guide_seen_at?: string | null
           id?: string
           last_seen_at?: string | null
           links?: string[]

@@ -58,6 +58,8 @@ export type RootStackParamList = {
   };
   EditProfile: undefined;
   Settings: undefined;
+  /** Replays the first-run guide from Settings; the sign-up showing is not a route. */
+  FirstRunGuide: undefined;
   NotificationSettings: undefined;
   PrivacyData: undefined;
   ContactTeam: undefined;
