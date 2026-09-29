@@ -429,6 +429,19 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     openFullScreen();
   }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
+  // Shared by the header's Repost pill and the repost counter in the stats row. A repost
+  // is always of the ORIGINAL (reposts of reposts are refused), seeded with this card's
+  // clip so "repost what I'm hearing" starts from the same window.
+  const handleRepost = useCallback(() => {
+    const targetId = post.kind === 'repost' ? post.originalPostId : post.id;
+    if (!targetId) { return; }
+    navigation.navigate('Repost', {
+      originalPostId: targetId,
+      seedClipStartSec: post.clipStartSec,
+      seedClipEndSec: post.clipEndSec,
+    });
+  }, [navigation, post.kind, post.originalPostId, post.id, post.clipStartSec, post.clipEndSec]);
+
   const handleToggleLike = useCallback(async () => {
     // Optimistic update — flip immediately, revert on failure.
     const prevLiked = liked;
@@ -674,16 +687,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           style={styles.repostBtn}
           activeOpacity={0.85}
           accessibilityLabel="Repost"
-          onPress={() => {
-            const targetId = post.kind === 'repost' ? post.originalPostId : post.id;
-            if (targetId) {
-              navigation.navigate('Repost', {
-                originalPostId: targetId,
-                seedClipStartSec: post.clipStartSec,
-                seedClipEndSec: post.clipEndSec,
-              });
-            }
-          }}
+          onPress={handleRepost}
         >
           <GradientBorder borderRadius={999} />
           <Icon name="repost" size={14} color={COLORS.purpleNeon} />
@@ -890,11 +894,18 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               0 — don't show it. Plays/views are intentionally removed here per
               product decision; the cumulative track plays live in FullScreenPlayer. */}
           {post.kind === 'upload' ? (
-            <View style={styles.statBtn}>
-              {/* Same glyph as the Repost button (line 436) for visual consistency. */}
+            // Does exactly what the Repost pill in the header does — users reached for
+            // this icon, next to the tappable like and comment, and nothing happened.
+            <TouchableOpacity
+              style={styles.statBtn}
+              activeOpacity={0.7}
+              onPress={handleRepost}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+              accessibilityLabel="Repost"
+            >
               <Icon name="repost" size={16} color={COLORS.textSecondary} />
               <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
-            </View>
+            </TouchableOpacity>
           ) : null}
         </View>
 
