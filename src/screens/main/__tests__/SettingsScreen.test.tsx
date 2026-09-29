@@ -69,7 +69,7 @@ jest.mock('react-native-safe-area-context', () => ({
 
 import SettingsScreen from '../SettingsScreen';
 import { APP_VERSION_LABEL } from '../../../constants/appVersion';
-import { PLAY_STORE_APP_URL, PRIVACY_POLICY_URL } from '../../../constants/links';
+import { INVITE_URL, PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL, PRIVACY_POLICY_URL } from '../../../constants/links';
 
 async function mount() {
   let tree!: TestRenderer.ReactTestRenderer;
@@ -157,10 +157,16 @@ describe('SettingsScreen', () => {
     expect(mockGoBack).toHaveBeenCalled();
   });
 
-  it('opens the share sheet from the invite card', async () => {
+  it('opens the share sheet from the invite card with the one-link invite, never a store URL', async () => {
     const tree = await mount();
     await act(async () => { pressable(tree, 'Invite your friends').props.onPress(); });
     expect(mockShare).toHaveBeenCalled();
+    const { message } = mockShare.mock.calls[0]![0] as { message: string };
+    // livil-music.com/get sends each phone to its own store and carries the preview card.
+    // A bare Play Store URL was the wrong store for every iPhone and had no card.
+    expect(message.trim().endsWith(INVITE_URL)).toBe(true);
+    expect(message).not.toContain(PLAY_STORE_WEB_URL);
+    expect(message).not.toContain('apps.apple.com');
   });
 
   it('opens external links rather than navigating', async () => {
