@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -46,7 +46,13 @@ export default function PostDetailScreen({ navigation, route }: Props) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [likersOpen, setLikersOpen] = useState(false);
   const [commentsDelta, setCommentsDelta] = useState(0);
-  const [arrivalHandled, setArrivalHandled] = useState(false);
+  // A ref, not state: flipping state re-ran the effect below, whose cleanup cancelled
+  // the very timer that was about to open the sheet — so it never opened.
+  const arrivalHandledRef = useRef(false);
+  const arrivalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (arrivalTimerRef.current) { clearTimeout(arrivalTimerRef.current); }
+  }, []);
 
   const load = useCallback(async () => {
     setError('');
@@ -67,15 +73,14 @@ export default function PostDetailScreen({ navigation, route }: Props) {
   // One-shot arrival intent. The short delay lets the push animation settle first, so
   // the sheet slides up over a page that is already there.
   useEffect(() => {
-    if (arrivalHandled || !post) { return; }
-    setArrivalHandled(true);
+    if (arrivalHandledRef.current || !post) { return; }
+    arrivalHandledRef.current = true;
     if (!openComments && !openLikers) { return; }
-    const id = setTimeout(() => {
+    arrivalTimerRef.current = setTimeout(() => {
       if (openComments) { setCommentsOpen(true); }
       else if (openLikers && post.likesCount > 0) { setLikersOpen(true); }
     }, 350);
-    return () => clearTimeout(id);
-  }, [arrivalHandled, post, openComments, openLikers]);
+  }, [post, openComments, openLikers]);
 
   const handleRefresh = useCallback(async () => {
     haptics.select();

@@ -921,28 +921,32 @@ export async function listRecentTracksForLibrary(
 
   const me = userData.user.id;
 
-  let query = supabase
-    .from('user_recent_tracks')
-    .select(
-      `
-      played_at,
-      last_post_id,
-      track:tracks (
-        id,
-        title,
-        cover_art_url,
-        uploader:profiles!tracks_uploader_id_fkey (
-          username,
-          display_name
-        )
+  const TRACK = `
+    track:tracks (
+      id,
+      title,
+      cover_art_url,
+      uploader:profiles!tracks_uploader_id_fkey (
+        username,
+        display_name
       )
-    `,
-    )
-    .eq('user_id', me);
-  if (before) { query = query.lt('played_at', before); }
-  const { data, error } = await query
-    .order('played_at', { ascending: false })
-    .limit(limit);
+    )`;
+  const run = (withPost: boolean) => {
+    let query = supabase
+      .from('user_recent_tracks')
+      .select(withPost ? `played_at, last_post_id, ${TRACK}` : `played_at, ${TRACK}`)
+      .eq('user_id', me);
+    if (before) { query = query.lt('played_at', before); }
+    return query.order('played_at', { ascending: false }).limit(limit);
+  };
+
+  // `last_post_id` arrives with 20260929000000_recently_played_is_recorded.sql. If the
+  // app ships before that migration is applied, read the list without it (rows just
+  // aren't tappable) rather than failing the whole strip with a column error.
+  let { data, error } = await run(true);
+  if (error && /last_post_id/.test(error.message)) {
+    ({ data, error } = await run(false));
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -950,7 +954,7 @@ export async function listRecentTracksForLibrary(
 
   type Row = {
     played_at: string;
-    last_post_id: string | null;
+    last_post_id?: string | null;
     track: {
       id: string;
       title: string;
@@ -959,7 +963,7 @@ export async function listRecentTracksForLibrary(
     } | null;
   };
 
-  return (data ?? [])
+  return ((data ?? []) as unknown as Row[])
     .map((raw: Row) => {
       const t = raw.track;
       if (!t) {
@@ -969,7 +973,7 @@ export async function listRecentTracksForLibrary(
       const artistLabel = up?.display_name?.trim() || up?.username || 'Artist';
       return {
         trackId: t.id,
-        postId: raw.last_post_id,
+        postId: raw.last_post_id ?? null,
         title: t.title,
         artistLabel,
         coverArtUrl: t.cover_art_url,
