@@ -544,6 +544,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/listening-now.test.sql
 
+      # "Sam and 2 others liked your post" on a post with one like: every like added
+      # one and an unlike took nothing back. The count is now recomputed from the real
+      # likes, and each liker is pushed about once per post.
+      - name: Like notification tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/like-notifications.test.sql
+
       # Same rule, other leak: profiles.last_seen_at was readable by every signed-in
       # user. It now lives in user_last_seen (no user access), fed by touch_last_seen()
       # and by a trigger that redirects the Play Store build's direct profile write.
