@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0A0A0F" />
+    <meta name="apple-itunes-app" content="app-id=6809119164" />
     <!-- Not indexed: this page is only meaningful to someone holding an invite, and a
          stray search result would send strangers into a closed testing track. -->
     <meta name="robots" content="noindex,nofollow" />
@@ -151,6 +152,7 @@
         font-size: 15px;
         transition: background 0.18s, box-shadow 0.25s;
       }
+      a.btn + a.btn { margin-left: 6px; }
       a.btn:hover {
         background: rgba(124, 58, 237, 0.12);
         box-shadow: 0 0 28px rgba(124, 58, 237, 0.35);
@@ -280,9 +282,14 @@
         <li class="step" data-step="install">
           <div class="num"><span>3</span></div>
           <h2>Install Livil</h2>
-          <p>Android only for now — an iOS build isn't out yet.</p>
+          <p>On an Android phone, use the Play Store button. On iPhone, get it from the App Store.</p>
           <a class="btn" data-install href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">
             Open in Play Store
+          </a>
+          <!-- No data-install: the step-3 countdown is Play's test-access delay, and the
+               App Store listing is public, so it never needs to wait. -->
+          <a class="btn" href="https://apps.apple.com/app/id6809119164" target="_blank" rel="noopener">
+            Open in App Store
           </a>
           <!-- Shown only while the timer runs. The hour is Google's TYPICAL, not a rule:
                access is sometimes live in ten minutes, and locking out somebody who could
@@ -340,19 +347,19 @@
           var id = li.getAttribute("data-step");
           if (done[id]) li.setAttribute("data-done", "1");
 
-          var link = li.querySelector("a.btn");
-          if (!link) return;
-          link.addEventListener("click", function () {
-            done[id] = true;
-            li.setAttribute("data-done", "1");
-            // Stamp when step 2 was taken — the step-3 countdown is measured from it.
-            if (id === "optin" && !done.optinAt) done.optinAt = Date.now();
-            try {
-              localStorage.setItem(KEY, JSON.stringify(done));
-            } catch (e) {
-              /* private mode — the page still works, it just won't remember */
-            }
-            if (id === "optin") startWait();
+          li.querySelectorAll("a.btn").forEach(function (link) {
+            link.addEventListener("click", function () {
+              done[id] = true;
+              li.setAttribute("data-done", "1");
+              // Stamp when step 2 was taken — the step-3 countdown is measured from it.
+              if (id === "optin" && !done.optinAt) done.optinAt = Date.now();
+              try {
+                localStorage.setItem(KEY, JSON.stringify(done));
+              } catch (e) {
+                /* private mode — the page still works, it just won't remember */
+              }
+              if (id === "optin") startWait();
+            });
           });
         });
 

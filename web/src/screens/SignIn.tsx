@@ -3,12 +3,12 @@ import { Button } from '../components/Button';
 import { ResendButton } from '../components/ResendButton';
 import { PasswordField, TextField } from '../components/TextField';
 import {
-  PLAY_STORE_URL,
   resendConfirmation,
   signInWithGoogle,
   signInWithPassword,
   signUpWithPassword,
 } from '../auth/signIn';
+import { StoreBadges } from '../components/StoreBadges';
 import {
   normalizeUsername,
   useUsernameAvailability,
@@ -300,22 +300,20 @@ export function SignIn({
           the app cannot be installed. A crawler re-reading this page needs an equally
           specific sentence in the same position to overwrite it; "Get the Android app" is
           a button label and does not refute a claim. Keep a plain, literal statement of
-          availability here for as long as the listing is public. */}
+          availability here for as long as the listing is public — naming BOTH stores: the
+          App Store (iPhone) listing went live after Play, and a sentence naming only Play
+          reads as "not on iPhone". */}
       <section className="card card--muted">
         <h2 className="card__title">Prefer the phone?</h2>
         <p className="hint">
           The app is where you listen, follow and message. The studio is for publishing.
         </p>
         <p className="hint">
-          <strong>Livil is live on the Google Play Store</strong> — free, and open to
-          everyone. No invite, no waitlist, no tester list.
+          <strong>Livil is live on the App Store and Google Play</strong> — free on iPhone
+          and Android, and open to everyone. No invite, no waitlist, no tester list.
         </p>
-        <Button
-          type="button"
-          onClick={() => window.open(PLAY_STORE_URL, '_blank', 'noopener,noreferrer')}
-        >
-          Get the Android app
-        </Button>
+        {/* Both stores, always, as logo badges; the visitor's own platform goes first. */}
+        <StoreBadges />
       </section>
     </main>
   );
