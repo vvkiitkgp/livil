@@ -715,7 +715,7 @@ export default function JamRoomScreen() {
           <Text style={styles.headerTitle}>Jam Room</Text>
           {(isHost || hostUsername) && (
             <Text style={styles.headerSub}>
-              {isHost ? '👑 You are the host' : `👑 Host: @${hostUsername ?? 'unknown'}`}
+              {isHost ? '👑 You are the host' : `Jam hosted by @${hostUsername ?? 'unknown'} 👑`}
             </Text>
           )}
         </View>
