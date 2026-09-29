@@ -68,6 +68,9 @@ import type { ShareablePost } from '../services/share';
 import type { RootStackParamList } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+/** iOS back gesture: a pan that starts within this many px of the left edge. */
+const EDGE_BACK_ZONE = 40;
+const IS_IOS = Platform.OS === 'ios';
 
 const FLOAT_D = 60;
 
@@ -1209,6 +1212,7 @@ export default function FullScreenPlayer() {
   const savedScale = useSharedValue(1);     // scale at gesture start
   const savedPanX  = useSharedValue(0);
   const savedPanY  = useSharedValue(0);
+  const panStartX  = useSharedValue(0);     // absoluteX where the current pan began
   const coverScaleSV = useSharedValue(1);   // cover-equivalent scale (zoom-in max)
   const dispWSV    = useSharedValue(SCREEN_W); // contain-fitted width  @ scale 1
   const dispHSV    = useSharedValue(SCREEN_H); // contain-fitted height @ scale 1
@@ -1597,10 +1601,11 @@ export default function FullScreenPlayer() {
 
     const pan = Gesture.Pan()
       .minDistance(10)
-      .onStart(() => {
+      .onStart((e) => {
         'worklet';
         savedPanX.value = panX.value;
         savedPanY.value = panY.value;
+        panStartX.value = e.absoluteX - e.translationX;
       })
       .onUpdate((e) => {
         'worklet';
@@ -1624,6 +1629,18 @@ export default function FullScreenPlayer() {
           savedPanY.value = panY.value;
         } else if (!panelOpenSV.value && (e.translationY > 120 || e.velocityY > 500)) {
           // Legacy swipe-down-to-close (only when no panel is open).
+          runOnJS(closeFullScreenPlayer)();
+        } else if (
+          IS_IOS &&
+          !panelOpenSV.value &&
+          panStartX.value < EDGE_BACK_ZONE &&
+          e.translationX > Math.abs(e.translationY) &&
+          (e.translationX > 80 || e.velocityX > 500)
+        ) {
+          // iOS back gesture: a swipe in from the left edge minimises the player, as
+          // it pops a screen everywhere else. The player is an overlay, not a stack
+          // screen, so the native-stack edge swipe never reaches it; Android's
+          // equivalent is the hardwareBackPress handler above.
           runOnJS(closeFullScreenPlayer)();
         }
       });
