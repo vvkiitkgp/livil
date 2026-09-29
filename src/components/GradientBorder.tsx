@@ -34,6 +34,12 @@ export type GradientBorderProps = {
   strokeWidth?: number;
   /** Set false for a flat single-stroke border with no bloom. */
   glow?: boolean;
+  /**
+   * Stops for the ramp, evenly spaced, in place of the purple one. Only for a border
+   * that must carry ANOTHER brand's colours — the Google sign-in button is the one
+   * case. Everything Livil-branded keeps the default.
+   */
+  colors?: string[];
 };
 
 let gradientCounter = 0;
@@ -85,6 +91,7 @@ export function GradientBorder({
   borderRadius,
   strokeWidth = 1.5,
   glow = true,
+  colors,
 }: GradientBorderProps) {
   const [size, setSize] = React.useState({ w: 0, h: 0 });
 
@@ -149,16 +156,26 @@ export function GradientBorder({
     [w, h, borderRadius, gId],
   );
 
+  // The purple ramp is the brand; a custom ramp exists only for another brand's button.
+  const stops =
+    colors && colors.length > 1
+      ? colors.map((c, i) => (
+          <Stop key={`${i}-${c}`} offset={String(i / (colors.length - 1))} stopColor={c} stopOpacity="1" />
+        ))
+      : [
+          <Stop key="a" offset="0" stopColor={COLORS.purpleRoyal} stopOpacity="1" />,
+          <Stop key="b" offset="0.45" stopColor={COLORS.purple} stopOpacity="1" />,
+          <Stop key="c" offset="0.72" stopColor={COLORS.purpleLight} stopOpacity="1" />,
+          <Stop key="d" offset="1" stopColor={COLORS.purpleNeon} stopOpacity="1" />,
+        ];
+
   return (
     <View style={StyleSheet.absoluteFill} onLayout={onLayout} pointerEvents="none">
       {w > 0 && h > 0 ? (
         <Svg width={w} height={h}>
           <Defs>
             <SvgLinearGradient id={gId} x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={COLORS.purpleRoyal} stopOpacity="1" />
-              <Stop offset="0.45" stopColor={COLORS.purple} stopOpacity="1" />
-              <Stop offset="0.72" stopColor={COLORS.purpleLight} stopOpacity="1" />
-              <Stop offset="1" stopColor={COLORS.purpleNeon} stopOpacity="1" />
+              {stops}
             </SvgLinearGradient>
           </Defs>
           {glow

@@ -77,6 +77,12 @@ export type ButtonProps = {
   labelStyle?: StyleProp<TextStyle>;
   accessibilityLabel?: string;
   /**
+   * Custom gradient stops for the `primary` / `selected` border, for a button that
+   * must wear another brand's colours (Google sign-in). Livil's own buttons never set
+   * this — the purple ramp is the brand.
+   */
+  borderColors?: string[];
+  /**
    * Haptic fired on press. Defaults to `tap` for real controls and `none` for
    * `ghost`, which is a text link ("Cancel") rather than a button — buzzing it
    * makes dismissing feel as weighty as confirming.
@@ -153,6 +159,7 @@ export function Button({
   labelStyle,
   accessibilityLabel,
   haptic,
+  borderColors,
 }: ButtonProps) {
   const s = SIZES[size];
   const inactive = disabled || busy;
@@ -198,7 +205,7 @@ export function Button({
         style,
       ]}
     >
-      {showGradient ? <GradientBorder borderRadius={s.radius} /> : null}
+      {showGradient ? <GradientBorder borderRadius={s.radius} colors={borderColors} /> : null}
       {busy ? (
         <ActivityIndicator color={labelColor} />
       ) : (
