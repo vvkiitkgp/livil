@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-248 TypeScript file(s) under `src/`, 62,866 lines.
+253 TypeScript file(s) under `src/`, 63,909 lines.
 
 ## Size hotspots
 
@@ -28,16 +28,16 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
 | `src/screens/main/ConversationScreen.tsx` | 1706 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1650 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
 | `src/screens/main/ProfileScreen.tsx` | 1181 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/screens/main/JamRoomScreen.tsx` | 989 |
+| `src/screens/main/JamRoomScreen.tsx` | 1047 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/components/FloatingPlayer.tsx` | 912 |
+| `src/components/FloatingPlayer.tsx` | 923 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -98,17 +98,17 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-44 file(s), 22,736 lines.
+44 file(s), 22,816 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 1706 |
-| `src/screens/main/StoryViewerScreen.tsx` | 1650 |
+| `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
 | `src/screens/main/ProfileScreen.tsx` | 1181 |
 | `src/screens/main/UserProfileScreen.tsx` | 1154 |
-| `src/screens/main/JamRoomScreen.tsx` | 989 |
+| `src/screens/main/JamRoomScreen.tsx` | 1047 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -149,25 +149,26 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-91 file(s), 20,570 lines.
+93 file(s), 20,970 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 912 |
+| `src/components/FloatingPlayer.tsx` | 923 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/GlobalAudioPlayer.tsx` | 597 |
 | `src/components/SharePostSheet.tsx` | 511 |
 | `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/QueueList.tsx` | 414 |
+| `src/components/DetailView.tsx` | 409 |
 | `src/components/AddUserSheet.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
-| `src/components/DetailView.tsx` | 395 |
 | `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/PostLikersSheet.tsx` | 362 |
 | `src/components/TrackContextMenu.tsx` | 306 |
+| `src/components/JamSuggestsTab.tsx` | 298 |
 | `src/components/CommentItem.tsx` | 274 |
 | `src/components/Icon.tsx` | 271 |
 | `src/components/InboxBanner.tsx` | 254 |
@@ -221,6 +222,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/UsernameBadges.tsx` | 78 |
 | `src/components/__tests__/shareBadgeParity.test.ts` | 78 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
+| `src/components/JamPillAvatar.tsx` | 76 |
 | `src/components/GradientFill.tsx` | 74 |
 | `src/components/PostCardSkeleton.tsx` | 74 |
 | `src/components/SwipeRevealRow.tsx` | 74 |
@@ -237,7 +239,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/VerifiedBadge.tsx` | 58 |
 | `src/components/__tests__/amplitudeBars.test.ts` | 57 |
 | `src/components/CollabAvatar.tsx` | 55 |
-| `src/components/ListeningStatusReporter.tsx` | 47 |
+| `src/components/ListeningStatusReporter.tsx` | 48 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/__tests__/UsernameBadges.integration.test.tsx` | 43 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
@@ -247,7 +249,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-52 file(s), 11,387 lines.
+53 file(s), 11,540 lines.
 
 | File | Lines |
 |---|---:|
@@ -264,7 +266,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/jamRooms.ts` | 325 |
 | `src/services/uploads.ts` | 301 |
 | `src/services/relationships.ts` | 270 |
-| `src/services/jamRealtime.ts` | 251 |
+| `src/services/jamRealtime.ts` | 264 |
 | `src/services/conversations.ts` | 250 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
@@ -279,6 +281,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 149 |
+| `src/services/jamSuggestions.ts` | 140 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
@@ -306,17 +309,19 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-11 file(s), 2,693 lines.
+13 file(s), 3,100 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 977 |
-| `src/contexts/JamRealtimeContext.tsx` | 419 |
+| `src/contexts/PlaybackContext.tsx` | 1017 |
+| `src/contexts/JamRealtimeContext.tsx` | 489 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/ToastContext.tsx` | 190 |
+| `src/contexts/JamSuggestionsContext.tsx` | 187 |
 | `src/contexts/ProfileBadgesContext.tsx` | 172 |
 | `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
+| `src/contexts/__tests__/PlaybackContext.jamListenerGuard.test.tsx` | 110 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |
 | `src/contexts/ChromeVisibilityContext.tsx` | 69 |
 | `src/contexts/StoriesContext.tsx` | 54 |
