@@ -97,6 +97,21 @@ describe('jam listener guard', () => {
     expect(get().activePostId).toBe('host');
   });
 
+  it('lets a patch of the SAME track through (album title, like counts) without suggesting it', () => {
+    const get = mountPlayback();
+    const suggested: string[] = [];
+    act(() => {
+      get().setJamLocked(true);
+      get().registerListenerTapHandler(info => { suggested.push(info.postId); });
+    });
+    act(() => { get().runAsJamSync(() => get().setNowPlaying(track('host'))); });
+    // GlobalAudioPlayer patches the loaded track once it knows its album.
+    act(() => { get().setNowPlaying({ ...track('host'), albumTitle: 'Thriller' }); });
+
+    expect(suggested).toEqual([]);
+    expect(get().nowPlaying?.albumTitle).toBe('Thriller');
+  });
+
   it('does nothing unusual for the host or outside a jam', () => {
     const get = mountPlayback();
     act(() => {

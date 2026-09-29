@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -279,7 +280,13 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const activeRef = useRef<string | null>(null);
 
+  // The post currently loaded. A setNowPlaying for the SAME post is a patch of the track
+  // already playing (GAP adds albumTitle on load, the full-screen player refreshes like
+  // counts) — never a listener's tap — so the guard lets it through. Without this, a
+  // listener "suggested" the host's current song the moment it loaded.
+  const nowPlayingPostIdRef = useRef<string | null>(null);
   const [nowPlaying, setNowPlayingState] = useState<NowPlayingInfo | null>(null);
+  useEffect(() => { nowPlayingPostIdRef.current = nowPlaying?.postId ?? null; }, [nowPlaying]);
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isImmersive, setIsImmersiveState] = useState(false);
@@ -379,7 +386,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   // --- now playing ---
 
   const setNowPlaying = useCallback((info: NowPlayingInfo) => {
-    if (listenerGuarded()) {
+    if (listenerGuarded() && info.postId !== nowPlayingPostIdRef.current) {
       listenerTapHandlerRef.current?.(info);
       return;
     }
