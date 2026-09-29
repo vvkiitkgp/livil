@@ -77,24 +77,18 @@ export default function PostDetailScreen({ navigation, route }: Props) {
   const [settled, setSettled] = useState(false);
   useEffect(() => {
     const unsub = navigation.addListener('transitionEnd', e => {
-      console.log(`[LIVIL][PostDetail] transitionEnd closing=${e.data.closing}`);
       if (!e.data.closing) { setSettled(true); }
     });
-    const fallback = setTimeout(() => {
-      console.log('[LIVIL][PostDetail] settle fallback fired');
-      setSettled(true);
-    }, 900);
+    const fallback = setTimeout(() => setSettled(true), 900);
     return () => { unsub(); clearTimeout(fallback); };
   }, [navigation]);
 
   // One-shot arrival intent: once the post is loaded AND the page is settled.
   useEffect(() => {
-    console.log(`[LIVIL][PostDetail] arrival check post=${!!post} settled=${settled} handled=${arrivalHandledRef.current} openComments=${!!openComments} openLikers=${!!openLikers}`);
     if (arrivalHandledRef.current || !post || !settled) { return; }
     arrivalHandledRef.current = true;
     if (!openComments && !openLikers) { return; }
     arrivalTimerRef.current = setTimeout(() => {
-      console.log(`[LIVIL][PostDetail] opening ${openComments ? 'comments' : 'likers'} (likes=${post.likesCount})`);
       if (openComments) { setCommentsOpen(true); }
       else if (openLikers && post.likesCount > 0) { setLikersOpen(true); }
     }, 50);

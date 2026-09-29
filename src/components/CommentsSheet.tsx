@@ -219,7 +219,6 @@ export default function CommentsSheet({
 
   // Initial fetch + realtime subscription per open postId.
   useEffect(() => {
-    console.log(`[LIVIL][CommentsSheet] visible=${visible} postId=${postId ?? 'null'}`);
     if (!visible || !postId) { return; }
     let cancelled = false;
     setLoading(true);
