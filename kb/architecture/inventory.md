@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-253 TypeScript file(s) under `src/`, 63,909 lines.
+254 TypeScript file(s) under `src/`, 63,959 lines.
 
 ## Size hotspots
 
@@ -45,8 +45,9 @@ reading alone (Constitution P28).
 | `src/screens/main/LibraryScreen.tsx` | 624 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
+| `src/components/GlobalAudioPlayer.tsx` | 601 |
 
-> 19 file(s) over the threshold against **8 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 20 file(s) over the threshold against **8 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -149,7 +150,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-93 file(s), 20,970 lines.
+93 file(s), 20,974 lines.
 
 | File | Lines |
 |---|---:|
@@ -158,7 +159,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 923 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/components/GlobalAudioPlayer.tsx` | 597 |
+| `src/components/GlobalAudioPlayer.tsx` | 601 |
 | `src/components/SharePostSheet.tsx` | 511 |
 | `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/QueueList.tsx` | 414 |
@@ -249,7 +250,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-53 file(s), 11,540 lines.
+54 file(s), 11,574 lines.
 
 | File | Lines |
 |---|---:|
@@ -263,7 +264,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/playlists.ts` | 382 |
 | `src/services/messages.ts` | 366 |
 | `src/services/share.ts` | 358 |
-| `src/services/jamRooms.ts` | 325 |
+| `src/services/jamRooms.ts` | 326 |
 | `src/services/uploads.ts` | 301 |
 | `src/services/relationships.ts` | 270 |
 | `src/services/jamRealtime.ts` | 264 |
@@ -304,20 +305,21 @@ case the call fails silently wherever its result is discarded.
 | `src/services/follows.ts` | 48 |
 | `src/services/pushDispatch.ts` | 48 |
 | `src/services/friendActivity.ts` | 33 |
+| `src/services/jamHeartbeat.ts` | 33 |
 | `src/services/googleAuth.ts` | 19 |
 | `src/services/uploadEvents.ts` | 15 |
 
 ## Contexts
 
-13 file(s), 3,100 lines.
+13 file(s), 3,112 lines.
 
 | File | Lines |
 |---|---:|
 | `src/contexts/PlaybackContext.tsx` | 1017 |
-| `src/contexts/JamRealtimeContext.tsx` | 489 |
+| `src/contexts/JamRealtimeContext.tsx` | 488 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
+| `src/contexts/JamSuggestionsContext.tsx` | 200 |
 | `src/contexts/ToastContext.tsx` | 190 |
-| `src/contexts/JamSuggestionsContext.tsx` | 187 |
 | `src/contexts/ProfileBadgesContext.tsx` | 172 |
 | `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |

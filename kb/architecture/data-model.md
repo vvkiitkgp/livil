@@ -317,6 +317,10 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 
 - `primary key (jam_room_id, user_id)`
 
+**Triggers**
+
+- `trg_jam_room_members_insert_guard` — before insert (`20260930000000_jam_suggestions.sql`)
+
 ### `jam_rooms`
 
 RLS enabled · defined in `20260528000000_chat_jam.sql`
@@ -347,6 +351,7 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `trg_jam_rooms_clear_suggestions` — after update of status (`20260930000000_jam_suggestions.sql`)
+- `trg_jam_rooms_guard` — before update (`20260930000000_jam_suggestions.sql`)
 
 ### `jam_suggestions`
 
@@ -1245,7 +1250,9 @@ same row-level security policies that gate ordinary reads.
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |
+| `trg_jam_room_members_insert_guard` | `jam_room_members` | before insert | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_rooms_clear_suggestions` | `jam_rooms` | after update of status | `20260930000000_jam_suggestions.sql` |
+| `trg_jam_rooms_guard` | `jam_rooms` | before update | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_suggestions_guard` | `jam_suggestions` | before insert or update | `20260930000000_jam_suggestions.sql` |
 | `listen_sessions_stamp` | `listen_sessions` | before insert or update | `20260925000000_listening_now.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
