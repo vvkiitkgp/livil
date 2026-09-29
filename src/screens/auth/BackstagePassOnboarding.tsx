@@ -60,6 +60,8 @@ type Props = {
 };
 
 const STEPS = 6;
+/** Google's brand colours (same values as GoogleGlyph), blue → red → yellow → green. */
+const GOOGLE_BORDER = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
 
 const ROLES: Array<{ key: PassRole; initial: string; chip: string; desc: string }> = [
   { key: 'ARTIST', initial: 'A', chip: COLORS.purple, desc: 'You make the thing. Demos, drops, DMs.' },
@@ -516,15 +518,19 @@ function GuestList({
           busy={googleBusy}
           leading={<GoogleGlyph size={18} />}
           variant="primary"
+          // Google's four brand colours on the border; the purple ramp is Livil's and
+          // belongs on the Email button below. Label goes white so it doesn't read as
+          // a Livil-purple control with a Google logo on it.
+          borderColors={GOOGLE_BORDER}
           size="lg"
           fullWidth
           style={styles.authBtn}
-          labelStyle={styles.authLabel}
+          labelStyle={[styles.authLabel, styles.googleLabel]}
         />
         <Button
           label="Continue with Email"
           onPress={onEmail}
-          variant="secondary"
+          variant="primary"
           size="lg"
           fullWidth
           style={styles.authBtn}
@@ -711,6 +717,7 @@ const styles = StyleSheet.create({
   authStack: { marginTop: 'auto', gap: 12 },
   authBtn: { paddingVertical: 17, borderRadius: 12 },
   authLabel: { fontFamily: FONTS.monoBold, fontSize: 15 },
+  googleLabel: { color: COLORS.white },
   signInLink: {
     fontFamily: FONTS.mono,
     fontSize: 12,

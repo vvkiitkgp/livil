@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,10 +15,14 @@ import { Button } from '../../components/Button';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
 import AppleSignInButton from '../../components/AppleSignInButton';
+import { GoogleGlyph } from '../../components/GoogleGlyph';
 import { Icon } from '../../components/Icon';
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 };
+
+/** Google's brand colours (same values as GoogleGlyph), blue → red → yellow → green. */
+const GOOGLE_BORDER = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
 
 export default function SignInScreen({ navigation }: Props) {
   const [identifier, setIdentifier] = useState('');
@@ -175,21 +178,21 @@ export default function SignInScreen({ navigation }: Props) {
             <View style={styles.socialButtons}>
             <AppleSignInButton onError={setError} disabled={loading || googleLoading} />
 
-            <TouchableOpacity
-              style={[styles.googleButton, googleLoading && styles.buttonDisabled]}
+            {/* Google's four brand colours on the border and the real "G" — not a
+                hand-rolled outline with a bold letter. The purple ramp stays on
+                Sign In above; it is Livil's, not Google's. */}
+            <Button
+              label="Continue with Google"
               onPress={handleGoogleSignIn}
-              disabled={googleLoading || loading}
-              activeOpacity={0.85}
-            >
-              {googleLoading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <>
-                  <Text style={styles.googleIcon}>G</Text>
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
+              busy={googleLoading}
+              disabled={loading}
+              leading={<GoogleGlyph size={18} />}
+              variant="primary"
+              borderColors={GOOGLE_BORDER}
+              size="lg"
+              fullWidth
+              labelStyle={styles.googleLabel}
+            />
             </View>
           </View>
 
@@ -313,30 +316,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
   socialButtons: { gap: 12 },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    paddingVertical: 15,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    gap: 10,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  googleIcon: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: COLORS.white,
-  },
-  googleButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
+  googleLabel: { color: COLORS.white },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',

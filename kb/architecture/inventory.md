@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-267 TypeScript file(s) under `src/`, 67,324 lines.
+267 TypeScript file(s) under `src/`, 67,335 lines.
 
 ## Size hotspots
 
@@ -39,7 +39,7 @@ reading alone (Constitution P28).
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 745 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 752 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/components/guide/cardsPeople.tsx` | 630 |
@@ -102,7 +102,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,518 lines.
+46 file(s), 23,505 lines.
 
 | File | Lines |
 |---|---:|
@@ -114,7 +114,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 745 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 752 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/screens/main/LibraryScreen.tsx` | 624 |
@@ -126,7 +126,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 373 |
-| `src/screens/auth/SignInScreen.tsx` | 357 |
+| `src/screens/auth/SignInScreen.tsx` | 337 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 315 |
 | `src/screens/main/SettingsScreen.tsx` | 294 |
@@ -155,7 +155,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-101 file(s), 23,091 lines.
+101 file(s), 23,115 lines.
 
 | File | Lines |
 |---|---:|
@@ -180,8 +180,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/CommentItem.tsx` | 274 |
 | `src/components/Icon.tsx` | 271 |
+| `src/components/Button.tsx` | 254 |
 | `src/components/InboxBanner.tsx` | 254 |
-| `src/components/Button.tsx` | 247 |
 | `src/components/guide/cardsPlayer.tsx` | 247 |
 | `src/components/ActivityBubble.tsx` | 242 |
 | `src/components/StoryReportModal.tsx` | 236 |
@@ -193,11 +193,11 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProfileBadges.tsx` | 203 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
+| `src/components/GradientBorder.tsx` | 198 |
 | `src/components/ConfirmActionModal.tsx` | 192 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
-| `src/components/GradientBorder.tsx` | 181 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/GroupAvatarCluster.tsx` | 170 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |

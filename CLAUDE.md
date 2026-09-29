@@ -346,6 +346,10 @@ appears on every feed card. Purple now outlines and letters; it never fills.
 `destructive` is the one exception — dangerous actions must stay visually heavy.
 
 **Rules that are easy to get wrong:**
+- **`borderColors` exists for exactly one button: "Continue with Google"**, which wears
+  Google's four brand colours (`#4285F4 #EA4335 #FBBC05 #34A853`, same as `GoogleGlyph`)
+  with a white label. The purple ramp is Livil's — every Livil control keeps the default.
+  Don't reach for `borderColors` to "add variety".
 - **Label color is `purpleNeon` (`#A855F7`), never `purple`.** `#8B3DFF` on a dark
   background measures 3.4–4.0:1 and **fails WCAG AA**; `purpleNeon` is 4.3–5.0:1
   and clears the 3:1 large-text bar that bold 15px+ labels fall under.
