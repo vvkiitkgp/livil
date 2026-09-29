@@ -17,7 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
-import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
+import { listRecentTracksPage, type LibraryRecentTrack } from '../../services/tracks';
 import { Icon } from '../../components/Icon';
 import { usePlayRecentlyPlayed } from '../../hooks/usePlayRecentlyPlayed';
 
@@ -72,13 +72,15 @@ export default function RecentlyPlayedScreen() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [endReached, setEndReached] = useState(false);
+  // Where the next page starts; null = no more history. From the raw rows, not the
+  // visible ones — a hidden row must not make a full page look like the last one.
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await listRecentTracksForLibrary(PAGE_SIZE);
-      setTracks(data);
-      setEndReached(data.length < PAGE_SIZE);
+      const page = await listRecentTracksPage(PAGE_SIZE);
+      setTracks(page.items);
+      setNextBefore(page.nextBefore);
       setError('');
     } catch (err) {
       // Keep whatever is already on screen; only an empty list shows the error.
@@ -100,18 +102,18 @@ export default function RecentlyPlayedScreen() {
   );
 
   const handleEndReached = useCallback(async () => {
-    if (loadingMore || endReached || tracks.length === 0) { return; }
+    if (loadingMore || !nextBefore) { return; }
     setLoadingMore(true);
     try {
-      const more = await listRecentTracksForLibrary(PAGE_SIZE, tracks[tracks.length - 1]!.playedAt);
-      setTracks(prev => [...prev, ...more.filter(m => !prev.some(p => p.trackId === m.trackId))]);
-      if (more.length < PAGE_SIZE) { setEndReached(true); }
+      const page = await listRecentTracksPage(PAGE_SIZE, nextBefore);
+      setTracks(prev => [...prev, ...page.items.filter(m => !prev.some(p => p.trackId === m.trackId))]);
+      setNextBefore(page.nextBefore);
     } catch {
       // Silent: the next scroll to the end retries.
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, endReached, tracks]);
+  }, [loadingMore, nextBefore]);
 
   // Play the tapped row, with the whole list queued in the same order.
   const playRecent = usePlayRecentlyPlayed();
@@ -146,7 +148,7 @@ export default function RecentlyPlayedScreen() {
           <Text style={styles.headerTitle}>Recently Played</Text>
           {!loading && tracks.length > 0 && (
             <Text style={styles.headerSubtitle}>
-              {tracks.length}{endReached ? '' : '+'} {tracks.length === 1 ? 'track' : 'tracks'}
+              {tracks.length}{nextBefore ? '+' : ''} {tracks.length === 1 ? 'track' : 'tracks'}
             </Text>
           )}
         </View>

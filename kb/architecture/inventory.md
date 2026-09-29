@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-256 TypeScript file(s) under `src/`, 64,381 lines.
+256 TypeScript file(s) under `src/`, 64,402 lines.
 
 ## Size hotspots
 
@@ -99,7 +99,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-44 file(s), 22,916 lines.
+44 file(s), 22,918 lines.
 
 | File | Lines |
 |---|---:|
@@ -132,7 +132,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 268 |
-| `src/screens/main/RecentlyPlayedScreen.tsx` | 253 |
+| `src/screens/main/RecentlyPlayedScreen.tsx` | 255 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
@@ -250,12 +250,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-56 file(s), 11,760 lines.
+56 file(s), 11,776 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1122 |
-| `src/services/tracks.ts` | 985 |
+| `src/services/tracks.ts` | 1001 |
 | `src/services/pushNotifications.ts` | 641 |
 | `src/services/albums.ts` | 497 |
 | `src/services/activity.ts` | 426 |

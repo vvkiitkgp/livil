@@ -913,6 +913,19 @@ export async function listRecentTracksForLibrary(
   limit = 24,
   before?: string,
 ): Promise<LibraryRecentTrack[]> {
+  return (await listRecentTracksPage(limit, before)).items;
+}
+
+/**
+ * One page of Recently Played, plus the cursor for the next page. Rows whose track you
+ * can no longer read (taken down, uploader blocked) are dropped from `items`, so the
+ * paging decision must come from the RAW rows: `nextBefore` is the last raw row's
+ * `played_at`, or null when the database returned a short page (no more history).
+ */
+export async function listRecentTracksPage(
+  limit = 24,
+  before?: string,
+): Promise<{ items: LibraryRecentTrack[]; nextBefore: string | null }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData.user) {
@@ -963,7 +976,9 @@ export async function listRecentTracksForLibrary(
     } | null;
   };
 
-  return ((data ?? []) as unknown as Row[])
+  const raws = (data ?? []) as unknown as Row[];
+  const nextBefore = raws.length < limit ? null : raws[raws.length - 1]!.played_at;
+  const items = raws
     .map((raw: Row) => {
       const t = raw.track;
       if (!t) {
@@ -981,4 +996,5 @@ export async function listRecentTracksForLibrary(
       } satisfies LibraryRecentTrack;
     })
     .filter(Boolean) as LibraryRecentTrack[];
+  return { items, nextBefore };
 }

@@ -352,8 +352,11 @@ export default function RootNavigator() {
         new URLSearchParams(fragment).get('type') === 'recovery';
 
       // PKCE flow: code arrives as a query param (?code=…)
+      // Not retried: a failed exchange deletes the stored PKCE code verifier (auth-js
+      // clears it in its catch), so every retry would fail with "code verifier not
+      // found". setSession below has no such one-shot state and IS retried.
       if (url.includes('code=')) {
-        const { error } = await withNetworkRetry(() => supabase.auth.exchangeCodeForSession(url));
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
         if (error) { console.error('[deeplink] exchangeCodeForSession error:', error.message, error.status); }
         else if (isRecovery) { setPasswordRecoveryPending(true); }
         return;
