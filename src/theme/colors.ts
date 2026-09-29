@@ -36,6 +36,9 @@ export const COLORS = {
   warning: '#F59E0B',
   warningBg: 'rgba(245, 158, 11, 0.12)',
   warningBorder: 'rgba(245, 158, 11, 0.35)',
+  // Success green from the design table in CLAUDE.md. First consumer: the first-run
+  // guide's "Friends ✓" state. Kept distinct from `info` (cyan = verified / "you").
+  success: '#00C853',
   info: '#22D3EE',
   // Verified-badge ramp, mirroring the gold one. Cyan rather than purple: purple is the
   // primary accent and already surrounds the avatar as the story ring, so a purple badge

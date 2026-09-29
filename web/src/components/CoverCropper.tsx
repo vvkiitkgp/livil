@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ModalLayer } from './ModalLayer';
 import { Button } from './Button';
+import { Choice } from './RightsDeclarationForm';
 import {
   clampPan,
   clampZoom,
@@ -39,17 +40,31 @@ export function CoverCropper({
   outputPx = OUTPUT_PX,
   round,
   title = 'Crop cover art',
+  applyToAll,
 }: {
   file: File;
   onCancel: () => void;
-  onDone: (cropped: File) => void;
+  /** `toAll` is true only when `applyToAll` was offered and the box was ticked. */
+  onDone: (cropped: File, toAll: boolean) => void;
   /** Avatars want 512; cover art wants the full 1024. */
   outputPx?: number;
   /** Round preview mask for avatars — the crop itself is still square. */
   round?: boolean;
   title?: string;
+  /**
+   * Offer "use this cover for all N tracks" as a checkbox under the crop. The batch
+   * uploader passes it when cropping one track's art while others are queued — the moment
+   * the artist is holding the album cover is the moment to ask, rather than making them
+   * find the same file again for a separate "for all" action.
+   *
+   * `initiallyChecked` should be true only when ticking loses nothing (no other track has
+   * art yet), because applying overwrites.
+   */
+  applyToAll?: { count: number; initiallyChecked: boolean };
 }) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [toAll, setToAll] = useState(applyToAll?.initiallyChecked ?? false);
+  const applying = !!applyToAll && toAll;
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Pan>({ x: 0, y: 0 });
   const [busy, setBusy] = useState(false);
@@ -115,11 +130,11 @@ export function CoverCropper({
       if (!blob) throw new Error('Could not render the crop');
 
       const base = file.name.replace(/\.[^.]+$/, '');
-      onDone(new File([blob], `${base}.jpg`, { type: 'image/jpeg' }));
+      onDone(new File([blob], `${base}.jpg`, { type: 'image/jpeg' }), applying);
     } catch {
       // Falling back to the original is better than blocking the upload: an uncropped
       // cover still publishes, it just gets centre-cropped downstream.
-      onDone(file);
+      onDone(file, applying);
     } finally {
       setBusy(false);
     }
@@ -191,6 +206,17 @@ export function CoverCropper({
                 Fill square
               </Button>
             </div>
+          )}
+
+          {applyToAll && (
+            <Choice
+              label={`Use this cover for all ${applyToAll.count} tracks`}
+              hint="Replaces cover art on the others too"
+              selected={toAll}
+              onSelect={() => setToAll(v => !v)}
+              compact
+              shape="checkbox"
+            />
           )}
 
           <div className="filerow">

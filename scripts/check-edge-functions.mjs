@@ -55,8 +55,11 @@ const PROJECT_REF = 'fqzrmqnlgjeuxzinbqvs';
 //                   it. That is the D-54 shape exactly, and this list is the only thing
 //                   that would notice.
 //
-// The waitlist functions are deliberately NOT here: they are invoked from the marketing
-// page, not from either client, and their failure is visible to the operator in /ops.
+// `waitlist-join` and `waitlist-invite` were listed here in a comment as deliberately
+// exempt. They are gone entirely as of 20260924000000: the waitlist was retired when
+// Livil went to full production, and `waitlist-join` was the project's only function
+// deployed with verify_jwt FALSE — an unauthenticated endpoint holding a Resend key,
+// left reachable after the form that called it was taken down.
 const REQUIRED_FUNCTIONS = ['send-push', 'welcome-email'];
 
 const MANAGEMENT_API = 'https://api.supabase.com';

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,9 @@ import {
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
+import GroupAvatarCluster from '../../components/GroupAvatarCluster';
+import { useGroupFaces } from '../../hooks/useGroupFaces';
+import { hashString } from '../../utils/groupFaces';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -75,6 +78,12 @@ export default function GroupInfoScreen() {
   const { showToast } = useToast();
 
   const [members, setMembers] = useState<GroupMember[]>([]);
+  // The group picture is its members: one random arrangement per visit, refetched when
+  // the member list changes here (add / remove).
+  const [visitSeed] = useState(() => Math.floor(Math.random() * 2 ** 31));
+  const memberKey = members.map(m => m.userId).sort().join(',');
+  const faceIds = useMemo(() => [conversationId], [conversationId]);
+  const faces = useGroupFaces(faceIds, hashString(memberKey)).get(conversationId);
   const [loading, setLoading] = useState(true);
   const [myId, setMyId] = useState('');
   const [myRole, setMyRole] = useState<'admin' | 'member'>('member');
@@ -393,6 +402,16 @@ export default function GroupInfoScreen() {
         )}
       </View>
 
+      <View style={styles.cluster}>
+        <GroupAvatarCluster
+          conversationId={conversationId}
+          faces={faces}
+          size={120}
+          visitSeed={visitSeed}
+          fallbackLabel={savedName || 'Group'}
+        />
+      </View>
+
       {/* Group name */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>GROUP NAME</Text>
@@ -503,6 +522,7 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '700' },
   section: { paddingHorizontal: 16, paddingTop: 20 },
+  cluster: { alignItems: 'center', paddingTop: 20 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

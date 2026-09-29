@@ -19,7 +19,10 @@ export type ConversationSummary = {
   otherUserUsername: string | null;
   otherUserName: string | null;
   otherUserAvatar: string | null;
-  otherUserOnline: boolean;
+  // `list_my_conversations` also returns `other_user_online`, which since
+  // 20260925000000 means "listening now" and exists only for builds already on the
+  // Play Store. This client reads listening status live via useListeningNow instead,
+  // so a cached inbox can never show a stale indicator.
 };
 
 export type ConversationDetails = {
@@ -74,16 +77,6 @@ export async function getConversationDetails(
   return toConversationDetails(row, (creator as CreatorProfile | null) ?? null);
 }
 
-export type NowPlaying = {
-  trackTitle: string;
-  artistName: string;
-};
-
-export type FriendActivity = {
-  isOnline: boolean;
-  nowPlaying: NowPlaying | null;
-};
-
 export async function listConversations(): Promise<ConversationSummary[]> {
   const { data, error } = await db.rpc('list_my_conversations');
   if (error) { throw error; }
@@ -99,7 +92,6 @@ export async function listConversations(): Promise<ConversationSummary[]> {
     otherUserUsername: (row.other_user_username as string | null) ?? null,
     otherUserName: (row.other_user_name as string | null) ?? null,
     otherUserAvatar: (row.other_user_avatar as string | null) ?? null,
-    otherUserOnline: Boolean(row.other_user_online),
   }));
 }
 
@@ -184,38 +176,6 @@ export async function addGroupMember(
     .upsert({ conversation_id: conversationId, user_id: userId, role: 'member' });
 }
 
-export async function getFriendActivity(userId: string): Promise<FriendActivity> {
-  const [profileResult, sessionResult] = await Promise.all([
-    db
-      .from('profiles')
-      .select('last_seen_at, show_activity')
-      .eq('id', userId)
-      .maybeSingle(),
-    supabase
-      .from('listen_sessions')
-      .select('track_title, artist_name, updated_at')
-      .eq('user_id', userId)
-      .maybeSingle(),
-  ]);
-
-  const profile = profileResult.data;
-  if (!profile?.show_activity) {
-    return { isOnline: false, nowPlaying: null };
-  }
-
-  const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-  const isOnline = !!profile.last_seen_at && profile.last_seen_at > threeMinutesAgo;
-
-  const session = sessionResult.data;
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const nowPlaying =
-    session && session.updated_at > fiveMinutesAgo
-      ? { trackTitle: session.track_title, artistName: session.artist_name }
-      : null;
-
-  return { isOnline, nowPlaying };
-}
-
 export type GroupMember = {
   userId: string;
   username: string;
@@ -278,13 +238,12 @@ export async function updateGroupName(
   if (error) { throw error; }
 }
 
+/**
+ * Stamps the caller's "last active" time for the ops roster. Stored in
+ * `user_last_seen`, which no user can read (20260925010000): whether someone has the
+ * app open is deliberately never indicated to other users — the chat indicator is
+ * "listening now" only.
+ */
 export async function updatePresenceHeartbeat(): Promise<void> {
-  const { data: userData } = await supabase.auth.getUser();
-  const me = userData?.user?.id;
-  if (!me) { return; }
-
-  await db
-    .from('profiles')
-    .update({ last_seen_at: new Date().toISOString() })
-    .eq('id', me);
+  await supabase.rpc('touch_last_seen');
 }

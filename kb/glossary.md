@@ -69,15 +69,17 @@ Livil has **two independent relationship systems.** They are not variants of one
 
 **Friendship**
 Mutual and negotiated. Requires a request and an acceptance, has a status, and records who
-initiated it. Gates access to direct messages, Jam Rooms, Stories, and listening activity.
+initiated it. Gates access to direct messages, Jam Rooms, Stories, and live listening status
+("listening now" — friends ONLY, since 20260925000000).
 
 **Follow**
 One-directional and unnegotiated.
 
 **Star**
 A follow with `kind = 'star'`. **This is the term used in the product**; "follow" is the
-underlying storage concept. Starring grants visibility of that user's Stories and listening
-activity without requiring friendship.
+underlying storage concept. Starring grants visibility of that user's Stories without
+requiring friendship. It does **not** grant live listening status: a star needs no approval,
+so that would let any stranger watch what someone plays (20260925000000).
 
 > In short: **friendship is mutual and gates private surfaces; starring is one-way and gates
 > ambient visibility.** A user can be starred without being a friend, and vice versa.
@@ -85,6 +87,13 @@ activity without requiring friendship.
 **Fan**
 A user who has starred you. Appears in activity notifications. Not a distinct database
 relation — a directional reading of a star.
+
+**Group picture**
+A group has no uploaded picture. Its picture is up to six members' faces packed into a
+circle, the most recent speaker largest and ringed, the viewer included
+(`GroupAvatarCluster`, fed by `list_group_faces`). The arrangement is randomly rotated once
+per visit to a screen and holds still while you look; a new message moves its sender to the
+largest slot live. `conversations.avatar_url` exists but is never written.
 
 ---
 
@@ -99,9 +108,14 @@ The two Jam Room roles, each carrying an explicit permission set (play/pause, se
 change track, suggest). The host holds all permissions; listeners may suggest only.
 
 **Presence**
-Ephemeral "who is here and what are they playing" state. Backed by a periodic heartbeat and
-realtime presence channels. Distinct from a **listen session**, which is the durable record
-used to build friends' activity.
+Ephemeral "who is here" state: Jam Room realtime presence channels, plus a last-seen
+heartbeat into `user_last_seen`, which no user can read (ops "last active" only). Whether someone has the app open
+is never indicated to other users. Distinct from a **listen session**.
+
+**Listen session**
+The one `listen_sessions` row per user behind the chat "listening now" indicator: whether they
+are playing, what, and the post a friend's Listen opens. Visible to accepted friends only. Live while `playing` and re-stamped
+within 150s. See [architecture/realtime.md](architecture/realtime.md#listening-now-chat-indicator).
 
 ---
 

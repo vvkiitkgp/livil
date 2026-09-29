@@ -53,16 +53,20 @@ Each is a place where a design that is fine now stops being fine at a knowable p
 
 ### 1. Presence heartbeat writes
 
-Every foregrounded user writes `last_seen_at` on a fixed interval, to a single table.
+Every foregrounded user calls `touch_last_seen()` every **5 minutes** (was a 30s write to
+`profiles.last_seen_at` until 2026-09-25, when chat stopped showing "online"; only the ops
+overview reads it now).
+Every user **playing music** also re-stamps their `listen_sessions` row every 60s.
 
-| Users online | Writes/sec |
-|---:|---:|
-| 100 | ~3 |
-| 1,000 | ~33 |
-| 10,000 | ~333 |
+| Users online | `last_seen_at` writes/sec | Listening re-stamps/sec (all playing) |
+|---:|---:|---:|
+| 100 | ~0.3 | ~1.7 |
+| 1,000 | ~3.3 | ~17 |
+| 10,000 | ~33 | ~167 |
 
-Fine at hundreds. Uncomfortable at thousands. At ten thousand it is a meaningful and constant
-write load on the same instance serving every read.
+Each listening re-stamp is also a realtime postgres-changes event, checked against RLS once
+per subscriber who has that listener's chat or inbox open. Fine at hundreds; at thousands of
+concurrent listeners the RLS-per-subscriber fan-out is the part to watch, before the writes.
 
 **When to act:** before a public launch, or when concurrent users pass ~1,000.
 **Options:** lengthen the interval, batch client-side, or move presence out of Postgres entirely.

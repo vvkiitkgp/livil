@@ -100,8 +100,9 @@ starred creator over a time window purely to compute a count — work that belon
 aggregate. **Unbounded is a defect, not a simplification** (P22). The current list lives in the
 debt register.
 
-There is also a presence heartbeat writing per foregrounded user on a fixed interval. It is
-fine now and has an obvious ceiling; the number is in
+There is also a `last_seen_at` heartbeat per foregrounded user (every 5 min) and a
+listening re-stamp per user playing music (every 60s). Both are fine now and have an obvious
+ceiling; the numbers are in
 [../operations/scaling-assumptions.md](../operations/scaling-assumptions.md).
 
 ---

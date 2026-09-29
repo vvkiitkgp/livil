@@ -43,6 +43,14 @@ function supabaseConfig(): { url: string; key: string } {
 
 const ORIGIN = 'https://livil-music.com';
 const PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.livil';
+/** Mirrors APP_STORE_URL in web/src/auth/signIn.ts. iPhone only — there is no iPad build. */
+const APP_STORE = 'https://apps.apple.com/app/id6809119164';
+/**
+ * These pages are edge-cached for every visitor, so the store choice cannot be made
+ * server-side from the User-Agent (one iPhone visitor would fix the cached page for
+ * everyone). The markup defaults to Play; this client-side check swaps to the App Store.
+ */
+const IS_APPLE_JS = "/iPhone|iPad|iPod/.test(navigator.userAgent||'')";
 const FALLBACK_OG_IMAGE = `${ORIGIN}/og.png`;
 
 /** Mirrors src/utils/shareLinks.ts. A malformed id must never reach PostgREST. */
@@ -284,6 +292,7 @@ function shell(opts: {
 <title>${escapeHtml(opts.title)}</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-itunes-app" content="app-id=6809119164">
 ${opts.meta}
 <style>${BASE_CSS}</style>
 </head>
@@ -319,8 +328,12 @@ function renderUnavailable(): string {
 <h1>This post isn't available</h1>
 <p>It may have been deleted, or the link may be incomplete.</p>
 </div>
-<a class="cta" href="${PLAY_STORE}">Get Livil</a>
-<p class="foot">Upload your music, listen together in real time, and see what your friends are playing.</p>`,
+<a class="cta" id="get" href="${PLAY_STORE}">Get Livil</a>
+<p class="foot">
+  Free on <a href="${APP_STORE}">the App Store</a> and <a href="${PLAY_STORE}">Google Play</a><br>
+  Upload your music, listen together in real time, and see what your friends are playing.
+</p>`,
+    script: `(function(){var g=document.getElementById('get');if(g&&${IS_APPLE_JS}){g.href=${JSON.stringify(APP_STORE)};}})();`,
   });
 }
 
@@ -411,7 +424,7 @@ ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
 
 <a class="cta" id="open" href="${escapeHtml(deepLink)}">Open in Livil</a>
 <p class="foot">
-  Don't have the app? <a href="${PLAY_STORE}">Get Livil on Google Play</a><br>
+  Don't have the app? Get Livil on <a href="${APP_STORE}">the App Store</a> or <a href="${PLAY_STORE}">Google Play</a><br>
   Upload your music, listen together in real time, and see what your friends are playing.
 </p>
 
@@ -547,13 +560,14 @@ ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
   // Open-in-app: try the custom scheme, and fall back to the store if we are still
   // here afterwards. The visibility check is what distinguishes "no app installed"
   // from "the app opened and we were backgrounded" — without it, everyone who
-  // successfully opens the app ALSO gets the Play Store on their way back.
+  // successfully opens the app ALSO gets the store on their way back. The store is the
+  // one for this device: App Store on iPhone, Google Play otherwise.
   function handoff(e){
     e.preventDefault();
     var t0=Date.now();
     var timer=setTimeout(function(){
       if(document.visibilityState==='visible'&&Date.now()-t0<2500){
-        window.location.href=${JSON.stringify(PLAY_STORE)};
+        window.location.href=${IS_APPLE_JS}?${JSON.stringify(APP_STORE)}:${JSON.stringify(PLAY_STORE)};
       }
     },1200);
     document.addEventListener('visibilitychange',function once(){

@@ -334,6 +334,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/account-deletion-liv74.test.sql
 
+      # First-run guide — profiles.guide_seen_at. The owner stamps their own row when
+      # the tour is finished or skipped; nobody else can clear it (which would force
+      # the tour back onto them) or rewrite it.
+      - name: first-run guide tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/first-run-guide.test.sql
+
       # profiles.comments_friends_only shipped in 1.1.14 with a Settings switch and NO
       # enforcement — post_comments_insert_self checked only `author_id = auth.uid()`,
       # so the control looked like protection and was not one. Step 1 is that exact
@@ -532,6 +542,76 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/dm-on-friend-accept.test.sql
 
+      # The chat "listening now" indicator. The audience (accepted friends only — not
+      # stars — and the Activity status switch enforced by the database), pause and
+      # missed-heartbeat liveness, a paused row that reveals nothing, and the product rule
+      # that the inbox never reveals "app open" — the Play Store build still draws a dot
+      # from list_my_conversations.other_user_online.
+      - name: Listening-now tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/listening-now.test.sql
+
+      # "Sam and 2 others liked your post" on a post with one like: every like added
+      # one and an unlike took nothing back. The count is now recomputed from the real
+      # likes, and each liker is pushed about once per post.
+      - name: Like notification tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/like-notifications.test.sql
+
+      # Jam Suggests: only members suggest, only the host acts, a listener cannot edit
+      # their own jam permissions, and ending the jam clears the list.
+      - name: Jam suggestions tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/jam-suggestions.test.sql
+
+      # Same rule, other leak: profiles.last_seen_at was readable by every signed-in
+      # user. It now lives in user_last_seen (no user access), fed by touch_last_seen()
+      # and by a trigger that redirects the Play Store build's direct profile write.
+      - name: Last-seen ops-only tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/last-seen-ops-only.test.sql
+
+      # The group picture: up to six members' faces, most recent speaker first. Only a
+      # member gets anything back (list_group_faces is INVOKER — RLS is the boundary);
+      # system rows and deleted messages do not count as speaking; DMs are not groups.
+      - name: Group-faces tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/group-faces.test.sql
+
+      # Anyone's accepted friends are listable by any signed-in viewer through a DEFINER
+      # function; pending rows never appear, a blocked pair gets nothing, and a friend
+      # blocked with the viewer is left out. The count is the size of the list.
+      - name: Profile-friends tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/profile-friends.test.sql
+
+      # Stars are listable by any signed-in viewer; fans only by their owner
+      # (list_my_fans takes no user id). Blocks apply as for friends.
+      - name: Profile-stars-fans tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/profile-stars-fans.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
@@ -676,6 +756,28 @@ jobs:
             BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
           fi
           node scripts/enforce-board-readonly.mjs --range "$BASE..HEAD"
+
+  guide-drift:
+    name: first-run guide still true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The first-run guide draws fifteen real behaviours of the app. A guide that
+      # nobody re-checks describes the app as it was the day it shipped. This fails
+      # when a change touches a file a card depicts (src/components/guide/coverage.json)
+      # unless the guide changed too, or the PR says `Guide: reviewed`.
+      - name: Depicted behaviour changed → guide updated or reviewed
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          node scripts/check-guide-drift.mjs --range "$BASE..HEAD"
 
   agent-scope:
     name: agents write only where tests exist

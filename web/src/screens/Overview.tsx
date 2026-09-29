@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-d
 import type { Session } from '@supabase/supabase-js';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/Button';
-import { PLAY_STORE_URL } from '../auth/signIn';
+import { StoreBadges } from '../components/StoreBadges';
 import {
   fetchCreatorPosts,
   fetchCreatorTotals,
@@ -154,14 +154,7 @@ export function Overview() {
               The studio is where you publish. The app is where it lands — your profile, your
               tracks in the feed, people playing and reacting to them.
             </p>
-            <a
-              className="btn btn--secondary btn--md"
-              href={PLAY_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Get Livil on Google Play
-            </a>
+            <StoreBadges />
           </section>
         </div>
 

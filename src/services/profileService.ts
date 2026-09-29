@@ -1,3 +1,4 @@
+import { DeviceEventEmitter, type EmitterSubscription } from 'react-native';
 import ImagePicker, {
   type Image as CroppedImage,
 } from 'react-native-image-crop-picker';
@@ -133,12 +134,28 @@ export async function updateProfile(
     })
     .eq('id', userId);
   if (error) {throw error;}
+  emitMyAvatarChanged(patch.avatar_url ?? null);
+}
+
+const MY_AVATAR_CHANGED = 'livil:profile:my-avatar-changed';
+
+/**
+ * The signed-in user's avatar changed. Lets surfaces that show it outside the profile
+ * screens (the tab bar) update without refetching. Only updateProfile emits it, and
+ * updateProfile is only ever called for the signed-in user's own row.
+ */
+function emitMyAvatarChanged(url: string | null): void {
+  DeviceEventEmitter.emit(MY_AVATAR_CHANGED, url);
+}
+
+export function onMyAvatarChanged(listener: (url: string | null) => void): EmitterSubscription {
+  return DeviceEventEmitter.addListener(MY_AVATAR_CHANGED, listener);
 }
 
 /**
- * Whether the user broadcasts "last seen" / now-playing to friends.
- *
- * Read side already exists: `conversations.ts` gates presence on this column.
+ * "Show what I'm listening to" (Privacy): whether friends see the user's live
+ * now-playing. Enforced by the database (`can_see_listening`), not only here.
+ * It does NOT control "last seen" — that is shown to no user at all.
  * Defaults to `true` on any error so a transient failure never silently
  * presents the user as having opted out of something they didn't.
  */
@@ -182,6 +199,31 @@ export async function getCommentsFriendsOnly(userId: string): Promise<boolean> {
     .single();
   if (error) {throw error;}
   return (data as { comments_friends_only: boolean | null } | null)?.comments_friends_only ?? false;
+}
+
+/**
+ * Whether the first-run guide (the animated tour shown once after sign-up) has been
+ * finished or skipped. NULL on a brand-new account; the migration stamped every
+ * account that predates the guide. Fails CLOSED (returns true) so a transient
+ * network error never shows a returning user a tour they already sat through.
+ */
+export async function getGuideSeen(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('guide_seen_at')
+    .eq('id', userId)
+    .single();
+  if (error) {throw error;}
+  return (data as { guide_seen_at: string | null } | null)?.guide_seen_at != null;
+}
+
+/** Stamps the guide as seen. Idempotent; the owner's own row only (profiles_update_own). */
+export async function markGuideSeen(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ guide_seen_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) {throw error;}
 }
 
 export async function updateCommentsFriendsOnly(

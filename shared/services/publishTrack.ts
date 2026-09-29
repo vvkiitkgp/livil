@@ -226,6 +226,20 @@ async function safeRemoveObjects(paths: string[]): Promise<void> {
  */
 export type CopyrightMatchPrompt = (result: ScanResult) => Promise<RightsDeclaration>;
 
+/**
+ * Called once the media is uploaded and checked — after the copyright scan and any rights
+ * answer — and immediately BEFORE the credits and the post row are written. Nothing is
+ * visible to anyone until it resolves.
+ *
+ * This is what lets the studio split one call into "upload and check" and a separate,
+ * explicit "publish": the caller holds the promise open until the artist has reviewed the
+ * result. Throw `UploadCancelledError` (or anything else) to back out; it lands in the same
+ * catch as every other failure, so the objects and the track row are removed.
+ *
+ * `scan` is the scan result, or null when no scan was asked for.
+ */
+export type ReadyToPostGate = (scan: ScanResult | null) => Promise<void>;
+
 /** Thrown when the uploader backs out at the copyright question. */
 export class UploadCancelledError extends Error {
   constructor() {
@@ -239,6 +253,7 @@ export async function publishTrack(
   uploadAsset: AssetUploader,
   onProgress?: (p: PublishProgress) => void,
   onCopyrightMatch?: CopyrightMatchPrompt,
+  beforePost?: ReadyToPostGate,
 ): Promise<PublishTrackResult> {
   const problem = validate(input);
   if (problem) throw new Error(problem);
@@ -340,13 +355,6 @@ export async function publishTrack(
     if (updateError) throw new Error(`Failed to finalize track: ${updateError.message}`);
 
     /*
-     * The streaming grant, on EVERY upload — see `./uploadConsent`. Fire-and-forget:
-     * the media is up and the post is moments away, and failing a publish over a
-     * bookkeeping row would cost a creator their upload.
-     */
-    void recordUploadConsent(db, trackId, input.termsVersion, input.appVersion);
-
-    /*
      * Copyright scan. Same position as mobile's `createTrack`, deliberately: after the
      * media has a final URL for the provider to fetch, and before the post row exists.
      *
@@ -359,14 +367,20 @@ export async function publishTrack(
      * person started an upload that matched, then stopped" is a note about somebody who
      * published nothing.
      */
+    let scan: ScanResult | null = null;
     if (onCopyrightMatch) {
-      const scan = await scanUpload(db, trackId);
+      scan = await scanUpload(db, trackId);
       if (needsAcknowledgement(scan)) {
         const answer = await onCopyrightMatch(scan);
         if (answer.acknowledgement === 'cancelled') throw new UploadCancelledError();
         void acknowledgeScan(db, trackId, answer);
       }
     }
+
+    // The artist's explicit "publish". Held open by the caller for as long as they are
+    // reviewing; until it resolves this track has no post and no credits, so it is on no
+    // feed and in no profile.
+    if (beforePost) await beforePost(scan);
 
     /*
      * Credits go in BEFORE the post row, and that ordering is the point.
@@ -416,6 +430,21 @@ export async function publishTrack(
     if (postError || !postRow) {
       throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
     }
+
+    /*
+     * The streaming grant, on EVERY upload — see `./uploadConsent`. The studio asks for it
+     * as a ticked box beside Publish.
+     *
+     * AFTER the post exists. `terms_acceptances` is append-only with no foreign key to
+     * `tracks`, so a row written any earlier would outlive a track the artist withdrew at
+     * the Publish gate, or one rolled back on a failed credits/post insert — recording a
+     * grant for something that was never published. Mobile's `createTrack` records it at
+     * the same point.
+     *
+     * Fire-and-forget: failing a publish over a bookkeeping row would cost a creator their
+     * upload.
+     */
+    void recordUploadConsent(db, trackId, input.termsVersion, input.appVersion);
 
     return { trackId, postId: postRow.id, urls };
   } catch (err) {

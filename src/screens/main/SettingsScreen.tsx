@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Text } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,8 +16,11 @@ import { FLOATING_PLAYER_HEIGHT } from '../../constants/layout';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
 import { getMyProfile, type MyProfile } from '../../services/profileService';
+import { stopListeningNow } from '../../services/listeningStatus';
 import { APP_VERSION_LABEL } from '../../constants/appVersion';
 import {
+  APP_STORE_REVIEW_URL,
+  APP_STORE_URL,
   CHILD_SAFETY_URL,
   INSTAGRAM_URL,
   INVITE_SHARE_MESSAGE,
@@ -110,6 +113,9 @@ export default function SettingsScreen() {
     }
     setSignOutBusy(true);
     playback.pauseAll();
+    // While the session still exists — after sign-out the write would be refused and
+    // friends would keep seeing the track until it expires on its own.
+    await stopListeningNow();
     await supabase.auth.signOut();
     setSignOutBusy(false);
     setSignOutOpen(false);
@@ -147,8 +153,14 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="shield"
             label="Privacy & data"
-            subtitle="Activity status, your data, account deletion"
+            subtitle="Listening visibility, your data, account deletion"
             onPress={() => navigation.navigate('PrivacyData')}
+          />
+          <SettingsRow
+            icon="handTap"
+            label="Replay the guide"
+            subtitle="The quick tour from your first day, any time"
+            onPress={() => navigation.navigate('FirstRunGuide')}
           />
         </SettingsSection>
 
@@ -166,12 +178,23 @@ export default function SettingsScreen() {
             subtitle="Bugs, ideas, or what nearly made you give up"
             onPress={() => navigation.navigate('ContactTeam')}
           />
-          <SettingsRow
-            icon="star"
-            label="Rate Livil on the Play Store"
-            external
-            onPress={() => void openUrl(PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL)}
-          />
+          {/* Each platform names only its OWN store: App Review guideline 2.3.10 rejects an
+              iOS build that mentions another platform's store. */}
+          {Platform.OS === 'ios' ? (
+            <SettingsRow
+              icon="star"
+              label="Rate Livil on the App Store"
+              external
+              onPress={() => void openUrl(APP_STORE_REVIEW_URL, APP_STORE_URL)}
+            />
+          ) : (
+            <SettingsRow
+              icon="star"
+              label="Rate Livil on the Play Store"
+              external
+              onPress={() => void openUrl(PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL)}
+            />
+          )}
         </SettingsSection>
 
         <SettingsSection title="About">

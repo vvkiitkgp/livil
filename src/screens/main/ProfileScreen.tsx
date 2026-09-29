@@ -52,7 +52,7 @@ import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBad
 import ProfileBadges from '../../components/ProfileBadges';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -146,10 +146,12 @@ export default function ProfileScreen() {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
+    // Only the visible tab may move the shared tab bar — see HomeScreen.handleScroll.
+    if (!navigation.isFocused()) { return; }
     if (y < 10) { showChrome(); return; }
     if (diff > 4) { hideChrome(); }
     else if (diff < -4) { showChrome(); }
-  }, [hideChrome, showChrome]);
+  }, [navigation, hideChrome, showChrome]);
 
   // Restore the chrome when leaving Profile so it's never stuck off-screen.
   useFocusEffect(
@@ -187,6 +189,8 @@ export default function ProfileScreen() {
     });
   }, [myStoryCluster, navigation]);
 
+  // Provisional only — the real default is resolved from the tab counts on the initial
+  // load, so that the selected pill is always the first pill. See initialTabFor.
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -310,7 +314,7 @@ export default function ProfileScreen() {
   }, []);
 
   const refresh = useCallback(
-    async (currentTab: ProfileTab) => {
+    async (currentTab: ProfileTab, opts?: { resolveTab?: boolean }) => {
       setError('');
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -322,17 +326,24 @@ export default function ProfileScreen() {
         const counts = await fetchTabCounts(me);
         setTabCounts(counts);
 
+        // On the very first load the selection has not been decided yet: counts are what
+        // decide it, and they only exist now. Pull-to-refresh and tab switches pass no
+        // flag on purpose — re-resolving there would yank the reader off the tab they
+        // chose the moment their own counts crossed over.
+        const activeTab = opts?.resolveTab ? initialTabFor(counts) : currentTab;
+        if (activeTab !== currentTab) { setTab(activeTab); }
+
         // Both resolve to [] on failure, so a profile never fails to render because a
         // notice query errored. Not awaited together with the posts: a slow notice must
         // not delay the content people actually came for.
         void fetchMyBlockedTracks(supabase, me).then(setBlocked);
         void fetchMyRemovals(supabase).then(setRemovals);
 
-        if (currentTab === 'reposts' || currentTab === 'uploads') {
-          const fresh = await fetchPosts(me, currentTab);
+        if (activeTab === 'reposts' || activeTab === 'uploads') {
+          const fresh = await fetchPosts(me, activeTab);
           setPosts(fresh);
           setEndReached(fresh.length < PAGE_SIZE);
-        } else if (currentTab === 'albums') {
+        } else if (activeTab === 'albums') {
           setAlbums(await fetchAlbumsByUser(me));
           setEndReached(true);
         } else {
@@ -352,7 +363,7 @@ export default function ProfileScreen() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await refresh(tab);
+      await refresh(tab, { resolveTab: true });
       if (!cancelled) {setLoading(false);}
     })();
     return () => {
@@ -735,20 +746,22 @@ export default function ProfileScreen() {
 
         {/* Primary social stats */}
         <View style={styles.socialPills}>
-          <TouchableOpacity style={styles.socialPill} activeOpacity={0.85}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
-            <Text style={styles.socialPillLabel}>Fans</Text>
-          </TouchableOpacity>
-          <View style={styles.socialPillDivider} />
-          <TouchableOpacity style={styles.socialPill} activeOpacity={0.85}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
-            <Text style={styles.socialPillLabel}>Friends</Text>
-          </TouchableOpacity>
-          <View style={styles.socialPillDivider} />
-          <TouchableOpacity style={styles.socialPill} activeOpacity={0.85}>
-            <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
-            <Text style={styles.socialPillLabel}>Stars</Text>
-          </TouchableOpacity>
+          {(['fans', 'friends', 'stars'] as const).map((kind, i) => (
+            <React.Fragment key={kind}>
+              {i > 0 ? <View style={styles.socialPillDivider} /> : null}
+              <TouchableOpacity
+                style={styles.socialPill}
+                activeOpacity={0.85}
+                onPress={() => profile?.id && navigation.navigate('ProfilePeople', { userId: profile.id, kind })}
+                disabled={!profile?.id}
+              >
+                <Text style={styles.socialPillValue}>{formatStat(followCounts[kind])}</Text>
+                <Text style={styles.socialPillLabel}>
+                  {kind === 'fans' ? 'Fans' : kind === 'friends' ? 'Friends' : 'Stars'}
+                </Text>
+              </TouchableOpacity>
+            </React.Fragment>
+          ))}
         </View>
 
         {/* Secondary stats */}

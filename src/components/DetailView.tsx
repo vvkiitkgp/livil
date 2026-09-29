@@ -14,6 +14,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
 import { Button } from './Button';
+import { usePlayback } from '../contexts/PlaybackContext';
+import { useToast } from '../contexts/ToastContext';
 import { FLOATING_PLAYER_HEIGHT } from './FloatingPlayer';
 import EmojiCoverArt from './EmojiCoverArt';
 import type { PlaylistVisibility } from '../services/playlists';
@@ -172,6 +174,18 @@ export default function DetailView(props: DetailViewProps) {
   } = props;
   const hasEmojiCover = !!coverEmoji && !!coverColor;
 
+  // A jam listener cannot start a whole playlist/album — the host drives playback.
+  // (Tapping a single track still works: it becomes a jam suggestion.) ADR-0023.
+  const { jamLocked } = usePlayback();
+  const { showToast } = useToast();
+  const guard = (fn: () => void) => () => {
+    if (jamLocked) {
+      showToast("You're in a jam — only the host can play a whole list", { kind: 'info' });
+      return;
+    }
+    fn();
+  };
+
   const insets = useSafeAreaInsets();
 
   const metaLine = useMemo(() => {
@@ -275,8 +289,8 @@ export default function DetailView(props: DetailViewProps) {
 
             {tracks.length > 0 ? (
               <View style={styles.actionRow}>
-                <Button label="Play" icon="play" variant="primary" size="md" onPress={onPlay} style={styles.pill} />
-                <Button label="Shuffle" icon="shuffle" variant="secondary" size="md" onPress={onShuffle} style={styles.pill} />
+                <Button label="Play" icon="play" variant="primary" size="md" onPress={guard(onPlay)} style={styles.pill} />
+                <Button label="Shuffle" icon="shuffle" variant="secondary" size="md" onPress={guard(onShuffle)} style={styles.pill} />
               </View>
             ) : null}
 

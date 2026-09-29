@@ -33,11 +33,26 @@ export function stripComments(sql) {
 
 // ── Tables ───────────────────────────────────────────────────────────────────
 
+/**
+ * Replays migrations in filename order. A table's final state is whatever the last
+ * migration to mention it did — CREATE or DROP. Without replaying drops, a table that
+ * has been removed is still documented as live, and the data model describes a schema
+ * nobody can query. `parseRls` and `parseFunctions` already replay; this did not, which
+ * went unnoticed only because no migration had dropped a table until 20260924000000.
+ */
 export function parseTables(migrations) {
   const tables = new Map();
 
   for (const { file, sql } of migrations) {
     const body = stripComments(sql);
+
+    // Drops first; a create later in the SAME file re-adds. Accepts the `public.`
+    // prefix and a trailing CASCADE / RESTRICT.
+    for (const d of body.matchAll(
+      /drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)/gi,
+    )) {
+      tables.delete(d[1].toLowerCase());
+    }
 
     // create table [if not exists] [public.]name ( ... )
     for (const m of body.matchAll(
@@ -144,6 +159,21 @@ export function parseRls(migrations) {
       live.delete(`${d[3]}.${d[1] ?? d[2]}`);
     }
 
+    // DROP TABLE takes the table's policies with it — Postgres does not ask for them
+    // to be dropped individually, so a migration that retires a table has no reason to
+    // name them. Listing policies on a table that no longer exists puts phantom rows in
+    // a security document, which is the same class of false finding the drop-replay
+    // above exists to prevent.
+    for (const d of body.matchAll(
+      /drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)/gi,
+    )) {
+      const table = d[1].toLowerCase();
+      rlsEnabled.delete(table);
+      for (const key of [...live.keys()]) {
+        if (key.slice(0, key.indexOf('.')) === table) live.delete(key);
+      }
+    }
+
     for (const m of body.matchAll(
       /create\s+policy\s+(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+on\s+(?:public\.)?([a-z_][a-z0-9_]*)\s+for\s+([a-z]+)([\s\S]*?);/gi,
     )) {
@@ -210,10 +240,14 @@ export function parseFunctions(migrations) {
 
     // Process drops for this migration before creates, then let creates in the same
     // file re-add anything recreated.
+    // The `(?:public\.)?` is load-bearing and was missing: most migrations in this repo
+    // write `drop function if exists public.foo(...)`, and without it every one of those
+    // drops was invisible here — the dropped function stayed in the RPC reference and in
+    // the security review that reads it.
     for (const d of body.matchAll(
-      /drop\s+function\s+(?:if\s+exists\s+)?([a-z_][a-z0-9_]*)\s*\(/gi,
+      /drop\s+function\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)\s*\(/gi,
     )) {
-      fns.delete(d[1]);
+      fns.delete(d[1].toLowerCase());
     }
 
     // Handles: optional `public.` schema prefix; balanced parens in the parameter list
@@ -482,8 +516,27 @@ export function frontmatter({ tier, owner, consumers, visibility, verifiedBy = '
  *
  * Returns true when the file was actually rewritten.
  */
-export function writeGenerated(path, content) {
-  if (existsSync(path) && sameButForDate(readFileSync(path, 'utf8'), content)) return false;
+/**
+ * `alsoIgnoreDates` extends the same exemption to dates that live in the BODY.
+ *
+ * One document reports its own freshness — the knowledge map tabulates every doc's
+ * `last_verified`, its own row included. That row is as incidental to the content as the
+ * frontmatter line is, and for the same reason: if it forces a write, the document is
+ * rewritten daily and the gate above fails on every stale branch again. Ignoring it here
+ * lets the writer skip the file entirely, leaving BOTH dates at their old value — which
+ * is what keeps the row and the frontmatter agreeing with each other.
+ *
+ * Without this the generator needed TWO runs to settle: the first wrote today into the
+ * frontmatter while the body still said yesterday, and only the second squared them up.
+ * That cost a red `knowledge base` check on one PR and a merge conflict on its sibling
+ * before anyone noticed the fixed point was being reached by luck.
+ */
+export function writeGenerated(path, content, { alsoIgnoreDates } = {}) {
+  const blank = s => {
+    const t = s.replace(VERIFIED_LINE, 'last_verified: -');
+    return alsoIgnoreDates ? alsoIgnoreDates(t) : t;
+  };
+  if (existsSync(path) && blank(readFileSync(path, 'utf8')) === blank(content)) return false;
   writeFileSync(path, content);
   return true;
 }

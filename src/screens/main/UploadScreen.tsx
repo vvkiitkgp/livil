@@ -8,12 +8,13 @@ import {
   Modal,
   Image,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { pick, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
+import { pick, keepLocalCopy, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
 import MediaPlayer, { type MediaPlayerHandle, type MediaShape } from '../../components/MediaPlayer';
 import WaveformScrubber, { SCRUBBER_LABEL_PULL } from '../../components/WaveformScrubber';
@@ -40,6 +41,7 @@ import {
   type PostMode,
 } from '../../services/tracks';
 import CopyrightMatchModal from '../../components/CopyrightMatchModal';
+import { Choice } from '../../components/Choice';
 import {
   describeMatch,
   type RightsDeclaration,
@@ -47,6 +49,7 @@ import {
 } from '../../../shared/services/copyrightScan';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
+import { pickSquareImageFromGallery, pickVideoFromGallery } from '../../services/mediaPicks';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
 import { Icon } from '../../components/Icon';
@@ -123,6 +126,26 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** What to tell someone when the file picker fails — never the library's raw text. */
+function pickErrorMessage(err: unknown): string {
+  // The photo gallery (image-crop-picker) refuses outright when access was denied.
+  const code = err && typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+  if (typeof code === 'string' && /PERMISSION/.test(code)) {
+    return Platform.OS === 'ios'
+      ? 'Livil needs access to your photos. Turn it on in Settings → Livil → Photos.'
+      : 'Livil needs access to your photos. Turn it on in Settings → Apps → Livil → Permissions.';
+  }
+  if (isErrorWithCode(err)) {
+    if (err.code === errorCodes.IN_PROGRESS) {
+      return 'Your files are still opening. Give it a second, then try again.';
+    }
+    if (err.code === errorCodes.UNABLE_TO_OPEN_FILE_TYPE) {
+      return "That kind of file can't be opened here. Try a different file.";
+    }
+  }
+  return "Couldn't open that. Please try again.";
+}
+
 export default function UploadScreen() {
   const navigation = useNavigation<UploadNavigation>();
   const playback = usePlayback();
@@ -142,6 +165,27 @@ export default function UploadScreen() {
   // than opting in to the ones it is.
   const [tags, setTags] = useState<string[]>(() => [...EMOTION_TAGS]);
   const [uploaderRole, setUploaderRole] = useState('');
+  // The per-upload streaming grant, ticked beside the post button. Required on every
+  // upload, matched or not — `createTrack` records it once the post exists.
+  const [grantedStreaming, setGrantedStreaming] = useState(false);
+
+  /**
+   * Which file slot's picker is opening, if any. While set, every Choose/Change button is
+   * disabled and the tapped one shows a spinner.
+   *
+   * WHY: the picker can only be open once. A second tap while the first request is still
+   * opening (easy on a slow phone) made the native picker reject it with a raw
+   * "previous promise did not settle" error. The ref is the real guard — state updates
+   * land a render later, and two taps can arrive inside one render.
+   */
+  const [pickingKind, setPickingKind] = useState<TrackMediaKind | null>(null);
+  const pickingRef = useRef(false);
+  /**
+   * Choose stays disabled until this screen has finished sliding up. iOS silently refuses
+   * to present the picker over a screen that is still animating in, and the request then
+   * never settles — nothing opens, and every later tap hits "already in progress".
+   */
+  const [screenSettled, setScreenSettled] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<{ id: string; title: string } | null>(null);
@@ -289,9 +333,53 @@ export default function UploadScreen() {
     }, [handlersRef, pauseAll, setRepostOpen]),
   );
 
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('transitionEnd', e => {
+      if (!e.data.closing) {setScreenSettled(true);}
+    });
+    // Fallback in case the event never arrives (no animation, or already settled by the
+    // time this subscribed) — the buttons must never stay disabled for good.
+    const fallback = setTimeout(() => setScreenSettled(true), 1200);
+    return () => {
+      unsubscribe();
+      clearTimeout(fallback);
+    };
+  }, [navigation]);
+
   const handlePickFile = useCallback(
     async (slot: FileSlot) => {
+      if (pickingRef.current) {return;}
+      pickingRef.current = true;
+      setPickingKind(slot.kind);
+      // Safety valve. If the OS drops the request without ever answering, the spinner must
+      // not spin forever. Once the picker is actually open it covers this screen, so
+      // re-enabling the button behind it is invisible and harmless.
+      const release = setTimeout(() => {
+        pickingRef.current = false;
+        setPickingKind(null);
+      }, 10_000);
       try {
+        // Only audio comes from the Files app. A video, its thumbnail and cover art come from
+        // the photo gallery — that is where they live on a phone — and pictures are cropped
+        // to a square for real, so what the artist sees here is what the feed and the
+        // full-screen player show (see `pickSquareImageFromGallery`).
+        if (slot.kind !== 'audio') {
+          const picked =
+            slot.kind === 'video'
+              ? await pickVideoFromGallery()
+              : await pickSquareImageFromGallery(slot.kind);
+          // Backing out keeps whatever was chosen before.
+          if (!picked) {return;}
+          if (picked.size != null && picked.size > MAX_UPLOAD_BYTES) {
+            setError(tooLargeMessage(slot.kind));
+            return;
+          }
+          if (slot.kind === 'video') {setVideo(picked);}
+          else if (slot.kind === 'thumbnail') {setThumbnail(picked);}
+          else {setCover(picked);}
+          setError('');
+          return;
+        }
         const [result] = await pick({ type: [slot.accept] });
         if (!result) {return;}
         const file: PickedFile = {
@@ -306,17 +394,36 @@ export default function UploadScreen() {
           setError(tooLargeMessage(slot.kind));
           return;
         }
-        if (slot.kind === 'audio') {setAudio(file);}
-        else if (slot.kind === 'video') {setVideo(file);}
-        else if (slot.kind === 'thumbnail') {setThumbnail(file);}
-        else {
-          setCover(file);
+        // iOS hands back a TEMPORARY copy (`tmp/<bundle>-Inbox/`) that the system is free to
+        // delete — and does, before the user reaches Post. React Native's networking then
+        // fails to read the missing file while building the request body and never fires
+        // `onerror`, so the upload sat at 0% until the stall watchdog gave up. Copy it into
+        // our own caches directory now, while it still exists. Android is unchanged: its
+        // `content://` uri is materialized at upload time by `resolveReadableUri`.
+        if (Platform.OS === 'ios') {
+          const [copy] = await keepLocalCopy({
+            files: [{ uri: result.uri, fileName: result.name ?? `${slot.kind}` }],
+            destination: 'cachesDirectory',
+          });
+          if (copy.status !== 'success') {
+            console.log('[LIVIL][picker] local copy failed', copy.copyError);
+            setError("Couldn't read that file. Try picking it again.");
+            return;
+          }
+          file.uri = copy.localUri;
         }
+        setAudio(file);
         setError('');
       } catch (err) {
         if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {return;}
-        const message = err instanceof Error ? err.message : 'Failed to pick file.';
-        setError(message);
+        // The picker's own messages are written for developers ("previous promise did not
+        // settle…"), so they are logged, not shown.
+        console.log('[LIVIL][picker] pick failed', err);
+        setError(pickErrorMessage(err));
+      } finally {
+        clearTimeout(release);
+        pickingRef.current = false;
+        setPickingKind(null);
       }
     },
     [],
@@ -358,9 +465,10 @@ export default function UploadScreen() {
     if (submitting || title.trim().length === 0) {return false;}
     // Your own role is required — see the Your role section.
     if (uploaderRole.trim().length === 0) {return false;}
+    if (!grantedStreaming) {return false;}
     if (mode === 'audio') {return Boolean(audio && cover);}
     return Boolean(video && thumbnail);
-  }, [mode, audio, cover, video, thumbnail, title, uploaderRole, submitting]);
+  }, [mode, audio, cover, video, thumbnail, title, uploaderRole, grantedStreaming, submitting]);
 
   const handleSubmit = useCallback(async () => {
     setPreviewPaused(true);
@@ -370,6 +478,10 @@ export default function UploadScreen() {
     }
     if (!uploaderRole.trim()) {
       setError('Choose what you did on this track.');
+      return;
+    }
+    if (!grantedStreaming) {
+      setError('Tick the box to let Livil stream this recording.');
       return;
     }
     if (mode === 'audio') {
@@ -404,6 +516,7 @@ export default function UploadScreen() {
               collaborators,
               tags,
               durationSeconds: previewDurationSec,
+              streamingGrantAccepted: grantedStreaming,
             }
           : {
               mode: 'video',
@@ -416,6 +529,7 @@ export default function UploadScreen() {
               collaborators,
               tags,
               durationSeconds: previewDurationSec,
+              streamingGrantAccepted: grantedStreaming,
             },
         ({ stage, fraction }) => {
           setProgressStage(stage);
@@ -448,7 +562,7 @@ export default function UploadScreen() {
       setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, collaborators, tags, previewDurationSec, selectedAlbum, askAboutMatch]);
+  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, grantedStreaming, collaborators, tags, previewDurationSec, selectedAlbum, askAboutMatch]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -583,7 +697,8 @@ export default function UploadScreen() {
                         size="sm"
                         variant="secondary"
                         onPress={() => handlePickFile(slot)}
-                        disabled={submitting}
+                        busy={pickingKind === slot.kind}
+                        disabled={submitting || !screenSettled || pickingKind !== null}
                       />
                       <Button
                         label="Remove"
@@ -599,7 +714,8 @@ export default function UploadScreen() {
                       size="sm"
                       variant="primary"
                       onPress={() => handlePickFile(slot)}
-                      disabled={submitting}
+                      busy={pickingKind === slot.kind}
+                      disabled={submitting || !screenSettled || pickingKind !== null}
                     />
                   )}
                 </View>
@@ -905,14 +1021,25 @@ export default function UploadScreen() {
               ) : null}
             </View>
           ) : (
-            <Button
-              label="Post track"
-              onPress={() => void handleSubmit()}
-              variant="primary"
-              size="lg"
-              fullWidth
-              disabled={!canSubmit}
-            />
+            <View style={styles.footerStack}>
+              {/* Beside the button, so the tick and the post happen together. */}
+              <Choice
+                label="I grant Livil permission to stream this recording in the app"
+                hint="Required to post. You keep your rights — this lets Livil play it to listeners."
+                selected={grantedStreaming}
+                onPress={() => setGrantedStreaming(v => !v)}
+                compact
+                shape="checkbox"
+              />
+              <Button
+                label="Post track"
+                onPress={() => void handleSubmit()}
+                variant="primary"
+                size="lg"
+                fullWidth
+                disabled={!canSubmit}
+              />
+            </View>
           )}
         </View>
 
@@ -1298,6 +1425,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.bg,
+  },
+  footerStack: {
+    gap: 10,
   },
   progressBlock: {
     gap: 10,

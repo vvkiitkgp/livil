@@ -39,6 +39,12 @@ export type CreateTrackInput =
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
       durationSeconds?: number | null;
+      /**
+       * The per-upload streaming grant, ticked by the uploader beside the post button.
+       * Must be `true`: `createTrack` refuses to upload anything without it, so the
+       * `terms_acceptances` row it writes is never a consent nobody was asked for.
+       */
+      streamingGrantAccepted: boolean;
     }
   | {
       mode: 'video';
@@ -59,6 +65,12 @@ export type CreateTrackInput =
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
       durationSeconds?: number | null;
+      /**
+       * The per-upload streaming grant, ticked by the uploader beside the post button.
+       * Must be `true`: `createTrack` refuses to upload anything without it, so the
+       * `terms_acceptances` row it writes is never a consent nobody was asked for.
+       */
+      streamingGrantAccepted: boolean;
     };
 
 export type CreateTrackResult = {
@@ -401,6 +413,12 @@ export async function createTrack(
     if (!input.thumbnail) {throw new Error('Thumbnail image is required for video posts.');}
   }
 
+  // The screen disables its button until this is ticked; checked again here so a future
+  // caller cannot upload — and record a consent row — without having asked.
+  if (input.streamingGrantAccepted !== true) {
+    throw new Error('Tick the box to let Livil stream this recording.');
+  }
+
   // Before anything uploads, like every other check here. `normalizeTags` guarantees the
   // rest of `tracks_tags_valid` by construction, so the cap is the only rule the database
   // could still reject — and rejecting it here costs a message instead of a whole upload.
@@ -520,20 +538,6 @@ export async function createTrack(
       throw new Error(`Failed to finalize track: ${updateError.message}`);
     }
 
-    // ── The streaming grant ──────────────────────────────────────────────────
-    //
-    // Recorded on EVERY upload, which is the point: the copyright form only appears when
-    // a scan matches, so a grant captured there alone would cover the exception and miss
-    // the rule.
-    //
-    // Fire-and-forget by design. The media is uploaded and the post is moments away —
-    // failing the publish because a consent row did not land would cost a creator their
-    // upload over bookkeeping. A missing row shows as an absence in the operator view,
-    // which is the honest way for this to fail.
-    void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
-      if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
-    });
-
     // ── Copyright scan ───────────────────────────────────────────────────────
     //
     // HERE, and not earlier or later. Earlier there is no final URL for the provider
@@ -625,6 +629,24 @@ export async function createTrack(
     if (postError || !postRow) {
       throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
     }
+
+    // ── The streaming grant ──────────────────────────────────────────────────
+    //
+    // Recorded on EVERY upload, which is the point: the copyright form only appears when
+    // a scan matches, so a grant captured there alone would cover the exception and miss
+    // the rule. The uploader ticked it beside the post button — see the guard at the top.
+    //
+    // AFTER the post exists, not before. `terms_acceptances` is append-only with no
+    // foreign key to `tracks`, so a row written earlier would outlive a track that was
+    // then cancelled at the copyright question or rolled back on a failed insert —
+    // recording a grant for something that was never published.
+    //
+    // Fire-and-forget by design: failing the publish because a consent row did not land
+    // would cost a creator their upload over bookkeeping. A missing row shows as an
+    // absence in the operator view, which is the honest way for this to fail.
+    void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
+      if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
+    });
 
     return {
       trackId,
@@ -869,6 +891,11 @@ function toResult(p: { id: string; username: string; display_name: string | null
 
 export type LibraryRecentTrack = {
   trackId: string;
+  /**
+   * The post this track was last played through — what a tap opens. Null when that
+   * post has since been deleted; the caller then has nothing to open.
+   */
+  postId: string | null;
   title: string;
   artistLabel: string;
   coverArtUrl: string | null;
@@ -876,10 +903,29 @@ export type LibraryRecentTrack = {
 };
 
 /**
- * Recently played rows for the Library tab (server-backed so history survives
- * reinstall once playback hooks write to `user_recent_tracks`).
+ * Recently played rows for the Library tab, newest first. Server-backed, so history
+ * survives a reinstall: every counted play (post_views) writes its row via the
+ * `trg_post_views_recent_tracks` trigger (20260929000000_recently_played_is_recorded.sql).
+ *
+ * `before` pages backwards by `playedAt` for "See all".
  */
-export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRecentTrack[]> {
+export async function listRecentTracksForLibrary(
+  limit = 24,
+  before?: string,
+): Promise<LibraryRecentTrack[]> {
+  return (await listRecentTracksPage(limit, before)).items;
+}
+
+/**
+ * One page of Recently Played, plus the cursor for the next page. Rows whose track you
+ * can no longer read (taken down, uploader blocked) are dropped from `items`, so the
+ * paging decision must come from the RAW rows: `nextBefore` is the last raw row's
+ * `played_at`, or null when the database returned a short page (no more history).
+ */
+export async function listRecentTracksPage(
+  limit = 24,
+  before?: string,
+): Promise<{ items: LibraryRecentTrack[]; nextBefore: string | null }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData.user) {
@@ -888,25 +934,32 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
 
   const me = userData.user.id;
 
-  const { data, error } = await supabase
-    .from('user_recent_tracks')
-    .select(
-      `
-      played_at,
-      track:tracks (
-        id,
-        title,
-        cover_art_url,
-        uploader:profiles!tracks_uploader_id_fkey (
-          username,
-          display_name
-        )
+  const TRACK = `
+    track:tracks (
+      id,
+      title,
+      cover_art_url,
+      uploader:profiles!tracks_uploader_id_fkey (
+        username,
+        display_name
       )
-    `,
-    )
-    .eq('user_id', me)
-    .order('played_at', { ascending: false })
-    .limit(limit);
+    )`;
+  const run = (withPost: boolean) => {
+    let query = supabase
+      .from('user_recent_tracks')
+      .select(withPost ? `played_at, last_post_id, ${TRACK}` : `played_at, ${TRACK}`)
+      .eq('user_id', me);
+    if (before) { query = query.lt('played_at', before); }
+    return query.order('played_at', { ascending: false }).limit(limit);
+  };
+
+  // `last_post_id` arrives with 20260929000000_recently_played_is_recorded.sql. If the
+  // app ships before that migration is applied, read the list without it (rows just
+  // aren't tappable) rather than failing the whole strip with a column error.
+  let { data, error } = await run(true);
+  if (error && /last_post_id/.test(error.message)) {
+    ({ data, error } = await run(false));
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -914,6 +967,7 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
 
   type Row = {
     played_at: string;
+    last_post_id?: string | null;
     track: {
       id: string;
       title: string;
@@ -922,7 +976,9 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
     } | null;
   };
 
-  return (data ?? [])
+  const raws = (data ?? []) as unknown as Row[];
+  const nextBefore = raws.length < limit ? null : raws[raws.length - 1]!.played_at;
+  const items = raws
     .map((raw: Row) => {
       const t = raw.track;
       if (!t) {
@@ -932,6 +988,7 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
       const artistLabel = up?.display_name?.trim() || up?.username || 'Artist';
       return {
         trackId: t.id,
+        postId: raw.last_post_id ?? null,
         title: t.title,
         artistLabel,
         coverArtUrl: t.cover_art_url,
@@ -939,4 +996,5 @@ export async function listRecentTracksForLibrary(limit = 24): Promise<LibraryRec
       } satisfies LibraryRecentTrack;
     })
     .filter(Boolean) as LibraryRecentTrack[];
+  return { items, nextBefore };
 }

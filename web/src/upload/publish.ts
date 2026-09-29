@@ -11,6 +11,7 @@ import {
   type PublishCollaborator,
   type PublishProgress,
   type PublishTrackResult,
+  type ReadyToPostGate,
 } from '@shared/services/publishTrack';
 import type { TrackMediaKind } from '@shared/services/media';
 import { backfillWaveformPeaks } from '@shared/services/waveformStore';
@@ -100,6 +101,11 @@ export function startPublish(
    * existing tests that call `startPublish` directly.
    */
   onCopyrightMatch?: CopyrightMatchPrompt,
+  /**
+   * Held open until the artist presses Publish — see `ReadyToPostGate`. Omit and the
+   * track posts as soon as it is uploaded and checked.
+   */
+  beforePost?: ReadyToPostGate,
 ): PublishHandle {
   const imageKind: TrackMediaKind = picked.mode === 'audio' ? 'cover' : 'thumbnail';
   const files = new Map<TrackMediaKind, File>([
@@ -146,6 +152,7 @@ export function startPublish(
       },
       onProgress,
       onCopyrightMatch,
+      beforePost,
     );
 
     // Fire-and-forget: the track is already published and playable. A missing envelope

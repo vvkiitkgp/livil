@@ -267,8 +267,8 @@ production, and several are new-ish requirements that closed testing did not enf
 The listing is public and the link installs, but **Play search will return nothing for
 "Livil" for days to a couple of weeks**. Indexing lags publication for a new app with no
 install history; there is no setting for it. Installs, ratings and time are what move
-it, so the first cohort has to arrive via the link — Instagram, the waitlist, direct
-invitations. `PLAY_STORE_WEB_URL` and `market://` are already wired into
+it, so the first cohort has to arrive via the link — Instagram, direct invitations.
+(The waitlist was the third channel here until it was retired; see ADR-0021.) `PLAY_STORE_WEB_URL` and `market://` are already wired into
 `src/constants/links.ts`, so the in-app invite share and the marketing site need no
 change.
 

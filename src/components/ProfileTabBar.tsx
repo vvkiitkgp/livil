@@ -55,6 +55,24 @@ export function visibleTabsFor(counts: TabCounts): TabSpec[] {
   return visible.map(t => (WEIGHTED.includes(t.key) ? weighted[next++]! : t));
 }
 
+/**
+ * The tab a profile should open on: always the FIRST visible pill.
+ *
+ * Never a fixed favourite. Because visibleTabsFor orders Reposts/Uploads by weight,
+ * choosing the default independently left the two disagreeing — an artist with more
+ * uploads than reposts saw Uploads rendered as the leading pill while Reposts was the
+ * selected one, so the bar opened mid-way along itself. Deriving the default from the
+ * same call the bar renders keeps selection and order in lock-step by construction,
+ * rather than by two places remembering to agree.
+ *
+ * Callers with a stronger claim still win — a deep link into a specific post pins its
+ * own tab. The 'reposts' fallback is unreachable today (visibleTabsFor always emits it)
+ * and exists only to keep the return total if the visibility rules change.
+ */
+export function initialTabFor(counts: TabCounts): ProfileTab {
+  return visibleTabsFor(counts)[0]?.key ?? 'reposts';
+}
+
 export default function ProfileTabBar({
   active,
   counts,

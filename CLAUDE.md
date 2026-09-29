@@ -586,19 +586,26 @@ decorative ripple (Tier A). Every decision below was made deliberately; treat th
 # 2. Build
 cd android && ./gradlew bundleRelease
 # 3. Output: android/app/build/outputs/bundle/release/app-release.aab
-# 4. Upload to Play Console → Internal testing → Create new release
+# 4. Upload to Play Console → Production (or Closed testing first) → Create new release
 ```
 
 Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `~/.gradle/gradle.properties` — never in repo).
 
 ---
 
-## Play Store
+## Distribution — live in production on all three platforms
+
+**Livil Music is live in production** on the App Store, Google Play, and the web.
+
+| Platform | Listing | Notes |
+|---|---|---|
+| **Google Play** | `https://play.google.com/store/apps/details?id=com.livil` | Package `com.livil`. Production since 2026-08-14, full rollout, 176 countries + rest of world (versionName `2.0.8`, versionCode `73` — bump both before each release) |
+| **Apple App Store** | `https://apps.apple.com/app/id6809119164` | Name **"Livil Music"** ("Livil" was taken), Apple ID `6809119164`, bundle `com.livil`, iPhone only (no iPad build), 174 territories (not China mainland). See ADR-0016 |
+| **Web** | `https://livil-music.com/studio` | Web app + creator dashboard (`web/`, Vercel). Landing page `https://livil-music.com` (`docs/`, GitHub Pages) links both stores |
 
 - **Developer**: Livil Labs (`vvk.iitkgp@gmail.com`)
-- **Package**: `com.livil`
-- **Status**: **Live in production** since 2026-08-14 — full rollout, 176 countries + rest of world (versionName `2.0.7`, versionCode `72` — bump both before each release)
 - **GitHub**: https://github.com/vvkiitkgp/livil
+- **App Review guideline 2.3.10**: an iOS build must never name or link another platform's store — gate Play-only UI by `Platform.OS`.
 
 ---
 

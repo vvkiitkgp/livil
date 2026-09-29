@@ -15,6 +15,7 @@ import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import { AppTabParamList } from './types';
 import { Icon } from '../components/Icon';
+import TabAvatar from '../components/TabAvatar';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
@@ -33,7 +34,7 @@ function LibraryIcon({ color, focused }: TabIconProps) {
 }
 
 function ProfileIcon({ color, focused }: TabIconProps) {
-  return <Icon name="profile" size={26} color={color} weight={focused ? 'fill' : 'regular'} />;
+  return <TabAvatar color={color} focused={focused} />;
 }
 
 // Bottom tab bar wrapped in an Animated.View so it can slide off the bottom edge
@@ -59,6 +60,7 @@ function AnimatedTabBar(props: BottomTabBarProps) {
 
 export default function AppNavigator() {
   const insets = useSafeAreaInsets();
+  const { showChrome } = useChromeVisibility();
 
   return (
     <Tab.Navigator
@@ -67,7 +69,11 @@ export default function AppNavigator() {
       // Light tick on every tab press. A listener rather than a custom
       // tabBarButton so the navigator keeps owning the press — it still decides
       // navigate vs re-select-and-scroll-to-top; this only observes.
-      screenListeners={{ tabPress: () => haptics.select() }}
+      //
+      // Every tab arrives with the bar showing. Only Home and Profile hide it (on
+      // scroll), so a tab like Library that inherited a hidden bar had no way to bring
+      // it back — and, being a tab root, no back gesture either.
+      screenListeners={{ tabPress: () => haptics.select(), focus: () => showChrome() }}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,

@@ -137,10 +137,9 @@ export default function ActivityCenterScreen() {
     navigation.navigate('UserProfile', { userId: actorId });
   }, [navigation]);
 
-  // Tap a track card → deep-link to the owner's profile scrolled to that post.
-  // For like/repost/milestone the recipient (me) owns the post, so the
-  // notification is routed to my own profile. For comments we additionally
-  // request the CommentsSheet to open and pulse the originating comment.
+  // Tap a track card → open that post on its own page (PostDetail). A comment
+  // opens the comments with the originating comment pulsed; a like opens the
+  // likes list; everything else just shows the post.
   // No audio playback, no queue change, no full-screen player — that was the
   // previous behavior and was intentionally removed.
   const handlePostPress = useCallback((item: ActivityItem) => {
@@ -148,21 +147,19 @@ export default function ActivityCenterScreen() {
     const post = (item as { post?: { postId: string } }).post;
     const postId = post?.postId;
     if (!postId) { return; }
+    // The post opens on its own page, not on a profile scrolled to it. The profile route
+    // silently showed the wrong post whenever the target was on the other tab or older
+    // than the first page — and the post it landed on was often another post of the same
+    // song, so it read as the right one with the wrong counts.
     if (item.type === 'comment') {
-      navigation.navigate('UserProfile', {
-        userId: meId,
-        focusPostId: postId,
+      navigation.navigate('PostDetail', {
+        postId,
         openComments: true,
         ...(item.commentId ? { highlightCommentId: item.commentId } : {}),
       });
       return;
     }
-    // WHOSE profile the post lives on. Every other notification is about something that
-    // happened TO my post, so my profile is right — but a credit is about somebody ELSE's
-    // upload, and routing that to me opened my profile hunting for a post that was never
-    // there. The uploader is the actor on a 'credited' row.
-    const ownerId = item.type === 'credited' ? item.actor.id || meId : meId;
-    navigation.navigate('UserProfile', { userId: ownerId, focusPostId: postId });
+    navigation.navigate('PostDetail', { postId, openLikers: item.type === 'like' });
   }, [navigation, meId]);
 
   /**

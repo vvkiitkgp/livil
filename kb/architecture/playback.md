@@ -161,6 +161,8 @@ sync risk for video).
 | Live clip edit not updating | Nudge an in-place seek **only when the window actually changed** | The OS republishes playback state only on a player event |
 | `disableAudioSessionManagement` on a follower | Never | iOS process-wide singleton; would silence the engine |
 | Swipe-dismiss on Android 15 | Not our bug | Intentional OS behaviour; `setOngoing(isPlaying)` pins it while playing |
+| iOS "stuck buffering" | The engine clears `bufferingRef` when the playhead **advances** (`handleProgress`) and on `onLoad` | iOS RNV emits `onBuffer(true)` but resets its own flag without ever emitting `onBuffer(false)`. The stale flag made the lock-screen pause-sync discard **every** notification / Control Center pause as a load-time report — the in-app icon stayed "playing" and the listening status stayed up |
+| Side effects of a lock-screen action | Publish them from the native-event handler itself, not from a React effect | Backgrounded, React effects are not flushed promptly (Android), so anything driven by an effect lands only when the app is next opened. The chat listening status is published directly from the pause/play branches and `publishQueueTrack` (next/prev) for this reason |
 
 ---
 

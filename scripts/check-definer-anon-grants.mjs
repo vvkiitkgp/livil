@@ -61,7 +61,6 @@ const MIGRATIONS = join(REPO, 'supabase/migrations');
 const BASELINE = new Map([
   // Genuinely reachable before an account exists.
   ['is_username_available', 'signup form, both clients, before an account exists'],
-  ['waitlist_request', 'the waitlist form is public by design'],
   ['handle_new_user', 'signup trigger — runs as the row is created'],
   ['welcome_email_mark', 'signup-time bookkeeping'],
   ['claim_username', 'runs during onboarding, immediately post-signup'],
@@ -95,7 +94,6 @@ const BASELINE = new Map([
   ['message_preview', 'legacy — pure formatter, no data access'],
   ['update_conversation_last_message', 'trigger'],
   ['get_jam_snapshot', 'legacy — jam room read'],
-  ['waitlist_mark_emailed', 'legacy — service-side bookkeeping'],
   ['list_my_conversations', 'legacy — scoped to auth.uid(), empty for anon'],
   ['create_group', 'legacy — fails closed on auth.uid() null'],
   ['create_jam_room', 'legacy — fails closed on auth.uid() null'],

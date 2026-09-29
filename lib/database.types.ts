@@ -580,23 +580,36 @@ export type Database = {
       listen_sessions: {
         Row: {
           artist_name: string
+          playing: boolean
+          post_id: string | null
           track_title: string
           updated_at: string
           user_id: string
         }
         Insert: {
           artist_name: string
+          playing?: boolean
+          post_id?: string | null
           track_title: string
           updated_at?: string
           user_id: string
         }
         Update: {
           artist_name?: string
+          playing?: boolean
+          post_id?: string | null
           track_title?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "listen_sessions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "listen_sessions_user_id_fkey"
             columns: ["user_id"]
@@ -1328,6 +1341,7 @@ export type Database = {
           display_name: string | null
           followers_count: number | null
           following_count: number | null
+          guide_seen_at: string | null
           id: string
           last_seen_at: string | null
           links: string[]
@@ -1343,6 +1357,7 @@ export type Database = {
           display_name?: string | null
           followers_count?: number | null
           following_count?: number | null
+          guide_seen_at?: string | null
           id: string
           last_seen_at?: string | null
           links?: string[]
@@ -1358,6 +1373,7 @@ export type Database = {
           display_name?: string | null
           followers_count?: number | null
           following_count?: number | null
+          guide_seen_at?: string | null
           id?: string
           last_seen_at?: string | null
           links?: string[]
@@ -1894,23 +1910,56 @@ export type Database = {
           },
         ]
       }
+      user_last_seen: {
+        Row: {
+          last_seen_at: string
+          user_id: string
+        }
+        Insert: {
+          last_seen_at: string
+          user_id: string
+        }
+        Update: {
+          last_seen_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_last_seen_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_recent_tracks: {
         Row: {
+          last_post_id: string | null
           played_at: string
           track_id: string
           user_id: string
         }
         Insert: {
+          last_post_id?: string | null
           played_at?: string
           track_id: string
           user_id: string
         }
         Update: {
+          last_post_id?: string | null
           played_at?: string
           track_id?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "user_recent_tracks_last_post_id_fkey"
+            columns: ["last_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_recent_tracks_track_id_fkey"
             columns: ["track_id"]
@@ -1926,36 +1975,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      waitlist: {
-        Row: {
-          created_at: string
-          email: string
-          email_attempts: number
-          email_error: string | null
-          email_sent_at: string | null
-          email_source: string | null
-          id: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          email_attempts?: number
-          email_error?: string | null
-          email_sent_at?: string | null
-          email_source?: string | null
-          id?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          email_attempts?: number
-          email_error?: string | null
-          email_sent_at?: string | null
-          email_source?: string | null
-          id?: string
-        }
-        Relationships: []
       }
       welcome_emails: {
         Row: {
@@ -2091,6 +2110,7 @@ export type Database = {
         Returns: undefined
       }
       can_comment_on_post: { Args: { p_post_id: string }; Returns: boolean }
+      can_see_listening: { Args: { p_owner: string }; Returns: boolean }
       can_write_to_conversation: {
         Args: { p_conversation_id: string }
         Returns: boolean
@@ -2230,6 +2250,17 @@ export type Database = {
           username: string
         }[]
       }
+      list_group_faces: {
+        Args: { p_conversation_ids: string[] }
+        Returns: {
+          avatar_url: string
+          conversation_id: string
+          display_name: string
+          last_sent_at: string
+          user_id: string
+          username: string
+        }[]
+      }
       list_incoming_friend_requests: {
         Args: never
         Returns: {
@@ -2238,6 +2269,17 @@ export type Database = {
           display_name: string
           other_user_id: string
           username: string
+        }[]
+      }
+      list_listening_now: {
+        Args: { p_user_ids: string[] }
+        Returns: {
+          artist_name: string
+          cover_art_url: string
+          expires_in: number
+          post_id: string
+          track_title: string
+          user_id: string
         }[]
       }
       list_my_conversations: {
@@ -2517,14 +2559,10 @@ export type Database = {
         Args: { a: string; b: string }
         Returns: boolean
       }
+      touch_last_seen: { Args: never; Returns: undefined }
       track_tags_ok: { Args: { tags: string[] }; Returns: boolean }
       unblock_user: { Args: { target_user_id: string }; Returns: undefined }
       unread_badge_count_for: { Args: { p_user_id: string }; Returns: number }
-      waitlist_mark_emailed: {
-        Args: { p_error?: string; p_id: string }
-        Returns: undefined
-      }
-      waitlist_request: { Args: { p_email: string }; Returns: string }
       welcome_email_claim: { Args: never; Returns: boolean }
       welcome_email_mark: { Args: { p_error?: string }; Returns: undefined }
     }

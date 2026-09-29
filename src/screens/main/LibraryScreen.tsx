@@ -28,6 +28,7 @@ import {
 } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import { supabase } from '../../../lib/supabase';
+import { usePlayRecentlyPlayed } from '../../hooks/usePlayRecentlyPlayed';
 import type { RootStackParamList } from '../../navigation/types';
 
 const FALLBACK_COVER_ACCENTS: [string, string][] = [
@@ -90,6 +91,12 @@ export default function LibraryScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Tapping a history row plays it, with the rest of the list queued in the same order.
+  const playRecent = usePlayRecentlyPlayed();
+  const openRecent = useCallback((track: LibraryRecentTrack) => {
+    void playRecent(recent, recent.indexOf(track));
+  }, [playRecent, recent]);
+
   const loadRecent = useCallback(async () => {
     setRecentError('');
     try {
@@ -143,7 +150,8 @@ export default function LibraryScreen() {
     void loadAlbums();
   }, [loadRecent, loadPlaylists, loadAlbums]);
 
-  // Refresh playlists whenever the tab comes back into focus (e.g. after creating one)
+  // Refresh whenever the tab comes back into focus — a playlist just created, or a track
+  // just played that belongs at the front of Recently played.
   const isMounted = useRef(false);
   useFocusEffect(
     useCallback(() => {
@@ -151,9 +159,10 @@ export default function LibraryScreen() {
         isMounted.current = true;
         return;
       }
+      void loadRecent();
       void loadPlaylists();
       void loadAlbums();
-    }, [loadPlaylists, loadAlbums]),
+    }, [loadRecent, loadPlaylists, loadAlbums]),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -245,7 +254,13 @@ export default function LibraryScreen() {
               const initials = track.title.trim().charAt(0).toUpperCase() || '♪';
               const accents = FALLBACK_COVER_ACCENTS[index % FALLBACK_COVER_ACCENTS.length]!;
               return (
-                <Pressable key={`${track.trackId}-${track.playedAt}`} style={styles.recentCard}>
+                <Pressable
+                  key={track.trackId}
+                  style={({ pressed }) => [styles.recentCard, pressed && styles.recentCardPressed]}
+                  onPress={() => openRecent(track)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${track.title} by ${track.artistLabel}`}
+                >
                   <View style={[styles.recentCover, { backgroundColor: accents[0] }]}>
                     <View style={[styles.recentCoverAccent, { backgroundColor: accents[1] }]} />
                     {track.coverArtUrl ? (
@@ -270,7 +285,7 @@ export default function LibraryScreen() {
         {!albumsLoading ? (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Albums</Text>
+              <Text style={styles.sectionTitle}>Your Albums</Text>
               <TouchableOpacity onPress={goToCreateAlbum} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={styles.sectionLink}>+ New</Text>
               </TouchableOpacity>
@@ -481,6 +496,7 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     gap: 14,
   },
+  recentCardPressed: { opacity: 0.6 },
   recentCard: {
     width: 144,
   },

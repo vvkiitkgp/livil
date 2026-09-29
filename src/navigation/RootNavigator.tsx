@@ -13,7 +13,8 @@ import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
 import TermsAcceptScreen from '../screens/auth/TermsAcceptScreen';
 import { hasAcceptedCurrentTerms } from '../services/terms';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
-import { getUsernameSet } from '../services/profileService';
+import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
+import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
 import RepostScreen from '../screens/main/RepostScreen';
 import StoryViewerScreen from '../screens/main/StoryViewerScreen';
@@ -25,7 +26,9 @@ import CreateAlbumScreen from '../screens/main/CreateAlbumScreen';
 import EditAlbumScreen from '../screens/main/EditAlbumScreen';
 import EditPlaylistScreen from '../screens/main/EditPlaylistScreen';
 import FollowingScreen from '../screens/main/FollowingScreen';
+import ProfilePeopleScreen from '../screens/main/ProfilePeopleScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
+import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
 import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
@@ -43,12 +46,14 @@ import BlockedAccountsScreen from '../screens/main/BlockedAccountsScreen';
 import DeleteAccountScreen from '../screens/main/DeleteAccountScreen';
 import { JamProvider } from '../contexts/JamContext';
 import { JamRealtimeProvider } from '../contexts/JamRealtimeContext';
+import { JamSuggestionsProvider } from '../contexts/JamSuggestionsContext';
 import { RelationshipProvider } from '../contexts/RelationshipContext';
 import { StoriesProvider } from '../contexts/StoriesContext';
 import { ChromeVisibilityProvider } from '../contexts/ChromeVisibilityContext';
 import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
+import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { RootStackParamList } from './types';
@@ -156,6 +161,39 @@ function SplashScreen() {
   );
 }
 
+const LAST_SEEN_HEARTBEAT_MS = 5 * 60_000;
+
+/**
+ * Finishing a sign-in from a deep link (Google / magic link / password reset) makes a
+ * network call the instant the OS brings the app back from the browser — and iOS often
+ * has not reconnected the app's network yet, so a single attempt failed with "Network
+ * request failed" and the sign-in was simply lost. Retry transient network failures a
+ * few times with backoff; any other error (bad or expired code) returns at once.
+ */
+async function withNetworkRetry<T extends { error: { message: string } | null }>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  let result = await fn();
+  for (const waitMs of [800, 1600, 3200]) {
+    if (!result.error || !/network request failed|failed to fetch|network/i.test(result.error.message)) {
+      return result;
+    }
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    result = await fn();
+  }
+  return result;
+}
+
+// iOS 26 turned on swipe-ANYWHERE-to-go-back by default (fullScreenGestureEnabled). On a
+// screen with a horizontal scrubber (song cards, the jam seek bar) every rightward drag
+// then popped the screen instead of seeking. Those screens keep only the edge swipe.
+const SCRUBBER_SCREEN = { animation: 'slide_from_right', fullScreenGestureEnabled: false } as const;
+
+/** Settings → "Replay the guide": the same screen as a pushed route, closing on done. */
+function FirstRunGuideReplay({ navigation }: { navigation: { goBack: () => void } }) {
+  return <FirstRunGuideScreen mode="replay" onDone={() => navigation.goBack()} />;
+}
+
 export default function RootNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,6 +204,11 @@ export default function RootNavigator() {
   // gate: agreeing to use the service comes before setting up an identity within it.
   // Also fires for EXISTING users when TERMS_VERSION changes, with source 'reaccept'.
   const [needsTerms, setNeedsTerms] = useState<boolean | null>(null);
+  // null = unresolved. Gates the app behind the first-run guide, AFTER terms and the
+  // username: it is the last thing before Home, and only ever once per account
+  // (`profiles.guide_seen_at`). Resolved alongside the other two so the splash covers
+  // it and a new user never sees a flash of Home before their tour.
+  const [needsGuide, setNeedsGuide] = useState<boolean | null>(null);
   // Set when a livil://auth deep link carries type=recovery (password reset
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
@@ -241,7 +284,9 @@ export default function RootNavigator() {
     void deferPushPrompt();
   };
 
-  // Presence heartbeat: update last_seen_at every 30s while app is foregrounded
+  // last_seen_at heartbeat while the app is foregrounded. Only the ops users overview
+  // ("last active") reads it — chat no longer shows "online" at all — so minute-level
+  // freshness buys nothing; every 5 min instead of every 30s.
   useEffect(() => {
     if (!session) {
       if (heartbeatRef.current) {
@@ -252,13 +297,13 @@ export default function RootNavigator() {
     }
 
     void updatePresenceHeartbeat();
-    heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), 30_000);
+    heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), LAST_SEEN_HEARTBEAT_MS);
 
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         void updatePresenceHeartbeat();
         if (!heartbeatRef.current) {
-          heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), 30_000);
+          heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), LAST_SEEN_HEARTBEAT_MS);
         }
       } else {
         if (heartbeatRef.current) {
@@ -292,9 +337,9 @@ export default function RootNavigator() {
       // App Links are verified. Checked BEFORE the auth guard below, which returns
       // early on anything that is not an auth link and would otherwise swallow this.
       //
-      // There is no PostDetail route: a single post is shown by opening its author's
-      // profile focused on it, which is the same path ActivityCenter notifications
-      // already take. That needs the author id, so the post is resolved first — and
+      // Shown by opening its author's profile focused on it (the PostDetail route is
+      // where ActivityCenter notifications land; shared links have not moved to it).
+      // That needs the author id, so the post is resolved first — and
       // if it cannot be (deleted, or the viewer is signed out and RLS returns
       // nothing) we say so rather than navigating somewhere blank.
       const sharedPostId = postIdFromUrl(url);
@@ -319,6 +364,9 @@ export default function RootNavigator() {
         new URLSearchParams(fragment).get('type') === 'recovery';
 
       // PKCE flow: code arrives as a query param (?code=…)
+      // Not retried: a failed exchange deletes the stored PKCE code verifier (auth-js
+      // clears it in its catch), so every retry would fail with "code verifier not
+      // found". setSession below has no such one-shot state and IS retried.
       if (url.includes('code=')) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
         if (error) { console.error('[deeplink] exchangeCodeForSession error:', error.message, error.status); }
@@ -332,7 +380,8 @@ export default function RootNavigator() {
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
         if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          const { error } = await withNetworkRetry(() =>
+            supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }));
           if (error) { console.error('[deeplink] setSession error:', error.message); }
           else if (isRecovery) { setPasswordRecoveryPending(true); }
           return;
@@ -380,9 +429,18 @@ export default function RootNavigator() {
           // fails open, so a network problem lets them in rather than walling them out.
           const accepted = await hasAcceptedCurrentTerms(s.user.id);
           if (!cancelled) { setNeedsTerms(!accepted); }
+          // getGuideSeen fails closed, so a network problem skips the tour rather than
+          // replaying it on a returning user; Settings can always bring it back.
+          try {
+            const seen = await getGuideSeen(s.user.id);
+            if (!cancelled) { setNeedsGuide(!seen); }
+          } catch {
+            if (!cancelled) { setNeedsGuide(false); }
+          }
         } else {
           setNeedsUsername(null);
           setNeedsTerms(null);
+          setNeedsGuide(null);
         }
         if (!cancelled) { setSession(s); }
       })
@@ -417,6 +475,7 @@ export default function RootNavigator() {
           pushUserIdRef.current = null;
           setNeedsUsername(null);
           setNeedsTerms(null);
+          setNeedsGuide(null);
           setPasswordRecoveryPending(false);
           if (prevUserId) void unregisterDevice(prevUserId);
           // Same reasoning as the cache clear above, but for the OS icon: the next
@@ -430,11 +489,15 @@ export default function RootNavigator() {
           void registerDeviceForUser(s.user.id);
           setNeedsUsername(null);
           setNeedsTerms(null);
+          setNeedsGuide(null);
           void getUsernameSet(s.user.id)
             .then(set => { if (!cancelled) { setNeedsUsername(!set); } })
             .catch(() => { if (!cancelled) { setNeedsUsername(false); } });
           void hasAcceptedCurrentTerms(s.user.id)
             .then(ok => { if (!cancelled) { setNeedsTerms(!ok); } });
+          void getGuideSeen(s.user.id)
+            .then(seen => { if (!cancelled) { setNeedsGuide(!seen); } })
+            .catch(() => { if (!cancelled) { setNeedsGuide(false); } });
         }
       }
     });
@@ -447,7 +510,7 @@ export default function RootNavigator() {
 
   // Splash is showing while we either load or resolve the onboarding gate.
   const onSplash =
-    loading || (!!session && (needsUsername === null || needsTerms === null));
+    loading || (!!session && (needsUsername === null || needsTerms === null || needsGuide === null));
 
   // Once that resolves, crossfade the splash overlay out (fade + gentle scale)
   // — dissolving into whatever's underneath: the app, or the username gate.
@@ -501,10 +564,22 @@ export default function RootNavigator() {
             userId={session.user?.id ?? null}
             onComplete={() => setNeedsUsername(false)}
           />
+        ) : session?.user?.id && needsGuide ? (
+          <FirstRunGuideScreen
+            onDone={() => {
+              // Drop the gate first: the stamp is a courtesy write, and a slow network
+              // must not hold a new user on the last card. If it fails they may see the
+              // tour once more on another device — acceptable; the reverse (a tour that
+              // never ends) is not.
+              setNeedsGuide(false);
+              void markGuideSeen(session.user.id).catch(() => {});
+            }}
+          />
         ) : (
     <JamProvider>
     <RealtimeConnectionGate />
     <JamRealtimeProvider>
+    <JamSuggestionsProvider>
     <RelationshipProvider>
     <StoriesProvider>
     <ChromeVisibilityProvider>
@@ -558,9 +633,12 @@ export default function RootNavigator() {
             <Stack.Screen
               name="UserProfile"
               component={UserProfileScreen}
-              options={{
-                animation: 'slide_from_right',
-              }}
+              options={SCRUBBER_SCREEN}
+            />
+            <Stack.Screen
+              name="PostDetail"
+              component={PostDetailScreen}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="EditProfile"
@@ -574,6 +652,13 @@ export default function RootNavigator() {
               component={SettingsScreen}
               options={{
                 animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="FirstRunGuide"
+              component={FirstRunGuideReplay}
+              options={{
+                animation: 'slide_from_bottom',
               }}
             />
             <Stack.Screen
@@ -660,6 +745,13 @@ export default function RootNavigator() {
               }}
             />
             <Stack.Screen
+              name="ProfilePeople"
+              component={ProfilePeopleScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
               name="RecentlyPlayed"
               component={RecentlyPlayedScreen}
               options={{
@@ -699,7 +791,7 @@ export default function RootNavigator() {
             <Stack.Screen
               name="JamRoom"
               component={JamRoomScreen}
-              options={{ animation: 'slide_from_right' }}
+              options={SCRUBBER_SCREEN}
             />
             <Stack.Screen
               name="FriendRequests"
@@ -721,6 +813,7 @@ export default function RootNavigator() {
       {session && (
         <>
           <GlobalAudioPlayer />
+          <ListeningStatusReporter />
           <FullScreenPlayer />
           <FloatingPlayer />
         </>
@@ -736,6 +829,7 @@ export default function RootNavigator() {
     </ChromeVisibilityProvider>
     </StoriesProvider>
     </RelationshipProvider>
+    </JamSuggestionsProvider>
     </JamRealtimeProvider>
     </JamProvider>
         ))}

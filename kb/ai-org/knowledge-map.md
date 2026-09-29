@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-09-23
+last_verified: 2026-09-29
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-72 document(s) under `kb/`.
+75 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 72 |
-| Drift-proof (tier 1 + 4) | 39 |
+| Documents | 75 |
+| Drift-proof (tier 1 + 4) | 42 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -43,11 +43,11 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-23 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-23 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-09-23 | 9999d |
-| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-23 | 9999d |
-| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-09-23 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-29 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-29 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-09-29 | 9999d |
+| `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-29 | 9999d |
+| `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-09-29 | 9999d |
 
 ## Tier 2 — Enforced
 
@@ -80,7 +80,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/realtime.md` | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
 | `glossary.md` | chief-architect | ALL | 2026-07-20 | 180d |
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
-| `operations/deployment.md` | principal-platform | DO, P-PF | 2026-07-21 | 90d |
+| `operations/deployment.md` | principal-platform | DO, P-PF | 2026-09-30 | 90d |
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
 | `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-14 | 90d |
 | `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
@@ -127,6 +127,9 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0018-rights-enforcement-under-campaign-volume.md` | chief-architect | ALL | 2026-09-22 | 9999d |
 | `decisions/0019-rights-declaration-for-a-cover-friendly-platform.md` | chief-architect | ALL | 2026-09-22 | 9999d |
 | `decisions/0020-rights-flow-review-and-the-freeze-that-does-not-freeze.md` | chief-architect | ALL | 2026-09-23 | 9999d |
+| `decisions/0021-retire-the-waitlist-backend.md` | chief-architect | ALL | 2026-09-24 | 9999d |
+| `decisions/0022-jam-suggestions-store-authorization-delivery.md` | chief-architect | ALL | 2026-09-29 | 9999d |
+| `decisions/0023-listener-tap-routing-in-a-jam.md` | chief-architect | ALL | 2026-09-29 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -140,7 +143,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 29 |
+| chief-architect | 32 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |

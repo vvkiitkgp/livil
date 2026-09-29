@@ -1,7 +1,7 @@
 /**
  * The row is the settings primitive every settings screen uses. The Delete
  * account row depends on `destructive` meaning "red label + red tile, nothing
- * else", and the Activity status / Push notification rows depend on `toggle`
+ * else", and the "Show what I'm listening to" / Push notification rows depend on `toggle`
  * making the WHOLE row the switch's hit target.
  */
 
@@ -102,7 +102,7 @@ describe('SettingsRow', () => {
     it('renders a Switch instead of a chevron', () => {
       const t = render(
         <SettingsRow
-          label="Activity status"
+          label="Show what I'm listening to"
           toggle={{ value: true, onValueChange: () => {} }}
         />,
       );
@@ -113,17 +113,17 @@ describe('SettingsRow', () => {
     it('flips the value when the row body is pressed, not just the switch', () => {
       const onValueChange = jest.fn();
       const t = render(
-        <SettingsRow label="Activity status" toggle={{ value: false, onValueChange }} />,
+        <SettingsRow label="Show what I'm listening to" toggle={{ value: false, onValueChange }} />,
       );
-      act(() => { pressable(t, 'Activity status').props.onPress(); });
+      act(() => { pressable(t, "Show what I'm listening to").props.onPress(); });
       expect(onValueChange).toHaveBeenCalledWith(true);
     });
 
     it('reports switch state to accessibility', () => {
       const t = render(
-        <SettingsRow label="Activity status" toggle={{ value: true, onValueChange: () => {} }} />,
+        <SettingsRow label="Show what I'm listening to" toggle={{ value: true, onValueChange: () => {} }} />,
       );
-      const row = pressable(t, 'Activity status');
+      const row = pressable(t, "Show what I'm listening to");
       expect(row.props.accessibilityRole).toBe('switch');
       expect(row.props.accessibilityState.checked).toBe(true);
     });
