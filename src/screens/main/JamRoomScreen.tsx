@@ -825,6 +825,9 @@ export default function JamRoomScreen() {
       <GestureDetector gesture={handleGesture}>
         <View
           style={styles.handleHit}
+          // Android flattens a View that draws nothing, and a flattened view has no
+          // native node for the gesture to attach to — the handle did nothing there.
+          collapsable={false}
           accessibilityRole="button"
           accessibilityLabel={panelCollapsed ? 'Show the player' : 'Expand chat, queue and suggestions'}
         >
@@ -995,7 +998,15 @@ const styles = StyleSheet.create({
   endBtnText: { color: COLORS.error, fontSize: 13, fontWeight: '700' },
 
   // Tab-area height handle
-  handleHit: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
+  // A generous, full-width hit area (the visible bar stays small): Android does not
+  // forgive near-misses the way iOS does.
+  handleHit: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 26,
+    backgroundColor: 'transparent',
+  },
   handleBar: { width: 38, height: 4, borderRadius: 2, backgroundColor: COLORS.textMuted },
 
   // Player panel
