@@ -26,6 +26,7 @@ import EditAlbumScreen from '../screens/main/EditAlbumScreen';
 import EditPlaylistScreen from '../screens/main/EditPlaylistScreen';
 import FollowingScreen from '../screens/main/FollowingScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
+import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
 import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
@@ -297,9 +298,9 @@ export default function RootNavigator() {
       // App Links are verified. Checked BEFORE the auth guard below, which returns
       // early on anything that is not an auth link and would otherwise swallow this.
       //
-      // There is no PostDetail route: a single post is shown by opening its author's
-      // profile focused on it, which is the same path ActivityCenter notifications
-      // already take. That needs the author id, so the post is resolved first — and
+      // Shown by opening its author's profile focused on it (the PostDetail route is
+      // where ActivityCenter notifications land; shared links have not moved to it).
+      // That needs the author id, so the post is resolved first — and
       // if it cannot be (deleted, or the viewer is signed out and RLS returns
       // nothing) we say so rather than navigating somewhere blank.
       const sharedPostId = postIdFromUrl(url);
@@ -559,6 +560,13 @@ export default function RootNavigator() {
             <Stack.Screen
               name="UserProfile"
               component={UserProfileScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="PostDetail"
+              component={PostDetailScreen}
               options={{
                 animation: 'slide_from_right',
               }}
