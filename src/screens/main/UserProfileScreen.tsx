@@ -141,6 +141,7 @@ export default function UserProfileScreen() {
     });
   }, [storyCluster, navigation]);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [fansNoticeOpen, setFansNoticeOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
   const comments = useCommentsCountDeltas();
   /**
@@ -153,6 +154,7 @@ export default function UserProfileScreen() {
    * than like a block being respected.
    */
   const blockedView = rel.status(userId) === 'blocked';
+  const isOwnProfile = rel.meId !== null && rel.meId === userId;
   const listRef = useRef<FlatList<ListItem>>(null);
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
   // auto-open comments) have already fired this mount — they're one-shot.
@@ -752,20 +754,38 @@ export default function UserProfileScreen() {
         {!blockedView ? (
           <>
             <View style={styles.socialPills}>
-              <View style={styles.socialPill}>
+              {/* Fans are owner-only (product decision 2026-09-30): on someone else's
+                  profile the pill explains that instead of opening a list. */}
+              <TouchableOpacity
+                style={styles.socialPill}
+                activeOpacity={0.85}
+                onPress={() =>
+                  isOwnProfile
+                    ? navigation.navigate('ProfilePeople', { userId, kind: 'fans' })
+                    : setFansNoticeOpen(true)
+                }
+              >
                 <Text style={styles.socialPillValue}>{formatStat(followCounts.fans)}</Text>
                 <Text style={styles.socialPillLabel}>Fans</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.socialPillDivider} />
-              <View style={styles.socialPill}>
+              <TouchableOpacity
+                style={styles.socialPill}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ProfilePeople', { userId, username: profile?.username, kind: 'friends' })}
+              >
                 <Text style={styles.socialPillValue}>{formatStat(followCounts.friends)}</Text>
                 <Text style={styles.socialPillLabel}>Friends</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.socialPillDivider} />
-              <View style={styles.socialPill}>
+              <TouchableOpacity
+                style={styles.socialPill}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ProfilePeople', { userId, username: profile?.username, kind: 'stars' })}
+              >
                 <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
                 <Text style={styles.socialPillLabel}>Stars</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.contentStats}>
@@ -787,7 +807,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView, isOwnProfile]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -884,6 +904,18 @@ export default function UserProfileScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <ConfirmActionModal
+        visible={fansNoticeOpen}
+        title="Fans are private"
+        message={`Only ${profile?.username ? `@${profile.username}` : 'they'} can see who their fans are. The count is public — the people behind it aren't.`}
+        glyph="🔒"
+        tone="primary"
+        confirmLabel="Got it"
+        cancelLabel={null}
+        onConfirm={() => setFansNoticeOpen(false)}
+        onCancel={() => setFansNoticeOpen(false)}
+      />
 
       <ConfirmActionModal
         visible={confirmBlock !== null}

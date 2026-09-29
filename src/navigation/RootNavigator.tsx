@@ -25,6 +25,7 @@ import CreateAlbumScreen from '../screens/main/CreateAlbumScreen';
 import EditAlbumScreen from '../screens/main/EditAlbumScreen';
 import EditPlaylistScreen from '../screens/main/EditPlaylistScreen';
 import FollowingScreen from '../screens/main/FollowingScreen';
+import ProfilePeopleScreen from '../screens/main/ProfilePeopleScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
 import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
@@ -692,6 +693,13 @@ export default function RootNavigator() {
             <Stack.Screen
               name="Following"
               component={FollowingScreen}
+              options={{
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="ProfilePeople"
+              component={ProfilePeopleScreen}
               options={{
                 animation: 'slide_from_right',
               }}

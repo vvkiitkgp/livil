@@ -14,7 +14,7 @@ export type FollowCounts = {
  * the suggestions-page round; see plan.
  */
 export async function getFollowCounts(userId: string): Promise<FollowCounts> {
-  const [fansResult, starsResult, friendshipsResult] = await Promise.all([
+  const [fansResult, starsResult, friendCount] = await Promise.all([
     supabase
       .from('follows')
       .select('follower_id', { count: 'exact', head: true })
@@ -25,23 +25,89 @@ export async function getFollowCounts(userId: string): Promise<FollowCounts> {
       .select('following_id', { count: 'exact', head: true })
       .eq('follower_id', userId)
       .eq('kind', 'star'),
-    // RLS hides friendships the viewer isn't a participant in, so this count is
-    // only meaningful when reading your own profile. For other users we'd need
-    // a SECURITY DEFINER view; out of scope for this round.
-    supabase
-      .from('friendships')
-      .select('user_a_id', { count: 'exact', head: true })
-      .or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`)
-      .eq('status', 'accepted'),
+    getFriendCount(userId),
   ]);
 
   if (fansResult.error) {throw new Error(fansResult.error.message);}
   if (starsResult.error) {throw new Error(starsResult.error.message);}
-  if (friendshipsResult.error) {throw new Error(friendshipsResult.error.message);}
 
   return {
     fans: fansResult.count ?? 0,
     stars: starsResult.count ?? 0,
-    friends: friendshipsResult.count ?? 0,
+    friends: friendCount,
   };
+}
+
+/**
+ * Accepted-friend count for ANY profile. friendships RLS admits only the two
+ * participants, so a direct count on someone else's profile read 0 (or 1 if you
+ * were their friend). `profile_friend_count` is a DEFINER RPC defined as the size
+ * of `list_profile_friends`, so this pill always matches the Friends screen.
+ *
+ * Falls back to the old caller-rights count ONLY if the RPC is missing (migration
+ * 20260930010000 not yet applied) — a wrong number beats a profile that fails to load.
+ */
+async function getFriendCount(userId: string): Promise<number> {
+  const { data, error } = await (supabase as any).rpc('profile_friend_count', { p_user_id: userId });
+  if (!error) { return typeof data === 'number' ? data : 0; }
+  // Only a MISSING function falls back. Any other failure throws: silently
+  // showing the caller-rights count would put back the wrong number this fixes.
+  if (error.code !== 'PGRST202' && error.code !== '42883') { throw new Error(error.message); }
+
+  const fallback = await supabase
+    .from('friendships')
+    .select('user_a_id', { count: 'exact', head: true })
+    .or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`)
+    .eq('status', 'accepted');
+  if (fallback.error) { throw new Error(fallback.error.message); }
+  return fallback.count ?? 0;
+}
+
+/** A person row in a profile's Friends / Stars / Fans list. */
+export type ProfilePerson = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+type PersonRow = {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+async function callPeopleRpc(fn: string, args?: Record<string, unknown>): Promise<ProfilePerson[]> {
+  const { data, error } = await (supabase as any).rpc(fn, args);
+  if (error) { throw new Error(error.message); }
+  return ((data ?? []) as PersonRow[]).map(r => ({
+    userId: r.user_id,
+    username: r.username,
+    displayName: r.display_name,
+    avatarUrl: r.avatar_url,
+  }));
+}
+
+/**
+ * Accepted friends of any profile, newest friendship first. Visible to every
+ * signed-in viewer (product decision 2026-09-29 — it is how people find each other
+ * while there is no suggestions graph). A blocked pair gets an empty list; friends
+ * blocked with the viewer are omitted server-side.
+ */
+export function listProfileFriends(userId: string): Promise<ProfilePerson[]> {
+  return callPeopleRpc('list_profile_friends', { p_user_id: userId });
+}
+
+/** Artists any profile stars, newest first. Public to every signed-in viewer. */
+export function listProfileStars(userId: string): Promise<ProfilePerson[]> {
+  return callPeopleRpc('list_profile_stars', { p_user_id: userId });
+}
+
+/**
+ * The signed-in user's OWN fans. There is deliberately no way to list another
+ * person's fans (product decision 2026-09-30): the RPC takes no user id.
+ */
+export function listMyFans(): Promise<ProfilePerson[]> {
+  return callPeopleRpc('list_my_fans');
 }
