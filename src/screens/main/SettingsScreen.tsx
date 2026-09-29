@@ -19,6 +19,8 @@ import { getMyProfile, type MyProfile } from '../../services/profileService';
 import { stopListeningNow } from '../../services/listeningStatus';
 import { APP_VERSION_LABEL } from '../../constants/appVersion';
 import {
+  APP_STORE_REVIEW_URL,
+  APP_STORE_URL,
   CHILD_SAFETY_URL,
   INSTAGRAM_URL,
   INVITE_SHARE_MESSAGE,
@@ -176,11 +178,16 @@ export default function SettingsScreen() {
             subtitle="Bugs, ideas, or what nearly made you give up"
             onPress={() => navigation.navigate('ContactTeam')}
           />
-          {/* Android only. App Review guideline 2.3.10 rejects an iOS build that names
-              another platform's store. Once the App Store listing exists this becomes
-              "Rate Livil on the App Store" on iOS, opening
-              itms-apps://apps.apple.com/app/id<ID>?action=write-review. */}
-          {Platform.OS === 'android' && (
+          {/* Each platform names only its OWN store: App Review guideline 2.3.10 rejects an
+              iOS build that mentions another platform's store. */}
+          {Platform.OS === 'ios' ? (
+            <SettingsRow
+              icon="star"
+              label="Rate Livil on the App Store"
+              external
+              onPress={() => void openUrl(APP_STORE_REVIEW_URL, APP_STORE_URL)}
+            />
+          ) : (
             <SettingsRow
               icon="star"
               label="Rate Livil on the Play Store"
