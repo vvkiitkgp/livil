@@ -290,7 +290,7 @@ export default function LibraryScreen() {
         {!albumsLoading ? (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Albums</Text>
+              <Text style={styles.sectionTitle}>Your Albums</Text>
               <TouchableOpacity onPress={goToCreateAlbum} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={styles.sectionLink}>+ New</Text>
               </TouchableOpacity>
