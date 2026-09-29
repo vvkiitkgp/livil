@@ -146,10 +146,12 @@ export default function ProfileScreen() {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
+    // Only the visible tab may move the shared tab bar — see HomeScreen.handleScroll.
+    if (!navigation.isFocused()) { return; }
     if (y < 10) { showChrome(); return; }
     if (diff > 4) { hideChrome(); }
     else if (diff < -4) { showChrome(); }
-  }, [hideChrome, showChrome]);
+  }, [navigation, hideChrome, showChrome]);
 
   // Restore the chrome when leaving Profile so it's never stuck off-screen.
   useFocusEffect(

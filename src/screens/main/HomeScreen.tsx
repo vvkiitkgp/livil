@@ -275,10 +275,15 @@ export default function HomeScreen() {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
+    // Tabs stay mounted when you leave them, and a list can still emit scroll events
+    // off-screen (momentum, content resizing). Only the visible tab may move the
+    // shared tab bar — otherwise Home could hide it while you are on Library, a tab
+    // root with no back gesture, and there is then no way out.
+    if (!navigation.isFocused()) { return; }
     if (y < 10) { showTopBar(); showChrome(); return; }
     if (diff > 4) { hideTopBar(); hideChrome(); }
     else if (diff < -4) { showTopBar(); showChrome(); }
-  }, [showTopBar, hideTopBar, showChrome, hideChrome]);
+  }, [navigation, showTopBar, hideTopBar, showChrome, hideChrome]);
 
   // Always restore the chrome when leaving Home (e.g. switching tabs while the
   // bar is hidden) so it isn't stuck off-screen on the next screen.
