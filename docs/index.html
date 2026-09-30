@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Livil — Music is better together</title>
-<meta name="description" content="Livil is a social music platform — upload your music, listen together in real time, and share what you play. Free on iPhone and Android: download Livil from the App Store or Google Play, or use the web app. Live · Vibe · Link." />
+<meta name="description" content="Livil is a social music app for independent artists and the people who listen to them. Covers, raps, instrument solos, singers, DJs. Listen with friends, in sync, and discover artists through people you know — not an algorithm. Free on iPhone and Android, or use the web app. Live · Vibe · Link." />
 <meta property="og:title" content="Livil — Music is better together" />
-<meta property="og:description" content="A social music platform. A place to listen with people, not beside them. Free on the App Store and Google Play. Live · Vibe · Link." />
+<meta property="og:description" content="A social music app for independent artists and the people who listen to them. Covers, raps, solos, singers, DJs — heard together, not through an algorithm. Free on the App Store and Google Play. Live · Vibe · Link." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://livil-music.com/" />
 <meta property="og:site_name" content="Livil" />
@@ -16,7 +16,7 @@
 <meta property="og:image:alt" content="Livil — Music is better together. Live · Vibe · Link." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Livil — Music is better together" />
-<meta name="twitter:description" content="A social music platform. A place to listen with people, not beside them. Free on the App Store and Google Play." />
+<meta name="twitter:description" content="A social music app for independent artists and the people who listen to them. Covers, raps, solos, singers, DJs — heard together, not through an algorithm. Free on the App Store and Google Play." />
 <meta name="twitter:image" content="https://livil-music.com/og.png" />
 <meta name="theme-color" content="#07070B" />
 <meta name="apple-itunes-app" content="app-id=6809119164" />
@@ -37,7 +37,7 @@
       "operatingSystem": "Android",
       "applicationCategory": "MusicApplication",
       "applicationSubCategory": "Social music",
-      "description": "Livil is a social music platform for Android. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
+      "description": "Livil is a social music app for Android where you listen to independent artists — covers, raps, instrument solos, singers, DJs. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
       "softwareVersion": "2.1.1",
       "releaseNotes": "https://play.google.com/store/apps/details?id=com.livil",
       "datePublished": "2026-08-14",
@@ -70,7 +70,7 @@
       "operatingSystem": "iOS",
       "applicationCategory": "MusicApplication",
       "applicationSubCategory": "Social music",
-      "description": "Livil is a social music platform for iPhone. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
+      "description": "Livil is a social music app for iPhone where you listen to independent artists — covers, raps, instrument solos, singers, DJs. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
       "image": "https://livil-music.com/icon-192.png",
       "screenshot": [
         "https://livil-music.com/screenshots/home-feed.png",
@@ -96,7 +96,7 @@
       "alternateName": ["Livil Music", "Livil Labs"],
       "url": "https://livil-music.com/",
       "logo": "https://livil-music.com/play-store-icon-512.png",
-      "description": "Livil is a social music platform — a place to listen with people, not beside them.",
+      "description": "Livil is a social music app for independent artists and the people who listen to them — a place to listen with people, not beside them.",
       "sameAs": [
         "https://play.google.com/store/apps/details?id=com.livil",
         "https://apps.apple.com/app/id6809119164",
@@ -113,7 +113,7 @@
       "url": "https://livil-music.com/",
       "name": "Livil",
       "alternateName": "Livil Music",
-      "description": "A social music platform. Music is better together. Live · Vibe · Link.",
+      "description": "A social music app for independent artists and the people who listen to them. Music is better together. Live · Vibe · Link.",
       "publisher": { "@id": "https://livil-music.com/#organization" }
     }
   ]
@@ -129,9 +129,10 @@
 <style>
   :root{
     --bg:#07070B; --bg2:#0A0A12; --surface:#12121C; --card:#16162492;
-    --purple:#7C3AED; --purple-light:#A78BFA; --purple-bright:#C4B5FD;
+    /* Same ramp as the app (src/theme/colors.ts): purple / neon / deep / light. */
+    --purple:#8B3DFF; --purple-neon:#A855F7; --purple-deep:#4C1D95; --purple-light:#C9B6FF; --purple-bright:#C4B5FD;
     --white:#FFFFFF; --secondary:#9096AD; --muted:#565C72; --faint:#2A2A44;
-    --border:rgba(124,58,237,0.16);
+    --border:rgba(139,61,255,0.16);
     --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
     --maxw:1140px; --gutter:26px;
@@ -141,13 +142,13 @@
   body{background:var(--bg);color:var(--white);font-family:var(--sans);line-height:1.5;
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
   a{color:inherit;text-decoration:none}
-  ::selection{background:rgba(124,58,237,0.4);color:#fff}
+  ::selection{background:rgba(139,61,255,0.4);color:#fff}
 
   /* ---------------- fixed atmospheric layers ---------------- */
   #net{position:fixed;inset:0;z-index:0;pointer-events:none}
   #spot{position:fixed;z-index:1;width:640px;height:640px;left:0;top:0;margin:-320px 0 0 -320px;
     border-radius:50%;pointer-events:none;opacity:0;transition:opacity .6s ease;
-    background:radial-gradient(circle,rgba(124,58,237,0.16),transparent 60%);
+    background:radial-gradient(circle,rgba(139,61,255,0.16),transparent 60%);
     will-change:transform;mix-blend-mode:screen}
   .grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.035;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -160,7 +161,7 @@
 
   /* ---------------- logo ---------------- */
   .logo-mark{display:block;color:#fff;width:104px;line-height:0;
-    filter:drop-shadow(0 1px 12px rgba(124,58,237,0.55))}
+    filter:drop-shadow(0 1px 12px rgba(139,61,255,0.55))}
   .logo-mark svg{display:block;width:100%;height:auto}
 
   /* ---------------- nav ---------------- */
@@ -170,24 +171,34 @@
     border-bottom:1px solid var(--border)}
   .nav-in{max-width:var(--maxw);margin:0 auto;padding:16px var(--gutter);
     display:flex;align-items:center;justify-content:space-between}
-  .nav-right{display:flex;align-items:center;gap:26px}
-  .nav-right a.link{font-size:14px;font-weight:500;color:var(--secondary);transition:color .2s}
+  .nav-right{display:flex;align-items:center;gap:20px}
+  .nav-right a.link{font-size:14px;font-weight:500;color:var(--secondary);transition:color .2s;white-space:nowrap}
   .nav-right a.link:hover{color:#fff}
-  @media(max-width:720px){.nav-right a.link{display:none}}
+  @media(max-width:799px){.nav-right a.link{display:none}}
 
-  .btn{--gl:0.5;position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:none;
-    font-family:var(--sans);font-weight:600;font-size:14.5px;color:#fff;background:var(--purple);
-    padding:12px 22px;border-radius:100px;transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .3s,background .2s;
-    box-shadow:0 4px 20px rgba(124,58,237,calc(var(--gl)*0.9))}
-  .btn:hover{background:#8B4BF5;box-shadow:0 8px 34px rgba(124,58,237,0.75);transform:translateY(-1px)}
+  /* Buttons mirror the app's Button component: purple NEVER fills a button. The
+     surface stays transparent, the outline is the deep→purple→neon ramp with a faint
+     inward bloom, and the label is --purple-neon (#8B3DFF fails WCAG AA on this bg).
+     Corners are 12px (nav) / 14px (lg), like the app's md/lg sizes — not pills. */
+  .btn{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:none;white-space:nowrap;
+    font-family:var(--sans);font-weight:600;font-size:14.5px;color:var(--purple-neon);background:transparent;
+    padding:12px 22px;border-radius:12px;isolation:isolate;
+    box-shadow:inset 0 0 22px rgba(139,61,255,0.14);
+    transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .3s,color .2s}
+  .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;z-index:-1;
+    background:linear-gradient(135deg,var(--purple-deep),var(--purple) 55%,var(--purple-neon));
+    -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;
+    mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude}
+  .btn:hover{box-shadow:inset 0 0 34px rgba(139,61,255,0.28);color:var(--purple-light);transform:translateY(-1px)}
   .btn:active{transform:translateY(0)}
-  .btn.ghost{background:transparent;color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.16)}
+  .btn.ghost{color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.16)}
   .btn.ghost:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.32);box-shadow:none}
-  .btn.lg{padding:16px 30px;font-size:16px}
+  .btn.ghost::before,.btn.store::before{display:none}
+  .btn.lg{padding:16px 30px;font-size:16px;border-radius:14px}
 
   /* "Get it on Google Play" — outlined so it reads as a store badge, not a
-     second primary CTA competing with "Create your account". */
-  .btn.store{background:transparent;box-shadow:none;border:1px solid rgba(255,255,255,0.22);
+     second primary CTA competing with "Open Creator Studio". */
+  .btn.store{color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.22);
     padding-top:9px;padding-bottom:9px;text-align:left;line-height:1.15}
   .btn.store:hover{background:rgba(255,255,255,0.05);border-color:var(--purple-light);box-shadow:none}
   .btn.store svg{flex:none;width:20px;height:22px}
@@ -199,11 +210,11 @@
   .btn.store.lg svg{width:23px;height:25px}
   .btn.store.lg .st b{font-size:16px}
   .cta .avail{width:100%;margin-top:-4px;font-size:13px;color:var(--muted)}
-  @media(max-width:720px){.nav-right a.btn.store{display:none}}
-  /* Two store badges don't fit beside the nav links on a mid-width screen; keep the
-     first one (App Store on iPhone, Google Play everywhere else — see the reorder
-     script at the top of <body>) and drop the second until there is room. */
-  @media(max-width:1080px){.nav-right a.btn.store + a.btn.store{display:none}}
+  @media(max-width:999px){.nav-right a.btn.store{display:none}}
+  /* Five nav links + two store badges + the studio button never fit inside --maxw,
+     so the nav shows only the first badge (App Store on iPhone, Google Play everywhere
+     else — see the reorder script at the top of <body>). The hero always shows both. */
+  .nav-right a.btn.store + a.btn.store{display:none}
 
   /* ---------------- shared type ---------------- */
   .eyebrow{font-size:12px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:var(--purple-light);
@@ -241,7 +252,18 @@
   .scrollcue .rail{width:1px;height:40px;background:linear-gradient(180deg,var(--purple),transparent);position:relative;overflow:hidden}
   .scrollcue .rail::after{content:"";position:absolute;top:-40px;left:0;width:1px;height:40px;background:var(--purple-light);animation:drop 2.4s ease-in-out infinite}
   @keyframes drop{0%{top:-40px}60%,100%{top:40px}}
+  /* The cue is a desktop affordance; on phones it sat on top of the availability line. */
+  @media(max-width:720px){.scrollcue{display:none}}
   #wave{position:absolute;left:0;right:0;top:50%;height:280px;transform:translateY(-50%);width:100%;z-index:-1;opacity:.9;pointer-events:none}
+
+  /* ---------------- ABOUT (the plain answer) ---------------- */
+  .about{padding:10vh 0 4vh}
+  .about .box{max-width:760px;border-left:2px solid var(--purple);padding:6px 0 6px 28px}
+  .about h2{font-size:13px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--purple-light)}
+  .about p{margin-top:16px;font-size:clamp(19px,2.4vw,25px);line-height:1.5;color:#C9CCD9;letter-spacing:-.01em}
+  .about p b{color:#fff;font-weight:600}
+  .about p em{font-style:normal;color:var(--purple-light)}
+  @media(max-width:560px){.about .box{padding-left:20px}}
 
   /* ---------------- MANIFESTO / tension ---------------- */
   .manifesto{padding:16vh 0}
@@ -268,13 +290,33 @@
   .belief p em{font-style:normal;color:#fff}
   @media(max-width:820px){.belief{grid-template-columns:1fr;gap:22px}}
 
+  /* ---------------- FEATURES ---------------- */
+  /* The poster grid (Livil_Listeners_Manifesto): eight cards, outlined not filled,
+     icons as inline SVG strokes (never emoji). Copy is verbatim from the poster. */
+  .features{padding:14vh 0}
+  .features h2{font-weight:800;letter-spacing:-.03em;line-height:1.04;font-size:clamp(34px,6vw,72px);max-width:14ch}
+  .features .lead{margin-top:30px;max-width:640px;font-size:clamp(18px,2.2vw,22px);color:var(--secondary);line-height:1.55}
+  .features .lead b{color:var(--purple-light);font-weight:500}
+  .fgrid{margin-top:64px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .feat{border:1px solid var(--border);border-radius:16px;padding:26px 24px 28px;background:transparent;
+    transition:border-color .3s,transform .3s cubic-bezier(.2,.7,.2,1)}
+  .feat:hover{border-color:rgba(139,61,255,0.55);transform:translateY(-3px)}
+  .feat svg{width:24px;height:24px;color:var(--purple-neon);display:block;fill:none;stroke:currentColor;
+    stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .feat h3{margin-top:18px;font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+  .feat p{margin-top:10px;font-size:14.5px;line-height:1.55;color:var(--secondary)}
+  .feat p em{font-style:normal;color:var(--purple-light)}
+  .features .foot{margin-top:34px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:14px}
+  @media(max-width:1000px){.fgrid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.fgrid{grid-template-columns:1fr;gap:12px}.feat{padding:22px 20px 24px}}
+
   /* ---------------- NAME REVEAL ---------------- */
   .name{min-height:96vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:14vh 0}
   .name .word{display:flex;gap:.02em;font-weight:900;letter-spacing:-.04em;line-height:1;
     font-size:clamp(84px,26vw,340px)}
   .name .word span{color:var(--faint);transition:color 1s ease,text-shadow 1s ease;transition-delay:calc(var(--i)*0.14s)}
   .name.lit .word span{color:#fff}
-  .name.l-live .gl,.name.l-vibe .gv,.name.l-link .gk{color:var(--purple-light);text-shadow:0 0 44px rgba(124,58,237,0.8);transition-delay:0s}
+  .name.l-live .gl,.name.l-vibe .gv,.name.l-link .gk{color:var(--purple-light);text-shadow:0 0 44px rgba(139,61,255,0.8);transition-delay:0s}
   .name .decode{margin-top:40px;display:flex;gap:clamp(18px,5vw,64px);flex-wrap:wrap;justify-content:center}
   .name .decode div{opacity:0;transform:translateY(16px);transition:opacity .8s ease,transform .8s ease}
   .name.lit .decode div{opacity:1;transform:none}
@@ -423,12 +465,14 @@
 113 -20 164 0 47 -7 110 -15 140 -9 30 -20 116 -25 190 -5 74 -14 150 -19 168
 -6 18 -13 65 -16 105 -17 189 -155 299 -301 239z"/></g></svg></a>
     <div class="nav-right">
+      <a href="#about" class="link">About</a>
       <a href="#believe" class="link">Manifesto</a>
+      <a href="#features" class="link">Features</a>
       <a href="#makers" class="link">For creators</a>
-      <a href="/studio" class="link">Sign in</a>
+      <a href="/studio" class="link">Creator sign in</a>
       <a data-store="play" href="https://play.google.com/store/apps/details?id=com.livil" class="btn store" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
       <a data-store="apple" href="https://apps.apple.com/app/id6809119164" class="btn store" target="_blank" rel="noopener" aria-label="Download Livil for iPhone on the App Store"><svg viewBox="0 0 384 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg><span class="st"><i>Download on the</i><b>App Store</b></span></a>
-      <a href="/studio" class="btn" data-magnetic>Create account</a>
+      <a href="/studio" class="btn" data-magnetic>Open Creator Studio</a>
     </div>
   </div>
 </header>
@@ -439,30 +483,38 @@
 <!-- ============ HERO ============ -->
 <section class="hero wrap">
   <canvas id="wave" aria-hidden="true"></canvas>
-  <span class="eyebrow kicker r">A social music platform</span>
+  <span class="eyebrow kicker r">A social music app for independent artists</span>
   <h1>
     <span class="line"><span>Music is</span></span>
     <span class="line"><span>better <span class="serif grad">together</span>.</span></span>
   </h1>
-  <p class="sub r d2">A place to listen <em>with</em> people — not beside them. Livil turns music back into something you share.</p>
+  <p class="sub r d2">Livil is a social music app for <em>independent artists</em> and the people who listen to them. Covers, raps, instrument solos, singers, DJs. Listen with friends, not an algorithm.</p>
   <div class="cta r d3">
-    <a href="/studio" class="btn lg" data-magnetic>Create your account</a>
+    <a href="/studio" class="btn lg" data-magnetic>Open Creator Studio</a>
     <a data-store="play" href="https://play.google.com/store/apps/details?id=com.livil" class="btn store lg" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
     <a data-store="apple" href="https://apps.apple.com/app/id6809119164" class="btn store lg" target="_blank" rel="noopener" aria-label="Download Livil for iPhone on the App Store"><svg viewBox="0 0 384 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg><span class="st"><i>Download on the</i><b>App Store</b></span></a>
     <a href="#believe" class="btn ghost lg">Read the manifesto</a>
-    <p class="avail">Free on iPhone and Android — <strong>Livil is live on the App Store and Google Play</strong>. Or use it right here in your browser.</p>
+    <p class="avail">Free on iPhone and Android — <strong>Livil is live on the App Store and Google Play</strong>. Creators: upload and manage your music from the browser.</p>
   </div>
   <div class="scrollcue"><span class="rail"></span>Scroll</div>
 </section>
 
+<!-- ============ ABOUT ============ -->
+<section class="about wrap" id="about">
+  <div class="box r">
+    <h2>What Livil is</h2>
+    <p>Livil is where you listen to <em>independent artists</em>. Cover songs, raps, instrument solos, singers, bands, DJs — all made by real people, posted by them, and credited to everyone who played on them. <b>You listen with friends, in sync, and discover artists through the people you know.</b></p>
+  </div>
+</section>
+
 <!-- ============ MANIFESTO / TENSION ============ -->
 <section class="manifesto wrap" id="believe">
-  <h2 class="r">Somewhere along the way, listening got <span class="serif grad">lonely</span>.</h2>
+  <h2 class="r">Independent music deserves a <span class="serif grad">player</span>, not a feed.</h2>
   <div class="body">
-    <p class="r">We made mixtapes. We traded CDs. We sat in a room and pressed play <b>together</b>.</p>
-    <p class="r">Then music moved into a feed.</p>
-    <p class="r">A hundred million songs — and somehow we listen to them <b>alone</b>.</p>
-    <p class="r dim">The algorithm knows what you'll play next. It has no idea who you'd play it with.</p>
+    <p class="r">The best new music isn't on the charts. It's your friend singing a cover, a guitarist posting a solo, someone rapping into their phone. <b>Real people, making real music.</b> And right now, the only place you'll find them is a reel.</p>
+    <p class="r">But a reel is built for swiping. Fifteen seconds, a like, the next one. The song never gets to finish, and it never gets to <b>stay</b>.</p>
+    <p class="r dim">On the big streaming apps, an independent artist is invisible. No way in, no way to be found, nobody to talk to.</p>
+    <p class="r">So we built the player those songs never had. Full tracks, front to back. A queue, a lock screen, a loop for the part you love. A song you sit with gets <b>remembered</b>. And because music is better together, you never have to sit with it alone.</p>
   </div>
 </section>
 
@@ -473,7 +525,7 @@
       <span class="line"><span>So we're building</span></span>
       <span class="line"><span>the <span class="serif grad">other</span> thing.</span></span>
     </h2>
-    <p class="r d2">Music you feel with people. Not a feed you scroll alone.</p>
+    <p class="r d2">A real player for independent artists, and the room where people listen to them together.</p>
   </div>
 </section>
 
@@ -482,31 +534,81 @@
   <div class="belief">
     <div><span class="idx r">01 — WHAT WE BELIEVE</span></div>
     <div>
-      <h3 class="r">People, not <span class="serif grad">algorithms</span>.</h3>
-      <p class="r d2">The best song you'll hear this year comes from <em>a person</em> — a friend, a stranger with taste — not a recommendation engine guessing at you.</p>
+      <h3 class="r">A <span class="serif grad">player</span>, not a feed.</h3>
+      <p class="r d2">Full songs, front to back. No swiping, no fifteen seconds. <em>You press play and stay.</em></p>
     </div>
   </div>
   <div class="belief">
     <div><span class="idx r">02</span></div>
     <div>
-      <h3 class="r">A <span class="serif grad">room</span>, not a feed.</h3>
-      <p class="r d2">Listening together should feel like being in the same room. So that's what we made — <em>rooms where the music stays in sync</em> and the conversation lives beside it.</p>
+      <h3 class="r">Independent by <span class="serif grad">default</span>.</h3>
+      <p class="r d2">Covers, solos, raps, singers, DJs. Posted by the people who made them, <em>credited to everyone who played</em>.</p>
     </div>
   </div>
   <div class="belief">
     <div><span class="idx r">03</span></div>
     <div>
-      <h3 class="r"><span class="serif grad">Presence</span>, not posts.</h3>
-      <p class="r d2">See what your friends are playing, right now. Music feels different when you know <em>someone else is in it with you</em>.</p>
+      <h3 class="r">People, not <span class="serif grad">algorithms</span>.</h3>
+      <p class="r d2">You find artists through friends and the artists you star. <em>Nobody guesses at you.</em></p>
     </div>
   </div>
   <div class="belief">
     <div><span class="idx r">04</span></div>
     <div>
-      <h3 class="r">Made <span class="serif grad">together</span>.</h3>
-      <p class="r d2">Playlists, rooms, moments — built by people, with people. Every part of Livil gets better the more of you are in it.</p>
+      <h3 class="r">A <span class="serif grad">room</span>, not a queue.</h3>
+      <p class="r d2">Listen in sync with friends, talk while it plays, suggest what's next. The big apps have a shared queue. <em>They don't have the conversation.</em></p>
     </div>
   </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="features wrap" id="features">
+  <span class="eyebrow r">What's inside</span>
+  <h2 class="r d1" style="margin-top:22px">Music from the people around you.</h2>
+  <p class="lead r d2">Livil is the social music app for <b>independent artists</b> and the people who listen to them. Cover songs, instrument solos, rappers, bands, DJs. Listen in sync with friends, and discover music through people you know, not an algorithm.</p>
+  <div class="fgrid">
+    <div class="feat r d1">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      <h3>Jam Rooms</h3>
+      <p>Listen together from anywhere. One queue, everyone hears the same moment. Chat while it plays, and <em>suggest</em> the song to play next.</p>
+    </div>
+    <div class="feat r d2">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+      <h3>Loop your favourite part</h3>
+      <p>Clip the part you love and loop it, right in the player. No editing apps.</p>
+    </div>
+    <div class="feat r d3">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 9 3-3 3 3"/><path d="M13 18H7a2 2 0 0 1-2-2V6"/><path d="m22 15-3 3-3-3"/><path d="M11 6h6a2 2 0 0 1 2 2v10"/></svg>
+      <h3>Repost</h3>
+      <p>Clip your favourite part of a song, say how it makes you feel, and repost it to your profile.</p>
+    </div>
+    <div class="feat r d4">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h3>Chat</h3>
+      <p>Direct messages, reactions and song suggestions, right beside the music.</p>
+    </div>
+    <div class="feat r d1">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <h3>Friends first</h3>
+      <p>A feed of what your friends listen to, not an algorithm. Show love by liking and commenting on their posts. Their public playlists live on their profile.</p>
+    </div>
+    <div class="feat r d2">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <h3>Star artists</h3>
+      <p>Star the artists you love. Every new upload shows up in your feed. No subscriptions, no bell icon.</p>
+    </div>
+    <div class="feat r d3">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <h3>Upload your music</h3>
+      <p>Post your own tracks and credit everyone on them. Tag your guitarist, your drummer, your producer.</p>
+    </div>
+    <div class="feat r d4">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
+      <h3>Playlists and albums</h3>
+      <p>Build them alone or with friends. Public or private, your call.</p>
+    </div>
+  </div>
+  <p class="foot r">Free on iPhone and Android. Your music, your world.</p>
 </section>
 
 <!-- ============ NAME REVEAL ============ -->
@@ -536,7 +638,7 @@
   <div class="cta r">
     <a href="/studio" class="btn lg" data-magnetic>Become a founding artist</a>
     <p style="margin-top:18px;font-size:14px;opacity:.62">
-      Upload from the machine you made it on. Free while we're in early access.
+      Opens Creator Studio in your browser. Upload from the machine you made it on — free while we're in early access.
     </p>
   </div>
 </section>
@@ -642,7 +744,9 @@
     <div class="tag">Your music, your world.</div>
     <div class="micro">Live · Vibe · Link</div>
     <div class="flinks">
+      <a href="#about">About</a>
       <a href="#believe">Manifesto</a>
+      <a href="#features">Features</a>
       <a href="#makers">For creators</a>
       <a href="/studio">Creator studio</a>
       <a href="https://play.google.com/store/apps/details?id=com.livil" target="_blank" rel="noopener">Google Play</a>
@@ -747,7 +851,7 @@
         // color cold(grey)->warm(purple)
         var pulse = 0.75+0.25*Math.sin(t*2 + (pa.x+pb.y)*0.01);
         var op = al*(0.05 + together*0.5)*pulse;
-        var R=Math.round(90+together*(124-90)), G=Math.round(96+together*(58-96)), B=Math.round(120+together*(237-120));
+        var R=Math.round(90+together*(139-90)), G=Math.round(96+together*(61-96)), B=Math.round(120+together*(255-120));
         nctx.strokeStyle='rgba('+R+','+G+','+B+','+op+')';
         nctx.lineWidth = 0.6+together*0.5;
         nctx.beginPath(); nctx.moveTo(pa.x,pa.y); nctx.lineTo(pb.x,pb.y); nctx.stroke();
@@ -757,7 +861,7 @@
     for(var k=0;k<pts.length;k++){ var q=pts[k];
       var tw=0.5+0.5*Math.sin(t*2+q.ph);
       var dop=0.18+together*0.55*tw;
-      var Rr=Math.round(120+together*(167-120)), Gg=Math.round(126+together*(139-126)), Bb=Math.round(150+together*(250-150));
+      var Rr=Math.round(120+together*(201-120)), Gg=Math.round(126+together*(182-126)), Bb=Math.round(150+together*(255-150));
       nctx.fillStyle='rgba('+Rr+','+Gg+','+Bb+','+dop+')';
       nctx.beginPath(); nctx.arc(q.x,q.y,q.r*(0.8+together*0.6),0,6.2832); nctx.fill();
     }
@@ -790,7 +894,7 @@
           + Math.sin(nx*4 + wt*0.6)*amp*0.4;
         if(x===0) wctx.moveTo(x,y); else wctx.lineTo(x,y);
       }
-      if(pass===0){ wctx.strokeStyle='rgba(124,58,237,0.35)'; wctx.lineWidth=8; wctx.shadowColor='rgba(124,58,237,0.6)'; wctx.shadowBlur=26; }
+      if(pass===0){ wctx.strokeStyle='rgba(139,61,255,0.35)'; wctx.lineWidth=8; wctx.shadowColor='rgba(139,61,255,0.6)'; wctx.shadowBlur=26; }
       else { wctx.strokeStyle='rgba(233,229,255,0.9)'; wctx.lineWidth=2; wctx.shadowBlur=0; }
       wctx.lineCap='round'; wctx.stroke();
     }
