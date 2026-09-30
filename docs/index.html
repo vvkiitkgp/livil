@@ -760,7 +760,7 @@
         // color cold(grey)->warm(purple)
         var pulse = 0.75+0.25*Math.sin(t*2 + (pa.x+pb.y)*0.01);
         var op = al*(0.05 + together*0.5)*pulse;
-        var R=Math.round(90+together*(124-90)), G=Math.round(96+together*(58-96)), B=Math.round(120+together*(237-120));
+        var R=Math.round(90+together*(139-90)), G=Math.round(96+together*(61-96)), B=Math.round(120+together*(255-120));
         nctx.strokeStyle='rgba('+R+','+G+','+B+','+op+')';
         nctx.lineWidth = 0.6+together*0.5;
         nctx.beginPath(); nctx.moveTo(pa.x,pa.y); nctx.lineTo(pb.x,pb.y); nctx.stroke();
@@ -770,7 +770,7 @@
     for(var k=0;k<pts.length;k++){ var q=pts[k];
       var tw=0.5+0.5*Math.sin(t*2+q.ph);
       var dop=0.18+together*0.55*tw;
-      var Rr=Math.round(120+together*(167-120)), Gg=Math.round(126+together*(139-126)), Bb=Math.round(150+together*(250-150));
+      var Rr=Math.round(120+together*(201-120)), Gg=Math.round(126+together*(182-126)), Bb=Math.round(150+together*(255-150));
       nctx.fillStyle='rgba('+Rr+','+Gg+','+Bb+','+dop+')';
       nctx.beginPath(); nctx.arc(q.x,q.y,q.r*(0.8+together*0.6),0,6.2832); nctx.fill();
     }
