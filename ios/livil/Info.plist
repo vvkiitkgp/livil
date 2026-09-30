@@ -81,6 +81,32 @@
 		<string>CourierPrime-Bold.ttf</string>
 		<string>CourierPrime-Regular.ttf</string>
 	</array>
+	<!-- Scene lifecycle. REQUIRED by the iOS 27 SDK: an app built with Xcode 27 that
+	     has no scene manifest is killed by UIKit at launch
+	     (_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption -> brk 0),
+	     before a single line of our code runs. App Review rejected 2.1.0 (74) for
+	     exactly that; builds 71-73 were fine only because they were compiled with
+	     Xcode 26.5. The window is created by SceneDelegate.swift, not by
+	     RCTAppDelegate (see automaticallyLoadReactNativeWindow in AppDelegate.swift).
+	     One scene only: multi-window is neither wanted nor supported by the single
+	     playback engine. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

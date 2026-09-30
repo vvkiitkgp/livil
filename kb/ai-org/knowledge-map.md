@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-09-29
+last_verified: 2026-09-30
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-75 document(s) under `kb/`.
+76 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 75 |
-| Drift-proof (tier 1 + 4) | 42 |
+| Documents | 76 |
+| Drift-proof (tier 1 + 4) | 43 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -43,7 +43,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-29 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-09-30 | 9999d |
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-09-29 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-09-29 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-09-29 | 9999d |
@@ -130,6 +130,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0021-retire-the-waitlist-backend.md` | chief-architect | ALL | 2026-09-24 | 9999d |
 | `decisions/0022-jam-suggestions-store-authorization-delivery.md` | chief-architect | ALL | 2026-09-29 | 9999d |
 | `decisions/0023-listener-tap-routing-in-a-jam.md` | chief-architect | ALL | 2026-09-29 | 9999d |
+| `decisions/0024-ios-scene-lifecycle.md` | chief-architect | ALL | 2026-09-30 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -143,7 +144,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 32 |
+| chief-architect | 33 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |

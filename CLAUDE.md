@@ -626,6 +626,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 | Native (`react-native-video`) change not taking effect | Re-capture the patch (`npx patch-package react-native-video --include '^(ios/\|android/src/\|src/\|lib/)'`) + full `./gradlew` rebuild — Metro reload won't pick up native code |
 | Duplicate "carousel" media notifications | Keep ONE `showNotificationControls` `<Video>` (GAP); post/cancel the notification with the **raw** player `hashCode` (`notifIdFor`), see Playback section |
 | Lock-screen scrubber shows full track, not the clip | `currentClipJson` prop must reach native (mirror in spec + `lib/types`); clip is presented by `ClipForwardingPlayer` (Android only) |
+| iOS app crashes on launch on iOS 27 (`EXC_BREAKPOINT` in `…NoSceneLifecycleAdoption…`, 0.1 s in) | Apps built with Xcode 27 / iOS 27 SDK MUST use the scene lifecycle. The window is created in `ios/livil/SceneDelegate.swift`, registered via `UIApplicationSceneManifest` in `Info.plist`; `AppDelegate` sets `automaticallyLoadReactNativeWindow = false`. Deep links live in the scene delegate — do not re-add `application(_:open:options:)`. See ADR-0024 |
 | App crashes (silently, no JS log) when a VIDEO plays | The visualizer tried to `decodeAudioData(videoUrl)` → whole-file download → `OutOfMemoryError` → process killed. Waveform analysis must stay gated to `mediaKind === 'audio'`; see Beat-Synced Visualizer section |
 
 ---
