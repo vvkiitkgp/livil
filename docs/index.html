@@ -129,9 +129,10 @@
 <style>
   :root{
     --bg:#07070B; --bg2:#0A0A12; --surface:#12121C; --card:#16162492;
-    --purple:#7C3AED; --purple-light:#A78BFA; --purple-bright:#C4B5FD;
+    /* Same ramp as the app (src/theme/colors.ts): purple / neon / deep / light. */
+    --purple:#8B3DFF; --purple-neon:#A855F7; --purple-deep:#4C1D95; --purple-light:#C9B6FF; --purple-bright:#C4B5FD;
     --white:#FFFFFF; --secondary:#9096AD; --muted:#565C72; --faint:#2A2A44;
-    --border:rgba(124,58,237,0.16);
+    --border:rgba(139,61,255,0.16);
     --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
     --maxw:1140px; --gutter:26px;
@@ -141,13 +142,13 @@
   body{background:var(--bg);color:var(--white);font-family:var(--sans);line-height:1.5;
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
   a{color:inherit;text-decoration:none}
-  ::selection{background:rgba(124,58,237,0.4);color:#fff}
+  ::selection{background:rgba(139,61,255,0.4);color:#fff}
 
   /* ---------------- fixed atmospheric layers ---------------- */
   #net{position:fixed;inset:0;z-index:0;pointer-events:none}
   #spot{position:fixed;z-index:1;width:640px;height:640px;left:0;top:0;margin:-320px 0 0 -320px;
     border-radius:50%;pointer-events:none;opacity:0;transition:opacity .6s ease;
-    background:radial-gradient(circle,rgba(124,58,237,0.16),transparent 60%);
+    background:radial-gradient(circle,rgba(139,61,255,0.16),transparent 60%);
     will-change:transform;mix-blend-mode:screen}
   .grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.035;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -160,7 +161,7 @@
 
   /* ---------------- logo ---------------- */
   .logo-mark{display:block;color:#fff;width:104px;line-height:0;
-    filter:drop-shadow(0 1px 12px rgba(124,58,237,0.55))}
+    filter:drop-shadow(0 1px 12px rgba(139,61,255,0.55))}
   .logo-mark svg{display:block;width:100%;height:auto}
 
   /* ---------------- nav ---------------- */
@@ -175,19 +176,29 @@
   .nav-right a.link:hover{color:#fff}
   @media(max-width:720px){.nav-right a.link{display:none}}
 
-  .btn{--gl:0.5;position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:none;
-    font-family:var(--sans);font-weight:600;font-size:14.5px;color:#fff;background:var(--purple);
-    padding:12px 22px;border-radius:100px;transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .3s,background .2s;
-    box-shadow:0 4px 20px rgba(124,58,237,calc(var(--gl)*0.9))}
-  .btn:hover{background:#8B4BF5;box-shadow:0 8px 34px rgba(124,58,237,0.75);transform:translateY(-1px)}
+  /* Buttons mirror the app's Button component: purple NEVER fills a button. The
+     surface stays transparent, the outline is the deep→purple→neon ramp with a faint
+     inward bloom, and the label is --purple-neon (#8B3DFF fails WCAG AA on this bg).
+     Corners are 12px (nav) / 14px (lg), like the app's md/lg sizes — not pills. */
+  .btn{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:none;
+    font-family:var(--sans);font-weight:600;font-size:14.5px;color:var(--purple-neon);background:transparent;
+    padding:12px 22px;border-radius:12px;isolation:isolate;
+    box-shadow:inset 0 0 22px rgba(139,61,255,0.14);
+    transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .3s,color .2s}
+  .btn::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.5px;pointer-events:none;z-index:-1;
+    background:linear-gradient(135deg,var(--purple-deep),var(--purple) 55%,var(--purple-neon));
+    -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;
+    mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude}
+  .btn:hover{box-shadow:inset 0 0 34px rgba(139,61,255,0.28);color:var(--purple-light);transform:translateY(-1px)}
   .btn:active{transform:translateY(0)}
-  .btn.ghost{background:transparent;color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.16)}
+  .btn.ghost{color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.16)}
   .btn.ghost:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.32);box-shadow:none}
-  .btn.lg{padding:16px 30px;font-size:16px}
+  .btn.ghost::before,.btn.store::before{display:none}
+  .btn.lg{padding:16px 30px;font-size:16px;border-radius:14px}
 
   /* "Get it on Google Play" — outlined so it reads as a store badge, not a
-     second primary CTA competing with "Create your account". */
-  .btn.store{background:transparent;box-shadow:none;border:1px solid rgba(255,255,255,0.22);
+     second primary CTA competing with "Open Creator Studio". */
+  .btn.store{color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,0.22);
     padding-top:9px;padding-bottom:9px;text-align:left;line-height:1.15}
   .btn.store:hover{background:rgba(255,255,255,0.05);border-color:var(--purple-light);box-shadow:none}
   .btn.store svg{flex:none;width:20px;height:22px}
@@ -241,6 +252,8 @@
   .scrollcue .rail{width:1px;height:40px;background:linear-gradient(180deg,var(--purple),transparent);position:relative;overflow:hidden}
   .scrollcue .rail::after{content:"";position:absolute;top:-40px;left:0;width:1px;height:40px;background:var(--purple-light);animation:drop 2.4s ease-in-out infinite}
   @keyframes drop{0%{top:-40px}60%,100%{top:40px}}
+  /* The cue is a desktop affordance; on phones it sat on top of the availability line. */
+  @media(max-width:720px){.scrollcue{display:none}}
   #wave{position:absolute;left:0;right:0;top:50%;height:280px;transform:translateY(-50%);width:100%;z-index:-1;opacity:.9;pointer-events:none}
 
   /* ---------------- MANIFESTO / tension ---------------- */
@@ -274,7 +287,7 @@
     font-size:clamp(84px,26vw,340px)}
   .name .word span{color:var(--faint);transition:color 1s ease,text-shadow 1s ease;transition-delay:calc(var(--i)*0.14s)}
   .name.lit .word span{color:#fff}
-  .name.l-live .gl,.name.l-vibe .gv,.name.l-link .gk{color:var(--purple-light);text-shadow:0 0 44px rgba(124,58,237,0.8);transition-delay:0s}
+  .name.l-live .gl,.name.l-vibe .gv,.name.l-link .gk{color:var(--purple-light);text-shadow:0 0 44px rgba(139,61,255,0.8);transition-delay:0s}
   .name .decode{margin-top:40px;display:flex;gap:clamp(18px,5vw,64px);flex-wrap:wrap;justify-content:center}
   .name .decode div{opacity:0;transform:translateY(16px);transition:opacity .8s ease,transform .8s ease}
   .name.lit .decode div{opacity:1;transform:none}
@@ -425,10 +438,10 @@
     <div class="nav-right">
       <a href="#believe" class="link">Manifesto</a>
       <a href="#makers" class="link">For creators</a>
-      <a href="/studio" class="link">Sign in</a>
+      <a href="/studio" class="link">Creator sign in</a>
       <a data-store="play" href="https://play.google.com/store/apps/details?id=com.livil" class="btn store" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
       <a data-store="apple" href="https://apps.apple.com/app/id6809119164" class="btn store" target="_blank" rel="noopener" aria-label="Download Livil for iPhone on the App Store"><svg viewBox="0 0 384 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg><span class="st"><i>Download on the</i><b>App Store</b></span></a>
-      <a href="/studio" class="btn" data-magnetic>Create account</a>
+      <a href="/studio" class="btn" data-magnetic>Open Creator Studio</a>
     </div>
   </div>
 </header>
@@ -446,11 +459,11 @@
   </h1>
   <p class="sub r d2">A place to listen <em>with</em> people — not beside them. Livil turns music back into something you share.</p>
   <div class="cta r d3">
-    <a href="/studio" class="btn lg" data-magnetic>Create your account</a>
+    <a href="/studio" class="btn lg" data-magnetic>Open Creator Studio</a>
     <a data-store="play" href="https://play.google.com/store/apps/details?id=com.livil" class="btn store lg" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
     <a data-store="apple" href="https://apps.apple.com/app/id6809119164" class="btn store lg" target="_blank" rel="noopener" aria-label="Download Livil for iPhone on the App Store"><svg viewBox="0 0 384 512" aria-hidden="true" focusable="false"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg><span class="st"><i>Download on the</i><b>App Store</b></span></a>
     <a href="#believe" class="btn ghost lg">Read the manifesto</a>
-    <p class="avail">Free on iPhone and Android — <strong>Livil is live on the App Store and Google Play</strong>. Or use it right here in your browser.</p>
+    <p class="avail">Free on iPhone and Android — <strong>Livil is live on the App Store and Google Play</strong>. Creators: upload and manage your music from the browser.</p>
   </div>
   <div class="scrollcue"><span class="rail"></span>Scroll</div>
 </section>
@@ -536,7 +549,7 @@
   <div class="cta r">
     <a href="/studio" class="btn lg" data-magnetic>Become a founding artist</a>
     <p style="margin-top:18px;font-size:14px;opacity:.62">
-      Upload from the machine you made it on. Free while we're in early access.
+      Opens Creator Studio in your browser. Upload from the machine you made it on — free while we're in early access.
     </p>
   </div>
 </section>
@@ -790,7 +803,7 @@
           + Math.sin(nx*4 + wt*0.6)*amp*0.4;
         if(x===0) wctx.moveTo(x,y); else wctx.lineTo(x,y);
       }
-      if(pass===0){ wctx.strokeStyle='rgba(124,58,237,0.35)'; wctx.lineWidth=8; wctx.shadowColor='rgba(124,58,237,0.6)'; wctx.shadowBlur=26; }
+      if(pass===0){ wctx.strokeStyle='rgba(139,61,255,0.35)'; wctx.lineWidth=8; wctx.shadowColor='rgba(139,61,255,0.6)'; wctx.shadowBlur=26; }
       else { wctx.strokeStyle='rgba(233,229,255,0.9)'; wctx.lineWidth=2; wctx.shadowBlur=0; }
       wctx.lineCap='round'; wctx.stroke();
     }
