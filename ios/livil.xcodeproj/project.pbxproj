@@ -13,6 +13,7 @@
 		1487BD7487D8491288BBD0CF /* CourierPrime-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1E000EBAEED14CE0AA049E02 /* CourierPrime-Regular.ttf */; };
 		19828A35AE22CB6FD08ABC83 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		B7C1E5A2D3F4051627384950 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E5A2D3F4051627384951 /* SceneDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		989D9278610848D5ADB12ED8 /* CourierPrime-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2C6FE265F1FA4F55B71709C0 /* CourierPrime-Bold.ttf */; };
 		A1B2C3D4E5F60718293A4B5D /* LivilAuthSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LivilAuthSession.m */; };
@@ -32,6 +33,7 @@
 		5709B34CF0A7D63546082F79 /* Pods-livil.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-livil.release.xcconfig"; path = "Target Support Files/Pods-livil/Pods-livil.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-livil.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-livil.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = livil/AppDelegate.swift; sourceTree = "<group>"; };
+		B7C1E5A2D3F4051627384951 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneDelegate.swift; path = livil/SceneDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = livil/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* LivilAuthSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilAuthSession.m; path = livil/LivilAuthSession.m; sourceTree = "<group>"; };
 		E3E337CF3E28A727C95A141D /* livil.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = livil/livil.entitlements; sourceTree = "<group>"; };
@@ -55,6 +57,7 @@
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				B7C1E5A2D3F4051627384951 /* SceneDelegate.swift */,
 				A1B2C3D4E5F60718293A4B5C /* LivilAuthSession.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
@@ -291,6 +294,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				B7C1E5A2D3F4051627384950 /* SceneDelegate.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5D /* LivilAuthSession.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

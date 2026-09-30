@@ -28,28 +28,26 @@ class AppDelegate: RCTAppDelegate {
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
+    // The window belongs to SceneDelegate.swift (scene lifecycle, mandatory under the
+    // iOS 27 SDK — see the UIApplicationSceneManifest comment in Info.plist). Left at its
+    // default, RCTAppDelegate would build a second, scene-less UIWindow here, and UIKit
+    // would still trap the launch because the manifest is what it checks, not the window.
+    // super still creates the React host, module registry and root-view factory; the
+    // scene delegate asks that factory for the root view once the window scene connects.
+    self.automaticallyLoadReactNativeWindow = false
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  // Deep links. RCTAppDelegate DECLARES this method (hence `override`) but does not forward
-  // it to RCTLinkingManager, so without this a `livil://` URL launches the app and is then
-  // dropped on the floor — JavaScript's Linking listener never fires. That silently breaks
-  // email confirmation, password reset and the Google sign-in callback (all
-  // `redirectTo: 'livil://auth'`, see src/services/googleAuth.ts) plus shared post links
-  // (`livil://post/<id>`). The scheme itself is registered in Info.plist under
-  // CFBundleURLTypes; both halves are required.
+  // Deep links (`livil://auth`, `livil://post/<id>`) are handled in SceneDelegate.swift:
+  // under the scene lifecycle UIKit never calls application(_:open:options:), so an
+  // override here would be dead code. The scheme itself stays registered in Info.plist
+  // under CFBundleURLTypes; both halves are required.
   //
   // Universal links (https://livil-music.com/p/<id>, the iOS twin of the Android App Link
-  // already in AndroidManifest.xml) additionally need `continueUserActivity` here, an
-  // Associated Domains entitlement, and an apple-app-site-association file served by the
-  // web host. That is a follow-up; the custom scheme covers auth today.
-  override func application(
-    _ app: UIApplication,
-    open url: URL,
-    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-  ) -> Bool {
-    return RCTLinkingManager.application(app, open: url, options: options)
-  }
+  // already in AndroidManifest.xml) additionally need scene(_:continue:) in the scene
+  // delegate, an Associated Domains entitlement, and an apple-app-site-association file
+  // served by the web host. That is a follow-up; the custom scheme covers auth today.
 
   override func sourceURL(for bridge: RCTBridge) -> URL? {
     self.bundleURL()
