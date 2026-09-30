@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Livil — Music is better together</title>
-<meta name="description" content="Livil is a social music platform — upload your music, listen together in real time, and share what you play. Free on iPhone and Android: download Livil from the App Store or Google Play, or use the web app. Live · Vibe · Link." />
+<meta name="description" content="Livil is a social music app for independent artists and the people who listen to them. Covers, raps, instrument solos, singers, DJs. Listen with friends, in sync, and discover artists through people you know — not an algorithm. Free on iPhone and Android, or use the web app. Live · Vibe · Link." />
 <meta property="og:title" content="Livil — Music is better together" />
-<meta property="og:description" content="A social music platform. A place to listen with people, not beside them. Free on the App Store and Google Play. Live · Vibe · Link." />
+<meta property="og:description" content="A social music app for independent artists and the people who listen to them. Covers, raps, solos, singers, DJs — heard together, not through an algorithm. Free on the App Store and Google Play. Live · Vibe · Link." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://livil-music.com/" />
 <meta property="og:site_name" content="Livil" />
@@ -16,7 +16,7 @@
 <meta property="og:image:alt" content="Livil — Music is better together. Live · Vibe · Link." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Livil — Music is better together" />
-<meta name="twitter:description" content="A social music platform. A place to listen with people, not beside them. Free on the App Store and Google Play." />
+<meta name="twitter:description" content="A social music app for independent artists and the people who listen to them. Covers, raps, solos, singers, DJs — heard together, not through an algorithm. Free on the App Store and Google Play." />
 <meta name="twitter:image" content="https://livil-music.com/og.png" />
 <meta name="theme-color" content="#07070B" />
 <meta name="apple-itunes-app" content="app-id=6809119164" />
@@ -37,7 +37,7 @@
       "operatingSystem": "Android",
       "applicationCategory": "MusicApplication",
       "applicationSubCategory": "Social music",
-      "description": "Livil is a social music platform for Android. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
+      "description": "Livil is a social music app for Android where you listen to independent artists — covers, raps, instrument solos, singers, DJs. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
       "softwareVersion": "2.1.1",
       "releaseNotes": "https://play.google.com/store/apps/details?id=com.livil",
       "datePublished": "2026-08-14",
@@ -70,7 +70,7 @@
       "operatingSystem": "iOS",
       "applicationCategory": "MusicApplication",
       "applicationSubCategory": "Social music",
-      "description": "Livil is a social music platform for iPhone. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
+      "description": "Livil is a social music app for iPhone where you listen to independent artists — covers, raps, instrument solos, singers, DJs. Upload your own music, listen together in real time in Jam rooms, chat with friends, and follow what the people you know are playing.",
       "image": "https://livil-music.com/icon-192.png",
       "screenshot": [
         "https://livil-music.com/screenshots/home-feed.png",
@@ -96,7 +96,7 @@
       "alternateName": ["Livil Music", "Livil Labs"],
       "url": "https://livil-music.com/",
       "logo": "https://livil-music.com/play-store-icon-512.png",
-      "description": "Livil is a social music platform — a place to listen with people, not beside them.",
+      "description": "Livil is a social music app for independent artists and the people who listen to them — a place to listen with people, not beside them.",
       "sameAs": [
         "https://play.google.com/store/apps/details?id=com.livil",
         "https://apps.apple.com/app/id6809119164",
@@ -113,7 +113,7 @@
       "url": "https://livil-music.com/",
       "name": "Livil",
       "alternateName": "Livil Music",
-      "description": "A social music platform. Music is better together. Live · Vibe · Link.",
+      "description": "A social music app for independent artists and the people who listen to them. Music is better together. Live · Vibe · Link.",
       "publisher": { "@id": "https://livil-music.com/#organization" }
     }
   ]
@@ -174,7 +174,7 @@
   .nav-right{display:flex;align-items:center;gap:20px}
   .nav-right a.link{font-size:14px;font-weight:500;color:var(--secondary);transition:color .2s;white-space:nowrap}
   .nav-right a.link:hover{color:#fff}
-  @media(max-width:720px){.nav-right a.link{display:none}}
+  @media(max-width:799px){.nav-right a.link{display:none}}
 
   /* Buttons mirror the app's Button component: purple NEVER fills a button. The
      surface stays transparent, the outline is the deep→purple→neon ramp with a faint
@@ -210,12 +210,11 @@
   .btn.store.lg svg{width:23px;height:25px}
   .btn.store.lg .st b{font-size:16px}
   .cta .avail{width:100%;margin-top:-4px;font-size:13px;color:var(--muted)}
-  @media(max-width:899px){.nav-right a.btn.store{display:none}}
-  /* Two store badges don't fit beside the four nav links below ~1300px; keep the
-     first one (App Store on iPhone, Google Play everywhere else — see the reorder
-     script at the top of <body>) and drop the second until there is room. The hero
-     always shows both. */
-  @media(max-width:1299px){.nav-right a.btn.store + a.btn.store{display:none}}
+  @media(max-width:999px){.nav-right a.btn.store{display:none}}
+  /* Five nav links + two store badges + the studio button never fit inside --maxw,
+     so the nav shows only the first badge (App Store on iPhone, Google Play everywhere
+     else — see the reorder script at the top of <body>). The hero always shows both. */
+  .nav-right a.btn.store + a.btn.store{display:none}
 
   /* ---------------- shared type ---------------- */
   .eyebrow{font-size:12px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:var(--purple-light);
@@ -256,6 +255,15 @@
   /* The cue is a desktop affordance; on phones it sat on top of the availability line. */
   @media(max-width:720px){.scrollcue{display:none}}
   #wave{position:absolute;left:0;right:0;top:50%;height:280px;transform:translateY(-50%);width:100%;z-index:-1;opacity:.9;pointer-events:none}
+
+  /* ---------------- ABOUT (the plain answer) ---------------- */
+  .about{padding:10vh 0 4vh}
+  .about .box{max-width:760px;border-left:2px solid var(--purple);padding:6px 0 6px 28px}
+  .about h2{font-size:13px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--purple-light)}
+  .about p{margin-top:16px;font-size:clamp(19px,2.4vw,25px);line-height:1.5;color:#C9CCD9;letter-spacing:-.01em}
+  .about p b{color:#fff;font-weight:600}
+  .about p em{font-style:normal;color:var(--purple-light)}
+  @media(max-width:560px){.about .box{padding-left:20px}}
 
   /* ---------------- MANIFESTO / tension ---------------- */
   .manifesto{padding:16vh 0}
@@ -457,6 +465,7 @@
 113 -20 164 0 47 -7 110 -15 140 -9 30 -20 116 -25 190 -5 74 -14 150 -19 168
 -6 18 -13 65 -16 105 -17 189 -155 299 -301 239z"/></g></svg></a>
     <div class="nav-right">
+      <a href="#about" class="link">About</a>
       <a href="#believe" class="link">Manifesto</a>
       <a href="#features" class="link">Features</a>
       <a href="#makers" class="link">For creators</a>
@@ -474,12 +483,12 @@
 <!-- ============ HERO ============ -->
 <section class="hero wrap">
   <canvas id="wave" aria-hidden="true"></canvas>
-  <span class="eyebrow kicker r">A social music platform</span>
+  <span class="eyebrow kicker r">A social music app for independent artists</span>
   <h1>
     <span class="line"><span>Music is</span></span>
     <span class="line"><span>better <span class="serif grad">together</span>.</span></span>
   </h1>
-  <p class="sub r d2">A place to listen <em>with</em> people — not beside them. Livil turns music back into something you share.</p>
+  <p class="sub r d2">Livil is a social music app for <em>independent artists</em> and the people who listen to them. Covers, raps, instrument solos, singers, DJs. Listen with friends, not an algorithm.</p>
   <div class="cta r d3">
     <a href="/studio" class="btn lg" data-magnetic>Open Creator Studio</a>
     <a data-store="play" href="https://play.google.com/store/apps/details?id=com.livil" class="btn store lg" target="_blank" rel="noopener" aria-label="Download Livil for Android on Google Play"><svg viewBox="0 0 24 26" aria-hidden="true" focusable="false"><path fill="#00D2FF" d="M1.3.6a1.7 1.7 0 0 0-.6 1.3v22.2c0 .5.2 1 .6 1.3L13 13.5 1.3.6z"/><path fill="#FFCE00" d="M17.6 9.9 13 13.5l-4.6 3.6 4.6 4.6 6.1-3.5c1.3-.7 1.3-2.6 0-3.3l-1.5-.9z"/><path fill="#FF3A44" d="M1.3 25.4c.5.5 1.3.6 2 .2l14.3-8.2-4.6-4-11.7 12z"/><path fill="#00E676" d="M3.3.4a1.6 1.6 0 0 0-2 .2L13 13.5l4.6-3.6L3.3.4z"/></svg><span class="st"><i>Get it on</i><b>Google Play</b></span></a>
@@ -488,6 +497,14 @@
     <p class="avail">Free on iPhone and Android — <strong>Livil is live on the App Store and Google Play</strong>. Creators: upload and manage your music from the browser.</p>
   </div>
   <div class="scrollcue"><span class="rail"></span>Scroll</div>
+</section>
+
+<!-- ============ ABOUT ============ -->
+<section class="about wrap" id="about">
+  <div class="box r">
+    <h2>What Livil is</h2>
+    <p>Livil is where you listen to <em>independent artists</em>. Cover songs, raps, instrument solos, singers, bands, DJs — all made by real people, posted by them, and credited to everyone who played on them. <b>You listen with friends, in sync, and discover artists through the people you know.</b></p>
+  </div>
 </section>
 
 <!-- ============ MANIFESTO / TENSION ============ -->
@@ -727,6 +744,7 @@
     <div class="tag">Your music, your world.</div>
     <div class="micro">Live · Vibe · Link</div>
     <div class="flinks">
+      <a href="#about">About</a>
       <a href="#believe">Manifesto</a>
       <a href="#features">Features</a>
       <a href="#makers">For creators</a>
