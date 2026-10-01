@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-268 TypeScript file(s) under `src/`, 67,563 lines.
+268 TypeScript file(s) under `src/`, 67,584 lines.
 
 ## Size hotspots
 
@@ -39,7 +39,7 @@ reading alone (Constitution P28).
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 755 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 756 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/components/guide/cardsPeople.tsx` | 630 |
@@ -102,7 +102,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,508 lines.
+46 file(s), 23,509 lines.
 
 | File | Lines |
 |---|---:|
@@ -114,7 +114,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 755 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 756 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/SearchScreen.tsx` | 664 |
 | `src/screens/main/LibraryScreen.tsx` | 624 |
@@ -155,7 +155,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-102 file(s), 23,340 lines.
+102 file(s), 23,360 lines.
 
 | File | Lines |
 |---|---:|
@@ -185,8 +185,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/cardsPlayer.tsx` | 247 |
 | `src/components/ActivityBubble.tsx` | 242 |
 | `src/components/StoryReportModal.tsx` | 236 |
+| `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
-| `src/components/AppleSignInButton.tsx` | 219 |
 | `src/components/AddToAlbumSheet.tsx` | 218 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 213 |
@@ -209,9 +209,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProfileTabBar.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
+| `src/components/__tests__/AppleSignInButton.test.tsx` | 148 |
 | `src/components/guide/cardWelcome.tsx` | 148 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
-| `src/components/__tests__/AppleSignInButton.test.tsx` | 142 |
 | `src/components/guide/cards.ts` | 132 |
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
