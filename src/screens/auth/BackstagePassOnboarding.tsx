@@ -506,11 +506,14 @@ function GuestList({
             the other third-party options, and this is also the only one-tap path
             that needs neither an email nor a password. Renders null off iOS, and
             authStack's `gap` collapses with it, so Android is untouched. */}
+        {/* No labelStyle: Apple fixes the title's font and its size relative to
+            the button (HIG, custom Sign in with Apple buttons), so the mono label
+            the other two buttons wear cannot apply here. `authBtn` contributes
+            only its corner radius; the button ignores padding overrides. */}
         <AppleSignInButton
           onError={onAppleError}
           disabled={googleBusy}
           style={styles.authBtn}
-          labelStyle={styles.authLabel}
         />
         <Button
           label="Continue with Google"
