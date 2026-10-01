@@ -603,7 +603,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 
 | Platform | Listing | Notes |
 |---|---|---|
-| **Google Play** | `https://play.google.com/store/apps/details?id=com.livil` | Package `com.livil`. Production since 2026-08-14, full rollout, 176 countries + rest of world (versionName `2.1.1`, versionCode `75` — bump both before each release) |
+| **Google Play** | `https://play.google.com/store/apps/details?id=com.livil` | Package `com.livil`. Production since 2026-08-14, full rollout, 176 countries + rest of world (versionName `2.1.2`, versionCode `76` — bump both before each release) |
 | **Apple App Store** | `https://apps.apple.com/app/id6809119164` | Name **"Livil Music"** ("Livil" was taken), Apple ID `6809119164`, bundle `com.livil`, iPhone only (no iPad build), 174 territories (not China mainland). See ADR-0016 |
 | **Web** | `https://livil-music.com/studio` | Web app + creator dashboard (`web/`, Vercel). Landing page `https://livil-music.com` (`docs/`, GitHub Pages) links both stores |
 
