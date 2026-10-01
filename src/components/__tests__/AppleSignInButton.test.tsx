@@ -62,11 +62,11 @@ function title(tree: ReactTestRenderer.ReactTestRenderer) {
 
 describe('AppleSignInButton (HIG: custom Sign in with Apple button)', () => {
   it("draws Apple's own logo artwork, unmodified", () => {
-    // SHA-256 of the path in "Logo - SIWA - Left-aligned - Black - Medium.svg" from
+    // SHA-256 of the path in "Logo - SIWA - Left-aligned - Black - Small.svg" from
     // Apple Design Resources. If this fails, someone edited, rounded or replaced the
     // artwork. Re-copy it from Apple's file; do not update the hash to match a redraw.
     expect(createHash('sha256').update(APPLE_LOGO_PATH).digest('hex')).toBe(
-      '870e7f7ff994651ec0d878cd0dd6007c2b99089332e65efb656a4862d3cabf74',
+      'd1fc966b3f45b4b831ae22b089bc2a114b2c8b9e0b0b5957ed60838464ae943f',
     );
     const tree = render();
     const paths = named(tree, 'Path');
@@ -81,8 +81,8 @@ describe('AppleSignInButton (HIG: custom Sign in with Apple button)', () => {
       // "Match the height of the logo file to the height of the button."
       expect(svg.props.height).toBe(height);
       expect(buttonStyle(tree).height).toBe(height);
-      // "Don't crop the logo file": the full 31x44 canvas, aspect ratio intact.
-      expect(svg.props.viewBox).toBe('0 0 31 44');
+      // "Don't crop the logo file": the full 24x44 canvas, aspect ratio intact.
+      expect(svg.props.viewBox).toBe('0 0 24 44');
       expect(svg.props.width).toBeCloseTo((height * APPLE_LOGO_CANVAS.width) / APPLE_LOGO_CANVAS.height, 6);
     }
   });
@@ -96,15 +96,21 @@ describe('AppleSignInButton (HIG: custom Sign in with Apple button)', () => {
     expect(buttonStyle(render()).gap).toBeUndefined();
   });
 
-  it('sizes the title at 43% of the button height, in the system font', () => {
-    for (const height of [44, APPLE_BUTTON_DEFAULT_HEIGHT, 60]) {
-      const { style } = title(render({ height }));
-      expect(style.fontSize).toBe(Math.round(height * 0.43));
-      // System font: no custom family. The onboarding screen's mono label must not apply.
-      expect(style.fontFamily).toBeUndefined();
-    }
-    // Apple's own worked example: a 44pt button carries a 19pt title.
-    expect(title(render({ height: 44 })).style.fontSize).toBe(19);
+  it('lets a call site choose the title font, and defaults to the system font', () => {
+    // HIG: a custom button may change the "title font ... weight and size" to
+    // coordinate with the app. Default matches the lg Button beside it.
+    const plain = title(render()).style;
+    expect(plain.fontSize).toBe(16);
+    expect(plain.fontFamily).toBeUndefined();
+
+    const mono = title(render({ labelStyle: { fontFamily: 'CourierPrime-Bold', fontSize: 15 } })).style;
+    expect(mono.fontFamily).toBe('CourierPrime-Bold');
+    expect(mono.fontSize).toBe(15);
+  });
+
+  it('never lets a call site recolour the title', () => {
+    // "Logo and title colors ... must be either black or white; don't use custom colors."
+    expect(title(render({ labelStyle: { color: '#A855F7' } })).style.color).toBe('#000000');
   });
 
   it('keeps logo and title pure black on a pure white fill, whatever the call site passes', () => {
