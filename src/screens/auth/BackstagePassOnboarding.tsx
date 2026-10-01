@@ -506,6 +506,10 @@ function GuestList({
             the other third-party options, and this is also the only one-tap path
             that needs neither an email nor a password. Renders null off iOS, and
             authStack's `gap` collapses with it, so Android is untouched. */}
+        {/* `authBtn` contributes only its corner radius (the button ignores
+            padding overrides and sizes itself by `height`); `authLabel` gives it
+            the same mono title as the two buttons below. Its colours are locked
+            inside the component. */}
         <AppleSignInButton
           onError={onAppleError}
           disabled={googleBusy}
