@@ -78,20 +78,50 @@ async function cancelOurNotifications(): Promise<void> {
 export async function setAppBadgeCount(count: number): Promise<void> {
   const safe = Number.isFinite(count) && count > 0 ? Math.round(count) : 0;
 
-  try {
-    // Nothing unread → whatever is still in the tray is stale. Clearing it is
-    // what removes the badge on Android, and stops iOS's Notification Center
-    // showing rows the user has already read in-app.
-    if (safe === 0) {
-      await cancelOurNotifications();
-    }
-
-    if (Platform.OS === 'ios') {
+  // The number first, in its own try: a failure to read or clear the tray must
+  // not leave a stale number on the icon.
+  if (Platform.OS === 'ios') {
+    try {
       await notifee.setBadgeCount(safe);
+    } catch (e) {
+      console.warn('[badge] setAppBadgeCount failed', e);
     }
-  } catch (e) {
-    console.warn('[badge] setAppBadgeCount failed', e);
   }
+
+  // Nothing unread → whatever is still in the tray is stale. Clearing it is
+  // what removes the badge on Android, and stops iOS's Notification Center
+  // showing rows the user has already read in-app.
+  if (safe === 0) {
+    try {
+      await cancelOurNotifications();
+    } catch (e) {
+      console.warn('[badge] clearing stale notifications failed', e);
+    }
+  }
+}
+
+/**
+ * Re-write the iOS icon number even though the in-app total has not changed.
+ *
+ * `setAppBadgeCount` is driven by a React effect, so it only runs when the
+ * in-app total CHANGES. That is not enough on iOS, because the app is not the
+ * only writer: every push sets the icon to the `aps.badge` the server computed
+ * at send time. The common sequence leaves it stuck:
+ *
+ *   1. App backgrounded (JS frozen, realtime paused). A message arrives; the
+ *      push sets the icon to 1. The in-app total never saw the message: still 0.
+ *   2. User opens the app and reads it. The re-count gives 0 again.
+ *   3. 0 → 0 is not a change, the effect does not run, and the icon keeps the
+ *      push's "1" until the next cold start.
+ *
+ * So the foreground / focus re-count calls this with the fresh total, every
+ * time. iOS only: Android has no settable number (see the header above), and
+ * re-running the zero path there would cancel tray notifications on every
+ * foreground for no gain.
+ */
+export async function resyncAppBadgeCount(count: number): Promise<void> {
+  if (Platform.OS !== 'ios') { return; }
+  await setAppBadgeCount(count);
 }
 
 /**
