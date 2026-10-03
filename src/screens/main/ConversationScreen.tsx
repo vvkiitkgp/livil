@@ -6,6 +6,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  AppState,
   Dimensions,
   View,
   Text,
@@ -41,6 +42,7 @@ import {
   type SendMessagePayload,
 } from '../../services/messages';
 import { messageCache } from '../../services/messageCache';
+import { clearConversationNotifications } from '../../services/pushNotifications';
 import {
   markAsRead,
   getOtherMemberReadAt,
@@ -623,9 +625,25 @@ export default function ConversationScreen() {
       });
 
     void markAsRead(conversationId);
+    // Reading the chat makes its notifications stale — including ones the user
+    // did not tap (two messages → two iOS rows, a tap removes only one).
+    void clearConversationNotifications(conversationId);
 
     return () => { cancelled = true; };
   }, [conversationId, showToast]);
+
+  // Back from the background onto this chat: the mount effect above does not
+  // re-run, but the user is now reading whatever arrived while away — and its
+  // push is still in Notification Center. Only when this chat is the screen on
+  // top, not when it sits under another one in the stack.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active' || !navigation.isFocused()) { return; }
+      void markAsRead(conversationId);
+      void clearConversationNotifications(conversationId);
+    });
+    return () => sub.remove();
+  }, [conversationId, navigation]);
 
   // DM read-receipt source: the other participant's last_read_at. Fetched
   // once when the conversation opens and kept fresh by a realtime sub on
@@ -696,6 +714,9 @@ export default function ConversationScreen() {
         // wastes a round trip.
         if (msg.senderId && msg.senderId !== myId) {
           void markAsRead(conversationId);
+          // The push for this message may already be on screen while the user
+          // is reading it here.
+          void clearConversationNotifications(conversationId);
         }
       },
       async messageId => {

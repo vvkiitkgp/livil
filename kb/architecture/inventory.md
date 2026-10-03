@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-01
+last_verified: 2026-10-02
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-268 TypeScript file(s) under `src/`, 67,584 lines.
+269 TypeScript file(s) under `src/`, 67,718 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 1715 |
+| `src/screens/main/ConversationScreen.tsx` | 1736 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
@@ -102,11 +102,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,509 lines.
+46 file(s), 23,530 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1715 |
+| `src/screens/main/ConversationScreen.tsx` | 1736 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
@@ -264,13 +264,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-57 file(s), 11,963 lines.
+58 file(s), 12,076 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1122 |
 | `src/services/tracks.ts` | 1001 |
-| `src/services/pushNotifications.ts` | 641 |
+| `src/services/pushNotifications.ts` | 676 |
 | `src/services/albums.ts` | 497 |
 | `src/services/activity.ts` | 426 |
 | `src/services/profileService.ts` | 416 |
@@ -312,6 +312,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
 | `src/services/googleAuth.ts` | 79 |
+| `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
 | `src/services/__tests__/findMyActiveJam.test.ts` | 78 |
 | `src/services/terms.ts` | 78 |
 | `src/services/searchAnalytics.ts` | 72 |
