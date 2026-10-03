@@ -3251,7 +3251,7 @@ a.btn {
  * Unsticking the two sidebars.
  *
  * These MUST live at the end of the file, not in the media queries that collapse their
- * grids. Those blocks sit ABOVE `.overview__pass` and `.detail__preview` in the source, and
+ * grids. Those blocks sit ABOVE `.overview__side` and `.detail__preview` in the source, and
  * a media query carries no extra specificity — so the later base rule won, `position: sticky`
  * survived, and the card went on overlaying the page. A rule that loses the cascade looks
  * exactly like a rule that was never written.
@@ -3262,7 +3262,10 @@ a.btn {
      Sticky only makes sense beside something, never above it.
      The sticky rule lives on `.overview__side` (the column carrying the pass AND the
      get-the-app card), so that is the element to release. Unsticking only the pass left the
-     whole column pinned on phones, with the stats and releases scrolling underneath it. */
+     whole column pinned on phones, with the stats and releases scrolling underneath it.
+     Do NOT set `position: static` on `.overview__pass` here: `.pass` is `relative` and anchors
+     its absolutely-positioned punch and sticker. Made static, they anchor to the full-width
+     column instead and the "100% REAL" sticker drifts off the pass. */
   .overview__side {
     position: static;
   }
