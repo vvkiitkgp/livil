@@ -3259,9 +3259,15 @@ a.btn {
 @media (max-width: 900px) {
   /* In two columns the pass is a sticky sidebar and reads correctly. Stacked, it becomes the
      first block in a single column — pinned while everything after it scrolls underneath.
-     Sticky only makes sense beside something, never above it. */
-  .overview__pass {
+     Sticky only makes sense beside something, never above it.
+     The sticky rule lives on `.overview__side` (the column carrying the pass AND the
+     get-the-app card), so that is the element to release. Unsticking only the pass left the
+     whole column pinned on phones, with the stats and releases scrolling underneath it. */
+  .overview__side {
     position: static;
+  }
+
+  .overview__pass {
     /* The tilt is charm at 300px wide. Full-bleed on a phone it pushes the rotated corners
        past the viewport and gives the whole page a horizontal scrollbar. */
     transform: none;
