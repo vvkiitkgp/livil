@@ -23,6 +23,31 @@ Xcode and uploaded to App Store Connect by hand, equally ungated.
 
 ---
 
+## Time to reach users — weigh this in every decision
+
+Owner's figures (2026-10-03):
+
+| Channel | Time from "fix is ready" to users having it |
+|---|---|
+| Server (migrations, RPCs, edge functions) | Immediate, for every installed version |
+| Google Play | ~1 day |
+| Apple App Store | **~1 week** |
+| Web (`main` → Vercel) | Immediate |
+
+Consequences every proposal and ADR must account for:
+
+- **A client fix is a week-long exposure on iOS.** Prefer a fix that can land server-side
+  when one exists with equal safety; when the fix must be client-side, say how long iOS
+  users stay on the broken behaviour.
+- **Server changes must stay compatible with the installed base.** Old clients keep running
+  for at least a week on iOS (and indefinitely for users who never update), so a server
+  change must not break the version currently in the App Store. Additive changes only, or
+  ship the client first and remove later.
+- **Bundle iOS-bound client work.** A week per round trip makes a follow-up release
+  expensive; batch related client changes into one App Store submission.
+
+---
+
 ## The process
 
 ```bash

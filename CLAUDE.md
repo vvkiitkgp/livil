@@ -609,6 +609,10 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 
 - **Developer**: Livil Labs (`vvk.iitkgp@gmail.com`)
 - **GitHub**: https://github.com/vvkiitkgp/livil
+- **Release lead time — consider in EVERY decision:** a Play Store update reaches users in
+  **~1 day**, an App Store update in **~1 week**; server and web changes are immediate. So a
+  client fix leaves iOS users on the old behaviour for a week, and any server change must keep
+  the currently-shipped app versions working. See `kb/operations/deployment.md` → "Time to reach users".
 - **App Review guideline 2.3.10**: an iOS build must never name or link another platform's store — gate Play-only UI by `Platform.OS`.
 
 ---
