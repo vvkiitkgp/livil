@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { TakedownDialog } from '../components/TakedownDialog';
 import { sendBadgePush } from '../data/push';
 import { formatDate, formatDuration } from '../format';
 import {
@@ -9,6 +10,7 @@ import {
   type OpsArtist,
   type OpsTrack,
 } from '../data/opsTracks';
+import { liveLabel, restoreTrack, shortId, takeDownTrack } from '../data/opsCopyright';
 import {
   OPS_BADGES,
   fetchAllBadgeHolders,
@@ -58,6 +60,17 @@ export function OpsUser() {
   /** Which track's player is open. One at a time — fifty <audio> elements is not a page. */
   const [openTrackId, setOpenTrackId] = useState<string | null>(null);
 
+  /**
+   * The takedown / restore being asked about. Same dialog and same two RPCs as the
+   * moderation queues on /ops, so the sentence the creator reads cannot drift between
+   * the place a track was reported and the place its artist is reviewed.
+   */
+  const [pending, setPending] = useState<{ mode: 'takedown' | 'restore'; track: OpsTrack } | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
+  // Outcome per ROW, for the same reason /ops does it: a page-level line is one the
+  // operator never scrolls to, and a takedown that removed nothing then reads as broken.
+  const [rowResult, setRowResult] = useState<Record<string, string>>({});
+
   useEffect(() => {
     if (!userId) return;
     setLoadError(null);
@@ -71,6 +84,35 @@ export function OpsUser() {
         setLoadError(e?.message ?? 'Could not load this artist.');
       });
   }, [userId]);
+
+  // Never optimistic, same as everywhere else on ops: the row flips only once the
+  // database has said so, by re-reading the list.
+  const runPending = useCallback(async (reason: string) => {
+    if (!pending) return;
+    const { mode, track } = pending;
+    setActingId(track.id);
+    try {
+      if (mode === 'takedown') {
+        const removed = await takeDownTrack(track.id, reason);
+        setRowResult(r => ({
+          ...r,
+          [track.id]:
+            removed === 0
+              ? 'Marked down. Nothing was published, so nothing was removed.'
+              : `Taken down — ${removed} post${removed === 1 ? '' : 's'} removed.`,
+        }));
+      } else {
+        await restoreTrack(track.id, reason);
+        setRowResult(r => ({ ...r, [track.id]: "Restored — the uploader's post is back." }));
+      }
+      setTracks(await fetchTracksForUser(userId));
+    } catch (e) {
+      setRowResult(r => ({ ...r, [track.id]: (e as Error)?.message ?? 'That did not work.' }));
+    } finally {
+      setPending(null);
+      setActingId(null);
+    }
+  }, [pending, userId]);
 
   const loadBadge = useCallback(() => {
     if (!userId) return;
@@ -142,7 +184,7 @@ export function OpsUser() {
 
       <header className="page__head">
         <div>
-          <p className="kicker">Reviewing for badges</p>
+          <p className="kicker">Reviewing uploads</p>
           <h1 className="display page__title">{name}</h1>
           {profile?.username && <p className="hint">@{profile.username}</p>}
         </div>
@@ -229,6 +271,7 @@ export function OpsUser() {
                   <th className="num">Length</th>
                   <th>Uploaded</th>
                   <th />
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -237,6 +280,16 @@ export function OpsUser() {
                     <td>
                       <span className="table__title">{t.title}</span>
                       {t.description && <div className="hint">{t.description}</div>}
+                      {/* What a takedown would remove — or that it already happened. The
+                          short id is here because two uploads can share a title. */}
+                      <div className="hint">
+                        {t.takenDownAt
+                          ? `Taken down ${formatDate(t.takenDownAt)}`
+                          : liveLabel(t)}
+                        {' · '}
+                        {shortId(t.id)}
+                      </div>
+                      {rowResult[t.id] && <div className="hint">{rowResult[t.id]}</div>}
                       {openTrackId === t.id && (
                         <div style={{ marginTop: 12 }}>
                           {t.mediaUrl === null ? (
@@ -271,12 +324,55 @@ export function OpsUser() {
                         {openTrackId === t.id ? 'Close' : 'Play'}
                       </Button>
                     </td>
+                    <td>
+                      {/* Destructive only for the action that removes posts. Restore puts
+                          the uploader's post back, so it does not need to look dangerous. */}
+                      <Button
+                        variant={t.takenDownAt ? 'secondary' : 'destructive'}
+                        size="sm"
+                        busy={actingId === t.id}
+                        onClick={() => setPending({ mode: t.takenDownAt ? 'restore' : 'takedown', track: t })}
+                      >
+                        {t.takenDownAt ? 'Restore' : 'Take down'}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+
+      {pending && (
+        <TakedownDialog
+          mode={pending.mode}
+          trackTitle={pending.track.title}
+          trackIdShort={shortId(pending.track.id)}
+          warning={
+            pending.mode === 'takedown'
+            && pending.track.liveUploads + pending.track.liveReposts === 0
+              ? 'Nothing is published for this track. Taking it down removes no posts and '
+                + 'changes nothing anyone can see — it only marks the track and counts as a '
+                + 'strike against the artist.'
+              : null
+          }
+          impact={
+            pending.mode === 'restore'
+              ? "The uploader's own post comes back with its caption and clip. Likes, "
+                + "comments and other people's reposts do NOT — they were deleted and "
+                + 'cannot be recovered.'
+              : pending.track.liveUploads + pending.track.liveReposts === 0
+                ? null
+                : `This removes ${liveLabel(pending.track)}`
+                  + (pending.track.liveReposts > 0
+                    ? " — including other people's reposts, which do NOT come back on restore."
+                    : '.')
+          }
+          busy={actingId === pending.track.id}
+          onConfirm={runPending}
+          onCancel={() => setPending(null)}
+        />
       )}
     </div>
   );
