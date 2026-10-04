@@ -2463,7 +2463,10 @@ export type Database = {
           description: string
           duration_seconds: number
           id: string
+          live_reposts: number
+          live_uploads: number
           media_kind: string
+          taken_down_at: string
           thumbnail_url: string
           title: string
           video_url: string

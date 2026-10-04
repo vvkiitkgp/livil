@@ -140,6 +140,46 @@ select pg_temp.assert(
 
 reset role;
 
+-- ── Takedown state, for the per-upload Take down / Restore button ───────────
+--
+-- The review page decides between "Take down" and "Restore" from taken_down_at, and warns
+-- before a takedown that would remove nothing from the live counts. A wrong count here is
+-- the misclick the warning exists to prevent, so the counts are asserted against real posts.
+insert into public.posts (id, author_id, kind, track_id) values
+  ('c2000000-0000-0000-0000-0000000000a1'::uuid, 'c2000000-0000-0000-0000-00000000000a'::uuid,
+   'upload', 'c2000000-0000-0000-0000-0000000000f2'::uuid);
+insert into public.posts (id, author_id, kind, track_id, original_post_id) values
+  ('c2000000-0000-0000-0000-0000000000a2'::uuid, 'c2000000-0000-0000-0000-00000000000b'::uuid,
+   'repost', 'c2000000-0000-0000-0000-0000000000f2'::uuid,
+   'c2000000-0000-0000-0000-0000000000a1'::uuid);
+
+-- Through the real RPC, as the operator — the freeze trigger refuses a hand-set column.
+select public.ops_take_down_track('c2000000-0000-0000-0000-0000000000f1'::uuid, 'test');
+
+set local role authenticated;
+
+select pg_temp.assert(
+  'live counts split uploads from reposts',
+  (select live_uploads = 1 and live_reposts = 1
+     from public.ops_tracks_for_user('c2000000-0000-0000-0000-00000000000a'::uuid)
+    where id = 'c2000000-0000-0000-0000-0000000000f2'::uuid), true);
+
+select pg_temp.assert(
+  'a live track reads as not taken down',
+  (select taken_down_at is null
+     from public.ops_tracks_for_user('c2000000-0000-0000-0000-00000000000a'::uuid)
+    where id = 'c2000000-0000-0000-0000-0000000000f2'::uuid), true);
+
+-- A taken-down track is readable only by its uploader under RLS, so this is the second
+-- reason the function must stay DEFINER: without it the Restore button has no row to sit on.
+select pg_temp.assert(
+  'a taken-down track is still listed, marked down, with nothing live',
+  (select taken_down_at is not null and live_uploads = 0 and live_reposts = 0
+     from public.ops_tracks_for_user('c2000000-0000-0000-0000-00000000000a'::uuid)
+    where id = 'c2000000-0000-0000-0000-0000000000f1'::uuid), true);
+
+reset role;
+
 -- ── Rule 3: nobody else ─────────────────────────────────────────────────────
 select pg_temp.set_user('c2000000-0000-0000-0000-00000000000b'::uuid);
 select pg_temp.assert(
