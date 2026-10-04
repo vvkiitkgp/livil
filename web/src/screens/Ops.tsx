@@ -13,6 +13,7 @@ import {
   concernLabel,
   fetchOpsCopyrightScans,
   liveLabel,
+  markCopyrightReviewed,
   restoreTrack,
   scopeLabel,
   shortId,
@@ -141,16 +142,36 @@ export function Ops() {
   // one failing RPC must not blank the rest of the page.
   const [scans, setScans] = useState<OpsCopyrightScan[] | null>(null);
   const [scansError, setScansError] = useState<string | null>(null);
+  // Same pair of controls as Reports. Reviewed matches leave the default view — most are
+  // uploads that were never published, with nothing to act on — but stay one click away,
+  // because "what has ever been detected" is still worth being able to read.
+  const [showReviewedScans, setShowReviewedScans] = useState(false);
+  const [scanBusyId, setScanBusyId] = useState<string | null>(null);
 
   const loadScans = useCallback(() => {
     setScansError(null);
-    fetchOpsCopyrightScans(true)
+    fetchOpsCopyrightScans(true, showReviewedScans)
       .then(setScans)
       .catch(e => {
         setScans([]);
         setScansError(e?.message ?? 'Could not load copyright matches.');
       });
-  }, []);
+  }, [showReviewedScans]);
+
+  const handleScanReviewed = useCallback(
+    async (s: OpsCopyrightScan) => {
+      setScanBusyId(s.id);
+      try {
+        await markCopyrightReviewed(s.id, s.reviewedAt === null);
+        loadScans();
+      } catch (e) {
+        setScansError(e instanceof Error ? e.message : 'Could not update that match.');
+      } finally {
+        setScanBusyId(null);
+      }
+    },
+    [loadScans],
+  );
 
   useEffect(loadScans, [loadScans]);
 
@@ -420,7 +441,7 @@ export function Ops() {
     moderation:
       (reports ?? []).filter(r => !r.reviewedAt).length
       + (scans ?? []).filter(
-        sc => !sc.takenDownAt && CONCERNS_WANTING_A_HUMAN.has(sc.concern),
+        sc => !sc.takenDownAt && !sc.reviewedAt && CONCERNS_WANTING_A_HUMAN.has(sc.concern),
       ).length,
     // Nothing on the other three can be finished: the users roster is a reference, messages
     // have no read state, and search stats are never owed a reply. Moderation is the only
@@ -596,15 +617,31 @@ export function Ops() {
             them. A match is a reason to look, not proof of anything.
           </p>
         </div>
+        <div className="filters">
+          {scans !== null && !showReviewedScans && (
+            <span className="chip" data-active>
+              {scans.length} to look at
+            </span>
+          )}
+          <Button
+            variant={showReviewedScans ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setShowReviewedScans(v => !v)}
+          >
+            {showReviewedScans ? 'Hide reviewed' : 'Show reviewed'}
+          </Button>
+        </div>
       </header>
 
       {scansError && <p className="error">{scansError}</p>}
 
       {scans !== null && scans.length === 0 && !scansError && (
         <div className="empty panel">
-          <p className="empty__title">No matches yet</p>
+          <p className="empty__title">{showReviewedScans ? 'No matches yet' : 'Nothing to look at'}</p>
           <p className="hint">
-            Uploads are checked as they finish. Nothing has matched a known recording.
+            {showReviewedScans
+              ? 'Uploads are checked as they finish. Nothing has matched a known recording.'
+              : 'Every match has been reviewed. “Show reviewed” lists them all.'}
           </p>
         </div>
       )}
@@ -718,7 +755,24 @@ export function Ops() {
                           Take down
                         </Button>
                       )}
+                      {/* Bookkeeping, not a verdict: it takes nothing down and tells
+                          nobody. It only moves the row out of the default view. */}
+                      <Button
+                        variant={s.reviewedAt ? 'secondary' : 'ghost'}
+                        size="sm"
+                        disabled={scanBusyId === s.id}
+                        onClick={() => void handleScanReviewed(s)}
+                      >
+                        {s.reviewedAt ? 'Reopen' : 'Mark reviewed'}
+                      </Button>
                     </div>
+
+                    {s.reviewedAt && (
+                      <div className="hint">
+                        reviewed {formatDate(s.reviewedAt)}
+                        {s.reviewerUsername ? ` by @${s.reviewerUsername}` : ''}
+                      </div>
+                    )}
 
                     {/* The outcome, on the row that produced it. */}
                     {rowResult[s.id] && <div className="hint">{rowResult[s.id]}</div>}
