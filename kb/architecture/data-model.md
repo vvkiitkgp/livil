@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-29
+last_verified: 2026-10-04
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 123 migration(s) in `supabase/migrations/`.
+Reconstructed from 125 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-48 table(s).
+49 table(s).
 
 ### `activity_notifications`
 
@@ -484,6 +484,16 @@ RLS enabled · defined in `20260803120000_notification_preferences.sql`
 | `messages` | `boolean not null default true` |
 | `jam` | `boolean not null default true` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `ops_copyright_reviews`
+
+RLS enabled · defined in `20261004010000_copyright_matches_reviewable.sql`
+
+| Column | Definition |
+|---|---|
+| `scan_id` | `uuid primary key` |
+| `reviewed_at` | `timestamptz not null default now()` |
+| `reviewed_by` | `uuid` |
 
 ### `ops_users`
 
