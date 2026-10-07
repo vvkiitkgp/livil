@@ -37,6 +37,8 @@ returns boolean language sql as $$ select exists (select 1 from auth.users where
 --   …06 SIGNEDIN   unconfirmed, 8 days, but last_sign_in_at set      → kept
 --   …07 FRIEND     confirmed; sent OLDGHOST a request (pending)       → kept; request gone
 --   …08 OLDGHOST2  unconfirmed, 9 days                               → DELETED (2nd run)
+--   …09 RESENT     unconfirmed, 8 days, but asked for a new link 1h ago → kept
+--   …0a RESET      unconfirmed, 8 days, Forgot Password email 1h ago   → kept
 insert into auth.users (id, email, email_confirmed_at, last_sign_in_at, created_at) values
   ('a0260000-0000-0000-0000-000000000001', 'pg_oldghost@example.com',  null,  null,  now() - interval '8 days'),
   ('a0260000-0000-0000-0000-000000000002', 'pg_young@example.com',     null,  null,  now() - interval '6 days'),
@@ -46,6 +48,9 @@ insert into auth.users (id, email, email_confirmed_at, last_sign_in_at, created_
   ('a0260000-0000-0000-0000-000000000006', 'pg_signedin@example.com',  null,  now(), now() - interval '8 days'),
   ('a0260000-0000-0000-0000-000000000007', 'pg_friend@example.com',    now(), now(), now() - interval '50 days'),
   ('a0260000-0000-0000-0000-000000000008', 'pg_oldghost2@example.com', null,  null,  now() - interval '9 days');
+insert into auth.users (id, email, email_confirmed_at, created_at, confirmation_sent_at, recovery_sent_at) values
+  ('a0260000-0000-0000-0000-000000000009', 'pg_resent@example.com', null, now() - interval '8 days', now() - interval '1 hour', null),
+  ('a0260000-0000-0000-0000-00000000000a', 'pg_reset@example.com',  null, now() - interval '8 days', now() - interval '8 days', now() - interval '1 hour');
 
 insert into public.profiles (id, username, username_set, email_confirmed) values
   ('a0260000-0000-0000-0000-000000000001', 'pg_oldghost',  true, false),
@@ -55,7 +60,9 @@ insert into public.profiles (id, username, username_set, email_confirmed) values
   ('a0260000-0000-0000-0000-000000000005', 'pg_poster',    true, false),
   ('a0260000-0000-0000-0000-000000000006', 'pg_signedin',  true, false),
   ('a0260000-0000-0000-0000-000000000007', 'pg_friend',    true, true),
-  ('a0260000-0000-0000-0000-000000000008', 'pg_oldghost2', true, false);
+  ('a0260000-0000-0000-0000-000000000008', 'pg_oldghost2', true, false),
+  ('a0260000-0000-0000-0000-000000000009', 'pg_resent',    true, false),
+  ('a0260000-0000-0000-0000-00000000000a', 'pg_reset',     true, false);
 
 insert into auth.identities (user_id, provider) values
   ('a0260000-0000-0000-0000-000000000001', 'email'),
@@ -107,6 +114,10 @@ select pg_temp.assert('an unconfirmed account that owns an upload is kept',
   pg_temp.exists_user('a0260000-0000-0000-0000-000000000005'), true);
 select pg_temp.assert('an unconfirmed account that has signed in is kept',
   pg_temp.exists_user('a0260000-0000-0000-0000-000000000006'), true);
+select pg_temp.assert('someone who asked for a fresh confirmation link an hour ago is kept',
+  pg_temp.exists_user('a0260000-0000-0000-0000-000000000009'), true);
+select pg_temp.assert('someone who asked for a password-reset email an hour ago is kept',
+  pg_temp.exists_user('a0260000-0000-0000-0000-00000000000a'), true);
 select pg_temp.assert('the requester is untouched',
   pg_temp.exists_user('a0260000-0000-0000-0000-000000000007'), true);
 
@@ -129,21 +140,27 @@ select pg_temp.assert('anon cannot execute the purge',
 -- Not has_function_privilege: CI's grant step re-grants every public function to
 -- authenticated. The protection that matters is SECURITY INVOKER — a signed-in caller has
 -- no right to delete from auth.users, so the call fails closed whatever the grant.
-create or replace function pg_temp.purge_as_user_fails()
+-- A fresh account that DOES qualify, so "deleted nothing" can actually fail.
+insert into auth.users (id, email, email_confirmed_at, created_at) values
+  ('a0260000-0000-0000-0000-00000000000b', 'pg_bait@example.com', null, now() - interval '10 days');
+insert into public.profiles (id, username, username_set, email_confirmed) values
+  ('a0260000-0000-0000-0000-00000000000b', 'pg_bait', true, false);
+
+create or replace function pg_temp.purge_as_user_denied()
 returns boolean language plpgsql as $$
 begin
   set local role authenticated;
   perform public.purge_unconfirmed_accounts(500);
   reset role;
   return false;
-exception when others then
+exception when insufficient_privilege then   -- a permission refusal, nothing else
   reset role;
   return true;
 end $$;
-select pg_temp.assert('a signed-in user cannot run the purge (fails closed)',
-  pg_temp.purge_as_user_fails(), true);
-select pg_temp.assert('…and their attempt deleted nothing',
-  pg_temp.exists_user('a0260000-0000-0000-0000-000000000002'), true);
+select pg_temp.assert('a signed-in user is refused permission to run the purge',
+  pg_temp.purge_as_user_denied(), true);
+select pg_temp.assert('…and a qualifying account survived their attempt',
+  pg_temp.exists_user('a0260000-0000-0000-0000-00000000000b'), true);
 select pg_temp.assert('the nightly job is scheduled',
   exists (select 1 from cron.job where jobname = 'purge-unconfirmed-accounts'
             and command like '%purge_unconfirmed_accounts%'), true);

@@ -13,8 +13,14 @@
 -- Decisions (ADR-0025 items 6–8):
 --   * SECURITY INVOKER, not DEFINER. pg_cron runs as the owner (postgres), who can already
 --     delete from auth.users; an authenticated caller fails on grants, i.e. fails CLOSED.
+--   * The 7 days run from the LAST email we sent them (confirmation, recovery, invite),
+--     not from sign-up: someone who asks for a fresh link on day 7 must get to click it.
+--     greatest() skips nulls; created_at is the fallback.
 --   * ONE statement. The outer predicate repeats the inner one, so READ COMMITTED re-checks
---     each row at delete time — a user who confirms mid-run is kept.
+--     each row at delete time — a user who confirms mid-run is kept. Reasoned, not tested
+--     (needs two sessions): the auth.users filters are re-evaluated against the committed
+--     confirm; the content NOT EXISTS are not, which is fine — creating content needs a
+--     session, and a session sets last_sign_in_at.
 --   * The predicate reads auth.users and the content tables, NEVER the
 --     profiles.email_confirmed cache, which may be stale.
 --   * NO deleted_accounts row: that ledger reserves the username forever, the opposite of
@@ -54,7 +60,8 @@ begin
              from auth.users c
             where c.email_confirmed_at is null
               and c.last_sign_in_at is null
-              and c.created_at < now() - interval '7 days'
+              and coalesce(greatest(c.confirmation_sent_at, c.recovery_sent_at, c.invited_at),
+                           c.created_at) < now() - interval '7 days'
               and not exists (select 1 from auth.identities i
                                where i.user_id = c.id and i.provider <> 'email')
               and not exists (select 1 from public.posts x where x.author_id = c.id)
@@ -69,7 +76,8 @@ begin
      -- Repeated on purpose: re-evaluated against the row as it is at delete time.
      and u.email_confirmed_at is null
      and u.last_sign_in_at is null
-     and u.created_at < now() - interval '7 days'
+     and coalesce(greatest(u.confirmation_sent_at, u.recovery_sent_at, u.invited_at),
+                  u.created_at) < now() - interval '7 days'
      and not exists (select 1 from auth.identities i
                       where i.user_id = u.id and i.provider <> 'email')
      and not exists (select 1 from public.posts x where x.author_id = u.id)
@@ -116,6 +124,10 @@ begin
   if exists (select 1 from pg_proc where oid = 'public.purge_unconfirmed_accounts(int)'::regprocedure
               and prosecdef) then
     raise exception 'purge_unconfirmed_accounts must be SECURITY INVOKER (ADR-0025)';
+  end if;
+  -- SECURITY INVOKER: the job runs with the rights of whoever scheduled it — this role.
+  if not has_table_privilege('auth.users', 'DELETE') then
+    raise exception 'this role cannot delete from auth.users — the nightly purge would fail every run';
   end if;
 end $$;
 

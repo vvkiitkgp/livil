@@ -168,7 +168,9 @@ jobs:
             raw_user_meta_data jsonb default '{}'::jsonb,
             email_confirmed_at timestamptz default now(),
             last_sign_in_at timestamptz,
-            created_at timestamptz default now());
+            created_at timestamptz default now(),
+            confirmation_sent_at timestamptz, recovery_sent_at timestamptz,
+            invited_at timestamptz);
           create unique index if not exists users_email_key on auth.users (email);
           -- auth.identities: ADR-0025's purge keeps any account with a non-email login.
           create table if not exists auth.identities (
@@ -754,7 +756,7 @@ jobs:
           create schema if not exists auth;
           create schema if not exists storage;
           create schema if not exists realtime;
-          create table if not exists auth.users (id uuid primary key, email text, email_confirmed_at timestamptz default now(), last_sign_in_at timestamptz, created_at timestamptz default now());
+          create table if not exists auth.users (id uuid primary key, email text, email_confirmed_at timestamptz default now(), last_sign_in_at timestamptz, created_at timestamptz default now(), confirmation_sent_at timestamptz, recovery_sent_at timestamptz, invited_at timestamptz);
           create unique index if not exists users_email_key on auth.users (email);
           create table if not exists auth.identities (id uuid default gen_random_uuid() primary key, user_id uuid references auth.users (id) on delete cascade, provider text);
           create schema if not exists cron;
