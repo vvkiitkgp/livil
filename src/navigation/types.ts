@@ -45,7 +45,11 @@ export type RootStackParamList = {
   // A profile's Friends / Stars (public to every signed-in viewer) or Fans (OWNER ONLY —
   // 'fans' always lists the caller's own; never navigate here with another user's id).
   // `username` is only for the header; omit it for your own profile.
-  ProfilePeople: { userId: string; username?: string; kind: 'friends' | 'stars' | 'fans' };
+  ProfilePeople: {
+    userId: string;
+    username?: string;
+    kind: 'friends' | 'stars' | 'fans' | 'mutualFriends' | 'friendFans';
+  };
   RecentlyPlayed: undefined;
   // A single post on its own page. Where post notifications land: `openComments`
   // opens the comments (pulsing `highlightCommentId`), `openLikers` opens the likes

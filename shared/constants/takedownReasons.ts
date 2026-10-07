@@ -29,6 +29,7 @@ export type TakedownReasonId =
   | 'hate'
   | 'violence'
   | 'spam'
+  | 'off_topic'
   | 'illegal'
   | 'other';
 
@@ -86,6 +87,15 @@ export const TAKEDOWN_REASONS: TakedownReason[] = [
     sentence:
       'This upload was published to mislead listeners — wrong title, wrong artist, or '
       + 'repeated posting of the same file.',
+  },
+  {
+    // Not spam: nobody was misled, the upload just is not music. Kept apart so the creator
+    // is not told they tried to deceive anyone, and so off-topic removals can be counted.
+    id: 'off_topic',
+    label: 'Not music / off-topic for Livil',
+    sentence:
+      'Livil is for music — songs, covers, beats and music videos. This upload is not '
+      + 'music, so it was removed. You are welcome to post your music here any time.',
   },
   {
     id: 'illegal',

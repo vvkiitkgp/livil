@@ -87,6 +87,9 @@ export type OpsCopyrightScan = {
   uploaderTakedowns: number;
   answeredAt: string | null;
   createdAt: string;
+  /** Set once an operator has marked the match reviewed; hides it from the default view. */
+  reviewedAt: string | null;
+  reviewerUsername: string | null;
   concern: Concern;
 };
 
@@ -136,9 +139,11 @@ const ORDER: Record<Concern, number> = {
 
 export async function fetchOpsCopyrightScans(
   includeAnswered = true,
+  includeReviewed = false,
 ): Promise<OpsCopyrightScan[]> {
   const { data, error } = await supabase.rpc('ops_copyright_scans', {
     p_include_answered: includeAnswered,
+    p_include_reviewed: includeReviewed,
   });
   if (error) throw new Error(error.message);
 
@@ -175,6 +180,8 @@ export async function fetchOpsCopyrightScans(
       uploaderTakedowns: Number(r.uploader_takedowns ?? 0),
       answeredAt: (r.acknowledged_at as string) ?? null,
       createdAt: String(r.created_at),
+      reviewedAt: (r.reviewed_at as string) ?? null,
+      reviewerUsername: (r.reviewer_username as string) ?? null,
     };
     return { ...base, concern: concernOf(base) };
   });
@@ -283,6 +290,19 @@ export async function restoreTrack(trackId: string, reason: string): Promise<voi
   const { error } = await supabase.rpc('ops_restore_track', {
     p_track_id: trackId,
     p_reason: reason.trim() || undefined,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Marks one match reviewed, or reopens it. Bookkeeping only — it takes nothing down and
+ * tells nobody; it just moves the row out of the default view. Raises for a non-operator,
+ * like the report equivalent, so a click that recorded nothing never looks like it worked.
+ */
+export async function markCopyrightReviewed(scanId: string, reviewed = true): Promise<void> {
+  const { error } = await supabase.rpc('ops_mark_copyright_reviewed', {
+    p_scan_id: scanId,
+    p_reviewed: reviewed,
   });
   if (error) throw new Error(error.message);
 }

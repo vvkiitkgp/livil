@@ -146,7 +146,14 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
             flipped={flipped}
             onFlip={() => setFlipped(f => !f)}
             role={role}
-            onNext={next}
+            // FAN is the default pick, applied on the way INTO the role step rather than
+            // as the initial state: the pass on this screen still reads PENDING, so the
+            // pick step stays the moment it gets printed. `?? ` keeps a choice made
+            // earlier when someone steps back here and forward again.
+            onNext={() => {
+              setRole(r => r ?? 'FAN');
+              next();
+            }}
           />
         )}
         {step === 1 && (
