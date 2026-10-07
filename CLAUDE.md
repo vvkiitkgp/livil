@@ -97,6 +97,15 @@ Rules for this list:
   this is done."** Don't leave me guessing whether you forgot the list.
 - **Never hide a required step in prose.** If I have to do it and it isn't in this list,
   that's a bug in your reply.
+- **Every backend step carries a production-safety verdict.** Applying a migration,
+  deploying an edge function, or changing a dashboard setting goes live for EVERY installed
+  app instantly, while the app update takes a week or more (see
+  [Production compatibility](#production-compatibility--backend-is-instant-the-app-takes-a-week)).
+  So each such item ends with one line saying whether it is **safe to apply right now,
+  before the app update ships**, and why in plain words — e.g. *"✅ Safe to apply now:
+  it only adds a new function; the app in the stores never calls it, so nothing changes
+  for current users."* If it is NOT safe, say so in bold, say what would break for people
+  on the current app, and give the order to do things in instead.
 
 Things that almost always belong here: applying a database migration, rebuilding the
 native app, bumping the version and uploading to the Play Console, rotating a key or
@@ -148,6 +157,49 @@ database, native, and build** topics.
 > of Android code checks 4 times a second whether the clip is over, and starts the next
 > one itself. **For you:** nothing to do — just don't move that logic back into
 > JavaScript, or music will stop on the lock screen."
+
+---
+
+## Production compatibility — backend is instant, the app takes a week
+
+**There is no staging or test environment. Every backend change lands directly on
+production, the moment it is applied, for every user — including everyone still running
+an older app build.** The mobile app, by contrast, reaches users only after store review
+(Apple can take a week or more) and then only as people update; some never do. So at any
+moment production serves **several app versions at once**, and the backend must keep all
+of them working. A feature or a bug fix must never break the app people already have.
+
+"Backend" here means anything that changes without a store release: migrations, RPCs /
+SQL functions, RLS policies, triggers, edge functions (`supabase/functions/`), Supabase
+dashboard settings, storage rules, and the web app (`web/`, Vercel — also instant).
+
+**Rules — apply to every change in this repo, feature or bug fix:**
+- **Add, don't change.** New tables, columns, functions and sections are safe because
+  old apps never ask for them. Changing what an existing thing returns or accepts is not.
+- **Never rename, drop, or retype anything a shipped app reads or calls** — a column in a
+  `.select(...)`, an RPC name, a parameter, a returned field, an enum value, a storage
+  path. Old apps call it by the old name forever. To replace one: ship the new one
+  alongside, ship the app that uses it, and remove the old one only after the store's
+  version-adoption numbers show the old app is effectively gone — and only when asked.
+- **New columns must be nullable or have a default**, so inserts from old apps (which
+  don't send them) keep working. New `NOT NULL` without a default breaks every old
+  upload/sign-up.
+- **Tightening rules (RLS, CHECK constraints, triggers that reject) needs a check against
+  what old apps actually send.** A stricter policy that the new app satisfies can still
+  make the current app's writes fail — that is a production outage for everyone who
+  hasn't updated.
+- **New app code must tolerate the backend change not being applied yet** (fail-safe:
+  missing function or column → hide the feature, never an error), because the order the
+  two land in is not guaranteed.
+- **When it's genuinely unavoidable to break old apps, stop and ask** — say who breaks,
+  what they'd see, and the safer sequence — before writing it.
+
+**How to check before calling a backend change safe:** grep the client
+(`src/`, `lib/`, `web/`) for every table, column, function and field the change touches,
+and remember the shipped app is the code at the last **`release: x.y.z`** commit
+(`git log --grep '^release:' -1`), not `main` — check that version too
+(`git grep <name> <release-commit> -- src lib`). Every older release still in use counts. Then say the verdict in the ✅ Your turn
+list as described above.
 
 ---
 
