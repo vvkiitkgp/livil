@@ -18,6 +18,7 @@ import FormInput from '../../components/FormInput';
 import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import { Icon } from '../../components/Icon';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../utils/passwordPolicy';
 
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignUp'>;
@@ -98,8 +99,9 @@ export default function SignUpScreen({ navigation }: Props) {
       setError('That username is taken. Please choose another.');
       return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    const weak = passwordProblem(password);
+    if (weak) {
+      setError(weak);
       return;
     }
     setLoading(true);
@@ -121,6 +123,8 @@ export default function SignUpScreen({ navigation }: Props) {
         if (msg.includes('already registered') || msg.includes('already exists')) {
           setErrorKind('emailExists');
           setError('An account with this email already exists.');
+        } else if (isWeakPasswordError(signUpError)) {
+          setError(WEAK_PASSWORD_MESSAGE);
         } else if (msg.includes('rate limit')) {
           setError('Too many attempts. Please wait a bit and try again.');
         } else {
@@ -223,7 +227,7 @@ export default function SignUpScreen({ navigation }: Props) {
               <FormInput
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Min. 6 characters"
+                placeholder="Min. 8 characters"
                 secureTextEntry={!passwordVisible}
                 trailing={
                   <TouchableOpacity
@@ -235,7 +239,7 @@ export default function SignUpScreen({ navigation }: Props) {
                   </TouchableOpacity>
                 }
               />
-              <Text style={styles.hint}>At least 6 characters</Text>
+              <Text style={styles.hint}>At least 8 characters, with a letter and a number</Text>
             </View>
 
             <Button
