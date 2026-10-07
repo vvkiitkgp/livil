@@ -12,11 +12,12 @@ import {
 } from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, PermissionsAndroid } from 'react-native';
+import { AppState, Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
 import { navigateWhenReady } from '../navigation/navigationRef';
 import { LIVIL_NOTIFICATION_ID_PREFIX } from './appBadge';
+import { getActiveConversation, pingConversation } from './activeConversation';
 import type { RootStackParamList } from '../navigation/types';
 
 const DEVICE_ID_KEY = 'livil.device_id';
@@ -357,6 +358,23 @@ export async function displayPushNotification(
 ): Promise<void> {
   if (!data) return;
   const kind = data.kind ?? '';
+
+  // The user is looking at this very chat: a banner would announce something
+  // already on screen — or, when realtime has dropped, something NOT yet on
+  // screen. Either way, have the chat fetch its latest instead of notifying.
+  // Only while the app is in the foreground: index.js's background handler
+  // shares this module state on Android, and a backgrounded user must still be
+  // told. If no chat screen answers the ping, fall through and notify.
+  if (
+    CHAT_KINDS.has(kind) &&
+    data.conversationId &&
+    AppState.currentState === 'active' &&
+    data.conversationId === getActiveConversation() &&
+    pingConversation(data.conversationId)
+  ) {
+    return;
+  }
+
   const channelId = data.channelId ?? 'messages';
   const title = data.title ?? '';
   const body = data.body ?? '';

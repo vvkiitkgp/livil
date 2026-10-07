@@ -27,6 +27,8 @@ import { Platform } from 'react-native';
 import {
   setAppBadgeCount,
   resyncAppBadgeCount,
+  requestBadgeRefresh,
+  onBadgeRefreshRequested,
   clearAppBadge,
   LIVIL_NOTIFICATION_ID_PREFIX,
 } from '../appBadge';
@@ -140,5 +142,35 @@ describe('clearAppBadge', () => {
     await clearAppBadge();
     expect(mockSetBadgeCount).toHaveBeenCalledWith(0);
     expect(mockCancelAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('requestBadgeRefresh', () => {
+  it('asks every subscriber (HomeScreen) to re-count', () => {
+    const home = jest.fn();
+    const off = onBadgeRefreshRequested(home);
+    requestBadgeRefresh();
+    expect(home).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it('stops calling a subscriber once it unsubscribes (signed out / unmounted)', () => {
+    const home = jest.fn();
+    const off = onBadgeRefreshRequested(home);
+    off();
+    requestBadgeRefresh();
+    expect(home).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op with nobody listening, and a throwing listener does not stop the others', () => {
+    expect(() => requestBadgeRefresh()).not.toThrow();
+    const bad = jest.fn(() => { throw new Error('boom'); });
+    const good = jest.fn();
+    const offBad = onBadgeRefreshRequested(bad);
+    const offGood = onBadgeRefreshRequested(good);
+    expect(() => requestBadgeRefresh()).not.toThrow();
+    expect(good).toHaveBeenCalledTimes(1);
+    offBad();
+    offGood();
   });
 });

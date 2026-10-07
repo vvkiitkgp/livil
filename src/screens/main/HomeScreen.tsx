@@ -49,7 +49,13 @@ import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
-import { setAppBadgeCount, resyncAppBadgeCount } from '../../services/appBadge';
+import {
+  setAppBadgeCount,
+  resyncAppBadgeCount,
+  onBadgeRefreshRequested,
+} from '../../services/appBadge';
+import { retryOnce } from '../../utils/retryOnce';
+import { avoidRepeatTop } from '../../utils/avoidRepeatTop';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -236,6 +242,10 @@ export default function HomeScreen() {
   // Posts the viewer has deleted in this session. Filtered out before the
   // FlatList sees them, so the card unmounts immediately.
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  // Mirrors deletedIds for appendFeedPage (memoised with no deps), so it can tell
+  // which card is actually the first on screen.
+  const deletedIdsRef = useRef(deletedIds);
+  deletedIdsRef.current = deletedIds;
   const handlePostDeleted = useCallback((postId: string) => {
     setDeletedIds(prev => {
       if (prev.has(postId)) { return prev; }
@@ -250,6 +260,15 @@ export default function HomeScreen() {
 
   // Top bar hide/show on scroll direction
   const TOP_BAR_H = 64;
+  // iOS: clear the floating top bar with an inset rather than a spacer row, so
+  // UIRefreshControl sits under the bar instead of behind it. The resting scroll
+  // offset becomes -TOP_BAR_H; handleScroll's `y < 10` "at the top" test still
+  // holds for it.
+  const FEED_INSET_IOS = useMemo(() => ({
+    contentInset: { top: TOP_BAR_H },
+    contentOffset: { x: 0, y: -TOP_BAR_H },
+    scrollIndicatorInsets: { top: TOP_BAR_H },
+  }), []);
   const topBarAnim = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
   const topBarVisible = useRef(true);
@@ -529,7 +548,10 @@ export default function HomeScreen() {
     let messages: number | null = null;
     let activity: number | null = null;
     try {
-      const convs = await listConversations();
+      // Retried: the foreground path fires this the instant iOS resumes the
+      // app, when the first request typically fails — and a failed read means
+      // the icon is left as it is.
+      const convs = await retryOnce(listConversations);
       messages = convs.reduce((sum, c) => sum + c.unreadCount, 0);
       if (!isCancelled()) { setTotalUnread(messages); }
     } catch {
@@ -537,7 +559,7 @@ export default function HomeScreen() {
     }
     // livil Bot activity is a separate table — refetch its unread count too.
     try {
-      activity = await getActivityUnreadCount();
+      activity = await retryOnce(getActivityUnreadCount);
       if (!isCancelled()) { setActivityUnread(activity); }
     } catch {
       // ignore
@@ -569,6 +591,18 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
       sub.remove();
+    };
+  }, [refreshUnreadCounts]);
+
+  // Re-count when another screen changed the total — a chat that just marked its
+  // messages read. Without this, leaving the app straight from that chat left
+  // the icon on the count from while it was being read (see requestBadgeRefresh).
+  useEffect(() => {
+    let cancelled = false;
+    const off = onBadgeRefreshRequested(() => { void refreshUnreadCounts(() => cancelled); });
+    return () => {
+      cancelled = true;
+      off();
     };
   }, [refreshUnreadCounts]);
 
@@ -706,8 +740,15 @@ export default function HomeScreen() {
       // next page's cards) fade in instantly instead of popping when scrolled to.
       prefetchFeedMedia(chunk);
 
+      // The post the user was just looking at at the top, for avoidRepeatTop.
+      // Read BEFORE setPosts replaces the list.
+      const previousTopId = postsRef.current.find(post => !deletedIdsRef.current.has(post.id))?.id;
+
       setPosts(prev => {
-        if (mode === 'initial' || mode === 'refresh') {
+        if (mode === 'refresh') {
+          return avoidRepeatTop(chunk, previousTopId);
+        }
+        if (mode === 'initial') {
           return chunk;
         }
         const seen = new Set(prev.map(p => p.id));
@@ -835,8 +876,11 @@ export default function HomeScreen() {
   const listHeader = useMemo(
     () => (
       <>
-        {/* Spacer so content starts below the fixed top bar */}
-        <View style={{ height: TOP_BAR_H }} />
+        {/* Spacer so content starts below the fixed top bar — Android only. iOS
+            clears the bar with a content inset instead (see FEED_INSET_IOS), which is
+            what puts the pull-to-refresh spinner BELOW the bar: a spacer is content,
+            and the spinner draws above content, i.e. behind the bar. */}
+        {Platform.OS === 'android' ? <View style={{ height: TOP_BAR_H }} /> : null}
 
         {/*
           TODO: Featured Today — curated editorial spotlight card once CMS + tooling exists.
@@ -937,12 +981,16 @@ export default function HomeScreen() {
             </View>
           )
         }
+        // The top bar floats over the list, so the list's top TOP_BAR_H is covered.
+        // The spinner must start below it, as it does in the inbox (whose header is
+        // a normal row above its list): iOS via the content inset, Android via
+        // progressViewOffset. Default colours, matching the inbox's spinner.
+        {...(Platform.OS === 'ios' ? FEED_INSET_IOS : null)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={COLORS.purpleLight}
-            colors={[COLORS.purple]}
+            progressViewOffset={TOP_BAR_H}
           />
         }
         onEndReached={() => {

@@ -119,12 +119,17 @@ function ConversationRow({
 
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          <Text style={styles.nameText} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {/* DM only: a group has no single owner to badge. Badges go with the name;
-              AddBadge is an action and stays last. */}
-          {isDm && item.otherUserId ? <UsernameBadges userId={item.otherUserId} size={15} /> : null}
+          {/* The group takes the free space; the name inside only shrinks to fit, so
+              badges sit right after it instead of being pushed to the far edge (a
+              `flex: 1` name filled the row and left the gap BETWEEN name and badge). */}
+          <View style={styles.nameGroup}>
+            <Text style={styles.nameText} numberOfLines={1}>
+              {displayName}
+            </Text>
+            {/* DM only: a group has no single owner to badge. Badges go with the name;
+                AddBadge is an action and stays last. */}
+            {isDm && item.otherUserId ? <UsernameBadges userId={item.otherUserId} size={15} /> : null}
+          </View>
           {isDm && item.otherUserId ? <AddBadge userId={item.otherUserId} size="sm" /> : null}
           <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
         </View>
@@ -469,8 +474,9 @@ const styles = StyleSheet.create({
   },
   rowBody: { flex: 1, gap: 3 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nameGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   nameText: {
-    flex: 1,
+    flexShrink: 1,
     color: COLORS.white,
     fontSize: 15,
     fontWeight: '600',

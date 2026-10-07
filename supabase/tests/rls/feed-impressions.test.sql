@@ -19,7 +19,9 @@
 --     viewer cannot be shown an empty feed. `feed_bucket` carries ONE distinction since
 --     20260816020000 — 1 = ranked normally, 4 = seen enough — because affinity moved into
 --     the score and only suppression still needs to beat every score outright;
---   · engagement — a play OR a like — exempts a post from suppression;
+--   · engagement does NOT exempt (since 20261009000000) — a played or liked post that
+--     has been seen enough fades like any other — and the penalty keeps growing past 4
+--     sightings;
 --   · one viewer's suppression does not touch another's feed.
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/feed-impressions.test.sql
@@ -115,9 +117,9 @@ insert into posts (id, author_id, kind, track_id) values
   ('f3000000-0000-0000-0000-000000000001', 'f1000000-0000-0000-0000-000000000003',
    'upload', 'f2000000-0000-0000-0000-000000000001'),   -- IGNORED  → should be suppressed
   ('f3000000-0000-0000-0000-000000000002', 'f1000000-0000-0000-0000-000000000003',
-   'upload', 'f2000000-0000-0000-0000-000000000001'),   -- PLAYED   → exempt
+   'upload', 'f2000000-0000-0000-0000-000000000001'),   -- PLAYED   → suppressed too
   ('f3000000-0000-0000-0000-000000000003', 'f1000000-0000-0000-0000-000000000003',
-   'upload', 'f2000000-0000-0000-0000-000000000001')    -- LIKED    → exempt
+   'upload', 'f2000000-0000-0000-0000-000000000001')    -- LIKED    → suppressed too
 on conflict do nothing;
 
 -- ── 1. The writer attributes to auth.uid(), and rate-limits ─────────────────
@@ -219,9 +221,10 @@ select pg_temp.assert(
   pg_temp.bucket_of('f3000000-0000-0000-0000-000000000001') is not null,
   true);
 
--- ── 6. Engagement exempts ───────────────────────────────────────────────────
--- Both posts are pushed well past the threshold, so anything other than the exemption
--- keeping them out of bucket 4 would have to be an accident.
+-- ── 6. Engagement no longer exempts ─────────────────────────────────────────
+-- 20261009000000: the feed should feel fresh, and a liked track is already in the
+-- viewer's playlist. Both posts are well past the threshold and engaged with; both
+-- must land in bucket 4 — demoted, still returned.
 reset role;
 insert into public.post_impressions (user_id, post_id, seen_count, last_seen_at) values
   ('f1000000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-000000000002',
@@ -241,16 +244,38 @@ on conflict do nothing;
 set local role authenticated;
 select pg_temp.set_user('f1000000-0000-0000-0000-000000000001');
 
--- This is the assertion that fails if post_views has no own-row SELECT policy: the
--- invoker reads zero rows, the play is invisible, and the post is suppressed anyway.
 select pg_temp.assert_num(
-  'a post the viewer PLAYED is never suppressed',
+  'a post the viewer PLAYED is still demoted once seen enough',
   pg_temp.bucket_of('f3000000-0000-0000-0000-000000000002')::bigint,
-  1);
+  4);
 
 select pg_temp.assert_num(
-  'a post the viewer LIKED is never suppressed',
+  'a post the viewer LIKED is still demoted once seen enough',
   pg_temp.bucket_of('f3000000-0000-0000-0000-000000000003')::bigint,
+  4);
+
+-- ── 6b. The seen penalty keeps growing past 4 sightings ─────────────────────
+-- Same author, same track, same age; the LIKED post even has the engagement edge
+-- (its like counts toward its score). Seen 20 times it must still sort below the one
+-- seen 4 times. Before 20261009000000 the penalty capped at 4 sightings and the liked
+-- post won — so this fails against the old ranker.
+reset role;
+update public.post_impressions set seen_count = 4
+ where user_id = 'f1000000-0000-0000-0000-000000000001'
+   and post_id = 'f3000000-0000-0000-0000-000000000002';
+update public.post_impressions set seen_count = 20
+ where user_id = 'f1000000-0000-0000-0000-000000000001'
+   and post_id = 'f3000000-0000-0000-0000-000000000003';
+
+set local role authenticated;
+select pg_temp.set_user('f1000000-0000-0000-0000-000000000001');
+
+select pg_temp.assert_num(
+  'a post seen 20 times ranks below an otherwise-equal one seen 4 times',
+  (select count(*) from public.fetch_home_feed(50) a, public.fetch_home_feed(50) b
+    where a.post_id = 'f3000000-0000-0000-0000-000000000002'
+      and b.post_id = 'f3000000-0000-0000-0000-000000000003'
+      and a.sort_key > b.sort_key)::bigint,
   1);
 
 -- ── 7. Suppression is per-person ────────────────────────────────────────────
