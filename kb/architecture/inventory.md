@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-277 TypeScript file(s) under `src/`, 68,558 lines.
+277 TypeScript file(s) under `src/`, 68,651 lines.
 
 ## Size hotspots
 
@@ -31,7 +31,7 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
-| `src/screens/main/HomeScreen.tsx` | 1252 |
+| `src/screens/main/HomeScreen.tsx` | 1283 |
 | `src/screens/main/UserProfileScreen.tsx` | 1223 |
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
@@ -103,14 +103,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,826 lines.
+46 file(s), 23,857 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 1780 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
-| `src/screens/main/HomeScreen.tsx` | 1252 |
+| `src/screens/main/HomeScreen.tsx` | 1283 |
 | `src/screens/main/UserProfileScreen.tsx` | 1223 |
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
@@ -266,7 +266,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-60 file(s), 12,268 lines.
+60 file(s), 12,330 lines.
 
 | File | Lines |
 |---|---:|
@@ -298,16 +298,16 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 149 |
+| `src/services/__tests__/appBadge.test.ts` | 145 |
 | `src/services/jamSuggestions.ts` | 140 |
+| `src/services/appBadge.ts` | 134 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
 | `src/services/follows.ts` | 114 |
-| `src/services/__tests__/appBadge.test.ts` | 113 |
 | `src/services/__tests__/profileBadges.test.ts` | 110 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
-| `src/services/appBadge.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/mediaPicks.ts` | 93 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |

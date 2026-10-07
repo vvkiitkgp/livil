@@ -4,6 +4,7 @@ import {
   Text,
   FlatList,
   Platform,
+  AppState,
   Animated,
   StyleSheet,
   TouchableOpacity,
@@ -48,7 +49,7 @@ import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
-import { setAppBadgeCount } from '../../services/appBadge';
+import { setAppBadgeCount, resyncAppBadgeCount } from '../../services/appBadge';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -512,34 +513,64 @@ export default function HomeScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  // Re-fetch unread message count whenever Home regains focus.
-  // Covers: user opens Inbox → reads messages (last_read_at advances) → returns
-  // to Home and expects the badge to be cleared.
+  // Read by the re-count below without making it re-subscribe on every change.
+  const pendingIncomingRef = useRef(pendingIncomingCount);
+  pendingIncomingRef.current = pendingIncomingCount;
+
+  // Re-fetch the unread counts from the server, then re-write the iOS icon with
+  // the result EVEN IF NOTHING CHANGED. The effect above only fires on a change,
+  // but a push may have set the icon behind the app's back while it was
+  // backgrounded — see resyncAppBadgeCount.
+  //
+  // `isCancelled` guards the state writes against an unmounted / blurred caller.
+  // The icon is only re-written when both reads succeed: a partial total could
+  // clear a number that is still correct.
+  const refreshUnreadCounts = useCallback(async (isCancelled: () => boolean) => {
+    let messages: number | null = null;
+    let activity: number | null = null;
+    try {
+      const convs = await listConversations();
+      messages = convs.reduce((sum, c) => sum + c.unreadCount, 0);
+      if (!isCancelled()) { setTotalUnread(messages); }
+    } catch {
+      // ignore
+    }
+    // livil Bot activity is a separate table — refetch its unread count too.
+    try {
+      activity = await getActivityUnreadCount();
+      if (!isCancelled()) { setActivityUnread(activity); }
+    } catch {
+      // ignore
+    }
+    if (isCancelled() || messages === null || activity === null) { return; }
+    void resyncAppBadgeCount(messages + pendingIncomingRef.current + activity);
+  }, []);
+
+  // Re-count whenever Home regains focus.
+  // Covers: user opens Inbox / Activity Center → reads (last_read_at advances,
+  // markActivityRead) → returns to Home and expects the badge cleared.
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      (async () => {
-        try {
-          const convs = await listConversations();
-          if (!cancelled) {
-            setTotalUnread(convs.reduce((sum, c) => sum + c.unreadCount, 0));
-          }
-        } catch {
-          // ignore
-        }
-        // livil Bot activity is a separate table — refetch its unread count too.
-        // Covers: user opens Activity Center → markActivityRead() → returns to Home
-        // and expects the bot's contribution to the badge cleared.
-        try {
-          const n = await getActivityUnreadCount();
-          if (!cancelled) { setActivityUnread(n); }
-        } catch {
-          // ignore
-        }
-      })();
+      void refreshUnreadCounts(() => cancelled);
       return () => { cancelled = true; };
-    }, []),
+    }, [refreshUnreadCounts]),
   );
+
+  // Re-count when the app returns to the foreground. Focus does not fire then
+  // (Home never lost focus), realtime was paused while backgrounded so the
+  // in-app totals may have missed messages, and a push may have changed the
+  // icon. Opening the app from a push is exactly this path.
+  useEffect(() => {
+    let cancelled = false;
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') { void refreshUnreadCounts(() => cancelled); }
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [refreshUnreadCounts]);
 
   // Live: increment unread when a new message arrives in any of my conversations.
   // RLS lets the realtime worker filter to messages I can SELECT (i.e. ones in

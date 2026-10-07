@@ -23,8 +23,10 @@ jest.mock('@notifee/react-native', () => ({
   },
 }));
 
+import { Platform } from 'react-native';
 import {
   setAppBadgeCount,
+  resyncAppBadgeCount,
   clearAppBadge,
   LIVIL_NOTIFICATION_ID_PREFIX,
 } from '../appBadge';
@@ -100,6 +102,36 @@ describe('setAppBadgeCount', () => {
   it('swallows a failure to read the tray', async () => {
     mockGetDisplayed.mockRejectedValue(new Error('boom'));
     await expect(setAppBadgeCount(0)).resolves.toBeUndefined();
+  });
+
+  it('still zeroes the icon when the tray cannot be read', async () => {
+    // Clearing the number used to sit behind the tray read in one try block, so a
+    // failed read left a stale number on the icon.
+    mockGetDisplayed.mockRejectedValue(new Error('boom'));
+    await setAppBadgeCount(0);
+    expect(mockSetBadgeCount).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('resyncAppBadgeCount', () => {
+  const realOS = Platform.OS;
+  afterEach(() => { Platform.OS = realOS; });
+
+  it('re-writes an unchanged zero on iOS, overwriting a number a push left behind', async () => {
+    // The bug: a push set the icon to 1, the in-app total stayed 0 → 0, and the
+    // change-driven effect never ran again. The resync must write regardless.
+    await resyncAppBadgeCount(0);
+    await resyncAppBadgeCount(0);
+    expect(mockSetBadgeCount).toHaveBeenCalledTimes(2);
+    expect(mockSetBadgeCount).toHaveBeenLastCalledWith(0);
+  });
+
+  it('does nothing on Android, where re-running the zero path would clear the tray', async () => {
+    Platform.OS = 'android';
+    await resyncAppBadgeCount(0);
+    expect(mockSetBadgeCount).not.toHaveBeenCalled();
+    expect(mockCancelAll).not.toHaveBeenCalled();
+    expect(mockGetDisplayed).not.toHaveBeenCalled();
   });
 });
 
