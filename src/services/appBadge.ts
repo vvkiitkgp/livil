@@ -125,6 +125,38 @@ export async function resyncAppBadgeCount(count: number): Promise<void> {
 }
 
 /**
+ * Ask whoever owns the live unread total (HomeScreen) to re-count from the
+ * server and re-write the icon.
+ *
+ * HomeScreen is the only place all three counts exist, but it only re-counts
+ * on its own focus and on app foreground. Reading a chat changes the count
+ * from ANOTHER screen, and a user who leaves the app straight from that chat
+ * never refocuses Home — so the icon kept the number from while they were
+ * reading (Home's realtime listener adds +1 for every incoming message, even
+ * in the chat currently open). Callers fire this after the read is saved.
+ *
+ * A plain listener set, not a context: the caller is a service-level event,
+ * and HomeScreen stays mounted for the whole signed-in session.
+ */
+const refreshListeners = new Set<() => void>();
+
+export function requestBadgeRefresh(): void {
+  refreshListeners.forEach(listener => {
+    try {
+      listener();
+    } catch (e) {
+      console.warn('[badge] refresh listener failed', e);
+    }
+  });
+}
+
+/** Subscribe to `requestBadgeRefresh`. Returns the unsubscribe function. */
+export function onBadgeRefreshRequested(listener: () => void): () => void {
+  refreshListeners.add(listener);
+  return () => { refreshListeners.delete(listener); };
+}
+
+/**
  * Sign-out / account-switch. The next user must not inherit the previous one's
  * number, and their notifications must not be readable from the tray.
  */

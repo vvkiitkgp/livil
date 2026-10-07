@@ -43,6 +43,7 @@ import {
 } from '../../services/messages';
 import { messageCache } from '../../services/messageCache';
 import { clearConversationNotifications } from '../../services/pushNotifications';
+import { requestBadgeRefresh } from '../../services/appBadge';
 import {
   markAsRead,
   getOtherMemberReadAt,
@@ -457,6 +458,20 @@ async function fetchFirstPageWithRetry(
   }
 }
 
+/**
+ * Save the read marker, THEN have Home re-count the icon badge. Reading here is
+ * what changes the unread total, and Home cannot see it happen; a user who
+ * leaves the app from this screen would otherwise keep the old number.
+ */
+async function markReadAndRefreshBadge(conversationId: string): Promise<void> {
+  try {
+    await markAsRead(conversationId);
+  } catch {
+    // markAsRead is best-effort; re-count anyway, it is harmless.
+  }
+  requestBadgeRefresh();
+}
+
 export default function ConversationScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -668,7 +683,7 @@ export default function ConversationScreen() {
         }
       });
 
-    void markAsRead(conversationId);
+    void markReadAndRefreshBadge(conversationId);
     // Reading the chat makes its notifications stale — including ones the user
     // did not tap (two messages → two iOS rows, a tap removes only one).
     void clearConversationNotifications(conversationId);
@@ -699,7 +714,7 @@ export default function ConversationScreen() {
           });
           // After the fetch, not before: a read marker sent in the first instant
           // after resume can fail the same way the load did.
-          void markAsRead(conversationId);
+          void markReadAndRefreshBadge(conversationId);
         })
         .catch((err: unknown) => {
           console.warn('[chat] resume refresh failed', err);
@@ -779,7 +794,7 @@ export default function ConversationScreen() {
         // own outbound — markAsRead for our own message is a no-op and
         // wastes a round trip.
         if (msg.senderId && msg.senderId !== myId) {
-          void markAsRead(conversationId);
+          void markReadAndRefreshBadge(conversationId);
           // The push for this message may already be on screen while the user
           // is reading it here.
           void clearConversationNotifications(conversationId);

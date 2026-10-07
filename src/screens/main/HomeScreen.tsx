@@ -49,7 +49,12 @@ import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { listConversations } from '../../services/conversations';
 import { getActivityUnreadCount } from '../../services/activity';
-import { setAppBadgeCount, resyncAppBadgeCount } from '../../services/appBadge';
+import {
+  setAppBadgeCount,
+  resyncAppBadgeCount,
+  onBadgeRefreshRequested,
+} from '../../services/appBadge';
+import { retryOnce } from '../../utils/retryOnce';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -529,7 +534,10 @@ export default function HomeScreen() {
     let messages: number | null = null;
     let activity: number | null = null;
     try {
-      const convs = await listConversations();
+      // Retried: the foreground path fires this the instant iOS resumes the
+      // app, when the first request typically fails — and a failed read means
+      // the icon is left as it is.
+      const convs = await retryOnce(listConversations);
       messages = convs.reduce((sum, c) => sum + c.unreadCount, 0);
       if (!isCancelled()) { setTotalUnread(messages); }
     } catch {
@@ -537,7 +545,7 @@ export default function HomeScreen() {
     }
     // livil Bot activity is a separate table — refetch its unread count too.
     try {
-      activity = await getActivityUnreadCount();
+      activity = await retryOnce(getActivityUnreadCount);
       if (!isCancelled()) { setActivityUnread(activity); }
     } catch {
       // ignore
@@ -569,6 +577,18 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
       sub.remove();
+    };
+  }, [refreshUnreadCounts]);
+
+  // Re-count when another screen changed the total — a chat that just marked its
+  // messages read. Without this, leaving the app straight from that chat left
+  // the icon on the count from while it was being read (see requestBadgeRefresh).
+  useEffect(() => {
+    let cancelled = false;
+    const off = onBadgeRefreshRequested(() => { void refreshUnreadCounts(() => cancelled); });
+    return () => {
+      cancelled = true;
+      off();
     };
   }, [refreshUnreadCounts]);
 
