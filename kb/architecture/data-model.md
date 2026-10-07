@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-04
+last_verified: 2026-10-07
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 125 migration(s) in `supabase/migrations/`.
+Reconstructed from 128 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-49 table(s).
+50 table(s).
 
 ### `activity_notifications`
 
@@ -981,6 +981,21 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 **Table constraints**
 
 - `primary key (story_id, viewer_id)`
+
+### `suggestion_dismissals`
+
+RLS enabled · defined in `20261007000000_suggestion_dismissals.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `dismissed_user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (user_id, dismissed_user_id)`
+- `constraint suggestion_dismissals_not_self check (user_id <> dismissed_user_id)`
 
 ### `team_messages`
 
