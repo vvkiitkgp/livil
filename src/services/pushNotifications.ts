@@ -456,6 +456,41 @@ export async function displayPushNotification(
   });
 }
 
+/**
+ * Remove every notification for one conversation from the tray / Notification
+ * Center. Called when that conversation is read in-app, so a message the user
+ * has already seen does not sit there until it is swiped away.
+ *
+ * Matched two ways, because the two platforms post these differently:
+ *   • Android — notifee posted it, as ONE merged card per chat under
+ *     `livil:chat:<conversationId>`.
+ *   • iOS — iOS rendered it itself from the APNs alert (see send-push), one row
+ *     per message, under an id iOS chose. The only handle is the FCM data, which
+ *     lands in the row's userInfo with `conversationId` set by
+ *     messages.ts / jam invites.
+ * Tapping a notification only removes THAT row, so a second message from the
+ * same chat used to survive the user reading it.
+ *
+ * Never touches anything without this conversation's id — the media3 player
+ * card and other chats are left alone. Fail-safe: a lingering notification is
+ * cosmetic, so this never throws.
+ */
+export async function clearConversationNotifications(conversationId: string): Promise<void> {
+  try {
+    const mergedChatId = `${LIVIL_NOTIFICATION_ID_PREFIX}chat:${conversationId}`;
+    const displayed = await notifee.getDisplayedNotifications();
+    const ids = displayed
+      .filter(d =>
+        d.id === mergedChatId || d.notification?.data?.conversationId === conversationId)
+      .map(d => d.id)
+      .filter((id): id is string => typeof id === 'string');
+    if (ids.length === 0) { return; }
+    await notifee.cancelDisplayedNotifications(ids);
+  } catch (e) {
+    console.warn('[push] clearConversationNotifications failed', e);
+  }
+}
+
 const unsubFns: Array<() => void> = [];
 let initialized = false;
 let tokenRefreshUnsub: (() => void) | null = null;

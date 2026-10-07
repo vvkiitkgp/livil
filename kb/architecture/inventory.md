@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-276 TypeScript file(s) under `src/`, 68,380 lines.
+277 TypeScript file(s) under `src/`, 68,558 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 1715 |
+| `src/screens/main/ConversationScreen.tsx` | 1780 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
@@ -103,11 +103,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,761 lines.
+46 file(s), 23,826 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1715 |
+| `src/screens/main/ConversationScreen.tsx` | 1780 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/screens/main/HomeScreen.tsx` | 1252 |
@@ -266,13 +266,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-59 file(s), 12,155 lines.
+60 file(s), 12,268 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1139 |
 | `src/services/tracks.ts` | 1001 |
-| `src/services/pushNotifications.ts` | 641 |
+| `src/services/pushNotifications.ts` | 676 |
 | `src/services/albums.ts` | 518 |
 | `src/services/activity.ts` | 426 |
 | `src/services/profileService.ts` | 416 |
@@ -315,6 +315,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
 | `src/services/googleAuth.ts` | 79 |
+| `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
 | `src/services/__tests__/findMyActiveJam.test.ts` | 78 |
 | `src/services/terms.ts` | 78 |
 | `src/services/searchAnalytics.ts` | 72 |
