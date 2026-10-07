@@ -152,7 +152,11 @@ export async function listBlockedAccounts(): Promise<BlockedAccount[]> {
 
 export async function sendFriendRequest(userId: string): Promise<void> {
   const { error } = await db.rpc('send_friend_request', { target_user_id: userId });
-  if (error) { throw new Error(error.message); }
+  // user_not_found: the account doesn't exist or never confirmed its email (ADR-0025).
+  // Deliberately one message for both, matching the server's single error.
+  if (error) {
+    throw new Error(error.message === 'user_not_found' ? 'This account isn’t available.' : error.message);
+  }
   void sendPush({
     recipientUserId: userId,
     kind: 'friend_request',
