@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-277 TypeScript file(s) under `src/`, 68,651 lines.
+282 TypeScript file(s) under `src/`, 69,086 lines.
 
 ## Size hotspots
 
@@ -27,11 +27,11 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 1780 |
+| `src/screens/main/ConversationScreen.tsx` | 1856 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
 | `src/components/PostCard.tsx` | 1394 |
-| `src/screens/main/HomeScreen.tsx` | 1283 |
+| `src/screens/main/HomeScreen.tsx` | 1303 |
 | `src/screens/main/UserProfileScreen.tsx` | 1223 |
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
@@ -103,14 +103,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,857 lines.
+46 file(s), 23,953 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1780 |
+| `src/screens/main/ConversationScreen.tsx` | 1856 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1539 |
-| `src/screens/main/HomeScreen.tsx` | 1283 |
+| `src/screens/main/HomeScreen.tsx` | 1303 |
 | `src/screens/main/UserProfileScreen.tsx` | 1223 |
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
@@ -266,13 +266,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-60 file(s), 12,330 lines.
+63 file(s), 12,620 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1139 |
 | `src/services/tracks.ts` | 1001 |
-| `src/services/pushNotifications.ts` | 676 |
+| `src/services/pushNotifications.ts` | 694 |
 | `src/services/albums.ts` | 518 |
 | `src/services/activity.ts` | 426 |
 | `src/services/profileService.ts` | 416 |
@@ -282,8 +282,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/messages.ts` | 366 |
 | `src/services/share.ts` | 358 |
 | `src/services/uploads.ts` | 301 |
+| `src/services/jamRealtime.ts` | 279 |
 | `src/services/relationships.ts` | 270 |
-| `src/services/jamRealtime.ts` | 264 |
 | `src/services/conversations.ts` | 250 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
@@ -292,15 +292,15 @@ case the call fails silently wherever its result is discarded.
 | `src/services/stories.ts` | 209 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/tags.test.ts` | 180 |
+| `src/services/__tests__/appBadge.test.ts` | 177 |
 | `src/services/__tests__/publishTrackGate.test.ts` | 175 |
 | `src/services/__tests__/waveform.test.ts` | 173 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
+| `src/services/appBadge.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 149 |
-| `src/services/__tests__/appBadge.test.ts` | 145 |
 | `src/services/jamSuggestions.ts` | 140 |
-| `src/services/appBadge.ts` | 134 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
@@ -312,6 +312,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/mediaPicks.ts` | 93 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/searchDiscover.ts` | 88 |
+| `src/services/__tests__/pushOpenChat.test.ts` | 87 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
 | `src/services/googleAuth.ts` | 79 |
@@ -323,9 +324,11 @@ case the call fails silently wherever its result is discarded.
 | `src/services/mutuals.ts` | 66 |
 | `src/services/waveform.ts` | 66 |
 | `src/services/__tests__/createTrackStreamingGrant.test.ts` | 64 |
+| `src/services/activeConversation.ts` | 62 |
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
 | `src/services/pushDispatch.ts` | 48 |
+| `src/services/__tests__/activeConversation.test.ts` | 44 |
 | `src/services/jamHeartbeat.ts` | 43 |
 | `src/services/authSession.ts` | 36 |
 | `src/services/friendActivity.ts` | 33 |
@@ -369,7 +372,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-30 file(s), 3,377 lines.
+32 file(s), 3,426 lines.
 
 | File | Lines |
 |---|---:|
@@ -403,6 +406,8 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/recentSearchOpens.ts` | 52 |
 | `src/utils/mutualsText.ts` | 48 |
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
+| `src/utils/__tests__/retryOnce.test.ts` | 32 |
+| `src/utils/retryOnce.ts` | 17 |
 
 ## Dependencies
 
