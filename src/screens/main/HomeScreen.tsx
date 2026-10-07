@@ -55,6 +55,7 @@ import {
   onBadgeRefreshRequested,
 } from '../../services/appBadge';
 import { retryOnce } from '../../utils/retryOnce';
+import { avoidRepeatTop } from '../../utils/avoidRepeatTop';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -241,6 +242,10 @@ export default function HomeScreen() {
   // Posts the viewer has deleted in this session. Filtered out before the
   // FlatList sees them, so the card unmounts immediately.
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  // Mirrors deletedIds for appendFeedPage (memoised with no deps), so it can tell
+  // which card is actually the first on screen.
+  const deletedIdsRef = useRef(deletedIds);
+  deletedIdsRef.current = deletedIds;
   const handlePostDeleted = useCallback((postId: string) => {
     setDeletedIds(prev => {
       if (prev.has(postId)) { return prev; }
@@ -735,8 +740,15 @@ export default function HomeScreen() {
       // next page's cards) fade in instantly instead of popping when scrolled to.
       prefetchFeedMedia(chunk);
 
+      // The post the user was just looking at at the top, for avoidRepeatTop.
+      // Read BEFORE setPosts replaces the list.
+      const previousTopId = postsRef.current.find(post => !deletedIdsRef.current.has(post.id))?.id;
+
       setPosts(prev => {
-        if (mode === 'initial' || mode === 'refresh') {
+        if (mode === 'refresh') {
+          return avoidRepeatTop(chunk, previousTopId);
+        }
+        if (mode === 'initial') {
           return chunk;
         }
         const seen = new Set(prev.map(p => p.id));
