@@ -490,6 +490,28 @@ export default function ConversationScreen() {
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
+  // The keyboard's space below the newest message, as KeyboardChatScrollView
+  // applies it: a content inset on the inverted list's top edge (= its visual
+  // bottom), on both platforms. While it is non-zero the list's resting
+  // "showing the latest" position is offset -inset, not 0.
+  const keyboardInsetRef = useRef(0);
+  const onContentInsetChange = useCallback((i: { top?: number }) => {
+    keyboardInsetRef.current = i.top ?? 0;
+  }, []);
+
+  // Return to where the newest message rests when the chat is opened: 200pt of
+  // `paddingTop` (visual bottom) above the composer, lifted by the keyboard.
+  //
+  // NOT scrollToIndex({ index: 0 }). Index 0's measured offset includes that
+  // 200pt padding, so it scrolled 200pt PAST the resting position — the
+  // newest bubble landed on the list's bottom edge, behind the composer and
+  // keyboard. Short threads hid it only "sometimes": they cannot scroll that
+  // far, so the jump clamped early.
+  const scrollToLatest = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: -keyboardInsetRef.current, animated: true });
+  }, []);
+
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -747,7 +769,7 @@ export default function ConversationScreen() {
           console.log(`[realtime] ConversationScreen setMessages prepending id=${msg.id} (was ${prev.length} msgs)`);
           return [msg, ...prev];
         });
-        setTimeout(() => flatListRef.current?.scrollToIndex({ index: 0, animated: true }), 50);
+        setTimeout(scrollToLatest, 50);
         // Keep cache warm so the next open of this conversation shows the new msg
         void messageCache.prependMessages(conversationId, [msg]);
         // Re-mark read whenever an incoming message lands while the chat is
@@ -797,7 +819,7 @@ export default function ConversationScreen() {
     );
 
     return () => unsubscribeFromConversation(conversationId);
-  }, [conversationId, myId]);
+  }, [conversationId, myId, scrollToLatest]);
 
   // For groups: fetch member count. For DMs: resolve the other member (their avatar,
   // and whose listening status the now-playing pill follows).
@@ -877,7 +899,7 @@ export default function ConversationScreen() {
       reactions: [],
     };
     setMessages(prev => [optimistic, ...prev]);
-    setTimeout(() => flatListRef.current?.scrollToIndex({ index: 0, animated: true }), 50);
+    setTimeout(scrollToLatest, 50);
 
     try {
       const payload: SendMessagePayload = replyTarget
@@ -899,7 +921,7 @@ export default function ConversationScreen() {
     } finally {
       setSending(false);
     }
-  }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast]);
+  }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast, scrollToLatest]);
 
   /**
    * PLAY the shared track. The card says "Tap to listen", so it plays — it does not
@@ -1025,10 +1047,11 @@ export default function ConversationScreen() {
         contentInsetAdjustmentBehavior="never"
         keyboardDismissMode="interactive"
         offset={insets.bottom}
+        onContentInsetChange={onContentInsetChange}
         inverted
       />
     ),
-    [insets.bottom],
+    [insets.bottom, onContentInsetChange],
   );
 
   const renderItem = useCallback(
