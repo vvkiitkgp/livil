@@ -12,6 +12,7 @@ import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
+import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../../shared/services/passwordPolicy';
 
 type Props = {
   /** Called once the password has been updated. */
@@ -28,8 +29,9 @@ export default function ResetPasswordScreen({ onComplete, onCancel }: Props) {
   const [error, setError] = useState('');
 
   const handleReset = async () => {
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    const weak = passwordProblem(password);
+    if (weak) {
+      setError(weak);
       return;
     }
     if (password !== confirmPassword) {
@@ -41,7 +43,7 @@ export default function ResetPasswordScreen({ onComplete, onCancel }: Props) {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (updateError) {
-      setError(updateError.message);
+      setError(isWeakPasswordError(updateError) ? WEAK_PASSWORD_MESSAGE : updateError.message);
     } else {
       onComplete();
     }
@@ -78,7 +80,7 @@ export default function ResetPasswordScreen({ onComplete, onCancel }: Props) {
             <FormInput
               value={password}
               onChangeText={setPassword}
-              placeholder="Min. 6 characters"
+              placeholder="Min. 8 characters"
               secureTextEntry={!passwordVisible}
               trailing={
                 <TouchableOpacity

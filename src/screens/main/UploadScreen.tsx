@@ -49,6 +49,7 @@ import {
 } from '../../../shared/services/copyrightScan';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
+import { MIN_TRACK_SECONDS, tooShortMessage } from '../../../shared/constants/media';
 import { pickSquareImageFromGallery, pickVideoFromGallery } from '../../services/mediaPicks';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
@@ -498,6 +499,12 @@ export default function UploadScreen() {
         setError('Video posts need a thumbnail image.');
         return;
       }
+    }
+    // Unknown duration (the preview couldn't probe it) is let through: it backfills on
+    // first play, and blocking would strand files that are perfectly fine.
+    if (previewDurationSec != null && previewDurationSec > 0 && previewDurationSec < MIN_TRACK_SECONDS) {
+      setError(tooShortMessage(previewDurationSec));
+      return;
     }
     setSubmitting(true);
     setError('');

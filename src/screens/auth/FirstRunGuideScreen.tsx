@@ -107,17 +107,32 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           onPress={next}
           variant="primary"
           size="lg"
-          // Half the content width is a FLOOR, not a fixed width: "SHOW ME AROUND" in
-          // 16pt letter-spaced mono is ~160dp, wider than half of most phones once the
-          // button's own padding is taken out, so a fixed 50% truncated it. Computed from
-          // the window rather than `minWidth: '50%'` because percentage sizing has failed
-          // silently in RN 0.85 before. 56 = the container's horizontal padding.
-          style={{ minWidth: Math.max(160, (width - 56) / 2) }}
-          labelStyle={styles.cta}
+          // Half the content width is a FLOOR, not a fixed width. Computed from the window
+          // rather than `minWidth: '50%'` because percentage sizing has failed silently in
+          // RN 0.85 before. 56 = the container's horizontal padding.
+          style={{ minWidth: (width - 56) / 2 }}
+          // The width that actually fixes truncation goes on the LABEL: Android measures
+          // letter-spaced custom-font text a few px short, and Button's content row
+          // shrink-wraps the Text, so widening the button alone leaves the Text box short
+          // and "SHOW ME AROUND" still ellipsized. See ctaLabelWidth.
+          labelStyle={[styles.cta, { minWidth: ctaLabelWidth(card.cta ?? 'Next') }]}
         />
       </View>
     </SafeAreaView>
   );
+}
+
+
+// The CTA label's typography (styles.cta on a `lg` Button, 16pt). Courier Prime is
+// monospaced — every glyph advances 1228/2048 em — so the label's true width is
+// chars × (advance + letterSpacing), plus slack for Android's short measurement.
+const CTA_FONT_SIZE = 16;
+const CTA_LETTER_SPACING = 2;
+const CTA_ADVANCE_EM = 1228 / 2048;
+const CTA_SLACK = 8;
+
+function ctaLabelWidth(label: string): number {
+  return Math.ceil(label.length * (CTA_FONT_SIZE * CTA_ADVANCE_EM + CTA_LETTER_SPACING)) + CTA_SLACK;
 }
 
 /**
@@ -202,5 +217,5 @@ const styles = StyleSheet.create({
   dot: { height: 6, borderRadius: 3 },
   dotOn: { width: 18, backgroundColor: COLORS.purpleNeon },
   dotOff: { width: 6, backgroundColor: COLORS.border },
-  cta: { fontFamily: FONTS.monoBold, letterSpacing: 2, textTransform: 'uppercase' },
+  cta: { fontFamily: FONTS.monoBold, letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center' },
 });

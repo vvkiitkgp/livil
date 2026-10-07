@@ -3,6 +3,7 @@
  */
 import { supabase } from '../supabase';
 import { studioUrl } from '../basePath';
+import { isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '@shared/services/passwordPolicy';
 
 /** The public listing. Live in production, so it resolves for everyone. */
 export const PLAY_STORE_URL =
@@ -156,6 +157,9 @@ export async function signUpWithPassword({
   if (error) {
     if (/already registered|already exists/i.test(error.message)) {
       return { ok: false, message: 'There is already an account with that email. Sign in instead.' };
+    }
+    if (isWeakPasswordError(error)) {
+      return { ok: false, message: WEAK_PASSWORD_MESSAGE };
     }
     // The username is written by the trigger, and `profiles.username` is UNIQUE — so a
     // handle claimed between the availability check and this call surfaces here, not there.

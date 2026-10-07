@@ -16,6 +16,7 @@ import {
 import type { TrackMediaKind } from '@shared/services/media';
 import { backfillWaveformPeaks } from '@shared/services/waveformStore';
 import { TERMS_VERSION } from '@shared/constants/terms';
+import { MIN_TRACK_SECONDS, tooShortMessage } from '@shared/constants/media';
 import { uploadFileResumable } from './tusUpload';
 import { analyzeLocalFile } from './waveform';
 
@@ -117,6 +118,10 @@ export function startPublish(
 
   const result = (async () => {
     const durationSeconds = await readDuration(picked.media);
+    // Unknown duration (the browser couldn't probe it) is let through — see readMediaMeta.
+    if (durationSeconds !== null && durationSeconds < MIN_TRACK_SECONDS) {
+      throw new Error(tooShortMessage(durationSeconds));
+    }
 
     // Started here, not awaited, so the CPU-bound decode+FFT overlaps the network-bound
     // upload instead of adding to it. Analysis runs for VIDEO too, unlike mobile — see

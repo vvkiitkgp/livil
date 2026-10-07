@@ -649,7 +649,14 @@ export default function ProfileScreen() {
     return (
       <View style={styles.headerWrap}>
         <View style={styles.topBar}>
-          <Text style={styles.brand}>livil</Text>
+          <Button
+            label="Track"
+            icon="add"
+            variant="primary"
+            size="sm"
+            onPress={() => navigation.navigate('Upload')}
+            accessibilityLabel="Upload a track"
+          />
           <TouchableOpacity
             style={styles.headerIconBtn}
             onPress={() => navigation.navigate('Settings')}
@@ -899,12 +906,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
-  },
-  brand: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.5,
   },
   headerIconBtn: {
     width: 40,

@@ -172,7 +172,7 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
       none still show the old blue accent or pre-redesign stories.
 - [ ] Short (80 char) and full (4000 char) description are current, and the feature
       list matches what ships. Stories are in — see section 1.
-- [ ] App category, tags, and contact details (`vvk.iitkgp@gmail.com`).
+- [ ] App category, tags, and contact details (`support@livil-music.com`).
 - [ ] Privacy policy URL set to `https://livil-music.com/privacy-policy.html`
       (matches `src/constants/links.ts` — these must not drift).
 

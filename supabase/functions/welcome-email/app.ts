@@ -46,6 +46,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const FROM = 'Livil <noreply@mail.livil-music.com>';
+/** Replies to the noreply sender land in the support mailbox instead of nowhere. */
+const REPLY_TO = 'Livil Support <support@livil-music.com>';
 
 /**
  * The `user_xxxxxxxx` handle an OAuth account holds before it claims a real username.
@@ -409,7 +411,7 @@ export async function handler(req: Request): Promise<Response> {
         Authorization: `Bearer ${resendKey}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM, to: [user.email], subject, text, html }),
+      body: JSON.stringify({ from: FROM, reply_to: REPLY_TO, to: [user.email], subject, text, html }),
     });
     if (!res.ok) {
       sendError = `resend ${res.status}: ${(await res.text()).slice(0, 300)}`;

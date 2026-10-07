@@ -5,8 +5,12 @@ import Reanimated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { COLORS } from '../../theme/colors';
+import { FONTS } from '../../theme/fonts';
 
 /**
  * One lamp on the soundcheck truss. Tapping it toggles the light.
@@ -54,6 +58,18 @@ export function StageLamp({ lit, onToggle, x, index }: StageLampProps) {
 
   const beamStyle = useAnimatedStyle(() => ({ opacity: on.value }));
 
+  // "TAP" under a dark lamp, breathing so the rig reads as interactive; it fades out
+  // as the lamp comes on (the beam takes its place) and back if it is switched off.
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(withTiming(0.35, { duration: 700 }), withTiming(1, { duration: 700 })),
+      -1,
+      false,
+    );
+  }, [pulse]);
+  const tapStyle = useAnimatedStyle(() => ({ opacity: (1 - on.value) * pulse.value }));
+
   return (
     <Pressable
       onPress={onToggle}
@@ -66,6 +82,10 @@ export function StageLamp({ lit, onToggle, x, index }: StageLampProps) {
       <Reanimated.View style={[styles.housing, housingStyle]}>
         <Reanimated.View style={[styles.lens, lensStyle]} />
       </Reanimated.View>
+
+      <Reanimated.Text style={[styles.tap, tapStyle]} pointerEvents="none">
+        TAP
+      </Reanimated.Text>
 
       <Reanimated.View style={[styles.beam, beamStyle]} pointerEvents="none">
         <Svg width={BEAM_W} height={BEAM_H}>
@@ -116,5 +136,15 @@ const styles = StyleSheet.create({
   },
   beam: {
     marginTop: 2,
+  },
+  // Absolute, so it overlays the top of the beam instead of pushing the beam down.
+  // 72 = stem 14 + housing 52 + 6 gap.
+  tap: {
+    position: 'absolute',
+    top: 72,
+    fontFamily: FONTS.monoBold,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: COLORS.purpleLight,
   },
 });
