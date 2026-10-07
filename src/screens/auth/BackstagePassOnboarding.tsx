@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -32,6 +33,7 @@ import { useToast } from '../../contexts/ToastContext';
 import AppleSignInButton from '../../components/AppleSignInButton';
 import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import type { AuthStackParamList } from '../../navigation/types';
+import { wasSignedInHere } from '../../utils/returningListener';
 
 /**
  * "Backstage Pass" — the pre-auth onboarding flow.
@@ -211,13 +213,13 @@ function Kicker({ children }: { children: string }) {
   return <Text style={styles.kicker}>{children}</Text>;
 }
 
-function Headline({ children, size = 38 }: { children: React.ReactNode; size?: number }) {
+function Headline({ children, size = 38, center = false }: { children: React.ReactNode; size?: number; center?: boolean }) {
   // 1.28, not 1.1: Anton's ascenders run taller than its em box, so a line box of
   // 1.1x is shorter than the glyphs actually need and the tops get clipped -- most
   // visibly on the apostrophe in "WHO'S". The extra leading lands above the
   // baseline, which is exactly where the missing room was. Shared by every step,
   // so this fixes the whole sequence at once.
-  return <Text style={[styles.headline, { fontSize: size, lineHeight: size * 1.28 }]}>{children}</Text>;
+  return <Text style={[styles.headline, { fontSize: size, lineHeight: size * 1.28 }, center && styles.centered]}>{children}</Text>;
 }
 
 function PrimaryCta({
@@ -275,10 +277,40 @@ function PassHandoff({
 
   const hintStyle = useAnimatedStyle(() => ({ opacity: flick.value }));
 
+  // null until storage answers (a few ms) — the copy waits rather than flashing the
+  // first-time greeting and then swapping it.
+  const [returning, setReturning] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void wasSignedInHere().then(r => { if (alive) { setReturning(r); } });
+    return () => { alive = false; };
+  }, []);
+
+  // The pass alone is ~470dp tall and this step does not scroll, so on short phones
+  // the sub line is dropped rather than letting the copy push the CTA off-screen.
+  const { height } = useWindowDimensions();
+
   return (
     <View style={styles.passStep}>
       <BackstagePass flipped={flipped} onFlip={onFlip} role={role} />
       <Reanimated.Text style={[styles.flipHint, hintStyle]}>TAP PASS TO FLIP</Reanimated.Text>
+      {/*
+        Seen signed-out by brand-new AND returning listeners, so the greeting
+        depends on whether this install has ever had a session.
+      */}
+      {returning === null ? null : (
+        <View style={styles.passCopy}>
+          <Kicker>{returning ? 'GOOD TO SEE YOU' : 'DOORS ARE OPEN'}</Kicker>
+          <Headline size={30} center>{returning ? 'WELCOME BACK' : 'YOUR NIGHT STARTS HERE'}</Headline>
+          {height >= 760 ? (
+            <Text style={[styles.sub, styles.passSub]}>
+              {returning
+                ? "Your pass is still valid. The stage is lit and your music's waiting."
+                : "Clip on your pass. The stage is lit and the music's already playing."}
+            </Text>
+          ) : null}
+        </View>
+      )}
       <View style={styles.ctaSlot}>
         <PrimaryCta label="CLIP IT ON →" onPress={onNext} />
       </View>
@@ -578,6 +610,9 @@ const styles = StyleSheet.create({
 
   step: { flex: 1, paddingHorizontal: 28, paddingTop: 46, paddingBottom: 44 },
   passStep: { flex: 1, alignItems: 'center', paddingHorizontal: 28, paddingBottom: 44 },
+  passCopy: { alignItems: 'center', marginTop: 18 },
+  passSub: { textAlign: 'center', marginTop: 6 },
+  centered: { textAlign: 'center' },
   crowdStep: { flex: 1, alignItems: 'center', paddingHorizontal: 28, paddingTop: 30, paddingBottom: 44 },
 
   kicker: {

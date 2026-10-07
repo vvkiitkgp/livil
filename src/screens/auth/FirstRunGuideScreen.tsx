@@ -107,17 +107,35 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           onPress={next}
           variant="primary"
           size="lg"
-          // Half the content width is a FLOOR, not a fixed width: "SHOW ME AROUND" in
-          // 16pt letter-spaced mono is ~160dp, wider than half of most phones once the
-          // button's own padding is taken out, so a fixed 50% truncated it. Computed from
-          // the window rather than `minWidth: '50%'` because percentage sizing has failed
-          // silently in RN 0.85 before. 56 = the container's horizontal padding.
-          style={{ minWidth: Math.max(160, (width - 56) / 2) }}
+          // Half the content width is a FLOOR, not a fixed width. Above that floor the
+          // button must not size to the label's MEASURED width: Android measures
+          // letter-spaced custom-font text a few px short, so an exact fit ellipsized
+          // "SHOW ME AROUND" (~202dp, wider than half a 411dp phone) while the short
+          // labels, which sit inside the floor's slack, never were. The font is
+          // monospaced, so the label's real width is computable — see ctaMinWidth.
+          // Computed from the window rather than `minWidth: '50%'` because percentage
+          // sizing has failed silently in RN 0.85 before.
+          style={{ minWidth: ctaMinWidth(card.cta ?? 'Next', width) }}
           labelStyle={styles.cta}
         />
       </View>
     </SafeAreaView>
   );
+}
+
+
+// The CTA label's typography (styles.cta on a `lg` Button). Courier Prime advances
+// every glyph 1228/2048 em, so width = chars × (advance + letterSpacing).
+const CTA_FONT_SIZE = 16;
+const CTA_LETTER_SPACING = 2;
+const CTA_ADVANCE_EM = 1228 / 2048;
+const CTA_PAD_H = 20; // Button `lg` horizontal padding, each side
+const CTA_SLACK = 12; // absorbs Android's short measurement
+const SCREEN_PAD_H = 56; // the container's horizontal padding, both sides
+
+function ctaMinWidth(label: string, windowWidth: number): number {
+  const text = label.length * (CTA_FONT_SIZE * CTA_ADVANCE_EM + CTA_LETTER_SPACING);
+  return Math.max((windowWidth - SCREEN_PAD_H) / 2, text + 2 * CTA_PAD_H + CTA_SLACK);
 }
 
 /**

@@ -72,6 +72,7 @@ import {
   deferPushPrompt,
 } from '../services/pushNotifications';
 import { clearAppBadge } from '../services/appBadge';
+import { markSignedInHere } from '../utils/returningListener';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const { width } = Dimensions.get('window');
@@ -227,6 +228,12 @@ export default function RootNavigator() {
   useEffect(() => {
     initPush();
   }, []);
+
+  // Remember that this install has had a session, so the signed-out onboarding can
+  // greet them with "welcome back" after a sign-out.
+  useEffect(() => {
+    if (session?.user?.id) { void markSignedInHere(); }
+  }, [session?.user?.id]);
 
   // After sign-in, decide whether to surface the notification pre-prompt.
   // Runs after a short delay so the user sees the home screen mount first
