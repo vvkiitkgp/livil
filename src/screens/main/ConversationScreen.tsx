@@ -435,6 +435,28 @@ function ReactionPicker({
   );
 }
 
+/**
+ * How long to wait before the single retry of a failed first-page load.
+ *
+ * Opening a chat from a notification tap fires the load in the first instant
+ * after iOS resumes the app, before its network connections are usable again;
+ * that request fails with "Network request failed". Without a retry the screen
+ * kept showing the cached (older) page until the chat was reopened.
+ */
+const FIRST_PAGE_RETRY_MS = 1000;
+
+/** First page of messages, retried once if the request fails. */
+async function fetchFirstPageWithRetry(
+  conversationId: string,
+): Promise<Awaited<ReturnType<typeof fetchMessages>>> {
+  try {
+    return await fetchMessages(conversationId);
+  } catch {
+    await new Promise<void>(resolve => setTimeout(resolve, FIRST_PAGE_RETRY_MS));
+    return fetchMessages(conversationId);
+  }
+}
+
 export default function ConversationScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -595,7 +617,7 @@ export default function ConversationScreen() {
     });
 
     // ── Messages: start network fetch immediately, read cache in parallel ────
-    const networkPromise = fetchMessages(conversationId);
+    const networkPromise = fetchFirstPageWithRetry(conversationId);
 
     // Show cached messages instantly (no spinner if cache hit)
     messageCache.getMessages(conversationId).then(cached => {
@@ -633,16 +655,38 @@ export default function ConversationScreen() {
   }, [conversationId, showToast]);
 
   // Back from the background onto this chat: the mount effect above does not
-  // re-run, but the user is now reading whatever arrived while away — and its
-  // push is still in Notification Center. Only when this chat is the screen on
-  // top, not when it sits under another one in the stack.
+  // re-run, and realtime was paused while away, so messages that arrived in the
+  // meantime are missing from the list — and their pushes are still in
+  // Notification Center. Only when this chat is the screen on top, not when it
+  // sits under another one in the stack.
+  //
+  // New messages are MERGED onto the top rather than replacing the list, so
+  // older pages the user had scrolled back through (and the cursor) survive.
   useEffect(() => {
+    let cancelled = false;
     const sub = AppState.addEventListener('change', state => {
       if (state !== 'active' || !navigation.isFocused()) { return; }
-      void markAsRead(conversationId);
       void clearConversationNotifications(conversationId);
+      fetchFirstPageWithRetry(conversationId)
+        .then(({ messages: latest }) => {
+          if (cancelled) { return; }
+          setMessages(prev => {
+            const known = new Set(prev.map(m => m.id));
+            const fresh = latest.filter(m => !known.has(m.id));
+            return fresh.length === 0 ? prev : [...fresh, ...prev];
+          });
+          // After the fetch, not before: a read marker sent in the first instant
+          // after resume can fail the same way the load did.
+          void markAsRead(conversationId);
+        })
+        .catch((err: unknown) => {
+          console.warn('[chat] resume refresh failed', err);
+        });
     });
-    return () => sub.remove();
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, [conversationId, navigation]);
 
   // DM read-receipt source: the other participant's last_read_at. Fetched
