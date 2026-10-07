@@ -34,6 +34,7 @@ import { createRepost } from '../../services/posts';
 import { createStory } from '../../services/stories';
 import type { FeedPost } from '../../services/posts';
 import type { RootStackParamList } from '../../navigation/types';
+import { MIN_REPOST_CLIP_SECONDS } from '../../../shared/constants/media';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -57,6 +58,21 @@ function formatTime(seconds: number): string {
 }
 
 const MAX_STORY_CLIP = 10;
+
+/** A repost's minimum clip, capped to the track itself for tracks shorter than it. */
+function minPostClip(duration: number): number {
+  return duration > 0 ? Math.min(MIN_REPOST_CLIP_SECONDS, duration) : 1;
+}
+
+/** Grows [start, end] to the minimum clip: end moves out first, then start moves
+ *  back if the track runs out. A seed from the fullscreen player or an old repost
+ *  can be shorter than the minimum. */
+function widenToMinClip(start: number, end: number, duration: number): [number, number] {
+  const min = minPostClip(duration);
+  if (end - start >= min) { return [start, end]; }
+  const newEnd = Math.min(duration, start + min);
+  return [Math.max(0, newEnd - min), newEnd];
+}
 
 /** A story fills the screen, so that is the shape a video gets cropped to. */
 const STORY_AR = SCREEN_W / SCREEN_H;
@@ -245,8 +261,7 @@ export default function RepostScreen() {
       newStart = Math.min(seedStart, Math.max(0, duration - MAX_STORY_CLIP));
       newEnd = Math.max(newStart + 1, Math.min(newStart + MAX_STORY_CLIP, duration, seedEnd > seedStart ? seedEnd : duration));
     } else {
-      newStart = seedStart;
-      newEnd = seedEnd;
+      [newStart, newEnd] = widenToMinClip(seedStart, seedEnd, duration);
     }
     setClipStart(newStart);
     setClipEnd(newEnd);
@@ -265,6 +280,8 @@ export default function RepostScreen() {
     let newEnd = clipEnd;
     if (next === 'story' && duration > 0) {
       newEnd = Math.max(newStart + 1, Math.min(clipEnd, newStart + MAX_STORY_CLIP, duration));
+    } else if (next === 'post' && duration > 0) {
+      [newStart, newEnd] = widenToMinClip(clipStart, clipEnd, duration);
     }
     if (newStart !== clipStart) { setClipStart(newStart); }
     if (newEnd !== clipEnd) { setClipEnd(newEnd); }
@@ -359,8 +376,10 @@ export default function RepostScreen() {
     if (submitting || !originalPost) {return false;}
     if (clipEnd <= clipStart) {return false;}
     if (mode === 'story' && clipEnd - clipStart > MAX_STORY_CLIP) {return false;}
+    // Small epsilon: handle positions are floats.
+    if (mode === 'post' && clipEnd - clipStart < minPostClip(duration) - 0.05) {return false;}
     return true;
-  }, [submitting, originalPost, clipStart, clipEnd, mode]);
+  }, [submitting, originalPost, clipStart, clipEnd, mode, duration]);
 
   const handleSubmit = useCallback(async () => {
     if (!originalPost) {return;}
@@ -568,7 +587,7 @@ export default function RepostScreen() {
                     clipStart={clipStart}
                     clipEnd={clipEnd}
                     editableClip
-                    minClipSeconds={1}
+                    minClipSeconds={mode === 'post' ? minPostClip(duration) : 1}
                     maxClipSeconds={mode === 'story' ? MAX_STORY_CLIP : undefined}
                     slideWindow={mode === 'story'}
                     height={SCRUBBER_BOX_H}
