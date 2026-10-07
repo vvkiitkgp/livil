@@ -28,11 +28,11 @@ import {
 import {
   fetchDiscoverPeople, dismissSuggestion as dismissSuggestionOnServer, type DiscoverPeople,
 } from '../../services/searchDiscover';
-import { searchAlbums, type AlbumSearchResult } from '../../services/albums';
+import { searchAlbums, fetchAlbumsByIds, type AlbumSearchResult } from '../../services/albums';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useRecentSearches } from '../../hooks/useRecentSearches';
-import { useRecentSearchTracks } from '../../hooks/useRecentSearchTracks';
+import { useRecentSearchOpens } from '../../hooks/useRecentSearchOpens';
 import {
   recordSearchTap, fetchSearchPopularity, type SearchTapKind,
 } from '../../services/searchAnalytics';
@@ -162,7 +162,7 @@ export default function SearchScreen() {
   } = usePlayback();
   const openFullScreen = usePlayFullScreen();
   const { recents, remember, forget } = useRecentSearches();
-  const { recentPostIds, rememberTrack } = useRecentSearchTracks();
+  const { recentOpens, rememberOpen } = useRecentSearchOpens();
   const inputRef = useRef<TextInput>(null);
 
   const [query, setQuery] = useState('');
@@ -178,8 +178,8 @@ export default function SearchScreen() {
   const [discover, setDiscover] = useState<DiscoverPeople & { newSongs: FeedPost[] }>(
     { friends: [], people: [], artists: [], newSongs: [] },
   );
-  /** `recentPostIds`, re-read so anything deleted or now hidden drops out. */
-  const [recentTracks, setRecentTracks] = useState<FeedPost[]>([]);
+  /** `recentOpens`, re-read so anything deleted or now hidden drops out; stored order. */
+  const [recentItems, setRecentItems] = useState<SearchResult[]>([]);
   /** Distinct-people-who-opened-it, by entity id. Feeds the ranking; empty is simply zero. */
   const [taps, setTaps] = useState<Record<string, number>>({});
 
@@ -283,16 +283,34 @@ export default function SearchScreen() {
   }, [replayKey]);
 
   useEffect(() => {
-    if (recentPostIds.length === 0) {
-      setRecentTracks([]);
+    if (recentOpens.length === 0) {
+      setRecentItems([]);
       return;
     }
     let cancelled = false;
-    fetchPostsByIds(recentPostIds)
-      .then(found => { if (!cancelled) { setRecentTracks(found); } })
-      .catch(() => { /* keep whatever was showing; this is a shortcut list */ });
+    const ids = (kind: 'track' | 'album') => recentOpens.filter(o => o.kind === kind).map(o => o.id);
+    Promise.all([
+      fetchPostsByIds(ids('track')).catch(() => [] as FeedPost[]),
+      fetchAlbumsByIds(ids('album')).catch(() => [] as AlbumSearchResult[]),
+    ]).then(([posts, albums]) => {
+      if (cancelled) { return; }
+      const postById = new Map(posts.map(p => [p.id, p]));
+      const albumById = new Map(albums.map(a => [a.id, a]));
+      // Stored order (newest first) across both kinds; anything unreadable drops out.
+      const items: SearchResult[] = [];
+      for (const open of recentOpens) {
+        if (open.kind === 'track') {
+          const post = postById.get(open.id);
+          if (post) { items.push({ kind: 'track', id: `recent:${post.id}`, post }); }
+        } else {
+          const album = albumById.get(open.id);
+          if (album) { items.push({ kind: 'album', id: `recent:${album.id}`, album }); }
+        }
+      }
+      setRecentItems(items);
+    });
     return () => { cancelled = true; };
-  }, [recentPostIds]);
+  }, [recentOpens]);
 
   /**
    * Ids are prefixed with the section so a song that is both recent AND new (or a person in
@@ -305,9 +323,9 @@ export default function SearchScreen() {
       if (rows.length === 0) { return; }
       out.push({ kind: 'heading', id: key, title }, ...rows);
     };
-    // No heading of their own: songs opened from search sit under the same "Recent"
-    // heading as the search-term pills (the list header), right below them.
-    out.push(...recentTracks.map(post => ({ kind: 'track' as const, id: `recent:${post.id}`, post })));
+    // No heading of their own: songs and albums opened from search sit under the same
+    // "Recent" heading as the search-term pills (the list header), right below them.
+    out.push(...recentItems);
     // Mutual friends first; the 'people' fallback (shared taste, then fans) fills the rest,
     // so someone with no friends yet still gets suggestions. The server never puts one
     // person in both lists.
@@ -332,7 +350,7 @@ export default function SearchScreen() {
     section('songs', 'New songs',
       discover.newSongs.map(post => ({ kind: 'track' as const, id: `songs:${post.id}`, post })));
     return out;
-  }, [recentTracks, discover]);
+  }, [recentItems, discover]);
 
   const results = useMemo(
     () => rankSearchResults({ posts, profiles, albums, query, taps }),
@@ -473,7 +491,7 @@ export default function SearchScreen() {
             isCurrent={nowPlaying?.postId === item.post.id}
             onPress={() => {
               onResultOpened('track', item.post.track.id);
-              rememberTrack(item.post.id);
+              rememberOpen({ kind: 'track', id: item.post.id });
               playTrack(item.post);
             }}
           />
@@ -537,6 +555,7 @@ export default function SearchScreen() {
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
             onResultOpened('album', release.id);
+            rememberOpen({ kind: 'album', id: release.id });
             navigation.navigate('AlbumDetail', { albumId: release.id, albumTitle: release.title });
           }}
         >
@@ -565,7 +584,7 @@ export default function SearchScreen() {
         </Pressable>
       );
     },
-    [navigation, nowPlaying?.postId, playTrack, onResultOpened, rememberTrack, dismissSuggestion],
+    [navigation, nowPlaying?.postId, playTrack, onResultOpened, rememberOpen, dismissSuggestion],
   );
 
   const trimmedQuery = query.trim();
@@ -681,7 +700,7 @@ export default function SearchScreen() {
           renderItem={renderItem}
           // An ELEMENT, not a function — a function here is treated as a component type and
           // remounts on every render, which would replay the pills' entrance on each keystroke.
-          ListHeaderComponent={recents.length > 0 || recentTracks.length > 0 ? recentPills : null}
+          ListHeaderComponent={recents.length > 0 || recentItems.length > 0 ? recentPills : null}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 },

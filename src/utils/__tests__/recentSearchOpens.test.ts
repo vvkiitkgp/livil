@@ -1,47 +1,57 @@
 /**
- * Songs recently opened from Search — ids only, newest first, capped, de-duplicated.
+ * Songs and albums recently opened from Search — ids only, newest first, capped, de-duplicated.
  */
 import {
-  MAX_RECENT_SEARCH_TRACKS,
-  addRecentSearchTrack,
-  normalizeRecentSearchTracks,
-} from '../recentSearchTracks';
+  MAX_RECENT_SEARCH_OPENS,
+  addRecentSearchOpen,
+  normalizeRecentSearchOpens,
+  type RecentSearchOpen,
+} from '../recentSearchOpens';
 
-describe('addRecentSearchTrack', () => {
-  it('puts the newest first', () => {
-    expect(addRecentSearchTrack(['a'], 'b')).toEqual(['b', 'a']);
+const t = (id: string): RecentSearchOpen => ({ kind: 'track', id });
+const a = (id: string): RecentSearchOpen => ({ kind: 'album', id });
+
+describe('addRecentSearchOpen', () => {
+  it('puts the newest first, songs and albums in one list', () => {
+    expect(addRecentSearchOpen([t('1')], a('9'))).toEqual([a('9'), t('1')]);
   });
 
-  it('caps the list at five', () => {
-    const full = ['5', '4', '3', '2', '1'];
-    expect(addRecentSearchTrack(full, '6')).toEqual(['6', '5', '4', '3', '2']);
-    expect(MAX_RECENT_SEARCH_TRACKS).toBe(5);
+  it('caps songs and albums together at five', () => {
+    const full = [t('5'), a('4'), t('3'), a('2'), t('1')];
+    expect(addRecentSearchOpen(full, t('6'))).toEqual([t('6'), t('5'), a('4'), t('3'), a('2')]);
+    expect(MAX_RECENT_SEARCH_OPENS).toBe(5);
   });
 
-  it('moves a replayed song to the top instead of listing it twice', () => {
-    expect(addRecentSearchTrack(['b', 'a'], 'a')).toEqual(['a', 'b']);
+  it('moves a reopened item to the top instead of listing it twice', () => {
+    expect(addRecentSearchOpen([t('2'), a('1')], a('1'))).toEqual([a('1'), t('2')]);
   });
 
-  it('ignores an empty id', () => {
-    expect(addRecentSearchTrack(['a'], '')).toEqual(['a']);
+  it('treats a song and an album with the same id as different items', () => {
+    expect(addRecentSearchOpen([t('1')], a('1'))).toEqual([a('1'), t('1')]);
   });
 
-  it('does not mutate its input', () => {
-    const before = ['a'];
-    addRecentSearchTrack(before, 'b');
-    expect(before).toEqual(['a']);
+  it('ignores an empty id and does not mutate its input', () => {
+    const before = [t('1')];
+    expect(addRecentSearchOpen(before, t(''))).toEqual([t('1')]);
+    addRecentSearchOpen(before, t('2'));
+    expect(before).toEqual([t('1')]);
   });
 });
 
-describe('normalizeRecentSearchTracks', () => {
+describe('normalizeRecentSearchOpens', () => {
   it('returns [] for anything that is not an array', () => {
-    expect(normalizeRecentSearchTracks(null)).toEqual([]);
-    expect(normalizeRecentSearchTracks('a')).toEqual([]);
-    expect(normalizeRecentSearchTracks({ 0: 'a' })).toEqual([]);
+    expect(normalizeRecentSearchOpens(null)).toEqual([]);
+    expect(normalizeRecentSearchOpens('a')).toEqual([]);
   });
 
-  it('drops non-strings, blanks and duplicates, and re-applies the cap', () => {
-    expect(normalizeRecentSearchTracks(['a', 1, '', 'a', null, 'b', 'c', 'd', 'e', 'f']))
-      .toEqual(['a', 'b', 'c', 'd', 'e']);
+  it('reads the songs-only format (bare post ids) as songs', () => {
+    expect(normalizeRecentSearchOpens(['p1', 'p2'])).toEqual([t('p1'), t('p2')]);
+  });
+
+  it('drops malformed entries and duplicates, and re-applies the cap', () => {
+    expect(normalizeRecentSearchOpens([
+      t('1'), { kind: 'playlist', id: 'x' }, { kind: 'album' }, '', 1, null, t('1'),
+      a('2'), t('3'), a('4'), t('5'), a('6'),
+    ])).toEqual([t('1'), a('2'), t('3'), a('4'), t('5')]);
   });
 });
