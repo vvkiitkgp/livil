@@ -73,11 +73,15 @@ grant usage on schema auth to authenticated;
 --   …13 LONER     zero friends; stars ARIJIT (as F1 and F2 do) — 'people' fallback tests
 --   …14 LONELYF   my friend whose ONLY friend is me — not a friend-of-friend, so only the
 --                 explicit "not already my friend" rule keeps them out of 'people'
+--   …15 REQD      I sent them a request (pending)        → hidden from 'people' (Step 1d)
+--   …16 ASKER     they sent me a request (pending)       → hidden from 'people' (Step 1d)
+--   …17 LATER     I X'd them; they then request, I accept, then unfriend (Step 1d)
+--   …18 BADDY     I block, then unblock them (Step 1d)
 -- Also: a pending F2 ↔ RIYA row must not lift Riya's count to 2, and STRANGER (not my
 -- friend) stars SHREYA, which must not lift hers — only my FRIENDS' stars count.
 insert into auth.users (id)
   select ('ad000000-0000-0000-0000-' || lpad(to_hex(g), 12, '0'))::uuid
-    from generate_series(1, 20) g
+    from generate_series(1, 25) g
 on conflict do nothing;
 
 insert into profiles (id, username, username_set, followers_count) values
@@ -100,7 +104,11 @@ insert into profiles (id, username, username_set, followers_count) values
   ('ad000000-0000-0000-0000-000000000011', 'sd_pendfof',  true,    0),
   ('ad000000-0000-0000-0000-000000000012', 'sd_halfv',    false, 9999),
   ('ad000000-0000-0000-0000-000000000013', 'sd_loner',    true,    0),
-  ('ad000000-0000-0000-0000-000000000014', 'sd_lonelyf',  true,    0)
+  ('ad000000-0000-0000-0000-000000000014', 'sd_lonelyf',  true,    0),
+  ('ad000000-0000-0000-0000-000000000015', 'sd_reqd',     true,    0),
+  ('ad000000-0000-0000-0000-000000000016', 'sd_asker',    true,    0),
+  ('ad000000-0000-0000-0000-000000000017', 'sd_later',    true,    0),
+  ('ad000000-0000-0000-0000-000000000018', 'sd_baddy',    true,    0)
 on conflict (id) do update
   set username = excluded.username, username_set = excluded.username_set,
       followers_count = excluded.followers_count;
@@ -166,8 +174,8 @@ on conflict do nothing;
 select pg_temp.set_user('ad000000-0000-0000-0000-000000000001');
 set local role authenticated;
 
-select pg_temp.assert('friends: friends-of-friends by mutual count; no friend, verified, blocker, half-onboarded, stranger or friend-of-friend-by-PENDING-request; my own pending stays',
-  pg_temp.listed('friends') = array['sd_sam:2', 'sd_riya:1', 'sd_pending:1'], true);
+select pg_temp.assert('friends: friends-of-friends by mutual count; no friend, verified, blocker, half-onboarded, stranger or friend-of-friend-by-PENDING-request, or anyone with a request pending with me',
+  pg_temp.listed('friends') = array['sd_sam:2', 'sd_riya:1'], true);
 
 select pg_temp.assert('artists: by friends-who-star, then fans; only FRIENDS'' stars count; none I star, blocked, half-onboarded or revoked',
   pg_temp.listed('artists') = array['sd_arijit:2', 'sd_shreya:1', 'sd_popular:0', 'sd_vfof:0'], true);
@@ -200,7 +208,7 @@ insert into suggestion_dismissals (user_id, dismissed_user_id)
   values ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-000000000005');
 
 select pg_temp.assert('a dismissed person is no longer suggested; the rest move up',
-  pg_temp.listed('friends') = array['sd_riya:1', 'sd_pending:1'], true);
+  pg_temp.listed('friends') = array['sd_riya:1'], true);
 
 insert into suggestion_dismissals (user_id, dismissed_user_id)
   values ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-00000000000c');
@@ -208,8 +216,10 @@ insert into suggestion_dismissals (user_id, dismissed_user_id)
 select pg_temp.assert('a dismissed artist is no longer suggested either',
   pg_temp.listed('artists') = array['sd_arijit:2', 'sd_popular:0', 'sd_vfof:0'], true);
 
+-- 3 = SAM and SHREYA dismissed above, plus BLOCKEDV, whom the fixtures have me blocking
+-- (blocking records a dismissal for the blocker — 20261008000000).
 select pg_temp.assert('I can read my own dismissals',
-  (select count(*) = 2 from suggestion_dismissals), true);
+  (select count(*) = 3 from suggestion_dismissals), true);
 
 select pg_temp.assert('I cannot dismiss on someone else''s behalf',
   (select pg_temp.denied($q$
@@ -284,6 +294,59 @@ set local role authenticated;
 select pg_temp.assert('people: blocked pairs never see each other',
   (select count(*) = 0 from search_discover_people(20)
     where user_id = 'ad000000-0000-0000-0000-000000000001'), true);
+reset role;
+
+-- ============================================================================
+-- Step 1d — suggestions follow the friendship lifecycle (20261008000000)
+-- ============================================================================
+insert into friendships (user_a_id, user_b_id, status, requested_by) values
+  ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-000000000015', 'pending',
+   'ad000000-0000-0000-0000-000000000001'),
+  ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-000000000016', 'pending',
+   'ad000000-0000-0000-0000-000000000016'),
+  ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-000000000017', 'pending',
+   'ad000000-0000-0000-0000-000000000017');
+insert into suggestion_dismissals (user_id, dismissed_user_id) values
+  ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-000000000017');
+
+select pg_temp.set_user('ad000000-0000-0000-0000-000000000001');
+set local role authenticated;
+
+select pg_temp.assert('a request I sent, or one sent to me, hides them from suggestions',
+  (select count(*) = 0 from search_discover_people(20)
+    where username in ('sd_reqd', 'sd_asker')), true);
+
+select accept_friend_request('ad000000-0000-0000-0000-000000000017');
+select pg_temp.assert('becoming friends clears an earlier X between the two',
+  (select count(*) = 0 from suggestion_dismissals
+    where dismissed_user_id = 'ad000000-0000-0000-0000-000000000017'), true);
+
+select remove_friend('ad000000-0000-0000-0000-000000000017');
+select pg_temp.assert('after an unfriend they are suggested again',
+  (select count(*) = 1 from search_discover_people(20) where username = 'sd_later'), true);
+reset role;
+
+-- Inserted as the table owner, as block_user does under DEFINER; the trigger is what is
+-- being tested, not block_user's own checks.
+insert into blocked_users (blocker_id, blocked_id)
+  values ('ad000000-0000-0000-0000-000000000001', 'ad000000-0000-0000-0000-000000000018');
+
+select pg_temp.assert('blocking records a dismissal for the blocker',
+  (select count(*) = 1 from suggestion_dismissals
+    where user_id = 'ad000000-0000-0000-0000-000000000001'
+      and dismissed_user_id = 'ad000000-0000-0000-0000-000000000018'), true);
+select pg_temp.assert('…and NONE for the blocked person (it would reveal the block)',
+  (select count(*) = 0 from suggestion_dismissals
+    where user_id = 'ad000000-0000-0000-0000-000000000018'), true);
+
+delete from blocked_users
+ where blocker_id = 'ad000000-0000-0000-0000-000000000001'
+   and blocked_id = 'ad000000-0000-0000-0000-000000000018';
+
+select pg_temp.set_user('ad000000-0000-0000-0000-000000000001');
+set local role authenticated;
+select pg_temp.assert('after an unblock they still stay out of the blocker''s suggestions',
+  (select count(*) = 0 from search_discover_people(20) where username = 'sd_baddy'), true);
 reset role;
 
 -- The clamp is what stops one call listing every account, so it needs MORE than 20 people
