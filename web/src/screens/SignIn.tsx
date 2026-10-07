@@ -14,9 +14,8 @@ import {
   useUsernameAvailability,
   usernameHint,
 } from '../auth/useUsernameAvailability';
+import { PASSWORD_MIN_LENGTH, passwordProblem } from '@shared/services/passwordPolicy';
 
-/** Web-only. Mobile still accepts 6; see the note on the password field below. */
-const MIN_PASSWORD = 8;
 
 /**
  * Sign-in and sign-up, plus the two exits for anyone without an account.
@@ -66,6 +65,12 @@ export function SignIn({
       if (password !== confirm) {
         setBusy(null);
         setError('Those two passwords don’t match.');
+        return;
+      }
+      const weak = passwordProblem(password);
+      if (weak) {
+        setBusy(null);
+        setError(weak);
         return;
       }
       const created = await signUpWithPassword({
@@ -192,7 +197,7 @@ export function SignIn({
           label="Password"
           autoComplete={signingUp ? 'new-password' : 'current-password'}
           required
-          minLength={signingUp ? MIN_PASSWORD : undefined}
+          minLength={signingUp ? PASSWORD_MIN_LENGTH : undefined}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
@@ -205,13 +210,10 @@ export function SignIn({
             onChange={e => setConfirm(e.target.value)}
           />
         )}
-        {/* Mobile still asks for 6. Deliberately NOT matched downward — this is the client
-            that holds unreleased masters, and loosening a password floor to make two forms
-            look alike is the wrong direction to resolve a mismatch. Raising mobile to 8 is
-            a separate change in propose-only code. */}
+        {/* Same rule as mobile and as Supabase Auth's own policy — shared/services/passwordPolicy. */}
         {signingUp && (
           <p className="hint" data-status={mismatch ? 'taken' : undefined}>
-            {mismatch ? 'Those two don’t match.' : `At least ${MIN_PASSWORD} characters.`}
+            {mismatch ? 'Those two don’t match.' : `At least ${PASSWORD_MIN_LENGTH} characters, with a letter and a number.`}
           </p>
         )}
 

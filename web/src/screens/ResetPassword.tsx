@@ -3,8 +3,8 @@ import { Button } from '../components/Button';
 import { PasswordField } from '../components/TextField';
 import { supabase } from '../supabase';
 import { ARRIVED_FROM_RECOVERY_LINK } from '../auth/recoveryEntry';
+import { PASSWORD_MIN_LENGTH, isWeakPasswordError, passwordProblem, WEAK_PASSWORD_MESSAGE } from '@shared/services/passwordPolicy';
 
-const MIN_LENGTH = 8;
 
 /**
  * Set a new password, having arrived from the emailed link.
@@ -73,9 +73,10 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
     };
   }, []);
 
-  const tooShort = password.length > 0 && password.length < MIN_LENGTH;
+  const tooShort = password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
   const mismatch = confirm.length > 0 && password !== confirm;
-  const canSubmit = password.length >= MIN_LENGTH && password === confirm && !busy;
+  const weak = password.length >= PASSWORD_MIN_LENGTH ? passwordProblem(password) : null;
+  const canSubmit = password.length >= PASSWORD_MIN_LENGTH && !weak && password === confirm && !busy;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -85,7 +86,7 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
-      setError(updateError.message);
+      setError(isWeakPasswordError(updateError) ? WEAK_PASSWORD_MESSAGE : updateError.message);
       setBusy(false);
       return;
     }
@@ -138,7 +139,8 @@ export function ResetPassword({ onDone }: { onDone: () => void }) {
           onChange={e => setConfirm(e.target.value)}
         />
 
-        {tooShort && <p className="hint">At least {MIN_LENGTH} characters.</p>}
+        {tooShort && <p className="hint">At least {PASSWORD_MIN_LENGTH} characters.</p>}
+        {weak && <p className="hint">{weak}</p>}
         {mismatch && <p className="hint">Those don&apos;t match.</p>}
 
         {error && (

@@ -1,5 +1,6 @@
 /**
- * Client-side password rules for NEW passwords (sign-up, reset). UX only — the
+ * Client-side password rules for NEW passwords (sign-up, reset), shared by the app and
+ * the web studio. UX only — the
  * real gate is Supabase Auth's own policy (minimum length, required characters,
  * leaked-password check), which a modified client cannot skip. Keep these no
  * stricter than the dashboard settings, or a password the server would accept is

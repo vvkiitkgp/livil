@@ -3,6 +3,7 @@ import {
   BackHandler,
   Linking,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -290,8 +291,16 @@ function PassHandoff({
   // the sub line is dropped rather than letting the copy push the CTA off-screen.
   const { height } = useWindowDimensions();
 
+  // Scrolls only when it must: on a short phone the pass + welcome copy + CTA overflow,
+  // and a non-scrolling step would clip "CLIP IT ON" below the edge — no way past step 0.
+  // flexGrow keeps `ctaSlot`'s marginTop:'auto' pinning the CTA low on taller phones.
   return (
-    <View style={styles.passStep}>
+    <ScrollView
+      style={styles.stepFill}
+      contentContainerStyle={styles.passStep}
+      bounces={false}
+      showsVerticalScrollIndicator={false}
+    >
       <BackstagePass flipped={flipped} onFlip={onFlip} role={role} />
       <Reanimated.Text style={[styles.flipHint, hintStyle]}>TAP PASS TO FLIP</Reanimated.Text>
       {/*
@@ -314,7 +323,7 @@ function PassHandoff({
       <View style={styles.ctaSlot}>
         <PrimaryCta label="CLIP IT ON →" onPress={onNext} />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -609,7 +618,7 @@ const styles = StyleSheet.create({
   stepFill: { flex: 1 },
 
   step: { flex: 1, paddingHorizontal: 28, paddingTop: 46, paddingBottom: 44 },
-  passStep: { flex: 1, alignItems: 'center', paddingHorizontal: 28, paddingBottom: 44 },
+  passStep: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 28, paddingBottom: 44 },
   passCopy: { alignItems: 'center', marginTop: 18 },
   passSub: { textAlign: 'center', marginTop: 6 },
   centered: { textAlign: 'center' },

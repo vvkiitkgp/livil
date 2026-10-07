@@ -12,7 +12,7 @@ import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
-import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../utils/passwordPolicy';
+import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../../shared/services/passwordPolicy';
 
 type Props = {
   /** Called once the password has been updated. */

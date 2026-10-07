@@ -1,4 +1,4 @@
-import { isWeakPasswordError, passwordProblem } from '../passwordPolicy';
+import { isWeakPasswordError, passwordProblem } from '../../../shared/services/passwordPolicy';
 
 test('rejects eight zeros (the reported case)', () => {
   expect(passwordProblem('00000000')).not.toBeNull();

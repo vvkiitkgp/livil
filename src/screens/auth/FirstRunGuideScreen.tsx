@@ -107,16 +107,15 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           onPress={next}
           variant="primary"
           size="lg"
-          // Half the content width is a FLOOR, not a fixed width. Above that floor the
-          // button must not size to the label's MEASURED width: Android measures
-          // letter-spaced custom-font text a few px short, so an exact fit ellipsized
-          // "SHOW ME AROUND" (~202dp, wider than half a 411dp phone) while the short
-          // labels, which sit inside the floor's slack, never were. The font is
-          // monospaced, so the label's real width is computable — see ctaMinWidth.
-          // Computed from the window rather than `minWidth: '50%'` because percentage
-          // sizing has failed silently in RN 0.85 before.
-          style={{ minWidth: ctaMinWidth(card.cta ?? 'Next', width) }}
-          labelStyle={styles.cta}
+          // Half the content width is a FLOOR, not a fixed width. Computed from the window
+          // rather than `minWidth: '50%'` because percentage sizing has failed silently in
+          // RN 0.85 before. 56 = the container's horizontal padding.
+          style={{ minWidth: (width - 56) / 2 }}
+          // The width that actually fixes truncation goes on the LABEL: Android measures
+          // letter-spaced custom-font text a few px short, and Button's content row
+          // shrink-wraps the Text, so widening the button alone leaves the Text box short
+          // and "SHOW ME AROUND" still ellipsized. See ctaLabelWidth.
+          labelStyle={[styles.cta, { minWidth: ctaLabelWidth(card.cta ?? 'Next') }]}
         />
       </View>
     </SafeAreaView>
@@ -124,18 +123,16 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
 }
 
 
-// The CTA label's typography (styles.cta on a `lg` Button). Courier Prime advances
-// every glyph 1228/2048 em, so width = chars × (advance + letterSpacing).
+// The CTA label's typography (styles.cta on a `lg` Button, 16pt). Courier Prime is
+// monospaced — every glyph advances 1228/2048 em — so the label's true width is
+// chars × (advance + letterSpacing), plus slack for Android's short measurement.
 const CTA_FONT_SIZE = 16;
 const CTA_LETTER_SPACING = 2;
 const CTA_ADVANCE_EM = 1228 / 2048;
-const CTA_PAD_H = 20; // Button `lg` horizontal padding, each side
-const CTA_SLACK = 12; // absorbs Android's short measurement
-const SCREEN_PAD_H = 56; // the container's horizontal padding, both sides
+const CTA_SLACK = 8;
 
-function ctaMinWidth(label: string, windowWidth: number): number {
-  const text = label.length * (CTA_FONT_SIZE * CTA_ADVANCE_EM + CTA_LETTER_SPACING);
-  return Math.max((windowWidth - SCREEN_PAD_H) / 2, text + 2 * CTA_PAD_H + CTA_SLACK);
+function ctaLabelWidth(label: string): number {
+  return Math.ceil(label.length * (CTA_FONT_SIZE * CTA_ADVANCE_EM + CTA_LETTER_SPACING)) + CTA_SLACK;
 }
 
 /**
@@ -220,5 +217,5 @@ const styles = StyleSheet.create({
   dot: { height: 6, borderRadius: 3 },
   dotOn: { width: 18, backgroundColor: COLORS.purpleNeon },
   dotOff: { width: 6, backgroundColor: COLORS.border },
-  cta: { fontFamily: FONTS.monoBold, letterSpacing: 2, textTransform: 'uppercase' },
+  cta: { fontFamily: FONTS.monoBold, letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center' },
 });

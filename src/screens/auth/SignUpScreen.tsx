@@ -18,7 +18,7 @@ import FormInput from '../../components/FormInput';
 import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import { Icon } from '../../components/Icon';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
-import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../utils/passwordPolicy';
+import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../../shared/services/passwordPolicy';
 
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignUp'>;
