@@ -25,7 +25,7 @@ import {
   KeyboardGestureArea,
   KeyboardController,
 } from 'react-native-keyboard-controller';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
@@ -44,6 +44,11 @@ import {
 import { messageCache } from '../../services/messageCache';
 import { clearConversationNotifications } from '../../services/pushNotifications';
 import { requestBadgeRefresh } from '../../services/appBadge';
+import {
+  setActiveConversation,
+  getActiveConversation,
+  onConversationPing,
+} from '../../services/activeConversation';
 import {
   markAsRead,
   getOtherMemberReadAt,
@@ -528,6 +533,10 @@ export default function ConversationScreen() {
 
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Read by refreshLatest to decide, synchronously, whether a catch-up found
+  // anything new (a setMessages updater runs later, at render).
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [text, setText] = useState('');
@@ -691,40 +700,68 @@ export default function ConversationScreen() {
     return () => { cancelled = true; };
   }, [conversationId, showToast]);
 
+  // Fetch the latest page and MERGE unseen messages onto the top. The one
+  // catch-up path for everything realtime can miss:
+  //   • back from the background onto this chat (realtime was paused);
+  //   • a push for this chat arrived while it is open (pushNotifications pings
+  //     instead of showing a banner — the push path is the backup);
+  //   • the realtime channel re-joined after a drop, or failed to deliver one.
+  // Merging (not replacing) keeps older pages the user scrolled back through,
+  // and the cursor. Retried once: the resume path fires the instant iOS wakes
+  // the app, when the first request typically fails.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  const refreshLatest = useCallback(async (reason: string) => {
+    try {
+      const { messages: latest } = await fetchFirstPageWithRetry(conversationId);
+      if (!aliveRef.current) { return; }
+      const onScreen = new Set(messagesRef.current.map(m => m.id));
+      const added = latest.filter(m => !onScreen.has(m.id)).length;
+      setMessages(prev => {
+        const known = new Set(prev.map(m => m.id));
+        const fresh = latest.filter(m => !known.has(m.id));
+        return fresh.length === 0 ? prev : [...fresh, ...prev];
+      });
+      if (added > 0) {
+        console.log(`[chat] catch-up (${reason}) added ${added} message(s)`);
+        setTimeout(scrollToLatest, 50);
+      }
+      // After the fetch, not before: a read marker sent in the first instant
+      // after resume can fail the same way the load did.
+      void markReadAndRefreshBadge(conversationId);
+      void clearConversationNotifications(conversationId);
+    } catch (err) {
+      console.warn(`[chat] catch-up (${reason}) failed`, err);
+    }
+  }, [conversationId, scrollToLatest]);
+
+  // This chat is "the open chat" while it is the focused screen, so a push for
+  // it pings refreshLatest instead of showing a banner (see activeConversation).
+  useFocusEffect(
+    useCallback(() => {
+      setActiveConversation(conversationId);
+      return () => {
+        if (getActiveConversation() === conversationId) { setActiveConversation(null); }
+      };
+    }, [conversationId]),
+  );
+
+  useEffect(
+    () => onConversationPing(conversationId, () => { void refreshLatest('push'); }),
+    [conversationId, refreshLatest],
+  );
+
   // Back from the background onto this chat: the mount effect above does not
-  // re-run, and realtime was paused while away, so messages that arrived in the
-  // meantime are missing from the list — and their pushes are still in
-  // Notification Center. Only when this chat is the screen on top, not when it
-  // sits under another one in the stack.
-  //
-  // New messages are MERGED onto the top rather than replacing the list, so
-  // older pages the user had scrolled back through (and the cursor) survive.
+  // re-run. Only when this chat is the screen on top, not when it sits under
+  // another one in the stack.
   useEffect(() => {
-    let cancelled = false;
     const sub = AppState.addEventListener('change', state => {
       if (state !== 'active' || !navigation.isFocused()) { return; }
       void clearConversationNotifications(conversationId);
-      fetchFirstPageWithRetry(conversationId)
-        .then(({ messages: latest }) => {
-          if (cancelled) { return; }
-          setMessages(prev => {
-            const known = new Set(prev.map(m => m.id));
-            const fresh = latest.filter(m => !known.has(m.id));
-            return fresh.length === 0 ? prev : [...fresh, ...prev];
-          });
-          // After the fetch, not before: a read marker sent in the first instant
-          // after resume can fail the same way the load did.
-          void markReadAndRefreshBadge(conversationId);
-        })
-        .catch((err: unknown) => {
-          console.warn('[chat] resume refresh failed', err);
-        });
+      void refreshLatest('resume');
     });
-    return () => {
-      cancelled = true;
-      sub.remove();
-    };
-  }, [conversationId, navigation]);
+    return () => sub.remove();
+  }, [conversationId, navigation, refreshLatest]);
 
   // DM read-receipt source: the other participant's last_read_at. Fetched
   // once when the conversation opens and kept fresh by a realtime sub on
@@ -831,10 +868,11 @@ export default function ConversationScreen() {
           }),
         );
       },
+      () => { void refreshLatest('realtime'); },
     );
 
     return () => unsubscribeFromConversation(conversationId);
-  }, [conversationId, myId, scrollToLatest]);
+  }, [conversationId, myId, scrollToLatest, refreshLatest]);
 
   // For groups: fetch member count. For DMs: resolve the other member (their avatar,
   // and whose listening status the now-playing pill follows).

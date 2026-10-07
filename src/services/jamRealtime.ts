@@ -57,8 +57,17 @@ export function subscribeToConversation(
   conversationId: string,
   onMessage: (m: ChatMessage) => void,
   onReactionChange: (messageId: string) => void,
+  /**
+   * Something may have been missed: the channel re-joined after a drop (sleep,
+   * network change, backgrounding — nothing is replayed for the gap), or a
+   * message's follow-up fetch failed and it was not delivered. The screen
+   * should fetch its latest page. Not called for the first join; the screen's
+   * own initial load covers that.
+   */
+  onNeedsCatchUp?: () => void,
 ): RealtimeChannel {
   const key = `conv:${conversationId}`;
+  let joinedOnce = false;
   activeChannels.get(key)?.unsubscribe();
 
   console.log(`[realtime] subscribing to ${key}`);
@@ -88,10 +97,12 @@ export function subscribeToConversation(
             .single();
           if (error) {
             console.log(`[realtime] ${key} fetch error:`, error.message ?? String(error));
+            onNeedsCatchUp?.();
             return;
           }
           if (!data) {
             console.log(`[realtime] ${key} fetch returned null data`);
+            onNeedsCatchUp?.();
             return;
           }
           const { data: userData } = await supabase.auth.getUser();
@@ -129,6 +140,7 @@ export function subscribeToConversation(
           }
         } catch (e) {
           console.log(`[realtime] ${key} handler threw:`, (e as Error)?.message ?? String(e));
+          onNeedsCatchUp?.();
         }
       },
     )
@@ -151,6 +163,9 @@ export function subscribeToConversation(
     )
     .subscribe(status => {
       console.log(`[realtime] ${key} status=${status}`);
+      if (status !== 'SUBSCRIBED') { return; }
+      if (joinedOnce) { onNeedsCatchUp?.(); }
+      joinedOnce = true;
     });
 
   activeChannels.set(key, channel);
