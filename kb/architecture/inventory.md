@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-276 TypeScript file(s) under `src/`, 68,294 lines.
+276 TypeScript file(s) under `src/`, 68,380 lines.
 
 ## Size hotspots
 
@@ -38,7 +38,7 @@ reading alone (Constitution P28).
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
 | `src/components/FloatingPlayer.tsx` | 926 |
-| `src/screens/main/SearchScreen.tsx` | 839 |
+| `src/screens/main/SearchScreen.tsx` | 858 |
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 763 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
@@ -103,7 +103,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,742 lines.
+46 file(s), 23,761 lines.
 
 | File | Lines |
 |---|---:|
@@ -115,7 +115,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ProfileScreen.tsx` | 1183 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/RepostScreen.tsx` | 931 |
-| `src/screens/main/SearchScreen.tsx` | 839 |
+| `src/screens/main/SearchScreen.tsx` | 858 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 763 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/LibraryScreen.tsx` | 624 |
@@ -266,14 +266,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-59 file(s), 12,134 lines.
+59 file(s), 12,155 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1139 |
 | `src/services/tracks.ts` | 1001 |
 | `src/services/pushNotifications.ts` | 641 |
-| `src/services/albums.ts` | 497 |
+| `src/services/albums.ts` | 518 |
 | `src/services/activity.ts` | 426 |
 | `src/services/profileService.ts` | 416 |
 | `src/services/comments.ts` | 383 |
@@ -352,7 +352,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-9 file(s), 568 lines.
+9 file(s), 583 lines.
 
 | File | Lines |
 |---|---:|
@@ -360,15 +360,15 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useRecentSearches.ts` | 85 |
 | `src/hooks/useGroupFaces.ts` | 83 |
 | `src/hooks/usePlayFullScreen.ts` | 80 |
+| `src/hooks/useRecentSearchOpens.ts` | 60 |
 | `src/hooks/useTrackWaveform.ts` | 52 |
 | `src/hooks/usePlayRecentlyPlayed.ts` | 47 |
 | `src/hooks/useCommentsCountDeltas.ts` | 46 |
-| `src/hooks/useRecentSearchTracks.ts` | 45 |
 | `src/hooks/useImageAspect.ts` | 37 |
 
 ## Utilities
 
-30 file(s), 3,346 lines.
+30 file(s), 3,377 lines.
 
 | File | Lines |
 |---|---:|
@@ -398,10 +398,10 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/recentSearches.ts` | 72 |
 | `src/utils/errorMessages.ts` | 68 |
 | `src/utils/shareLinks.ts` | 61 |
-| `src/utils/__tests__/recentSearchTracks.test.ts` | 48 |
+| `src/utils/__tests__/recentSearchOpens.test.ts` | 58 |
+| `src/utils/recentSearchOpens.ts` | 52 |
 | `src/utils/mutualsText.ts` | 48 |
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
-| `src/utils/recentSearchTracks.ts` | 31 |
 
 ## Dependencies
 
