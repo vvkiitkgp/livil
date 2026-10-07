@@ -372,21 +372,42 @@ export async function searchAlbums(q: string, limit = 20): Promise<AlbumSearchRe
     return true;
   });
 
-  return rows.map(row => {
-    const tracks = (row.album_tracks ?? []) as Array<{ track_id: string; track: { cover_art_url: string | null } | null }>;
-    const firstCover = tracks.find(t => t.track?.cover_art_url)?.track?.cover_art_url ?? null;
-    const uploader = (row.uploader ?? null) as { username: string; display_name: string | null } | null;
-    return {
-      id: row.id,
-      title: row.title,
-      coverArtUrl: row.cover_art_url ?? firstCover,
-      trackCount: tracks.length,
-      releaseYear: yearFromReleaseDate(row.release_date),
-      uploaderId: row.uploader_id,
-      uploaderUsername: uploader?.username ?? 'unknown',
-      uploaderDisplayName: uploader?.display_name ?? null,
-    };
-  });
+  return rows.map(toAlbumSearchResult);
+}
+
+function toAlbumSearchResult(row: AlbumSearchRow): AlbumSearchResult {
+  const tracks = (row.album_tracks ?? []) as Array<{ track_id: string; track: { cover_art_url: string | null } | null }>;
+  const firstCover = tracks.find(t => t.track?.cover_art_url)?.track?.cover_art_url ?? null;
+  const uploader = (row.uploader ?? null) as { username: string; display_name: string | null } | null;
+  return {
+    id: row.id,
+    title: row.title,
+    coverArtUrl: row.cover_art_url ?? firstCover,
+    trackCount: tracks.length,
+    releaseYear: yearFromReleaseDate(row.release_date),
+    uploaderId: row.uploader_id,
+    uploaderUsername: uploader?.username ?? 'unknown',
+    uploaderDisplayName: uploader?.display_name ?? null,
+  };
+}
+
+/**
+ * Several albums by id, in the SAME ORDER as `albumIds`, as search rows — for "Recent" on the
+ * empty Search screen. Ids the viewer cannot read (deleted, or the uploader blocked — the
+ * `albums` policy) are simply absent.
+ */
+export async function fetchAlbumsByIds(albumIds: string[]): Promise<AlbumSearchResult[]> {
+  const unique = [...new Set(albumIds)];
+  if (unique.length === 0) { return []; }
+  const { data, error } = await supabase
+    .from('albums')
+    .select(ALBUM_SEARCH_SELECT)
+    .in('id', unique);
+  if (error) { throw new Error(error.message); }
+  const byId = new Map(
+    ((data ?? []) as unknown as AlbumSearchRow[]).map(row => [row.id, toAlbumSearchResult(row)]),
+  );
+  return albumIds.map(id => byId.get(id)).filter((a): a is AlbumSearchResult => !!a);
 }
 
 // ── Album cover image — pick + upload ────────────────────────────────────────

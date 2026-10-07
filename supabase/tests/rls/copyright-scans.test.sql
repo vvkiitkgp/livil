@@ -513,4 +513,73 @@ select pg_temp.assert(
   ),
   true);
 
+-- ── 18. Mark reviewed hides a match from the default view, and only for ops ──
+-- Bookkeeping lives in ops_copyright_reviews, NOT on the scan row: the scan row is an
+-- append-only evidence record and must stay untouched by an operator clearing a queue.
+set local role postgres;
+insert into auth.users (id, email)
+values ('99999999-0000-0000-0000-000000000009', 'ops@example.com') on conflict (id) do nothing;
+insert into public.profiles (id, username)
+values ('99999999-0000-0000-0000-000000000009', 'ops_cs') on conflict (id) do nothing;
+insert into public.ops_users (user_id) values ('99999999-0000-0000-0000-000000000009');
+set local role authenticated;
+
+select pg_temp.set_user('bbbbbbbb-0000-0000-0000-000000000002');
+discard plans;
+select pg_temp.assert(
+  'a non-operator cannot mark a match reviewed — it raises rather than no-ops',
+  pg_temp.allows($$ select public.ops_mark_copyright_reviewed('dddddddd-0000-0000-0000-000000000004'::uuid) $$),
+  false);
+
+select pg_temp.assert(
+  'nobody reads or writes the review table directly',
+  pg_temp.allows($$ insert into public.ops_copyright_reviews (scan_id) values ('dddddddd-0000-0000-0000-000000000004'::uuid) $$),
+  false);
+
+select pg_temp.set_user('99999999-0000-0000-0000-000000000009');
+discard plans;
+
+select pg_temp.assert(
+  'before review, the match is in the default view',
+  exists (select 1 from public.ops_copyright_scans(true, false)
+           where id = 'dddddddd-0000-0000-0000-000000000004'::uuid),
+  true);
+
+select public.ops_mark_copyright_reviewed('dddddddd-0000-0000-0000-000000000004'::uuid);
+
+select pg_temp.assert(
+  'once reviewed it leaves the default view',
+  exists (select 1 from public.ops_copyright_scans(true, false)
+           where id = 'dddddddd-0000-0000-0000-000000000004'::uuid),
+  false);
+
+select pg_temp.assert(
+  'while an unreviewed match stays',
+  exists (select 1 from public.ops_copyright_scans(true, false)
+           where id = 'ffffffff-0000-0000-0000-000000000006'::uuid),
+  true);
+
+select pg_temp.assert(
+  '"Show reviewed" still lists it, stamped with who reviewed it',
+  exists (select 1 from public.ops_copyright_scans(true, true)
+           where id = 'dddddddd-0000-0000-0000-000000000004'::uuid
+             and reviewed_at is not null and reviewer_username = 'ops_cs'),
+  true);
+
+-- The deployed web build calls with one argument. It must keep seeing everything.
+select pg_temp.assert(
+  'the one-argument call (the build already deployed) still includes reviewed rows',
+  exists (select 1 from public.ops_copyright_scans(true)
+           where id = 'dddddddd-0000-0000-0000-000000000004'::uuid),
+  true);
+
+select public.ops_mark_copyright_reviewed('dddddddd-0000-0000-0000-000000000004'::uuid, false);
+
+select pg_temp.assert(
+  'reopening puts it back in the default view',
+  exists (select 1 from public.ops_copyright_scans(true, false)
+           where id = 'dddddddd-0000-0000-0000-000000000004'::uuid
+             and reviewed_at is null),
+  true);
+
 rollback;

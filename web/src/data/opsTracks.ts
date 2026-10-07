@@ -44,6 +44,14 @@ export type OpsTrack = {
   /** The URL that actually plays. Audio tracks carry audio_url, video tracks video_url. */
   mediaUrl: string | null;
   createdAt: string;
+  /** Set while the track is taken down — decides "Take down" vs "Restore". */
+  takenDownAt: string | null;
+  /**
+   * What a takedown would remove right now, split the same way the copyright queue
+   * splits it: the reposts belong to other people and do not come back on restore.
+   */
+  liveUploads: number;
+  liveReposts: number;
 };
 
 export type OpsArtist = {
@@ -93,5 +101,9 @@ export async function fetchTracksForUser(userId: string): Promise<OpsTrack[]> {
     // yields null only for a row that violated it — in which case null is the honest value.
     mediaUrl: t.media_kind === 'video' ? t.video_url : t.audio_url,
     createdAt: t.created_at,
+    takenDownAt: t.taken_down_at ?? null,
+    // bigint over PostgREST can arrive as a string; Number() keeps the arithmetic honest.
+    liveUploads: Number(t.live_uploads ?? 0),
+    liveReposts: Number(t.live_reposts ?? 0),
   }));
 }

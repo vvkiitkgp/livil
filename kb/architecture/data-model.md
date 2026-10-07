@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-09-29
+last_verified: 2026-10-07
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 123 migration(s) in `supabase/migrations/`.
+Reconstructed from 130 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-48 table(s).
+50 table(s).
 
 ### `activity_notifications`
 
@@ -143,6 +143,10 @@ RLS enabled · defined in `20260808100000_blocked_users.sql`
 **Indexes**
 
 - `blocked_users_blocked_idx` `(blocked_id)`
+
+**Triggers**
+
+- `trg_suggestion_dismissals_on_block` — after insert (`20261008000000_suggestions_follow_friendship.sql`)
 
 ### `conversation_members`
 
@@ -282,6 +286,7 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 **Triggers**
 
 - `trg_friendships_create_dm_on_accept` — after update (`20260812000000_liv25_dm_on_friend_accept.sql`)
+- `trg_suggestion_dismissals_clear_on_accept` — after update (`20261008000000_suggestions_follow_friendship.sql`)
 
 ### `jam_queue`
 
@@ -484,6 +489,16 @@ RLS enabled · defined in `20260803120000_notification_preferences.sql`
 | `messages` | `boolean not null default true` |
 | `jam` | `boolean not null default true` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `ops_copyright_reviews`
+
+RLS enabled · defined in `20261004010000_copyright_matches_reviewable.sql`
+
+| Column | Definition |
+|---|---|
+| `scan_id` | `uuid primary key` |
+| `reviewed_at` | `timestamptz not null default now()` |
+| `reviewed_by` | `uuid` |
 
 ### `ops_users`
 
@@ -972,6 +987,21 @@ RLS enabled · defined in `20260530000001_repost_and_stories.sql`
 
 - `primary key (story_id, viewer_id)`
 
+### `suggestion_dismissals`
+
+RLS enabled · defined in `20261007000000_suggestion_dismissals.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `dismissed_user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (user_id, dismissed_user_id)`
+- `constraint suggestion_dismissals_not_self check (user_id <> dismissed_user_id)`
+
 ### `team_messages`
 
 RLS enabled · defined in `20260806000000_team_messages.sql`
@@ -1247,10 +1277,12 @@ same row-level security policies that gate ordinary reads.
 | Trigger | Table | Timing | Migration |
 |---|---|---|---|
 | `trg_badge_kinds_guard_reclaim` | `badge_kinds` | before update | `20260919000000_profile_badges_first_100.sql` |
+| `trg_suggestion_dismissals_on_block` | `blocked_users` | after insert | `20261008000000_suggestions_follow_friendship.sql` |
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |
+| `trg_suggestion_dismissals_clear_on_accept` | `friendships` | after update | `20261008000000_suggestions_follow_friendship.sql` |
 | `trg_jam_room_members_insert_guard` | `jam_room_members` | before insert | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_rooms_clear_suggestions` | `jam_rooms` | after update of status | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_rooms_guard` | `jam_rooms` | before update | `20260930000000_jam_suggestions.sql` |

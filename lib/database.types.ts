@@ -2332,7 +2332,7 @@ export type Database = {
         Returns: undefined
       }
       ops_copyright_scans: {
-        Args: { p_include_answered?: boolean }
+        Args: { p_include_answered?: boolean; p_include_reviewed?: boolean }
         Returns: {
           accepted_responsibility: boolean
           acknowledged_at: string
@@ -2357,6 +2357,8 @@ export type Database = {
           media_kind: string
           provider: string
           reference_matches_isrc: boolean
+          reviewed_at: string
+          reviewer_username: string
           scanned_media_url: string
           status: string
           taken_down_at: string
@@ -2366,6 +2368,10 @@ export type Database = {
           uploader_takedowns: number
           uploader_username: string
         }[]
+      }
+      ops_mark_copyright_reviewed: {
+        Args: { p_reviewed?: boolean; p_scan_id: string }
+        Returns: undefined
       }
       ops_mark_report_reviewed: {
         Args: { p_id: string; p_kind: string; p_reviewed?: boolean }
@@ -2463,7 +2469,10 @@ export type Database = {
           description: string
           duration_seconds: number
           id: string
+          live_reposts: number
+          live_uploads: number
           media_kind: string
+          taken_down_at: string
           thumbnail_url: string
           title: string
           video_url: string

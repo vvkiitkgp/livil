@@ -22,11 +22,17 @@ import UsernameBadges from '../../components/UsernameBadges';
 import { COLORS } from '../../theme/colors';
 import type { RootStackParamList } from '../../navigation/types';
 import { searchProfiles, type ProfileSearchResult } from '../../services/tracks';
-import { searchPosts, feedPostToNowPlaying, type FeedPost } from '../../services/posts';
-import { searchAlbums, type AlbumSearchResult } from '../../services/albums';
+import {
+  searchPosts, feedPostToNowPlaying, fetchPostsByIds, listNewestUploads, type FeedPost,
+} from '../../services/posts';
+import {
+  fetchDiscoverPeople, dismissSuggestion as dismissSuggestionOnServer, type DiscoverPeople,
+} from '../../services/searchDiscover';
+import { searchAlbums, fetchAlbumsByIds, type AlbumSearchResult } from '../../services/albums';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useRecentSearches } from '../../hooks/useRecentSearches';
+import { useRecentSearchOpens } from '../../hooks/useRecentSearchOpens';
 import {
   recordSearchTap, fetchSearchPopularity, type SearchTapKind,
 } from '../../services/searchAnalytics';
@@ -42,6 +48,26 @@ const FALLBACK_ACCENTS: [string, string][] = [
   ['#F59E0B', '#EF4444'],
 ];
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
+/** People per section on the empty screen (verified, new). */
+const DISCOVER_PEOPLE = 5;
+/** Newest uploads on the empty screen. */
+const DISCOVER_SONGS = 4;
+
+/**
+ * A row in either list. Headings only ever appear in the empty-box list; the ranked search
+ * results are plain `SearchResult`s.
+ */
+type ListItem =
+  | (SearchResult & { note?: string; dismissible?: boolean })
+  | { kind: 'heading'; id: string; title: string };
+
+/** Why a person is suggested. A count only — the server never says which friends. */
+const mutualFriendsNote = (n: number) => `${n} mutual ${n === 1 ? 'friend' : 'friends'}`;
+const commonArtistsNote = (n: number) =>
+  n === 0 ? undefined : `${n} ${n === 1 ? 'artist' : 'artists'} in common`;
+const friendFansNote = (n: number) =>
+  n === 0 ? undefined : n === 1 ? '1 friend is a fan' : `${n} friends are fans`;
 
 function initialsFor(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -136,6 +162,7 @@ export default function SearchScreen() {
   } = usePlayback();
   const openFullScreen = usePlayFullScreen();
   const { recents, remember, forget } = useRecentSearches();
+  const { recentOpens, rememberOpen } = useRecentSearchOpens();
   const inputRef = useRef<TextInput>(null);
 
   const [query, setQuery] = useState('');
@@ -147,6 +174,12 @@ export default function SearchScreen() {
   const [meId, setMeId] = useState<string | null>(null);
   /** Bumped on every tab tap purely to remount the pills and replay their entrance. */
   const [replayKey, setReplayKey] = useState(0);
+  /** What the empty search box shows instead of a blank screen. */
+  const [discover, setDiscover] = useState<DiscoverPeople & { newSongs: FeedPost[] }>(
+    { friends: [], people: [], artists: [], newSongs: [] },
+  );
+  /** `recentOpens`, re-read so anything deleted or now hidden drops out; stored order. */
+  const [recentItems, setRecentItems] = useState<SearchResult[]>([]);
   /** Distinct-people-who-opened-it, by entity id. Feeds the ranking; empty is simply zero. */
   const [taps, setTaps] = useState<Record<string, number>>({});
 
@@ -230,6 +263,94 @@ export default function SearchScreen() {
       clearTimeout(timer);
     };
   }, [query, meId]);
+
+  /**
+   * The empty-box lists. Re-fetched on every tab tap (`replayKey`), so "new" is new as of
+   * the tap rather than as of the first visit — the tab keeps this screen mounted.
+   *
+   * Both halves are fail-safe: a failure leaves that section out, and with every section out
+   * the screen falls back to the plain "Discover something new" state it had before.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetchDiscoverPeople(DISCOVER_PEOPLE),
+      listNewestUploads(DISCOVER_SONGS).catch(() => [] as FeedPost[]),
+    ]).then(([people, newSongs]) => {
+      if (!cancelled) { setDiscover({ ...people, newSongs }); }
+    });
+    return () => { cancelled = true; };
+  }, [replayKey]);
+
+  useEffect(() => {
+    if (recentOpens.length === 0) {
+      setRecentItems([]);
+      return;
+    }
+    let cancelled = false;
+    const ids = (kind: 'track' | 'album') => recentOpens.filter(o => o.kind === kind).map(o => o.id);
+    Promise.all([
+      fetchPostsByIds(ids('track')).catch(() => [] as FeedPost[]),
+      fetchAlbumsByIds(ids('album')).catch(() => [] as AlbumSearchResult[]),
+    ]).then(([posts, albums]) => {
+      if (cancelled) { return; }
+      const postById = new Map(posts.map(p => [p.id, p]));
+      const albumById = new Map(albums.map(a => [a.id, a]));
+      // Stored order (newest first) across both kinds; anything unreadable drops out.
+      const items: SearchResult[] = [];
+      for (const open of recentOpens) {
+        if (open.kind === 'track') {
+          const post = postById.get(open.id);
+          if (post) { items.push({ kind: 'track', id: `recent:${post.id}`, post }); }
+        } else {
+          const album = albumById.get(open.id);
+          if (album) { items.push({ kind: 'album', id: `recent:${album.id}`, album }); }
+        }
+      }
+      setRecentItems(items);
+    });
+    return () => { cancelled = true; };
+  }, [recentOpens]);
+
+  /**
+   * Ids are prefixed with the section so a song that is both recent AND new (or a person in
+   * two lists) still gets a unique key. Nothing reads `id` back as an entity id here —
+   * the rows read `post` / `profile`.
+   */
+  const discoverItems = useMemo<ListItem[]>(() => {
+    const out: ListItem[] = [];
+    const section = (key: string, title: string, rows: ListItem[]) => {
+      if (rows.length === 0) { return; }
+      out.push({ kind: 'heading', id: key, title }, ...rows);
+    };
+    // No heading of their own: songs and albums opened from search sit under the same
+    // "Recent" heading as the search-term pills (the list header), right below them.
+    out.push(...recentItems);
+    // Mutual friends first; the 'people' fallback (shared taste, then fans) fills the rest,
+    // so someone with no friends yet still gets suggestions. The server never puts one
+    // person in both lists.
+    section('friends', 'People you may know', [
+      ...discover.friends.map(profile => ({
+        kind: 'user' as const, id: `friends:${profile.id}`, profile,
+        note: mutualFriendsNote(profile.mutualCount),
+        dismissible: true,
+      })),
+      ...discover.people.map(profile => ({
+        kind: 'user' as const, id: `people:${profile.id}`, profile,
+        note: commonArtistsNote(profile.mutualCount),
+        dismissible: true,
+      })),
+    ].slice(0, DISCOVER_PEOPLE));
+    section('artists', 'Suggested artists',
+      discover.artists.map(profile => ({
+        kind: 'user' as const, id: `artists:${profile.id}`, profile,
+        note: friendFansNote(profile.mutualCount),
+        dismissible: true,
+      })));
+    section('songs', 'New songs',
+      discover.newSongs.map(post => ({ kind: 'track' as const, id: `songs:${post.id}`, post })));
+    return out;
+  }, [recentItems, discover]);
 
   const results = useMemo(
     () => rankSearchResults({ posts, profiles, albums, query, taps }),
@@ -322,25 +443,57 @@ export default function SearchScreen() {
    * with prefixes of one search, which is the fastest way to make the list useless.
    */
   const onResultOpened = useCallback((kind: SearchTapKind, entityId: string) => {
-    remember(query);
-    // What was OPENED, not what was typed — the signal behind "most searched". Fire and
-    // forget: it must not delay the navigation or the playback it is racing.
-    recordSearchTap(kind, entityId);
+    // Only a tap on a SEARCH RESULT is a search tap. The empty-box lists are suggestions;
+    // counting their taps would feed "most searched" with whatever we chose to suggest.
+    if (query.trim()) {
+      remember(query);
+      // What was OPENED, not what was typed — the signal behind "most searched". Fire and
+      // forget: it must not delay the navigation or the playback it is racing.
+      recordSearchTap(kind, entityId);
+    }
     // Dismiss on the way out. `keyboardShouldPersistTaps="handled"` is what lets a single tap
     // both open the result AND land here — with the default the first tap would be spent
     // closing the keyboard and the row would need tapping twice.
     Keyboard.dismiss();
   }, [remember, query]);
 
+  /**
+   * The X on a suggested person or artist. The row leaves at once; the server records the
+   * dismissal and THEN the list is re-asked, so the next-best suggestion takes the freed slot
+   * without the dismissed account bouncing back. Only the section that was touched is
+   * replaced — re-ranking the other one would make the screen shuffle under their thumb.
+   */
+  const dismissSuggestion = useCallback(async (userId: string, from: 'people' | 'artists') => {
+    const without = (list: DiscoverPeople['friends']) => list.filter(p => p.id !== userId);
+    setDiscover(d => ({
+      ...d, friends: without(d.friends), people: without(d.people), artists: without(d.artists),
+    }));
+    await dismissSuggestionOnServer(userId);
+    const fresh = await fetchDiscoverPeople(DISCOVER_PEOPLE);
+    // Filtered again in case the write failed: a dismissed account must not reappear in the
+    // same visit even if the server never heard about it.
+    setDiscover(d => (from === 'artists'
+      ? { ...d, artists: without(fresh.artists) }
+      : { ...d, friends: without(fresh.friends), people: without(fresh.people) }));
+  }, []);
+
   const renderItem = useCallback(
-    ({ item, index }: { item: SearchResult; index: number }) => {
+    ({ item, index }: { item: ListItem; index: number }) => {
+      if (item.kind === 'heading') {
+        return <Text style={[styles.recentHeading, styles.sectionHeading]}>{item.title}</Text>;
+      }
+
       if (item.kind === 'track') {
         return (
           <TrackRow
             post={item.post}
             index={index}
             isCurrent={nowPlaying?.postId === item.post.id}
-            onPress={() => { onResultOpened('track', item.post.track.id); playTrack(item.post); }}
+            onPress={() => {
+              onResultOpened('track', item.post.track.id);
+              rememberOpen({ kind: 'track', id: item.post.id });
+              playTrack(item.post);
+            }}
           />
         );
       }
@@ -371,9 +524,25 @@ export default function SearchScreen() {
                 <Text style={styles.rowTitle} numberOfLines={1}>{name}</Text>
                 <UsernameBadges userId={person.id} size={15} />
               </View>
-              <Text style={styles.rowSubtitle} numberOfLines={1}>@{person.username}</Text>
+              <Text style={styles.rowSubtitle} numberOfLines={1}>
+                @{person.username}{'note' in item && item.note ? ` · ${item.note}` : ''}
+              </Text>
             </View>
             <AddBadge userId={person.id} size="md" />
+            {'dismissible' in item && item.dismissible ? (
+              // A sibling of AddBadge, not inside it: tapping X must never send a request.
+              <TouchableOpacity
+                onPress={() => {
+                  void dismissSuggestion(person.id, item.id.startsWith('artists:') ? 'artists' : 'people');
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 6, right: 12 }}
+                style={styles.dismissButton}
+                accessibilityRole="button"
+                accessibilityLabel={`Don't suggest ${name} again`}
+              >
+                <Icon name="close" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ) : null}
           </Pressable>
         );
       }
@@ -386,6 +555,7 @@ export default function SearchScreen() {
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
             onResultOpened('album', release.id);
+            rememberOpen({ kind: 'album', id: release.id });
             navigation.navigate('AlbumDetail', { albumId: release.id, albumTitle: release.title });
           }}
         >
@@ -414,10 +584,63 @@ export default function SearchScreen() {
         </Pressable>
       );
     },
-    [navigation, nowPlaying?.postId, playTrack, onResultOpened],
+    [navigation, nowPlaying?.postId, playTrack, onResultOpened, rememberOpen, dismissSuggestion],
   );
 
   const trimmedQuery = query.trim();
+
+  const recentPills = (
+    /* Pills, wrapped — at most four, so they never need to scroll. A vertical list of
+       four short words wastes the width and reads as heavier than the thing it is
+       shortcutting. */
+    <View style={styles.recentWrap}>
+      <Text style={styles.recentHeading}>Recent</Text>
+      {/* Keyed on the replay counter so a tab tap remounts the whole row and the stagger
+          runs again. Entrance animations fire on mount, and the tab navigator keeps this
+          screen mounted after the first visit. */}
+      {recents.length > 0 ? (
+        <View style={styles.pillRow} key={replayKey}>
+          {recents.map((term, index) => (
+            <Animated.View
+              key={term}
+              /* Staggered by position, so they arrive one after another rather than all at
+                 once. 70ms apart over 260ms each: the last of four has fully landed in
+                 under half a second, which is quick enough not to be waited on and slow
+                 enough to read as deliberate. */
+              entering={FadeInDown.delay(index * 70).duration(260)}
+              exiting={FadeOut.duration(140)}
+              /* Deleting one pill leaves a hole; this slides the rest closed instead of
+                 snapping. Faster than the entrance — a reflow is a consequence, not an
+                 event, and should not ask for the same attention. */
+              layout={LinearTransition.duration(200)}
+            >
+              <Pressable
+                style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
+                onPress={() => {
+                  // Fills the field and nothing else — the search runs on its own, and the
+                  // keyboard stays up so the term can be edited rather than retyped.
+                  setQuery(term);
+                  Keyboard.dismiss();
+                }}
+              >
+                <Icon name="recent" size={13} color={COLORS.textMuted} />
+                <Text style={styles.pillText} numberOfLines={1}>{term}</Text>
+                {/* No confirmation. Removing one of four entries is not destructive, and a
+                    dialog would cost more than retyping the search would. */}
+                <TouchableOpacity
+                  onPress={() => forget(term)}
+                  hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
+                  accessibilityLabel={`Remove ${term} from recent searches`}
+                >
+                  <Icon name="close" size={14} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              </Pressable>
+            </Animated.View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -470,55 +693,22 @@ export default function SearchScreen() {
         <View style={styles.centerState}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>
-      ) : trimmedQuery.length === 0 && recents.length > 0 ? (
-        /* Pills, wrapped — at most four, so they never need to scroll. A vertical list of
-           four short words wastes the width and reads as heavier than the thing it is
-           shortcutting. */
-        <View style={styles.recentWrap}>
-          <Text style={styles.recentHeading}>Recent</Text>
-          {/* Keyed on the replay counter so a tab tap remounts the whole row and the stagger
-              runs again. Entrance animations fire on mount, and the tab navigator keeps this
-              screen mounted after the first visit. */}
-          <View style={styles.pillRow} key={replayKey}>
-            {recents.map((term, index) => (
-              <Animated.View
-                key={term}
-                /* Staggered by position, so they arrive one after another rather than all at
-                   once. 70ms apart over 260ms each: the last of four has fully landed in
-                   under half a second, which is quick enough not to be waited on and slow
-                   enough to read as deliberate. */
-                entering={FadeInDown.delay(index * 70).duration(260)}
-                exiting={FadeOut.duration(140)}
-                /* Deleting one pill leaves a hole; this slides the rest closed instead of
-                   snapping. Faster than the entrance — a reflow is a consequence, not an
-                   event, and should not ask for the same attention. */
-                layout={LinearTransition.duration(200)}
-              >
-                <Pressable
-                  style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
-                  onPress={() => {
-                    // Fills the field and nothing else — the search runs on its own, and the
-                    // keyboard stays up so the term can be edited rather than retyped.
-                    setQuery(term);
-                    Keyboard.dismiss();
-                  }}
-                >
-                  <Icon name="recent" size={13} color={COLORS.textMuted} />
-                  <Text style={styles.pillText} numberOfLines={1}>{term}</Text>
-                  {/* No confirmation. Removing one of four entries is not destructive, and a
-                      dialog would cost more than retyping the search would. */}
-                  <TouchableOpacity
-                    onPress={() => forget(term)}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
-                    accessibilityLabel={`Remove ${term} from recent searches`}
-                  >
-                    <Icon name="close" size={14} color={COLORS.textMuted} />
-                  </TouchableOpacity>
-                </Pressable>
-              </Animated.View>
-            ))}
-          </View>
-        </View>
+      ) : trimmedQuery.length === 0 && (recents.length > 0 || discoverItems.length > 0) ? (
+        <FlatList
+          data={discoverItems}
+          keyExtractor={item => `${item.kind}:${item.id}`}
+          renderItem={renderItem}
+          // An ELEMENT, not a function — a function here is treated as a component type and
+          // remounts on every render, which would replay the pills' entrance on each keystroke.
+          ListHeaderComponent={recents.length > 0 || recentItems.length > 0 ? recentPills : null}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        />
       ) : results.length === 0 ? (
         <View style={styles.centerState}>
           {trimmedQuery.length === 0 ? (
@@ -628,7 +818,11 @@ const styles = StyleSheet.create({
   /** Owns the gap to the field's right edge — FormInput zeroes the input's own padding. */
   clearButton: { paddingHorizontal: 14, paddingVertical: 12 },
 
-  recentWrap: { paddingHorizontal: 20, paddingTop: 8 },
+  // Inside the list now, whose content already has 12 of horizontal padding: 8 more keeps
+  // the pills on the same 20 inset as the header above.
+  recentWrap: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 },
+  dismissButton: { paddingLeft: 10, paddingVertical: 6 },
+  sectionHeading: { paddingHorizontal: 8, paddingTop: 20, paddingBottom: 6 },
   recentHeading: {
     color: COLORS.textMuted,
     fontSize: 11,
