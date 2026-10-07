@@ -25,6 +25,7 @@ import {
   listMyFans,
   type ProfilePerson,
 } from '../../services/follows';
+import { fetchProfileMutuals } from '../../services/mutuals';
 import { Icon, type IconName } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 
@@ -35,7 +36,11 @@ function avatarInitials(name: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
-export type ProfilePeopleKind = 'friends' | 'stars' | 'fans';
+/**
+ * `mutualFriends` / `friendFans` are the lists behind the "Friends with …" / "Starred by …"
+ * lines on someone else's profile: people you share, and which of YOUR friends star them.
+ */
+export type ProfilePeopleKind = 'friends' | 'stars' | 'fans' | 'mutualFriends' | 'friendFans';
 
 const COPY: Record<ProfilePeopleKind, {
   title: string;
@@ -48,6 +53,8 @@ const COPY: Record<ProfilePeopleKind, {
   friends: { title: 'Friends', one: 'friend', many: 'friends', search: 'Search friends…', empty: 'No friends yet', emptyIcon: 'friends' },
   stars:   { title: 'Stars',   one: 'star',   many: 'stars',   search: 'Search stars…',   empty: 'Not starring anyone yet', emptyIcon: 'star' },
   fans:    { title: 'Fans',    one: 'fan',    many: 'fans',    search: 'Search fans…',    empty: 'No fans yet', emptyIcon: 'star' },
+  mutualFriends: { title: 'Mutual friends', one: 'mutual friend', many: 'mutual friends', search: 'Search mutual friends…', empty: 'No mutual friends', emptyIcon: 'friends' },
+  friendFans: { title: 'Friends who star', one: 'friend', many: 'friends', search: 'Search friends…', empty: 'None of your friends star them yet', emptyIcon: 'star' },
 };
 
 function fetchList(kind: ProfilePeopleKind, userId: string): Promise<ProfilePerson[]> {
@@ -56,6 +63,9 @@ function fetchList(kind: ProfilePeopleKind, userId: string): Promise<ProfilePers
     case 'stars': return listProfileStars(userId);
     // Only ever the caller's own — there is no way to list someone else's fans.
     case 'fans': return listMyFans();
+    case 'mutualFriends': return fetchProfileMutuals(userId).then(m => m.friends);
+    // Only the VIEWER's friends who star this profile — never the profile's whole fan list.
+    case 'friendFans': return fetchProfileMutuals(userId).then(m => m.friendFans);
   }
 }
 
