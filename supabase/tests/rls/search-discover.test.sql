@@ -77,11 +77,16 @@ grant usage on schema auth to authenticated;
 --   …16 ASKER     they sent me a request (pending)       → hidden from 'people' (Step 1d)
 --   …17 LATER     I X'd them; they then request, I accept, then unfriend (Step 1d)
 --   …18 BADDY     I block, then unblock them (Step 1d)
+--   …19 TASTY     zero friends; stars ARIJIT, SHREYA, POPULAR — taste counts at 3+ stars
+--   …1a CHEAT     stars ARIJIT + two accounts nobody else stars (REQD, ASKER): 3 stars,
+--                 but must NOT get ARIJIT's fans ranked first
+--   …1b DUO       stars exactly ARIJIT + SHREYA (2) — F1 shares both, but 2 stars is below
+--                 the 3-star bar, so no taste ranking at all
 -- Also: a pending F2 ↔ RIYA row must not lift Riya's count to 2, and STRANGER (not my
 -- friend) stars SHREYA, which must not lift hers — only my FRIENDS' stars count.
 insert into auth.users (id)
   select ('ad000000-0000-0000-0000-' || lpad(to_hex(g), 12, '0'))::uuid
-    from generate_series(1, 25) g
+    from generate_series(1, 27) g
 on conflict do nothing;
 
 insert into profiles (id, username, username_set, followers_count) values
@@ -108,7 +113,10 @@ insert into profiles (id, username, username_set, followers_count) values
   ('ad000000-0000-0000-0000-000000000015', 'sd_reqd',     true,    0),
   ('ad000000-0000-0000-0000-000000000016', 'sd_asker',    true,    0),
   ('ad000000-0000-0000-0000-000000000017', 'sd_later',    true,    0),
-  ('ad000000-0000-0000-0000-000000000018', 'sd_baddy',    true,    0)
+  ('ad000000-0000-0000-0000-000000000018', 'sd_baddy',    true,    0),
+  ('ad000000-0000-0000-0000-000000000019', 'sd_tasty',    true,    0),
+  ('ad000000-0000-0000-0000-00000000001a', 'sd_cheat',    true,    0),
+  ('ad000000-0000-0000-0000-00000000001b', 'sd_duo',      true,    0)
 on conflict (id) do update
   set username = excluded.username, username_set = excluded.username_set,
       followers_count = excluded.followers_count;
@@ -159,7 +167,15 @@ select a::uuid, b::uuid, 'star'
     ('ad000000-0000-0000-0000-00000000000a', 'ad000000-0000-0000-0000-00000000000c'),
     ('ad000000-0000-0000-0000-000000000002', 'ad000000-0000-0000-0000-000000000012'),
     ('ad000000-0000-0000-0000-000000000003', 'ad000000-0000-0000-0000-000000000012'),
-    ('ad000000-0000-0000-0000-000000000013', 'ad000000-0000-0000-0000-00000000000b')
+    ('ad000000-0000-0000-0000-000000000013', 'ad000000-0000-0000-0000-00000000000b'),
+    ('ad000000-0000-0000-0000-000000000019', 'ad000000-0000-0000-0000-00000000000b'),
+    ('ad000000-0000-0000-0000-000000000019', 'ad000000-0000-0000-0000-00000000000c'),
+    ('ad000000-0000-0000-0000-000000000019', 'ad000000-0000-0000-0000-00000000000d'),
+    ('ad000000-0000-0000-0000-00000000001a', 'ad000000-0000-0000-0000-00000000000b'),
+    ('ad000000-0000-0000-0000-00000000001a', 'ad000000-0000-0000-0000-000000000015'),
+    ('ad000000-0000-0000-0000-00000000001a', 'ad000000-0000-0000-0000-000000000016'),
+    ('ad000000-0000-0000-0000-00000000001b', 'ad000000-0000-0000-0000-00000000000b'),
+    ('ad000000-0000-0000-0000-00000000001b', 'ad000000-0000-0000-0000-00000000000c')
   ) t(a, b)
 on conflict do nothing;
 
@@ -261,10 +277,12 @@ set local role authenticated;
 select pg_temp.assert('zero friends → no friends-of-friends',
   pg_temp.listed('friends') = '{}'::text[], true);
 
--- F1 and F2 star ARIJIT like LONER does → 1 artist in common, first. Then by fans:
--- REVOKED (9999, badge revoked so unverified) before STRANGER (50).
-select pg_temp.assert('people: shared taste first, then most fans',
-  (pg_temp.listed('people'))[1:4] = array['sd_f1:1', 'sd_f2:1', 'sd_revoked:0', 'sd_stranger:0'], true);
+-- LONER stars ONE artist, so taste does not count (20261008010000): starring a single
+-- artist must not float that artist's fans (F1, F2) to the top. Order is by fans only:
+-- REVOKED (9999, badge revoked so unverified) before STRANGER (50), every count 0.
+select pg_temp.assert('people: with fewer than 3 stars, taste is ignored — most fans first',
+  (pg_temp.listed('people'))[1:2] = array['sd_revoked:0', 'sd_stranger:0']
+  and 'sd_f1:0' = any(pg_temp.listed('people')), true);
 
 select pg_temp.assert('people: never verified, half-onboarded, or the caller',
   not (pg_temp.listed('people') && array['sd_arijit:0', 'sd_vfof:0', 'sd_halfway:0', 'sd_loner:0']), true);
@@ -347,6 +365,32 @@ select pg_temp.set_user('ad000000-0000-0000-0000-000000000001');
 set local role authenticated;
 select pg_temp.assert('after an unblock they still stay out of the blocker''s suggestions',
   (select count(*) = 0 from search_discover_people(20) where username = 'sd_baddy'), true);
+reset role;
+
+-- TASTY stars ARIJIT, SHREYA and POPULAR (3). F1 shares ARIJIT + SHREYA (2) → ranked first.
+-- DUO also shares ARIJIT + SHREYA (2) and ties F1; id breaks the tie. STRANGER, F2, LONER
+-- share one each → NOT taste (count 0), so the rest is by fans: REVOKED (9999), STRANGER (50).
+select pg_temp.set_user('ad000000-0000-0000-0000-000000000019');
+set local role authenticated;
+select pg_temp.assert('people: with 3+ stars, 2+ artists in common rank first; 1 in common is not taste',
+  (pg_temp.listed('people'))[1:4] = array['sd_f1:2', 'sd_duo:2', 'sd_revoked:0', 'sd_stranger:0']
+  and 'sd_f2:0' = any(pg_temp.listed('people')), true);
+reset role;
+
+select pg_temp.set_user('ad000000-0000-0000-0000-00000000001b');
+set local role authenticated;
+select pg_temp.assert('people: 2 stars is below the bar — even a 2-in-common match is not taste',
+  'sd_f1:0' = any(pg_temp.listed('people')), true);
+reset role;
+
+-- CHEAT reaches 3 stars with two fillers nobody else stars. ARIJIT's fans (F1, F2, LONER,
+-- TASTY) each share exactly one artist with CHEAT, so none is taste: no fan list.
+select pg_temp.set_user('ad000000-0000-0000-0000-00000000001a');
+set local role authenticated;
+select pg_temp.assert('people: target + 2 filler stars does not surface the target''s fans',
+  (select count(*) = 0 from search_discover_people(20)
+    where section = 'people' and mutual_count > 0)
+  and (pg_temp.listed('people'))[1:2] = array['sd_revoked:0', 'sd_stranger:0'], true);
 reset role;
 
 -- The clamp is what stops one call listing every account, so it needs MORE than 20 people
