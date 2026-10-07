@@ -11,6 +11,8 @@
 --   * send_friend_request refuses an unconfirmed target and a missing one with the SAME
 --     error, and still works for a confirmed one
 --   * ops_users_overview still lists unconfirmed accounts to an operator
+--   * nobody can write profiles.email_confirmed = true unless it is true; ordinary
+--     profile edits keep working, including for a confirmed user with a stale cache
 --   * anon cannot execute auth_email_confirmed; authenticated can
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/unconfirmed-accounts.test.sql
@@ -116,6 +118,28 @@ set local role authenticated;
 select pg_temp.assert('its owner always sees their own profile',
   pg_temp.sees('a0250000-0000-0000-0000-000000000002'), true);
 reset role;
+
+-- ============================================================================
+-- Writing the cache
+-- ============================================================================
+select pg_temp.set_user('a0250000-0000-0000-0000-000000000002');
+set local role authenticated;
+select pg_temp.assert('an unconfirmed user cannot mark themselves confirmed',
+  pg_temp.err($q$update public.profiles set email_confirmed = true
+                 where id = 'a0250000-0000-0000-0000-000000000002'$q$) <> 'ok', true);
+select pg_temp.assert('…but can still edit the rest of their own profile',
+  pg_temp.err($q$update public.profiles set bio = 'hi'
+                 where id = 'a0250000-0000-0000-0000-000000000002'$q$) = 'ok', true);
+reset role;
+
+select pg_temp.set_user('a0250000-0000-0000-0000-000000000003');
+set local role authenticated;
+select pg_temp.assert('a confirmed user with a stale cache can still edit their profile',
+  pg_temp.err($q$update public.profiles set bio = 'hello'
+                 where id = 'a0250000-0000-0000-0000-000000000003'$q$) = 'ok', true);
+reset role;
+select pg_temp.assert('…and the edit really landed (not silently filtered)',
+  (select bio from public.profiles where id = 'a0250000-0000-0000-0000-000000000003') = 'hello', true);
 
 -- ============================================================================
 -- Suggestions

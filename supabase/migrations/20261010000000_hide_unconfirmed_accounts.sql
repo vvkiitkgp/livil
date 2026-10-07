@@ -81,6 +81,17 @@ create policy profiles_select_authenticated on public.profiles
     )
   );
 
+-- 3b. Nobody may claim confirmation they do not have ------------------------------------
+-- The SELECT policy trusts a cached true, so a client must not be able to write one.
+-- Unreachable while email confirmation is ON (an unconfirmed user gets no session), but
+-- anonymous / phone / SSO sign-in would make it real. A WITH CHECK, not a trigger (ADR-0025):
+-- writing false, or true when it IS true, passes; shipped apps never send the column, so
+-- their updates carry the stored value and pass unchanged.
+alter policy profiles_update_own on public.profiles
+  with check (id = auth.uid() and (not email_confirmed or public.auth_email_confirmed(id)));
+alter policy profiles_insert_self on public.profiles
+  with check (id = auth.uid() and (not email_confirmed or public.auth_email_confirmed(id)));
+
 -- 4. Suggestions ------------------------------------------------------------------------
 create or replace function public.search_discover_people(p_limit int default 5)
 returns table (
