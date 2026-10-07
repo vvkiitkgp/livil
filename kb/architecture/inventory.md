@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-284 TypeScript file(s) under `src/`, 69,174 lines.
+287 TypeScript file(s) under `src/`, 69,389 lines.
 
 ## Size hotspots
 
@@ -29,18 +29,18 @@ reading alone (Constitution P28).
 | `src/components/FullScreenPlayer.tsx` | 2561 |
 | `src/screens/main/ConversationScreen.tsx` | 1856 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
-| `src/screens/main/UploadScreen.tsx` | 1539 |
+| `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/screens/main/HomeScreen.tsx` | 1331 |
 | `src/screens/main/UserProfileScreen.tsx` | 1223 |
-| `src/screens/main/ProfileScreen.tsx` | 1183 |
+| `src/screens/main/ProfileScreen.tsx` | 1184 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
-| `src/screens/main/RepostScreen.tsx` | 931 |
+| `src/screens/main/RepostScreen.tsx` | 950 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/screens/main/SearchScreen.tsx` | 858 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 807 |
 | `src/components/CommentsSheet.tsx` | 776 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 763 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/screens/main/LibraryScreen.tsx` | 624 |
@@ -103,27 +103,27 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 23,987 lines.
+46 file(s), 24,079 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 1856 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
-| `src/screens/main/UploadScreen.tsx` | 1539 |
+| `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/screens/main/HomeScreen.tsx` | 1331 |
 | `src/screens/main/UserProfileScreen.tsx` | 1223 |
-| `src/screens/main/ProfileScreen.tsx` | 1183 |
+| `src/screens/main/ProfileScreen.tsx` | 1184 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
-| `src/screens/main/RepostScreen.tsx` | 931 |
+| `src/screens/main/RepostScreen.tsx` | 950 |
 | `src/screens/main/SearchScreen.tsx` | 858 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 763 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 807 |
 | `src/screens/main/EditProfileScreen.tsx` | 719 |
 | `src/screens/main/LibraryScreen.tsx` | 624 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 | `src/screens/main/InboxScreen.tsx` | 502 |
 | `src/screens/main/NewConversationScreen.tsx` | 475 |
-| `src/screens/auth/SignUpScreen.tsx` | 467 |
+| `src/screens/auth/SignUpScreen.tsx` | 471 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 373 |
@@ -144,19 +144,19 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/FollowingScreen.tsx` | 231 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 227 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 223 |
+| `src/screens/auth/FirstRunGuideScreen.tsx` | 222 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 216 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
-| `src/screens/auth/FirstRunGuideScreen.tsx` | 207 |
 | `src/screens/main/PostDetailScreen.tsx` | 202 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 201 |
-| `src/screens/auth/ResetPasswordScreen.tsx` | 179 |
+| `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 118 |
 
 ## Components
 
-103 file(s), 23,447 lines.
+103 file(s), 23,477 lines.
 
 | File | Lines |
 |---|---:|
@@ -210,6 +210,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProfileTabBar.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
+| `src/components/onboarding/StageLamp.tsx` | 151 |
 | `src/components/__tests__/AppleSignInButton.test.tsx` | 148 |
 | `src/components/guide/cardWelcome.tsx` | 148 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
@@ -217,7 +218,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
-| `src/components/onboarding/StageLamp.tsx` | 121 |
 | `src/components/ProfileGridCard.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
@@ -372,7 +372,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-34 file(s), 3,480 lines.
+37 file(s), 3,566 lines.
 
 | File | Lines |
 |---|---:|
@@ -408,6 +408,9 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
 | `src/utils/__tests__/retryOnce.test.ts` | 32 |
 | `src/utils/__tests__/avoidRepeatTop.test.ts` | 31 |
+| `src/utils/returningListener.ts` | 30 |
+| `src/utils/__tests__/returningListener.test.ts` | 29 |
+| `src/utils/__tests__/passwordPolicy.test.ts` | 27 |
 | `src/utils/avoidRepeatTop.ts` | 23 |
 | `src/utils/retryOnce.ts` | 17 |
 
