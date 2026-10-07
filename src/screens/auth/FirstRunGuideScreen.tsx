@@ -39,7 +39,7 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
   // The illustrations are choreographed at a fixed 230×460; on a short screen the
   // whole phone is scaled down rather than reflowed, so nothing inside it moves.
   // ~330dp is the chrome around it: header, copy, dots, button, safe areas.
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const phoneScale = Math.min(1, Math.max(0.6, (height - 330) / PHONE_H));
 
   const next = useCallback(() => {
@@ -107,7 +107,12 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           onPress={next}
           variant="primary"
           size="lg"
-          style={styles.ctaBtn}
+          // Half the content width is a FLOOR, not a fixed width: "SHOW ME AROUND" in
+          // 16pt letter-spaced mono is ~160dp, wider than half of most phones once the
+          // button's own padding is taken out, so a fixed 50% truncated it. Computed from
+          // the window rather than `minWidth: '50%'` because percentage sizing has failed
+          // silently in RN 0.85 before. 56 = the container's horizontal padding.
+          style={{ minWidth: Math.max(160, (width - 56) / 2) }}
           labelStyle={styles.cta}
         />
       </View>
@@ -198,5 +203,4 @@ const styles = StyleSheet.create({
   dotOn: { width: 18, backgroundColor: COLORS.purpleNeon },
   dotOff: { width: 6, backgroundColor: COLORS.border },
   cta: { fontFamily: FONTS.monoBold, letterSpacing: 2, textTransform: 'uppercase' },
-  ctaBtn: { width: '50%', minWidth: 160 },
 });
