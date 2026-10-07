@@ -255,6 +255,15 @@ export default function HomeScreen() {
 
   // Top bar hide/show on scroll direction
   const TOP_BAR_H = 64;
+  // iOS: clear the floating top bar with an inset rather than a spacer row, so
+  // UIRefreshControl sits under the bar instead of behind it. The resting scroll
+  // offset becomes -TOP_BAR_H; handleScroll's `y < 10` "at the top" test still
+  // holds for it.
+  const FEED_INSET_IOS = useMemo(() => ({
+    contentInset: { top: TOP_BAR_H },
+    contentOffset: { x: 0, y: -TOP_BAR_H },
+    scrollIndicatorInsets: { top: TOP_BAR_H },
+  }), []);
   const topBarAnim = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
   const topBarVisible = useRef(true);
@@ -855,8 +864,11 @@ export default function HomeScreen() {
   const listHeader = useMemo(
     () => (
       <>
-        {/* Spacer so content starts below the fixed top bar */}
-        <View style={{ height: TOP_BAR_H }} />
+        {/* Spacer so content starts below the fixed top bar — Android only. iOS
+            clears the bar with a content inset instead (see FEED_INSET_IOS), which is
+            what puts the pull-to-refresh spinner BELOW the bar: a spacer is content,
+            and the spinner draws above content, i.e. behind the bar. */}
+        {Platform.OS === 'android' ? <View style={{ height: TOP_BAR_H }} /> : null}
 
         {/*
           TODO: Featured Today — curated editorial spotlight card once CMS + tooling exists.
@@ -957,12 +969,16 @@ export default function HomeScreen() {
             </View>
           )
         }
+        // The top bar floats over the list, so the list's top TOP_BAR_H is covered.
+        // The spinner must start below it, as it does in the inbox (whose header is
+        // a normal row above its list): iOS via the content inset, Android via
+        // progressViewOffset. Default colours, matching the inbox's spinner.
+        {...(Platform.OS === 'ios' ? FEED_INSET_IOS : null)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={COLORS.purpleLight}
-            colors={[COLORS.purple]}
+            progressViewOffset={TOP_BAR_H}
           />
         }
         onEndReached={() => {
