@@ -46,6 +46,8 @@ import AddUserSheet from '../../components/AddUserSheet';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
+import MutualsLine from '../../components/MutualsLine';
+import { fetchProfileMutuals, type ProfileMutuals } from '../../services/mutuals';
 
 type UserProfileRouteProp = RouteProp<RootStackParamList, 'UserProfile'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -155,6 +157,22 @@ export default function UserProfileScreen() {
    */
   const blockedView = rel.status(userId) === 'blocked';
   const isOwnProfile = rel.meId !== null && rel.meId === userId;
+
+  /**
+   * "Friends with riya, sam and 3 others" / "Starred by kiran and 2 other friends" — what
+   * the viewer has in common with this profile. Not on your own profile, not across a block.
+   * Fail-safe: the lines simply do not render until (or unless) this resolves.
+   */
+  const [mutuals, setMutuals] = useState<ProfileMutuals>({ friends: [], friendFans: [] });
+  useEffect(() => {
+    if (isOwnProfile || blockedView) {
+      setMutuals({ friends: [], friendFans: [] });
+      return;
+    }
+    let cancelled = false;
+    fetchProfileMutuals(userId).then(m => { if (!cancelled) { setMutuals(m); } });
+    return () => { cancelled = true; };
+  }, [userId, isOwnProfile, blockedView]);
   const listRef = useRef<FlatList<ListItem>>(null);
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
   // auto-open comments) have already fired this mount — they're one-shot.
@@ -714,6 +732,25 @@ export default function UserProfileScreen() {
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={3}>{profile.bio}</Text>
           ) : null}
+          {!isOwnProfile && !blockedView ? (
+            <>
+              <MutualsLine
+                lead="Friends with"
+                people={mutuals.friends}
+                onPress={() => navigation.navigate('ProfilePeople', {
+                  userId, username: profile?.username, kind: 'mutualFriends',
+                })}
+              />
+              <MutualsLine
+                lead="Starred by"
+                people={mutuals.friendFans}
+                otherNoun={{ one: 'other friend', many: 'other friends' }}
+                onPress={() => navigation.navigate('ProfilePeople', {
+                  userId, username: profile?.username, kind: 'friendFans',
+                })}
+              />
+            </>
+          ) : null}
           {relStatus === 'blocked' ? (
             // Replaces BOTH the relationship CTA and Message. Every action they
             // offered is refused server-side for a blocked pair, so showing them
@@ -807,7 +844,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView, isOwnProfile]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView, isOwnProfile, mutuals]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
