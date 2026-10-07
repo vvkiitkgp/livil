@@ -16,7 +16,7 @@ export const SUPPORT_URL = 'https://livil-music.com/support.html';
 export const CHILD_SAFETY_URL = 'https://livil-music.com/child-safety.html';
 export const DELETE_ACCOUNT_INFO_URL = 'https://livil-music.com/delete-account.html';
 
-export const SUPPORT_EMAIL = 'vvk.iitkgp@gmail.com';
+export const SUPPORT_EMAIL = 'support@livil-music.com';
 
 /** Confirmed by Vamsi, 2026-08-03. Underscore, not a dot — `livil.music` is a 404. */
 export const INSTAGRAM_URL = 'https://instagram.com/livil_music';

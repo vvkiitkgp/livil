@@ -659,7 +659,7 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 | **Apple App Store** | `https://apps.apple.com/app/id6809119164` | Name **"Livil Music"** ("Livil" was taken), Apple ID `6809119164`, bundle `com.livil`, iPhone only (no iPad build), 174 territories (not China mainland). See ADR-0016 |
 | **Web** | `https://livil-music.com/studio` | Web app + creator dashboard (`web/`, Vercel). Landing page `https://livil-music.com` (`docs/`, GitHub Pages) links both stores |
 
-- **Developer**: Livil Labs (`vvk.iitkgp@gmail.com`)
+- **Developer**: Livil Labs. **User-facing contact email is `support@livil-music.com`** (GoDaddy mailbox, since 2026-10-07) — use it in the app, web, store listings, legal pages and outgoing email. `vvk.iitkgp@gmail.com` is only the login for the developer/store accounts; never show it to users.
 - **GitHub**: https://github.com/vvkiitkgp/livil
 - **App Review guideline 2.3.10**: an iOS build must never name or link another platform's store — gate Play-only UI by `Platform.OS`.
 
