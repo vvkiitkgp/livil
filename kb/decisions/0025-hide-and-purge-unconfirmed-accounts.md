@@ -14,7 +14,7 @@ related_adrs: [0004, 0017]
 
 | | |
 |---|---|
-| **Status** | **Accepted** (board) — ratified by the owner 2026-10-07; change 1 (hide) built in `20261010000000`, change 2 (purge) pending |
+| **Status** | **Accepted** (board) — ratified by the owner 2026-10-07; change 1 (hide) built in `20261010000000`, change 2 (purge) built in `20261011000000` (pg_cron enabled 2026-10-08) |
 | **Date** | 2026-10-07 |
 | **Domain** | data + security (with client) |
 | **Decided by** | board debate — principal-data, principal-security, principal-client, adversarial-critic; Chief Architect moderating. Product direction (hide + purge) approved in principle by the owner beforehand. |

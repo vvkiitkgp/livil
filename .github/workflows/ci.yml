@@ -168,8 +168,28 @@ jobs:
             raw_user_meta_data jsonb default '{}'::jsonb,
             email_confirmed_at timestamptz default now(),
             last_sign_in_at timestamptz,
-            created_at timestamptz default now());
+            created_at timestamptz default now(),
+            confirmation_sent_at timestamptz, recovery_sent_at timestamptz,
+            invited_at timestamptz);
           create unique index if not exists users_email_key on auth.users (email);
+          -- auth.identities: ADR-0025's purge keeps any account with a non-email login.
+          create table if not exists auth.identities (
+            id uuid default gen_random_uuid() primary key,
+            user_id uuid references auth.users (id) on delete cascade,
+            provider text);
+          -- pg_cron stand-in. Production has the real extension (enabled 2026-10-08); a
+          -- migration that REQUIRES a schedule (ADR-0025 change 2) checks for
+          -- cron.schedule(text,text,text) and must find it here too. Upserts by name,
+          -- like pg_cron. Deliberately NOT registered in pg_extension, so the older
+          -- NOTICE-only guards still see "not installed".
+          create schema if not exists cron;
+          create table if not exists cron.job (jobid bigserial primary key,
+            jobname text unique, schedule text, command text, active boolean default true);
+          create or replace function cron.schedule(job_name text, schedule text, command text)
+            returns bigint language sql as $cron$
+              insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+              on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+              returning jobid $cron$;
           create or replace function auth.uid() returns uuid
             language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text
@@ -639,6 +659,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/unconfirmed-accounts.test.sql
 
+      # ADR-0025 change 2 — the nightly purge deletes only abandoned never-confirmed
+      # sign-ups, re-checks each row at delete time, frees the username, and no client
+      # role can run it.
+      - name: Unconfirmed-account purge tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/purge-unconfirmed.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added
@@ -726,8 +756,12 @@ jobs:
           create schema if not exists auth;
           create schema if not exists storage;
           create schema if not exists realtime;
-          create table if not exists auth.users (id uuid primary key, email text, email_confirmed_at timestamptz default now(), last_sign_in_at timestamptz, created_at timestamptz default now());
+          create table if not exists auth.users (id uuid primary key, email text, email_confirmed_at timestamptz default now(), last_sign_in_at timestamptz, created_at timestamptz default now(), confirmation_sent_at timestamptz, recovery_sent_at timestamptz, invited_at timestamptz);
           create unique index if not exists users_email_key on auth.users (email);
+          create table if not exists auth.identities (id uuid default gen_random_uuid() primary key, user_id uuid references auth.users (id) on delete cascade, provider text);
+          create schema if not exists cron;
+          create table if not exists cron.job (jobid bigserial primary key, jobname text unique, schedule text, command text, active boolean default true);
+          create or replace function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $cron$ insert into cron.job (jobname, schedule, command) values (job_name, schedule, command) on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command returning jobid $cron$;
           create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
           create table if not exists storage.buckets (id text primary key, name text, public boolean);
