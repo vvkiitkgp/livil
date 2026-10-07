@@ -872,6 +872,23 @@ export async function fetchPostsByIds(postIds: string[]): Promise<FeedPost[]> {
 }
 
 /**
+ * The newest original uploads, newest first — the "New songs" list on the empty Search
+ * screen. Uploads only: a repost is somebody sharing an older song, not a new one. Blocked
+ * uploaders are hidden by `posts_select_authenticated`. Taken-down tracks have no posts to
+ * find: `ops_take_down_track` deletes them and `posts_block_taken_down` refuses re-inserts.
+ */
+export async function listNewestUploads(limit: number): Promise<FeedPost[]> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select(POST_SELECT)
+    .eq('kind', 'upload')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) {throw new Error(error.message);}
+  return hydrateRawPostRows((data ?? []) as unknown as RawPostRow[]);
+}
+
+/**
  * Return the total cumulative plays (sum of views_count) across every post that
  * uses the given track — displayed as a badge on the cover art in RepostScreen.
  */
