@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-07
+last_verified: 2026-10-08
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 133 migration(s) in `supabase/migrations/`.
+Reconstructed from 134 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,29 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-50 table(s).
+51 table(s).
+
+### `account_exit_feedback`
+
+RLS enabled · defined in `20261012000000_account_exit_feedback.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid PRIMARY KEY DEFAULT gen_random_uuid()` |
+| `user_id` | `uuid UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL` |
+| `reason` | `text CHECK (reason IN ( 'no_music', 'no_friends', 'bugs', 'hard_to_use', 'privacy', 'break', 'other' ))` |
+| `note` | `text CHECK (note IS NULL OR char_length(note) BETWEEN 1 AND 1000)` |
+| `platform` | `text CHECK (platform IN ('ios', 'android', 'web'))` |
+| `account_age_days` | `integer CHECK (account_age_days >= 0)` |
+| `created_at` | `timestamptz NOT NULL DEFAULT now()` |
+
+**Table constraints**
+
+- `CONSTRAINT account_exit_feedback_not_empty CHECK (reason IS NOT NULL OR note IS NOT NULL)`
+
+**Indexes**
+
+- `account_exit_feedback_created_at_desc_idx` `(created_at DESC)`
 
 ### `activity_notifications`
 
