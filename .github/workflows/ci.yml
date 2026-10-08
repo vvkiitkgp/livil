@@ -669,6 +669,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/purge-unconfirmed.test.sql
 
+      # The optional "why are you leaving?" answer: stamped with the caller, ops-only to
+      # read, function-only to write — and it must SURVIVE delete_my_account with its
+      # link to the person gone, which is what the phone tells them before they answer.
+      - name: Account exit feedback tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/account-exit-feedback.test.sql
+
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.
       # This asserts the property holds for every DEFINER function, so a new one added

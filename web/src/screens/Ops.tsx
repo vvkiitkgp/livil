@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { sendBadgePush } from '../data/push';
 import { formatDate } from '../format';
 import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
+import { exitReasonLabel, fetchExitFeedback, type ExitFeedback } from '../data/exitFeedback';
 import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
 import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
@@ -122,6 +123,8 @@ export function Ops() {
 
   const [messages, setMessages] = useState<TeamMessage[] | null>(null);
   const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [exitFeedback, setExitFeedback] = useState<ExitFeedback[] | null>(null);
+  const [exitFeedbackError, setExitFeedbackError] = useState<string | null>(null);
   const [users, setUsers] = useState<OpsUser[] | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [searchKind, setSearchKind] = useState<OpsSearchKind>('track');
@@ -424,6 +427,26 @@ export function Ops() {
         setMessagesError(e?.message ?? 'Could not load messages.');
       });
   }, []);
+
+  useEffect(() => {
+    fetchExitFeedback()
+      .then(setExitFeedback)
+      .catch(e => {
+        setExitFeedback([]);
+        setExitFeedbackError(e?.message ?? 'Could not load exit answers.');
+      });
+  }, []);
+
+  // Most-given reason first. Counted over every answer, including people who answered and
+  // then kept their account — they still told us what was wrong.
+  const exitReasonCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const f of exitFeedback ?? []) {
+      const key = exitReasonLabel(f.reason);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [exitFeedback]);
 
   /**
    * How much work is waiting behind each tab.
@@ -974,6 +997,80 @@ export function Ops() {
     </>
   );
 
+  const renderExitFeedback = () => (
+    <>
+      <header className="page__head">
+        <div>
+          <p className="kicker">On the way out</p>
+          <h1 className="display page__title">Why people left</h1>
+        </div>
+      </header>
+
+      {exitFeedbackError && (
+        <div className="empty panel">
+          <p className="empty__title">Could not load exit answers</p>
+          <p className="hint">{exitFeedbackError}</p>
+        </div>
+      )}
+
+      {exitFeedback === null && !exitFeedbackError && <div className="skeleton skeleton--rows" />}
+
+      {exitFeedback !== null && exitFeedback.length === 0 && !exitFeedbackError && (
+        <div className="empty panel">
+          <p className="empty__title">Nobody has answered yet</p>
+          <p className="hint">
+            The app asks — optionally — when someone deletes their account. Skipping it
+            leaves nothing here.
+          </p>
+        </div>
+      )}
+
+      {exitFeedback !== null && exitFeedback.length > 0 && (
+        <>
+          <div className="tablewrap panel">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Reason</th>
+                  <th className="num">People</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exitReasonCounts.map(([label, n]) => (
+                  <tr key={label}>
+                    <td><span className="table__title">{label}</span></td>
+                    <td className="num">{n}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="panel msglist">
+            {exitFeedback.map(f => (
+              <article className="msg" key={f.id}>
+                <div className="msg__head">
+                  <span className="table__title">{exitReasonLabel(f.reason)}</span>
+                  {f.platform && <span className="hint">{f.platform}</span>}
+                  {f.accountAgeDays !== null && (
+                    <span className="hint">
+                      {f.accountAgeDays === 0 ? 'joined that day' : `${f.accountAgeDays}d on Livil`}
+                    </span>
+                  )}
+                  {/* Anonymous by design, so there is no name to show. A row still linked to
+                      an account means they answered and then did not delete. */}
+                  {!f.accountDeleted && <span className="hint">answered, kept their account</span>}
+                  <span className="hint msg__when">{formatDate(f.createdAt)}</span>
+                </div>
+                {f.note && <p className="msg__body">{f.note}</p>}
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+
   const renderSearched = () => (
     <>
       <header className="page__head">
@@ -1089,7 +1186,12 @@ export function Ops() {
 
       {tab === 'inbox' && <div className="opsgroup">{renderMessages()}</div>}
 
-      {tab === 'insights' && <div className="opsgroup">{renderSearched()}</div>}
+      {tab === 'insights' && (
+        <div className="opsgroup">
+          {renderSearched()}
+          {renderExitFeedback()}
+        </div>
+      )}
 
       {/* One dialog, both queues. It replaces a `window.confirm` stacked in front of a
           `window.prompt` — two questions for one decision, in browser chrome, producing

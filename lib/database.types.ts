@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_exit_feedback: {
+        Row: {
+          account_age_days: number | null
+          created_at: string
+          id: string
+          note: string | null
+          platform: string | null
+          reason: string | null
+          user_id: string | null
+        }
+        Insert: {
+          account_age_days?: number | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          platform?: string | null
+          reason?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          account_age_days?: number | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          platform?: string | null
+          reason?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       activity_notifications: {
         Row: {
           actor_id: string | null
@@ -2567,6 +2597,10 @@ export type Database = {
       shares_conversation_with: {
         Args: { a: string; b: string }
         Returns: boolean
+      }
+      submit_account_exit_feedback: {
+        Args: { p_note?: string; p_platform?: string; p_reason?: string }
+        Returns: undefined
       }
       touch_last_seen: { Args: never; Returns: undefined }
       track_tags_ok: { Args: { tags: string[] }; Returns: boolean }

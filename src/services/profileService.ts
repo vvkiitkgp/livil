@@ -1,9 +1,10 @@
-import { DeviceEventEmitter, type EmitterSubscription } from 'react-native';
+import { DeviceEventEmitter, Platform, type EmitterSubscription } from 'react-native';
 import ImagePicker, {
   type Image as CroppedImage,
 } from 'react-native-image-crop-picker';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
 import { TRACKS_MEDIA_BUCKET } from './uploads';
+import type { ExitReasonId } from '../../shared/constants/exitFeedback';
 
 export const AVATARS_BUCKET = 'avatars';
 
@@ -388,6 +389,46 @@ async function removeOwnedPaths(bucket: string, paths: string[]): Promise<void> 
       throw new Error(`Only some of your files in ${bucket} could be deleted.`);
     }
   }
+}
+
+/** How long the exit survey may hold up a deletion before we give up on it. */
+const EXIT_FEEDBACK_TIMEOUT_MS = 4000;
+
+/**
+ * The optional "why are you leaving?" answer, sent just before `deleteMyAccount`.
+ *
+ * NEVER THROWS, and gives up after a few seconds: a survey must not be the reason someone
+ * cannot delete their account. A missing function (backend not migrated yet), a network
+ * error or a rejected value all end the same way — the answer is dropped and deletion
+ * carries on. An empty answer is a skip and makes no request at all.
+ *
+ * The row survives the deletion anonymously: `user_id` is SET NULL when the auth user goes
+ * (migration 20261012000000).
+ */
+export async function submitExitFeedback(
+  reason: ExitReasonId | null,
+  note: string,
+): Promise<void> {
+  const trimmed = note.trim();
+  if (!reason && !trimmed) {
+    return;
+  }
+  const platform = Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : undefined;
+  const send = (async () => {
+    try {
+      await supabase.rpc('submit_account_exit_feedback', {
+        p_reason: reason ?? undefined,
+        p_note: trimmed || undefined,
+        p_platform: platform,
+      });
+    } catch {
+      // Swallowed on purpose — see above.
+    }
+  })();
+  await Promise.race([
+    send,
+    new Promise<void>(resolve => setTimeout(resolve, EXIT_FEEDBACK_TIMEOUT_MS)),
+  ]);
 }
 
 /**
