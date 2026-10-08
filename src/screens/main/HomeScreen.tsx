@@ -39,10 +39,12 @@ import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   fetchHomeFeedPage,
   newHomeFeedSession,
+  isPlayableInLivil,
   type FeedPost,
   type HomeFeedCursor,
   type HomeFeedSession,
 } from '../../services/posts';
+import { useSpotifyAvailability } from '../../services/spotify';
 import { recordImpression, flushImpressions } from '../../services/feedImpressions';
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
@@ -237,6 +239,7 @@ function FriendStoriesRow({
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
+  const spotify = useSpotifyAvailability();
   const playback = usePlayback();
   const comments = useCommentsCountDeltas();
   // Posts the viewer has deleted in this session. Filtered out before the
@@ -381,7 +384,9 @@ export default function HomeScreen() {
     // Only reset the queue when the user tapped play in the feed, not when
     // playback advanced programmatically (queue navigation, next/prev).
     if (playback.playSourceRef.current !== 'user') { return; }
-    const allPosts = postsRef.current;
+    // Spotify reposts are opened in Spotify, never played by Livil (ADR-0027), so they
+    // are not part of the queue — skipping over one must land on the next Livil song.
+    const allPosts = postsRef.current.filter(isPlayableInLivil);
     const startIdx = allPosts.findIndex(p => p.id === playback.activePostId);
     if (startIdx < 0) { return; }
     playback.setQueue(
@@ -1027,8 +1032,10 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.uploadButton}
-              onPress={() => navigation.navigate('Upload')}
-              accessibilityLabel="Upload music"
+              // With Spotify reposts switched on, "+" asks what to add (ADR-0027);
+              // otherwise it goes straight to Upload, as it always has.
+              onPress={() => navigation.navigate(spotify.reposts ? 'AddToLivil' : 'Upload')}
+              accessibilityLabel={spotify.reposts ? 'Add to Livil' : 'Upload music'}
             >
               <GradientBorder borderRadius={19} />
               <Text style={styles.uploadButtonText}>+</Text>

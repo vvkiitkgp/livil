@@ -16,12 +16,19 @@ export function BarChart({
   bars,
   height = 160,
   emptyLabel = 'No plays in this window',
+  max: sharedMax,
 }: {
   bars: Bar[];
   height?: number;
   emptyLabel?: string;
+  /**
+   * A fixed top for the scale. Pass the same value to charts shown side by side so their
+   * bars compare honestly — each chart scaling to its own peak makes ten look like a
+   * thousand.
+   */
+  max?: number;
 }) {
-  const max = Math.max(1, ...bars.map(b => b.value));
+  const max = Math.max(1, sharedMax ?? 0, ...bars.map(b => b.value));
   const total = bars.reduce((s, b) => s + b.value, 0);
 
   if (bars.length === 0 || total === 0) {

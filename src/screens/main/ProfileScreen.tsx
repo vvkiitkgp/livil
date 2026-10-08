@@ -44,9 +44,11 @@ import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   listPostsForUser,
   getProfileStats,
+  isPlayableInLivil,
   type FeedPost,
   type ProfileStats,
 } from '../../services/posts';
+import { useSpotifyAvailability } from '../../services/spotify';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
@@ -127,6 +129,7 @@ export default function ProfileScreen() {
   const playback = usePlayback();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const spotify = useSpotifyAvailability();
   const { showToast } = useToast();
   const comments = useCommentsCountDeltas();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -209,10 +212,12 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!playback.activePostId) { return; }
     if (playback.playSourceRef.current !== 'user') { return; }
-    const startIdx = posts.findIndex(p => p.id === playback.activePostId);
+    // Spotify reposts are opened in Spotify, never played by Livil (ADR-0027).
+    const playable = posts.filter(isPlayableInLivil);
+    const startIdx = playable.findIndex(p => p.id === playback.activePostId);
     if (startIdx < 0) { return; }
     playback.setQueue(
-      posts.map(p => {
+      playable.map(p => {
         const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
         return {
           postId: p.id,
@@ -651,8 +656,9 @@ export default function ProfileScreen() {
             icon="add"
             variant="primary"
             size="sm"
-            onPress={() => navigation.navigate('Upload')}
-            accessibilityLabel="Upload a track"
+            // With Spotify reposts switched on, "+ Track" asks what to add (ADR-0027).
+            onPress={() => navigation.navigate(spotify.reposts ? 'AddToLivil' : 'Upload')}
+            accessibilityLabel={spotify.reposts ? 'Add a track' : 'Upload a track'}
           />
           <TouchableOpacity
             style={styles.headerIconBtn}
@@ -806,7 +812,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, badges, error, loading, navigation]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {

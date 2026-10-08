@@ -103,6 +103,18 @@ export type RootStackParamList = {
     seedClipStartSec?: number | null;
     seedClipEndSec?: number | null;
   };
+  // ── Spotify reposts (ADR-0027)
+  // "+ Track" / Home "+" chooser: upload your own track, or repost from Spotify. Only shown
+  // while the server switch is on; otherwise those buttons go straight to Upload.
+  AddToLivil: undefined;
+  // Repost a Spotify track. Without params: search Spotify or paste a link. With
+  // `spotifyTrackId`: that song is pre-picked; `locked` (reposting a friend's Spotify
+  // repost) hides "Change song". `fromUsername` names whose repost it came from.
+  SpotifyRepost: {
+    spotifyTrackId?: string;
+    locked?: boolean;
+    fromUsername?: string;
+  } | undefined;
   // Stories are grouped by author (one tray ring per person). The viewer receives
   // the ordered clusters plus which ring/story was tapped, and flattens them into
   // one ordered index space internally (so cross-author tap/swipe works).

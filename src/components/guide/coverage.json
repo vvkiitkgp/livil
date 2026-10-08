@@ -7,7 +7,7 @@
   "drag": ["src/components/FloatingPlayer.tsx"],
   "moments": ["src/components/PostCard.tsx", "src/components/WaveformScrubber.tsx"],
   "like": ["src/components/PostCard.tsx", "src/components/CommentsSheet.tsx"],
-  "repost": ["src/screens/main/RepostScreen.tsx"],
+  "repost": ["src/screens/main/RepostScreen.tsx", "src/screens/main/SpotifyRepostScreen.tsx"],
   "share": ["src/components/SharePostSheet.tsx"],
   "stories": ["src/screens/main/StoryViewerScreen.tsx", "src/components/StoryCard.tsx"],
   "friends": ["src/components/AddUserSheet.tsx", "src/services/follows.ts", "src/screens/main/UserProfileScreen.tsx"],

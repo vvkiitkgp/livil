@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { findSpotifyLinkInText } from '../utils/spotifyLinks';
 import { sendPush } from './pushDispatch';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +59,11 @@ async function dispatchMessagePush(
 
     let bodyPreview: string;
     if (payload.kind === 'text') {
-      bodyPreview = payload.body;
+      // A message that is only a Spotify song link reads as the song, not a URL (ADR-0027).
+      const link = findSpotifyLinkInText(payload.body);
+      bodyPreview = link && payload.body.replace(link.match, '').trim() === ''
+        ? '🎵 shared a Spotify song'
+        : payload.body;
     } else if (payload.kind === 'track_share') {
       // Artist included: a title alone is often ambiguous ("Retrograde" by whom?), and
       // the note glyph makes the row scannable against a wall of text messages. Matches

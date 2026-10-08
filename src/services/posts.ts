@@ -63,7 +63,23 @@ export type FeedPost = {
   clipEndSec: number | null;
   /** Credited artists, for the avatar row on the card. Empty for an uncredited track. */
   credits: CreditFace[];
+  /**
+   * Set on a Spotify repost (ADR-0027): the Spotify track this post points at. Such a post
+   * has no Livil media — `track` is the empty placeholder — and is opened in the Spotify
+   * app, never played by Livil. Use `isSpotifyPost` / `isPlayableInLivil` to branch.
+   */
+  spotifyTrackId: string | null;
 };
+
+/** A Spotify repost: rendered by SpotifyPostCard, opened in Spotify, never queued. */
+export function isSpotifyPost(post: FeedPost): boolean {
+  return post.spotifyTrackId != null;
+}
+
+/** Whether Livil's player can play this post. Every queue builder filters on this. */
+export function isPlayableInLivil(post: FeedPost): boolean {
+  return post.spotifyTrackId == null && Boolean(post.track.audioUrl || post.track.videoUrl);
+}
 
 export type ProfileStats = {
   posts: number;
@@ -268,7 +284,7 @@ async function hydrateRawPostRows(
     }
   }
 
-  return rows.map<FeedPost>(r => ({
+  return Promise.resolve(rows.map<FeedPost>(r => ({
     id: r.id,
     kind: r.kind,
     caption: r.caption,
@@ -285,7 +301,8 @@ async function hydrateRawPostRows(
     clipStartSec: r.clip_start_sec ?? null,
     clipEndSec: r.clip_end_sec ?? null,
     credits: toCreditFaces(r.track),
-  }));
+    spotifyTrackId: null,
+  }))).then(attachSpotifyTrackIds);
 }
 
 /**
@@ -319,7 +336,40 @@ function mapRpcFeedPost(raw: RpcFeedPostJson): FeedPost {
     clipStartSec: raw.clip_start_sec ?? null,
     clipEndSec: raw.clip_end_sec ?? null,
     credits: toCreditFaces(raw.track),
+    spotifyTrackId: null,
   };
+}
+
+/**
+ * Fill in `spotifyTrackId` for the posts that might be Spotify reposts.
+ *
+ * Why a SECOND query instead of adding `spotify_track_id` to POST_SELECT and the feed RPC:
+ * this app must keep working against a database that does not have the column yet (the
+ * order a migration and an app release land in is not guaranteed). Selecting a missing
+ * column fails the WHOLE query — the feed, profiles, everything — whereas this lookup only
+ * runs when a track-less repost is present, which cannot exist before the migration, and
+ * its failure is swallowed.
+ *
+ * A Spotify repost is the only post with no Livil track (posts_media_source_check), so
+ * "repost whose track did not come back" is the exact candidate set.
+ */
+async function attachSpotifyTrackIds(posts: FeedPost[]): Promise<FeedPost[]> {
+  const candidates = posts.filter(p => p.kind === 'repost' && p.track.id === '').map(p => p.id);
+  if (candidates.length === 0) {return posts;}
+  const { data, error } = await supabase
+    .from('posts')
+    .select('id, spotify_track_id')
+    .in('id', candidates);
+  // On failure the post keeps spotifyTrackId = null and PostCard draws its "original no
+  // longer available" tombstone — wrong-looking but safe: it has no play button, and
+  // isPlayableInLivil already keeps it out of every queue (it has no media URL).
+  if (error || !data) {return posts;}
+  const byId = new Map<string, string>();
+  for (const row of data as Array<{ id: string; spotify_track_id: string | null }>) {
+    if (row.spotify_track_id) { byId.set(row.id, row.spotify_track_id); }
+  }
+  if (byId.size === 0) {return posts;}
+  return posts.map(p => (byId.has(p.id) ? { ...p, spotifyTrackId: byId.get(p.id)! } : p));
 }
 
 export type HomeFeedCursor = {
@@ -418,7 +468,7 @@ export async function fetchHomeFeedPage(options: {
     return { posts: [], nextCursor: null };
   }
 
-  const posts = rows.map(r => mapRpcFeedPost(r.post));
+  const posts = await attachSpotifyTrackIds(rows.map(r => mapRpcFeedPost(r.post)));
 
   const last = rows[rows.length - 1]!;
   const nextCursor: HomeFeedCursor | null =
@@ -793,6 +843,44 @@ export async function createRepost(
   // Notify the original post's author (self-repost is filtered server-side).
   void notifyPostActivity(originalPostId, 'repost');
 
+  return { postId: created.id };
+}
+
+/**
+ * Repost a Spotify track (ADR-0027). Same rules as any repost — friends see it, and it
+ * can be liked, commented on and reposted — but it carries a Spotify track id instead of a
+ * Livil track, and Livil never plays it.
+ *
+ * Only the id is stored. The database refuses anything that is not a 22-character Spotify
+ * id (posts_spotify_track_id_format), so a malformed value fails loudly here rather than
+ * becoming a card that cannot open.
+ *
+ * No notification: there is no Livil author behind a Spotify song to tell.
+ */
+export async function createSpotifyRepost(
+  spotifyTrackId: string,
+  caption: string,
+): Promise<{ postId: string }> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    throw new Error('You must be signed in to repost.');
+  }
+
+  const { data: created, error: insertError } = await supabase
+    .from('posts')
+    .insert({
+      author_id: userData.user.id,
+      kind: 'repost',
+      track_id: null,
+      spotify_track_id: spotifyTrackId,
+      caption: caption.trim() ? caption.trim() : null,
+    })
+    .select('id')
+    .single();
+
+  if (insertError || !created) {
+    throw new Error(insertError?.message ?? 'Failed to create repost.');
+  }
   return { postId: created.id };
 }
 

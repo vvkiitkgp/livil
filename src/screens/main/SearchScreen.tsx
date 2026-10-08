@@ -40,6 +40,12 @@ import { rankSearchResults, type SearchResult } from '../../utils/searchRanking'
 import { supabase } from '../../../lib/supabase';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import { SpotifyLogo } from '../../components/SpotifyLogo';
+import SpotifyTrackSheet from '../../components/SpotifyTrackSheet';
+import {
+  artistLine, rememberSpotifyTrack, searchSpotify, useSpotifyAvailability, type SpotifyTrack,
+} from '../../services/spotify';
+import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
 
 const FALLBACK_ACCENTS: [string, string][] = [
   ['#8B3DFF', '#3B1E6E'],
@@ -53,6 +59,13 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 const DISCOVER_PEOPLE = 5;
 /** Newest uploads on the empty screen. */
 const DISCOVER_SONGS = 4;
+/** Spotify rows under the Livil results. Few on purpose — Livil creators come first. */
+const SPOTIFY_RESULTS = 5;
+/**
+ * Slower than the Livil debounce (200ms): Spotify is a second, external call, and firing it
+ * on every pause in typing would spend our rate limit on half-typed words.
+ */
+const SPOTIFY_DEBOUNCE_MS = 450;
 
 /**
  * A row in either list. Headings only ever appear in the empty-box list; the ranked search
@@ -182,6 +195,16 @@ export default function SearchScreen() {
   const [recentItems, setRecentItems] = useState<SearchResult[]>([]);
   /** Distinct-people-who-opened-it, by entity id. Feeds the ranking; empty is simply zero. */
   const [taps, setTaps] = useState<Record<string, number>>({});
+
+  // ── "On Spotify" (ADR-0027) ────────────────────────────────────────────────
+  // Its own section under the Livil results, never mixed into the ranking: Spotify's
+  // design rules forbid seating its content among another service's, and mixing would bury
+  // Livil creators under the exact-match famous track. Fetched separately from the Livil
+  // queries so a slow or failing Spotify call can never delay them or raise the banner.
+  const spotify = useSpotifyAvailability();
+  const openSpotify = useOpenInSpotify('search');
+  const [spotifyResults, setSpotifyResults] = useState<SpotifyTrack[]>([]);
+  const [spotifySheet, setSpotifySheet] = useState<SpotifyTrack | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -356,6 +379,25 @@ export default function SearchScreen() {
     () => rankSearchResults({ posts, profiles, albums, query, taps }),
     [posts, profiles, albums, query, taps],
   );
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    // Cleared on EVERY change, not just when empty: the previous query's Spotify rows must
+    // not sit under this query's Livil results while the new Spotify call is in flight.
+    setSpotifyResults([]);
+    if (!spotify.search || trimmed.length < 2 || trimmed.startsWith('#')) {
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const found = await searchSpotify(trimmed, SPOTIFY_RESULTS);
+      if (!cancelled) { setSpotifyResults(found); }
+    }, SPOTIFY_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, spotify.search]);
 
   /**
    * Popularity for what is on screen, fetched AFTER the results.
@@ -589,6 +631,39 @@ export default function SearchScreen() {
 
   const trimmedQuery = query.trim();
 
+  // An ELEMENT (not a function), for the same remount reason as the list header below.
+  const spotifySection = spotifyResults.length > 0 ? (
+    <View>
+      <View style={[styles.sectionHeading, styles.spotifyHeading]}>
+        <Text style={[styles.recentHeading, styles.spotifyHeadingText]}>On Spotify</Text>
+        <SpotifyLogo size="xs" />
+      </View>
+      {spotifyResults.map(track => (
+        <Pressable
+          key={track.id}
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => { Keyboard.dismiss(); setSpotifySheet(track); }}
+          accessibilityRole="button"
+          accessibilityLabel={`${track.title} by ${artistLine(track)}, on Spotify`}
+        >
+          {/* Spotify artwork: small corner radius, nothing drawn on top. */}
+          {track.imageUrl ? (
+            <Image source={{ uri: track.imageUrl }} style={styles.spotifyArt} />
+          ) : (
+            <View style={[styles.spotifyArt, styles.spotifyArtEmpty]}>
+              <Icon name="musicNote" size={18} color={COLORS.textMuted} />
+            </View>
+          )}
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle} numberOfLines={1}>{track.title}</Text>
+            <Text style={styles.rowSubtitle} numberOfLines={1}>{artistLine(track)}</Text>
+          </View>
+          <Icon name="externalLink" size={18} color={COLORS.textSecondary} />
+        </Pressable>
+      ))}
+    </View>
+  ) : null;
+
   const recentPills = (
     /* Pills, wrapped — at most four, so they never need to scroll. A vertical list of
        four short words wastes the width and reads as heavier than the thing it is
@@ -685,12 +760,14 @@ export default function SearchScreen() {
         />
       </View>
 
+      {/* While typing, status sits at the TOP, under the field: centred, it lands behind
+          the keyboard on smaller phones and the search looks like it did nothing. */}
       {error ? (
-        <View style={styles.centerState}>
+        <View style={styles.topState}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : loading ? (
-        <View style={styles.centerState}>
+        <View style={styles.topState}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>
       ) : trimmedQuery.length === 0 && (recents.length > 0 || discoverItems.length > 0) ? (
@@ -709,7 +786,11 @@ export default function SearchScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         />
-      ) : results.length === 0 ? (
+      ) : results.length === 0 && spotifyResults.length === 0 && trimmedQuery.length > 0 ? (
+        <View style={styles.topState}>
+          <Text style={styles.emptyText}>Nothing matches "{trimmedQuery}".</Text>
+        </View>
+      ) : results.length === 0 && spotifyResults.length === 0 ? (
         <View style={styles.centerState}>
           {trimmedQuery.length === 0 ? (
             <>
@@ -718,15 +799,14 @@ export default function SearchScreen() {
                 Search a song, an artist, an album — or a #tag.
               </Text>
             </>
-          ) : (
-            <Text style={styles.emptyText}>Nothing matches "{trimmedQuery}".</Text>
-          )}
+          ) : null}
         </View>
       ) : (
         <FlatList
           data={results}
           keyExtractor={item => `${item.kind}:${item.id}`}
           renderItem={renderItem}
+          ListFooterComponent={spotifySection}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 },
@@ -739,6 +819,20 @@ export default function SearchScreen() {
         />
       )}
       </Pressable>
+      <SpotifyTrackSheet
+        track={spotifySheet}
+        canRepost={spotify.reposts}
+        onClose={() => setSpotifySheet(null)}
+        onPlay={track => {
+          setSpotifySheet(null);
+          void openSpotify(track.id);
+        }}
+        onRepost={track => {
+          setSpotifySheet(null);
+          rememberSpotifyTrack(track);
+          navigation.navigate('SpotifyRepost', { spotifyTrackId: track.id });
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -823,6 +917,11 @@ const styles = StyleSheet.create({
   recentWrap: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 },
   dismissButton: { paddingLeft: 10, paddingVertical: 6 },
   sectionHeading: { paddingHorizontal: 8, paddingTop: 20, paddingBottom: 6 },
+  spotifyHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  spotifyHeadingText: { paddingBottom: 0 },
+  // Spotify's guideline for artwork on mobile: corners rounded no more than 4px.
+  spotifyArt: { width: ART, height: ART, borderRadius: 4, backgroundColor: COLORS.card },
+  spotifyArtEmpty: { alignItems: 'center', justifyContent: 'center' },
   recentHeading: {
     color: COLORS.textMuted,
     fontSize: 11,
@@ -851,6 +950,7 @@ const styles = StyleSheet.create({
   pillText: { color: COLORS.white, fontSize: 13.5, flexShrink: 1 },
 
   centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  topState: { alignItems: 'center', paddingTop: 28, paddingHorizontal: 40 },
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700', marginBottom: 6 },
   emptyText: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 },
   errorText: { color: COLORS.error, fontSize: 14, textAlign: 'center' },

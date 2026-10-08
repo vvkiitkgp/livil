@@ -7,6 +7,18 @@ import { fetchTeamMessages, type TeamMessage } from '../data/teamMessages';
 import { exitReasonLabel, fetchExitFeedback, type ExitFeedback } from '../data/exitFeedback';
 import { fetchOpsUsers, type OpsUser } from '../data/opsUsers';
 import { fetchTopSearchResults, type OpsSearchResult, type OpsSearchKind } from '../data/opsSearch';
+import {
+  fetchPlayDaily,
+  fetchPlaySummary,
+  fetchRecentPlays,
+  fetchTopPlayed,
+  resolveSpotifyTitles,
+  type PlayDay,
+  type PlaySummary,
+  type RecentPlay,
+  type TopPlayed,
+} from '../data/opsPlays';
+import { BarChart } from '../components/BarChart';
 import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
 import { TakedownDialog } from '../components/TakedownDialog';
 import {
@@ -131,6 +143,16 @@ export function Ops() {
   const [searchDays, setSearchDays] = useState(30);
   const [topSearched, setTopSearched] = useState<OpsSearchResult[] | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  // Plays — Livil vs Spotify (ADR-0027). Totals only; nothing here names a listener.
+  const [playDays, setPlayDays] = useState(30);
+  const [playSummary, setPlaySummary] = useState<PlaySummary | null>(null);
+  const [playDaily, setPlayDaily] = useState<PlayDay[] | null>(null);
+  const [topLivil, setTopLivil] = useState<TopPlayed[] | null>(null);
+  const [topSpotify, setTopSpotify] = useState<TopPlayed[] | null>(null);
+  const [recentPlays, setRecentPlays] = useState<RecentPlay[] | null>(null);
+  const [spotifyTitles, setSpotifyTitles] =
+    useState<Record<string, { title: string; artists: string } | null>>({});
+  const [playsError, setPlaysError] = useState<string | null>(null);
   const [reports, setReports] = useState<OpsReport[] | null>(null);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [showReviewed, setShowReviewed] = useState(false);
@@ -418,6 +440,47 @@ export function Ops() {
         setSearchError(e?.message ?? 'Could not load search analytics.');
       });
   }, [searchKind, searchDays]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPlaysError(null);
+    setPlaySummary(null);
+    setPlayDaily(null);
+    setTopLivil(null);
+    setTopSpotify(null);
+    Promise.all([
+      fetchPlaySummary(playDays),
+      fetchPlayDaily(playDays),
+      fetchTopPlayed('livil', playDays),
+      fetchTopPlayed('spotify', playDays),
+      fetchRecentPlays(25),
+    ])
+      .then(async ([summary, daily, livil, spotify, recent]) => {
+        if (cancelled) return;
+        setPlaySummary(summary);
+        setPlayDaily(daily);
+        setTopLivil(livil);
+        setTopSpotify(spotify);
+        setRecentPlays(recent);
+        // Spotify rows carry only an id; titles are looked up live (never stored).
+        const ids = [
+          ...spotify.map(t => t.id),
+          ...recent.filter(r => r.spotifyTrackId).map(r => r.spotifyTrackId!),
+        ];
+        const titles = await resolveSpotifyTitles(ids);
+        if (!cancelled) setSpotifyTitles(titles);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setPlaysError(e?.message ?? 'Could not load play stats.');
+        setPlaySummary(null);
+        setPlayDaily([]);
+        setTopLivil([]);
+        setTopSpotify([]);
+        setRecentPlays([]);
+      });
+    return () => { cancelled = true; };
+  }, [playDays]);
 
   useEffect(() => {
     fetchTeamMessages()
@@ -1071,6 +1134,188 @@ export function Ops() {
     </>
   );
 
+  const spotifyLabel = (id: string | null) => {
+    if (!id) return { title: 'Spotify song', sub: null as string | null };
+    const t = spotifyTitles[id];
+    return t ? { title: t.title, sub: t.artists } : { title: id, sub: 'Spotify track' };
+  };
+
+  /**
+   * Plays: what was listened to IN Livil vs handed off TO Spotify. Livil plays are counted
+   * plays (the same number the app shows); a Spotify "open" is a confirmed hand-off — Livil
+   * cannot see what happens in Spotify after that. People = distinct listeners, the number
+   * to read first.
+   */
+  const renderPlays = () => {
+    const playMax = Math.max(0, ...(playDaily ?? []).flatMap(d => [d.livil, d.spotify]));
+    const bars = (pick: (d: PlayDay) => number, noun: string) =>
+      (playDaily ?? []).map(d => ({
+        label: d.day.slice(5),
+        value: pick(d),
+        hint: `${d.day}: ${pick(d)} ${noun}`,
+      }));
+    const topTable = (rows: TopPlayed[] | null, source: 'livil' | 'spotify') =>
+      rows === null ? (
+        <div className="skeleton skeleton--rows" />
+      ) : rows.length === 0 ? (
+        <p className="hint">Nothing in this window yet.</p>
+      ) : (
+        <div className="tablewrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Song</th>
+                <th className="num">People</th>
+                <th className="num">{source === 'spotify' ? 'Opens' : 'Plays'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const label = source === 'spotify'
+                  ? spotifyLabel(r.id)
+                  : { title: r.title ?? 'Deleted', sub: r.subtitle };
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <span className="table__title">{label.title}</span>
+                      {label.sub && <div className="hint">{label.sub}</div>}
+                    </td>
+                    <td className="num">{r.people}</td>
+                    <td className="num">{r.plays}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+
+    return (
+      <>
+        <header className="page__head">
+          <div>
+            <p className="kicker">Listened in Livil vs sent to Spotify</p>
+            <h1 className="display page__title">Plays</h1>
+          </div>
+          <div className="filerow">
+            {[7, 30, 365].map(d => (
+              <Button
+                key={d}
+                variant={playDays === d ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => setPlayDays(d)}
+              >
+                {d === 365 ? '1 year' : `${d}d`}
+              </Button>
+            ))}
+          </div>
+        </header>
+
+        {playsError && (
+          <div className="empty panel">
+            <p className="empty__title">Could not load play stats</p>
+            <p className="hint">{playsError}</p>
+          </div>
+        )}
+
+        {/* People lead each pair: fifty listeners once beats one listener fifty times. */}
+        <div className="metrics">
+          {[
+            { label: 'Livil listeners', value: playSummary?.livilPeople, strong: true },
+            { label: 'Livil plays', value: playSummary?.livilPlays },
+            { label: 'Spotify listeners', value: playSummary?.spotifyPeople, strong: true },
+            { label: 'Spotify opens', value: playSummary?.spotifyOpens },
+          ].map(m => (
+            <div className="metric" key={m.label}>
+              <span className="metric__value" data-strong={m.strong || undefined}>
+                {m.value === undefined ? '—' : m.value.toLocaleString()}
+              </span>
+              <span className="metric__label">{m.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Two single-series charts on ONE shared scale rather than one chart with two
+            colours: same unit, honest comparison, and no legend to decode. */}
+        <section className="panel">
+          <div className="panel__head">
+            <h2 className="panel__title">Livil plays per day</h2>
+          </div>
+          {playDaily === null ? <div className="skeleton skeleton--rows" /> : (
+            <BarChart bars={bars(d => d.livil, 'plays')} max={playMax} height={120} />
+          )}
+        </section>
+        <section className="panel">
+          <div className="panel__head">
+            <h2 className="panel__title">Spotify opens per day</h2>
+          </div>
+          {playDaily === null ? <div className="skeleton skeleton--rows" /> : (
+            <BarChart
+              bars={bars(d => d.spotify, 'opens')}
+              max={playMax}
+              height={120}
+              emptyLabel="No Spotify opens in this window"
+            />
+          )}
+        </section>
+
+        <section className="panel">
+          <div className="panel__head"><h2 className="panel__title">Top on Livil</h2></div>
+          {topTable(topLivil, 'livil')}
+        </section>
+        <section className="panel">
+          <div className="panel__head"><h2 className="panel__title">Top sent to Spotify</h2></div>
+          {topTable(topSpotify, 'spotify')}
+        </section>
+
+        <section className="panel">
+          <div className="panel__head">
+            <h2 className="panel__title">Recent</h2>
+            <span className="hint">Song and time only — never who listened.</span>
+          </div>
+          {recentPlays === null ? (
+            <div className="skeleton skeleton--rows" />
+          ) : recentPlays.length === 0 ? (
+            <p className="hint">No plays yet.</p>
+          ) : (
+            <div className="tablewrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Where</th>
+                    <th>Song</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentPlays.map((r, i) => {
+                    const label = r.source === 'spotify'
+                      ? spotifyLabel(r.spotifyTrackId)
+                      : { title: r.title ?? 'Deleted', sub: r.subtitle };
+                    return (
+                      <tr key={`${r.at}-${i}`}>
+                        <td className="hint">{formatDate(r.at)}</td>
+                        <td>
+                          <span className="badge" data-kind={r.source}>
+                            {r.source === 'spotify' ? `Spotify · ${r.via ?? ''}` : 'Livil'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="table__title">{label.title}</span>
+                          {label.sub && <div className="hint">{label.sub}</div>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </>
+    );
+  };
+
   const renderSearched = () => (
     <>
       <header className="page__head">
@@ -1188,6 +1433,7 @@ export function Ops() {
 
       {tab === 'insights' && (
         <div className="opsgroup">
+          {renderPlays()}
           {renderSearched()}
           {renderExitFeedback()}
         </div>
