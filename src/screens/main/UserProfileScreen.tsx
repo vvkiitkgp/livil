@@ -35,6 +35,7 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -134,14 +135,10 @@ export default function UserProfileScreen() {
     () => storyClusters.find(c => c.authorId === userId) ?? null,
     [storyClusters, userId],
   );
-  const openUserStories = useCallback(() => {
-    if (!storyCluster) { return; }
-    navigation.navigate('StoryViewer', {
-      clusters: [{ authorId: storyCluster.authorId, storyIds: storyCluster.storyIds }],
-      startAuthorIndex: 0,
-      startStoryIndex: storyCluster.firstUnseenIndex,
-    });
-  }, [storyCluster, navigation]);
+  // Tapping the avatar opens the enlarged profile photo — always, and only that
+  // (user decision 2026-10-08: the avatar no longer opens stories).
+  const [photoOpen, setPhotoOpen] = useState(false);
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fansNoticeOpen, setFansNoticeOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
@@ -693,8 +690,10 @@ export default function UserProfileScreen() {
           <TouchableOpacity
             style={styles.avatarRing}
             activeOpacity={0.85}
-            onPress={storyCluster ? openUserStories : undefined}
-            disabled={!storyCluster}
+            onPress={profile?.avatar_url ? () => setPhotoOpen(true) : undefined}
+            disabled={!profile?.avatar_url}
+            accessibilityRole="button"
+            accessibilityLabel="View profile photo"
           >
             <View
               style={[
@@ -844,7 +843,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, openUserStories, blockedView, isOwnProfile, mutuals]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -1002,6 +1001,12 @@ export default function UserProfileScreen() {
             ? highlightCommentId ?? null
             : null
         }
+      />
+      <ProfilePhotoViewer
+        uri={profile?.avatar_url ?? null}
+        visible={photoOpen}
+        onClose={() => setPhotoOpen(false)}
+        label={profile?.username ? `@${profile.username}'s profile photo` : 'Profile photo'}
       />
     </SafeAreaView>
   );

@@ -50,6 +50,7 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -180,14 +181,10 @@ export default function ProfileScreen() {
     () => (profile ? storyClusters.find(c => c.authorId === profile.id) ?? null : null),
     [storyClusters, profile],
   );
-  const openMyStories = useCallback(() => {
-    if (!myStoryCluster) { return; }
-    navigation.navigate('StoryViewer', {
-      clusters: [{ authorId: myStoryCluster.authorId, storyIds: myStoryCluster.storyIds }],
-      startAuthorIndex: 0,
-      startStoryIndex: myStoryCluster.firstUnseenIndex,
-    });
-  }, [myStoryCluster, navigation]);
+  // Tapping the avatar opens the enlarged profile photo — always, and only that
+  // (user decision 2026-10-08: the avatar no longer opens stories).
+  const [photoOpen, setPhotoOpen] = useState(false);
+
 
   // Provisional only — the real default is resolved from the tab counts on the initial
   // load, so that the selected pill is always the first pill. See initialTabFor.
@@ -673,8 +670,10 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.avatarRing}
             activeOpacity={0.85}
-            onPress={myStoryCluster ? openMyStories : undefined}
-            disabled={!myStoryCluster}
+            onPress={profile?.avatar_url ? () => setPhotoOpen(true) : undefined}
+            disabled={!profile?.avatar_url}
+            accessibilityRole="button"
+            accessibilityLabel="View profile photo"
           >
             <View
               style={[
@@ -880,6 +879,12 @@ export default function ProfileScreen() {
             comments.applyDelta(comments.commentsPostId, delta);
           }
         }}
+      />
+      <ProfilePhotoViewer
+        uri={profile?.avatar_url ?? null}
+        visible={photoOpen}
+        onClose={() => setPhotoOpen(false)}
+        label={profile?.username ? `@${profile.username}'s profile photo` : 'Profile photo'}
       />
     </SafeAreaView>
   );
