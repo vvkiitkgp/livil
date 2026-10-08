@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { COLORS } from '../theme/colors';
 import { Button } from './Button';
 import FormInput from './FormInput';
@@ -76,12 +69,13 @@ export default function PostReportModal({ visible, postId, onClose }: Props) {
       transparent
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={handleClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.backdrop}
-      >
+      {/* keyboard-controller's KeyboardAvoidingView, not React Native's — see
+          ExitFeedbackModal: RN's `behavior="height"` fights KeyboardProvider on Android
+          and the card flickers. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={styles.title}>Report post</Text>
           <Text style={styles.subtitle}>Why are you reporting this post?</Text>
