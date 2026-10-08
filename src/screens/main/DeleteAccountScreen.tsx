@@ -1,12 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardController } from 'react-native-keyboard-controller';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,8 +14,13 @@ import { SETTINGS_PAGE_INSET } from '../../components/SettingsSection';
 import { FLOATING_PLAYER_HEIGHT } from '../../constants/layout';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
-import { deleteMyAccount } from '../../services/profileService';
+import { deleteMyAccount, submitExitFeedback } from '../../services/profileService';
+import ExitFeedbackModal from '../../components/ExitFeedbackModal';
+import type { ExitReasonId } from '../../../shared/constants/exitFeedback';
 import { SUPPORT_EMAIL } from '../../constants/links';
+
+/** Space kept between the focused field and the keyboard: the field's margin + the lg button. */
+const DELETE_BUTTON_CLEARANCE = 90;
 
 /** The word the user must type. Compared case-insensitively after trimming. */
 export const DELETE_CONFIRM_WORD = 'DELETE';
@@ -50,6 +49,7 @@ export default function DeleteAccountScreen() {
 
   const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [askingWhy, setAskingWhy] = useState(false);
 
   const canDelete = useMemo(
     () => confirmText.trim().toUpperCase() === DELETE_CONFIRM_WORD,
@@ -59,13 +59,28 @@ export default function DeleteAccountScreen() {
   // No success branch: deleteMyAccount signs out, and RootNavigator swaps the
   // whole signed-in stack for AuthNavigator on SIGNED_OUT — this screen is gone
   // before the promise settles. Only the failure path has anything to update.
-  const onDelete = useCallback(async () => {
+  //
+  // The red button only opens the optional "why are you leaving?" step; the button in
+  // that popup is what deletes. Its answer is sent first and fail-safe — a survey that
+  // errors or hangs must never stop the deletion (see submitExitFeedback).
+  // Close the keyboard BEFORE the popup appears. The tap that gets here usually comes
+  // straight from typing DELETE, and opening the modal while the keyboard was still
+  // animating away made the screen behind scroll back and the popup resize at the same
+  // time — a visible flicker on Android. dismiss() resolves once it is down.
+  const openWhy = useCallback(async () => {
+    await KeyboardController.dismiss();
+    setAskingWhy(true);
+  }, []);
+
+  const onDelete = useCallback(async (reason: ExitReasonId | null, note: string) => {
+    setAskingWhy(false);
     if (busy || !canDelete) {
       return;
     }
     setBusy(true);
     playback.pauseAll();
     try {
+      await submitExitFeedback(reason, note);
       await deleteMyAccount();
     } catch (e) {
       setBusy(false);
@@ -79,72 +94,80 @@ export default function DeleteAccountScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <SettingsHeader title="Delete account" onBack={() => navigation.goBack()} />
 
-      <KeyboardAvoidingView
+      {/* KeyboardAwareScrollView, not KeyboardAvoidingView + ScrollView: with
+          edge-to-edge on, Android's adjustResize no longer shrinks the window,
+          so the confirm field sat under the keyboard. This scrolls the focused
+          field into view on both platforms, like SignUp/Upload. bottomOffset
+          keeps the Delete button visible above the keyboard too. */}
+      <KeyboardAwareScrollView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        bottomOffset={DELETE_BUTTON_CLEARANCE}
+        contentContainerStyle={[
+          styles.body,
+          { paddingBottom: FLOATING_PLAYER_HEIGHT + insets.bottom + 32 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.body,
-            { paddingBottom: FLOATING_PLAYER_HEIGHT + insets.bottom + 32 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.danger}>
-            <Icon name="warningTriangle" size={34} color={COLORS.error} />
-            <Text style={styles.dangerTitle}>This action is permanent</Text>
-            <Text style={styles.dangerBody}>
-              Deleting your account permanently removes everything you have made
-              on Livil. This cannot be undone, and your username cannot be
-              claimed again.
-            </Text>
-          </View>
-
-          <Text style={styles.sectionTitle}>What will be deleted</Text>
-          <View style={styles.list}>
-            {DELETED_ITEMS.map(item => (
-              <View key={item} style={styles.listItem}>
-                <View style={styles.bullet} />
-                <Text style={styles.listText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-
-          <Text style={styles.confirmLabel}>
-            Type <Text style={styles.confirmWord}>{DELETE_CONFIRM_WORD}</Text> to
-            confirm
+        <View style={styles.danger}>
+          <Icon name="warningTriangle" size={34} color={COLORS.error} />
+          <Text style={styles.dangerTitle}>This action is permanent</Text>
+          <Text style={styles.dangerBody}>
+            Deleting your account permanently removes everything you have made
+            on Livil. This cannot be undone, and your username cannot be
+            claimed again.
           </Text>
-          <FormInput
-            value={confirmText}
-            onChangeText={setConfirmText}
-            placeholder={`Type ${DELETE_CONFIRM_WORD} here`}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            spellCheck={false}
-            editable={!busy}
-            returnKeyType="done"
-            accessibilityLabel={`Type ${DELETE_CONFIRM_WORD} to confirm`}
-            wrapperStyle={styles.input}
-          />
+        </View>
 
-          <Button
-            label="Delete my account"
-            variant="destructive"
-            size="lg"
-            fullWidth
-            disabled={!canDelete}
-            busy={busy}
-            onPress={onDelete}
-            style={styles.deleteBtn}
-          />
+        <Text style={styles.sectionTitle}>What will be deleted</Text>
+        <View style={styles.list}>
+          {DELETED_ITEMS.map(item => (
+            <View key={item} style={styles.listItem}>
+              <View style={styles.bullet} />
+              <Text style={styles.listText}>{item}</Text>
+            </View>
+          ))}
+        </View>
 
-          <Text style={styles.help}>
-            Having trouble? Contact{'\n'}
-            <Text style={styles.helpEmail}>{SUPPORT_EMAIL}</Text>
-          </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <Text style={styles.confirmLabel}>
+          Type <Text style={styles.confirmWord}>{DELETE_CONFIRM_WORD}</Text> to
+          confirm
+        </Text>
+        <FormInput
+          value={confirmText}
+          onChangeText={setConfirmText}
+          placeholder={`Type ${DELETE_CONFIRM_WORD} here`}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          spellCheck={false}
+          editable={!busy}
+          returnKeyType="done"
+          accessibilityLabel={`Type ${DELETE_CONFIRM_WORD} to confirm`}
+          wrapperStyle={styles.input}
+        />
+
+        <Button
+          label="Delete my account"
+          variant="destructive"
+          size="lg"
+          fullWidth
+          disabled={!canDelete}
+          busy={busy}
+          onPress={openWhy}
+          style={styles.deleteBtn}
+        />
+
+        <Text style={styles.help}>
+          Having trouble? Contact{'\n'}
+          <Text style={styles.helpEmail}>{SUPPORT_EMAIL}</Text>
+        </Text>
+      </KeyboardAwareScrollView>
+
+      <ExitFeedbackModal
+        visible={askingWhy}
+        onConfirm={onDelete}
+        onCancel={() => setAskingWhy(false)}
+      />
     </SafeAreaView>
   );
 }
