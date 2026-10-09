@@ -25,11 +25,14 @@ import type { RootStackParamList } from '../navigation/types';
 export default function SpotifyChatCard({
   spotifyTrackId,
   shortUrl,
+  onLongPress,
 }: {
   /** A direct track link's id. */
   spotifyTrackId?: string;
   /** A spotify.link short link — resolved through the server first. */
   shortUrl?: string;
+  /** The chat bubble's long-press, passed to the card's buttons (see ChatSongCard). */
+  onLongPress?: () => void;
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const openSpotify = useOpenInSpotify('chat');
@@ -66,6 +69,7 @@ export default function SpotifyChatCard({
       artist={track ? artistLine(track) : loading ? null : 'Open it in Spotify to see it'}
       artUrl={track?.imageUrl ?? null}
       loading={loading}
+      onLongPress={onLongPress}
       onPlay={resolvedId ? () => { void openSpotify(resolvedId); } : undefined}
       onRepost={
         repostsOn && resolvedId

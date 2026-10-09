@@ -153,9 +153,13 @@ function ChatSongPickerPanel({
   }, []);
 
   // Livil uploads.
+  //
+  // The previous query's rows stay on screen until this query's arrive, then are REPLACED.
+  // Emptying them on every keystroke collapsed the bottom-anchored popover to a spinner and
+  // regrew it a moment later — a jump per letter typed. `cancelled` still drops a stale
+  // response, so an older query can never overwrite a newer one.
   useEffect(() => {
-    setLivil([]);
-    if (trimmed.length < 2) { setLivilLoading(false); return; }
+    if (trimmed.length < 2) { setLivil([]); setLivilLoading(false); return; }
     let cancelled = false;
     setLivilLoading(true);
     const timer = setTimeout(async () => {
@@ -167,14 +171,13 @@ function ChatSongPickerPanel({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [trimmed]);
 
-  // Spotify.
+  // Spotify. Same keep-until-replaced rule.
   useEffect(() => {
-    setSpotify([]);
-    if (!spotifyOn || trimmed.length < 2) { setSpotifyLoading(false); return; }
+    if (!spotifyOn || trimmed.length < 2) { setSpotify([]); setSpotifyLoading(false); return; }
     let cancelled = false;
     setSpotifyLoading(true);
     const timer = setTimeout(async () => {
-      const found = await searchSpotify(trimmed, SPOTIFY_RESULTS);
+      const found = await searchSpotify(trimmed, SPOTIFY_RESULTS).catch(() => [] as SpotifyTrack[]);
       if (cancelled) {return;}
       setSpotify(found);
       setSpotifyLoading(false);
@@ -212,7 +215,10 @@ function ChatSongPickerPanel({
           <>
             {livil.length > 0 ? (
               <>
-                <Text style={styles.heading}>On Livil</Text>
+                <View style={styles.headingRow}>
+                  <Text style={[styles.heading, styles.headingInline]}>On Livil</Text>
+                  <Refreshing visible={livilLoading} />
+                </View>
                 {livil.map(post => (
                   <Row
                     key={`livil:${post.id}`}
@@ -229,6 +235,7 @@ function ChatSongPickerPanel({
               <>
                 <View style={styles.headingRow}>
                   <Text style={[styles.heading, styles.headingInline]}>On Spotify</Text>
+                  <Refreshing visible={spotifyLoading} />
                   <SpotifyLogo size="xs" />
                 </View>
                 {spotify.map(track => (
@@ -244,6 +251,8 @@ function ChatSongPickerPanel({
               </>
             ) : null}
 
+            {/* The full-size spinner only while there is nothing yet to show. With rows on
+                screen, the refreshing section says so in its heading instead (Refreshing). */}
             {loading && livil.length === 0 && spotify.length === 0 ? (
               <ActivityIndicator color={COLORS.purpleLight} style={styles.spinner} />
             ) : null}
@@ -251,6 +260,18 @@ function ChatSongPickerPanel({
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * A small spinner beside a section heading while that section's rows are being replaced
+ * for a newer query. Always occupies its slot, so it appearing never moves the heading.
+ */
+function Refreshing({ visible }: { visible: boolean }) {
+  return (
+    <View style={styles.refreshing}>
+      {visible ? <ActivityIndicator size="small" color={COLORS.purpleLight} /> : null}
     </View>
   );
 }
@@ -315,8 +336,9 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 6,
   },
-  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 6 },
-  headingInline: { flexShrink: 1 },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 6 },
+  headingInline: { flexShrink: 1, marginRight: 'auto' },
+  refreshing: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   hint: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, paddingHorizontal: 6, paddingVertical: 8 },
   spinner: { paddingVertical: 14 },
   row: {

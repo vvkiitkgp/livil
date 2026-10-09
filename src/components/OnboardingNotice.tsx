@@ -84,9 +84,25 @@ export async function requestNotice(kind: NoticeKind, onConfirm: () => void): Pr
 export function OnboardingNoticeHost() {
   const [request, setRequest] = useState<Request | null>(null);
   const [dontShow, setDontShow] = useState(false);
+  /**
+   * Bumped for every request. It is the Modal's `key`, so each request gets a FRESH native
+   * modal rather than a prop change on the old one.
+   *
+   * WHY: iOS silently refuses to present a modal while another is still animating closed
+   * (e.g. a sheet whose button raised this notice), and RN's iOS modal still records itself
+   * as presented. `request` is only cleared by this dialog's own buttons, so a refused
+   * notice left `visible` stuck at true: every later request — Spotify AND Jam — changed
+   * nothing on the native side and showed nothing, until the app restarted. Callers wait
+   * for the closing sheet first (useRunAfterDismiss); this is the safety net if one misses.
+   */
+  const [requestId, setRequestId] = useState(0);
 
   useEffect(() => {
-    listener = req => { setDontShow(false); setRequest(req); };
+    listener = req => {
+      setDontShow(false);
+      setRequestId(n => n + 1);
+      setRequest(req);
+    };
     return () => { listener = null; };
   }, []);
 
@@ -101,6 +117,7 @@ export function OnboardingNoticeHost() {
 
   return (
     <Modal
+      key={requestId}
       visible={request !== null}
       transparent
       animationType="fade"

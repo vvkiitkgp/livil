@@ -6,9 +6,10 @@ import Reanimated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from
 import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/fonts';
 import { Button } from '../../components/Button';
-import { cardsFor } from '../../components/guide/cards';
+import { cardsFor, lineFor } from '../../components/guide/cards';
 import { PHONE_H } from '../../components/guide/primitives';
 import { haptics } from '../../utils/haptics';
+import { useSpotifyAvailability } from '../../services/spotify';
 
 /**
  * The first-run guide: a welcome card, then fifteen looping animations, one idea each,
@@ -35,6 +36,8 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
   const cards = cardsFor(mode);
   const last = cards.length - 1;
   const card = cards[step];
+  // Asked from the first card, so the answer is in by the Repost card (cached for the app).
+  const { reposts: spotifyReposts } = useSpotifyAvailability();
 
   // The illustrations are choreographed at a fixed 230×460; on a short screen the
   // whole phone is scaled down rather than reflowed, so nothing inside it moves.
@@ -91,7 +94,7 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           </View>
           <View style={styles.copy}>
             <Text style={styles.headline}>{card.headline}</Text>
-            <Text style={styles.line}>{card.line}</Text>
+            <Text style={styles.line}>{lineFor(card, { spotifyReposts })}</Text>
           </View>
         </View>
       </StepFade>

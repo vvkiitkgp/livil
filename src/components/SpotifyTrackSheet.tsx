@@ -19,6 +19,7 @@ export default function SpotifyTrackSheet({
   onPlay,
   onRepost,
   onClose,
+  onDismiss,
 }: {
   track: SpotifyTrack | null;
   /** The server switch. Off → the sheet only offers "Play on Spotify". */
@@ -26,10 +27,19 @@ export default function SpotifyTrackSheet({
   onPlay: (track: SpotifyTrack) => void;
   onRepost: (track: SpotifyTrack) => void;
   onClose: () => void;
+  /** iOS only (RN's Modal): the sheet has finished sliding away. See useRunAfterDismiss. */
+  onDismiss?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={track !== null} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      visible={track !== null}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+      onDismiss={onDismiss}
+    >
       <TouchableWithoutFeedback onPress={onClose} accessibilityLabel="Close">
         <View style={styles.backdrop} />
       </TouchableWithoutFeedback>
