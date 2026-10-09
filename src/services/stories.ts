@@ -183,8 +183,9 @@ export async function reportStory(
 /**
  * Resolve the author (uploader) of a story's original upload post, so the viewer
  * can deep-link to that post via `UserProfile { userId, focusPostId }` (the app
- * has no standalone post screen). Returns null if the post is gone. `posts_select`
- * is `using (true)`, so any authenticated viewer may read this.
+ * has no standalone post screen). Returns null if the post is gone or hidden. The
+ * original is always an UPLOAD (createStory refuses anything else), and uploads are
+ * readable by any signed-in viewer who is not blocked (posts_select_authenticated).
  */
 export async function getStoryPostAuthorId(originalPostId: string): Promise<string | null> {
   const { data, error } = await supabase

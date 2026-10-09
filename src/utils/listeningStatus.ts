@@ -39,8 +39,8 @@ export type PublishableTrack = {
 
 /**
  * What to publish for this now-playing item. A REPOST is published as its ORIGINAL
- * upload: reposts are visible only to the reposter's friends, and the viewer of this
- * status is the LISTENER's friend — usually not the reposter's. Publishing the repost
+ * upload: a repost may be friends-only (the reposter's audience switch, ADR-0028), and
+ * the viewer of this status is the LISTENER's friend — usually not the reposter's. Publishing the repost
  * made "Listen" fail with "no longer available" for a public song, and named a repost
  * the viewer may not see. An orphaned repost (original deleted) falls back to itself.
  *

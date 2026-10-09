@@ -183,11 +183,19 @@ select pg_temp.assert_count('2d  … and it is still there',
 select pg_temp.assert_count('2b  the like counter moved',
   (select likes_count from posts where id = 'e5000000-0000-0000-0000-0000000000a1'), 1);
 
+-- A Spotify repost follows the reposter's audience switch like any repost
+-- (20261019000000, ADR-0028): everyone by default, friends only when switched off.
 select pg_temp.set_user('c5000000-0000-0000-0000-000000000003');
 set local role authenticated;
-select pg_temp.assert_count('2e  a STRANGER does not see it (reposts are friends-only)',
+select pg_temp.assert_count('2e  a STRANGER sees it while the reposter shows reposts to everyone (the default)',
+  (select count(*) from posts where id = 'e5000000-0000-0000-0000-0000000000a1'), 1);
+reset role;
+update profiles set reposts_public = false where id = 'c5000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select pg_temp.assert_count('2f  … and does not once the reposter switches to friends only',
   (select count(*) from posts where id = 'e5000000-0000-0000-0000-0000000000a1'), 0);
 reset role;
+update profiles set reposts_public = true where id = 'c5000000-0000-0000-0000-000000000001';
 
 -- ── 3. Identity ─────────────────────────────────────────────────────────────
 select pg_temp.set_user('c5000000-0000-0000-0000-000000000001');

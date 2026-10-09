@@ -81,7 +81,9 @@ actually acts on reports. Livil had one of the three. It now has all three, ship
 
 ### Also shipped, and not a policy item — but it changes what the app does
 
-- **Reposts are friends-only** (`20260809000000`). Uploads and albums stay public;
+- **Reposts are friends-only** (`20260809000000`) — *superseded 2026-10-09 by
+  [ADR-0028](../decisions/0028-repost-audience-profile-switch.md): each person now chooses
+  everyone (default) or friends only, in Settings.* Uploads and albums stay public;
   reposts and playlists are between friends; playlists additionally support
   `private`, chosen from a picker on both create and edit. The profile shows the
   TRUE count for a hidden tab (`profile_tab_counts`, DEFINER) with "add them as a

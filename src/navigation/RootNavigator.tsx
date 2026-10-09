@@ -61,6 +61,7 @@ import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
+import { AppUpdatePrompt } from '../components/AppUpdatePrompt';
 import { RootStackParamList } from './types';
 import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
 import { COLORS } from '../theme/colors';
@@ -927,6 +928,7 @@ export default function RootNavigator() {
         onEnable={handleEnableNotifications}
         onMaybeLater={handleDeferNotifications}
       />
+
     </View>
     </ChromeVisibilityProvider>
     </StoriesProvider>
@@ -935,6 +937,12 @@ export default function RootNavigator() {
     </JamRealtimeProvider>
     </JamProvider>
         ))}
+
+      {/* "Update Livil" — outside every session gate (sign-in, terms, username, password
+          reset, app) so a blocking update reaches all of them and survives signing in. Above
+          the navigation tree, below the splash. An overlay rather than a Modal: see the
+          component. */}
+      <AppUpdatePrompt />
 
       {splashMounted && (
         <Animated.View

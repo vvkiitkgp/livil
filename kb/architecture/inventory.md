@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-315 TypeScript file(s) under `src/`, 74,872 lines.
+319 TypeScript file(s) under `src/`, 75,569 lines.
 
 ## Size hotspots
 
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-48 file(s), 25,203 lines.
+48 file(s), 25,294 lines.
 
 | File | Lines |
 |---|---:|
@@ -133,11 +133,12 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 337 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 334 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 315 |
+| `src/screens/main/PrivacyDataScreen.tsx` | 313 |
 | `src/screens/main/SettingsScreen.tsx` | 294 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 292 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
-| `src/screens/main/PrivacyDataScreen.tsx` | 277 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
+| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 271 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/PlaylistScreen.tsx` | 268 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 259 |
@@ -149,7 +150,6 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/FirstRunGuideScreen.tsx` | 225 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 223 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
-| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 216 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
 | `src/screens/main/PostDetailScreen.tsx` | 202 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 201 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-119 file(s), 26,261 lines.
+121 file(s), 26,592 lines.
 
 | File | Lines |
 |---|---:|
@@ -204,6 +204,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentReportModal.tsx` | 202 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
+| `src/components/AppUpdatePrompt.tsx` | 199 |
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/ConfirmActionModal.tsx` | 192 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
@@ -230,6 +231,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/guide/cards.ts` | 144 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 143 |
+| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 132 |
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
@@ -286,16 +288,16 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-66 file(s), 13,404 lines.
+68 file(s), 13,669 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/posts.ts` | 1227 |
+| `src/services/posts.ts` | 1228 |
 | `src/services/tracks.ts` | 1001 |
 | `src/services/pushNotifications.ts` | 694 |
 | `src/services/albums.ts` | 518 |
+| `src/services/profileService.ts` | 487 |
 | `src/services/share.ts` | 485 |
-| `src/services/profileService.ts` | 457 |
 | `src/services/activity.ts` | 426 |
 | `src/services/comments.ts` | 383 |
 | `src/services/messages.ts` | 382 |
@@ -310,7 +312,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
 | `src/services/listeningStatus.ts` | 223 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
-| `src/services/stories.ts` | 214 |
+| `src/services/stories.ts` | 215 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/appBadge.test.ts` | 177 |
@@ -321,6 +323,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/appBadge.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 149 |
+| `src/services/__tests__/appUpdate.test.ts` | 141 |
 | `src/services/jamSuggestions.ts` | 140 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
 | `src/services/appleAuth.ts` | 131 |
@@ -332,6 +335,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/mediaPicks.ts` | 93 |
+| `src/services/appUpdate.ts` | 92 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/searchDiscover.ts` | 88 |
 | `src/services/__tests__/pushOpenChat.test.ts` | 87 |

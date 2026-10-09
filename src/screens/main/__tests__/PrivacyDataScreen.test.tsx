@@ -21,7 +21,11 @@ const mockGetShowActivity = jest.fn().mockResolvedValue(true);
 const mockUpdateShowActivity = jest.fn().mockResolvedValue(undefined);
 const mockGetCommentsFriendsOnly = jest.fn().mockResolvedValue(false);
 const mockUpdateCommentsFriendsOnly = jest.fn().mockResolvedValue(undefined);
+const mockGetRepostsPublic = jest.fn().mockResolvedValue(true);
+const mockUpdateRepostsPublic = jest.fn().mockResolvedValue(undefined);
 jest.mock('../../../services/profileService', () => ({
+  getRepostsPublic: (...a: unknown[]) => mockGetRepostsPublic(...(a as [])),
+  updateRepostsPublic: (...a: unknown[]) => mockUpdateRepostsPublic(...(a as [])),
   getShowActivity: (...a: unknown[]) => mockGetShowActivity(...(a as [])),
   updateShowActivity: (...a: unknown[]) => mockUpdateShowActivity(...(a as [])),
   getCommentsFriendsOnly: (...a: unknown[]) => mockGetCommentsFriendsOnly(...(a as [])),
@@ -60,11 +64,19 @@ const texts = (t: TestRenderer.ReactTestRenderer) =>
   t.root.findAllByType(Text).map(n => n.props.children)
     .filter((c): c is string => typeof c === 'string');
 
+// By row label, not position: rows appear and disappear (the reposts row is hidden until
+// its setting is known), so an index would silently point at the wrong switch.
+const switchFor = (t: TestRenderer.ReactTestRenderer, label: string) =>
+  t.root.findAll(n => n.props?.label === label && n.props?.toggle != null)[0]?.findByType(Switch);
+
 const activitySwitch = (t: TestRenderer.ReactTestRenderer) =>
-  t.root.findAllByType(Switch)[0]!;
+  switchFor(t, "Show what I'm listening to")!;
 
 const commentsSwitch = (t: TestRenderer.ReactTestRenderer) =>
-  t.root.findAllByType(Switch)[1]!;
+  switchFor(t, 'Comments from friends only')!;
+
+const repostsSwitch = (t: TestRenderer.ReactTestRenderer) =>
+  switchFor(t, 'Show my reposts to everyone');
 
 const pressable = (t: TestRenderer.ReactTestRenderer, label: string) =>
   t.root.findAll(
@@ -79,6 +91,8 @@ describe('PrivacyDataScreen', () => {
     mockUpdateShowActivity.mockResolvedValue(undefined);
     mockGetCommentsFriendsOnly.mockResolvedValue(false);
     mockUpdateCommentsFriendsOnly.mockResolvedValue(undefined);
+    mockGetRepostsPublic.mockResolvedValue(true);
+    mockUpdateRepostsPublic.mockResolvedValue(undefined);
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
   });
 
@@ -186,6 +200,47 @@ describe('PrivacyDataScreen', () => {
       await act(async () => { commentsSwitch(tree).props.onValueChange(true); });
       expect(mockUpdateShowActivity).not.toHaveBeenCalled();
       expect(activitySwitch(tree).props.value).toBe(true);
+    });
+  });
+
+  // Enforced by the database (posts_select_authenticated, ADR-0028), and it governs past
+  // reposts too — so a switch showing the wrong state is a lie about privacy.
+  describe('repost audience', () => {
+    it('shows everyone when that is the stored value (the default)', async () => {
+      const tree = await mount();
+      expect(repostsSwitch(tree)?.props.value).toBe(true);
+    });
+
+    it('reflects friends only', async () => {
+      mockGetRepostsPublic.mockResolvedValue(false);
+      const tree = await mount();
+      expect(repostsSwitch(tree)?.props.value).toBe(false);
+    });
+
+    it('is hidden, not guessed, when the setting cannot be read', async () => {
+      // null = the column is missing (backend not applied yet) or the read failed.
+      mockGetRepostsPublic.mockResolvedValue(null);
+      const tree = await mount();
+      expect(repostsSwitch(tree)).toBeUndefined();
+      expect(commentsSwitch(tree).props.disabled).toBe(false);
+    });
+
+    it('persists a change to friends only', async () => {
+      const tree = await mount();
+      await act(async () => { repostsSwitch(tree)!.props.onValueChange(false); });
+      expect(mockUpdateRepostsPublic).toHaveBeenCalledWith('u1', false);
+      expect(repostsSwitch(tree)?.props.value).toBe(false);
+    });
+
+    it('rolls back and warns when the write fails', async () => {
+      mockUpdateRepostsPublic.mockRejectedValueOnce(new Error('offline'));
+      const tree = await mount();
+      await act(async () => { repostsSwitch(tree)!.props.onValueChange(false); });
+      expect(repostsSwitch(tree)?.props.value).toBe(true);
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Couldn't update who can see your reposts.",
+        { kind: 'error' },
+      );
     });
   });
 

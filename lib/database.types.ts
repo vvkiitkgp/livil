@@ -182,6 +182,30 @@ export type Database = {
           },
         ]
       }
+      app_update_policy: {
+        Row: {
+          latest_build: number
+          message: string | null
+          minimum_build: number
+          platform: string
+          updated_at: string
+        }
+        Insert: {
+          latest_build?: number
+          message?: string | null
+          minimum_build?: number
+          platform: string
+          updated_at?: string
+        }
+        Update: {
+          latest_build?: number
+          message?: string | null
+          minimum_build?: number
+          platform?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       badge_kinds: {
         Row: {
           badge: string
@@ -1378,6 +1402,7 @@ export type Database = {
           id: string
           last_seen_at: string | null
           links: string[]
+          reposts_public: boolean
           show_activity: boolean | null
           username: string
           username_set: boolean
@@ -1394,6 +1419,7 @@ export type Database = {
           id: string
           last_seen_at?: string | null
           links?: string[]
+          reposts_public?: boolean
           show_activity?: boolean | null
           username: string
           username_set?: boolean
@@ -1410,6 +1436,7 @@ export type Database = {
           id?: string
           last_seen_at?: string | null
           links?: string[]
+          reposts_public?: boolean
           show_activity?: boolean | null
           username?: string
           username_set?: boolean
@@ -2613,6 +2640,7 @@ export type Database = {
       }
       remove_friend: { Args: { other_user_id: string }; Returns: undefined }
       remove_star: { Args: { target_user_id: string }; Returns: undefined }
+      reposts_public: { Args: { p_author: string }; Returns: boolean }
       report_story: {
         Args: { p_details?: string; p_reason: string; p_story_id: string }
         Returns: undefined

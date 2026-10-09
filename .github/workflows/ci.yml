@@ -702,7 +702,7 @@ jobs:
             -f supabase/tests/rls/account-exit-feedback.test.sql
 
       # ADR-0027 — a Spotify repost is a track-less repost: exactly one media source, the
-      # same friends-only / like / comment rules as any repost, an immutable song, and no
+      # same audience / like / comment rules as any repost, an immutable song, and no
       # way into a playlist, a Jam or the Livil play counters.
       - name: Spotify repost tests
         env:
@@ -719,6 +719,27 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/play-stats.test.sql
+
+      # ADR-0028 — repost audience: profiles.reposts_public (everyone by default) decides
+      # who sees a person's reposts, live and including past ones; only the owner can flip
+      # it; blocks and signed-out callers still see nothing; record_post_impressions agrees
+      # with the read policy; posts keeps exactly one SELECT policy.
+      - name: Repost audience tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/repost-audience.test.sql
+
+      # App update prompt: everyone (signed out too) reads the per-platform policy, no
+      # client can write it, and the constraints refuse a dashboard typo that would block
+      # everyone (minimum above latest, negative builds, unknown platforms).
+      - name: App update policy tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/app-update-policy.test.sql
 
       # A SECURITY DEFINER function with no pinned search_path resolves unqualified
       # names using the caller's search_path — the LIV-11 finding #2 escalation shape.

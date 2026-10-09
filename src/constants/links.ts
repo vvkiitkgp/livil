@@ -31,6 +31,8 @@ export const PLAY_STORE_WEB_URL = `https://play.google.com/store/apps/details?id
 /** App Store Connect id for Livil Music. */
 export const APP_STORE_ID = '6809119164';
 export const APP_STORE_URL = `https://apps.apple.com/app/id${APP_STORE_ID}`;
+/** Opens Livil's page in the App Store app itself (the update prompt); APP_STORE_URL is the fallback. */
+export const APP_STORE_APP_URL = `itms-apps://apps.apple.com/app/id${APP_STORE_ID}`;
 /** Opens the App Store's review sheet directly (Rate row on iOS). */
 export const APP_STORE_REVIEW_URL = `itms-apps://apps.apple.com/app/id${APP_STORE_ID}?action=write-review`;
 
