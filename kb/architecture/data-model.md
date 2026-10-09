@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 142 migration(s) in `supabase/migrations/`.
+Reconstructed from 143 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -936,7 +936,8 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `comments_friends_only` | `boolean not null default false` | `20260803000000_profiles_comments_friends_only.sql` |
 | `guide_seen_at` | `timestamptz` | `20260930030000_profiles_guide_seen_at.sql` |
 | `email_confirmed` | `boolean not null default true` | `20261010000000_hide_unconfirmed_accounts.sql` |
-| `reposts_public` | `boolean not null default true` | `20261019000000_reposts_audience.sql` |
+| `reposts_public` | `boolean not null default false` | `20261019000000_reposts_audience.sql` |
+| `reposts_public_set_at` | `timestamptz` | `20261019000000_reposts_audience.sql` |
 
 **Indexes**
 
@@ -948,6 +949,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_profiles_freeze_counters` — before update (`20260722160000_counters_are_not_client_writable.sql`)
 - `trg_enforce_username_reservation` — before insert or update (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
 - `trg_profiles_redirect_last_seen` — before insert or update of last_seen_at (`20260925010000_last_seen_is_ops_only.sql`)
+- `trg_profiles_stamp_reposts_public` — before update of reposts_public (`20261019000000_reposts_audience.sql`)
 
 ### `profiles_private`
 
@@ -1410,6 +1412,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_profiles_redirect_last_seen` | `profiles` | before insert or update of last_seen_at | `20260925010000_last_seen_is_ops_only.sql` |
+| `trg_profiles_stamp_reposts_public` | `profiles` | before update of reposts_public | `20261019000000_reposts_audience.sql` |
 | `spotify_opens_server_time` | `spotify_opens` | before insert | `20261016000000_spotify_opens_server_time.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 | `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |
