@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 136 migration(s) in `supabase/migrations/`.
+Reconstructed from 138 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-51 table(s).
+53 table(s).
 
 ### `account_exit_feedback`
 
@@ -117,6 +117,16 @@ RLS enabled · defined in `20260616000000_albums_and_playlist_visibility.sql`
 **Indexes**
 
 - `albums_uploader_idx` `(uploader_id, created_at desc)`
+
+### `app_switches`
+
+RLS enabled · defined in `20261013000000_spotify_reposts.sql`
+
+| Column | Definition |
+|---|---|
+| `key` | `text primary key check (key ~ '^[a-z][a-z0-9_]{1,62}$')` |
+| `enabled` | `boolean not null default false` |
+| `updated_at` | `timestamptz not null default now()` |
 
 ### `badge_kinds`
 
@@ -405,6 +415,7 @@ RLS enabled · realtime · defined in `20260930000000_jam_suggestions.sql`
 **Triggers**
 
 - `trg_jam_suggestions_guard` — before insert or update (`20260930000000_jam_suggestions.sql`)
+- `trg_jam_suggestions_reject_spotify` — before insert or update of post_id (`20261013000000_spotify_reposts.sql`)
 
 ### `listen_sessions`
 
@@ -545,6 +556,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 **Table constraints**
 
 - `primary key (playlist_id, post_id)`
+
+**Triggers**
+
+- `trg_playlist_posts_reject_spotify` — before insert or update of post_id (`20261013000000_spotify_reposts.sql`)
 
 ### `playlists`
 
@@ -765,11 +780,13 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `post_views_post_id_idx` `(post_id)`
 - `post_views_user_id_played_at_idx` `(user_id, played_at desc)`
 - `post_views_post_id_played_at_idx` `(post_id, played_at desc)`
+- `post_views_played_at_idx` `(played_at desc)`
 
 **Triggers**
 
 - `trg_post_views_count` — after insert (`20260722120000_capture_counter_triggers.sql`)
 - `trg_post_views_recent_tracks` — after insert (`20260929000000_recently_played_is_recorded.sql`)
+- `trg_post_views_reject_spotify` — before insert (`20261013000000_spotify_reposts.sql`)
 
 ### `posts`
 
@@ -811,6 +828,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `clip_end_sec` | `numeric(10` | `20260530000001_repost_and_stories.sql` |
 | `hot_score` | `double precision NOT NULL DEFAULT 0` | `20260816030000_home_feed_candidates.sql` |
 | `hot_score_updated_at` | `timestamptz` | `20260816030000_home_feed_candidates.sql` |
+| `spotify_track_id` | `text` | `20261013000000_spotify_reposts.sql` |
 
 **Indexes**
 
@@ -829,6 +847,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_posts_clamp_counters_on_insert` — before insert (`20260722160000_counters_are_not_client_writable.sql`)
 - `notify_track_credits` — after insert (`20260806130000_credit_accept_decline.sql`)
 - `trg_posts_block_taken_down` — BEFORE INSERT (`20260923010000_track_takedown.sql`)
+- `trg_posts_spotify_switch_guard` — before insert (`20261013000000_spotify_reposts.sql`)
 
 ### `profile_badges`
 
@@ -936,6 +955,28 @@ RLS enabled · defined in `20260808000000_search_result_taps.sql`
 
 - `search_result_taps_kind_created_idx` `(kind, created_at desc, entity_id)`
 - `search_result_taps_entity_user_idx` `(entity_id, user_id)`
+
+### `spotify_opens`
+
+RLS enabled · defined in `20261014000000_play_stats.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid not null primary key default gen_random_uuid()` |
+| `spotify_track_id` | `text not null` |
+| `source` | `text not null` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `constraint spotify_opens_track_id_format check (spotify_track_id ~ '^[A-Za-z0-9]{22}$')`
+- `constraint spotify_opens_source_check check (source in ('feed', 'chat', 'search'))`
+
+**Indexes**
+
+- `spotify_opens_created_idx` `(created_at desc)`
+- `spotify_opens_track_user_idx` `(spotify_track_id, user_id)`
 
 ### `stories`
 
@@ -1310,12 +1351,14 @@ same row-level security policies that gate ordinary reads.
 | `trg_jam_rooms_clear_suggestions` | `jam_rooms` | after update of status | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_rooms_guard` | `jam_rooms` | before update | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_suggestions_guard` | `jam_suggestions` | before insert or update | `20260930000000_jam_suggestions.sql` |
+| `trg_jam_suggestions_reject_spotify` | `jam_suggestions` | before insert or update of post_id | `20261013000000_spotify_reposts.sql` |
 | `listen_sessions_stamp` | `listen_sessions` | before insert or update | `20260925000000_listening_now.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
 | `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_moderation_actions_append_only` | `moderation_actions` | BEFORE UPDATE OR DELETE | `20260923010000_track_takedown.sql` |
 | `trg_moderation_actions_pin` | `moderation_actions` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
+| `trg_playlist_posts_reject_spotify` | `playlist_posts` | before insert or update of post_id | `20261013000000_spotify_reposts.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
@@ -1323,11 +1366,13 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_views_recent_tracks` | `post_views` | after insert | `20260929000000_recently_played_is_recorded.sql` |
+| `trg_post_views_reject_spotify` | `post_views` | before insert | `20261013000000_spotify_reposts.sql` |
 | `trg_post_reposts_count` | `posts` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_posts_freeze_counter_identity` | `posts` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
 | `trg_posts_clamp_counters_on_insert` | `posts` | before insert | `20260722160000_counters_are_not_client_writable.sql` |
 | `notify_track_credits` | `posts` | after insert | `20260806130000_credit_accept_decline.sql` |
 | `trg_posts_block_taken_down` | `posts` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
+| `trg_posts_spotify_switch_guard` | `posts` | before insert | `20261013000000_spotify_reposts.sql` |
 | `trg_profile_badges_no_orphan_revoke` | `profile_badges` | before update | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_orphan_delete` | `profile_badges` | before delete | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_truncate` | `profile_badges` | before truncate | `20260920000000_badge_slot_reclaim_split.sql` |
