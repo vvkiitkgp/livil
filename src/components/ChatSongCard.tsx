@@ -27,6 +27,7 @@ export default function ChatSongCard({
   loading = false,
   onPlay,
   onRepost,
+  onLongPress,
 }: {
   source: 'livil' | 'spotify';
   title: string | null;
@@ -36,12 +37,19 @@ export default function ChatSongCard({
   onPlay?: () => void;
   /** Omitted → no Repost button (e.g. Spotify reposts switched off). */
   onRepost?: () => void;
+  /**
+   * The chat bubble's long-press (react / reply / delete). Every button here takes it too:
+   * a Pressable claims the whole touch, so without it holding the artwork or a button never
+   * opened the message menu — and letting go then played the song.
+   */
+  onLongPress?: () => void;
 }) {
   const where = source === 'spotify' ? 'Spotify' : 'Livil';
   return (
     <View style={styles.card}>
       <Pressable
         onPress={onPlay}
+        onLongPress={onLongPress}
         disabled={!onPlay}
         accessibilityRole="button"
         accessibilityLabel={title ? `Play ${title} on ${where}` : `Play on ${where}`}
@@ -76,6 +84,7 @@ export default function ChatSongCard({
       <View style={styles.actions}>
         <Pressable
           onPress={onPlay}
+          onLongPress={onLongPress}
           disabled={!onPlay}
           style={({ pressed }) => [styles.action, styles.actionPrimary, pressed && styles.pressed]}
           accessibilityRole="button"
@@ -87,6 +96,7 @@ export default function ChatSongCard({
         {onRepost ? (
           <Pressable
             onPress={onRepost}
+            onLongPress={onLongPress}
             style={({ pressed }) => [styles.action, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Repost to Livil"

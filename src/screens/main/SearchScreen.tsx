@@ -46,6 +46,7 @@ import {
   artistLine, rememberSpotifyTrack, searchSpotify, useSpotifyAvailability, type SpotifyTrack,
 } from '../../services/spotify';
 import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
+import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
 
 const FALLBACK_ACCENTS: [string, string][] = [
   ['#8B3DFF', '#3B1E6E'],
@@ -204,7 +205,14 @@ export default function SearchScreen() {
   const spotify = useSpotifyAvailability();
   const openSpotify = useOpenInSpotify('search');
   const [spotifyResults, setSpotifyResults] = useState<SpotifyTrack[]>([]);
+  /**
+   * A Spotify search for the CURRENT query is waiting on its debounce or its answer. It
+   * starts later than the Livil one (450ms vs 200ms), so without this the screen said
+   * "Nothing matches" in between and then grew an "On Spotify" section under the claim.
+   */
+  const [spotifyPending, setSpotifyPending] = useState(false);
   const [spotifySheet, setSpotifySheet] = useState<SpotifyTrack | null>(null);
+  const { runAfterDismiss: runAfterSpotifySheet, onDismiss: onSpotifySheetDismiss } = useRunAfterDismiss();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -380,24 +388,30 @@ export default function SearchScreen() {
     [posts, profiles, albums, query, taps],
   );
 
+  // Keyed on the TRIMMED query: a trailing space is not a new search, so it must not clear
+  // the section and fetch the same results again.
+  const spotifyQuery = query.trim();
   useEffect(() => {
-    const trimmed = query.trim();
     // Cleared on EVERY change, not just when empty: the previous query's Spotify rows must
     // not sit under this query's Livil results while the new Spotify call is in flight.
     setSpotifyResults([]);
-    if (!spotify.search || trimmed.length < 2 || trimmed.startsWith('#')) {
+    if (!spotify.search || spotifyQuery.length < 2 || spotifyQuery.startsWith('#')) {
+      setSpotifyPending(false);
       return;
     }
     let cancelled = false;
+    setSpotifyPending(true);
     const timer = setTimeout(async () => {
-      const found = await searchSpotify(trimmed, SPOTIFY_RESULTS);
-      if (!cancelled) { setSpotifyResults(found); }
+      const found = await searchSpotify(spotifyQuery, SPOTIFY_RESULTS).catch(() => [] as SpotifyTrack[]);
+      if (cancelled) { return; }
+      setSpotifyResults(found);
+      setSpotifyPending(false);
     }, SPOTIFY_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, spotify.search]);
+  }, [spotifyQuery, spotify.search]);
 
   /**
    * Popularity for what is on screen, fetched AFTER the results.
@@ -766,7 +780,9 @@ export default function SearchScreen() {
         <View style={styles.topState}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : loading ? (
+      ) : loading || (spotifyPending && results.length === 0) ? (
+        // Still loading while Spotify is pending with no Livil results to show: "Nothing
+        // matches" now would be contradicted a moment later by an "On Spotify" section.
         <View style={styles.topState}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>
@@ -823,9 +839,12 @@ export default function SearchScreen() {
         track={spotifySheet}
         canRepost={spotify.reposts}
         onClose={() => setSpotifySheet(null)}
+        onDismiss={onSpotifySheetDismiss}
         onPlay={track => {
           setSpotifySheet(null);
-          void openSpotify(track.id);
+          // After the sheet has gone: "Play" raises the Spotify notice, another modal, and
+          // iOS refuses to present it while this sheet is still sliding away.
+          runAfterSpotifySheet(() => { void openSpotify(track.id); });
         }}
         onRepost={track => {
           setSpotifySheet(null);

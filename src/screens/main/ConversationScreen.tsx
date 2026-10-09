@@ -63,11 +63,12 @@ import { usePlayback } from '../../contexts/PlaybackContext';
 import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
-import { fetchPostById, feedPostToNowPlaying, isPlayableInLivil } from '../../services/posts';
+import { fetchPostById, feedPostToNowPlaying, isPlayableInLivil, type FeedPost } from '../../services/posts';
 import { resolveSharedProfile, toShareablePost } from '../../services/share';
 import { ProfileLinkCard } from '../../components/ProfileLinkCard';
 import SpotifyChatCard from '../../components/SpotifyChatCard';
 import ChatSongCard from '../../components/ChatSongCard';
+import { ChatReplySnippet } from '../../components/ChatReplySnippet';
 import { requestNotice } from '../../components/OnboardingNotice';
 import ChatSongPicker, { MusicToggleIcon, type PickedSong } from '../../components/ChatSongPicker';
 import { rememberSpotifyTrack, useSpotifyAvailability } from '../../services/spotify';
@@ -303,6 +304,11 @@ function MessageBubble({
                   ? () => onOpenSharedProfile(sharedProfileHandle)
                   : undefined
             }
+            // A song card has its own Play / Repost buttons. A Pressable is one accessibility
+            // element by default, which folds those into the bubble so VoiceOver/TalkBack
+            // can't reach them. Off for song bubbles; touch long-press is unaffected, and
+            // the card's buttons carry the long-press too.
+            accessible={isSongBubble ? false : undefined}
             accessibilityRole={sharedPostId || sharedProfileHandle ? 'button' : undefined}
             accessibilityLabel={
               sharedPostId
@@ -336,14 +342,8 @@ function MessageBubble({
                     ? (repliedTo.senderDisplayName || repliedTo.senderUsername || 'Unknown')
                     : 'Original message'}
                 </Text>
-                <Text
-                  style={[styles.replyQuoteBody, isMe ? styles.replyQuoteBodyMe : styles.replyQuoteBodyThem]}
-                  numberOfLines={2}
-                >
-                  {repliedTo
-                    ? (repliedTo.body || (repliedTo.kind === 'sticker' ? 'Sticker' : repliedTo.kind === 'track_share' ? 'Track' : 'Message'))
-                    : 'Tap to view'}
-                </Text>
+                {/* A song (Livil or Spotify) quotes as a small song row, not its raw link. */}
+                <ChatReplySnippet message={repliedTo} tone={isMe ? 'me' : 'them'} />
               </Pressable>
             )}
 
@@ -361,7 +361,11 @@ function MessageBubble({
             {/* A Spotify song link in the text becomes a card (ADR-0027). Still a plain
                 text message underneath — older apps keep showing the raw link. */}
             {spotifyLink ? (
-              <SpotifyChatCard spotifyTrackId={spotifyLink.id} shortUrl={spotifyLink.shortUrl} />
+              <SpotifyChatCard
+                spotifyTrackId={spotifyLink.id}
+                shortUrl={spotifyLink.shortUrl}
+                onLongPress={() => onLongPress(msg)}
+              />
             ) : null}
 
             {hasStickerMeta && (
@@ -383,6 +387,7 @@ function MessageBubble({
                 artUrl={(msg.metadata!.cover_art_url as string | null | undefined) ?? null}
                 onPlay={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
                 onRepost={sharedPostId ? () => onRepostSharedPost(sharedPostId) : undefined}
+                onLongPress={() => onLongPress(msg)}
               />
             )}
           </Pressable>
@@ -1007,9 +1012,24 @@ export default function ConversationScreen() {
     }
   }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast, scrollToLatest]);
 
+  /**
+   * 🎵 off. The query is NOT cleared here: the popover keeps drawing it while it shrinks
+   * away (~170ms), and clearing it in the same render flipped the panel to "Recently
+   * played" mid-close. openSongSearch starts the next search empty instead.
+   */
   const closeSongSearch = useCallback(() => {
     setSongMode(false);
+  }, []);
+
+  /**
+   * 🎵 on. Drops an armed reply: a song goes out as its own message (a track_share carries
+   * no reply), and a banner left armed sat over the popover's bottom rows, then threaded
+   * the NEXT typed message onto the old target.
+   */
+  const openSongSearch = useCallback(() => {
+    setReplyingTo(null);
     setSongQuery('');
+    setSongMode(true);
   }, []);
 
   /**
@@ -1030,11 +1050,23 @@ export default function ConversationScreen() {
       rememberSpotifyTrack(song.track);
       payload = { kind: 'text', body: spotifyTrackUrl(song.track.id) };
     } else {
-      let post = song.kind === 'livil' ? song.post : await fetchPostById(song.postId);
-      if (post && post.kind === 'repost' && post.originalPostId) {
-        post = (await fetchPostById(post.originalPostId)) ?? post;
+      // The popover has already closed, so a failed lookup must still say so — otherwise
+      // the tap just looks ignored.
+      let post: FeedPost | null;
+      try {
+        post = song.kind === 'livil' ? song.post : await fetchPostById(song.postId);
+        if (post && post.kind === 'repost' && post.originalPostId) {
+          post = (await fetchPostById(post.originalPostId)) ?? post;
+        }
+      } catch (err) {
+        console.warn('[chat] song lookup failed', err);
+        showToast("Couldn't send that song. Please try again.", { kind: 'error' });
+        return;
       }
-      if (!post || !isPlayableInLivil(post)) {
+      // Still a repost here = its original is gone or hidden from us (orphaned, deleted).
+      // Sending the repost's own id would give the recipient a card whose Repost button
+      // fails, because Repost takes an ORIGINAL upload.
+      if (!post || post.kind === 'repost' || !isPlayableInLivil(post)) {
         showToast('That song is no longer available', { kind: 'info' });
         return;
       }
@@ -1256,7 +1288,8 @@ export default function ConversationScreen() {
               conversationTitle={title}
               repliedTo={repliedTo}
               isHighlighted={isHighlighted}
-              onReply={() => setReplyingTo(item)}
+              // Arming a reply leaves song search: a picked song can't be a reply.
+              onReply={() => { closeSongSearch(); setReplyingTo(item); }}
               onReplyQuotePress={handleReplyQuotePress}
               onLongPress={handleLongPress}
               onReactionToggle={handleReactionToggle}
@@ -1277,7 +1310,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1512,12 +1545,7 @@ export default function ConversationScreen() {
                       ? 'yourself'
                       : (replyingTo.senderDisplayName || replyingTo.senderUsername || 'Unknown')}
                   </Text>
-                  <Text style={styles.replyPreviewBodyText} numberOfLines={1}>
-                    {replyingTo.body
-                      || (replyingTo.kind === 'sticker' ? 'Sticker'
-                        : replyingTo.kind === 'track_share' ? 'Track'
-                        : 'Message')}
-                  </Text>
+                  <ChatReplySnippet message={replyingTo} tone="bar" numberOfLines={1} />
                 </View>
                 <TouchableOpacity
                   style={styles.replyPreviewClose}
@@ -1558,7 +1586,7 @@ export default function ConversationScreen() {
               <TouchableOpacity
                 style={[styles.musicBtn, songMode && styles.musicBtnActive]}
                 activeOpacity={0.7}
-                onPress={() => (songMode ? closeSongSearch() : setSongMode(true))}
+                onPress={() => (songMode ? closeSongSearch() : openSongSearch())}
                 accessibilityRole="button"
                 accessibilityLabel={songMode ? 'Back to typing a message' : 'Send a song'}
                 accessibilityState={{ selected: songMode }}
@@ -1570,14 +1598,20 @@ export default function ConversationScreen() {
                 <FormInput
                   nativeID="conversation-input"
                   value={songMode ? songQuery : text}
-                  onChangeText={t => (songMode ? setSongQuery(t.slice(0, 100)) : setText(clampComposerInput(t)))}
+                  // A search is one line: a pasted newline becomes a space.
+                  onChangeText={t => (songMode ? setSongQuery(t.replace(/\n/g, ' ').slice(0, 100)) : setText(clampComposerInput(t)))}
                   placeholder={
                     songMode
                       ? (spotifySearchOn ? 'Search a song on Livil or Spotify…' : 'Search a song on Livil…')
                       : 'Send Message…'
                   }
                   placeholderTextColor={COLORS.textMuted}
-                  multiline={!songMode}
+                  // ALWAYS multiline. On iOS `multiline` picks the native view (UITextView vs
+                  // UITextField), so toggling it with 🎵 swapped the view and dropped the
+                  // keyboard. Song mode gets its single-line behaviour from submitBehavior
+                  // instead: return closes the keyboard, never inserts a newline.
+                  multiline
+                  submitBehavior={songMode ? 'blurAndSubmit' : 'newline'}
                   autoCorrect={!songMode}
                   style={styles.textInput}
                   returnKeyType={songMode ? 'search' : 'default'}
@@ -1800,16 +1834,13 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.white,
   },
   replyQuoteAuthorMe: { color: COLORS.white },
-  replyQuoteBodyMe: { color: 'rgba(255,255,255,0.85)' },
   // "them" bubble is dark surface — lift the strip and keep the purple bar.
   replyQuoteThem: {
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderLeftColor: COLORS.purpleLight,
   },
   replyQuoteAuthorThem: { color: COLORS.purpleLight },
-  replyQuoteBodyThem: { color: COLORS.white },
   replyQuoteAuthor: { fontSize: 12, fontWeight: '700' },
-  replyQuoteBody: { fontSize: 13, lineHeight: 17, marginTop: 2 },
   // Read-receipt footer below the latest outgoing DM message — small,
   // muted, right-aligned to sit under the bubble.
   readStatus: {
@@ -1977,7 +2008,6 @@ const styles = StyleSheet.create({
   },
   replyPreviewBody: { flex: 1 },
   replyPreviewTitle: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '700' },
-  replyPreviewBodyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   replyPreviewClose: { padding: 4 },
   // Replaces the send bar rather than sitting above it — a disabled composer
   // still invites typing, which is how the "Couldn't send message" toast got

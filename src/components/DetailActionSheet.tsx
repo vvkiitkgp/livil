@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { Icon, type IconName } from './Icon';
 
 /**
@@ -35,8 +36,16 @@ export default function DetailActionSheet({
   actions: DetailAction[];
 }) {
   const insets = useSafeAreaInsets();
+  const { runAfterDismiss, onDismiss } = useRunAfterDismiss();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      onDismiss={onDismiss}
+      statusBarTranslucent
+    >
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
@@ -49,10 +58,13 @@ export default function DetailActionSheet({
                   activeOpacity={0.7}
                   onPress={() => {
                     onClose();
-                    // Defer to next tick so the modal animation begins before
-                    // the parent navigates — avoids a visual stutter where the
-                    // edit screen mounts behind a fading-out sheet.
-                    setTimeout(() => a.onPress(), 0);
+                    // Run the action once this sheet has CLOSED, not in the same tick.
+                    // iOS refuses to present a modal (a confirm dialog, the Spotify
+                    // notice, a modal screen) while this one is still fading out, and
+                    // the refused one then believes it is showing. Android has no such
+                    // refusal and runs it on the next tick, as before. See
+                    // useRunAfterDismiss.
+                    runAfterDismiss(a.onPress);
                   }}
                 >
                   <View style={styles.iconBox}>

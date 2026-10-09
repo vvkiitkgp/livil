@@ -1,5 +1,5 @@
 import { kf } from '../timeline';
-import { GUIDE_CARDS, cardsFor } from '../cards';
+import { GUIDE_CARDS, cardsFor, lineFor } from '../cards';
 import coverage from '../coverage.json';
 
 // `kf` is plain arithmetic; only `useLoop` touches Reanimated, and importing the real
@@ -73,7 +73,18 @@ describe('GUIDE_CARDS', () => {
 
   it('never quotes a clip length — reposts are not limited to a fixed number of seconds', () => {
     GUIDE_CARDS.forEach(c => {
-      expect(`${c.headline} ${c.line}`).not.toMatch(/\b\d+\s*(s|sec|seconds)\b/i);
+      expect(`${c.headline} ${c.line} ${c.spotifyLine ?? ''}`).not.toMatch(/\b\d+\s*(s|sec|seconds)\b/i);
     });
+  });
+
+  it('promises Spotify reposts only while the server switch is on', () => {
+    // Spotify reposts sit behind a server switch (ADR-0027). Someone who sees the guide
+    // while it is off must not be told about a button they cannot find.
+    GUIDE_CARDS.forEach(c => {
+      expect(`${c.headline} ${lineFor(c, { spotifyReposts: false })}`).not.toMatch(/spotify/i);
+    });
+    const repost = GUIDE_CARDS.find(c => c.key === 'repost')!;
+    expect(lineFor(repost, { spotifyReposts: true }))
+      .toBe(`${repost.line} Found it on Spotify? Repost that too.`);
   });
 });
