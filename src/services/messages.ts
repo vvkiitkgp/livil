@@ -70,7 +70,9 @@ async function dispatchMessagePush(
       const spotifyLink = sharedHandle ? null : findSpotifyLinkInText(payload.body);
       bodyPreview = sharedHandle
         ? `👤 Shared @${sharedHandle}'s profile`
-        : spotifyLink && payload.body.replace(spotifyLink.match, '').trim() === ''
+        // A direct track link only: a spotify.link short link may be an album or a playlist,
+        // and the inbox line leaves those as typed for the same reason.
+        : spotifyLink && 'id' in spotifyLink && payload.body.replace(spotifyLink.match, '').trim() === ''
           ? '🎵 Shared a Spotify song'
           : payload.body;
     } else if (payload.kind === 'track_share') {
