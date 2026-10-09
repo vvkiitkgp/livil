@@ -6,6 +6,7 @@ import { FONTS } from '../../theme/fonts';
 import { Icon, type IconName } from '../Icon';
 import { SpotifyLogo } from '../SpotifyLogo';
 import { useSpotifyAvailability } from '../../services/spotify';
+import { useMyRepostsPublic } from '../../hooks/useMyRepostsPublic';
 import { kf, useLoop } from './timeline';
 import {
   Avatar, Cover, EqBars, Finger, Kicker, Orb, Phone, PHONE_INNER_W, PHONE_W, TapFinger, TrackTitle,
@@ -148,6 +149,9 @@ export function RepostIllustration() {
   const t = useLoop(9000);
   // The Spotify pill follows the server switch, like the card's Spotify sentence (lineFor).
   const { reposts: spotifyRepostsOn } = useSpotifyAvailability();
+  // Who sees the POST: the viewer's own setting (ADR-0028), so the chip is true for them —
+  // "everyone" by default, "your friends" if they switched. Unknown → no chip.
+  const repostsPublic = useMyRepostsPublic();
   const bandW = TRACK_W * 0.24;
 
   const finger = useAnimatedStyle(() => ({
@@ -177,6 +181,12 @@ export function RepostIllustration() {
     opacity: kf(t.value, [[0, 0], [86, 0], [90, 1], [96, 1], [100, 0]]),
     transform: [{ translateY: kf(t.value, [[0, 4], [86, 4], [90, 0], [100, 0]]) }],
   }));
+  // While POST is chosen, once the pick is made: who will see it. Leaves as STORY lights
+  // (a story has its own audience), and hands the same slot to the Spotify pill.
+  const audience = useAnimatedStyle(() => ({
+    opacity: kf(t.value, [[0, 0], [60, 0], [64, 1], [80, 1], [83, 0], [100, 0]]),
+    transform: [{ translateY: kf(t.value, [[0, 4], [60, 4], [64, 0], [100, 0]]) }],
+  }));
 
   return (
     <Phone>
@@ -205,11 +215,24 @@ export function RepostIllustration() {
             <Text style={styles.modeSub}>Disappears after 24h</Text>
           </View>
         </View>
-        {spotifyRepostsOn ? (
-          <Reanimated.View style={[styles.spotifyPill, spotify]}>
-            <Text style={styles.spotifyPillText}>OR REPOST FROM</Text>
-            <SpotifyLogo size="xs" withName />
-          </Reanimated.View>
+        {spotifyRepostsOn || repostsPublic !== null ? (
+          // One slot, two pills at different moments of the loop.
+          <View style={styles.pillSlot}>
+            {repostsPublic !== null ? (
+              <Reanimated.View style={[styles.spotifyPill, styles.pillInSlot, audience]}>
+                <Icon name={repostsPublic ? 'public' : 'friends'} size={12} color={COLORS.purpleLight} />
+                <Text style={styles.spotifyPillText}>
+                  {repostsPublic ? 'EVERYONE CAN SEE IT' : 'YOUR FRIENDS SEE IT'}
+                </Text>
+              </Reanimated.View>
+            ) : null}
+            {spotifyRepostsOn ? (
+              <Reanimated.View style={[styles.spotifyPill, styles.pillInSlot, spotify]}>
+                <Text style={styles.spotifyPillText}>OR REPOST FROM</Text>
+                <SpotifyLogo size="xs" withName />
+              </Reanimated.View>
+            ) : null}
+          </View>
         ) : null}
       </Reanimated.View>
       <Finger style={finger} />
@@ -410,6 +433,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   spotifyPillText: { fontFamily: FONTS.mono, fontSize: 8, letterSpacing: 1, color: COLORS.textSecondary },
+  // Tall enough for the Spotify pill (its 21px logo + padding), which is the taller of the two.
+  pillSlot: { height: 31 },
+  pillInSlot: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   modeSub: { fontFamily: FONTS.mono, fontSize: 8, color: COLORS.textSecondary },
   dim: { backgroundColor: 'rgba(10, 10, 15, 0.55)' },
   sheet: {
