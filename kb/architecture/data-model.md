@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 138 migration(s) in `supabase/migrations/`.
+Reconstructed from 139 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -978,6 +978,10 @@ RLS enabled · defined in `20261014000000_play_stats.sql`
 - `spotify_opens_created_idx` `(created_at desc)`
 - `spotify_opens_track_user_idx` `(spotify_track_id, user_id)`
 
+**Triggers**
+
+- `spotify_opens_server_time` — before insert (`20261016000000_spotify_opens_server_time.sql`)
+
 ### `stories`
 
 RLS enabled · defined in `20260530000001_repost_and_stories.sql`
@@ -1380,6 +1384,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_profiles_freeze_counters` | `profiles` | before update | `20260722160000_counters_are_not_client_writable.sql` |
 | `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_profiles_redirect_last_seen` | `profiles` | before insert or update of last_seen_at | `20260925010000_last_seen_is_ops_only.sql` |
+| `spotify_opens_server_time` | `spotify_opens` | before insert | `20261016000000_spotify_opens_server_time.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 | `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |
 | `trg_terms_acceptances_pin` | `terms_acceptances` | BEFORE INSERT | `20260907000000_terms_acceptance_log.sql` |
