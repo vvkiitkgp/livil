@@ -21,6 +21,12 @@ export type GuideCard = {
   cta?: string;
   /** Shown on the first run only — a greeting for a new account makes no sense on a replay. */
   firstRunOnly?: boolean;
+  /**
+   * Appended to `line` only while Spotify reposts are switched on (the server switch,
+   * `useSpotifyAvailability().reposts`, ADR-0027). The guide must not promise a feature
+   * the viewer cannot find — see `lineFor`.
+   */
+  spotifyLine?: string;
 };
 
 export const GUIDE_CARDS: GuideCard[] = [
@@ -71,7 +77,8 @@ export const GUIDE_CARDS: GuideCard[] = [
   {
     key: 'repost',
     headline: 'Repost your moment',
-    line: 'Pick the part you love. Post it to your profile, or as a story that lasts a day. Found it on Spotify? Repost that too.',
+    line: 'Pick the part you love. Post it to your profile, or as a story that lasts a day.',
+    spotifyLine: 'Found it on Spotify? Repost that too.',
     Illustration: RepostIllustration,
   },
   {
@@ -124,6 +131,11 @@ export const GUIDE_CARDS: GuideCard[] = [
     cta: "Let's go",
   },
 ];
+
+/** A card's copy as shown: the Spotify sentence only while Spotify reposts are on. */
+export function lineFor(card: GuideCard, opts: { spotifyReposts: boolean }): string {
+  return card.spotifyLine && opts.spotifyReposts ? `${card.line} ${card.spotifyLine}` : card.line;
+}
 
 /** The cards a given showing uses: the greeting is dropped from a replay. */
 export function cardsFor(mode: 'first' | 'replay'): GuideCard[] {

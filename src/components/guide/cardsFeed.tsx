@@ -5,6 +5,7 @@ import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/fonts';
 import { Icon, type IconName } from '../Icon';
 import { SpotifyLogo } from '../SpotifyLogo';
+import { useSpotifyAvailability } from '../../services/spotify';
 import { kf, useLoop } from './timeline';
 import {
   Avatar, Cover, EqBars, Finger, Kicker, Orb, Phone, PHONE_INNER_W, PHONE_W, TapFinger, TrackTitle,
@@ -145,6 +146,8 @@ export function LikeIllustration() {
 /* ── 7. Repost your moment ────────────────────────────────────────────────── */
 export function RepostIllustration() {
   const t = useLoop(9000);
+  // The Spotify pill follows the server switch, like the card's Spotify sentence (lineFor).
+  const { reposts: spotifyRepostsOn } = useSpotifyAvailability();
   const bandW = TRACK_W * 0.24;
 
   const finger = useAnimatedStyle(() => ({
@@ -169,7 +172,7 @@ export function RepostIllustration() {
   }));
   const label = useAnimatedStyle(() => ({ opacity: kf(t.value, [[0, 0], [50, 0], [58, 1], [100, 1]]) }));
   // The last beat: Spotify songs can be reposted too (ADR-0027). Appears once the Story
-  // option has lit, and leaves with the editor.
+  // option has lit, and leaves with the editor. Only drawn while Spotify reposts are on.
   const spotify = useAnimatedStyle(() => ({
     opacity: kf(t.value, [[0, 0], [86, 0], [90, 1], [96, 1], [100, 0]]),
     transform: [{ translateY: kf(t.value, [[0, 4], [86, 4], [90, 0], [100, 0]]) }],
@@ -202,10 +205,12 @@ export function RepostIllustration() {
             <Text style={styles.modeSub}>Disappears after 24h</Text>
           </View>
         </View>
-        <Reanimated.View style={[styles.spotifyPill, spotify]}>
-          <Text style={styles.spotifyPillText}>OR REPOST FROM</Text>
-          <SpotifyLogo size="xs" withName />
-        </Reanimated.View>
+        {spotifyRepostsOn ? (
+          <Reanimated.View style={[styles.spotifyPill, spotify]}>
+            <Text style={styles.spotifyPillText}>OR REPOST FROM</Text>
+            <SpotifyLogo size="xs" withName />
+          </Reanimated.View>
+        ) : null}
       </Reanimated.View>
       <Finger style={finger} />
       <Orb />
