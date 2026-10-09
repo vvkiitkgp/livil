@@ -46,6 +46,7 @@ import {
   artistLine, rememberSpotifyTrack, searchSpotify, useSpotifyAvailability, type SpotifyTrack,
 } from '../../services/spotify';
 import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
+import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
 
 const FALLBACK_ACCENTS: [string, string][] = [
   ['#8B3DFF', '#3B1E6E'],
@@ -205,6 +206,7 @@ export default function SearchScreen() {
   const openSpotify = useOpenInSpotify('search');
   const [spotifyResults, setSpotifyResults] = useState<SpotifyTrack[]>([]);
   const [spotifySheet, setSpotifySheet] = useState<SpotifyTrack | null>(null);
+  const { runAfterDismiss: runAfterSpotifySheet, onDismiss: onSpotifySheetDismiss } = useRunAfterDismiss();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -823,9 +825,12 @@ export default function SearchScreen() {
         track={spotifySheet}
         canRepost={spotify.reposts}
         onClose={() => setSpotifySheet(null)}
+        onDismiss={onSpotifySheetDismiss}
         onPlay={track => {
           setSpotifySheet(null);
-          void openSpotify(track.id);
+          // After the sheet has gone: "Play" raises the Spotify notice, another modal, and
+          // iOS refuses to present it while this sheet is still sliding away.
+          runAfterSpotifySheet(() => { void openSpotify(track.id); });
         }}
         onRepost={track => {
           setSpotifySheet(null);
