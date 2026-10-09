@@ -68,6 +68,7 @@ import { resolveSharedProfile, toShareablePost } from '../../services/share';
 import { ProfileLinkCard } from '../../components/ProfileLinkCard';
 import SpotifyChatCard from '../../components/SpotifyChatCard';
 import ChatSongCard from '../../components/ChatSongCard';
+import { ChatReplySnippet } from '../../components/ChatReplySnippet';
 import { requestNotice } from '../../components/OnboardingNotice';
 import ChatSongPicker, { MusicToggleIcon, type PickedSong } from '../../components/ChatSongPicker';
 import { rememberSpotifyTrack, useSpotifyAvailability } from '../../services/spotify';
@@ -341,14 +342,8 @@ function MessageBubble({
                     ? (repliedTo.senderDisplayName || repliedTo.senderUsername || 'Unknown')
                     : 'Original message'}
                 </Text>
-                <Text
-                  style={[styles.replyQuoteBody, isMe ? styles.replyQuoteBodyMe : styles.replyQuoteBodyThem]}
-                  numberOfLines={2}
-                >
-                  {repliedTo
-                    ? (repliedTo.body || (repliedTo.kind === 'sticker' ? 'Sticker' : repliedTo.kind === 'track_share' ? 'Track' : 'Message'))
-                    : 'Tap to view'}
-                </Text>
+                {/* A song (Livil or Spotify) quotes as a small song row, not its raw link. */}
+                <ChatReplySnippet message={repliedTo} tone={isMe ? 'me' : 'them'} />
               </Pressable>
             )}
 
@@ -1550,12 +1545,7 @@ export default function ConversationScreen() {
                       ? 'yourself'
                       : (replyingTo.senderDisplayName || replyingTo.senderUsername || 'Unknown')}
                   </Text>
-                  <Text style={styles.replyPreviewBodyText} numberOfLines={1}>
-                    {replyingTo.body
-                      || (replyingTo.kind === 'sticker' ? 'Sticker'
-                        : replyingTo.kind === 'track_share' ? 'Track'
-                        : 'Message')}
-                  </Text>
+                  <ChatReplySnippet message={replyingTo} tone="bar" numberOfLines={1} />
                 </View>
                 <TouchableOpacity
                   style={styles.replyPreviewClose}
@@ -1844,16 +1834,13 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.white,
   },
   replyQuoteAuthorMe: { color: COLORS.white },
-  replyQuoteBodyMe: { color: 'rgba(255,255,255,0.85)' },
   // "them" bubble is dark surface — lift the strip and keep the purple bar.
   replyQuoteThem: {
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderLeftColor: COLORS.purpleLight,
   },
   replyQuoteAuthorThem: { color: COLORS.purpleLight },
-  replyQuoteBodyThem: { color: COLORS.white },
   replyQuoteAuthor: { fontSize: 12, fontWeight: '700' },
-  replyQuoteBody: { fontSize: 13, lineHeight: 17, marginTop: 2 },
   // Read-receipt footer below the latest outgoing DM message — small,
   // muted, right-aligned to sit under the bubble.
   readStatus: {
@@ -2021,7 +2008,6 @@ const styles = StyleSheet.create({
   },
   replyPreviewBody: { flex: 1 },
   replyPreviewTitle: { color: COLORS.purpleLight, fontSize: 12, fontWeight: '700' },
-  replyPreviewBodyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 1 },
   replyPreviewClose: { padding: 4 },
   // Replaces the send bar rather than sitting above it — a disabled composer
   // still invites typing, which is how the "Couldn't send message" toast got
