@@ -515,16 +515,17 @@ export default function UserProfileScreen() {
     if (loading) { return [head, { kind: 'loading', key: '__loading__' }]; }
     if (tab === 'reposts' || tab === 'uploads') {
       const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
+      // Shown on the Reposts tab — with or without reposts — EXCEPT when they exist but
+      // are hidden from this viewer (a true count above zero, no rows): that empty state
+      // ("Reposts are for friends") already says why, and a second line would repeat it.
+      const hiddenFromViewer = tabCounts.reposts > 0 && visiblePosts.length === 0;
+      const audience: ListItem[] = tab === 'reposts' && repostsPublic !== null && !hiddenFromViewer
+        ? [{ kind: 'audience', key: '__audience__' }]
+        : [];
       if (visiblePosts.length > 0) {
-        // Only over reposts the viewer can actually see. A friends-only profile seen by a
-        // non-friend has none, and its empty state ("Reposts are for friends") already
-        // says why — a second line there would just repeat it.
-        const audience: ListItem[] = tab === 'reposts' && repostsPublic !== null
-          ? [{ kind: 'audience', key: '__audience__' }]
-          : [];
         return [head, ...audience, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
       }
-      return [head, { kind: 'empty', key: '__empty__' }];
+      return [head, ...audience, { kind: 'empty', key: '__empty__' }];
     }
     if (tab === 'albums') {
       if (albums.length === 0) { return [head, { kind: 'empty', key: '__empty__' }]; }
@@ -536,7 +537,7 @@ export default function UserProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic, tabCounts.reposts]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -576,7 +577,7 @@ export default function UserProfileScreen() {
         const who = profile?.username ? `@${profile.username}` : 'their';
         const line = repostsPublic
           ? `Everyone on Livil can see ${profile?.username ? `${who}'s` : who} reposts`
-          : `Only ${profile?.username ? `${who}'s` : who} friends can see these reposts`;
+          : `Only ${profile?.username ? `${who}'s` : who} friends can see their reposts`;
         return (
           <View style={styles.audienceRow} accessible accessibilityLabel={line}>
             <Icon name={repostsPublic ? 'public' : 'friends'} size={14} color={COLORS.textSecondary} />
