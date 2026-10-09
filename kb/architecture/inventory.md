@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-320 TypeScript file(s) under `src/`, 75,750 lines.
+322 TypeScript file(s) under `src/`, 75,904 lines.
 
 ## Size hotspots
 
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-48 file(s), 25,393 lines.
+48 file(s), 25,399 lines.
 
 | File | Lines |
 |---|---:|
@@ -126,7 +126,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/InboxScreen.tsx` | 502 |
 | `src/screens/main/NewConversationScreen.tsx` | 475 |
 | `src/screens/auth/SignUpScreen.tsx` | 471 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 465 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 471 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 403 |
 | `src/screens/main/EditAlbumScreen.tsx` | 400 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 373 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-121 file(s), 26,646 lines.
+123 file(s), 26,732 lines.
 
 | File | Lines |
 |---|---:|
@@ -254,6 +254,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
+| `src/components/SpotifyLogo.tsx` | 81 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
 | `src/components/UsernameBadges.tsx` | 78 |
 | `src/components/__tests__/shareBadgeParity.test.ts` | 78 |
@@ -269,7 +270,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/VisibilitySelector.tsx` | 68 |
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
-| `src/components/SpotifyLogo.tsx` | 65 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
 | `src/components/__tests__/ChatReplySnippet.test.tsx` | 64 |
 | `src/components/FirstHundredBadge.tsx` | 63 |
@@ -282,13 +282,15 @@ case the call fails silently wherever its result is discarded.
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/__tests__/UsernameBadges.integration.test.tsx` | 43 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
+| `src/components/__tests__/SpotifyLogo.test.ts` | 39 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
+| `src/components/spotifyLogoArtwork.ts` | 31 |
 | `src/components/badgeShapes.ts` | 24 |
 | `src/components/Logo.tsx` | 22 |
 
 ## Services
 
-68 file(s), 13,669 lines.
+68 file(s), 13,726 lines.
 
 | File | Lines |
 |---|---:|
@@ -303,8 +305,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/messages.ts` | 382 |
 | `src/services/playlists.ts` | 382 |
 | `src/services/jamRooms.ts` | 369 |
+| `src/services/spotify.ts` | 318 |
 | `src/services/uploads.ts` | 301 |
-| `src/services/spotify.ts` | 300 |
 | `src/services/jamRealtime.ts` | 279 |
 | `src/services/relationships.ts` | 274 |
 | `src/services/conversations.ts` | 250 |
@@ -321,13 +323,13 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/appBadge.ts` | 166 |
+| `src/services/__tests__/spotify.test.ts` | 161 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 149 |
 | `src/services/__tests__/appUpdate.test.ts` | 141 |
 | `src/services/jamSuggestions.ts` | 140 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 131 |
 | `src/services/appleAuth.ts` | 131 |
-| `src/services/__tests__/spotify.test.ts` | 122 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
 | `src/services/follows.ts` | 114 |
 | `src/services/__tests__/profileBadges.test.ts` | 110 |

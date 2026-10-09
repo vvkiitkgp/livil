@@ -293,7 +293,7 @@
         </div>
         <h1>Privacy Policy</h1>
         <p class="tagline">A social music platform built around what you listen to.</p>
-        <span class="updated">Last updated: April 26, 2026</span>
+        <span class="updated">Last updated: October 9, 2026</span>
       </header>
 
       <div class="intro">
@@ -334,6 +334,11 @@
           <strong>Posts &amp; social activity</strong> — content you create,
           along with likes, follows, and comments.
         </li>
+        <li>
+          <strong>Account deletion feedback</strong> — if you choose to answer
+          the optional question shown when you delete your account, we keep
+          your answer to improve Livil, without your name or account attached.
+        </li>
       </ul>
 
       <h3>Music listening activity</h3>
@@ -347,6 +352,12 @@
           social features (e.g. what you’re currently listening to, your top
           tracks) and to personalize your experience.
         </li>
+        <li>
+          <strong>Spotify songs you open</strong> — when you tap “Play on
+          Spotify”, we record which song it was and where in Livil you tapped
+          it, to understand how the feature is used. Livil never plays Spotify
+          audio and does not connect to your Spotify account.
+        </li>
       </ul>
 
       <h3>Information from sign-in providers</h3>
@@ -355,6 +366,29 @@
           If you sign in with <strong>Google</strong>, we receive your name,
           email address, and profile picture from Google. We do not receive
           your Google password.
+        </li>
+        <li>
+          If you sign in with <strong>Apple</strong>, we receive the email
+          address Apple shares with us (which may be a private relay address)
+          and, if you choose to share it, your name. We do not receive your
+          Apple ID password.
+        </li>
+      </ul>
+
+      <h3>What is public</h3>
+      <ul>
+        <li>
+          <strong>Your profile link</strong>
+          (<code>livil-music.com/@your-username</code>) shows your display
+          name, username, and profile picture to anyone who opens it, including
+          people without a Livil account. Your bio, posts, friends, and other
+          profile details are only shown inside the app. If you have published
+          music on Livil, this page may appear in search engine results.
+        </li>
+        <li>
+          <strong>Songs you share as a link</strong>
+          (<code>livil-music.com/p/…</code>) can be viewed and played by anyone
+          who has the link.
         </li>
       </ul>
 
@@ -417,9 +451,26 @@
       <div class="card">
         <span class="name">Supabase</span>
         <p>
-          Provides authentication, database, and backend services. Stores your
-          email, hashed password, profile, posts, and listening activity.
+          Provides authentication, database, file storage, and backend
+          services. Stores your email, hashed password, profile, posts,
+          listening activity, and the media you upload.
           <a href="https://supabase.com/privacy" target="_blank" rel="noopener">
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Apple (Sign in with Apple)</span>
+        <p>
+          When you choose “Sign in with Apple,” Apple authenticates you and
+          shares the email address (or a private relay address) and, if you
+          allow it, the name you choose with Livil.
+          <a
+            href="https://www.apple.com/legal/privacy/"
+            target="_blank"
+            rel="noopener"
+          >
             Privacy Policy →
           </a>
         </p>
@@ -442,12 +493,73 @@
       </div>
 
       <div class="card">
-        <span class="name">Cloudflare R2</span>
+        <span class="name">Spotify</span>
         <p>
-          Object storage used to host media you upload (such as profile
-          pictures and post media). Files are accessed via secure URLs.
+          When you search for a Spotify song or view one in Livil, your search
+          text and the song’s ID are sent to Spotify’s Web API through our
+          servers to fetch its title, artist, and artwork; the artwork is
+          loaded directly from Spotify. “Play on Spotify” opens the song in
+          Spotify. Livil does not connect to your Spotify account.
           <a
-            href="https://www.cloudflare.com/privacypolicy/"
+            href="https://www.spotify.com/legal/privacy-policy/"
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Firebase Cloud Messaging</span>
+        <p>
+          Delivers push notifications to your device (through Apple’s push
+          notification service on iPhone). It receives a device token and the
+          notification’s content.
+          <a
+            href="https://firebase.google.com/support/privacy"
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">AudD</span>
+        <p>
+          Music recognition used to help protect rights holders: audio you
+          upload may be checked against known recordings. AudD is given a link
+          to the upload, not your account details.
+          <a href="https://audd.io/privacy/" target="_blank" rel="noopener">
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Resend</span>
+        <p>
+          Sends account emails, such as the welcome email, to your email
+          address.
+          <a
+            href="https://resend.com/legal/privacy-policy"
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy Policy →
+          </a>
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="name">Vercel</span>
+        <p>
+          Hosts the Livil website, including public profile and song-share
+          pages.
+          <a
+            href="https://vercel.com/legal/privacy-policy"
             target="_blank"
             rel="noopener"
           >
@@ -474,7 +586,7 @@
       <h2>4. Data Storage &amp; Security</h2>
       <p>
         Your data is stored on infrastructure operated by Supabase (account
-        and content data) and Cloudflare R2 (uploaded media). Communication
+        data, content, and uploaded media). Communication
         between the app and our servers is encrypted in transit using
         HTTPS/TLS. Passwords are stored only as salted hashes.
       </p>
@@ -500,12 +612,14 @@
           account.
         </li>
         <li>
-          <strong>Update</strong> — edit your profile, display name, username,
-          bio, and avatar from inside the app.
+          <strong>Update</strong> — edit your profile, display name, bio, and
+          avatar from inside the app. Your username is permanent once chosen,
+          so links to your profile keep working.
         </li>
         <li>
           <strong>Delete</strong> — delete your account and the personal data
-          associated with it.
+          associated with it, from inside the app (Settings → Privacy &amp;
+          data → Delete account).
         </li>
         <li>
           <strong>Withdraw consent</strong> — stop using Livil and request

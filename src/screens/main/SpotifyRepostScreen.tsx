@@ -26,7 +26,7 @@ import {
   artistLine,
   rememberSpotifyTrack,
   resolveSpotifyLink,
-  searchSpotify,
+  searchSpotifyOrFail,
   useSpotifyAvailability,
   useSpotifyTrack,
   type SpotifyTrack,
@@ -138,11 +138,17 @@ export default function SpotifyRepostScreen() {
     let cancelled = false;
     setSearching(true);
     const timer = setTimeout(async () => {
-      const found = await searchSpotify(text, SEARCH_RESULTS);
+      const found = await searchSpotifyOrFail(text, SEARCH_RESULTS);
       if (cancelled) {return;}
-      setResults(found);
+      setResults(found ?? []);
       setSearching(false);
-      if (found.length === 0) { setHint(`Nothing on Spotify for "${text}".`); }
+      if (found === null) {
+        // Spotify refused or the call failed — not "no matches". Same wording as the
+        // search-not-configured branch above, which offers the path that still works.
+        setHint('Search is not available right now. Paste a Spotify song link instead.');
+      } else if (found.length === 0) {
+        setHint(`Nothing on Spotify for "${text}".`);
+      }
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
