@@ -566,7 +566,7 @@ jobs:
             -f supabase/tests/rls/public-profile.test.sql
 
       # The inbox line for a shared profile reads "👤 Shared a profile", and for a shared
-      # Spotify song "🎵 Shared a Spotify song" — for a message that is exactly such a link
+      # song "🎵 Shared a song" (a Spotify link or a Livil track) — for a message that is exactly such a link
       # and nothing else, the same rule the app uses to draw the card. Any other text,
       # including a link inside a sentence, is shown as typed.
       - name: Message preview tests

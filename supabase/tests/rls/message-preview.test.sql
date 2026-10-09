@@ -9,8 +9,9 @@
 -- replaced by "Shared a profile".
 --
 -- A shared Spotify song is likewise a TEXT message whose body is a direct track link
--- (20261017000000). The inbox says "🎵 Shared a Spotify song" — the push's words — for a body
--- that is exactly such a link (the app's TRACK_IN_TEXT_RE, whole body), and nothing else.
+-- (20261017000000). The inbox says "🎵 Shared a song" — the push's words, and the same words
+-- as a Livil track share — for a body that is exactly such a link (the app's
+-- TRACK_IN_TEXT_RE, whole body), and nothing else.
 
 \set ON_ERROR_STOP on
 begin;
@@ -50,23 +51,23 @@ select pg_temp.assert_text('a post link is not a profile',
 select pg_temp.assert_text('ordinary text is still truncated to 80',
   public.message_preview('text', repeat('a', 100)), repeat('a', 80));
 
--- ── A Spotify track link alone becomes "Shared a Spotify song" ────────────────
+-- ── A Spotify track link alone becomes "Shared a song" ───────────────────────
 select pg_temp.assert_text('the link the chat song search sends',
   public.message_preview('text', 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT'),
-  '🎵 Shared a Spotify song');
+  '🎵 Shared a song');
 select pg_temp.assert_text('a link copied from Spotify, with its ?si= query',
   public.message_preview('text', 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT?si=1a2b3c4d5e6f4a7b'),
-  '🎵 Shared a Spotify song');
+  '🎵 Shared a song');
 select pg_temp.assert_text('a localised link (intl-xx segment)',
   public.message_preview('text', 'https://open.spotify.com/intl-de/track/4cOdK2wGLETKBW3PvgPWqT'),
-  '🎵 Shared a Spotify song');
+  '🎵 Shared a song');
 select pg_temp.assert_text('surrounding whitespace from a paste',
   public.message_preview('text', E'  https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT\n'),
-  '🎵 Shared a Spotify song');
+  '🎵 Shared a song');
 select pg_temp.assert_text('a spotify:track: URI',
-  public.message_preview('text', 'spotify:track:4cOdK2wGLETKBW3PvgPWqT'), '🎵 Shared a Spotify song');
+  public.message_preview('text', 'spotify:track:4cOdK2wGLETKBW3PvgPWqT'), '🎵 Shared a song');
 select pg_temp.assert_text('no scheme, upper-case host — the app reads both',
-  public.message_preview('text', 'OPEN.SPOTIFY.COM/track/4cOdK2wGLETKBW3PvgPWqT'), '🎵 Shared a Spotify song');
+  public.message_preview('text', 'OPEN.SPOTIFY.COM/track/4cOdK2wGLETKBW3PvgPWqT'), '🎵 Shared a song');
 
 -- ── …and nothing else does ───────────────────────────────────────────────────
 select pg_temp.assert_text('a Spotify link inside a sentence is the sentence',
@@ -95,9 +96,11 @@ select pg_temp.assert_text('a trailing bracket ends the link, as in the app — 
 select pg_temp.assert_text('a profile link is still a profile',
   public.message_preview('text', 'https://livil-music.com/@riya'), '👤 Shared a profile');
 
+-- ── A Livil song share reads the same as a Spotify one ───────────────────────
+select pg_temp.assert_text('a shared Livil track says "Shared a song" too',
+  public.message_preview('track_share', null), '🎵 Shared a song');
+
 -- ── The other kinds are unchanged ────────────────────────────────────────────
-select pg_temp.assert_text('a shared track',
-  public.message_preview('track_share', null), '🎵 Shared a track');
 select pg_temp.assert_text('a jam invite',
   public.message_preview('jam_invite', null), '🎶 Started a Jam Room');
 select pg_temp.assert_text('a sticker',

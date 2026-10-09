@@ -73,7 +73,7 @@ async function dispatchMessagePush(
         // A direct track link only: a spotify.link short link may be an album or a playlist,
         // and the inbox line leaves those as typed for the same reason.
         : spotifyLink && 'id' in spotifyLink && payload.body.replace(spotifyLink.match, '').trim() === ''
-          ? '🎵 Shared a Spotify song'
+          ? '🎵 Shared a song'
           : payload.body;
     } else if (payload.kind === 'track_share') {
       // Artist included: a title alone is often ambiguous ("Retrograde" by whom?), and
