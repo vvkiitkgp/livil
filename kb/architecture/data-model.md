@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 139 migration(s) in `supabase/migrations/`.
+Reconstructed from 141 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-53 table(s).
+54 table(s).
 
 ### `account_exit_feedback`
 
@@ -127,6 +127,30 @@ RLS enabled · defined in `20261013000000_spotify_reposts.sql`
 | `key` | `text primary key check (key ~ '^[a-z][a-z0-9_]{1,62}$')` |
 | `enabled` | `boolean not null default false` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `app_update_policy`
+
+RLS enabled · defined in `20261018000000_app_update_policy.sql`
+
+| Column | Definition |
+|---|---|
+| `platform` | `text primary key` |
+| `latest_build` | `integer not null default 0` |
+| `minimum_build` | `integer not null default 0` |
+| `message` | `text` |
+| `updated_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `constraint app_update_policy_platform_check check (platform in ('ios', 'android'))`
+- `constraint app_update_policy_builds_check
+    check (minimum_build >= 0 and latest_build >= 0 and minimum_build <= latest_build)`
+- `constraint app_update_policy_message_check
+    check (message is null or char_length(message) between 1 and 280)`
+
+**Triggers**
+
+- `app_update_policy_touch` — before update (`20261018000000_app_update_policy.sql`)
 
 ### `badge_kinds`
 
@@ -912,6 +936,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `comments_friends_only` | `boolean not null default false` | `20260803000000_profiles_comments_friends_only.sql` |
 | `guide_seen_at` | `timestamptz` | `20260930030000_profiles_guide_seen_at.sql` |
 | `email_confirmed` | `boolean not null default true` | `20261010000000_hide_unconfirmed_accounts.sql` |
+| `reposts_public` | `boolean not null default true` | `20261019000000_reposts_audience.sql` |
 
 **Indexes**
 
@@ -1344,6 +1369,7 @@ same row-level security policies that gate ordinary reads.
 
 | Trigger | Table | Timing | Migration |
 |---|---|---|---|
+| `app_update_policy_touch` | `app_update_policy` | before update | `20261018000000_app_update_policy.sql` |
 | `trg_badge_kinds_guard_reclaim` | `badge_kinds` | before update | `20260919000000_profile_badges_first_100.sql` |
 | `trg_suggestion_dismissals_on_block` | `blocked_users` | after insert | `20261008000000_suggestions_follow_friendship.sql` |
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
