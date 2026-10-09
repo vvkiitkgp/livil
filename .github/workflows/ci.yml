@@ -848,13 +848,26 @@ jobs:
           create publication supabase_realtime;
           SQL
 
-      - name: Apply every migration in order
+      # Except the ones deliberately HELD (supabase/held-migrations.txt): merged on purpose,
+      # not applied yet, with the reason and the apply condition written next to each. Without
+      # this, one change waiting weeks for app adoption keeps main red and hides real drift.
+      - name: Apply every migration in order (except held ones)
         env:
           PGPASSWORD: postgres
         run: |
+          held=$(sed -e 's/#.*//' -e 's/[[:space:]]*$//' supabase/held-migrations.txt | grep -v '^$' || true)
           for f in supabase/migrations/*.sql; do
-            echo "  $(basename "$f")"
+            name=$(basename "$f")
+            if printf '%s\n' "$held" | grep -qxF "$name"; then
+              echo "  HELD $name (supabase/held-migrations.txt)"
+              continue
+            fi
+            echo "  $name"
             psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          # A held file that no longer exists is a stale line — fail rather than ignore it.
+          for h in $held; do
+            [ -f "supabase/migrations/$h" ] || { echo "::error::held-migrations.txt names $h, which does not exist"; exit 1; }
           done
 
       # NOTE the blanket grants from the `migrations` job are deliberately NOT run

@@ -1,0 +1,16 @@
+# Migrations merged on purpose but NOT applied to production yet.
+#
+# The `production matches the repo` job (schema-parity, .github/workflows/ci.yml) replays
+# every migration EXCEPT the ones listed here before comparing with production, so a change
+# that is deliberately waiting does not keep main red for weeks and drown out real drift.
+#
+# Rules:
+#  - One filename per line, then `#` and WHY it is held and WHEN it gets applied.
+#  - Only the NEWEST migrations may be held: nothing after a held file may depend on it
+#    (the replay would fail loudly if one did).
+#  - Applying it to production and deleting its line here happen TOGETHER. Apply without
+#    deleting → main goes red (production has it, the replay does not) — on purpose, so the
+#    list cannot quietly rot.
+#  - Every other migration is expected in production right after merge, as before.
+
+20261019000000_reposts_audience.sql  # ADR-0028. Apply only once the build with the repost switch is at 100% on BOTH stores and most people have updated (2.1.2 draws Spotify reposts as false "author removed this post" tombstones).
