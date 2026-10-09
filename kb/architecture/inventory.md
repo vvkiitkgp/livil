@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-319 TypeScript file(s) under `src/`, 75,666 lines.
+320 TypeScript file(s) under `src/`, 75,750 lines.
 
 ## Size hotspots
 
@@ -48,7 +48,7 @@ reading alone (Constitution P28).
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
 
-> 21 file(s) over the threshold against **12 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 21 file(s) over the threshold against **13 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-48 file(s), 25,391 lines.
+48 file(s), 25,393 lines.
 
 | File | Lines |
 |---|---:|
@@ -146,8 +146,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 233 |
 | `src/screens/main/FollowingScreen.tsx` | 231 |
+| `src/screens/auth/FirstRunGuideScreen.tsx` | 227 |
 | `src/screens/main/__tests__/SettingsScreen.test.tsx` | 227 |
-| `src/screens/auth/FirstRunGuideScreen.tsx` | 225 |
 | `src/screens/main/FriendRequestsScreen.tsx` | 223 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 209 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-121 file(s), 26,592 lines.
+121 file(s), 26,646 lines.
 
 | File | Lines |
 |---|---:|
@@ -171,7 +171,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
-| `src/components/guide/cardsFeed.tsx` | 468 |
+| `src/components/guide/cardsFeed.tsx` | 494 |
 | `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/QueueList.tsx` | 414 |
 | `src/components/DetailView.tsx` | 409 |
@@ -221,6 +221,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
+| `src/components/guide/cards.ts` | 159 |
 | `src/components/ProfileTabBar.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
@@ -229,7 +230,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/cardWelcome.tsx` | 148 |
 | `src/components/ChatSongCard.tsx` | 146 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
-| `src/components/guide/cards.ts` | 144 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 143 |
 | `src/components/__tests__/AppUpdatePrompt.test.tsx` | 132 |
 | `src/components/StoryCard.tsx` | 131 |
@@ -242,13 +242,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
 | `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
 | `src/components/Choice.tsx` | 108 |
+| `src/components/guide/__tests__/timeline.test.ts` | 104 |
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/DetailActionSheet.tsx` | 99 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
-| `src/components/guide/__tests__/timeline.test.ts` | 91 |
 | `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/MutualsLine.tsx` | 87 |
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
@@ -383,7 +383,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-12 file(s), 770 lines.
+13 file(s), 798 lines.
 
 | File | Lines |
 |---|---:|
@@ -399,6 +399,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useCommentsCountDeltas.ts` | 46 |
 | `src/hooks/useOpenInSpotify.ts` | 39 |
 | `src/hooks/useImageAspect.ts` | 37 |
+| `src/hooks/useMyRepostsPublic.ts` | 28 |
 
 ## Utilities
 
