@@ -1403,6 +1403,7 @@ export type Database = {
           last_seen_at: string | null
           links: string[]
           reposts_public: boolean
+          reposts_public_set_at: string | null
           show_activity: boolean | null
           username: string
           username_set: boolean
@@ -1420,6 +1421,7 @@ export type Database = {
           last_seen_at?: string | null
           links?: string[]
           reposts_public?: boolean
+          reposts_public_set_at?: string | null
           show_activity?: boolean | null
           username: string
           username_set?: boolean
@@ -1437,6 +1439,7 @@ export type Database = {
           last_seen_at?: string | null
           links?: string[]
           reposts_public?: boolean
+          reposts_public_set_at?: string | null
           show_activity?: boolean | null
           username?: string
           username_set?: boolean

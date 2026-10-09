@@ -13,4 +13,4 @@
 #    list cannot quietly rot.
 #  - Every other migration is expected in production right after merge, as before.
 
-20261019000000_reposts_audience.sql  # ADR-0028. Apply only once the build with the repost switch is at 100% on BOTH stores and most people have updated (2.1.2 draws Spotify reposts as false "author removed this post" tombstones).
+20261020000000_reposts_public_by_default.sql  # ADR-0028 step 2. Apply only once the build with the repost switch is at 100% on BOTH stores and most people have updated (2.1.2 draws Spotify reposts as false "author removed this post" tombstones). Step 1, 20261019000000_reposts_audience, is safe to apply now.
