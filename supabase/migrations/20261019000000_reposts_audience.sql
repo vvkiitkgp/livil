@@ -13,11 +13,22 @@
 -- evaluated LIVE by the read policy, so flipping it hides or reveals every repost at
 -- once; nothing is copied onto the posts.
 --
--- ── DEFAULT: EVERYONE, INCLUDING EXISTING ACCOUNTS AND EXISTING REPOSTS ─────
--- Deliberate (product decision, 2026-10-09): every profile starts at true, so reposts
--- made under the friends-only rule become visible to every signed-in user the moment
--- this is applied. NOT reversible in effect — flipping the column back hides the posts
--- again, but anyone who saw them saw them. See "OLD APPS" below for when to apply.
+-- ── TWO STEPS: THE SWITCH NOW (OFF FOR EVERYONE), "EVERYONE" LATER ──────────
+-- The owner's decision is everyone-by-default, existing accounts and past reposts included
+-- (ADR-0028). It lands in two migrations so the switch can ship — and be tested — before
+-- that default may safely take effect:
+--
+--   THIS migration: the column starts FALSE for every profile, i.e. exactly today's rule.
+--     Applying it changes nobody's visibility. The new app shows the switch (off); a person
+--     who turns it on makes THEIR reposts visible to every signed-in user.
+--   20261020000000_reposts_public_by_default: sets the default to true and turns it on for
+--     every profile whose owner never touched the switch (reposts_public_set_at IS NULL).
+--     HELD (supabase/held-migrations.txt) until the build with the switch is at 100% on both
+--     stores — see "OLD APPS" below. That one is NOT reversible in effect.
+--
+-- `reposts_public_set_at` is stamped by a trigger whenever the owner changes the value, so
+-- the second step can tell "never chose" from "chose friends only" and never overrides a
+-- choice.
 --
 -- ── UNCHANGED ───────────────────────────────────────────────────────────────
 --  * Own posts are always visible to their author; blocks hide everything both ways.
@@ -38,31 +49,54 @@
 -- RLS); it is redefined below with the identical predicate, or a public repost shown
 -- to a stranger would never be recorded as seen and would never fade from their feed.
 --
--- ── OLD APPS, AND WHEN TO APPLY THIS ────────────────────────────────────────
--- Nothing breaks technically: additive column with a default (old sign-ups and profile
--- edits do not send it); the policy only ever WIDENS, so every row an old app could read
--- before it can still read; no function signature, return shape or client-read column
--- changes. A stranger's public LIVIL repost renders normally in an old app.
+-- ── OLD APPS ────────────────────────────────────────────────────────────────
+-- Nothing breaks: additive columns with defaults (old sign-ups and profile edits do not
+-- send them); the policy only ever WIDENS, so every row an old app could read before it
+-- can still read; no function signature, return shape or client-read column changes.
+-- SAFE TO APPLY NOW: every profile starts friends-only, so nothing becomes visible until
+-- someone on the new app turns their own switch on.
 --
--- But NOT safe to apply while most people are on 2.1.2 or older, for two reasons:
---  1. A SPOTIFY repost (track_id and original_post_id NULL, ADR-0027) renders in those
---     builds as the "Original post no longer available — the author removed this post"
---     tombstone. ADR-0027 accepted that for the reposter's friends only; public by default
---     puts those false tombstones into every old-app user's Home via the hot/newest pools.
---  2. Those builds have no switch to turn it off, and their first-run guide tells new
---     sign-ups "Reposts and playlists are for friends".
--- ORDER: ship the build with the switch → wait until it is live at 100% on BOTH stores and
--- most people have updated → then apply. The new app tolerates this not being applied yet
--- (the Settings row stays hidden; reposts stay friends-only).
+-- What waits (20261020000000): making everyone public by default. Builds ≤ 2.1.2 draw a
+-- SPOTIFY repost (track_id and original_post_id NULL, ADR-0027) as the "Original post no
+-- longer available — the author removed this post" tombstone, have no switch, and tell new
+-- sign-ups "Reposts and playlists are for friends". Public by default while most people
+-- are on those builds would put false tombstones into their Home feeds. Until then, the
+-- only public reposts are those of people who chose it on the new app.
 -- ============================================================================
 
 alter table public.profiles
-  add column if not exists reposts_public boolean not null default true;
+  add column if not exists reposts_public boolean not null default false,
+  add column if not exists reposts_public_set_at timestamptz;
 
 comment on column public.profiles.reposts_public is
-  'Who may see this user''s reposts: true = any signed-in user (default), false = accepted '
-  'friends only. Read live by posts_select_authenticated and record_post_impressions via '
-  'reposts_public(). Writable by its owner (profiles_update_own). ADR-0028.';
+  'Who may see this user''s reposts: true = any signed-in user, false = accepted friends '
+  'only. Read live by posts_select_authenticated and record_post_impressions via '
+  'reposts_public(). Writable by its owner (profiles_update_own). Default false here; '
+  '20261020000000 makes it true. ADR-0028.';
+comment on column public.profiles.reposts_public_set_at is
+  'When the owner last changed reposts_public (stamped by trigger). NULL = never chosen, '
+  'which is what 20261020000000 uses to apply the everyone default without overriding a choice.';
+
+-- Server clock, on any change of the value — whoever writes it (the owner, through
+-- profiles_update_own). Firing only on a real change keeps unrelated profile edits from
+-- counting as a choice.
+create or replace function public.profiles_stamp_reposts_public()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if new.reposts_public is distinct from old.reposts_public then
+    new.reposts_public_set_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_profiles_stamp_reposts_public on public.profiles;
+create trigger trg_profiles_stamp_reposts_public
+  before update of reposts_public on public.profiles
+  for each row execute function public.profiles_stamp_reposts_public();
 
 -- ── Helper ──────────────────────────────────────────────────────────────────
 -- DEFINER for the same reason as are_friends (20260809000000): a policy expression that

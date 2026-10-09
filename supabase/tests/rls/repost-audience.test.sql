@@ -1,11 +1,13 @@
 -- Repost audience (20261019000000, ADR-0028): profiles.reposts_public decides who sees a
 -- person's reposts — everyone (default) or accepted friends only.
 --
--- Pins: (0) the default is everyone, for new AND existing profiles; (1) everyone means
+-- Pins: (0) after both steps (20261019 off-for-all, 20261020 everyone) the default is
+-- everyone, for new AND existing profiles; (1) everyone means
 -- any signed-in user, never a blocked one, never signed out; (2) friends only is the old
 -- rule, applied live to past reposts; (3) only the owner can flip it; (4) uploads ignore
 -- it; (5) record_post_impressions agrees with the read policy; (6) there is still exactly
--- one read policy on posts.
+-- one read policy on posts; (7) step 1 starts everyone off and step 2 turns on only those
+-- who never chose.
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/repost-audience.test.sql
 
@@ -191,6 +193,31 @@ select public.record_post_impressions(array['a9000000-0000-0000-0000-00000000000
 reset role;
 select pg_temp.assert_count('5c  BLOCKED''s impression is never recorded, public or not',
   (select count(*) from post_impressions where user_id = 'a7000000-0000-0000-0000-000000000004'), 0);
+
+-- ── 7. Two steps: off first (20261019), everyone later (20261020) ───────────
+-- RIYA's switch was changed above (sections 2–5), so it is stamped as a choice.
+select pg_temp.assert('7a  changing the switch records that the owner chose',
+  (select reposts_public_set_at is not null from profiles where id = 'a7000000-0000-0000-0000-000000000001'), true);
+update profiles set bio = 'listening to everything' where id = 'a7000000-0000-0000-0000-000000000002';
+select pg_temp.assert('7b  an unrelated profile edit is not a choice',
+  (select reposts_public_set_at is null from profiles where id = 'a7000000-0000-0000-0000-000000000002'), true);
+
+-- Step 2's backfill, re-run against two friends-only profiles: FRIEND never chose (as
+-- after step 1), SAM chose friends only.
+update profiles set reposts_public = false
+ where id in ('a7000000-0000-0000-0000-000000000002', 'a7000000-0000-0000-0000-000000000003');
+update profiles set reposts_public_set_at = null where id = 'a7000000-0000-0000-0000-000000000002';
+update public.profiles
+   set reposts_public = true
+ where reposts_public = false
+   and reposts_public_set_at is null;
+select pg_temp.assert('7c  step 2 turns on someone who never chose',
+  (select reposts_public from profiles where id = 'a7000000-0000-0000-0000-000000000002'), true);
+select pg_temp.assert('7d  …and leaves someone who chose friends only alone',
+  (select reposts_public from profiles where id = 'a7000000-0000-0000-0000-000000000003'), false);
+select pg_temp.assert('7e  after both steps a new profile defaults to everyone',
+  (select column_default = 'true' from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'reposts_public'), true);
 
 -- ── 6. Still one read policy ────────────────────────────────────────────────
 select pg_temp.assert_count('6a  exactly one SELECT policy on posts (a second would be OR''d in)',

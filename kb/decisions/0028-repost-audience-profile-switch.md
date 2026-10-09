@@ -14,7 +14,7 @@ related_adrs: [0027]
 
 | | |
 |---|---|
-| **Status** | **Accepted** — owner-directed 2026-10-09; migration `20261019000000_reposts_audience.sql` |
+| **Status** | **Accepted** — owner-directed 2026-10-09; migrations `20261019000000_reposts_audience.sql` (switch, off for all) and `20261020000000_reposts_public_by_default.sql` (held) |
 | **Date** | 2026-10-09 |
 | **Domain** | data + client (with security) |
 | **Decided by** | owner |
@@ -32,20 +32,25 @@ friends, while still letting someone keep their reposts to friends.
 ## Decision
 
 1. **One switch per person, not a choice per repost.** `profiles.reposts_public boolean not
-   null default true`. It is read LIVE by the posts read policy through the DEFINER helper
+   null` (default false after step 1, true after step 2). It is read LIVE by the posts read policy through the DEFINER helper
    `reposts_public(author)`, so flipping it hides or reveals every repost that person has
    made, past ones included. Nothing is stamped on the posts. Edited in Settings → Privacy &
    data → "Show my reposts to everyone".
-2. **Everyone by default, for existing accounts too.** Every profile, including those that
-   reposted under the friends-only rule, starts at `true`. The owner chose this knowing that
-   past reposts become visible to every signed-in user when the migration is applied.
-   Not reversible in effect: flipping the column back re-hides the posts, but not from
-   anyone who already saw them.
-3. **Applied only once the app with the switch is widely installed.** Builds ≤ 2.1.2 have no
-   switch, their guide says reposts are for friends, and they draw a SPOTIFY repost as a
-   false "the author removed this post" tombstone (ADR-0027 accepted that only for the
-   reposter's friends). Order: ship the build → live at 100% on both stores, most people
-   updated → apply the migration. The new app hides the switch until then.
+2. **Everyone by default, for existing accounts too — in a second step.** The owner chose
+   everyone-by-default, including existing accounts and past reposts. It lands in two
+   migrations so the switch can ship and be tested first:
+   - `20261019000000_reposts_audience` — the switch, starting **off (friends only) for
+     everyone**: applying it changes nobody's visibility. A trigger stamps
+     `reposts_public_set_at` whenever the owner changes the value.
+   - `20261020000000_reposts_public_by_default` — default true, and on for every profile whose
+     owner never chose (`reposts_public_set_at IS NULL`); a choice is never overridden. Not
+     reversible in effect: flipping back re-hides posts, not from anyone who saw them.
+3. **Step 2 is held until the app with the switch is widely installed**
+   (`supabase/held-migrations.txt`). Builds ≤ 2.1.2 have no switch, their guide says reposts
+   are for friends, and they draw a SPOTIFY repost as a false "the author removed this post"
+   tombstone (ADR-0027 accepted that only for the reposter's friends). Order: step 1 any time
+   → ship the build → 100% on both stores, most people updated → step 2. Until step 2 the only
+   public reposts belong to people who turned the switch on themselves.
 4. **"Everyone" means signed-in Livil users.** The policy stays `to authenticated`, and the
    public share page (`shared_post_public`) stays uploads-only — a repost is still never a
    public URL (`20260901000000`, `kb/architecture/post-sharing.md`). Blocks still hide
@@ -65,6 +70,8 @@ friends, while still letting someone keep their reposts to friends.
   audience is a property of the person, not of each post.
 - **Existing accounts stay friends-only, new accounts default to everyone.** Proposed as the
   privacy-preserving default; the owner chose everyone-for-all (decision 2).
+- **One migration, applied after the release.** Rejected 2026-10-09: the switch could not be
+  tested before shipping (there is no staging). Split into steps 1 and 2 instead.
 - **Profile-only reach (keep strangers' reposts out of Home).** Would need a feed predicate
   change; rejected — public reposts are meant to be discovered.
 
