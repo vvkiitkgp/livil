@@ -929,9 +929,6 @@ export default function RootNavigator() {
         onMaybeLater={handleDeferNotifications}
       />
 
-      {/* "Update Livil" — signed in or not, so a blocking update also reaches sign-in. Last,
-          so it paints over the players; an overlay rather than a Modal (see the component). */}
-      <AppUpdatePrompt />
     </View>
     </ChromeVisibilityProvider>
     </StoriesProvider>
@@ -940,6 +937,12 @@ export default function RootNavigator() {
     </JamRealtimeProvider>
     </JamProvider>
         ))}
+
+      {/* "Update Livil" — outside every session gate (sign-in, terms, username, password
+          reset, app) so a blocking update reaches all of them and survives signing in. Above
+          the navigation tree, below the splash. An overlay rather than a Modal: see the
+          component. */}
+      <AppUpdatePrompt />
 
       {splashMounted && (
         <Animated.View

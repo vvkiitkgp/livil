@@ -847,8 +847,9 @@ export async function createRepost(
 }
 
 /**
- * Repost a Spotify track (ADR-0027). Same rules as any repost — friends see it, and it
- * can be liked, commented on and reposted — but it carries a Spotify track id instead of a
+ * Repost a Spotify track (ADR-0027). Same rules as any repost — the reposter's audience
+ * switch decides who sees it (ADR-0028), and it can be liked, commented on and reposted —
+ * but it carries a Spotify track id instead of a
  * Livil track, and Livil never plays it.
  *
  * Only the id is stored. The database refuses anything that is not a 22-character Spotify

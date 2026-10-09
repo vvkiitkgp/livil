@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { AppState, Linking } from 'react-native';
+import { AppState, Keyboard, Linking } from 'react-native';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -21,6 +21,7 @@ jest.spyOn(AppState, 'addEventListener').mockImplementation(((
 }) as unknown as typeof AppState.addEventListener);
 
 const mockOpenURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+const mockDismissKeyboard = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
 
 let mockPolicy: { latestBuild: number; minimumBuild: number; message: string | null } | null = null;
 const mockSnooze = jest.fn();
@@ -63,6 +64,7 @@ beforeEach(() => {
   mockSnoozed = false;
   mockSnooze.mockReset();
   mockOpenURL.mockClear();
+  mockDismissKeyboard.mockClear();
 });
 
 it('shows nothing when this build is current', async () => {
@@ -110,4 +112,20 @@ it('blocking prompt has no Later, and lifts when the minimum is lowered — on r
   await act(async () => { appStateListener?.('active'); });
   // Still behind the latest → the gentle prompt replaces the blocking one.
   expect(texts(r)).toContain('A new version of Livil is here');
+});
+
+it('a recheck that cannot read the policy never lifts a blocking prompt', async () => {
+  mockPolicy = { latestBuild: 79, minimumBuild: 78, message: null };
+  const r = await mount(77);
+  expect(texts(r)).toContain('Please update Livil');
+
+  mockPolicy = null; // offline, or airplane mode on the way back into the app
+  await act(async () => { appStateListener?.('active'); });
+  expect(texts(r)).toContain('Please update Livil');
+});
+
+it('puts the keyboard away when it appears, so it cannot cover the buttons', async () => {
+  mockPolicy = { latestBuild: 79, minimumBuild: 0, message: null };
+  await mount(77);
+  expect(mockDismissKeyboard).toHaveBeenCalled();
 });

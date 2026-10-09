@@ -89,7 +89,7 @@ export const GUIDE_CARDS: GuideCard[] = [
   {
     key: 'friends',
     headline: 'Friends and Stars',
-    line: 'Friend: both say yes → chat, Jam, playlists, see what they play.\n\nStar your favourite artists: one tap → just their uploads.',
+    line: 'Friend: both say yes → chat, Jam, playlists, see what they play.\n\nStar your favourite artists: one tap → their uploads.',
     Illustration: FriendsIllustration,
   },
   {

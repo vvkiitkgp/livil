@@ -17,8 +17,7 @@
 -- Deliberate (product decision, 2026-10-09): every profile starts at true, so reposts
 -- made under the friends-only rule become visible to every signed-in user the moment
 -- this is applied. NOT reversible in effect — flipping the column back hides the posts
--- again, but anyone who saw them saw them. People still on an app without the switch
--- (≤ 2.1.2) cannot turn it off until they update.
+-- again, but anyone who saw them saw them. See "OLD APPS" below for when to apply.
 --
 -- ── UNCHANGED ───────────────────────────────────────────────────────────────
 --  * Own posts are always visible to their author; blocks hide everything both ways.
@@ -31,18 +30,30 @@
 -- ── WHERE IT TAKES EFFECT ───────────────────────────────────────────────────
 -- Every read path runs under this one policy (fetch_home_feed is INVOKER; profile tabs,
 -- search, playlists and the share resolver read `posts` directly), so a public repost
--- now reaches strangers' Home feeds through its hot/newest candidate sources and their
--- view of the reposter's profile, with no change to any of them. The ONE place that
+-- now reaches strangers' Home feeds through its hot/newest candidate sources (and the
+-- Home of anyone who starred the reposter) and their view of the reposter's profile, with
+-- no change to any of them. NOTE the feed groups by COALESCE(track_id, post_id): Livil
+-- reposts of one song collapse together, Spotify reposts (track_id NULL) do not. The ONE place that
 -- repeats the predicate by hand is record_post_impressions (DEFINER, so it bypasses
 -- RLS); it is redefined below with the identical predicate, or a public repost shown
 -- to a stranger would never be recorded as seen and would never fade from their feed.
 --
--- ── WHY THIS IS SAFE FOR APPS ALREADY INSTALLED ────────────────────────────
--- Additive column with a default (old sign-ups and profile edits do not send it).
--- The policy only ever WIDENS: every row an old app could read before, it can still
--- read. Old apps already render any repost they are given through the same feed and
--- profile code, so a stranger's public repost displays normally there. No function
--- signature, return shape or column used by an old app changes.
+-- ── OLD APPS, AND WHEN TO APPLY THIS ────────────────────────────────────────
+-- Nothing breaks technically: additive column with a default (old sign-ups and profile
+-- edits do not send it); the policy only ever WIDENS, so every row an old app could read
+-- before it can still read; no function signature, return shape or client-read column
+-- changes. A stranger's public LIVIL repost renders normally in an old app.
+--
+-- But NOT safe to apply while most people are on 2.1.2 or older, for two reasons:
+--  1. A SPOTIFY repost (track_id and original_post_id NULL, ADR-0027) renders in those
+--     builds as the "Original post no longer available — the author removed this post"
+--     tombstone. ADR-0027 accepted that for the reposter's friends only; public by default
+--     puts those false tombstones into every old-app user's Home via the hot/newest pools.
+--  2. Those builds have no switch to turn it off, and their first-run guide tells new
+--     sign-ups "Reposts and playlists are for friends".
+-- ORDER: ship the build with the switch → wait until it is live at 100% on BOTH stores and
+-- most people have updated → then apply. The new app tolerates this not being applied yet
+-- (the Settings row stays hidden; reposts stay friends-only).
 -- ============================================================================
 
 alter table public.profiles

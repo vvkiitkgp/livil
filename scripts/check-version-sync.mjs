@@ -84,4 +84,26 @@ if (siteName !== actualName) {
   process.exit(1);
 }
 
+// Fifth copy: the iOS build. The app-update prompt (app_update_policy, 20261018000000)
+// compares APP_VERSION_CODE — gradle's number — against the iOS row too, so an iPhone
+// build whose CURRENT_PROJECT_VERSION differs would be told to update forever (or, with
+// minimum_build set, locked out) after updating. Every `release:` commit bumps both by
+// hand; this makes a miss fail CI instead of shipping. Debug and Release must both match.
+const pbxproj = readFileSync(join(REPO, 'ios/livil.xcodeproj/project.pbxproj'), 'utf8');
+const iosCodes = [...new Set([...pbxproj.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map(m => m[1]))];
+const iosNames = [...new Set([...pbxproj.matchAll(/MARKETING_VERSION = ([^;]+);/g)].map(m => m[1].trim()))];
+
+if (iosCodes.length !== 1 || iosCodes[0] !== actualCode
+    || iosNames.length !== 1 || iosNames[0] !== actualName) {
+  console.error(
+    '\nFAIL  version drift between the iOS project and build.gradle\n\n' +
+    `        build.gradle    : versionName ${actualName}  versionCode ${actualCode}\n` +
+    `        project.pbxproj : MARKETING_VERSION ${iosNames.join(', ') || '(absent)'}  ` +
+    `CURRENT_PROJECT_VERSION ${iosCodes.join(', ') || '(absent)'}\n\n` +
+    '      Bump the iOS build to the same numbers (Xcode → target → General → Identity).\n' +
+    '      The update prompt compares one build number on both platforms.\n',
+  );
+  process.exit(1);
+}
+
 console.log(`PASS  version in sync: ${actualName} (${actualCode})`);

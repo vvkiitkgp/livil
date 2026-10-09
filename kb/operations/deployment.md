@@ -70,7 +70,9 @@ No automation enforces any of this. It is a checklist because it currently has t
    lock-screen controls, upload, and sign-in
 7. Bump versionCode **and** versionName
 
-**After the release is live in a store,** raise that platform's row in `app_update_policy`
+**After the release has reached 100% of users in a store** (not partway through a Play
+staged rollout or an App Store phased release — the rest cannot get it yet), raise that
+platform's row in `app_update_policy`
 (Supabase → Table Editor) so older builds are asked to update:
 
 ```sql

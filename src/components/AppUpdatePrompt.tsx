@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Linking, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, AppState, BackHandler, Keyboard, Linking, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { APP_VERSION_CODE } from '../constants/appVersion';
 import {
@@ -22,11 +22,15 @@ import { Logo } from './Logo';
  * another is presenting or animating away, and this one appears on its own schedule (launch,
  * return to foreground) — exactly when NotificationPermissionModal or a sheet may be up.
  * A refused modal would never show, and a refused BLOCKING one would let an unsupported
- * build carry on. A plain view cannot be refused. Mounted in RootNavigator below the splash,
- * so it appears as the splash fades, on the sign-in screens as well as in the app.
+ * build carry on. A plain view cannot be refused. Mounted at RootNavigator's ROOT, outside
+ * every session gate, so it covers the sign-in, terms, username and password-reset screens
+ * as well as the app — those gates are where an outdated build is most likely to break — and
+ * survives signing in without losing its state. The splash (zIndex 10) covers it while up.
  *
  * Checked on mount and on every return to the foreground (throttled while nothing is shown,
  * immediate while blocking — so lowering `minimum_build` unblocks without a restart).
+ * FAIL-OPEN only while nothing is known: a recheck that cannot read the policy keeps the last
+ * answer, so a dropped connection (or airplane mode) never lifts a known block.
  */
 const RECHECK_MS = 30 * 60 * 1000;
 
@@ -46,17 +50,27 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
   const verdictRef = useRef(verdict);
   verdictRef.current = verdict;
   const lastCheckRef = useRef(0);
+  const inFlightRef = useRef(false);
 
   const check = useCallback(async () => {
-    const now = Date.now();
-    if (verdictRef.current.kind !== 'hard' && now - lastCheckRef.current < RECHECK_MS) {return;}
-    lastCheckRef.current = now;
-    const next = decideUpdate(await fetchUpdatePolicy(), build);
-    if (next.kind === 'soft' && (await isUpdateSnoozed(next.latestBuild))) {
-      setVerdict(NO_UPDATE);
-      return;
+    if (inFlightRef.current) {return;}
+    if (verdictRef.current.kind !== 'hard' && Date.now() - lastCheckRef.current < RECHECK_MS) {return;}
+    inFlightRef.current = true;
+    try {
+      const policy = await fetchUpdatePolicy();
+      // Unreadable: keep the last answer (see the header). Not stamped, so the next return
+      // to the foreground tries again.
+      if (!policy) {return;}
+      lastCheckRef.current = Date.now();
+      const next = decideUpdate(policy, build);
+      if (next.kind === 'soft' && (await isUpdateSnoozed(next.latestBuild))) {
+        setVerdict(NO_UPDATE);
+        return;
+      }
+      setVerdict(next);
+    } finally {
+      inFlightRef.current = false;
     }
-    setVerdict(next);
   }, [build]);
 
   useEffect(() => {
@@ -86,6 +100,15 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
     if (verdictRef.current.kind === 'soft') {setVerdict(NO_UPDATE);}
   }, []);
 
+  // On appearing: put the keyboard away — iOS draws it above the whole app, so a focused
+  // composer or sign-in field restored on foreground would cover the buttons with no way to
+  // dismiss it — and tell VoiceOver/TalkBack the prompt is there.
+  useEffect(() => {
+    if (verdict.kind === 'none') {return;}
+    Keyboard.dismiss();
+    AccessibilityInfo.announceForAccessibility(COPY[verdict.kind].title);
+  }, [verdict.kind]);
+
   // Android back: "Later" for the gentle prompt; swallowed while blocking, or it would
   // navigate the screens underneath.
   useEffect(() => {
@@ -101,8 +124,10 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
   const copy = COPY[verdict.kind];
 
   return (
-    <View style={styles.backdrop} testID="app-update-prompt">
-      <View style={styles.card} accessibilityViewIsModal>
+    // accessibilityViewIsModal on the BACKDROP: it hides the element's siblings — the app
+    // underneath — from VoiceOver (iOS only; Android has no overlay equivalent).
+    <View style={styles.backdrop} testID="app-update-prompt" accessibilityViewIsModal>
+      <View style={styles.card}>
         <View style={styles.iconWrap}>
           <View style={styles.iconCircle}>
             <Logo size={34} color={COLORS.purpleLight} />
@@ -125,9 +150,9 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFill,
-    // Above the floating player and full-screen player (later siblings in RootNavigator
-    // would otherwise paint over it); the splash still covers it during cold start.
-    zIndex: 100,
+    // Above the whole navigation tree (its sibling at RootNavigator's root), below the
+    // splash overlay (zIndex 10), which covers it during cold start.
+    zIndex: 5,
     backgroundColor: 'rgba(0,0,0,0.65)',
     alignItems: 'center',
     justifyContent: 'center',
