@@ -104,6 +104,22 @@ select pg_temp.assert('1g  sam logs one hand-off',
   pg_temp.allows($q$insert into spotify_opens (spotify_track_id, source, user_id)
     values ('0VjIjW4GlUZAMYd2vXMi3b', 'search', 'ab000000-0000-0000-0000-000000000003')$q$), true);
 
+-- A client-sent created_at must not survive (20261016000000): a row dated 2099 would top
+-- ops_recent_plays forever and count in every summary window. A separate track id keeps
+-- these rows out of the numbers checked in §3; they are deleted straight after.
+select pg_temp.assert('1h  a hand-off sent with a 2099 date is accepted…',
+  pg_temp.allows($q$insert into spotify_opens (spotify_track_id, source, user_id, created_at)
+    values ('4uLU6hMCjMI75M1A2tKUQC', 'feed', 'ab000000-0000-0000-0000-000000000003', '2099-01-01')$q$), true);
+select pg_temp.assert('1i  …and one sent with a 2020 date',
+  pg_temp.allows($q$insert into spotify_opens (spotify_track_id, source, user_id, created_at)
+    values ('4uLU6hMCjMI75M1A2tKUQC', 'feed', 'ab000000-0000-0000-0000-000000000003', '2020-01-01')$q$), true);
+reset role;
+select pg_temp.assert('1j  …but both are stored at the server''s clock',
+  (select count(*) = 2 and bool_and(created_at = now())
+     from spotify_opens where spotify_track_id = '4uLU6hMCjMI75M1A2tKUQC'), true);
+delete from spotify_opens where spotify_track_id = '4uLU6hMCjMI75M1A2tKUQC';
+set local role authenticated;
+
 -- ── 2. Ops only ─────────────────────────────────────────────────────────────
 select pg_temp.assert_count('2a  a non-ops caller gets nothing from the summary',
   (select count(*) from ops_play_summary(30)), 0);
@@ -113,6 +129,22 @@ select pg_temp.assert_count('2c  …nothing from top played',
   (select count(*) from ops_top_played('spotify', 30, 10)), 0);
 select pg_temp.assert_count('2d  …nothing from recent plays',
   (select count(*) from ops_recent_plays(25)), 0);
+reset role;
+
+-- Signed out: refused outright, not merely answered with nothing. Pins the explicit
+-- `revoke execute … from anon` — a later drop-and-recreate of any reader would reset it.
+set local role anon;
+select pg_temp.assert('2e  a signed-out caller cannot run the summary',
+  pg_temp.allows('select ops_play_summary(30)'), false);
+select pg_temp.assert('2f  …nor the daily series',
+  pg_temp.allows('select ops_play_daily(7)'), false);
+select pg_temp.assert('2g  …nor top played',
+  pg_temp.allows($q$select ops_top_played('spotify', 30, 10)$q$), false);
+select pg_temp.assert('2h  …nor recent plays',
+  pg_temp.allows('select ops_recent_plays(25)'), false);
+select pg_temp.assert('2i  …and cannot log a hand-off',
+  pg_temp.allows($q$insert into spotify_opens (spotify_track_id, source, user_id)
+    values ('0VjIjW4GlUZAMYd2vXMi3b', 'feed', 'ab000000-0000-0000-0000-000000000003')$q$), false);
 reset role;
 
 -- ── 3. The numbers ──────────────────────────────────────────────────────────
