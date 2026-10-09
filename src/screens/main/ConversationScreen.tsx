@@ -332,7 +332,10 @@ function MessageBubble({
             )}
 
             {msg.kind === 'text' && sharedProfileHandle ? (
-              <ProfileLinkCard username={sharedProfileHandle} />
+              <ProfileLinkCard
+                username={sharedProfileHandle}
+                onOpen={() => onOpenSharedProfile(sharedProfileHandle)}
+              />
             ) : msg.kind === 'text' ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
                 {msg.body}

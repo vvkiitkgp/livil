@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-295 TypeScript file(s) under `src/`, 71,009 lines.
+295 TypeScript file(s) under `src/`, 71,038 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 1909 |
+| `src/screens/main/ConversationScreen.tsx` | 1912 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/components/PostCard.tsx` | 1394 |
@@ -103,11 +103,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 24,293 lines.
+46 file(s), 24,296 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1909 |
+| `src/screens/main/ConversationScreen.tsx` | 1912 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/screens/main/HomeScreen.tsx` | 1331 |
@@ -156,7 +156,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-108 file(s), 24,226 lines.
+108 file(s), 24,252 lines.
 
 | File | Lines |
 |---|---:|
@@ -204,6 +204,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
 | `src/components/FriendPickerStrip.tsx` | 184 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
+| `src/components/ProfileLinkCard.tsx` | 173 |
 | `src/components/GroupAvatarCluster.tsx` | 170 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
 | `src/components/TagInput.tsx` | 167 |
@@ -216,7 +217,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/StageLamp.tsx` | 151 |
 | `src/components/__tests__/AppleSignInButton.test.tsx` | 148 |
 | `src/components/guide/cardWelcome.tsx` | 148 |
-| `src/components/ProfileLinkCard.tsx` | 147 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/guide/cards.ts` | 132 |
 | `src/components/StoryCard.tsx` | 131 |

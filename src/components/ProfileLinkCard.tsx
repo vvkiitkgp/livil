@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Dimensions, Image, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { fetchSharedProfile, type ShareableProfile } from '../services/share';
 import { Icon } from './Icon';
@@ -18,8 +18,8 @@ import { Icon } from './Icon';
  * over another person's link. A block in either direction, or a handle that no longer
  * resolves, comes back null — and the card says so instead of guessing.
  *
- * The bubble around it owns the tap (it already owns long-press for reactions), so this
- * component only draws.
+ * The bubble around it owns the tap and the long-press (reactions); the "View profile"
+ * button is the visible affordance and does exactly what tapping the card does.
  */
 
 type Resolved = ShareableProfile | null;
@@ -66,9 +66,11 @@ function lookup(username: string): Resolved | Promise<Resolved> {
  */
 type Props = {
   username: string;
+  /** Opens the profile — the same action as tapping anywhere on the card. */
+  onOpen?: () => void;
 };
 
-export function ProfileLinkCard({ username }: Props) {
+export function ProfileLinkCard({ username, onOpen }: Props) {
   const initial = cache.get(username);
   const [profile, setProfile] = useState<Resolved | undefined>(
     initial instanceof Promise ? undefined : initial,
@@ -120,10 +122,21 @@ export function ProfileLinkCard({ username }: Props) {
           </Text>
         </View>
       </View>
+      {/* The pill action button chat song cards use (ChatSongCard on the Spotify branch:
+          "Play on Livil"), so a shared profile and a shared song read as the same family
+          of thing. */}
       {unavailable ? null : (
-        <View style={styles.cta}>
-          <Icon name="profile" size={12} color={COLORS.purpleNeon} weight="bold" />
-          <Text style={styles.ctaText}>View profile</Text>
+        <View style={styles.actions}>
+          <Pressable
+            onPress={onOpen}
+            disabled={!onOpen}
+            style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`View @${username}'s profile`}
+          >
+            <Icon name="profile" size={12} color={COLORS.white} weight="bold" />
+            <Text style={styles.actionText}>View profile</Text>
+          </Pressable>
         </View>
       )}
     </View>
@@ -141,6 +154,19 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   name: { color: COLORS.white, fontSize: 14.5, fontWeight: '700' },
   handle: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 2 },
-  cta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 },
-  ctaText: { color: COLORS.purpleNeon, fontSize: 11.5, fontWeight: '700' },
+  // Same geometry as ChatSongCard's actions on the Spotify branch: a 32pt outlined pill,
+  // muted border, white 12pt label. Outlined, never filled — the no-solid-purple rule.
+  actions: { flexDirection: 'row', marginTop: 12 },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.textMuted,
+  },
+  actionText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
+  pressed: { opacity: 0.7 },
 });
