@@ -10,6 +10,7 @@ import { cardsFor, lineFor } from '../../components/guide/cards';
 import { PHONE_H } from '../../components/guide/primitives';
 import { haptics } from '../../utils/haptics';
 import { useSpotifyAvailability } from '../../services/spotify';
+import { useMyRepostsPublic } from '../../hooks/useMyRepostsPublic';
 
 /**
  * The first-run guide: a welcome card, then fifteen looping animations, one idea each,
@@ -38,6 +39,7 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
   const card = cards[step];
   // Asked from the first card, so the answer is in by the Repost card (cached for the app).
   const { reposts: spotifyReposts } = useSpotifyAvailability();
+  const myRepostsPublic = useMyRepostsPublic();
 
   // The illustrations are choreographed at a fixed 230×460; on a short screen the
   // whole phone is scaled down rather than reflowed, so nothing inside it moves.
@@ -94,7 +96,7 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           </View>
           <View style={styles.copy}>
             <Text style={styles.headline}>{card.headline}</Text>
-            <Text style={styles.line}>{lineFor(card, { spotifyReposts })}</Text>
+            <Text style={styles.line}>{lineFor(card, { spotifyReposts, repostAudience: myRepostsPublic !== null })}</Text>
           </View>
         </View>
       </StepFade>

@@ -50,6 +50,7 @@ import ShareProfileSheet from '../../components/ShareProfileSheet';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
 import MutualsLine from '../../components/MutualsLine';
+import { getRepostsPublic } from '../../services/profileService';
 import { fetchProfileMutuals, type ProfileMutuals } from '../../services/mutuals';
 
 type UserProfileRouteProp = RouteProp<RootStackParamList, 'UserProfile'>;
@@ -71,6 +72,8 @@ type ListItem =
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
+  // Who can see this person's reposts (ADR-0028), shown above reposts the viewer can see.
+  | { kind: 'audience'; key: string }
   | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
   | { kind: 'playlist-row'; a: UserPlaylist; b: UserPlaylist | null; key: string };
 
@@ -187,6 +190,17 @@ export default function UserProfileScreen() {
   }, []);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
+  // This person's repost audience. null = unknown (loading, unreadable, or the backend
+  // change not applied) → no line, rather than a guess about someone's privacy.
+  const [repostsPublic, setRepostsPublic] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setRepostsPublic(null);
+    getRepostsPublic(userId)
+      .then(value => { if (!cancelled) {setRepostsPublic(value);} })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId]);
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
@@ -501,10 +515,17 @@ export default function UserProfileScreen() {
     if (loading) { return [head, { kind: 'loading', key: '__loading__' }]; }
     if (tab === 'reposts' || tab === 'uploads') {
       const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
+      // Shown on the Reposts tab — with or without reposts — EXCEPT when they exist but
+      // are hidden from this viewer (a true count above zero, no rows): that empty state
+      // ("Reposts are for friends") already says why, and a second line would repeat it.
+      const hiddenFromViewer = tabCounts.reposts > 0 && visiblePosts.length === 0;
+      const audience: ListItem[] = tab === 'reposts' && repostsPublic !== null && !hiddenFromViewer
+        ? [{ kind: 'audience', key: '__audience__' }]
+        : [];
       if (visiblePosts.length > 0) {
-        return [head, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
+        return [head, ...audience, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
       }
-      return [head, { kind: 'empty', key: '__empty__' }];
+      return [head, ...audience, { kind: 'empty', key: '__empty__' }];
     }
     if (tab === 'albums') {
       if (albums.length === 0) { return [head, { kind: 'empty', key: '__empty__' }]; }
@@ -516,7 +537,7 @@ export default function UserProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic, tabCounts.reposts]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -549,6 +570,18 @@ export default function UserProfileScreen() {
               size="md"
               style={styles.blockedBtn}
             />
+          </View>
+        );
+      }
+      if (item.kind === 'audience') {
+        const who = profile?.username ? `@${profile.username}` : 'their';
+        const line = repostsPublic
+          ? `Everyone on Livil can see ${profile?.username ? `${who}'s` : who} reposts`
+          : `Only ${profile?.username ? `${who}'s` : who} friends can see their reposts`;
+        return (
+          <View style={styles.audienceRow} accessible accessibilityLabel={line}>
+            <Icon name={repostsPublic ? 'public' : 'friends'} size={14} color={COLORS.textSecondary} />
+            <Text style={styles.audienceText} numberOfLines={1}>{line}</Text>
           </View>
         );
       }
@@ -656,7 +689,7 @@ export default function UserProfileScreen() {
         />
       );
     },
-    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic],
   );
 
   const renderHeader = useCallback(() => {
@@ -1205,6 +1238,15 @@ const styles = StyleSheet.create({
   tabIndicatorActive: { backgroundColor: COLORS.purple },
 
   gridRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  // Same quiet line as the owner sees on their own profile, without "Change".
+  audienceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  audienceText: { flex: 1, color: COLORS.textSecondary, fontSize: 13 },
   emptyWrap: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
   emptyArt: {
     width: 72, height: 72, borderRadius: 36,

@@ -27,6 +27,11 @@ export type GuideCard = {
    * the viewer cannot find — see `lineFor`.
    */
   spotifyLine?: string;
+  /**
+   * Appended only while the viewer's repost-audience setting can be read (ADR-0028) — the
+   * switch it points at is hidden until then, so the guide must not send anyone looking.
+   */
+  audienceLine?: string;
 };
 
 export const GUIDE_CARDS: GuideCard[] = [
@@ -79,6 +84,7 @@ export const GUIDE_CARDS: GuideCard[] = [
     headline: 'Repost your moment',
     line: 'Pick the part you love. Post it to your profile, or as a story that lasts a day.',
     spotifyLine: 'Found it on Spotify? Repost that too.',
+    audienceLine: 'Choose who sees your reposts in Settings.',
     Illustration: RepostIllustration,
   },
   {
@@ -132,9 +138,18 @@ export const GUIDE_CARDS: GuideCard[] = [
   },
 ];
 
-/** A card's copy as shown: the Spotify sentence only while Spotify reposts are on. */
-export function lineFor(card: GuideCard, opts: { spotifyReposts: boolean }): string {
-  return card.spotifyLine && opts.spotifyReposts ? `${card.line} ${card.spotifyLine}` : card.line;
+/**
+ * A card's copy as shown: the Spotify sentence only while Spotify reposts are on, the
+ * audience sentence only while the repost-audience switch exists for this viewer.
+ */
+export function lineFor(
+  card: GuideCard,
+  opts: { spotifyReposts: boolean; repostAudience?: boolean },
+): string {
+  const parts = [card.line];
+  if (card.spotifyLine && opts.spotifyReposts) {parts.push(card.spotifyLine);}
+  if (card.audienceLine && opts.repostAudience) {parts.push(card.audienceLine);}
+  return parts.join(' ');
 }
 
 /** The cards a given showing uses: the greeting is dropped from a replay. */

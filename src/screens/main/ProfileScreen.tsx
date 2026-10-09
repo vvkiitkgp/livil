@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  Pressable,
   Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +50,7 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { useSpotifyAvailability } from '../../services/spotify';
+import { getRepostsPublic } from '../../services/profileService';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
@@ -97,6 +99,8 @@ type ListItem =
   // branch and needs kinds of its own.
   | { kind: 'blocked'; track: BlockedTrack; key: string }
   | { kind: 'removed-repost'; removal: PostRemoval; key: string }
+  // Who can see my reposts (ADR-0028) — the owner's reminder, with a way to change it.
+  | { kind: 'audience'; key: string }
   | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
   | { kind: 'playlist-row'; a: UserPlaylist; b: UserPlaylist | null; key: string };
 
@@ -376,6 +380,25 @@ export default function ProfileScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Who can see my reposts. Read on every focus — including coming back from Privacy &
+  // data, where it is changed — so the line on the Reposts tab is never stale. null =
+  // unknown (loading, unreadable, or the backend change not applied): the line is hidden
+  // rather than guess about privacy, exactly like the switch itself.
+  const [repostsPublic, setRepostsPublic] = useState<boolean | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const { data: userData } = await supabase.auth.getUser();
+        const me = userData?.user?.id;
+        if (!me) {return;}
+        const value = await getRepostsPublic(me);
+        if (!cancelled) {setRepostsPublic(value);}
+      })().catch(() => { /* keeps the last known value */ });
+      return () => { cancelled = true; };
+    }, []),
+  );
+
   // Refresh profile fields when the screen regains focus (e.g. after returning
   // from EditProfile). Posts/stats are skipped to keep the refetch cheap.
   const hasMountedRef = useRef(false);
@@ -460,6 +483,10 @@ export default function ProfileScreen() {
     }
     if (tab === 'reposts' || tab === 'uploads') {
       const visiblePosts = posts.filter(p => !deletedIds.has(p.id));
+      // The audience line sits right under the tabs, with or without reposts to show.
+      const top: ListItem[] = tab === 'reposts' && repostsPublic !== null
+        ? [head, { kind: 'audience', key: '__audience__' }]
+        : [head];
 
       // Removed content leads the tab. Somebody whose upload disappeared is looking for
       // it, and burying the explanation under everything still live is the wrong way
@@ -472,12 +499,12 @@ export default function ProfileScreen() {
 
       if (notices.length > 0 || visiblePosts.length > 0) {
         return [
-          head,
+          ...top,
           ...notices,
           ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id })),
         ];
       }
-      return [head, { kind: 'empty', key: '__empty__' }];
+      return [...top, { kind: 'empty', key: '__empty__' }];
     }
     if (tab === 'albums') {
       if (albums.length === 0) { return [head, { kind: 'empty', key: '__empty__' }]; }
@@ -490,7 +517,7 @@ export default function ProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -548,6 +575,23 @@ export default function ProfileScreen() {
                 .finally(() => setRemovingId(null));
             }}
           />
+        );
+      }
+      if (item.kind === 'audience') {
+        const line = repostsPublic
+          ? 'Everyone on Livil can see your reposts'
+          : 'Only your friends can see your reposts';
+        return (
+          <Pressable
+            onPress={() => navigation.navigate('PrivacyData')}
+            style={({ pressed }) => [styles.audienceRow, pressed && styles.audienceRowPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`${line}. Change`}
+          >
+            <Icon name={repostsPublic ? 'public' : 'friends'} size={14} color={COLORS.textSecondary} />
+            <Text style={styles.audienceText} numberOfLines={1}>{line}</Text>
+            <Text style={styles.audienceChange}>Change</Text>
+          </Pressable>
         );
       }
       if (item.kind === 'loading') {
@@ -641,7 +685,7 @@ export default function ProfileScreen() {
     // re-rendered after the delete started and the button sat there looking idle while
     // the request was in flight.
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist,
-     removingId],
+     removingId, repostsPublic, navigation],
   );
 
   const renderHeader = useCallback(() => {
@@ -1170,6 +1214,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
+  // One quiet line, not a banner: it is a reminder of a setting, not news.
+  audienceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  audienceRowPressed: { opacity: 0.6 },
+  audienceText: { flex: 1, color: COLORS.textSecondary, fontSize: 13 },
+  audienceChange: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '700' },
   emptyWrap: {
     paddingHorizontal: 32,
     paddingTop: 50,

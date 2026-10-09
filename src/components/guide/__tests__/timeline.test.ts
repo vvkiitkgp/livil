@@ -73,7 +73,7 @@ describe('GUIDE_CARDS', () => {
 
   it('never quotes a clip length — reposts are not limited to a fixed number of seconds', () => {
     GUIDE_CARDS.forEach(c => {
-      expect(`${c.headline} ${c.line} ${c.spotifyLine ?? ''}`).not.toMatch(/\b\d+\s*(s|sec|seconds)\b/i);
+      expect(`${c.headline} ${c.line} ${c.spotifyLine ?? ''} ${c.audienceLine ?? ''}`).not.toMatch(/\b\d+\s*(s|sec|seconds)\b/i);
     });
   });
 
@@ -86,5 +86,18 @@ describe('GUIDE_CARDS', () => {
     const repost = GUIDE_CARDS.find(c => c.key === 'repost')!;
     expect(lineFor(repost, { spotifyReposts: true }))
       .toBe(`${repost.line} Found it on Spotify? Repost that too.`);
+  });
+
+  it('points at the repost-audience switch only while it exists for the viewer', () => {
+    // The Settings switch is hidden until the viewer's setting can be read (ADR-0028), so
+    // the guide must not send anyone looking for it before then.
+    GUIDE_CARDS.forEach(c => {
+      expect(lineFor(c, { spotifyReposts: true, repostAudience: false })).not.toMatch(/who sees your reposts/i);
+    });
+    const repost = GUIDE_CARDS.find(c => c.key === 'repost')!;
+    expect(lineFor(repost, { spotifyReposts: true, repostAudience: true }))
+      .toBe(`${repost.line} Found it on Spotify? Repost that too. Choose who sees your reposts in Settings.`);
+    expect(lineFor(repost, { spotifyReposts: false, repostAudience: true }))
+      .toBe(`${repost.line} Choose who sees your reposts in Settings.`);
   });
 });
