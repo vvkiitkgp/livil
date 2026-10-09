@@ -117,6 +117,23 @@ export function useSpotifyAvailability(): SpotifyAvailability {
  * too short, or anything goes wrong — callers render "no Spotify section", never an error.
  */
 export async function searchSpotify(query: string, limit = 5): Promise<SpotifyTrack[]> {
+  return (await searchSpotifyOrFail(query, limit)) ?? [];
+}
+
+/**
+ * The same search, but a FAILED search resolves to `null` instead of `[]`.
+ *
+ * For the one screen where Spotify search is the whole point (Repost from Spotify). There,
+ * "no matches" and "Spotify refused" must read differently: the function answers 502 when
+ * Spotify turns a search down (e.g. the developer account's Premium lapsing), and showing
+ * `Nothing on Spotify for "Taylor Swift"` for that looks like a broken feature — exactly
+ * what an App Reviewer would report. The Search tab and the chat picker keep `searchSpotify`
+ * and simply hide their Spotify section.
+ */
+export async function searchSpotifyOrFail(
+  query: string,
+  limit = 5,
+): Promise<SpotifyTrack[] | null> {
   const q = query.trim();
   if (q.length < 2) {return [];}
   const res = await call<{ enabled?: boolean; tracks?: SpotifyTrack[] }>({
@@ -124,7 +141,8 @@ export async function searchSpotify(query: string, limit = 5): Promise<SpotifyTr
     q: q.slice(0, 100),
     limit,
   });
-  const tracks = res?.tracks ?? [];
+  if (res === null) {return null;}
+  const tracks = res.tracks ?? [];
   for (const t of tracks) { trackCache.set(t.id, t); }
   return tracks;
 }

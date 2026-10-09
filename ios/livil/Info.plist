@@ -71,8 +71,12 @@
 	     recording feature that does not exist. Removing this re-breaks the upload. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Livil does not record audio. An audio component used to draw track waveforms references the microphone, so iOS requires this notice — you will never be asked for microphone access.</string>
+	<!-- Names EVERY use, per guideline 5.1.1(ii): the gallery is opened for a profile
+	     picture (profileService), album and track cover art (albums, mediaPicks), and a
+	     video to upload with its thumbnail (mediaPicks.pickVideoFromGallery). The old text
+	     named only the first two. -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Livil needs access to your photos so you can pick a profile picture or an album cover.</string>
+	<string>Livil needs access to your photos so you can pick a profile picture, cover art for your music, or a video to upload.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>

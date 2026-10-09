@@ -119,3 +119,42 @@ describe('getSpotifyAvailability', () => {
     await expect(getSpotifyAvailability()).resolves.toEqual({ reposts: false, search: false });
   });
 });
+
+describe('searchSpotifyOrFail', () => {
+  // The Repost-from-Spotify screen must tell "no matches" from "Spotify refused": the
+  // function answers 502 when Spotify turns a search down, and showing
+  // `Nothing on Spotify for "…"` for that reads as a broken feature.
+  it('is null when the search FAILED, not an empty list', async () => {
+    const { searchSpotifyOrFail } = load();
+    mockInvoke.mockResolvedValue({ data: null, error: { message: 'Edge Function returned a non-2xx status code' } });
+    await expect(searchSpotifyOrFail('taylor swift')).resolves.toBeNull();
+  });
+
+  it('is an empty list when Spotify answered with no matches', async () => {
+    const { searchSpotifyOrFail } = load();
+    mockInvoke.mockResolvedValue({ data: { tracks: [] }, error: null });
+    await expect(searchSpotifyOrFail('zzqqxx nothing')).resolves.toEqual([]);
+  });
+
+  it('returns the matches when there are some', async () => {
+    const { searchSpotifyOrFail } = load();
+    mockInvoke.mockResolvedValue({ data: { tracks: [TRACK_A] }, error: null });
+    await expect(searchSpotifyOrFail('blinding')).resolves.toEqual([TRACK_A]);
+  });
+
+  it('does not call Spotify for a one-letter query', async () => {
+    const { searchSpotifyOrFail } = load();
+    await expect(searchSpotifyOrFail('a')).resolves.toEqual([]);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('searchSpotify', () => {
+  // The Search tab and the chat picker only ever hide their Spotify section, so a failure
+  // stays an empty list for them.
+  it('turns a failed search into an empty list', async () => {
+    const { searchSpotify } = load();
+    mockInvoke.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    await expect(searchSpotify('taylor swift')).resolves.toEqual([]);
+  });
+});

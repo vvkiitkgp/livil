@@ -48,9 +48,14 @@ export const INVITE_URL = 'https://livil-music.com/get';
 /**
  * Body of the "Invite friends" share sheet. The URL goes last and on its own line so
  * chat apps unfurl it into the card rather than burying it mid-sentence.
+ *
+ * NAMES NO PLATFORM, on purpose. This text is composed inside the iOS app, and App Review
+ * guideline 2.3.10 forbids naming another mobile platform in the app — "Free on iPhone and
+ * Android" was in 2.1.0–2.1.2 and is the same rule that rejected 2.1.2's What's New. The
+ * link itself already sends each phone to its own store, so the words add nothing.
  */
 export const INVITE_SHARE_MESSAGE =
-  `Come listen with me on Livil — jam in real time, share the moment of a song, and see what your friends are playing. Free on iPhone and Android.\n\n${INVITE_URL}`;
+  `Come listen with me on Livil — jam in real time, share the moment of a song, and see what your friends are playing. It's free.\n\n${INVITE_URL}`;
 
 // ── Post sharing ────────────────────────────────────────────────────────────
 // See kb/architecture/post-sharing.md for the design these three constants encode.
