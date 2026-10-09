@@ -59,13 +59,16 @@ function lookup(username: string): Resolved | Promise<Resolved> {
   return pending;
 }
 
+/**
+ * Always drawn on the dark page: the bubble around it has no fill and wears Livil's
+ * gradient outline instead (ConversationScreen `bubbleProfileCard`), whichever side of
+ * the chat it is on — so there is one colourway, not a purple-bubble variant.
+ */
 type Props = {
   username: string;
-  /** The sender's own bubble is purple; text and accents swap to stay legible on it. */
-  isMe: boolean;
 };
 
-export function ProfileLinkCard({ username, isMe }: Props) {
+export function ProfileLinkCard({ username }: Props) {
   const initial = cache.get(username);
   const [profile, setProfile] = useState<Resolved | undefined>(
     initial instanceof Promise ? undefined : initial,
@@ -110,7 +113,7 @@ export function ProfileLinkCard({ username, isMe }: Props) {
           <Text style={styles.name} numberOfLines={1}>
             {unavailable ? `@${username}` : name}
           </Text>
-          <Text style={[styles.handle, isMe && styles.handleMe]} numberOfLines={1}>
+          <Text style={styles.handle} numberOfLines={1}>
             {unavailable
               ? 'Profile not available'
               : profile?.displayName?.trim() ? `@${username}` : 'on Livil'}
@@ -119,8 +122,8 @@ export function ProfileLinkCard({ username, isMe }: Props) {
       </View>
       {unavailable ? null : (
         <View style={styles.cta}>
-          <Icon name="profile" size={12} color={isMe ? COLORS.white : COLORS.purpleNeon} weight="bold" />
-          <Text style={[styles.ctaText, isMe && styles.ctaTextMe]}>View profile</Text>
+          <Icon name="profile" size={12} color={COLORS.purpleNeon} weight="bold" />
+          <Text style={styles.ctaText}>View profile</Text>
         </View>
       )}
     </View>
@@ -138,9 +141,6 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   name: { color: COLORS.white, fontSize: 14.5, fontWeight: '700' },
   handle: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 2 },
-  // Same reason as the track card's artist line: #888 is muddy on the purple bubble.
-  handleMe: { color: 'rgba(255,255,255,0.82)' },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 },
   ctaText: { color: COLORS.purpleNeon, fontSize: 11.5, fontWeight: '700' },
-  ctaTextMe: { color: COLORS.white },
 });

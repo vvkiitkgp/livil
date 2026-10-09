@@ -300,9 +300,13 @@ function MessageBubble({
               styles.bubble,
               isMe ? styles.bubbleMe : styles.bubbleThem,
               hasStickerMeta ? styles.bubbleSticker : null,
+              sharedProfileHandle ? styles.bubbleProfileCard : null,
               isHighlighted && styles.bubbleHighlighted,
             ]}
           >
+            {/* A profile card wears Livil's outline instead of a bubble fill — on either
+                side of the chat — so it reads as a card, not as a purple slab. */}
+            {sharedProfileHandle ? <GradientBorder borderRadius={PROFILE_CARD_RADIUS} /> : null}
             {msg.replyToId && (
               <Pressable
                 onPress={() => msg.replyToId && onReplyQuotePress(msg.replyToId)}
@@ -328,7 +332,7 @@ function MessageBubble({
             )}
 
             {msg.kind === 'text' && sharedProfileHandle ? (
-              <ProfileLinkCard username={sharedProfileHandle} isMe={isMe} />
+              <ProfileLinkCard username={sharedProfileHandle} />
             ) : msg.kind === 'text' ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
                 {msg.body}
@@ -1492,6 +1496,7 @@ export default function ConversationScreen() {
  *  so its artwork gets real estate. Read once at module scope — chat bubbles are the
  *  hottest list in the app and this must not become a per-row Dimensions call. */
 const TRACK_CARD_ART = Math.round(Dimensions.get('window').width * 0.5);
+const PROFILE_CARD_RADIUS = 18;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
@@ -1608,6 +1613,17 @@ const styles = StyleSheet.create({
   bubbleSticker: {
     backgroundColor: 'transparent',
     padding: 0,
+  },
+  // No fill, every corner equal: GradientBorder draws one radius for all four, so the
+  // tail corner (bubbleMe/bubbleThem's 4) would leave the outline cutting across it.
+  // No overflow:'hidden' here — it shaves the outer edge of the glow (see CLAUDE.md).
+  bubbleProfileCard: {
+    backgroundColor: 'transparent',
+    borderRadius: PROFILE_CARD_RADIUS,
+    borderBottomLeftRadius: PROFILE_CARD_RADIUS,
+    borderBottomRightRadius: PROFILE_CARD_RADIUS,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
