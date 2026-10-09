@@ -182,6 +182,30 @@ export type Database = {
           },
         ]
       }
+      app_update_policy: {
+        Row: {
+          latest_build: number
+          message: string | null
+          minimum_build: number
+          platform: string
+          updated_at: string
+        }
+        Insert: {
+          latest_build?: number
+          message?: string | null
+          minimum_build?: number
+          platform: string
+          updated_at?: string
+        }
+        Update: {
+          latest_build?: number
+          message?: string | null
+          minimum_build?: number
+          platform?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       badge_kinds: {
         Row: {
           badge: string

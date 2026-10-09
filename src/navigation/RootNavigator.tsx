@@ -61,6 +61,7 @@ import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
+import { AppUpdatePrompt } from '../components/AppUpdatePrompt';
 import { RootStackParamList } from './types';
 import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
 import { COLORS } from '../theme/colors';
@@ -927,6 +928,10 @@ export default function RootNavigator() {
         onEnable={handleEnableNotifications}
         onMaybeLater={handleDeferNotifications}
       />
+
+      {/* "Update Livil" — signed in or not, so a blocking update also reaches sign-in. Last,
+          so it paints over the players; an overlay rather than a Modal (see the component). */}
+      <AppUpdatePrompt />
     </View>
     </ChromeVisibilityProvider>
     </StoriesProvider>
