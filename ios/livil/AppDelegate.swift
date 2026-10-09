@@ -44,10 +44,10 @@ class AppDelegate: RCTAppDelegate {
   // override here would be dead code. The scheme itself stays registered in Info.plist
   // under CFBundleURLTypes; both halves are required.
   //
-  // Universal links (https://livil-music.com/p/<id>, the iOS twin of the Android App Link
-  // already in AndroidManifest.xml) additionally need scene(_:continue:) in the scene
-  // delegate, an Associated Domains entitlement, and an apple-app-site-association file
-  // served by the web host. That is a follow-up; the custom scheme covers auth today.
+  // Universal links (https://livil-music.com/p/<id> and /@<handle>, the iOS twin of the
+  // Android App Links in AndroidManifest.xml) are handled there too, in
+  // scene(_:continue:), backed by the Associated Domains entitlement in livil.entitlements
+  // and docs/.well-known/apple-app-site-association on the web host.
 
   override func sourceURL(for bridge: RCTBridge) -> URL? {
     self.bundleURL()

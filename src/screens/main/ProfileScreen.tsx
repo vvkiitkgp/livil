@@ -51,6 +51,7 @@ import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
+import ShareProfileSheet from '../../components/ShareProfileSheet';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
@@ -184,7 +185,7 @@ export default function ProfileScreen() {
   // Tapping the avatar opens the enlarged profile photo — always, and only that
   // (user decision 2026-10-08: the avatar no longer opens stories).
   const [photoOpen, setPhotoOpen] = useState(false);
-
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Provisional only — the real default is resolved from the tab counts on the initial
   // load, so that the selected pill is always the first pill. See initialTabFor.
@@ -783,6 +784,17 @@ export default function ProfileScreen() {
 
         {/* Action buttons */}
         <View style={styles.actionRow}>
+          {/* Your public link, livil-music.com/@you — for an Instagram bio, a chat, or
+              friends in Livil. Disabled until the profile has loaded: the link is built
+              from the username. */}
+          <Button
+            label="Share profile"
+            variant="secondary"
+            size="md"
+            style={styles.actionButton}
+            disabled={!profile?.username}
+            onPress={() => setShareOpen(true)}
+          />
           <Button
             label="Invite friends"
             variant="secondary"
@@ -885,6 +897,21 @@ export default function ProfileScreen() {
         visible={photoOpen}
         onClose={() => setPhotoOpen(false)}
         label={profile?.username ? `@${profile.username}'s profile photo` : 'Profile photo'}
+      />
+      <ShareProfileSheet
+        visible={shareOpen}
+        isOwn
+        profile={
+          profile
+            ? {
+                userId: profile.id,
+                username: profile.username,
+                displayName: profile.display_name,
+                avatarUrl: profile.avatar_url,
+              }
+            : null
+        }
+        onClose={() => setShareOpen(false)}
       />
     </SafeAreaView>
   );

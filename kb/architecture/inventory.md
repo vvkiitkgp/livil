@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-08
+last_verified: 2026-10-09
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-290 TypeScript file(s) under `src/`, 69,922 lines.
+295 TypeScript file(s) under `src/`, 70,993 lines.
 
 ## Size hotspots
 
@@ -27,13 +27,13 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 1856 |
+| `src/screens/main/ConversationScreen.tsx` | 1893 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/components/PostCard.tsx` | 1394 |
 | `src/screens/main/HomeScreen.tsx` | 1331 |
-| `src/screens/main/UserProfileScreen.tsx` | 1228 |
-| `src/screens/main/ProfileScreen.tsx` | 1189 |
+| `src/screens/main/UserProfileScreen.tsx` | 1262 |
+| `src/screens/main/ProfileScreen.tsx` | 1216 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/RepostScreen.tsx` | 950 |
@@ -103,16 +103,16 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-46 file(s), 24,179 lines.
+46 file(s), 24,277 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 1856 |
+| `src/screens/main/ConversationScreen.tsx` | 1893 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/screens/main/HomeScreen.tsx` | 1331 |
-| `src/screens/main/UserProfileScreen.tsx` | 1228 |
-| `src/screens/main/ProfileScreen.tsx` | 1189 |
+| `src/screens/main/UserProfileScreen.tsx` | 1262 |
+| `src/screens/main/ProfileScreen.tsx` | 1216 |
 | `src/screens/main/JamRoomScreen.tsx` | 1156 |
 | `src/screens/main/RepostScreen.tsx` | 950 |
 | `src/screens/main/SearchScreen.tsx` | 858 |
@@ -156,7 +156,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-105 file(s), 23,784 lines.
+108 file(s), 24,226 lines.
 
 | File | Lines |
 |---|---:|
@@ -167,23 +167,24 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentsSheet.tsx` | 776 |
 | `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
-| `src/components/SharePostSheet.tsx` | 511 |
 | `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/guide/cardsFeed.tsx` | 440 |
 | `src/components/QueueList.tsx` | 414 |
 | `src/components/DetailView.tsx` | 409 |
 | `src/components/AddUserSheet.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
+| `src/components/SharePostSheet.tsx` | 373 |
 | `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/PostLikersSheet.tsx` | 362 |
 | `src/components/guide/primitives.tsx` | 316 |
 | `src/components/TrackContextMenu.tsx` | 306 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/CommentItem.tsx` | 274 |
-| `src/components/Icon.tsx` | 270 |
+| `src/components/Icon.tsx` | 273 |
 | `src/components/Button.tsx` | 254 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/guide/cardsPlayer.tsx` | 247 |
+| `src/components/ShareProfileSheet.tsx` | 246 |
 | `src/components/ActivityBubble.tsx` | 242 |
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
@@ -201,6 +202,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
+| `src/components/FriendPickerStrip.tsx` | 184 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/GroupAvatarCluster.tsx` | 170 |
 | `src/components/NotificationPermissionModal.tsx` | 168 |
@@ -214,6 +216,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/StageLamp.tsx` | 151 |
 | `src/components/__tests__/AppleSignInButton.test.tsx` | 148 |
 | `src/components/guide/cardWelcome.tsx` | 148 |
+| `src/components/ProfileLinkCard.tsx` | 147 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/guide/cards.ts` | 132 |
 | `src/components/StoryCard.tsx` | 131 |
@@ -268,7 +271,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-64 file(s), 12,746 lines.
+64 file(s), 12,879 lines.
 
 | File | Lines |
 |---|---:|
@@ -276,13 +279,13 @@ case the call fails silently wherever its result is discarded.
 | `src/services/tracks.ts` | 1001 |
 | `src/services/pushNotifications.ts` | 694 |
 | `src/services/albums.ts` | 518 |
+| `src/services/share.ts` | 485 |
 | `src/services/profileService.ts` | 457 |
 | `src/services/activity.ts` | 426 |
 | `src/services/comments.ts` | 383 |
 | `src/services/playlists.ts` | 382 |
+| `src/services/messages.ts` | 372 |
 | `src/services/jamRooms.ts` | 369 |
-| `src/services/messages.ts` | 366 |
-| `src/services/share.ts` | 358 |
 | `src/services/uploads.ts` | 301 |
 | `src/services/jamRealtime.ts` | 279 |
 | `src/services/relationships.ts` | 274 |
@@ -375,7 +378,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-37 file(s), 3,566 lines.
+39 file(s), 3,848 lines.
 
 | File | Lines |
 |---|---:|
@@ -384,8 +387,10 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/searchRanking.test.ts` | 212 |
 | `src/utils/haptics.ts` | 201 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
+| `src/utils/__tests__/shareLinks.test.ts` | 186 |
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
+| `src/utils/shareLinks.ts` | 140 |
 | `src/utils/groupFaces.ts` | 139 |
 | `src/utils/__tests__/authorDisplay.test.ts` | 135 |
 | `src/utils/groupStoriesByAuthor.ts` | 125 |
@@ -399,15 +404,15 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/listeningStatus.test.ts` | 88 |
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/__tests__/recentSearches.test.ts` | 78 |
-| `src/utils/__tests__/shareLinks.test.ts` | 74 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
 | `src/utils/authorDisplay.ts` | 72 |
 | `src/utils/recentSearches.ts` | 72 |
 | `src/utils/errorMessages.ts` | 68 |
-| `src/utils/shareLinks.ts` | 61 |
 | `src/utils/__tests__/recentSearchOpens.test.ts` | 58 |
 | `src/utils/recentSearchOpens.ts` | 52 |
 | `src/utils/mutualsText.ts` | 48 |
+| `src/utils/__tests__/shareLinkGate.test.ts` | 47 |
+| `src/utils/shareLinkGate.ts` | 44 |
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
 | `src/utils/__tests__/retryOnce.test.ts` | 32 |
 | `src/utils/__tests__/avoidRepeatTop.test.ts` | 31 |

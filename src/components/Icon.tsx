@@ -58,6 +58,7 @@ import {
   Info,
   InstagramLogo,
   Lifebuoy,
+  LinkSimple,
   Lock,
   MagnifyingGlass,
   MinusCircle,
@@ -102,7 +103,7 @@ export type IconName =
   | 'play' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
-  | 'share' | 'externalLink' | 'tombstone' | 'block' | 'crown'
+  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
@@ -152,6 +153,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   // phosphor export, and `share` has exactly one call site.
   share: [PaperPlaneTilt, 'regular'],
   externalLink: [ArrowSquareOut, 'regular'],
+  // A profile link (livil-music.com/@you) shown in the Share profile sheet.
+  link: [LinkSimple, 'bold'],
   tombstone: [Prohibit, 'regular'],
   // Same glyph as `tombstone`, deliberately a separate name: one marks removed
   // content, the other is the block action. They only happen to look alike.

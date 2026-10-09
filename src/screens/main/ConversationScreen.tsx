@@ -65,7 +65,10 @@ import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
 import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
+import { resolveSharedProfile } from '../../services/share';
+import { ProfileLinkCard } from '../../components/ProfileLinkCard';
 import { haptics } from '../../utils/haptics';
+import { profileHandleIfExactLink } from '../../utils/shareLinks';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
@@ -188,6 +191,7 @@ function MessageBubble({
   onLongPress,
   onReactionToggle,
   onPlaySharedPost,
+  onOpenSharedProfile,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -200,6 +204,7 @@ function MessageBubble({
   onLongPress: (msg: ChatMessage) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
   onPlaySharedPost: (postId: string) => void;
+  onOpenSharedProfile: (username: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
@@ -214,6 +219,14 @@ function MessageBubble({
    * assertion.
    */
   const sharedPostId = hasTrackMeta ? (msg.metadata!.post_id as string | undefined) : undefined;
+  /**
+   * A shared profile is a TEXT message whose body is exactly a profile link — sent that
+   * way so builds without this card still show a readable link. Only an exact match
+   * becomes a card (see profileHandleIfExactLink): a link with anything else around or
+   * after it stays text, so nobody's words are hidden behind a card.
+   */
+  const sharedProfileHandle =
+    msg.kind === 'text' && msg.body ? profileHandleIfExactLink(msg.body) : null;
   const isJamInvite = msg.kind === 'jam_invite' && !!msg.metadata?.jam_room_id;
   const isSystem = msg.kind === 'system';
 
@@ -268,10 +281,20 @@ function MessageBubble({
         <View style={[styles.bubbleWrapper, hasReactions && styles.bubbleWrapperWithReactions]}>
           <Pressable
             onLongPress={() => onLongPress(msg)}
-            onPress={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
-            accessibilityRole={sharedPostId ? 'button' : undefined}
+            onPress={
+              sharedPostId
+                ? () => onPlaySharedPost(sharedPostId)
+                : sharedProfileHandle
+                  ? () => onOpenSharedProfile(sharedProfileHandle)
+                  : undefined
+            }
+            accessibilityRole={sharedPostId || sharedProfileHandle ? 'button' : undefined}
             accessibilityLabel={
-              sharedPostId ? `Play ${msg.metadata!.title as string}` : undefined
+              sharedPostId
+                ? `Play ${msg.metadata!.title as string}`
+                : sharedProfileHandle
+                  ? `View @${sharedProfileHandle}'s profile`
+                  : undefined
             }
             style={[
               styles.bubble,
@@ -304,11 +327,13 @@ function MessageBubble({
               </Pressable>
             )}
 
-            {msg.kind === 'text' && (
+            {msg.kind === 'text' && sharedProfileHandle ? (
+              <ProfileLinkCard username={sharedProfileHandle} isMe={isMe} />
+            ) : msg.kind === 'text' ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
                 {msg.body}
               </Text>
-            )}
+            ) : null}
 
             {hasStickerMeta && (
               <Image
@@ -1012,6 +1037,17 @@ export default function ConversationScreen() {
     openFullScreen();
   }, [nowPlaying, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget, showToast, openFullScreen]);
 
+  // A profile card opens that person's profile — resolved under the viewer's own RLS, so
+  // a block or a vanished account is a toast rather than an empty profile screen.
+  const handleOpenSharedProfile = useCallback(async (username: string) => {
+    const target = await resolveSharedProfile(username);
+    if (!target) {
+      showToast('That profile is no longer available', { kind: 'info' });
+      return;
+    }
+    navigation.navigate('UserProfile', { userId: target.userId });
+  }, [navigation, showToast]);
+
   const handleLongPress = useCallback((msg: ChatMessage) => {
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
     // its threshold, so activation feels consistent across gestures.
@@ -1135,6 +1171,7 @@ export default function ConversationScreen() {
               onLongPress={handleLongPress}
               onReactionToggle={handleReactionToggle}
               onPlaySharedPost={handlePlaySharedPost}
+              onOpenSharedProfile={handleOpenSharedProfile}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -1149,7 +1186,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —

@@ -35,5 +35,15 @@
 	     error — both halves are required, exactly as with Sign in with Apple above. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Universal Links: https://livil-music.com/p/<postId> and /@<username> open the app
+	     instead of Safari. Three halves, all required: this entitlement; the Associated
+	     Domains capability enabled on the com.livil App ID in the developer portal; and
+	     docs/.well-known/apple-app-site-association served from the domain (it names
+	     FG78VP2M42.com.livil and the two paths). The apex only: www.livil-music.com is a
+	     GitHub Pages 301, and iOS does not follow redirects when fetching that file. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:livil-music.com</string>
+	</array>
 </dict>
 </plist>

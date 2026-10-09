@@ -24,8 +24,11 @@ import { supabase } from '../../lib/supabase';
 import {
   FACEBOOK_APP_ID,
   buildPostShareMessage,
+  buildProfileShareMessage,
   postShareUrl,
+  profileShareUrl,
 } from '../constants/links';
+import { getOrCreateDm } from './conversations';
 import { sendMessage } from './messages';
 import { fetchPostById, type FeedPost } from './posts';
 
@@ -268,6 +271,47 @@ export async function shareCardImage(
 }
 
 /**
+ * Send something to a set of FRIENDS (user ids, as picked in a share sheet), resolving
+ * each one's DM first — a friend may not have a conversation with you yet.
+ *
+ * Settled individually at both steps: one failure (a friendship removed while the sheet
+ * was open) must not drop the rest. `unreachable` counts everyone who did not get it,
+ * whichever step failed, so the sheet can say "Sent to 3 · 1 couldn't be reached".
+ */
+export async function sendToFriends(
+  userIds: string[],
+  send: (conversationIds: string[]) => Promise<{ sent: number; failed: number }>,
+): Promise<{ sent: number; unreachable: number }> {
+  const resolved = await Promise.allSettled(userIds.map(userId => getOrCreateDm(userId)));
+  const conversationIds = resolved
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+    .map(r => r.value);
+  const { sent, failed } = await send(conversationIds);
+  return { sent, unreachable: failed + (userIds.length - conversationIds.length) };
+}
+
+type SenderInfo = { username: string | null; displayName: string | null; avatarUrl: string | null };
+
+/**
+ * The signed-in sender's name and avatar. Rides along with a sent message so the
+ * recipient's realtime insert renders with a name and avatar immediately instead of a
+ * blank row until the next fetch.
+ */
+async function loadSenderInfo(): Promise<SenderInfo | undefined> {
+  const { data: userData } = await supabase.auth.getUser();
+  const me = userData?.user?.id;
+  if (!me) { return undefined; }
+  const { data } = await supabase
+    .from('profiles')
+    .select('username, display_name, avatar_url')
+    .eq('id', me)
+    .maybeSingle();
+  if (!data) { return undefined; }
+  const row = data as { username: string; display_name: string | null; avatar_url: string | null };
+  return { username: row.username, displayName: row.display_name, avatarUrl: row.avatar_url };
+}
+
+/**
  * Send the post as a `track_share` DM to one or more conversations.
  *
  * `messages.kind = 'track_share'` has existed since launch — declared in
@@ -289,23 +333,7 @@ export async function shareToConversations(
   post: ShareablePost,
   conversationIds: string[],
 ): Promise<{ sent: number; failed: number }> {
-  const { data: userData } = await supabase.auth.getUser();
-  const me = userData?.user?.id;
-
-  // Sender info rides along so the recipient's realtime insert renders with a name and
-  // avatar immediately instead of a blank row until the next fetch.
-  let senderInfo: { username: string | null; displayName: string | null; avatarUrl: string | null } | undefined;
-  if (me) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('username, display_name, avatar_url')
-      .eq('id', me)
-      .maybeSingle();
-    if (data) {
-      const row = data as { username: string; display_name: string | null; avatar_url: string | null };
-      senderInfo = { username: row.username, displayName: row.display_name, avatarUrl: row.avatar_url };
-    }
-  }
+  const senderInfo = await loadSenderInfo();
 
   const results = await Promise.allSettled(
     conversationIds.map(conversationId =>
@@ -354,4 +382,103 @@ export async function resolveSharedPostTarget(postId: string): Promise<{
   } catch {
     return null;
   }
+}
+
+// ── Profiles ────────────────────────────────────────────────────────────────
+// Design: kb/architecture/post-sharing.md §10. A profile link is
+// `livil-music.com/@<username>`; the web page behind it only says whose it is and sends
+// people into the app, where the profile itself lives.
+
+/** The subset of a profile the share paths need. */
+export type ShareableProfile = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+/** The OS share sheet with the profile link — WhatsApp, Instagram, Copy, anything. */
+export async function shareProfileLink(
+  profile: ShareableProfile,
+  isOwn: boolean,
+): Promise<ShareOutcome> {
+  const result = await Share.share({
+    message: buildProfileShareMessage(profile.username, { isOwn, name: profile.displayName }),
+  });
+  return result.action === Share.sharedAction ? 'shared' : 'dismissed';
+}
+
+/**
+ * Send a profile to friends in Livil chat.
+ *
+ * Sent as an ordinary TEXT message whose body is exactly the profile link — not a new
+ * message kind. `messages.kind` is a CHECK-constrained enum and the app already in the
+ * stores renders only the kinds it knows: a new kind would arrive there as an empty
+ * bubble, and widening the constraint is a migration for no gain. A link in a text
+ * bubble reads correctly on EVERY installed build; builds that know about profile links
+ * render that same message as a profile card (`ProfileLinkCard`).
+ *
+ * The card reads the profile from the database by handle rather than trusting anything
+ * in the message, so nobody can send a card that shows one person's name over another
+ * person's link.
+ *
+ * Same settle-individually, not-idempotent contract as `shareToConversations`.
+ */
+export async function shareProfileToConversations(
+  profile: ShareableProfile,
+  conversationIds: string[],
+): Promise<{ sent: number; failed: number }> {
+  const senderInfo = await loadSenderInfo();
+  const body = profileShareUrl(profile.username);
+
+  const results = await Promise.allSettled(
+    conversationIds.map(conversationId =>
+      sendMessage(conversationId, { kind: 'text', body }, senderInfo),
+    ),
+  );
+
+  const sent = results.filter(r => r.status === 'fulfilled').length;
+  return { sent, failed: results.length - sent };
+}
+
+/**
+ * Who a profile link points at, as the signed-in viewer sees them.
+ *
+ * Read through the viewer's own RLS, so a block in either direction, an unconfirmed
+ * account, or a handle that does not exist all come back null — and callers say so
+ * rather than opening an empty profile. Handles are stored lowercase.
+ */
+export async function resolveSharedProfile(username: string): Promise<ShareableProfile | null> {
+  try {
+    return await fetchSharedProfile(username);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Same lookup, but a failed REQUEST throws instead of looking like "no such profile".
+ * For callers that remember the answer (`ProfileLinkCard`): caching an offline failure
+ * as "gone" would label a real profile "not available" until the app restarted.
+ */
+export async function fetchSharedProfile(username: string): Promise<ShareableProfile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .eq('username', username.toLowerCase())
+    .maybeSingle();
+  if (error) { throw error; }
+  if (!data) { return null; }
+  const row = data as {
+    id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  };
+  return {
+    userId: row.id,
+    username: row.username,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+  };
 }

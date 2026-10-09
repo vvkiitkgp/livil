@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  FlatList,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -14,11 +12,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
-import { getOrCreateDm } from '../services/conversations';
-import { listFriends, type FriendRef } from '../services/relationships';
 import {
   isCardShareAvailable,
   isInstagramStoryAvailable,
+  sendToFriends,
   shareCardImage,
   sharePostLink,
   shareStoryCard,
@@ -26,7 +23,7 @@ import {
   type ShareablePost,
 } from '../services/share';
 import { Button } from './Button';
-import FormInput from './FormInput';
+import { FriendPickerStrip } from './FriendPickerStrip';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
 import { StoryCard } from './StoryCard';
@@ -80,20 +77,12 @@ const IMAGE_DESTINATIONS: Destination[] = [
   { key: 'image', label: 'Send the card', hint: 'The artwork as an image, not a link', icon: 'externalLink' },
 ];
 
-function initials(name: string | null, username: string): string {
-  const n = name?.trim() || username;
-  return (n[0] ?? '♪').toUpperCase();
-}
-
 export default function SharePostSheet({ visible, post, onClose }: Props) {
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
   const cardRef = useRef<View>(null);
 
-  const [friends, setFriends] = useState<FriendRef[]>([]);
-  const [loadingFriends, setLoadingFriends] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState('');
   const [sending, setSending] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -113,18 +102,9 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
   useEffect(() => {
     if (!visible) {
       setSelected(new Set());
-      setQuery('');
       setArtworkReady(false);
       setBusyKey(null);
-      return;
     }
-    let cancelled = false;
-    setLoadingFriends(true);
-    listFriends()
-      .then(rows => { if (!cancelled) { setFriends(rows); } })
-      .catch(() => { if (!cancelled) { setFriends([]); } })
-      .finally(() => { if (!cancelled) { setLoadingFriends(false); } });
-    return () => { cancelled = true; };
   }, [visible]);
 
   const toggle = useCallback((userId: string) => {
@@ -135,43 +115,14 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
     });
   }, []);
 
-  /**
-   * Search is shown only past a handful of friends. Below that the strip is faster to
-   * scan than a text field is to type into, and an empty search box over four avatars
-   * is furniture.
-   *
-   * Matches display name AND username, because people search for whichever they know —
-   * "Bipasa" and "bipasa_b" have to find the same person. Selected friends are never
-   * filtered out: narrowing the query would otherwise silently drop someone you had
-   * already picked, and "Send to 3" would send to one.
-   */
-  const SEARCH_THRESHOLD = 6;
-  const q = query.trim().toLowerCase();
-  const visibleFriends = q
-    ? friends.filter(
-        f =>
-          selected.has(f.id) ||
-          (f.displayName ?? '').toLowerCase().includes(q) ||
-          f.username.toLowerCase().includes(q),
-      )
-    : friends;
-
   const handleSend = useCallback(async () => {
     if (!post || selected.size === 0 || sending) { return; }
     setSending(true);
     try {
-      // A friend may have no conversation yet, so the DM is resolved per recipient.
-      // Settled individually: one failure (a friendship removed while the sheet was
-      // open) must not drop the rest.
-      const resolved = await Promise.allSettled(
-        [...selected].map(userId => getOrCreateDm(userId)),
+      const { sent, unreachable } = await sendToFriends(
+        [...selected],
+        conversationIds => shareToConversations(post, conversationIds),
       );
-      const conversationIds = resolved
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-        .map(r => r.value);
-
-      const { sent, failed } = await shareToConversations(post, conversationIds);
-      const unreachable = failed + (selected.size - conversationIds.length);
 
       if (sent > 0) {
         showToast(
@@ -313,72 +264,12 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
               </Text>
 
               {/* ── Friends ── */}
-              {loadingFriends ? (
-                <View style={styles.friendsLoading}>
-                  <ActivityIndicator color={COLORS.purpleNeon} />
-                </View>
-              ) : friends.length === 0 ? (
-                <Text style={styles.emptyFriends}>
-                  Add friends to send tracks straight to them.
-                </Text>
-              ) : (
-                <>
-                  {friends.length > SEARCH_THRESHOLD ? (
-                    <FormInput
-                      value={query}
-                      onChangeText={setQuery}
-                      placeholder="Search friends"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="search"
-                      wrapperStyle={styles.search}
-                    />
-                  ) : null}
-                  <FlatList
-                    horizontal
-                    data={visibleFriends}
-                    keyExtractor={f => f.id}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.friendsRow}
-                    keyboardShouldPersistTaps="handled"
-                    renderItem={({ item }) => {
-                      const isOn = selected.has(item.id);
-                      return (
-                        <Pressable
-                          style={({ pressed }) => [styles.friend, pressed && styles.pressed]}
-                          onPress={() => toggle(item.id)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isOn }}
-                          accessibilityLabel={`Send to ${item.displayName || item.username}`}
-                        >
-                          <View style={styles.friendAvatarWrap}>
-                            {item.avatarUrl ? (
-                              <Image source={{ uri: item.avatarUrl }} style={styles.friendAvatar} />
-                            ) : (
-                              <View style={[styles.friendAvatar, styles.friendAvatarFallback]}>
-                                <Text style={styles.friendInitial}>
-                                  {initials(item.displayName, item.username)}
-                                </Text>
-                              </View>
-                            )}
-                            {isOn ? (
-                              <View style={styles.check}>
-                                <Icon name="check" size={12} color={COLORS.white} weight="bold" />
-                              </View>
-                            ) : null}
-                          </View>
-                          <Text style={styles.friendName} numberOfLines={1}>
-                            {item.displayName || item.username}
-                          </Text>
-                        </Pressable>
-                      );
-                    }}
-                    ListEmptyComponent={
-                      <Text style={styles.emptyFriends}>No friends match “{query}”.</Text>
-                    }
-                  />
-                </>
-              )}
+              <FriendPickerStrip
+                visible={visible}
+                selected={selected}
+                onToggle={toggle}
+                emptyText="Add friends to send tracks straight to them."
+              />
 
               {selected.size > 0 ? (
                 <View style={styles.sendWrap}>
@@ -463,36 +354,7 @@ const styles = StyleSheet.create({
   },
   heading: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
   subheading: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2, marginBottom: 14 },
-  friendsLoading: { height: 92, alignItems: 'center', justifyContent: 'center' },
-  emptyFriends: { color: COLORS.textSecondary, fontSize: 13, paddingVertical: 18 },
-  friendsRow: { paddingVertical: 4, gap: 14 },
-  friend: { width: 64, alignItems: 'center' },
   pressed: { opacity: 0.6 },
-  friendAvatarWrap: { width: 52, height: 52 },
-  friendAvatar: { width: 52, height: 52, borderRadius: 26 },
-  friendAvatarFallback: {
-    backgroundColor: COLORS.purpleDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendInitial: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
-  // A 16px dot: solid fill is correct here, per the small-indicator exemption to the
-  // no-solid-purple rule. An outlined check at this size reads as unchecked.
-  check: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: COLORS.purple,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.surface,
-  },
-  friendName: { color: COLORS.textSecondary, fontSize: 11, marginTop: 6, textAlign: 'center' },
-  search: { marginBottom: 12 },
   sendWrap: { marginTop: 14 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border, marginVertical: 16 },
   destRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11 },
