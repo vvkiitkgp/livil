@@ -64,7 +64,9 @@ No automation enforces any of this. It is a checklist because it currently has t
 1. `npx tsc --noEmit` — clean
 2. `npm run lint` — clean
 3. `npm run kb:validate` — clean
-4. Migrations applied to the hosted project, if the release depends on them
+4. Migrations applied to the hosted project, if the release depends on them — except any
+   listed in `supabase/held-migrations.txt`, which wait for their stated condition (e.g. app
+   adoption). Applying a held one and deleting its line there happen together.
 5. **A signed build produced from a keystore you have verified you can restore**
 6. Install the release bundle on a real device and exercise: playback with the screen locked,
    lock-screen controls, upload, and sign-in
