@@ -64,13 +64,14 @@ async function dispatchMessagePush(
       // shareProfileToConversations). Say whose it is rather than pushing a bare URL — the
       // push names the person where the inbox line (message_preview, 20261015010000) just
       // says "👤 Shared a profile", as a track push names the song.
-      // Likewise a message that is only a Spotify song link reads as the song (ADR-0027).
+      // Likewise a message that is only a Spotify song link reads as one (ADR-0027) — the
+      // same words the inbox line uses (message_preview, 20261017000000).
       const sharedHandle = profileHandleIfExactLink(payload.body);
       const spotifyLink = sharedHandle ? null : findSpotifyLinkInText(payload.body);
       bodyPreview = sharedHandle
         ? `👤 Shared @${sharedHandle}'s profile`
         : spotifyLink && payload.body.replace(spotifyLink.match, '').trim() === ''
-          ? '🎵 shared a Spotify song'
+          ? '🎵 Shared a Spotify song'
           : payload.body;
     } else if (payload.kind === 'track_share') {
       // Artist included: a title alone is often ambiguous ("Retrograde" by whom?), and
