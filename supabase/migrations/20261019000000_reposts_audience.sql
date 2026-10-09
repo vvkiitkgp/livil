@@ -156,3 +156,38 @@ $$;
 revoke all on function public.record_post_impressions(uuid[]) from public;
 revoke execute on function public.record_post_impressions(uuid[]) from anon;
 grant execute on function public.record_post_impressions(uuid[]) to authenticated;
+
+-- ── Self-verification ───────────────────────────────────────────────────────
+-- Same practice as 20260809000000: assert the PROPERTY where it is applied, so drift in
+-- the target database fails this migration loudly instead of silently neutering it. A
+-- leftover second permissive SELECT policy on posts would be OR'd in and could make the
+-- friends-only setting do nothing.
+do $$
+declare
+  v_qual text;
+  v_roles text;
+  n int;
+begin
+  select count(*) into n from pg_policies
+   where schemaname = 'public' and tablename = 'posts' and cmd = 'SELECT';
+  if n <> 1 then
+    raise exception
+      'expected exactly 1 SELECT policy on posts, found % — a second permissive policy would OR the audience rule away', n;
+  end if;
+
+  select qual, roles::text into v_qual, v_roles from pg_policies
+   where schemaname = 'public' and tablename = 'posts' and cmd = 'SELECT';
+  if v_roles <> '{authenticated}' then
+    raise exception 'posts SELECT policy must apply to authenticated only, found %', v_roles;
+  end if;
+  if v_qual not like '%is_blocked_between%'
+     or v_qual not like '%reposts_public%'
+     or v_qual not like '%are_friends%'
+     or v_qual not like '%repost%' then
+    raise exception 'posts SELECT policy lost a clause (blocks / audience / friendship): %', v_qual;
+  end if;
+
+  if has_function_privilege('anon', 'public.reposts_public(uuid)', 'execute') then
+    raise exception 'anon can execute public.reposts_public(uuid) — revoke did not take';
+  end if;
+end $$;
