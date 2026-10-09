@@ -22,7 +22,9 @@ import React_RCTAppDelegate
 // connectionOptions.urlContexts — application(_:open:options:) is never called. Both are
 // forwarded to RCTLinkingManager, which is what Linking.addEventListener('url') and
 // Linking.getInitialURL() read on the JavaScript side (email confirmation, password
-// reset, the Google sign-in callback `livil://auth`, shared posts `livil://post/<id>`).
+// reset, the Google sign-in callback `livil://auth`, shared posts `livil://post/<id>`,
+// profiles `livil://profile/<handle>`). Universal Links (the https forms) arrive as user
+// activities instead — see scene(_:continue:) below.
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
 
@@ -42,6 +44,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // scene's connection options.
     var launchOptions: [UIApplication.LaunchOptionsKey: Any] = [:]
     if let url = connectionOptions.urlContexts.first?.url {
+      launchOptions[.url] = url
+    } else if let url = connectionOptions.userActivities
+      .first(where: { $0.activityType == NSUserActivityTypeBrowsingWeb })?.webpageURL {
+      // A cold start from a Universal Link (https://livil-music.com/p/<id> or /@<handle>)
+      // arrives as a browsing-web user activity rather than a URL context. Passed the
+      // same way, so Linking.getInitialURL() sees it like any other launch URL.
       launchOptions[.url] = url
     }
 
@@ -69,5 +77,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     for context in URLContexts {
       RCTLinkingManager.application(UIApplication.shared, open: context.url, options: [:])
     }
+  }
+
+  // A Universal Link (https://livil-music.com/p/<id> or /@<handle>) opened while the app
+  // is running or backgrounded. Needs the Associated Domains entitlement in
+  // livil.entitlements AND docs/.well-known/apple-app-site-association served from the
+  // domain — without either, iOS opens Safari and this is never called. RCTLinkingManager
+  // turns the activity's webpageURL into the same Linking 'url' event a livil:// link is.
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    guard userActivity.activityType == NSUserActivityTypeBrowsingWeb else { return }
+    RCTLinkingManager.application(
+      UIApplication.shared,
+      continue: userActivity,
+      restorationHandler: { _ in }
+    )
   }
 }

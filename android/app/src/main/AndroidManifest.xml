@@ -61,8 +61,9 @@
             <data android:scheme="livil" />
         </intent-filter>
 
-        <!-- Android App Links: https://livil-music.com/p/<postId> opens the app
-             instead of the browser.
+        <!-- Android App Links: https://livil-music.com/p/<postId> (a shared post) and
+             https://livil-music.com/@<username> (a profile link) open the app instead
+             of the browser.
 
              autoVerify only takes effect once /.well-known/assetlinks.json on that
              domain carries the app's PLAY APP SIGNING certificate fingerprint — the
@@ -72,16 +73,32 @@
              "Open in app" button uses livil://post/<id>, which needs no verification.
              So this filter is safe to ship ahead of the file.
 
-             pathPrefix is /p/ ONLY. Claiming the whole host would capture the /studio
-             dashboard and the Play-Console-registered policy pages, so tapping a
+             pathPrefix is /p/ and /@ ONLY. Claiming the whole host would capture the
+             /studio dashboard and the Play-Console-registered policy pages, so tapping a
              privacy-policy link would open the app instead of the page Google is
-             checking. -->
+             checking. /@ is safe to claim: no page on the site starts with it.
+
+             The apex ONLY in the verified filter. www.livil-music.com is still served by
+             GitHub Pages as a 301 to the apex, so its assetlinks.json is a redirect and
+             can never verify — and on Android 11 and older ONE unverifiable host in any
+             autoVerify filter fails verification for EVERY host, which would have kept
+             the apex links opening the browser too. The www form (which the app never
+             generates) keeps a plain, unverified filter below. -->
         <intent-filter android:autoVerify="true">
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="https" android:host="livil-music.com" android:pathPrefix="/p/" />
-            <data android:scheme="https" android:host="www.livil-music.com" android:pathPrefix="/p/" />
+            <data android:scheme="https" android:host="livil-music.com" />
+            <data android:pathPrefix="/p/" />
+            <data android:pathPrefix="/@" />
+        </intent-filter>
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" android:host="www.livil-music.com" />
+            <data android:pathPrefix="/p/" />
+            <data android:pathPrefix="/@" />
         </intent-filter>
       </activity>
 

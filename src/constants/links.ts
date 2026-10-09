@@ -103,6 +103,51 @@ export function buildPostShareMessage(
   return `🎵 ${trackTitle} — ${artistName}\n\n${postShareUrl(postId)}`;
 }
 
+// ── Profile links ───────────────────────────────────────────────────────────
+// See kb/architecture/post-sharing.md §10 for the design these encode.
+
+/**
+ * A person's public link: `https://livil-music.com/@{username}` — the one people put in
+ * an Instagram bio.
+ *
+ * Keyed by the HANDLE, not the user id, because that is what makes it a link worth
+ * printing: readable, typeable, and the thing a search engine ranks for. That is only
+ * safe because a chosen username is permanent (20260628000000 blocks any change), so a
+ * link in a bio never starts pointing at someone else or at nothing.
+ *
+ * The web page behind it is a SIGNPOST — name, handle, photo, and "Follow on Livil".
+ * The profile itself is only ever shown in the app.
+ *
+ * Like the post link, THIS PATH IS A THREE-WAY CONTRACT: here, the `/@:username`
+ * rewrite in `web/vercel.json`, and the `/@` App Link / Universal Link paths
+ * (AndroidManifest.xml, docs/.well-known/apple-app-site-association).
+ */
+export function profileShareUrl(username: string): string {
+  return `${SHARE_LINK_ORIGIN}/@${encodeURIComponent(username)}`;
+}
+
+/** Direct route into the app for a profile — the web page's "Follow on Livil" button. */
+export function profileDeepLink(username: string): string {
+  return `livil://profile/${encodeURIComponent(username)}`;
+}
+
+/**
+ * Body of the share-sheet message for a profile. URL last, on its own line, for the same
+ * unfurling reason as `buildPostShareMessage`.
+ *
+ * First person only when it IS your own profile — the preview card that unfurls says
+ * "Follow me on Livil", which is right in your bio and wrong in your words about a friend.
+ */
+export function buildProfileShareMessage(
+  username: string,
+  opts: { isOwn: boolean; name?: string | null },
+): string {
+  const lead = opts.isOwn
+    ? 'Follow me on Livil 🎵'
+    : `Check out ${opts.name?.trim() || `@${username}`} on Livil 🎵`;
+  return `${lead}\n\n${profileShareUrl(username)}`;
+}
+
 /**
  * Facebook App ID, required by Instagram for the ADD_TO_STORY intent.
  *

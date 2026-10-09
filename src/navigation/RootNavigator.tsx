@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Animated, Text, Image, StatusBar, Dimensions, StyleSheet, AppState, Linking, type AppStateStatus } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
-import { postIdFromUrl } from '../utils/shareLinks';
+import { postIdFromUrl, profileUsernameFromUrl } from '../utils/shareLinks';
+import { createShareLinkGate } from '../utils/shareLinkGate';
+import { clearProfileLinkCache } from '../components/ProfileLinkCard';
 import { navigateWhenReady } from './navigationRef';
-import { resolveSharedPostTarget } from '../services/share';
+import { resolveSharedPostTarget, resolveSharedProfile } from '../services/share';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
@@ -190,6 +192,64 @@ async function withNetworkRetry<T extends { error: { message: string } | null }>
 // then popped the screen instead of seeking. Those screens keep only the edge swipe.
 const SCRUBBER_SCREEN = { animation: 'slide_from_right', fullScreenGestureEnabled: false } as const;
 
+/**
+ * A share link (a post or a profile) that arrived before the app was ready to show it.
+ *
+ * Profiles and posts are only ever shown to a signed-in viewer — the profile web page is
+ * a signpost into the app, nothing more — so a tap before the person is all the way in
+ * (signed in, terms, username, first-run guide) cannot be served on the spot. Rather than
+ * drop it, the gate holds it and hands it back when `appReady` turns true. See
+ * src/utils/shareLinkGate.ts for why readiness, not the session, is the one signal.
+ */
+const shareLinkGate = createShareLinkGate();
+
+/**
+ * Open a shared post or profile link. Returns false when the URL is neither, so the
+ * caller can go on to try it as an auth link.
+ *
+ *   livil://post/<id>, https://livil-music.com/p/<id>
+ *       → the author's profile, focused on the post (the PostDetail route is where
+ *         ActivityCenter notifications land; shared links have not moved to it).
+ *   livil://profile/<handle>, https://livil-music.com/@<handle>
+ *       → that person's profile.
+ *
+ * Both resolve under the viewer's own RLS first, so a deleted post, a block, or an
+ * account that is gone is said out loud rather than opening an empty screen.
+ */
+async function openShareLink(
+  url: string,
+  onUnavailable: (what: 'post' | 'profile') => void,
+): Promise<boolean> {
+  const postId = postIdFromUrl(url);
+  const username = postId ? null : profileUsernameFromUrl(url);
+  if (!postId && !username) { return false; }
+
+  // Decided before any await, so a link and a readiness change cannot interleave.
+  if (shareLinkGate.offer(url) === 'held') {
+    console.log('[deeplink] share link held until the app is ready');
+    return true;
+  }
+
+  if (postId) {
+    const target = await resolveSharedPostTarget(postId);
+    if (target) {
+      navigateWhenReady('UserProfile', target);
+    } else {
+      console.log('[deeplink] shared post not resolvable');
+      onUnavailable('post');
+    }
+  } else if (username) {
+    const profile = await resolveSharedProfile(username);
+    if (profile) {
+      navigateWhenReady('UserProfile', { userId: profile.userId });
+    } else {
+      console.log('[deeplink] shared profile not resolvable');
+      onUnavailable('profile');
+    }
+  }
+  return true;
+}
+
 /** Settings → "Replay the guide": the same screen as a pushed route, closing on done. */
 function FirstRunGuideReplay({ navigation }: { navigation: { goBack: () => void } }) {
   return <FirstRunGuideScreen mode="replay" onDone={() => navigation.goBack()} />;
@@ -214,6 +274,17 @@ export default function RootNavigator() {
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
   const { showToast } = useToast();
+  const notifyShareUnavailable = useCallback((what: 'post' | 'profile') => {
+    showToast(
+      what === 'post' ? 'That track is no longer available' : 'That profile is no longer available',
+      { kind: 'info' },
+    );
+  }, [showToast]);
+  // Read through a ref by the deep-link effect, which must subscribe exactly ONCE: it
+  // also processes Linking.getInitialURL(), and re-running it would replay a one-shot
+  // auth code exchange.
+  const notifyShareUnavailableRef = useRef(notifyShareUnavailable);
+  notifyShareUnavailableRef.current = notifyShareUnavailable;
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pushUserIdRef = useRef<string | null>(null);
   const [pushPromptVisible, setPushPromptVisible] = useState(false);
@@ -340,25 +411,11 @@ export default function RootNavigator() {
       // Log only the shape.
       console.log('[deeplink] received (scheme only):', url.split('?')[0].split('#')[0]);
 
-      // A shared post — livil://post/<id>, or https://livil-music.com/p/<id> once
-      // App Links are verified. Checked BEFORE the auth guard below, which returns
-      // early on anything that is not an auth link and would otherwise swallow this.
-      //
-      // Shown by opening its author's profile focused on it (the PostDetail route is
-      // where ActivityCenter notifications land; shared links have not moved to it).
-      // That needs the author id, so the post is resolved first — and
-      // if it cannot be (deleted, or the viewer is signed out and RLS returns
-      // nothing) we say so rather than navigating somewhere blank.
-      const sharedPostId = postIdFromUrl(url);
-      if (sharedPostId) {
-        const target = await resolveSharedPostTarget(sharedPostId);
-        if (target) {
-          navigateWhenReady('UserProfile', target);
-        } else {
-          console.log('[deeplink] shared post not resolvable');
-        }
-        return;
-      }
+      // A shared post or profile (livil://post/<id>, livil://profile/<handle>, or their
+      // https forms once App Links / Universal Links verify). Checked BEFORE the auth
+      // guard below, which returns early on anything that is not an auth link and would
+      // otherwise swallow it. Held until sign-in when nobody is signed in.
+      if (await openShareLink(url, what => notifyShareUnavailableRef.current(what))) { return; }
 
       if (!url.startsWith('livil://auth')) { return; }
 
@@ -474,6 +531,8 @@ export default function RootNavigator() {
         // aren't briefly visible if a different user signs in on the same device.
         if (event === 'SIGNED_OUT') {
           void messageCache.clearAll();
+          // Profile-link cards were resolved under the previous account's RLS (its blocks).
+          clearProfileLinkCache();
           // Same reason as the line above: the feed-impression buffer is module-global
           // and the server attributes a flush to whoever is signed in when it lands, so
           // ids collected by the previous account would be filed against the next one.
@@ -518,6 +577,18 @@ export default function RootNavigator() {
   // Splash is showing while we either load or resolve the onboarding gate.
   const onSplash =
     loading || (!!session && (needsUsername === null || needsTerms === null || needsGuide === null));
+
+  // The ONE signal the share-link gate opens on: the app stack (where profiles live) is
+  // mounted — past sign-in, terms, username and the first-run guide. A link that arrived
+  // earlier lands on the profile now rather than underneath an onboarding screen, and a
+  // cold-start link no longer depends on the container's one-time onReady flush.
+  const appReady =
+    !!session && !onSplash && !passwordRecoveryPending &&
+    needsTerms === false && needsUsername === false && needsGuide === false;
+  useEffect(() => {
+    const url = shareLinkGate.setReady(appReady);
+    if (url) { void openShareLink(url, notifyShareUnavailable); }
+  }, [appReady, notifyShareUnavailable]);
 
   // Once that resolves, crossfade the splash overlay out (fade + gentle scale)
   // — dissolving into whatever's underneath: the app, or the username gate.
