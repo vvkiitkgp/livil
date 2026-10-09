@@ -4,6 +4,7 @@ import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/fonts';
 import { Icon, type IconName } from '../Icon';
+import { SpotifyLogo } from '../SpotifyLogo';
 import { kf, useLoop } from './timeline';
 import {
   Avatar, Cover, EqBars, Finger, Kicker, Orb, Phone, PHONE_INNER_W, PHONE_W, TapFinger, TrackTitle,
@@ -167,6 +168,12 @@ export function RepostIllustration() {
     left: TRACK_W * (kf(t.value, [[0, 14], [46, 14], [62, 58], [100, 58]]) / 100),
   }));
   const label = useAnimatedStyle(() => ({ opacity: kf(t.value, [[0, 0], [50, 0], [58, 1], [100, 1]]) }));
+  // The last beat: Spotify songs can be reposted too (ADR-0027). Appears once the Story
+  // option has lit, and leaves with the editor.
+  const spotify = useAnimatedStyle(() => ({
+    opacity: kf(t.value, [[0, 0], [86, 0], [90, 1], [96, 1], [100, 0]]),
+    transform: [{ translateY: kf(t.value, [[0, 4], [86, 4], [90, 0], [100, 0]]) }],
+  }));
 
   return (
     <Phone>
@@ -195,6 +202,10 @@ export function RepostIllustration() {
             <Text style={styles.modeSub}>Disappears after 24h</Text>
           </View>
         </View>
+        <Reanimated.View style={[styles.spotifyPill, spotify]}>
+          <Text style={styles.spotifyPillText}>OR REPOST FROM</Text>
+          <SpotifyLogo size="xs" withName />
+        </Reanimated.View>
       </Reanimated.View>
       <Finger style={finger} />
       <Orb />
@@ -382,6 +393,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purpleNeon,
   },
   modeName: { fontFamily: FONTS.monoBold, fontSize: 10, letterSpacing: 1, color: COLORS.white },
+  spotifyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  spotifyPillText: { fontFamily: FONTS.mono, fontSize: 8, letterSpacing: 1, color: COLORS.textSecondary },
   modeSub: { fontFamily: FONTS.mono, fontSize: 8, color: COLORS.textSecondary },
   dim: { backgroundColor: 'rgba(10, 10, 15, 0.55)' },
   sheet: {

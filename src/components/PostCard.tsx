@@ -30,6 +30,7 @@ import { canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
 import UsernameBadges from './UsernameBadges';
+import SpotifyPostCard from './SpotifyPostCard';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -1390,4 +1391,14 @@ const styles = StyleSheet.create({
   },
 });
 
-export default React.memo(PostCard);
+/**
+ * Every surface renders posts through this one component, so this is the single place a
+ * Spotify repost (ADR-0027) is routed to its own card. A separate component rather than a
+ * branch inside PostCard: PostCard's hooks all assume Livil media, and an early return
+ * above them would break the rules of hooks.
+ */
+function PostCardSwitch(props: PostCardProps) {
+  return props.post.spotifyTrackId ? <SpotifyPostCard {...props} /> : <PostCard {...props} />;
+}
+
+export default React.memo(PostCardSwitch);

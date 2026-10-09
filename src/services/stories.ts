@@ -113,6 +113,11 @@ export async function createStory(
   if (original.kind !== 'upload') {
     throw new Error('You can only story-repost an upload, not another repost.');
   }
+  // An upload always has a Livil track (posts_media_source_check: only a Spotify REPOST is
+  // track-less), so this only narrows the type.
+  if (!original.track_id) {
+    throw new Error('This post has no Livil track to share.');
+  }
 
   const { data: created, error: insertError } = await supabase
     .from('stories')

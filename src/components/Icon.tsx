@@ -88,6 +88,7 @@ import {
   SkipForward,
   Star,
   Trash,
+  UploadSimple,
   User,
   UsersThree,
   Warning,
@@ -106,7 +107,7 @@ export type IconName =
   | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp' | 'arrowDown'
-  | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle'
+  | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle' | 'upload'
   | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
   | 'check' | 'checkCircle' | 'error' | 'info' | 'eye' | 'eyeOff' | 'email' | 'pending'
@@ -248,6 +249,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   document: [FileText, 'regular'],
   broadcast: [Broadcast, 'regular'],
   signOut: [SignOut, 'regular'],
+  // "Upload a track" on the Add-to-Livil chooser (ADR-0027).
+  upload: [UploadSimple, 'bold'],
 };
 
 export interface IconProps {

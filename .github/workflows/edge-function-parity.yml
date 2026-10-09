@@ -89,6 +89,14 @@ jobs:
           deno test --no-config --allow-read \
             supabase/functions/scan-upload/index.test.ts
 
+      # Spotify reposts (ADR-0027). No permissions: the suite fakes every network call. It
+      # also imports src/utils/spotifyLinks.ts to assert the app and the function parse a
+      # pasted link identically.
+      - name: spotify tests
+        run: |
+          deno test --no-config \
+            supabase/functions/spotify/index.test.ts
+
       # The LIVE check. Gated OFF for pull_request so the account-level PAT is never exposed to
       # PR-branch-controlled code — see the SECURITY note on the triggers above.
       # The token is a Supabase personal access token (account-level), NOT a project API key.

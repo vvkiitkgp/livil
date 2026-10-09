@@ -19,6 +19,9 @@ import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
 import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
 import RepostScreen from '../screens/main/RepostScreen';
+import AddToLivilScreen from '../screens/main/AddToLivilScreen';
+import SpotifyRepostScreen from '../screens/main/SpotifyRepostScreen';
+import { OnboardingNoticeHost } from '../components/OnboardingNotice';
 import StoryViewerScreen from '../screens/main/StoryViewerScreen';
 import CollaboratorPickerScreen from '../screens/main/CollaboratorPickerScreen';
 import UserProfileScreen from '../screens/main/UserProfileScreen';
@@ -691,6 +694,24 @@ export default function RootNavigator() {
               }}
             />
             <Stack.Screen
+              name="AddToLivil"
+              component={AddToLivilScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="SpotifyRepost"
+              component={SpotifyRepostScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
               name="StoryViewer"
               component={StoryViewerScreen}
               options={{
@@ -896,6 +917,9 @@ export default function RootNavigator() {
           <FloatingPlayer />
         </>
       )}
+
+      {/* "We're still onboarding" notices — before Play on Spotify and before a Jam (ADR-0027). */}
+      <OnboardingNoticeHost />
 
       <NotificationPermissionModal
         visible={pushPromptVisible}

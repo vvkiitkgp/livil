@@ -1260,7 +1260,8 @@ export type Database = {
           likes_count: number
           original_post_id: string | null
           reposts_count: number
-          track_id: string
+          spotify_track_id: string | null
+          track_id: string | null
           views_count: number
         }
         Insert: {
@@ -1277,7 +1278,8 @@ export type Database = {
           likes_count?: number
           original_post_id?: string | null
           reposts_count?: number
-          track_id: string
+          spotify_track_id?: string | null
+          track_id?: string | null
           views_count?: number
         }
         Update: {
@@ -1294,7 +1296,8 @@ export type Database = {
           likes_count?: number
           original_post_id?: string | null
           reposts_count?: number
-          track_id?: string
+          spotify_track_id?: string | null
+          track_id?: string | null
           views_count?: number
         }
         Relationships: [
@@ -1465,6 +1468,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      spotify_opens: {
+        Row: {
+          created_at: string
+          id: string
+          source: string
+          spotify_track_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          source: string
+          spotify_track_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          source?: string
+          spotify_track_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       stories: {
         Row: {
@@ -2480,6 +2507,40 @@ export type Database = {
           sender_username: string
         }[]
       }
+      ops_play_daily: {
+        Args: { p_days?: number }
+        Returns: { day: string; livil_plays: number; spotify_opens: number }[]
+      }
+      ops_play_summary: {
+        Args: { p_days?: number }
+        Returns: {
+          livil_people: number
+          livil_plays: number
+          spotify_opens: number
+          spotify_people: number
+        }[]
+      }
+      ops_recent_plays: {
+        Args: { p_limit?: number }
+        Returns: {
+          at: string
+          source: string
+          spotify_track_id: string | null
+          subtitle: string | null
+          title: string | null
+          via: string | null
+        }[]
+      }
+      ops_top_played: {
+        Args: { p_days?: number; p_limit?: number; p_source?: string }
+        Returns: {
+          entity_id: string
+          people: number
+          plays: number
+          subtitle: string | null
+          title: string | null
+        }[]
+      }
       ops_top_search_results: {
         Args: { p_days?: number; p_kind?: string; p_limit?: number }
         Returns: {
@@ -2598,6 +2659,7 @@ export type Database = {
         Args: { a: string; b: string }
         Returns: boolean
       }
+      spotify_reposts_enabled: { Args: never; Returns: boolean }
       submit_account_exit_feedback: {
         Args: { p_note?: string; p_platform?: string; p_reason?: string }
         Returns: undefined

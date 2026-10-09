@@ -71,7 +71,7 @@ export const GUIDE_CARDS: GuideCard[] = [
   {
     key: 'repost',
     headline: 'Repost your moment',
-    line: 'Pick the part you love. Post it to your profile, or as a story that lasts a day.',
+    line: 'Pick the part you love. Post it to your profile, or as a story that lasts a day. Found it on Spotify? Repost that too.',
     Illustration: RepostIllustration,
   },
   {

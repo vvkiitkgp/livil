@@ -414,7 +414,7 @@ export default function RepostScreen() {
     return null;
   }, [track]);
 
-  const descLabel = mode === 'story' ? 'Comment' : 'Description';
+  const descLabel = mode === 'story' ? 'Comment' : 'Caption';
   const descPlaceholder =
     mode === 'story' ? 'Add a comment to your story' : 'Share what you feel about this track';
   const submitLabel = mode === 'story' ? 'Add to story' : 'Repost';
@@ -609,8 +609,13 @@ export default function RepostScreen() {
                 )}
               </View>
 
-              {/* ── Description / Comment ── */}
-              <Text style={styles.sectionLabel}>{descLabel}</Text>
+              {/* ── Caption / Comment ── */}
+              <Text style={styles.sectionLabel}>
+                {descLabel}
+                {mode === 'post' ? (
+                  <Text style={styles.sectionHint}> (How do you feel about this track)</Text>
+                ) : null}
+              </Text>
               <FormInput
                 value={text}
                 onChangeText={setText}
@@ -727,6 +732,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  // The question beside the "CAPTION" heading: normal case and weight, so a long prompt
+  // does not shout in the section label's small capitals.
+  sectionHint: { textTransform: 'none', letterSpacing: 0, fontWeight: '400' },
   sectionLabel: {
     color: COLORS.textSecondary,
     fontSize: 12,

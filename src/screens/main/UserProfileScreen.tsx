@@ -29,6 +29,7 @@ import { usePlayback } from '../../contexts/PlaybackContext';
 import {
   listPostsForUser,
   getProfileStats,
+  isPlayableInLivil,
   type FeedPost,
   type ProfileStats,
 } from '../../services/posts';
@@ -214,10 +215,12 @@ export default function UserProfileScreen() {
   useEffect(() => {
     if (!playback.activePostId) { return; }
     if (playback.playSourceRef.current !== 'user') { return; }
-    const startIdx = posts.findIndex(p => p.id === playback.activePostId);
+    // Spotify reposts are opened in Spotify, never played by Livil (ADR-0027).
+    const playable = posts.filter(isPlayableInLivil);
+    const startIdx = playable.findIndex(p => p.id === playback.activePostId);
     if (startIdx < 0) { return; }
     playback.setQueue(
-      posts.map(p => {
+      playable.map(p => {
         const displayAuthor = (p.kind === 'repost' && p.originalAuthor) ? p.originalAuthor : p.author;
         return {
           postId: p.id,

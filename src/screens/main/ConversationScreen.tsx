@@ -7,7 +7,6 @@ import React, {
 } from 'react';
 import {
   AppState,
-  Dimensions,
   View,
   Text,
   FlatList,
@@ -64,9 +63,15 @@ import { usePlayback } from '../../contexts/PlaybackContext';
 import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
-import { fetchPostById, feedPostToNowPlaying } from '../../services/posts';
-import { resolveSharedProfile } from '../../services/share';
+import { fetchPostById, feedPostToNowPlaying, isPlayableInLivil } from '../../services/posts';
+import { resolveSharedProfile, toShareablePost } from '../../services/share';
 import { ProfileLinkCard } from '../../components/ProfileLinkCard';
+import SpotifyChatCard from '../../components/SpotifyChatCard';
+import ChatSongCard from '../../components/ChatSongCard';
+import { requestNotice } from '../../components/OnboardingNotice';
+import ChatSongPicker, { MusicToggleIcon, type PickedSong } from '../../components/ChatSongPicker';
+import { rememberSpotifyTrack, useSpotifyAvailability } from '../../services/spotify';
+import { findSpotifyLinkInText, spotifyTrackUrl } from '../../utils/spotifyLinks';
 import { haptics } from '../../utils/haptics';
 import { profileHandleIfExactLink } from '../../utils/shareLinks';
 import { supabase } from '../../../lib/supabase';
@@ -191,6 +196,7 @@ function MessageBubble({
   onLongPress,
   onReactionToggle,
   onPlaySharedPost,
+  onRepostSharedPost,
   onOpenSharedProfile,
 }: {
   msg: ChatMessage;
@@ -204,6 +210,7 @@ function MessageBubble({
   onLongPress: (msg: ChatMessage) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
   onPlaySharedPost: (postId: string) => void;
+  onRepostSharedPost: (postId: string) => void;
   onOpenSharedProfile: (username: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
@@ -229,6 +236,14 @@ function MessageBubble({
     msg.kind === 'text' && msg.body ? profileHandleIfExactLink(msg.body) : null;
   const isJamInvite = msg.kind === 'jam_invite' && !!msg.metadata?.jam_room_id;
   const isSystem = msg.kind === 'system';
+  // A Spotify song link inside a text message is drawn as a card. A DIRECT link is then
+  // dropped from the text (the card carries it); a short link stays in the text until the
+  // card has resolved it, because it might not be a song at all.
+  const spotifyLink = msg.kind === 'text' && msg.body ? findSpotifyLinkInText(msg.body) : null;
+  const isSongBubble = hasTrackMeta || !!spotifyLink;
+  const visibleText = spotifyLink?.id && msg.body
+    ? msg.body.replace(spotifyLink.match, '').trim()
+    : msg.body;
 
   if (isSystem) {
     return (
@@ -298,15 +313,16 @@ function MessageBubble({
             }
             style={[
               styles.bubble,
-              isMe ? styles.bubbleMe : styles.bubbleThem,
+              isSongBubble ? styles.bubbleSong : isMe ? styles.bubbleMe : styles.bubbleThem,
               hasStickerMeta ? styles.bubbleSticker : null,
               sharedProfileHandle ? styles.bubbleProfileCard : null,
               isHighlighted && styles.bubbleHighlighted,
             ]}
           >
-            {/* A profile card wears Livil's outline instead of a bubble fill — on either
-                side of the chat — so it reads as a card, not as a purple slab. */}
-            {sharedProfileHandle ? <GradientBorder borderRadius={PROFILE_CARD_RADIUS} /> : null}
+            {/* Song cards (Livil or Spotify, ADR-0027) and profile cards wear Livil's glow
+                outline instead of a bubble fill — on either side of the chat — so they read
+                as cards, not as purple slabs around artwork. */}
+            {isSongBubble || sharedProfileHandle ? <GradientBorder borderRadius={PROFILE_CARD_RADIUS} /> : null}
             {msg.replyToId && (
               <Pressable
                 onPress={() => msg.replyToId && onReplyQuotePress(msg.replyToId)}
@@ -336,10 +352,16 @@ function MessageBubble({
                 username={sharedProfileHandle}
                 onOpen={() => onOpenSharedProfile(sharedProfileHandle)}
               />
-            ) : msg.kind === 'text' ? (
+            ) : msg.kind === 'text' && visibleText ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
-                {msg.body}
+                {visibleText}
               </Text>
+            ) : null}
+
+            {/* A Spotify song link in the text becomes a card (ADR-0027). Still a plain
+                text message underneath — older apps keep showing the raw link. */}
+            {spotifyLink ? (
+              <SpotifyChatCard spotifyTrackId={spotifyLink.id} shortUrl={spotifyLink.shortUrl} />
             ) : null}
 
             {hasStickerMeta && (
@@ -350,47 +372,18 @@ function MessageBubble({
               />
             )}
 
+            {/* A shared Livil song. Same card as a Spotify song (ChatSongCard) so the two read
+                as one kind of thing; "Play on Livil" plays it here, Repost opens the usual
+                Repost screen. An older card without a post_id still renders, unplayable. */}
             {hasTrackMeta && (
-              <View style={styles.trackCard}>
-                {msg.metadata!.cover_art_url ? (
-                  <Image
-                    source={{ uri: msg.metadata!.cover_art_url as string }}
-                    style={styles.trackCardArt}
-                  />
-                ) : (
-                  <View style={[styles.trackCardArt, styles.trackCardArtPlaceholder]}>
-                    <Icon name="musicNote" size={36} color={COLORS.textSecondary} />
-                  </View>
-                )}
-                <Text style={styles.trackCardTitle} numberOfLines={2}>
-                  {msg.metadata!.title as string}
-                </Text>
-                <Text
-                  style={[styles.trackCardArtist, isMe && styles.trackCardArtistMe]}
-                  numberOfLines={1}
-                >
-                  {msg.metadata!.artist_name as string}
-                </Text>
-                {/* The affordance. Without it a shared track reads as an image somebody
-                    sent, and the whole point of sharing it is that the recipient can
-                    hear it.
-
-                    Two colourways because the bubble has two backgrounds. On MY bubble
-                    the ground is COLORS.purple, where purpleNeon text is very nearly
-                    invisible — the accent that reads as "tappable" on a dark card
-                    disappears against a purple one. White carries it there instead. */}
-                <View style={styles.trackCardCta}>
-                  <Icon
-                    name="play"
-                    size={12}
-                    color={isMe ? COLORS.white : COLORS.purpleNeon}
-                    weight="fill"
-                  />
-                  <Text style={[styles.trackCardCtaText, isMe && styles.trackCardCtaTextMe]}>
-                    Tap to listen
-                  </Text>
-                </View>
-              </View>
+              <ChatSongCard
+                source="livil"
+                title={(msg.metadata!.title as string | undefined) ?? null}
+                artist={(msg.metadata!.artist_name as string | undefined) ?? null}
+                artUrl={(msg.metadata!.cover_art_url as string | null | undefined) ?? null}
+                onPlay={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
+                onRepost={sharedPostId ? () => onRepostSharedPost(sharedPostId) : undefined}
+              />
             )}
           </Pressable>
 
@@ -572,6 +565,12 @@ export default function ConversationScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [text, setText] = useState('');
+  // 🎵 song search in the composer (ADR-0027). Its own query, so a half-typed message is
+  // still there when you come back from picking a song.
+  const [songMode, setSongMode] = useState(false);
+  const [songQuery, setSongQuery] = useState('');
+  const [composerHeight, setComposerHeight] = useState(64);
+  const { search: spotifySearchOn } = useSpotifyAvailability();
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [myId, setMyId] = useState<string>('');
@@ -1008,6 +1007,79 @@ export default function ConversationScreen() {
     }
   }, [text, sending, replyingTo, conversationId, myId, myProfile, showToast, scrollToLatest]);
 
+  const closeSongSearch = useCallback(() => {
+    setSongMode(false);
+    setSongQuery('');
+  }, []);
+
+  /**
+   * Tap a song in the composer's song search → it is sent at once (no preview step).
+   *
+   *   Livil  → the existing `track_share` message: every app version draws it as a song
+   *            card and plays it in Livil. A repost is sent as its ORIGINAL upload, so the
+   *            card names the artist and its Repost button reposts the original.
+   *   Spotify → a plain text message holding the track's URL: this app draws it as the
+   *            Spotify card, an older app shows the link. Nothing new on the server.
+   */
+  const handlePickSong = useCallback(async (song: PickedSong) => {
+    closeSongSearch();
+    KeyboardController.dismiss();
+
+    let payload: SendMessagePayload;
+    if (song.kind === 'spotify') {
+      rememberSpotifyTrack(song.track);
+      payload = { kind: 'text', body: spotifyTrackUrl(song.track.id) };
+    } else {
+      let post = song.kind === 'livil' ? song.post : await fetchPostById(song.postId);
+      if (post && post.kind === 'repost' && post.originalPostId) {
+        post = (await fetchPostById(post.originalPostId)) ?? post;
+      }
+      if (!post || !isPlayableInLivil(post)) {
+        showToast('That song is no longer available', { kind: 'info' });
+        return;
+      }
+      const shareable = toShareablePost(post);
+      payload = {
+        kind: 'track_share',
+        metadata: {
+          track_id: shareable.trackId,
+          post_id: shareable.id,
+          title: shareable.title,
+          artist_name: shareable.artistName,
+          cover_art_url: shareable.coverArtUrl,
+        },
+      };
+    }
+
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      conversationId,
+      senderId: myId,
+      kind: payload.kind,
+      body: payload.kind === 'text' ? payload.body : null,
+      metadata: payload.kind === 'track_share' ? (payload.metadata as Record<string, unknown>) : null,
+      replyToId: null,
+      createdAt: new Date().toISOString(),
+      deletedAt: null,
+      senderUsername: null,
+      senderDisplayName: null,
+      senderAvatarUrl: null,
+      reactions: [],
+    };
+    setMessages(prev => [optimistic, ...prev]);
+    setTimeout(scrollToLatest, 50);
+
+    try {
+      const real = await sendMessage(conversationId, payload, myProfile);
+      setMessages(prev => prev.map(m => (m.id === optimistic.id ? real : m)));
+      void messageCache.prependMessages(conversationId, [real]);
+    } catch (err) {
+      console.warn('[chat] song send failed', err);
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      showToast("Couldn't send that song. Please try again.", { kind: 'error' });
+    }
+  }, [closeSongSearch, conversationId, myId, myProfile, showToast, scrollToLatest]);
+
   /**
    * PLAY the shared track. The card says "Tap to listen", so it plays — it does not
    * navigate somewhere the song might be.
@@ -1037,12 +1109,23 @@ export default function ConversationScreen() {
       showToast('That track is no longer available', { kind: 'info' });
       return;
     }
+    // A track_share is sent by the app for Livil uploads only, but the message row is
+    // client-written: never hand the engine a post it cannot play (e.g. a Spotify repost).
+    if (!isPlayableInLivil(post)) {
+      showToast("That track can't be played here", { kind: 'info' });
+      return;
+    }
     const clipStart = post.clipStartSec ?? 0;
     setNowPlaying(feedPostToNowPlaying(post));
     markSeekTarget(clipStart);
     requestPlay(post.id);
     openFullScreen();
   }, [nowPlaying, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget, showToast, openFullScreen]);
+
+  /** Repost a song someone shared here — the usual Repost screen, as from a feed card. */
+  const handleRepostSharedPost = useCallback((postId: string) => {
+    navigation.navigate('Repost', { originalPostId: postId });
+  }, [navigation]);
 
   // A profile card opens that person's profile — resolved under the viewer's own RLS, so
   // a block or a vanished account is a toast rather than an empty profile screen.
@@ -1178,6 +1261,7 @@ export default function ConversationScreen() {
               onLongPress={handleLongPress}
               onReactionToggle={handleReactionToggle}
               onPlaySharedPost={handlePlaySharedPost}
+              onRepostSharedPost={handleRepostSharedPost}
               onOpenSharedProfile={handleOpenSharedProfile}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
@@ -1193,7 +1277,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1270,7 +1354,8 @@ export default function ConversationScreen() {
           <TouchableOpacity
             style={styles.jamBtn}
             activeOpacity={0.7}
-            onPress={() => void handleStartJam()}
+            // "Jams play Livil songs only" first (unless dismissed on this device).
+            onPress={() => { void requestNotice('jam', () => { void handleStartJam(); }); }}
             disabled={startingJam}
           >
             <GradientBorder borderRadius={20} />
@@ -1400,7 +1485,24 @@ export default function ConversationScreen() {
               Android: keyboard-controller keeps the root above the nav bar and
               reports a nav-bar-free height, so insets.bottom is ~0 and this is a
               no-op there — correct either way. */}
-          <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
+          {/* Headroom above the composer (stickyComposer) so the song popover sits INSIDE
+              this view's bounds — a child drawn outside its parent cannot be tapped on iOS
+              or Android. box-none lets touches in the empty headroom reach the chat behind;
+              the matching negative margin keeps the chat list's size unchanged. */}
+          <KeyboardStickyView
+            offset={{ closed: 0, opened: insets.bottom }}
+            style={styles.stickyComposer}
+            pointerEvents="box-none"
+          >
+            <ChatSongPicker
+              open={songMode}
+              query={songQuery}
+              onPick={song => { void handlePickSong(song); }}
+              bottom={composerHeight}
+              // 🎵 centre: sendBar padding (12) + half the 38dp button, minus the popover's
+              // 8dp inset — the point the list grows out of and shrinks back into.
+              originX={12 + 19 - 8}
+            />
             {replyingTo ? (
               <View style={styles.replyPreview}>
                 <View style={styles.replyPreviewBar} />
@@ -1448,24 +1550,55 @@ export default function ConversationScreen() {
                 />
               </View>
             ) : (
-            <View style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}>
+            <View
+              style={[styles.sendBar, { paddingBottom: 8 + insets.bottom }]}
+              onLayout={e => setComposerHeight(Math.floor(e.nativeEvent.layout.height))}
+            >
+              {/* 🎵 turns the box into a song search (Livil + Spotify); tap a result to send. */}
+              <TouchableOpacity
+                style={[styles.musicBtn, songMode && styles.musicBtnActive]}
+                activeOpacity={0.7}
+                onPress={() => (songMode ? closeSongSearch() : setSongMode(true))}
+                accessibilityRole="button"
+                accessibilityLabel={songMode ? 'Back to typing a message' : 'Send a song'}
+                accessibilityState={{ selected: songMode }}
+              >
+                {songMode ? <GradientBorder borderRadius={19} /> : null}
+                <MusicToggleIcon active={songMode} color={songMode ? COLORS.purpleNeon : COLORS.textSecondary} />
+              </TouchableOpacity>
               <View style={styles.inputWrap}>
                 <FormInput
                   nativeID="conversation-input"
-                  value={text}
-                  onChangeText={t => setText(clampComposerInput(t))}
-                  placeholder="Send Message…"
+                  value={songMode ? songQuery : text}
+                  onChangeText={t => (songMode ? setSongQuery(t.slice(0, 100)) : setText(clampComposerInput(t)))}
+                  placeholder={
+                    songMode
+                      ? (spotifySearchOn ? 'Search a song on Livil or Spotify…' : 'Search a song on Livil…')
+                      : 'Send Message…'
+                  }
                   placeholderTextColor={COLORS.textMuted}
-                  multiline
+                  multiline={!songMode}
+                  autoCorrect={!songMode}
                   style={styles.textInput}
-                  returnKeyType="default"
+                  returnKeyType={songMode ? 'search' : 'default'}
                 />
-                {text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
+                {!songMode && text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
                   <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
                     {MAX_CHARS - text.length}
                   </Text>
                 )}
               </View>
+              {songMode ? (
+                <TouchableOpacity
+                  style={[styles.sendBtn, styles.sendBtnDisabled]}
+                  activeOpacity={0.7}
+                  onPress={closeSongSearch}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close song search"
+                >
+                  <Icon name="close" size={16} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              ) : (
               <TouchableOpacity
                 style={[styles.sendBtn, sendDisabled && styles.sendBtnDisabled]}
                 activeOpacity={0.7}
@@ -1480,6 +1613,7 @@ export default function ConversationScreen() {
                   color={sendDisabled ? COLORS.textMuted : COLORS.purpleNeon}
                 />
               </TouchableOpacity>
+              )}
             </View>
             )}
           </KeyboardStickyView>
@@ -1495,10 +1629,9 @@ export default function ConversationScreen() {
   );
 }
 
-/** Half the screen width. A shared track is a piece of music, not a file attachment,
- *  so its artwork gets real estate. Read once at module scope — chat bubbles are the
- *  hottest list in the app and this must not become a per-row Dimensions call. */
-const TRACK_CARD_ART = Math.round(Dimensions.get('window').width * 0.5);
+/** Room reserved above the composer for the song popover (its max height + margin). */
+const SONG_POPOVER_SPACE = 360;
+/** Corner radius shared by song cards and profile cards — the glow outline is drawn for it. */
 const PROFILE_CARD_RADIUS = 18;
 
 const styles = StyleSheet.create({
@@ -1613,6 +1746,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderBottomLeftRadius: 4,
   },
+  // Song cards (Livil or Spotify): no fill, the GradientBorder glow is the outline. Uniform
+  // corners — the glow is drawn for one radius, and a 4px "tail" corner would clip it.
+  bubbleSong: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
   bubbleSticker: {
     backgroundColor: 'transparent',
     padding: 0,
@@ -1682,27 +1822,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   stickerImg: { width: 120, height: 120 },
-  // Artwork on top at half the screen width, text beneath — a shared track is a piece
-  // of music, and a 44px thumbnail in a row read as a file attachment. Sized from the
-  // window rather than a fixed dp so it stays half-width on every device.
-  trackCard: { width: TRACK_CARD_ART, alignItems: 'flex-start' },
-  trackCardArt: {
-    width: TRACK_CARD_ART,
-    height: TRACK_CARD_ART,
-    borderRadius: 10,
-    backgroundColor: COLORS.card,
-  },
-  // overflow is unnecessary — the Image is already the rounded element. Keep this to
-  // centring the fallback glyph only.
-  trackCardArtPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  trackCardTitle: { color: COLORS.white, fontSize: 14, fontWeight: '700', marginTop: 8 },
-  trackCardArtist: { color: COLORS.textSecondary, fontSize: 12.5, marginTop: 2 },
-  // COLORS.textSecondary is #888 — fine on the dark received bubble, muddy on the
-  // purple sent one. Same reason the CTA needs a second colour below.
-  trackCardArtistMe: { color: 'rgba(255,255,255,0.82)' },
-  trackCardCta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  trackCardCtaText: { color: COLORS.purpleNeon, fontSize: 11.5, fontWeight: '700' },
-  trackCardCtaTextMe: { color: COLORS.white },
   // Jam invite card
   jamInviteCard: {
     flexDirection: 'row',
@@ -1889,7 +2008,19 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: 'rgba(10, 10, 15, 0.90)',
   },
+  stickyComposer: { paddingTop: SONG_POPOVER_SPACE, marginTop: -SONG_POPOVER_SPACE },
   inputWrap: { flex: 1 },
+  musicBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  // The glow replaces the grey ring while song search is on.
+  musicBtnActive: { borderWidth: 0 },
   // FormInput's default `paddingVertical: 15` is tuned for full-width auth
   // fields; in a chat composer it makes the collapsed box read as a text area.
   // Tighten it locally (the style prop merges after FormInput's own) so the
