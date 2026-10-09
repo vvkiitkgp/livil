@@ -10,7 +10,7 @@
   "repost": ["src/screens/main/RepostScreen.tsx", "src/screens/main/SpotifyRepostScreen.tsx"],
   "share": ["src/components/SharePostSheet.tsx"],
   "stories": ["src/screens/main/StoryViewerScreen.tsx", "src/components/StoryCard.tsx"],
-  "friends": ["src/components/AddUserSheet.tsx", "src/services/follows.ts", "src/screens/main/UserProfileScreen.tsx"],
+  "friends": ["src/components/AddUserSheet.tsx", "src/services/follows.ts", "src/screens/main/UserProfileScreen.tsx", "src/screens/main/PrivacyDataScreen.tsx"],
   "chat": ["src/screens/main/ConversationScreen.tsx", "src/screens/main/InboxScreen.tsx"],
   "jam": ["src/screens/main/JamRoomScreen.tsx", "src/components/JamSuggestsTab.tsx"],
   "listening": ["src/components/ListeningStatusReporter.tsx", "src/services/listeningStatus.ts", "src/screens/main/PrivacyDataScreen.tsx"],

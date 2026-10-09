@@ -203,6 +203,36 @@ export async function getCommentsFriendsOnly(userId: string): Promise<boolean> {
 }
 
 /**
+ * Who sees the user's reposts: true = anyone on Livil (the default), false = accepted
+ * friends only. ENFORCED by the database — posts_select_authenticated reads
+ * profiles.reposts_public live (20261019000000, ADR-0028), so flipping it hides or shows
+ * every repost the user has made, past ones included.
+ *
+ * Returns NULL when the setting can't be read — including before that backend change is
+ * applied, when the column does not exist. The caller hides the switch rather than show
+ * one that might be wrong: a switch reading "everyone" over reposts that are actually
+ * friends-only would be a lie about privacy.
+ */
+export async function getRepostsPublic(userId: string): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('reposts_public')
+    .eq('id', userId)
+    .single();
+  if (error) {return null;}
+  const value = (data as { reposts_public?: boolean | null } | null)?.reposts_public;
+  return typeof value === 'boolean' ? value : null;
+}
+
+export async function updateRepostsPublic(userId: string, isPublic: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ reposts_public: isPublic })
+    .eq('id', userId);
+  if (error) {throw error;}
+}
+
+/**
  * Whether the first-run guide (the animated tour shown once after sign-up) has been
  * finished or skipped. NULL on a brand-new account; the migration stamped every
  * account that predates the guide. Fails CLOSED (returns true) so a transient

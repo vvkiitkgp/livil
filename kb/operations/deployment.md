@@ -70,6 +70,20 @@ No automation enforces any of this. It is a checklist because it currently has t
    lock-screen controls, upload, and sign-in
 7. Bump versionCode **and** versionName
 
+**After the release is live in a store,** raise that platform's row in `app_update_policy`
+(Supabase → Table Editor) so older builds are asked to update:
+
+```sql
+update public.app_update_policy set latest_build = 77 where platform = 'android';
+```
+
+`latest_build` → a gentle "Update / Later" prompt for anything older. `minimum_build` →
+a blocking prompt; raise it only when an old build is genuinely broken against the backend.
+Per platform, and only once the build is actually downloadable there — App Review can hold
+the iOS build for days after Android is live. `message` optionally replaces the body text;
+the iOS row must never mention another platform's store (guideline 2.3.10). Migration
+`20261018000000_app_update_policy.sql` has the full rules.
+
 Step 6 matters more than it looks. The riskiest parts of this app — the media session, native
 auto-advance, background behaviour — **cannot be exercised by any automated check that exists
 today**, and several only misbehave in release builds or when backgrounded.

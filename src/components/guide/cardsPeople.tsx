@@ -25,7 +25,7 @@ export function FriendsIllustration() {
   const s1 = useAnimatedStyle(() => ({ opacity: kf(t.value, [[0, 1], [74, 1], [76, 0], [100, 0]]) }));
   const s3 = useAnimatedStyle(() => ({ opacity: kf(t.value, [[0, 0], [74, 0], [76, 1], [100, 1]]) }));
 
-  const chips = ['CHAT', 'JAM', 'REPOSTS', 'PLAYLISTS', 'LISTENING NOW'];
+  const chips = ['CHAT', 'JAM', 'PLAYLISTS', 'LISTENING NOW'];
 
   return (
     <Phone rows={0}>
@@ -83,7 +83,7 @@ export function FriendsIllustration() {
       </View>
       <TapFinger t={t} at={70} left={PHONE_INNER_W / 2 - 10} top={232} />
 
-      <Text style={styles.foot}>Uploads are for everyone.{'\n'}Reposts and playlists are for friends.</Text>
+      <Text style={styles.foot}>Uploads and reposts are for everyone.{'\n'}Playlists are for friends.</Text>
     </Phone>
   );
 }

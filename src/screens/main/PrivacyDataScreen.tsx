@@ -15,8 +15,10 @@ import { FLOATING_PLAYER_HEIGHT } from '../../constants/layout';
 import { useToast } from '../../contexts/ToastContext';
 import {
   getCommentsFriendsOnly,
+  getRepostsPublic,
   getShowActivity,
   updateCommentsFriendsOnly,
+  updateRepostsPublic,
   updateShowActivity,
 } from '../../services/profileService';
 import { setShareListening } from '../../services/listeningStatus';
@@ -31,6 +33,9 @@ export default function PrivacyDataScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [showActivity, setShowActivity] = useState(true);
   const [commentsFriendsOnly, setCommentsFriendsOnly] = useState(false);
+  // null = unknown (still loading, unreadable, or the backend change isn't applied yet):
+  // the row stays hidden rather than guess at who can see someone's reposts.
+  const [repostsPublic, setRepostsPublic] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -59,9 +64,10 @@ export default function PrivacyDataScreen() {
           setUserId(uid);
         }
 
-        const [activity, friendsOnly] = await Promise.allSettled([
+        const [activity, friendsOnly, reposts] = await Promise.allSettled([
           getShowActivity(uid),
           getCommentsFriendsOnly(uid),
+          getRepostsPublic(uid),
         ]);
         if (!mounted.current) {
           return;
@@ -74,6 +80,9 @@ export default function PrivacyDataScreen() {
         }
         if (friendsOnly.status === 'fulfilled') {
           setCommentsFriendsOnly(friendsOnly.value);
+        }
+        if (reposts.status === 'fulfilled') {
+          setRepostsPublic(reposts.value);
         }
       } finally {
         if (mounted.current) {
@@ -141,6 +150,17 @@ export default function PrivacyDataScreen() {
     [persistToggle],
   );
 
+  const onToggleRepostsAudience = useCallback(
+    (next: boolean) =>
+      persistToggle(
+        next,
+        setRepostsPublic,
+        updateRepostsPublic,
+        "Couldn't update who can see your reposts.",
+      ),
+    [persistToggle],
+  );
+
   const openPrivacyPolicy = useCallback(async () => {
     try {
       await Linking.openURL(PRIVACY_POLICY_URL);
@@ -183,6 +203,22 @@ export default function PrivacyDataScreen() {
               disabled: busy || loading || !userId,
             }}
           />
+          {/* Enforced by the database: posts_select_authenticated reads reposts_public
+              live, so this hides or shows every repost at once, past ones included
+              (ADR-0028). Uploads are always public and are not affected. Hidden until
+              the setting is known — see getRepostsPublic. */}
+          {repostsPublic !== null ? (
+            <SettingsRow
+              icon="public"
+              label="Show my reposts to everyone"
+              subtitle="Off means only your friends see your reposts."
+              toggle={{
+                value: repostsPublic,
+                onValueChange: onToggleRepostsAudience,
+                disabled: busy || loading || !userId,
+              }}
+            />
+          ) : null}
         </SettingsSection>
 
         {/* Likes stay open to everyone by design and have no toggle. Comments are

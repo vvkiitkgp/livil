@@ -166,7 +166,7 @@ export default function SpotifyRepostScreen() {
     try {
       await createSpotifyRepost(pickedId, caption);
       haptics.success();
-      showToast('Reposted! Your friends will see it in their feed.', { kind: 'success' });
+      showToast("Reposted! It's live on your profile.", { kind: 'success' });
       navigation.goBack();
     } catch (e) {
       const raw = e instanceof Error ? e.message : '';
