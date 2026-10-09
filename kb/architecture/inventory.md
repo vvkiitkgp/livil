@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-313 TypeScript file(s) under `src/`, 74,643 lines.
+315 TypeScript file(s) under `src/`, 74,872 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2561 |
-| `src/screens/main/ConversationScreen.tsx` | 2087 |
+| `src/screens/main/ConversationScreen.tsx` | 2073 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/components/PostCard.tsx` | 1405 |
@@ -105,11 +105,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-48 file(s), 25,217 lines.
+48 file(s), 25,203 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 2087 |
+| `src/screens/main/ConversationScreen.tsx` | 2073 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/screens/main/HomeScreen.tsx` | 1338 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-117 file(s), 26,018 lines.
+119 file(s), 26,261 lines.
 
 | File | Lines |
 |---|---:|
@@ -210,6 +210,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
 | `src/components/FriendPickerStrip.tsx` | 184 |
+| `src/components/ChatReplySnippet.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/ProfileLinkCard.tsx` | 173 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 173 |
@@ -268,6 +269,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/SpotifyLogo.tsx` | 65 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
+| `src/components/__tests__/ChatReplySnippet.test.tsx` | 64 |
 | `src/components/FirstHundredBadge.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
 | `src/components/guide/timeline.ts` | 60 |
