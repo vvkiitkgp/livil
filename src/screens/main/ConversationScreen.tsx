@@ -64,14 +64,16 @@ import { usePlayFullScreen } from '../../hooks/usePlayFullScreen';
 import { useJam } from '../../contexts/JamContext';
 import { useToast } from '../../contexts/ToastContext';
 import { fetchPostById, feedPostToNowPlaying, isPlayableInLivil } from '../../services/posts';
+import { resolveSharedProfile, toShareablePost } from '../../services/share';
+import { ProfileLinkCard } from '../../components/ProfileLinkCard';
 import SpotifyChatCard from '../../components/SpotifyChatCard';
 import ChatSongCard from '../../components/ChatSongCard';
 import { requestNotice } from '../../components/OnboardingNotice';
 import ChatSongPicker, { MusicToggleIcon, type PickedSong } from '../../components/ChatSongPicker';
 import { rememberSpotifyTrack, useSpotifyAvailability } from '../../services/spotify';
-import { toShareablePost } from '../../services/share';
 import { findSpotifyLinkInText, spotifyTrackUrl } from '../../utils/spotifyLinks';
 import { haptics } from '../../utils/haptics';
+import { profileHandleIfExactLink } from '../../utils/shareLinks';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
@@ -195,6 +197,7 @@ function MessageBubble({
   onReactionToggle,
   onPlaySharedPost,
   onRepostSharedPost,
+  onOpenSharedProfile,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -208,6 +211,7 @@ function MessageBubble({
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
   onPlaySharedPost: (postId: string) => void;
   onRepostSharedPost: (postId: string) => void;
+  onOpenSharedProfile: (username: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
@@ -222,6 +226,14 @@ function MessageBubble({
    * assertion.
    */
   const sharedPostId = hasTrackMeta ? (msg.metadata!.post_id as string | undefined) : undefined;
+  /**
+   * A shared profile is a TEXT message whose body is exactly a profile link — sent that
+   * way so builds without this card still show a readable link. Only an exact match
+   * becomes a card (see profileHandleIfExactLink): a link with anything else around or
+   * after it stays text, so nobody's words are hidden behind a card.
+   */
+  const sharedProfileHandle =
+    msg.kind === 'text' && msg.body ? profileHandleIfExactLink(msg.body) : null;
   const isJamInvite = msg.kind === 'jam_invite' && !!msg.metadata?.jam_room_id;
   const isSystem = msg.kind === 'system';
   // A Spotify song link inside a text message is drawn as a card. A DIRECT link is then
@@ -284,22 +296,33 @@ function MessageBubble({
         <View style={[styles.bubbleWrapper, hasReactions && styles.bubbleWrapperWithReactions]}>
           <Pressable
             onLongPress={() => onLongPress(msg)}
-            onPress={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
-            accessibilityRole={sharedPostId ? 'button' : undefined}
+            onPress={
+              sharedPostId
+                ? () => onPlaySharedPost(sharedPostId)
+                : sharedProfileHandle
+                  ? () => onOpenSharedProfile(sharedProfileHandle)
+                  : undefined
+            }
+            accessibilityRole={sharedPostId || sharedProfileHandle ? 'button' : undefined}
             accessibilityLabel={
-              sharedPostId ? `Play ${msg.metadata!.title as string}` : undefined
+              sharedPostId
+                ? `Play ${msg.metadata!.title as string}`
+                : sharedProfileHandle
+                  ? `View @${sharedProfileHandle}'s profile`
+                  : undefined
             }
             style={[
               styles.bubble,
               isSongBubble ? styles.bubbleSong : isMe ? styles.bubbleMe : styles.bubbleThem,
               hasStickerMeta ? styles.bubbleSticker : null,
+              sharedProfileHandle ? styles.bubbleProfileCard : null,
               isHighlighted && styles.bubbleHighlighted,
             ]}
           >
-            {/* A song bubble is outlined in Livil's purple glow instead of filled: a solid
-                purple fill around album art fought the artwork. Same on both sides of the
-                chat — the card itself says who sent it by which side it sits on. */}
-            {isSongBubble ? <GradientBorder borderRadius={18} /> : null}
+            {/* Song cards (Livil or Spotify, ADR-0027) and profile cards wear Livil's glow
+                outline instead of a bubble fill — on either side of the chat — so they read
+                as cards, not as purple slabs around artwork. */}
+            {isSongBubble || sharedProfileHandle ? <GradientBorder borderRadius={PROFILE_CARD_RADIUS} /> : null}
             {msg.replyToId && (
               <Pressable
                 onPress={() => msg.replyToId && onReplyQuotePress(msg.replyToId)}
@@ -324,7 +347,12 @@ function MessageBubble({
               </Pressable>
             )}
 
-            {msg.kind === 'text' && visibleText ? (
+            {msg.kind === 'text' && sharedProfileHandle ? (
+              <ProfileLinkCard
+                username={sharedProfileHandle}
+                onOpen={() => onOpenSharedProfile(sharedProfileHandle)}
+              />
+            ) : msg.kind === 'text' && visibleText ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
                 {visibleText}
               </Text>
@@ -1099,6 +1127,17 @@ export default function ConversationScreen() {
     navigation.navigate('Repost', { originalPostId: postId });
   }, [navigation]);
 
+  // A profile card opens that person's profile — resolved under the viewer's own RLS, so
+  // a block or a vanished account is a toast rather than an empty profile screen.
+  const handleOpenSharedProfile = useCallback(async (username: string) => {
+    const target = await resolveSharedProfile(username);
+    if (!target) {
+      showToast('That profile is no longer available', { kind: 'info' });
+      return;
+    }
+    navigation.navigate('UserProfile', { userId: target.userId });
+  }, [navigation, showToast]);
+
   const handleLongPress = useCallback((msg: ChatMessage) => {
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
     // its threshold, so activation feels consistent across gestures.
@@ -1223,6 +1262,7 @@ export default function ConversationScreen() {
               onReactionToggle={handleReactionToggle}
               onPlaySharedPost={handlePlaySharedPost}
               onRepostSharedPost={handleRepostSharedPost}
+              onOpenSharedProfile={handleOpenSharedProfile}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -1237,7 +1277,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1591,6 +1631,8 @@ export default function ConversationScreen() {
 
 /** Room reserved above the composer for the song popover (its max height + margin). */
 const SONG_POPOVER_SPACE = 360;
+/** Corner radius shared by song cards and profile cards — the glow outline is drawn for it. */
+const PROFILE_CARD_RADIUS = 18;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
@@ -1714,6 +1756,17 @@ const styles = StyleSheet.create({
   bubbleSticker: {
     backgroundColor: 'transparent',
     padding: 0,
+  },
+  // No fill, every corner equal: GradientBorder draws one radius for all four, so the
+  // tail corner (bubbleMe/bubbleThem's 4) would leave the outline cutting across it.
+  // No overflow:'hidden' here — it shaves the outer edge of the glow (see CLAUDE.md).
+  bubbleProfileCard: {
+    backgroundColor: 'transparent',
+    borderRadius: PROFILE_CARD_RADIUS,
+    borderBottomLeftRadius: PROFILE_CARD_RADIUS,
+    borderBottomRightRadius: PROFILE_CARD_RADIUS,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },

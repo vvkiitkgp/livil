@@ -554,6 +554,27 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/shared-post-public.test.sql
 
+      # The profile-link page (livil-music.com/@<username>). The return type is pinned, so
+      # a new field about every Livil user cannot reach the anonymous surface by accident;
+      # unconfirmed and placeholder accounts stay invisible; and a display name that is
+      # really an email address never leaves the database.
+      - name: Public profile-link tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/public-profile.test.sql
+
+      # The inbox line for a shared profile reads "👤 Shared a profile" — for a message that
+      # is exactly a profile link and nothing else, the same rule the app uses to draw the
+      # card. Any other text, including a link inside a sentence, is shown as typed.
+      - name: Message preview tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/message-preview.test.sql
+
       # LIV-25 — accepting a friend request must leave BOTH people with a DM already in
       # their inbox. Drives the accept through accept_friend_request as `authenticated`,
       # so the deployed trigger is what creates the conversation. The assertion that

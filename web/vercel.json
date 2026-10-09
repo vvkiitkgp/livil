@@ -9,6 +9,10 @@
       "destination": "/api/share?id=:id"
     },
     {
+      "source": "/@:username",
+      "destination": "/api/profile?u=:username"
+    },
+    {
       "source": "/get",
       "destination": "/get.html"
     },
@@ -25,6 +29,12 @@
     }
   ],
   "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" }
+      ]
+    },
     {
       "source": "/studio/assets/(.*)",
       "headers": [

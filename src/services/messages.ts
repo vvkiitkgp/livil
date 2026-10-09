@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { findSpotifyLinkInText } from '../utils/spotifyLinks';
 import { sendPush } from './pushDispatch';
+import { profileHandleIfExactLink } from '../utils/shareLinks';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -59,11 +60,18 @@ async function dispatchMessagePush(
 
     let bodyPreview: string;
     if (payload.kind === 'text') {
-      // A message that is only a Spotify song link reads as the song, not a URL (ADR-0027).
-      const link = findSpotifyLinkInText(payload.body);
-      bodyPreview = link && payload.body.replace(link.match, '').trim() === ''
-        ? '🎵 shared a Spotify song'
-        : payload.body;
+      // A shared profile is a text message whose body is exactly the link (see
+      // shareProfileToConversations). Say whose it is rather than pushing a bare URL — the
+      // push names the person where the inbox line (message_preview, 20261015010000) just
+      // says "👤 Shared a profile", as a track push names the song.
+      // Likewise a message that is only a Spotify song link reads as the song (ADR-0027).
+      const sharedHandle = profileHandleIfExactLink(payload.body);
+      const spotifyLink = sharedHandle ? null : findSpotifyLinkInText(payload.body);
+      bodyPreview = sharedHandle
+        ? `👤 Shared @${sharedHandle}'s profile`
+        : spotifyLink && payload.body.replace(spotifyLink.match, '').trim() === ''
+          ? '🎵 shared a Spotify song'
+          : payload.body;
     } else if (payload.kind === 'track_share') {
       // Artist included: a title alone is often ambiguous ("Retrograde" by whom?), and
       // the note glyph makes the row scannable against a wall of text messages. Matches

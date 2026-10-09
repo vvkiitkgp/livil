@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["FG78VP2M42.com.livil"],
+        "components": [
+          { "/": "/p/*", "comment": "A shared post: livil-music.com/p/<postId>" },
+          { "/": "/@*", "comment": "A profile link: livil-music.com/@<username>" }
+        ]
+      }
+    ]
+  }
+}

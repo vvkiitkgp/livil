@@ -2,7 +2,7 @@
 tier: 3
 owner: chief-architect
 consumers: [P-CL, P-SE, P-DA, P-PF, FE, BE]
-last_verified: 2026-09-01
+last_verified: 2026-10-09
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -613,6 +613,73 @@ actually make.
 listens is a definition, not a bug. And `docs/` being static marketing served through
 `copy-marketing.mjs` is exactly why the share page belongs in the Vercel build and not in
 `docs/` — a page that must hit the database cannot be a file in a static folder.
+
+---
+
+## §10. Profile links — `livil-music.com/@<username>`
+
+> **Summary:** Every account has a permanent, handle-based link for an Instagram bio, a chat,
+> or a friend in Livil. On the web it is a **signpost** — name, handle, photo, "Follow on
+> Livil" — never a profile. The profile itself is only ever shown in the app.
+
+**The owner's rule (2026-10-09):** "profile can only be seen in the app" — but the URL must
+be public and indexable so an artist can be found by name in a search engine, and any tap
+must lead into the app or to the store. That rules out both obvious designs: a full public
+profile page (shows the profile on the web) and an app-only deep link (nothing to index, no
+preview card).
+
+| Piece | Where | What it does |
+|---|---|---|
+| `public_profile_card(p_username)` | `20261015000000` | `anon` read of **four columns** for one handle: handle, display name (NULL when it is the email's local part), avatar, `is_artist`. Zero rows for unconfirmed accounts (ADR-0025) and unchosen usernames |
+| `GET /@:username` | `web/api/profile.ts` | Server-rendered signpost: OG tags, canonical URL, `ProfilePage` JSON-LD, one "Follow on Livil" button |
+| `og-follow.png` | `docs/`, rendered by `scripts/gen-og-follow.sh` | The preview image: the Livil mark and "Follow me on Livil", the same for everyone |
+| App Links / Universal Links | `AndroidManifest.xml`, `livil.entitlements`, `docs/.well-known/apple-app-site-association` | `/p/*` and `/@*` open the app when it is installed |
+| Share sheet | `ShareProfileSheet` | Friends strip (shared with `SharePostSheet` via `FriendPickerStrip`), the link printed and selectable, OS share sheet |
+| Chat | `ProfileLinkCard` | A text message whose body is exactly a profile link renders as a card |
+
+### Decisions
+
+| Decision | Chosen | Rejected | Why |
+|---|---|---|---|
+| URL key | Handle (`/@riya`) | User uuid (`/u/<uuid>`) | Readable, typeable, and what search ranks for. Safe only because a chosen handle is **permanent** (`20260628000000`) — a bio link can never start pointing at someone else |
+| Who is indexable | Artists only (≥1 live upload) | Everyone | A listener who signed up to follow friends did not sign up to be findable on Google by name. Their link works; the page is `noindex` |
+| Artist sitemap | **Held back** | `sitemap-artists.xml` listing every artist handle | Built, then pulled after security review: `get_email_for_username` is anon-executable in production (verified 2026-10-09), so a public handle list + that function = every artist's email, harvested without an account. Ship it once username sign-in stops returning emails to the client and that grant is revoked. Until then artist pages are indexable but are only discovered through links |
+| Display name that is the email's local part | Returned as NULL | Returned as stored | `handle_new_user` fell back to it for name-less OAuth sign-ups; for gmail that local part is the address. 0 such rows on 2026-10-09 — a guard, pinned by the test |
+| What the page shows | Name, handle, photo | Bio, uploads, counts, a player | The owner's rule. Search engines index exactly what visitors see — serving crawlers more is cloaking — so "name only" is also the index, which is enough to rank for "<name> livil" |
+| Preview image | One static "Follow me on Livil" card | Per-person generated card (`@vercel/og`) | The owner asked for the Livil logo on the card; the card's **title** names the person. No image-rendering dependency on a cold-start function |
+| Chat transport | Plain `text` message, body = the link | New `messages.kind = 'profile_share'` | `kind` is CHECK-constrained and the store build renders unknown kinds as an empty bubble. A link in a text bubble reads correctly on every installed build; new builds draw a card from the same row. The inbox line says "👤 Shared a profile" (`message_preview`, `20261015010000`) on every build, by the same exact-link rule |
+| Card contents | Read from `profiles` by handle, under the viewer's RLS | Metadata carried in the message | A message carries whatever its sender typed; reading the row is what stops a card showing one person's face over another's link, and makes a block apply |
+| Missing profile | HTTP 404 (`noindex`) | 200 tombstone, as `/p/` does | A search engine must drop a gone profile. Chat links to a profile are rarer and less permanent than song links in chat history |
+| Outage | HTTP 503 + `Retry-After` | 404 | A 404 during an outage tells a search engine the artist is gone |
+| When a chat message becomes a card | Body is exactly the canonical https link (`profileHandleIfExactLink`) | Anything `profileUsernameFromUrl` parses | The opener's parser ignores query, fragment and trailing segments; a card built on it would hide text after the link from new builds while old builds show it |
+| A tap before the app is ready (signed out, onboarding, splash) | Held in memory by `shareLinkGate`, opened when `appReady` turns true | Dropped; or held only when there is no session | Otherwise the link just opens the sign-in screen and is forgotten. Readiness is the ONE signal for both holding and releasing — holding on "no session" but releasing on "ready" dropped links tapped mid-onboarding, because `navigateWhenReady` only flushes on the container's one-time `onReady`. Applies to post links too (`RootNavigator.openShareLink`) |
+| `www` host | Unverified filter only | In the `autoVerify` filter / entitlement | `www.livil-music.com` is a GitHub Pages 301. Its `assetlinks.json` can never verify, and on Android ≤ 11 one failing host in any `autoVerify` filter fails them all |
+
+### What the anonymous surface now is
+
+Of post and profile data, `anon` could read one thing before this: a post by uuid
+(`shared_post_public`). It can now also read a **handle → (name, photo, artist flag)** lookup
+for a handle it already has. Nothing can be listed. The return type is pinned by
+`supabase/tests/rls/public-profile.test.sql`, so a new field cannot reach the internet by
+accident.
+
+That is NOT the whole anonymous surface, and the gap is why the sitemap was held back:
+`is_username_available` and `get_email_for_username` (`20260607000003`) are also
+anon-executable — the second returns an account's email for any handle, and is flagged in
+`scripts/check-definer-anon-grants.mjs`. Any future change that makes handles listable without
+an account (a sitemap, a public directory, a search endpoint) turns that into a bulk email
+harvest. Fix the sign-in path first.
+
+### Known limits
+
+- **Instagram's in-app browser ignores App Links and Universal Links.** A bio link always
+  lands on the signpost first; the visitor taps "Follow on Livil". Spotify and every other
+  bio link behaves the same way. Not fixable from our side.
+- **Android App Links stay unverified until `assetlinks.json` carries the Play App Signing
+  fingerprint** (still the placeholder at the time of writing). Until then `https` links open
+  the browser and the button hands off via `livil://profile/<handle>`.
+- **Old app builds** given a `livil://profile/…` link open to Home (their handler ignores it)
+  and show a shared profile in chat as the bare link. Both are harmless.
 
 ---
 

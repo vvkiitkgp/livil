@@ -46,6 +46,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useStories } from '../../contexts/StoriesContext';
 import AddUserSheet from '../../components/AddUserSheet';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import ShareProfileSheet from '../../components/ShareProfileSheet';
 import { getOrCreateDm } from '../../services/conversations';
 import type { RootStackParamList } from '../../navigation/types';
 import MutualsLine from '../../components/MutualsLine';
@@ -206,6 +207,7 @@ export default function UserProfileScreen() {
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   // 'block' | 'unblock' — which confirmation is showing, if any.
   const [confirmBlock, setConfirmBlock] = useState<'block' | 'unblock' | null>(null);
   const [blockBusy, setBlockBusy] = useState(false);
@@ -915,6 +917,22 @@ export default function UserProfileScreen() {
           <View style={styles.menuBackdrop}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.menuCard}>
+                {/* Not offered on someone you have blocked: you are hiding from each
+                    other, and a share sheet would be the one place that forgets it. */}
+                {profile?.username && rel.status(userId) !== 'blocked' ? (
+                  <TouchableOpacity
+                    style={styles.menuRow}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      setShareOpen(true);
+                    }}
+                  >
+                    <Icon name="share" size={20} color={COLORS.white} />
+                    <Text style={styles.menuRowText} numberOfLines={1}>
+                      Share profile
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
                   style={styles.menuRow}
                   onPress={() => {
@@ -943,6 +961,22 @@ export default function UserProfileScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <ShareProfileSheet
+        visible={shareOpen}
+        isOwn={false}
+        profile={
+          profile?.username
+            ? {
+                userId,
+                username: profile.username,
+                displayName: profile.display_name,
+                avatarUrl: profile.avatar_url,
+              }
+            : null
+        }
+        onClose={() => setShareOpen(false)}
+      />
 
       <ConfirmActionModal
         visible={fansNoticeOpen}

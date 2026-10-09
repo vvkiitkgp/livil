@@ -76,6 +76,14 @@ const BASELINE = new Map([
   // it is a capability rather than a guessable handle. The migration header argues all
   // of this at length — read it before shrinking or widening this entry.
   ['shared_post_public', 'the public share page; anon read by design, enumerated columns'],
+  // The profile-link page (20261015000000). Same reasoning as above: the page renders for
+  // people with no account and for search-engine crawlers, so revoking it would blank
+  // every profile link in every bio. What keeps it inside the rule: four enumerated
+  // columns (handle, name, photo, artist flag) for ONE handle the caller already has —
+  // nothing can be listed — pinned by public-profile.test.sql. A public LIST of handles
+  // (an artist sitemap) was held back because of get_email_for_username below: handles +
+  // that function = every artist's email. Do not add one until that grant is gone.
+  ['public_profile_card', 'the public profile-link page; four enumerated columns, one handle'],
 
   // Legacy. Anon-executable since the relationship layer shipped; each raises
   // 'not_authenticated' when auth.uid() is null, so they fail closed on their own.
