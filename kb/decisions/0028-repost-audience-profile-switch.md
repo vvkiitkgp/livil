@@ -14,7 +14,7 @@ related_adrs: [0027]
 
 | | |
 |---|---|
-| **Status** | **Accepted** — owner-directed 2026-10-09; migrations `20261019000000_reposts_audience.sql` (switch, off for all) and `20261020000000_reposts_public_by_default.sql` (held) |
+| **Status** | **Accepted** — owner-directed 2026-10-09; migrations `20261019000000_reposts_audience.sql` (switch, off for all) and `20261020000000_reposts_public_by_default.sql` (applied 2026-10-10) |
 | **Date** | 2026-10-09 |
 | **Domain** | data + client (with security) |
 | **Decided by** | owner |
@@ -45,7 +45,11 @@ friends, while still letting someone keep their reposts to friends.
    - `20261020000000_reposts_public_by_default` — default true, and on for every profile whose
      owner never chose (`reposts_public_set_at IS NULL`); a choice is never overridden. Not
      reversible in effect: flipping back re-hides posts, not from anyone who saw them.
-3. **Step 2 is held until the app with the switch is widely installed**
+3. **Step 2 was held until the app with the switch was widely installed** — applied
+   2026-10-10, owner's call, once 2.1.3 (77) was live on both stores. At that point the
+   last 24 hours showed every active Android user and 2 of 5 iPhone users on 2.1.3; the
+   three on 2.1.2 had no reposts of their own, and the owner accepted that they would see
+   3–4 Spotify reposts as "author removed" cards until they updated.
    (`supabase/held-migrations.txt`). Builds ≤ 2.1.2 have no switch, their guide says reposts
    are for friends, and they draw a SPOTIFY repost as a false "the author removed this post"
    tombstone (ADR-0027 accepted that only for the reposter's friends). Order: step 1 any time
