@@ -271,8 +271,12 @@ should see; play count is business intelligence about an artist, handed to anyon
 2026-10-09). Listening needs an account, and a media URL handed to `anon` is a player for anyone
 holding the public anon key. The columns stay in the return type so the change is a body swap
 (`create or replace`, grants kept) rather than a drop-and-recreate; the share page is their only
-reader and no longer reads them. This also closes ADR-0020 finding 6 — the page no longer
-renders an uploader-supplied URL into `<audio src>`/`og:audio` on livil-music.com.
+reader and no longer reads them. This closes the **media half** of ADR-0020 finding 6 — the
+page no longer renders an uploader-supplied URL into `<audio src>`/`og:audio` on
+livil-music.com. **The image half is still open:** `safeUrl` checks only for `https:`, so
+`track_cover_art_url`/`track_thumbnail_url` can still point at a host the uploader chose, and
+every visitor's browser (and every chat unfurl, via `og:image`) fetches it. Fix: allow only the
+storage origin in `safeUrl` for images, falling back to the generic card.
 
 **`author_badges`** (added 2026-09-22, migration `20260922000000`) carries the badge KINDS the
 author currently holds, ordered by name and never by award time — an empty array when they hold
@@ -367,7 +371,7 @@ flowchart LR
     PGRST --> RPC
     RPC --> PG
     VF -->|"200 HTML — og:*, inline CSS + JS"| Visitor
-    Visitor -->|"GET cover / poster image only"| STOR
+    Visitor -->|"GET cover / poster image only<br/>(host not yet allowlisted, ADR-0020 #6)"| STOR
     Visitor -.->|"livil://post/:id"| APP
     Crawler -.->|"GET og:image"| STOR
 

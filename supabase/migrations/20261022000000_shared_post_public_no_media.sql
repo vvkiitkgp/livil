@@ -19,7 +19,16 @@
 -- the shape lets `create or replace` swap the body in place, keeps the existing grants,
 -- and means anything that reads the old shape gets nulls instead of an error. The share
 -- page is the only caller (no shipped mobile build calls this function — checked at
--- release 2.1.2 and on main), and it already treats a missing URL as "nothing to play".
+-- releases 2.1.0, 2.1.1, 2.1.2 and on main).
+--
+-- ── ORDER: APPLY AFTER THE WEB DEPLOY ───────────────────────────────────────
+--
+-- The share page that shipped BEFORE this change keys its whole media block on the audio
+-- URL: given NULL it renders an empty box instead of the cover art, next to a disabled
+-- play button. The page that ships WITH this change never reads the URLs. So: Vercel
+-- deploy first (it goes out on merge to main), then this migration. Production's body
+-- was checked on 2026-10-10 and matches 20260922000000 exactly, so this replaces nothing
+-- the repo does not know about.
 --
 -- ── BEFORE → AFTER ──────────────────────────────────────────────────────────
 --
@@ -113,7 +122,7 @@ comment on function public.shared_post_public(uuid) is
   'rows for a repost, a deleted post or an unknown id. Includes the author''s held '
   'badge kinds (never the ordinal, never the award time). track_audio_url and '
   'track_video_url are always NULL: listening needs an account (20261022000000). '
-  'Granted to anon: this is the entire anonymous read surface of the database. Columns '
+  'Granted to anon: this is the anonymous read surface for posts and tracks. Columns '
   'are enumerated deliberately — see kb/architecture/post-sharing.md §5.';
 
 -- `create or replace` keeps the existing grants; restated so this file says on its own
