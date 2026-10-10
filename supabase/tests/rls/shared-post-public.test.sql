@@ -7,7 +7,7 @@
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/shared-post-public.test.sql
 --
--- Three properties are load-bearing, and each fails silently in production if broken:
+-- Four properties are load-bearing, and each fails silently in production if broken:
 --
 --   1. `anon` can read a shared UPLOAD. Lose this and every link anyone has ever
 --      pasted into WhatsApp shows a tombstone — and it looks like a Vercel problem.
@@ -16,6 +16,8 @@
 --   3. `anon` still cannot select from the underlying TABLES. The whole point of using
 --      a function was to avoid widening posts_select_authenticated, so a test suite that
 --      never checks the tables would pass just as happily against the change we refused.
+--   4. `anon` does NOT get the media file's URL (20261022000000). Listening needs an
+--      account; a URL handed to anon is a player for anyone with the public anon key.
 --
 -- Exercises the database, not PostgREST (P32).
 
@@ -105,6 +107,23 @@ values
    'First Take', 'audio', 'https://example.invalid/first-take.mp3', 98)
 on conflict do nothing;
 
+-- A VIDEO upload, so the video-URL withholding is tested against a row that has one.
+-- (tracks_media_shape_check: a video track has video_url and no audio_url.)
+insert into tracks (id, uploader_id, title, media_kind, video_url, thumbnail_url,
+                    duration_seconds)
+values
+  ('d2000000-0000-0000-0000-0000000000cc', 'd1000000-0000-0000-0000-000000000001',
+   'Neon Rain (Live)', 'video', 'https://example.invalid/live.mp4',
+   'https://example.invalid/live.jpg', 61)
+on conflict do nothing;
+
+insert into posts (id, author_id, kind, track_id, caption, likes_count, comments_count,
+                   views_count)
+values
+  ('d3000000-0000-0000-0000-00000000000d', 'd1000000-0000-0000-0000-000000000001',
+   'upload', 'd2000000-0000-0000-0000-0000000000cc', null, 0, 0, 0)
+on conflict do nothing;
+
 insert into posts (id, author_id, kind, track_id, caption, likes_count, comments_count,
                    views_count)
 values
@@ -140,10 +159,28 @@ select pg_temp.assert_text(
   (select author_display_name from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
   'Riya');
 
+-- Listening needs an account (20261022000000). The fixture track HAS an audio_url, so a
+-- NULL here is the function withholding it, not the data lacking it. The cover still
+-- comes back, which proves this is a targeted withholding and not a broken join.
 select pg_temp.assert_text(
-  'media url comes back — without it the page has nothing to play',
+  'the audio url is withheld from anon — a signed-out visitor cannot fetch the file',
   (select track_audio_url from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
-  'https://example.invalid/audio.mp3');
+  null);
+
+select pg_temp.assert_text(
+  'the video url is withheld from anon too, on a post whose track has one',
+  (select track_video_url from public.shared_post_public('d3000000-0000-0000-0000-00000000000d')),
+  null);
+
+select pg_temp.assert_text(
+  'the video post still returns its poster',
+  (select track_thumbnail_url from public.shared_post_public('d3000000-0000-0000-0000-00000000000d')),
+  'https://example.invalid/live.jpg');
+
+select pg_temp.assert_text(
+  'the cover art still comes back — the page shows the post, not the song',
+  (select track_cover_art_url from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
+  'https://example.invalid/cover.jpg');
 
 -- Likes and comments are social proof and are meant to be visible.
 select pg_temp.assert(

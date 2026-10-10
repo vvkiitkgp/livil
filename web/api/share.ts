@@ -10,11 +10,23 @@
  * shared link, for every song, would preview identically. The Open Graph tags have to
  * be in the first byte of the response, which means they have to be rendered here.
  *
+ * ── WHY THERE IS NO PLAYER ─────────────────────────────────────────────────
+ * Listening needs a Livil account (owner's rule, 2026-10-09). This page is the
+ * post's metadata — art, title, artist, caption, length, counts — and a way into the
+ * app, and nothing else. It used to carry a full `<audio>`/`<video>` player, which let
+ * anyone holding a link listen without ever signing in.
+ *
+ * Hiding a button would not have been enough: the media URL was in the markup twice
+ * (the element's `src` and `og:audio`/`og:video`), and a URL in the page is a player
+ * for anyone who opens view-source. So NO media URL is emitted anywhere — this file
+ * never reads `track_audio_url` / `track_video_url` — and `shared_post_public` stops
+ * returning them (20261022000000). Do not reintroduce either without reversing the
+ * rule in kb/architecture/post-sharing.md first.
+ *
  * ── WHY THERE IS NO CLIENT BUNDLE AT ALL ───────────────────────────────────
  * The design originally called for a second small Vite entry to hydrate this page.
- * It does not need one. Everything the page does — play/pause, a progress bar, the
- * open-in-app handoff, the sign-in prompts — is a few dozen lines against a native
- * `<audio>`/`<video>` element, and inlining them makes the whole page ONE request
+ * It does not need one. Everything the page does — the open-in-app handoff and the
+ * sign-in prompts — is a few lines inlined, and that makes the whole page ONE request
  * with nothing to hydrate. That also deletes a second Vite config, a second set of
  * asset paths and a cache-busting scheme, none of which were buying anything.
  * (The design doc records this change and the reasoning; do not "restore" the bundle
@@ -71,8 +83,9 @@ type SharedPost = {
   author_badges: string[] | null;
   track_title: string;
   track_media_kind: 'audio' | 'video';
-  track_audio_url: string | null;
-  track_video_url: string | null;
+  // track_audio_url / track_video_url are deliberately NOT declared: the function still
+  // has those columns (an unchanged shape is the safe change) but returns them NULL, and
+  // this page must never emit a media URL. See "WHY THERE IS NO PLAYER" above.
   track_cover_art_url: string | null;
   track_thumbnail_url: string | null;
   track_duration_seconds: number | null;
@@ -229,26 +242,15 @@ a{color:inherit}
 .brand img{width:28px;height:28px;display:block;border-radius:7px}
 .art{width:100%;aspect-ratio:1;border-radius:16px;object-fit:cover;background:#12121C;
   display:block}
-video.art{aspect-ratio:9/16;max-height:60dvh;width:auto;border-radius:16px}
+/* A video post's poster keeps the vertical frame the video itself had on this page. */
+.art--tall{aspect-ratio:9/16;width:auto;height:60dvh;max-width:100%}
 .title{font-size:22px;font-weight:800;margin:20px 0 4px;text-align:center;line-height:1.25}
 .artist{font-size:16px;color:#fff;font-weight:700;margin:0;text-align:center}
 .handle{font-size:14px;color:#C9B6FF;font-weight:600;margin:3px 0 0;text-align:center}
 .badge{vertical-align:-3px;margin-left:5px}
 .caption{font-size:14px;color:#9a9aa8;margin:12px 0 0;text-align:center;line-height:1.5}
-.player{width:100%;margin-top:22px;display:flex;align-items:center;gap:14px}
-.play{width:52px;height:52px;flex:0 0 52px;border-radius:50%;border:1.5px solid #8B3DFF;
-  background:rgba(139,61,255,.12);color:#A855F7;font-size:18px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;padding:0}
-.play:disabled{opacity:.5;cursor:default}
-/* The hit area is the padded wrapper, not the 5px line — a 5px drag target is
-   unusable on a phone. The visible track sits inside it. */
-.barwrap{flex:1;padding:14px 0;cursor:pointer;touch-action:none}
-.bar{position:relative;height:5px;border-radius:3px;background:#22222e}
-.fill{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,#6D28D9,#A855F7)}
-.thumb{position:absolute;top:50%;left:0;width:13px;height:13px;border-radius:50%;
-  background:#fff;transform:translate(-50%,-50%);box-shadow:0 0 0 3px rgba(139,61,255,.35)}
-.time{font-variant-numeric:tabular-nums;font-size:12px;color:#888;min-width:74px;
-  text-align:right}
+.meta{font-size:13px;color:#888;margin:10px 0 0;text-align:center;
+  font-variant-numeric:tabular-nums}
 .stats{display:flex;gap:8px;margin-top:22px;width:100%}
 .stat{flex:1;border:1px solid #23232f;background:transparent;border-radius:12px;
   padding:11px 8px;color:#888;font-size:13px;font-weight:600;cursor:pointer;
@@ -337,12 +339,31 @@ function renderUnavailable(): string {
   });
 }
 
+/** `214` → `3:34`. Whole seconds; the page shows a length, not a position. */
+function formatLength(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * How long the post plays for, or null when the database does not know. A clipped
+ * upload plays its clip, so the clip's length is the honest number, not the file's.
+ */
+function playLength(post: SharedPost): number | null {
+  const start = post.clip_start_sec != null ? Number(post.clip_start_sec) : 0;
+  const end = post.clip_end_sec != null
+    ? Number(post.clip_end_sec)
+    : post.track_duration_seconds != null ? Number(post.track_duration_seconds) : null;
+  if (end == null || !Number.isFinite(end) || !Number.isFinite(start)) { return null; }
+  const length = end - start;
+  return length > 0 ? length : null;
+}
+
 function renderPost(post: SharedPost): string {
   const displayName = (post.author_display_name || '').trim();
   const handle = `@${post.author_username}`;
   const artist = displayName || post.author_username;
   const isVideo = post.track_media_kind === 'video';
-  const mediaUrl = safeUrl(isVideo ? post.track_video_url : post.track_audio_url);
   const poster = safeUrl(post.track_thumbnail_url) ?? safeUrl(post.track_cover_art_url);
   const cover = safeUrl(post.track_cover_art_url) ?? poster;
   const ogImage = cover ?? FALLBACK_OG_IMAGE;
@@ -351,6 +372,9 @@ function renderPost(post: SharedPost): string {
   const description = (post.caption || '').trim() || `Listen to ${post.track_title} on Livil`;
   const deepLink = `livil://post/${post.post_id}`;
 
+  // No og:audio / og:video. Those tags hand the file's URL to every crawler and to
+  // anyone reading the source, which is exactly the anonymous listen this page no
+  // longer offers. og:type still says what the post IS, so chat apps size the card.
   const meta = [
     `<meta name="description" content="${escapeHtml(description)}">`,
     `<meta property="og:title" content="${escapeHtml(heading)}">`,
@@ -358,36 +382,28 @@ function renderPost(post: SharedPost): string {
     `<meta property="og:image" content="${escapeHtml(ogImage)}">`,
     `<meta property="og:url" content="${ORIGIN}/p/${post.post_id}">`,
     `<meta property="og:site_name" content="Livil">`,
-    // music.song rather than website: it is what tells a chat client this is playable
-    // media rather than an article, and several of them render a bigger card for it.
     `<meta property="og:type" content="${isVideo ? 'video.other' : 'music.song'}">`,
-    mediaUrl
-      ? `<meta property="${isVideo ? 'og:video' : 'og:audio'}" content="${escapeHtml(mediaUrl)}">`
-      : '',
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${escapeHtml(heading)}">`,
     `<meta name="twitter:description" content="${escapeHtml(description)}">`,
     `<meta name="twitter:image" content="${escapeHtml(ogImage)}">`,
     `<link rel="canonical" href="${ORIGIN}/p/${post.post_id}">`,
-  ].filter(Boolean).join('\n');
+  ].join('\n');
 
-  // preload="none" IS THE EGRESS BUDGET, not a micro-optimisation. There is no adaptive
-  // streaming (kb/architecture/media-pipeline.md) — every listen is a progressive
-  // download of the whole file, ~4 MB for a song and ~60 MB for a video. `preload="auto"`
-  // would start paying for every person who merely opens the link, whether or not they
-  // ever intended to listen.
-  const mediaEl = !mediaUrl
-    ? `<div class="art"></div>`
-    : isVideo
-      ? `<video id="m" class="art" playsinline preload="none" ${poster ? `poster="${escapeHtml(poster)}"` : ''} src="${escapeHtml(mediaUrl)}"></video>`
-      : `${cover ? `<img class="art" src="${escapeHtml(cover)}" alt="">` : '<div class="art"></div>'}
-<audio id="m" preload="none" src="${escapeHtml(mediaUrl)}"></audio>`;
+  // A still image, never a media element: a video post shows its poster in the vertical
+  // frame the video used to occupy, an audio post its cover art.
+  const art = isVideo
+    ? (poster ? `<img class="art art--tall" src="${escapeHtml(poster)}" alt="">` : '<div class="art"></div>')
+    : (cover ? `<img class="art" src="${escapeHtml(cover)}" alt="">` : '<div class="art"></div>');
+
+  const length = playLength(post);
+  const metaLine = `${isVideo ? 'Video' : 'Audio'}${length != null ? ` · ${formatLength(length)}` : ''}`;
 
   /**
    * Both names, stacked — the display name, then the handle under it.
    *
    * The page showed only `@handle`, so someone arriving from WhatsApp saw "@test1" and
-   * had no idea whose track they were listening to. Nothing else works that way: every
+   * had no idea whose track they were looking at. Nothing else works that way: every
    * row in the app leads with the display name and puts the handle beneath it, and the
    * `og:title` this same function builds has always been "<track> — <display name>".
    * The visible page was the one place the name was missing.
@@ -403,28 +419,20 @@ function renderPost(post: SharedPost): string {
 <p class="handle">${escapeHtml(handle)}</p>`
     : `<p class="artist">${escapeHtml(handle)}${renderBadges(post.author_badges)}</p>`;
 
-  const body = `${mediaEl}
+  const body = `${art}
 <h1 class="title">${escapeHtml(post.track_title)}</h1>
 ${byline}
 ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
-
-<div class="player">
-  <button class="play" id="p" aria-label="Play" ${mediaUrl ? '' : 'disabled'}>&#9654;</button>
-  <div class="barwrap" id="bw" role="slider" tabindex="0" aria-label="Seek"
-       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-    <div class="bar"><div class="fill" id="f"></div><div class="thumb" id="th"></div></div>
-  </div>
-  <span class="time" id="t">0:00</span>
-</div>
+<p class="meta">${metaLine}</p>
 
 <div class="stats">
   <button class="stat" data-gate>&#9825; ${post.likes_count}</button>
   <button class="stat" data-gate>&#128172; ${post.comments_count}</button>
 </div>
 
-<a class="cta" id="open" href="${escapeHtml(deepLink)}">Open in Livil</a>
+<a class="cta" id="open" href="${escapeHtml(deepLink)}">Listen on Livil</a>
 <p class="foot">
-  Don't have the app? Get Livil on <a href="${APP_STORE}">the App Store</a> or <a href="${PLAY_STORE}">Google Play</a><br>
+  Listening happens in the Livil app. Don't have it? Get Livil on <a href="${APP_STORE}">the App Store</a> or <a href="${PLAY_STORE}">Google Play</a><br>
   Upload your music, listen together in real time, and see what your friends are playing.
 </p>
 
@@ -447,106 +455,9 @@ ${post.caption ? `<p class="caption">${escapeHtml(post.caption)}</p>` : ''}
     clipEndSec: post.clip_end_sec,
   })}</script>`;
 
-  // Clip window: an upload is normally the whole track, but the column exists on every
-  // post and a clipped upload must play its clip, not the file from zero.
-  const clipStart = post.clip_start_sec != null ? Number(post.clip_start_sec) : null;
-  const clipEnd = post.clip_end_sec != null ? Number(post.clip_end_sec) : null;
-
   const script = `
 (function(){
-  var m=document.getElementById('m'),p=document.getElementById('p'),
-      f=document.getElementById('f'),t=document.getElementById('t'),
-      th=document.getElementById('th'),bw=document.getElementById('bw'),
-      gate=document.getElementById('gate');
-  var CS=${clipStart === null ? 'null' : clipStart}, CE=${clipEnd === null ? 'null' : clipEnd};
-  // Track length from the database. The browser does not know it until metadata loads,
-  // and preload="none" means that does not happen until the first play — so without this
-  // the bar would be un-seekable until someone had already pressed play, which is exactly
-  // backwards from how people use a progress bar.
-  var DUR=${post.track_duration_seconds != null ? Number(post.track_duration_seconds) : 0};
-
-  function fmt(s){s=Math.max(0,Math.floor(s||0));
-    return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
-  function startAt(){return CS!=null?CS:0;}
-  function endAt(){
-    if(CE!=null) return CE;
-    if(m&&isFinite(m.duration)&&m.duration>0) return m.duration;
-    return DUR;
-  }
-  function span(){var v=endAt()-startAt();return v>0?v:0;}
-
-  function paint(pos){
-    var sp=span();
-    var frac=sp>0?Math.min(1,Math.max(0,(pos-startAt())/sp)):0;
-    f.style.width=(frac*100)+'%';
-    th.style.left=(frac*100)+'%';
-    t.textContent=fmt(pos-startAt())+' / '+fmt(sp);
-    if(bw) bw.setAttribute('aria-valuenow',Math.round(frac*100));
-  }
-
-  // A seek requested before the media has any metadata cannot be applied yet — setting
-  // currentTime at readyState 0 is ignored. Remember it and apply it once metadata
-  // arrives, so tapping the bar on a cold page starts playback at the tapped point.
-  var pending=null;
-  function seekTo(pos){
-    if(!m) return;
-    pos=Math.min(endAt(),Math.max(startAt(),pos));
-    paint(pos);
-    if(m.readyState>0){ try{m.currentTime=pos;}catch(e){} }
-    else { pending=pos; m.load(); }
-    m.dataset.seeded='1';
-  }
-  if(m){
-    m.addEventListener('loadedmetadata',function(){
-      if(pending!=null){ try{m.currentTime=pending;}catch(e){} pending=null; }
-      paint(m.currentTime);
-    });
-  }
-
-  if(bw&&m){
-    var dragging=false;
-    function posFromEvent(e){
-      var r=bw.getBoundingClientRect();
-      var x=(e.clientX!=null?e.clientX:0)-r.left;
-      var frac=r.width>0?Math.min(1,Math.max(0,x/r.width)):0;
-      return startAt()+frac*span();
-    }
-    bw.addEventListener('pointerdown',function(e){
-      dragging=true;
-      if(bw.setPointerCapture&&e.pointerId!=null){try{bw.setPointerCapture(e.pointerId);}catch(err){}}
-      seekTo(posFromEvent(e));
-      e.preventDefault();
-    });
-    bw.addEventListener('pointermove',function(e){ if(dragging) seekTo(posFromEvent(e)); });
-    bw.addEventListener('pointerup',function(){dragging=false;});
-    bw.addEventListener('pointercancel',function(){dragging=false;});
-    // Keyboard, because role="slider" promises it.
-    bw.addEventListener('keydown',function(e){
-      var step=span()/20;
-      if(e.key==='ArrowRight'){seekTo((m.currentTime||startAt())+step);e.preventDefault();}
-      else if(e.key==='ArrowLeft'){seekTo((m.currentTime||startAt())-step);e.preventDefault();}
-    });
-  }
-
-  if(m&&p){
-    p.addEventListener('click',function(){
-      if(m.paused){
-        // Jump to the clip start on the FIRST play only — doing it on every play would
-        // make a mid-track pause un-resumable. A seek counts as seeding, so tapping the
-        // bar and then play starts where you tapped.
-        if(CS!=null&&!m.dataset.seeded){m.dataset.seeded='1';try{m.currentTime=CS;}catch(e){}}
-        m.play().catch(function(){});
-      } else { m.pause(); }
-    });
-    m.addEventListener('play',function(){p.innerHTML='&#10073;&#10073;';p.setAttribute('aria-label','Pause');});
-    m.addEventListener('pause',function(){p.innerHTML='&#9654;';p.setAttribute('aria-label','Play');});
-    m.addEventListener('timeupdate',function(){
-      if(CE!=null&&m.currentTime>=CE){m.pause();}
-      paint(m.currentTime);
-    });
-    m.addEventListener('ended',function(){m.dataset.seeded='';paint(startAt());});
-    paint(startAt());
-  }
+  var gate=document.getElementById('gate');
 
   // Any action that needs an account: prompt, never pretend. There is no anonymous
   // write path and there is not meant to be one.

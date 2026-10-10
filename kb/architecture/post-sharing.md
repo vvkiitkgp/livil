@@ -2,7 +2,7 @@
 tier: 3
 owner: chief-architect
 consumers: [P-CL, P-SE, P-DA, P-PF, FE, BE]
-last_verified: 2026-10-09
+last_verified: 2026-10-10
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -20,10 +20,20 @@ related_adrs: [0004, 0007, 0015]
 share already. A shared link is public to anyone holding it; there is no per-post privacy
 toggle in v1. Android only, matching [ADR-0005](../decisions/0005-ios-platform-status.md).
 
+> **Revised 2026-10-09 — the public page no longer plays.** Owner's rule: **listening needs a
+> Livil account.** A signed-out visitor sees the post's metadata (art, title, artist, caption,
+> length, likes, comments) and a **Listen on Livil** button that opens the app, and nothing that
+> plays. The page renders no `<audio>`/`<video>` and no `og:audio`/`og:video`, and
+> `shared_post_public` returns `track_audio_url`/`track_video_url` as `NULL`
+> (`20261022000000`) — hiding the button alone would have left the file's URL in the page source
+> and in the anon-callable function. F5 and §5 below are updated; the egress math in §2 is kept
+> as the record of why the page once opened paused, and is now moot (zero anonymous listens).
+> The web creator dashboard (`/studio`) is signed-in and unaffected.
+
 | | |
 |---|---|
 | **Scale** | Low request volume; **egress-bound**, not QPS-bound |
-| **Primary constraint** | Supabase Storage egress per anonymous listen — one viral post is a bill, not an outage |
+| **Primary constraint** | ~~Supabase Storage egress per anonymous listen~~ — moot since 2026-10-09: there is no anonymous listen |
 | **Key decision** | Server-render the link page as a Vercel Function; keep post rows closed and open a single narrow `security definer` read |
 
 ---
@@ -31,7 +41,7 @@ toggle in v1. Android only, matching [ADR-0005](../decisions/0005-ios-platform-s
 ## §1. Functional Requirements
 
 > **Summary:** One Share button on upload posts, three destinations, and a public page that
-> plays the track for someone who has never heard of Livil.
+> shows the track to someone who has never heard of Livil — and sends them to the app to hear it.
 
 | # | Requirement | Priority |
 |---|---|---|
@@ -39,7 +49,7 @@ toggle in v1. Android only, matching [ADR-0005](../decisions/0005-ios-platform-s
 | F2 | Share to one or more **Livil friends** as a DM that renders as a playable track card | Must |
 | F3 | Share to **any external app** (WhatsApp, Telegram, Messages, IG DM) as a link | Must |
 | F4 | Share to **Instagram Stories** as a rendered image card with a link back | Must |
-| F5 | A logged-out visitor opens the link in a browser and **plays the track** | Must |
+| F5 | A logged-out visitor opens the link in a browser and sees the post's **metadata only** — art, title, artist, caption, length, counts — with a **Listen on Livil** button. It does **not** play: listening needs an account *(revised 2026-10-09; was "plays the track")* | Must |
 | F6 | The link renders a **rich preview** (art, title, artist) when pasted into a chat | Must |
 | F7 | Any authenticated action on the page (like, comment, follow) **prompts to open the app** | Must |
 | F8 | If Livil is installed, the link **opens the app** on that post instead of the browser | Should |
@@ -69,7 +79,7 @@ on the share page; iOS.
 | N4 | Post-row confidentiality | Unchanged for every other read path | `posts_select_authenticated` must survive untouched |
 | N5 | Share-sheet open latency | p99 < 400 ms for link; < 2.5 s for Story card | Card capture is on-device and synchronous — needs a spinner and a fallback |
 | N6 | Deleted-post handling | Graceful 200, never 500 | A dead link in someone's WhatsApp history is permanent; it must land somewhere sane |
-| N7 | Egress per anonymous listen | Budgeted, see below | The only line with real money attached |
+| N7 | Egress per anonymous listen | **Zero** since 2026-10-09 (no anonymous playback) | Was the only line with real money attached; the math below is kept as history |
 
 ### Capacity estimation
 
@@ -104,6 +114,8 @@ STORY CARD
 
 **What the math decided:** `preload="none"` on the media element, tap-to-play rather than
 autoplay, and video share pages that lead with the poster image rather than the video.
+*(Superseded 2026-10-09: there is no media element at all now — see the revision note at the
+top. A video post shows only its poster, an audio post only its cover.)*
 
 > **Out loud —** *"The interesting number here is the one nobody asks for. Request volume is
 > nothing — this app could serve a hundred thousand share-page loads on the free tier without
@@ -238,7 +250,7 @@ send is in flight; that is the whole concurrency control, and it is enough for a
   "author_badges": ["first_100"],
   "track_title": "Neon Rain",
   "track_media_kind": "audio",
-  "track_audio_url": "https://…/tracks-media/…/audio.mp3",
+  "track_audio_url": null,
   "track_video_url": null,
   "track_cover_art_url": "https://…/tracks-media/…/cover.jpg",
   "track_thumbnail_url": null,
@@ -254,6 +266,13 @@ send is in flight; that is the whole concurrency control, and it is enough for a
 
 **Not returned, on purpose:** `views_count`. Likes and comments are social proof a stranger
 should see; play count is business intelligence about an artist, handed to anyone with a link.
+
+**`track_audio_url` / `track_video_url` are always `NULL`** (since migration `20261022000000`,
+2026-10-09). Listening needs an account, and a media URL handed to `anon` is a player for anyone
+holding the public anon key. The columns stay in the return type so the change is a body swap
+(`create or replace`, grants kept) rather than a drop-and-recreate; the share page is their only
+reader and no longer reads them. This also closes ADR-0020 finding 6 — the page no longer
+renders an uploader-supplied URL into `<audio src>`/`og:audio` on livil-music.com.
 
 **`author_badges`** (added 2026-09-22, migration `20260922000000`) carries the badge KINDS the
 author currently holds, ordered by name and never by award time — an empty array when they hold
@@ -279,20 +298,21 @@ nothing when `auth.uid()` is null, which is exactly what the share page is.
 <meta property="og:description" content="made this at 4am · Listen on Livil">
 <meta property="og:image"       content="https://…/cover.jpg">
 <meta property="og:type"        content="music.song">
-<meta property="og:audio"       content="https://…/audio.mp3">
+<!-- no og:audio / og:video since 2026-10-09: they would publish the file's URL -->
 <meta name="twitter:card"       content="summary_large_image">
 <script type="application/json" id="__LIVIL_POST__">{ …the RPC row… }</script>
 ```
 
 | Status | Condition | Body |
 |---|---|---|
-| `200` | Found | Page with OG tags + hydrated player |
+| `200` | Found | Page with OG tags + metadata + **Listen on Livil** (no player since 2026-10-09) |
 | `200` | Deleted / repost / bad uuid | Generic Livil OG card + "This post isn't available" + install CTA |
 | `500` | Supabase unreachable | Generic OG card, retry copy — **never a stack trace** |
 
 **The embedded JSON is the idempotency trick.** The function already fetched the row to build
 the meta tags, so it inlines it. The client never re-requests it: one round trip, no loading
-spinner, and the page is correct with JavaScript disabled down to the play button.
+spinner, and the page is correct with JavaScript disabled (only the open-in-app fallback and
+the sign-in prompt need script).
 
 ### `sharePostToStory(post)` — Instagram Stories
 
@@ -325,7 +345,7 @@ enhancement over the link, never a replacement for it.
 > **Summary:** Two paths that never meet. The anonymous path terminates at one database
 > function; the in-app path never leaves the phone except to write a chat message.
 
-### Public Read Path — `GET /p/:id`, crawler previews, media playback
+### Public Read Path — `GET /p/:id`, crawler previews (no playback since 2026-10-09)
 
 ```mermaid
 flowchart LR
@@ -347,15 +367,15 @@ flowchart LR
     PGRST --> RPC
     RPC --> PG
     VF -->|"200 HTML — og:*, inline CSS + JS"| Visitor
-    Visitor -.->|"GET audio.mp3 ONLY after tap"| STOR
+    Visitor -->|"GET cover / poster image only"| STOR
     Visitor -.->|"livil://post/:id"| APP
     Crawler -.->|"GET og:image"| STOR
 
     nRPC["shared_post_public - SECURITY DEFINER<br/>Grants: anon + authenticated<br/>Why: posts_select_authenticated stays shut.<br/>One reviewable function beats a widened policy"]
     nVF["Vercel Function - Node, not the SPA<br/>Renders og:* server-side<br/>Why: crawlers do not run JS. A Vite SPA<br/>gives every share the same generic card"]
     nCDN["s-maxage=300, stale-while-revalidate=86400<br/>A viral link hits the function ~12x/hour<br/>regardless of how many people open it"]
-    nStor["Supabase Storage - public bucket<br/>Byte reads bypass RLS entirely<br/>4.3 MB per audio listen, 60 MB per video.<br/>THIS is the cost centre, not the database"]
-    nSPA["NO client bundle at all - one request.<br/>Play/pause, progress, open-in-app and the<br/>sign-in prompts are ~60 lines inline.<br/>Why: the /studio bundle is 697 kB; a second<br/>Vite entry would still be a second request,<br/>a second config and a cache-busting scheme"]
+    nStor["Supabase Storage - public bucket<br/>Byte reads bypass RLS entirely<br/>The page fetches images only - no media URL<br/>is ever sent to it (2026-10-09)"]
+    nSPA["NO client bundle at all - one request.<br/>Open-in-app and the sign-in prompts<br/>are a few lines inline. No player.<br/>Why: the /studio bundle is 697 kB; a second<br/>Vite entry would still be a second request,<br/>a second config and a cache-busting scheme"]
 
     RPC -.- nRPC
     VF -.- nVF
@@ -367,9 +387,9 @@ flowchart LR
     class nRPC,nVF,nCDN,nStor,nSPA note
 ```
 
-*Dashed = deferred or off the critical path. Note that the only solid line touching Storage is
-the crawler fetching `og:image` — the visitor's media request is dashed because it does not
-happen until a human taps play. That dash is the egress budget.*
+*Dashed = deferred or off the critical path. Since 2026-10-09 the visitor never requests media
+at all — the page has no player and is never given a media URL — so the only Storage reads on
+this path are images: the crawler's `og:image` and the visitor's cover or poster.*
 
 ### In-App Share Path — DM, Story card, external link
 
@@ -458,15 +478,14 @@ sequenceDiagram
     U->>CDN: GET /p/:id (human taps the card)
     CDN-->>U: cached HTML with post JSON inlined
     Note over U: Complete page - markup, CSS and JS inline.<br/>NO second round trip, nothing to hydrate.<br/>Interactive before any network call of its own.
-    U->>U: renders paused, preload=none
-    Note over U,S: Zero bytes of audio fetched yet.<br/>This is the egress guard, not an optimisation.
-    U->>S: GET audio.mp3 (ONLY on tap)
-    S-->>U: 206 partial content
+    U->>S: GET cover / poster image
+    Note over U,S: No media element and no media URL in the page.<br/>Listening happens in the app (2026-10-09).
+    U->>U: taps Listen on Livil, livil://post/:id or the store
 ```
 
 *Read step 4 and step 11 together: the crawler and the human both hit the edge, and the human's
 page is fully rendered before it has made a single request of its own. The only uncached byte
-either of them costs us is the cover art — until someone actually decides to listen.*
+either of them costs us is the cover art. Listening is in the app, behind sign-in.*
 
 ### Sharing to Instagram Stories, including the branch that usually fires
 
@@ -517,12 +536,13 @@ which is exactly never on the developer's own phone.*
 |---|---|---|
 | **`security definer` RPC** for anonymous reads | Widen `posts_select_authenticated` to `anon` | Never. The policy is a blanket `using (true)` — adding `anon` publishes every post row, reposts included, to an unauthenticated `select *` |
 | **Vercel Function** renders the page | Client-side route in the existing SPA | Only if crawlers started running JavaScript. They don't, and won't |
-| **No client bundle — inline CSS and JS** | A second Vite entry hydrating the page (the original plan), or reusing `/studio` | When the page needs real app state — a queue, a comment thread, sign-in. `/studio` is 697 kB and was never a candidate; the *second entry* was, and it lost because everything the page does fits in ~60 lines against a native `<audio>`, so the bundle bought a second request, a second Vite config and a cache-busting scheme for nothing |
+| **No client bundle — inline CSS and JS** | A second Vite entry hydrating the page (the original plan), or reusing `/studio` | When the page needs real app state — a queue, a comment thread, sign-in. `/studio` is 697 kB and was never a candidate; the *second entry* was, and it lost because everything the page did fit in ~60 lines against a native `<audio>` (and, since the player was removed on 2026-10-09, in a few lines), so the bundle bought a second request, a second Vite config and a cache-busting scheme for nothing |
 | **Raw post uuid** in the URL | `share_links` table with base62 codes | The first time we need per-link attribution, or someone has to read a link aloud |
 | **`cover_art_url` as `og:image`** | `@vercel/og` composing a branded 1200×630 card | When link previews become a growth channel worth a dependency and a render budget. It is a self-contained upgrade — one function, no schema |
 | **On-device Story card** | Server-rendered card image | If Android capture proves unreliable across the device matrix, or iOS needs parity without a second implementation |
 | **`react-native-share`** | Bespoke Kotlin module firing the intents | A bespoke module is ~150 lines and zero dependencies, but the FileProvider config, Android 11 package-visibility `<queries>` and the Instagram extras are all things a maintained library has already got wrong once and fixed. **The maintainer is a front-end developer — a library they can upgrade beats native code they cannot debug** |
-| **No anonymous play counting** | Count share-page listens into `views_count` | Requires an anonymous write path with no rate-limit key (no `auth.uid()`, no reliable IP in Postgres). `views_count` stays "plays by Livil users", which is at least a definition |
+| **No anonymous playback** *(2026-10-09, owner's rule)* | A public web player (shipped 2026-09, removed) | Only if the owner reverses "listening needs an account". The page shows metadata and **Listen on Livil**; `shared_post_public` returns no media URL, because hiding the button alone leaves the URL in the page source and in an anon-callable function |
+| **No anonymous play counting** | Count share-page listens into `views_count` | Moot since there is no anonymous playback. Was: requires an anonymous write path with no rate-limit key (no `auth.uid()`, no reliable IP in Postgres). `views_count` stays "plays by Livil users", which is at least a definition |
 | **Read-only public surface** | Sign in on the web page and like there | If web sign-ups from shared links become a measurable acquisition channel — the same argument that reversed decision 3 of [ADR-0015](../decisions/0015-web-creator-dashboard.md) |
 
 > **Out loud —** *"The rejected alternative I want to be loudest about is widening the RLS
@@ -536,15 +556,16 @@ which is exactly never on the developer's own phone.*
 
 | Order | Component | Breaks at | Fix |
 |---|---|---|---|
-| 1 | **Supabase Storage egress** | ~250 GB/month included; **one video post at 4k opens** | Put a CDN in front of the bucket, or transcode a low-bitrate web preview |
+| 1 | ~~Supabase Storage egress~~ | Moot since 2026-10-09 — the page fetches images only | Was: one video post at 4k opens; CDN in front of the bucket |
 | 2 | Cold-start on the share function | Noticeable at low traffic — a rarely-hit function is *always* cold | `s-maxage=300` means the first visitor pays, the next 300 seconds don't |
 | 3 | Vercel function invocations | 100k/month on Hobby | Edge cache already collapses this ~50× for a viral link |
 | 4 | `shared_post_public` QPS | Nowhere near a limit | Not a real entry; listed so nobody optimises it by mistake |
 
-**The first failure is a bill, not an outage** — and it arrives from a *single* successful post,
-not from growth. Ten thousand people opening one video link costs more than the entire rest of
-the platform for that month. The mitigation is already in the design (`preload="none"`,
-tap-to-play, poster-first video), and the escape hatch is a CDN in front of Storage.
+**The first failure was a bill, not an outage** — and it arrived from a *single* successful post,
+not from growth. Ten thousand people opening one video link cost more than the entire rest of
+the platform for that month. The mitigation was in the design (`preload="none"`, tap-to-play,
+poster-first video). *Since 2026-10-09 there is no anonymous playback, so this risk is gone: a
+shared link costs one cover image per visitor.*
 
 > **Out loud —** *"If you push me on what actually goes wrong here, it isn't scale — this app
 > will not have a throughput problem for years. It's that sharing is the first feature whose
