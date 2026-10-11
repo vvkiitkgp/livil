@@ -2,7 +2,7 @@
 tier: 3
 owner: chief-architect
 consumers: [P-CL, P-SE, P-DA, P-PF, FE, BE]
-last_verified: 2026-10-10
+last_verified: 2026-10-11
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -271,12 +271,20 @@ should see; play count is business intelligence about an artist, handed to anyon
 2026-10-09). Listening needs an account, and a media URL handed to `anon` is a player for anyone
 holding the public anon key. The columns stay in the return type so the change is a body swap
 (`create or replace`, grants kept) rather than a drop-and-recreate; the share page is their only
-reader and no longer reads them. This closes the **media half** of ADR-0020 finding 6 — the
-page no longer renders an uploader-supplied URL into `<audio src>`/`og:audio` on
-livil-music.com. **The image half is still open:** `safeUrl` checks only for `https:`, so
-`track_cover_art_url`/`track_thumbnail_url` can still point at a host the uploader chose, and
-every visitor's browser (and every chat unfurl, via `og:image`) fetches it. Fix: allow only the
-storage origin in `safeUrl` for images, falling back to the generic card.
+reader and no longer reads them. Together with the image rule below, this closes ADR-0020
+finding 6 for the share page — it no longer renders an uploader-supplied URL into
+`<audio src>`/`og:audio` on livil-music.com.
+
+**Images come only from this project's own Storage** (2026-10-11). `safeImageUrl` in
+`web/api/share.ts` accepts a cover or poster only when it is `https:`, on the `SUPABASE_URL`
+origin, under `/storage/v1/object/public/`. Before, it checked `https:` alone, and
+`tracks_update_own` restricts rows, not column values — so an uploader could point their cover
+at any host and every visitor's browser, and every chat unfurl via `og:image`, would fetch it.
+Anything refused renders the placeholder box and the generic `og.png` card. Checked against
+production that day: all 25 covers and 4 thumbnails on upload posts are in `tracks-media`.
+*Not covered:* the profile-link page's avatar (`web/api/profile.ts`) has the same https-only
+check, but 28 of 34 avatars are Google sign-in photos on `lh3.googleusercontent.com`, so it
+needs its own allowlist rather than this one.
 
 **`author_badges`** (added 2026-09-22, migration `20260922000000`) carries the badge KINDS the
 author currently holds, ordered by name and never by award time — an empty array when they hold
@@ -371,7 +379,7 @@ flowchart LR
     PGRST --> RPC
     RPC --> PG
     VF -->|"200 HTML — og:*, inline CSS + JS"| Visitor
-    Visitor -->|"GET cover / poster image only<br/>(host not yet allowlisted, ADR-0020 #6)"| STOR
+    Visitor -->|"GET cover / poster image only<br/>(own Storage origin only)"| STOR
     Visitor -.->|"livil://post/:id"| APP
     Crawler -.->|"GET og:image"| STOR
 

@@ -175,14 +175,35 @@ function embedJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-/** Only ever emit a media/image URL we recognise. A stored URL is data, and data that
- *  becomes an attribute is a redirect target — `javascript:` in an href is the classic
- *  version of this bug. */
-function safeUrl(value: string | null): string | null {
+/** Where this project's Storage serves public objects. Covers and posters live here. */
+const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/';
+
+/**
+ * Only ever emit an image URL that points into THIS project's own Storage.
+ *
+ * Two bugs this guards against. The classic one: a stored URL is data, and data that
+ * becomes an attribute is a navigation target — `javascript:` in an href.
+ *
+ * The other is ADR-0020 finding 6. `tracks_update_own` limits which ROWS an uploader may
+ * update, not what they write into `cover_art_url` / `thumbnail_url`, so an https check
+ * alone let a cover point at any host the uploader chose. Every visitor's browser then
+ * fetched it from a livil-music.com page — handing that host their IP and user agent —
+ * and every chat unfurl showed it under Livil's name via `og:image`.
+ *
+ * Production on 2026-10-11: all 25 covers and 4 thumbnails on upload posts are in this
+ * project's `tracks-media` bucket, so nothing legitimate is refused. Anything else
+ * renders the placeholder box, and the preview falls back to the generic Livil card.
+ */
+function safeImageUrl(value: string | null): string | null {
   if (!value) { return null; }
   try {
     const u = new URL(value);
-    return u.protocol === 'https:' ? u.toString() : null;
+    const storage = new URL(supabaseConfig().url);
+    return u.protocol === 'https:'
+      && u.origin === storage.origin
+      && u.pathname.startsWith(STORAGE_PUBLIC_PATH)
+      ? u.toString()
+      : null;
   } catch {
     return null;
   }
@@ -364,8 +385,8 @@ function renderPost(post: SharedPost): string {
   const handle = `@${post.author_username}`;
   const artist = displayName || post.author_username;
   const isVideo = post.track_media_kind === 'video';
-  const poster = safeUrl(post.track_thumbnail_url) ?? safeUrl(post.track_cover_art_url);
-  const cover = safeUrl(post.track_cover_art_url) ?? poster;
+  const poster = safeImageUrl(post.track_thumbnail_url) ?? safeImageUrl(post.track_cover_art_url);
+  const cover = safeImageUrl(post.track_cover_art_url) ?? poster;
   const ogImage = cover ?? FALLBACK_OG_IMAGE;
 
   const heading = `${post.track_title} — ${artist}`;
