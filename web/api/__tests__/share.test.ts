@@ -79,19 +79,30 @@ describe('share page — a post that exists', () => {
     expect(res.headers['Content-Type']).toBe('text/html; charset=utf-8');
     expect(res.body).toContain('<meta property="og:title" content="Neon Rain — Riya">');
     expect(res.body).toContain('<meta property="og:image" content="https://cdn.invalid/cover.jpg">');
-    expect(res.body).toContain('<meta property="og:audio" content="https://cdn.invalid/audio.mp3">');
     expect(res.body).toContain('content="music.song"');
     expect(res.body).toContain('<meta name="twitter:card" content="summary_large_image">');
   });
 
-  it('does not preload the media — this is the egress budget, not a nicety', async () => {
-    // There is no adaptive streaming: every listen is a full progressive download,
-    // ~4 MB for a song and ~60 MB for a video. Preloading would bill us for everyone
-    // who merely opens the link.
+  it('has no player and never emits the media URL — listening needs the app', async () => {
+    // Owner's rule (2026-10-09): a signed-out visitor sees the post, not the song. Hiding
+    // the play button would not be enough — the URL itself, in a `src` or an og:audio
+    // tag, is a player for anyone who opens view-source. So the file's address must not
+    // appear in the page at all, even when the database still hands one back (an
+    // un-migrated function, or a rollback).
     const res = await render(POST_ID, [POST]);
-    expect(res.body).toContain('preload="none"');
-    expect(res.body).not.toContain('preload="auto"');
-    expect(res.body).not.toContain('autoplay');
+    expect(res.body).not.toContain('https://cdn.invalid/audio.mp3');
+    expect(res.body).not.toContain('<audio');
+    expect(res.body).not.toContain('<video');
+    expect(res.body).not.toContain('og:audio');
+    expect(res.body).not.toContain('aria-label="Play"');
+    expect(res.body).not.toContain('role="slider"');
+  });
+
+  it('leads with a Listen on Livil button that opens the post in the app', async () => {
+    const res = await render(POST_ID, [POST]);
+    expect(res.body).toContain(
+      `<a class="cta" id="open" href="livil://post/${POST_ID}">Listen on Livil</a>`,
+    );
   });
 
   it('offers both ways into the app', async () => {
@@ -101,21 +112,19 @@ describe('share page — a post that exists', () => {
     expect(res.body).toContain('apps.apple.com/app/id6809119164');
   });
 
-  it('carries a seekable progress control, not just a progress indicator', async () => {
-    // Shipped as a bare fill bar: it showed position and could not set it. The padded
-    // wrapper is the hit area — a 5px drag target is unusable on a phone.
+  it('shows the length as metadata, from the stored duration', async () => {
     const res = await render(POST_ID, [POST]);
-    expect(res.body).toContain('role="slider"');
-    expect(res.body).toContain('pointerdown');
-    expect(res.body).toContain('touch-action:none');
+    expect(res.body).toContain('<p class="meta">Audio · 3:34</p>');
   });
 
-  it('embeds the stored duration, so the bar is seekable before the audio loads', async () => {
-    // preload="none" means the browser learns the duration only on first play. Without
-    // the stored value the bar would be dead until someone had already pressed play —
-    // backwards from how a progress bar is used.
-    const res = await render(POST_ID, [POST]);
-    expect(res.body).toContain('var DUR=214');
+  it('shows the clip length for a clipped upload, not the whole file', async () => {
+    const res = await render(POST_ID, [{ ...POST, clip_start_sec: 30, clip_end_sec: 75 }]);
+    expect(res.body).toContain('<p class="meta">Audio · 0:45</p>');
+  });
+
+  it('leaves the length out rather than guessing when the database does not know it', async () => {
+    const res = await render(POST_ID, [{ ...POST, track_duration_seconds: null }]);
+    expect(res.body).toContain('<p class="meta">Audio</p>');
   });
 
   it('uses the real app icon rather than a stand-in', async () => {
@@ -124,8 +133,8 @@ describe('share page — a post that exists', () => {
   });
 
   it('emits an inline script that actually parses', async () => {
-    // A syntax error here renders a page that looks fine and does nothing — no play, no
-    // seek, no open-in-app, and no error anyone would see. Worth a real parse.
+    // A syntax error here renders a page that looks fine and does nothing — no
+    // open-in-app, no sign-in prompt, and no error anyone would see. Worth a real parse.
     const res = await render(POST_ID, [POST]);
     const block = res.body.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
     expect(block).not.toBeNull();
@@ -144,7 +153,7 @@ describe('share page — a post that exists', () => {
     );
   });
 
-  it('uses the video poster and og:video for a video post', async () => {
+  it('shows a video post as its poster image, never the video', async () => {
     const res = await render(POST_ID, [{
       ...POST,
       track_media_kind: 'video',
@@ -152,8 +161,12 @@ describe('share page — a post that exists', () => {
       track_video_url: 'https://cdn.invalid/clip.mp4',
       track_thumbnail_url: 'https://cdn.invalid/thumb.jpg',
     }]);
-    expect(res.body).toContain('<meta property="og:video" content="https://cdn.invalid/clip.mp4">');
-    expect(res.body).toContain('poster="https://cdn.invalid/thumb.jpg"');
+    expect(res.body).toContain('<img class="art art--tall" src="https://cdn.invalid/thumb.jpg" alt="">');
+    expect(res.body).toContain('content="video.other"');
+    expect(res.body).toContain('<p class="meta">Video · 3:34</p>');
+    expect(res.body).not.toContain('https://cdn.invalid/clip.mp4');
+    expect(res.body).not.toContain('og:video');
+    expect(res.body).not.toContain('<video');
   });
 });
 
@@ -202,12 +215,12 @@ describe('share page — user-authored text cannot escape its markup', () => {
     expect(island![1]).toContain('\\u003c');
   });
 
-  it('drops a media URL that is not https rather than emitting it', async () => {
+  it('drops an image URL that is not https rather than emitting it', async () => {
     // A stored URL becomes an attribute, and an attribute is a navigation target.
     const res = await render(POST_ID, [{
       ...POST,
-      track_audio_url: 'javascript:alert(1)',
       track_cover_art_url: 'javascript:alert(2)',
+      track_thumbnail_url: 'javascript:alert(3)',
     }]);
     expect(res.body).not.toContain('javascript:');
   });

@@ -76,7 +76,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/media-pipeline.md` | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
 | `architecture/overview.md` | chief-architect | ALL | 2026-07-20 | 90d |
 | `architecture/playback.md` | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
-| `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-10-09 | 90d |
+| `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-10-10 | 90d |
 | `architecture/realtime.md` | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
 | `glossary.md` | chief-architect | ALL | 2026-07-20 | 180d |
 | `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
