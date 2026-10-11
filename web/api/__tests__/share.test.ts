@@ -24,6 +24,10 @@ type Res = {
 
 const POST_ID = '8f14e45f-ceea-4d1a-9c0f-1f2a3b4c5d6e';
 
+/** This project's own public Storage — the only place the page will load an image from.
+ *  Matches SUPABASE_URL set in beforeAll below. */
+const STORAGE = 'https://project.invalid/storage/v1/object/public/tracks-media/riya/neon';
+
 const POST = {
   post_id: POST_ID,
   caption: 'made this at 4am',
@@ -37,9 +41,9 @@ const POST = {
   author_avatar_url: 'https://cdn.invalid/a.jpg',
   track_title: 'Neon Rain',
   track_media_kind: 'audio' as const,
-  track_audio_url: 'https://cdn.invalid/audio.mp3',
+  track_audio_url: `${STORAGE}/audio.mp3`,
   track_video_url: null,
-  track_cover_art_url: 'https://cdn.invalid/cover.jpg',
+  track_cover_art_url: `${STORAGE}/cover.jpg`,
   track_thumbnail_url: null,
   track_duration_seconds: 214,
 };
@@ -78,7 +82,7 @@ describe('share page — a post that exists', () => {
     expect(res.code).toBe(200);
     expect(res.headers['Content-Type']).toBe('text/html; charset=utf-8');
     expect(res.body).toContain('<meta property="og:title" content="Neon Rain — Riya">');
-    expect(res.body).toContain('<meta property="og:image" content="https://cdn.invalid/cover.jpg">');
+    expect(res.body).toContain(`<meta property="og:image" content="${STORAGE}/cover.jpg">`);
     expect(res.body).toContain('content="music.song"');
     expect(res.body).toContain('<meta name="twitter:card" content="summary_large_image">');
   });
@@ -90,7 +94,7 @@ describe('share page — a post that exists', () => {
     // appear in the page at all, even when the database still hands one back (an
     // un-migrated function, or a rollback).
     const res = await render(POST_ID, [POST]);
-    expect(res.body).not.toContain('https://cdn.invalid/audio.mp3');
+    expect(res.body).not.toContain(`${STORAGE}/audio.mp3`);
     expect(res.body).not.toContain('<audio');
     expect(res.body).not.toContain('<video');
     expect(res.body).not.toContain('og:audio');
@@ -158,13 +162,13 @@ describe('share page — a post that exists', () => {
       ...POST,
       track_media_kind: 'video',
       track_audio_url: null,
-      track_video_url: 'https://cdn.invalid/clip.mp4',
-      track_thumbnail_url: 'https://cdn.invalid/thumb.jpg',
+      track_video_url: `${STORAGE}/clip.mp4`,
+      track_thumbnail_url: `${STORAGE}/thumb.jpg`,
     }]);
-    expect(res.body).toContain('<img class="art art--tall" src="https://cdn.invalid/thumb.jpg" alt="">');
+    expect(res.body).toContain(`<img class="art art--tall" src="${STORAGE}/thumb.jpg" alt="">`);
     expect(res.body).toContain('content="video.other"');
     expect(res.body).toContain('<p class="meta">Video · 3:34</p>');
-    expect(res.body).not.toContain('https://cdn.invalid/clip.mp4');
+    expect(res.body).not.toContain(`${STORAGE}/clip.mp4`);
     expect(res.body).not.toContain('og:video');
     expect(res.body).not.toContain('<video');
   });
@@ -331,5 +335,59 @@ describe('share page — the author badges', () => {
   it('ignores a badge kind it has no artwork for', async () => {
     const res = await render(POST_ID, [{ ...POST, author_badges: ['moderator'] }]);
     expect(res.body).not.toContain('class="badge"');
+  });
+});
+
+/**
+ * ADR-0020 finding 6: an uploader controls `cover_art_url` / `thumbnail_url`, so an https
+ * check alone let them make every visitor's browser — and every chat unfurl — fetch an
+ * image from a host they chose. Only this project's own Storage is allowed.
+ */
+describe('share page — images come only from our own storage', () => {
+  it('drops a cover on another host, and the preview falls back to the generic card', async () => {
+    const res = await render(POST_ID, [{
+      ...POST,
+      track_cover_art_url: 'https://tracker.example/pixel.gif?who=everyone',
+    }]);
+    expect(res.body).not.toContain('tracker.example');
+    expect(res.body).toContain('<meta property="og:image" content="https://livil-music.com/og.png">');
+    expect(res.body).toContain('<div class="art"></div>');
+  });
+
+  it('drops a video poster on another host', async () => {
+    const res = await render(POST_ID, [{
+      ...POST,
+      track_media_kind: 'video',
+      track_cover_art_url: null,
+      track_thumbnail_url: 'https://tracker.example/poster.jpg',
+    }]);
+    expect(res.body).not.toContain('tracker.example');
+  });
+
+  it('refuses a look-alike host that merely starts with ours', async () => {
+    // A prefix test on the URL string would let this through.
+    const res = await render(POST_ID, [{
+      ...POST,
+      track_cover_art_url: 'https://project.invalid.tracker.example/storage/v1/object/public/x.jpg',
+    }]);
+    expect(res.body).not.toContain('tracker.example');
+  });
+
+  it('refuses our own host outside public Storage', async () => {
+    // The API lives on the same origin; only public objects are images we serve.
+    const res = await render(POST_ID, [{
+      ...POST,
+      track_cover_art_url: 'https://project.invalid/rest/v1/rpc/anything',
+    }]);
+    expect(res.body).not.toContain('/rest/v1/rpc/anything');
+  });
+
+  it('falls back from a bad poster to a good cover rather than to nothing', async () => {
+    const res = await render(POST_ID, [{
+      ...POST,
+      track_media_kind: 'video',
+      track_thumbnail_url: 'https://tracker.example/poster.jpg',
+    }]);
+    expect(res.body).toContain(`<img class="art art--tall" src="${STORAGE}/cover.jpg" alt="">`);
   });
 });
