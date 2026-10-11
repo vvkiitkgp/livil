@@ -155,6 +155,9 @@ export function Upload() {
   );
   const answered = queue.items.filter(i => i.rightsAnswer !== null);
   const missingArt = pending.filter(i => !i.image).length;
+  // `publishTrack` rejects a blank title, but only once the Check step runs — far from the
+  // field that caused it. Holding the Details step here is what makes its tick mean done.
+  const missingTitle = pending.filter(i => !i.title.trim()).length;
   const missingRole = pending.filter(i => !i.uploaderRole.trim()).length;
   const oversize = pending.filter(i => i.media.size > MAX_WEB_UPLOAD_BYTES).length;
   // Nothing left to do: the run is over and something actually published.
@@ -183,7 +186,7 @@ export function Upload() {
    */
   const complete: Record<StepKey, boolean> = {
     files: queue.items.length > 0 && oversize === 0,
-    details: missingArt === 0,
+    details: missingArt === 0 && missingTitle === 0,
     credits: missingRole === 0,
     tags: true,
     check:
@@ -405,15 +408,38 @@ export function Upload() {
       {queue.items.length > 0 && (
         <ul className="queue">
           {queue.items.map(item => (
-            <li key={item.id} className="queue__row" data-status={item.status}>
-              <CoverThumb
-                file={item.image}
-                onClick={() => pickCover(item.id)}
-                disabled={!isEditable(item)}
-              />
+            <li key={item.id} className="queue__row queue__row--files" data-status={item.status}>
               <div className="queue__main">
-                <span className="queue__name">{item.title || item.media.name}</span>
-                <FileLine item={item} />
+                {/* Labelled, so no line is a guess. The bold line here used to be the title
+                    derived from the filename, which read as the filename itself; and an
+                    empty "Art" square read as something the artist had to deal with on a
+                    step that is only about choosing files. Art is shown only when the file
+                    brought some — adding it is the Details step's job. */}
+                <dl className="filefacts">
+                  <dt>File name</dt>
+                  <dd className="filefacts__name" title={item.media.name}>
+                    {item.media.name}
+                  </dd>
+                  <dt>File details</dt>
+                  <dd>
+                    {formatSize(item.media.size)} · {item.mode}
+                    {item.duration !== null && ` · ${formatTime(item.duration)}`}
+                  </dd>
+                  {item.image && (
+                    <>
+                      <dt>Cover art</dt>
+                      <dd className="filefacts__art">
+                        <CoverThumb
+                          file={item.image}
+                          onClick={() => pickCover(item.id)}
+                          disabled={!isEditable(item)}
+                        />
+                        {item.artFromTag && <span>Found inside the file</span>}
+                        {shareCoverButton(item)}
+                      </dd>
+                    </>
+                  )}
+                </dl>
                 {item.media.size > MAX_WEB_UPLOAD_BYTES && (
                   <span className="queue__error">
                     Over the {formatSize(MAX_WEB_UPLOAD_BYTES)} limit — remove this file.
@@ -423,7 +449,6 @@ export function Upload() {
                 <SeekBar item={item} preview={preview} />
               </div>
               <div className="queue__side">
-                {shareCoverButton(item)}
                 <PreviewButton
                   item={item}
                   preview={preview}
@@ -457,7 +482,7 @@ export function Upload() {
   const detailsStep = (
     <>
       <StepIntro
-        title="Name them and add cover art"
+        title="Cover art, title, caption"
         action={
           pending.length > 1 && (
             <Button variant="secondary" size="sm" onClick={() => pickCover('ALL')}>
@@ -466,60 +491,80 @@ export function Upload() {
           )
         }
       >
-        Titles start from the filename. Click the square to add or change a track's cover
-        art — every track needs one. “Use for all” copies a track's cover to the rest.
+        Three steps for each track, ticked off as you go. Cover art and a title are needed to
+        publish — the title starts from the filename. The caption is up to you.
       </StepIntro>
       <ul className="queue">
         {queue.items.map(item => {
           const locked = !isEditable(item);
+          const hasArt = !!item.image;
+          const hasTitle = !!item.title.trim();
+          const hasCaption = !!item.description.trim();
+          // The first step still open is the one to look at next. A locked row has nothing
+          // left to do here, so it points at nothing.
+          const current = locked ? -1 : [hasArt, hasTitle, hasCaption].indexOf(false);
+          // No warning tone anywhere on this row. Every track arrives here without art, so
+          // a warning would greet the artist before they had done anything; the glowing
+          // marker on the open step is the prompt instead.
           return (
             <li
               key={item.id}
-              className="queue__row"
+              className="queue__row queue__row--steps"
               data-status={item.status}
-              data-missing={(!locked && !item.image) || undefined}
             >
-              <CoverThumb
-                file={item.image}
-                onClick={() => pickCover(item.id)}
-                disabled={locked}
-              />
               <div className="queue__main">
-                {/* Captioned rather than bare: two unlabelled boxes in a row leave the
-                    artist guessing which is which, and the title arrives prefilled from
-                    the filename so nothing in the value itself says what it is. */}
-                <label className="queue__labelled">
-                  <span className="queue__label">Title</span>
-                  <input
-                    className="queue__field queue__title"
-                    value={item.title}
-                    onChange={e => queue.patch(item.id, { title: e.target.value })}
-                    disabled={locked}
-                    placeholder="Track title"
-                  />
-                </label>
-                {/* "Description" asked for metadata and got blank fields. The caption asks
-                    the artist for the one thing only they can write — what the track is to
-                    them. */}
-                <label className="queue__labelled">
-                  <span className="queue__label">How you feel about it</span>
-                  <input
-                    className="queue__field queue__desc"
-                    value={item.description}
-                    onChange={e => queue.patch(item.id, { description: e.target.value })}
-                    disabled={locked}
-                    placeholder="Optional — what this one means to you"
-                  />
-                </label>
+                <ol className="tracksteps">
+                  <TrackStep n={1} label="Cover art" done={hasArt} current={current === 0}>
+                    <div className="trackstep__art">
+                      <CoverThumb
+                        file={item.image}
+                        onClick={() => pickCover(item.id)}
+                        disabled={locked}
+                      />
+                      {!locked && (
+                        <span className="hint">
+                          {hasArt
+                            ? 'Click the square to change it.'
+                            : 'Click the square to add one.'}
+                        </span>
+                      )}
+                      {shareCoverButton(item)}
+                    </div>
+                  </TrackStep>
+                  <TrackStep n={2} label="Title" done={hasTitle} current={current === 1} field>
+                    <input
+                      className="queue__field queue__title"
+                      value={item.title}
+                      onChange={e => queue.patch(item.id, { title: e.target.value })}
+                      disabled={locked}
+                      placeholder="Track title"
+                    />
+                  </TrackStep>
+                  {/* "Description" asked for metadata and got blank fields. The caption asks
+                      the artist for the one thing only they can write — what the track is to
+                      them. */}
+                  <TrackStep
+                    n={3}
+                    label="Caption"
+                    done={hasCaption}
+                    current={current === 2}
+                    optional
+                    field
+                  >
+                    <input
+                      className="queue__field queue__desc"
+                      value={item.description}
+                      onChange={e => queue.patch(item.id, { description: e.target.value })}
+                      disabled={locked}
+                      placeholder="How you feel about it — what this one means to you"
+                    />
+                  </TrackStep>
+                </ol>
                 <FileLine item={item} />
-                {!locked && !item.image && (
-                  <span className="queue__error">Needs cover art — click the square.</span>
-                )}
                 <LockedNote item={item} />
                 <SeekBar item={item} preview={preview} />
               </div>
               <div className="queue__side">
-                {shareCoverButton(item)}
                 <PreviewButton
                   item={item}
                   preview={preview}
@@ -530,10 +575,12 @@ export function Upload() {
           );
         })}
       </ul>
-      {missingArt > 0 && (
-        <p className="alert" role="alert">
-          {missingArt} {missingArt === 1 ? 'track needs' : 'tracks need'} cover art before
-          publishing.
+      {/* Says why Next is greyed out, in the voice of a hint. A red "needs cover art"
+          alert here read as an error the artist had made, shown before they had touched
+          anything — nothing has gone wrong, the step just is not finished. */}
+      {!complete.details && (
+        <p className="hint stepgate" role="status">
+          Next unlocks once every track has cover art and a title.
         </p>
       )}
     </>
@@ -556,12 +603,10 @@ export function Upload() {
       </StepIntro>
       <ul className="queue">
         {queue.items.map(item => (
-          <li
-            key={item.id}
-            className="queue__row"
-            data-status={item.status}
-            data-missing={(isEditable(item) && !item.uploaderRole.trim()) || undefined}
-          >
+          // No warning tone on the row, for the same reason as Details: every track arrives
+          // without a role, so it would read as a mistake before the artist had done
+          // anything. The "You" chip glows instead — see `.credit--self[data-unset]`.
+          <li key={item.id} className="queue__row" data-status={item.status}>
             <CoverThumb file={item.image} onClick={() => pickCover(item.id)} disabled />
             <div className="queue__main">
               <span className="queue__name">{item.title || item.media.name}</span>
@@ -581,11 +626,12 @@ export function Upload() {
           </li>
         ))}
       </ul>
-      {missingRole > 0 && (
-        <p className="alert" role="alert">
-          {missingRole === 1 ? 'One track needs' : `${missingRole} tracks need`} your own role.
-          A credit list that names everyone except the person who made the record is not a
-          credit list.
+      {/* Why Next is greyed out — a hint, not a red alert. The role is still required: a
+          credit list that names everyone except the person who made the record is not a
+          credit list. */}
+      {!complete.credits && (
+        <p className="hint stepgate" role="status">
+          Next unlocks once you’ve said what you did on every track.
         </p>
       )}
     </>
@@ -1112,6 +1158,62 @@ function StepIntro({
       </div>
       <p className="hint stepintro__body">{children}</p>
     </div>
+  );
+}
+
+/**
+ * One stop on a track's Details checklist: a numbered marker that becomes a tick once the
+ * step is done. `field` makes the body a `<label>`, so the step's name is also its input's
+ * accessible name; the cover-art step holds a button, which a label would wrongly activate.
+ */
+function TrackStep({
+  n,
+  label,
+  done,
+  current,
+  optional,
+  field,
+  children,
+}: {
+  n: number;
+  label: string;
+  done: boolean;
+  current: boolean;
+  optional?: boolean;
+  field?: boolean;
+  children: ReactNode;
+}) {
+  const Body = field ? 'label' : 'div';
+  return (
+    <li
+      className="trackstep"
+      data-done={done || undefined}
+      data-current={current || undefined}
+    >
+      <span className="trackstep__marker" aria-hidden="true">
+        {done ? (
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
+            <path
+              d="M20 6 9 17l-5-5"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : (
+          n
+        )}
+      </span>
+      <Body className="trackstep__body">
+        <span className="trackstep__head">
+          <span className="trackstep__label">{label}</span>
+          {optional && !done && <span className="trackstep__optional">Optional</span>}
+          <span className="visually-hidden">{done ? '(done)' : '(to do)'}</span>
+        </span>
+        {children}
+      </Body>
+    </li>
   );
 }
 
