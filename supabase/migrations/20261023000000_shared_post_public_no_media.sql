@@ -121,7 +121,7 @@ comment on function public.shared_post_public(uuid) is
   'Public share page read. Returns one upload post''s display metadata by id, or zero '
   'rows for a repost, a deleted post or an unknown id. Includes the author''s held '
   'badge kinds (never the ordinal, never the award time). track_audio_url and '
-  'track_video_url are always NULL: listening needs an account (20261022000000). '
+  'track_video_url are always NULL: listening needs an account (20261023000000). '
   'Granted to anon: this is the anonymous read surface for posts and tracks. Columns '
   'are enumerated deliberately — see kb/architecture/post-sharing.md §5.';
 

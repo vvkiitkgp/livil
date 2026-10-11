@@ -44,7 +44,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
 | `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-10-11 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-10-10 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-10-11 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-10-09 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-10-09 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-10-09 | 9999d |

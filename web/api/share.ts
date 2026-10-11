@@ -20,7 +20,7 @@
  * (the element's `src` and `og:audio`/`og:video`), and a URL in the page is a player
  * for anyone who opens view-source. So NO media URL is emitted anywhere — this file
  * never reads `track_audio_url` / `track_video_url` — and `shared_post_public` stops
- * returning them (20261022000000). Do not reintroduce either without reversing the
+ * returning them (20261023000000). Do not reintroduce either without reversing the
  * rule in kb/architecture/post-sharing.md first.
  *
  * ── WHY THERE IS NO CLIENT BUNDLE AT ALL ───────────────────────────────────

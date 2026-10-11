@@ -25,7 +25,7 @@ toggle in v1. Android only, matching [ADR-0005](../decisions/0005-ios-platform-s
 > length, likes, comments) and a **Listen on Livil** button that opens the app, and nothing that
 > plays. The page renders no `<audio>`/`<video>` and no `og:audio`/`og:video`, and
 > `shared_post_public` returns `track_audio_url`/`track_video_url` as `NULL`
-> (`20261022000000`) — hiding the button alone would have left the file's URL in the page source
+> (`20261023000000`) — hiding the button alone would have left the file's URL in the page source
 > and in the anon-callable function. F5 and §5 below are updated; the egress math in §2 is kept
 > as the record of why the page once opened paused, and is now moot (zero anonymous listens).
 > The web creator dashboard (`/studio`) is signed-in and unaffected.
@@ -267,7 +267,7 @@ send is in flight; that is the whole concurrency control, and it is enough for a
 **Not returned, on purpose:** `views_count`. Likes and comments are social proof a stranger
 should see; play count is business intelligence about an artist, handed to anyone with a link.
 
-**`track_audio_url` / `track_video_url` are always `NULL`** (since migration `20261022000000`,
+**`track_audio_url` / `track_video_url` are always `NULL`** (since migration `20261023000000`,
 2026-10-09). Listening needs an account, and a media URL handed to `anon` is a player for anyone
 holding the public anon key. The columns stay in the return type so the change is a body swap
 (`create or replace`, grants kept) rather than a drop-and-recreate; the share page is their only

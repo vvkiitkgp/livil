@@ -16,7 +16,7 @@
 --   3. `anon` still cannot select from the underlying TABLES. The whole point of using
 --      a function was to avoid widening posts_select_authenticated, so a test suite that
 --      never checks the tables would pass just as happily against the change we refused.
---   4. `anon` does NOT get the media file's URL (20261022000000). Listening needs an
+--   4. `anon` does NOT get the media file's URL (20261023000000). Listening needs an
 --      account; a URL handed to anon is a player for anyone with the public anon key.
 --
 -- Exercises the database, not PostgREST (P32).
@@ -159,7 +159,7 @@ select pg_temp.assert_text(
   (select author_display_name from public.shared_post_public('d3000000-0000-0000-0000-00000000000a')),
   'Riya');
 
--- Listening needs an account (20261022000000). The fixture track HAS an audio_url, so a
+-- Listening needs an account (20261023000000). The fixture track HAS an audio_url, so a
 -- NULL here is the function withholding it, not the data lacking it. The cover still
 -- comes back, which proves this is a targeted withholding and not a broken join.
 select pg_temp.assert_text(
