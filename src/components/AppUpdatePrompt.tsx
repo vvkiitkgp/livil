@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, BackHandler, Keyboard, Linking, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, AppState, BackHandler, Keyboard, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { APP_VERSION_CODE } from '../constants/appVersion';
 import {
@@ -127,6 +127,17 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
     // accessibilityViewIsModal on the BACKDROP: it hides the element's siblings — the app
     // underneath — from VoiceOver (iOS only; Android has no overlay equivalent).
     <View style={styles.backdrop} testID="app-update-prompt" accessibilityViewIsModal>
+      {/* A tap outside the card is the "Later" button, exactly. A sibling BEHIND the card,
+          not its parent, so taps on the card never reach it. Hidden from screen readers: the
+          button itself is the accessible way out. */}
+      {verdict.kind !== 'soft' ? null : (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={later}
+          accessible={false}
+          importantForAccessibility="no"
+        />
+      )}
       <View style={styles.card}>
         <View style={styles.iconWrap}>
           <View style={styles.iconCircle}>
