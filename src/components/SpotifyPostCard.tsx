@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { useToast } from '../contexts/ToastContext';
 import { deletePost } from '../services/posts';
+import { haptics } from '../utils/haptics';
 import { usePostLike } from '../hooks/usePostLike';
 import { artistLine, useSpotifyAvailability, useSpotifyTrack } from '../services/spotify';
 import { useOpenInSpotify } from '../hooks/useOpenInSpotify';
@@ -71,6 +72,11 @@ function initialsOf(name: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
+// Like / comment / repost glyphs. Bigger and white so the three actions read as controls rather
+// than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
+// (styles.likeHit), so changing the size keeps the target the same.
+const ACTION_ICON_SIZE = 26;
+
 function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
@@ -109,12 +115,24 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   const handleRepost = useCallback(() => {
     if (!spotifyId) {return;}
+    haptics.tap();
     navigation.navigate('SpotifyRepost', {
       spotifyTrackId: spotifyId,
       locked: true,
       fromUsername: author.username,
     });
   }, [navigation, spotifyId, author.username]);
+
+  // Button presses on the action row buzz like every other control (`tap`). The heart is
+  // the exception, in usePostLike: `toggleOn` on the way on, nothing on the way off.
+  const handleOpenComments = useCallback(() => {
+    haptics.tap();
+    onCommentsPress?.(post.id);
+  }, [onCommentsPress, post.id]);
+  const handleOpenLikers = useCallback(() => {
+    haptics.tap();
+    setLikersOpen(true);
+  }, []);
 
   const handleConfirmDelete = useCallback(async () => {
     setDeleting(true);
@@ -227,20 +245,20 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit} accessibilityLabel={liked ? 'Unlike' : 'Like'}>
-              <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
+              <Icon name="heart" size={ACTION_ICON_SIZE} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={0.7} onPress={() => setLikersOpen(true)} disabled={likesCount === 0} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleOpenLikers} disabled={likesCount === 0} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
               <Text style={[styles.statValue, liked && styles.statValueLiked]}>{formatCount(likesCount)}</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={() => onCommentsPress?.(post.id)} disabled={!onCommentsPress} accessibilityLabel="Comments">
-            <Icon name="comment" size={16} color={COLORS.textSecondary} />
+          <TouchableOpacity style={styles.statBtn} activeOpacity={0.7} onPress={handleOpenComments} disabled={!onCommentsPress} accessibilityLabel="Comments">
+            <Icon name="comment" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <LikedByLine postId={post.id} likesCount={likesCount} viewerHasLiked={liked} onPress={() => setLikersOpen(true)} />
+      <LikedByLine postId={post.id} likesCount={likesCount} viewerHasLiked={liked} onPress={handleOpenLikers} />
 
       <DetailActionSheet visible={menuOpen} onClose={() => setMenuOpen(false)} actions={menuActions} />
       <PostReportModal visible={reportOpen} postId={reportOpen ? post.id : null} onClose={() => setReportOpen(false)} />
@@ -332,14 +350,14 @@ const styles = StyleSheet.create({
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
   actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 14 },
   statsGroup: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-around' },
-  // The heart is 16pt; this makes its touch box 44pt without moving or resizing it — the
+  // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
   // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
   // LAYOUT overflows there, and hitSlop does not count — so a bigger hitSlop on this short row
   // would never fire. The count beside it is a later sibling, so it keeps its own taps.
-  likeHit: { padding: 14, margin: -14 },
+  likeHit: { padding: (44 - ACTION_ICON_SIZE) / 2, margin: -(44 - ACTION_ICON_SIZE) / 2 },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 6 },
-  statValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  statValue: { color: COLORS.white, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   statValueLiked: { color: '#FF4D6D' },
 });
 
