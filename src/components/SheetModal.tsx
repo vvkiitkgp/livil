@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useMemo, type ReactNode, type Ref } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import {
   Modal,
   Pressable,
@@ -16,43 +23,70 @@ import {
 } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import {
+  KeyboardController,
+  useReanimatedKeyboardAnimation,
+} from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 
 /**
- * A bottom sheet in its own Modal: opens at half the screen and closes on a drag down —
- * from the grabber/header, or from its list once the list is scrolled to the top.
+ * A bottom sheet in its own Modal with two resting heights: HALF (where it opens) and
+ * EXPANDED. Up from half — dragging the grabber/header, or trying to scroll the list —
+ * expands it; the list scrolls only once it is expanded. Down from expanded returns to half
+ * (from the grabber, or from the list once it is at the top); down from half closes it.
+ * Put the list in `SheetFlatList` so it can hand those drags to the sheet.
  *
- * The grabber used to be drawn with nothing behind it: these sheets had no gesture at all
- * and closed only on the backdrop or ✕. Put the list in `SheetFlatList` so it can hand a
- * downward drag to the sheet.
+ * The sheet is always laid out at its EXPANDED height and slides: `offsetY` is how far it
+ * sits below fully expanded. Sliding is a transform, so a drag never re-lays-out the list,
+ * and at half the list cannot scroll — so nothing ever sits in the off-screen part that the
+ * reader would need to reach.
+ *
+ * keyboardAware sheets (comments) sit on the keyboard and fill the space above it while it
+ * is up, whatever the resting height, then return to it. A drag that moves the sheet closes
+ * the keyboard first.
  *
  * Everything that tracks the keyboard or the finger lives in SheetBody, which the Modal
  * mounts only while it is open — the keyboard hook switches the Android resize mode while
- * mounted, and a fresh body means every open starts from rest.
+ * mounted, and a fresh body means every open starts at half.
  */
 
-/** Share of the window the sheet fills while the keyboard is down. */
-const RESTING_SHARE = 0.5;
-/** With the keyboard up (keyboardAware sheets), share of the space above it. */
-const TYPING_SHARE = 0.9;
-/** Released past this share of the resting height, the sheet closes. */
-const CLOSE_SHARE = 0.25;
-/** …or flicked down at least this fast (px/s). */
-const CLOSE_VELOCITY = 900;
-/** Below the status bar, so a tall typing sheet never runs under it. */
+/** Share of the window the sheet shows at HALF. */
+const HALF_SHARE = 0.5;
+/** Share of the window at EXPANDED (capped below the status bar). */
+const EXPANDED_SHARE = 0.9;
+/** Below the status bar, so the sheet's top never runs under it. */
 const TOP_GAP = 8;
+/** From half: moved up this far (px) and released, it expands. */
+const EXPAND_DISTANCE = 24;
+/** From expanded: moved down this far (px) and released, it returns to half. */
+const COLLAPSE_DISTANCE = 80;
+/** From half: released past this share of the half height, it closes. */
+const CLOSE_SHARE = 0.25;
+/** A flick at least this fast (px/s) moves one step in its direction. */
+const FLICK_VELOCITY = 600;
+/** A flick down from half at least this fast closes. */
+const CLOSE_VELOCITY = 900;
+/**
+ * Snap between half and expanded: quick, and never past its resting height. Stiff and
+ * critically damped (damping = 2·√stiffness) so it lands fast without wobbling, carrying the
+ * finger's release velocity; overshootClamping stops it AT the target even when a hard flick
+ * would otherwise carry it past. (24/260 bounced visibly at both ends.)
+ */
+const SNAP_SPRING = { damping: 45, stiffness: 500, overshootClamping: true };
 
 type ListDrag = {
   gesture: ComposedGesture;
   onScroll: ReturnType<typeof useAnimatedScrollHandler>;
+  /** Only once expanded (or while typing). At half, an upward swipe expands the sheet instead. */
+  scrollEnabled: boolean;
 };
 
 const ListDragContext = createContext<ListDrag | null>(null);
@@ -66,7 +100,7 @@ type SheetModalProps = {
   children: ReactNode;
   /** Other modals launched from inside the sheet. They must live in this Modal's tree. */
   outside?: ReactNode;
-  /** Grow above the keyboard when an input in the sheet opens it. */
+  /** Sit on the keyboard when an input in the sheet opens it. */
   keyboardAware?: boolean;
 };
 
@@ -85,6 +119,10 @@ export default function SheetModal({ visible, onClose, ...body }: SheetModalProp
   );
 }
 
+function dismissKeyboard() {
+  KeyboardController.dismiss().catch(() => {});
+}
+
 function SheetBody({
   onClose,
   header,
@@ -96,45 +134,107 @@ function SheetBody({
   const insets = useSafeAreaInsets();
   const keyboard = useReanimatedKeyboardAnimation();
 
-  const dragY = useSharedValue(0);
+  const maxTop = insets.top + TOP_GAP;
+  const halfHeight = windowHeight * HALF_SHARE;
+  const expandedHeight = Math.min(windowHeight * EXPANDED_SHARE, windowHeight - maxTop);
+  const halfOffset = expandedHeight - halfHeight;
+  const closedOffset = expandedHeight;
+
+  /** How far the sheet sits below EXPANDED: 0 = expanded, halfOffset = half. */
+  const offsetY = useSharedValue(halfOffset);
+  const dragStart = useSharedValue(0);
   const scrollY = useSharedValue(0);
-  // The list drag's translation at the moment the list reached its top; -1 while it has not.
+  /** Set by a list drag at the start: 1 = the sheet was expanded, so the list owns the drag. */
+  const listOwnsDrag = useSharedValue(0);
+  // The list drag's translation when it began moving the sheet down from the top; -1 before.
   const listDragOrigin = useSharedValue(-1);
 
-  const restingHeight = windowHeight * RESTING_SHARE;
-  const maxTop = insets.top + TOP_GAP;
+  const [expanded, setExpanded] = useState(false);
+  const [typing, setTyping] = useState(false);
+
+  useAnimatedReaction(
+    () => keyboardAware && keyboard.progress.value > 0.5,
+    (open, wasOpen) => {
+      if (open !== wasOpen) { runOnJS(setTyping)(open); }
+    },
+  );
 
   const gestures = useMemo(() => {
-    const settle = (velocityY: number) => {
+    const typingProgress = () => {
       'worklet';
-      if (dragY.value <= 0) { return; }
-      if (dragY.value > restingHeight * CLOSE_SHARE || velocityY > CLOSE_VELOCITY) {
-        dragY.value = withTiming(windowHeight, { duration: 200 }, finished => {
-          if (finished) { runOnJS(onClose)(); }
-        });
-      } else {
-        dragY.value = withSpring(0, { damping: 22, stiffness: 240 });
-      }
+      return keyboardAware ? keyboard.progress.value : 0;
     };
 
-    // Downward only: an upward drag on the header means nothing, and on the list it scrolls.
+    const snapTo = (target: number, velocity: number) => {
+      'worklet';
+      if (target >= closedOffset) {
+        offsetY.value = withTiming(closedOffset, { duration: 200 }, finished => {
+          if (finished) { runOnJS(onClose)(); }
+        });
+        return;
+      }
+      offsetY.value = withSpring(target, { ...SNAP_SPRING, velocity });
+      runOnJS(setExpanded)(target === 0);
+    };
+
+    // Where to rest after a drag that started at `start`, judged by intent: how far and
+    // which way it moved, and how fast it was going when released.
+    const settle = (start: number, velocityY: number) => {
+      'worklet';
+      const moved = offsetY.value - start; // + down, − up
+      if (start < halfOffset / 2) {
+        // Started expanded.
+        if (offsetY.value > halfOffset + halfHeight * CLOSE_SHARE) { snapTo(closedOffset, velocityY); return; }
+        snapTo(moved > COLLAPSE_DISTANCE || velocityY > FLICK_VELOCITY ? halfOffset : 0, velocityY);
+        return;
+      }
+      // Started at half.
+      if (moved > halfHeight * CLOSE_SHARE || velocityY > CLOSE_VELOCITY) { snapTo(closedOffset, velocityY); return; }
+      snapTo(moved < -EXPAND_DISTANCE || velocityY < -FLICK_VELOCITY ? 0 : halfOffset, velocityY);
+    };
+
     const handle = Gesture.Pan()
-      .activeOffsetY(8)
-      .onUpdate(e => {
-        dragY.value = Math.max(0, e.translationY);
+      .activeOffsetY([-8, 8])
+      .onStart(() => {
+        dragStart.value = offsetY.value;
+        if (typingProgress() > 0) { runOnJS(dismissKeyboard)(); }
       })
-      .onEnd(e => settle(e.velocityY));
+      .onUpdate(e => {
+        offsetY.value = Math.max(0, dragStart.value + e.translationY);
+      })
+      .onEnd(e => settle(dragStart.value, e.velocityY));
 
     const listPan = Gesture.Pan()
-      .activeOffsetY(8)
+      .activeOffsetY([-8, 8])
       .failOffsetX([-20, 20])
-      .onUpdate(e => {
-        // Still scrolling back to the top: the list has this drag, the sheet stays put.
-        if (scrollY.value > 0.5 && listDragOrigin.value < 0) { return; }
-        if (listDragOrigin.value < 0) { listDragOrigin.value = e.translationY; }
-        dragY.value = Math.max(0, e.translationY - listDragOrigin.value);
+      .onStart(() => {
+        dragStart.value = offsetY.value;
+        // What the reader SEES: while typing, the sheet shows expanded whatever its offset.
+        listOwnsDrag.value = offsetY.value * (1 - typingProgress()) <= 0.5 ? 1 : 0;
       })
-      .onEnd(e => settle(e.velocityY))
+      .onUpdate(e => {
+        if (listOwnsDrag.value === 0) {
+          // At half the list is locked: the sheet follows the finger, up or down.
+          offsetY.value = Math.max(0, dragStart.value + e.translationY);
+          return;
+        }
+        // Expanded: the list scrolls. The sheet moves only for a drag DOWN from the top —
+        // picking up mid-gesture once a scroll back to the top arrives there.
+        if (listDragOrigin.value < 0) {
+          if (scrollY.value > 0.5 || e.velocityY <= 0) { return; }
+          listDragOrigin.value = e.translationY;
+          if (typingProgress() > 0) { runOnJS(dismissKeyboard)(); }
+        }
+        offsetY.value = Math.max(0, e.translationY - listDragOrigin.value);
+      })
+      .onEnd(e => {
+        if (listOwnsDrag.value === 1) {
+          if (listDragOrigin.value < 0) { return; } // a plain scroll — the sheet never moved
+          settle(0, e.velocityY);
+          return;
+        }
+        settle(dragStart.value, e.velocityY);
+      })
       .onFinalize(() => {
         listDragOrigin.value = -1;
       });
@@ -143,32 +243,46 @@ function SheetBody({
       handle,
       list: Gesture.Simultaneous(listPan, Gesture.Native()),
     };
-  }, [dragY, scrollY, listDragOrigin, restingHeight, windowHeight, onClose]);
+  }, [
+    keyboardAware,
+    keyboard,
+    offsetY,
+    dragStart,
+    scrollY,
+    listOwnsDrag,
+    listDragOrigin,
+    halfOffset,
+    halfHeight,
+    closedOffset,
+    onClose,
+  ]);
 
   const onScroll = useAnimatedScrollHandler(e => {
     scrollY.value = e.contentOffset.y;
   });
 
   const listDrag = useMemo<ListDrag>(
-    () => ({ gesture: gestures.list, onScroll }),
-    [gestures.list, onScroll],
+    () => ({ gesture: gestures.list, onScroll, scrollEnabled: expanded || typing }),
+    [gestures.list, onScroll, expanded, typing],
   );
 
   const sheetStyle = useAnimatedStyle(() => {
     const keyboardHeight = keyboardAware ? Math.abs(keyboard.height.value) : 0;
     const progress = keyboardAware ? keyboard.progress.value : 0;
-    const above = windowHeight - keyboardHeight;
-    const typingHeight = Math.min(above * TYPING_SHARE, above - maxTop);
     return {
-      height: restingHeight + (typingHeight - restingHeight) * progress,
-      transform: [{ translateY: dragY.value - keyboardHeight }],
+      // Constant with the keyboard down, so sliding never re-lays-out the list.
+      height: Math.min(expandedHeight, windowHeight - keyboardHeight - maxTop),
+      transform: [{ translateY: offsetY.value * (1 - progress) - keyboardHeight }],
     };
   });
 
-  // Fades with the drag, so a drag-close leaves nothing for the Modal's own slide-out to show.
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: 1 - Math.min(1, dragY.value / restingHeight),
-  }));
+  // Full between expanded and half; fades below half, so a drag-close leaves nothing for the
+  // Modal's own slide-out to show.
+  const backdropStyle = useAnimatedStyle(() => {
+    const progress = keyboardAware ? keyboard.progress.value : 0;
+    const belowHalf = offsetY.value * (1 - progress) - halfOffset;
+    return { opacity: 1 - Math.min(1, Math.max(0, belowHalf / halfHeight)) };
+  });
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -197,8 +311,9 @@ function SheetBody({
 }
 
 /**
- * The list for a SheetModal. Hands a downward drag to the sheet once it is scrolled to the
- * top. No bounce or overscroll stretch at the top: the sheet moving IS the overscroll.
+ * The list for a SheetModal. Scrolls only once the sheet is expanded, and hands the drags
+ * that move the sheet to it. No bounce or overscroll stretch at the top: the sheet moving
+ * IS the overscroll.
  */
 export function SheetFlatList<T>({
   ref,
@@ -211,6 +326,7 @@ export function SheetFlatList<T>({
       {...props}
       onScroll={drag?.onScroll}
       scrollEventThrottle={16}
+      scrollEnabled={drag ? drag.scrollEnabled : props.scrollEnabled}
       bounces={false}
       overScrollMode="never"
     />
