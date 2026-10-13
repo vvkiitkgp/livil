@@ -94,6 +94,11 @@ function avatarInitials(author: { displayName: string | null; username: string }
 // returns the same object when there's no delta), so React.memo lets a like /
 // comment / pagination on ONE card skip re-rendering every other mounted card.
 /** Faces before the row starts counting instead. Four fits a phone without crowding. */
+// Like / comment / repost glyphs. Bigger and white so the three actions read as controls rather
+// than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
+// (styles.likeHit), so changing the size keeps the target the same.
+const ACTION_ICON_SIZE = 26;
+
 const CREDIT_FACES_SHOWN = 4;
 
 /** "with Ana" / "with Ana and 2 others" — a name is worth more than a face count. */
@@ -436,12 +441,24 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const handleRepost = useCallback(() => {
     const targetId = post.kind === 'repost' ? post.originalPostId : post.id;
     if (!targetId) { return; }
+    haptics.tap();
     navigation.navigate('Repost', {
       originalPostId: targetId,
       seedClipStartSec: post.clipStartSec,
       seedClipEndSec: post.clipEndSec,
     });
   }, [navigation, post.kind, post.originalPostId, post.id, post.clipStartSec, post.clipEndSec]);
+
+  // Button presses on the action row buzz like every other control (`tap`). The heart is
+  // the exception, in usePostLike: `toggleOn` on the way on, nothing on the way off.
+  const handleOpenComments = useCallback(() => {
+    haptics.tap();
+    onCommentsPress?.(post.id);
+  }, [onCommentsPress, post.id]);
+  const handleOpenLikers = useCallback(() => {
+    haptics.tap();
+    setLikersOpen(true);
+  }, []);
 
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
@@ -511,11 +528,11 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <View style={styles.tombstoneStatsRow}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit}>
-              <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
+              <Icon name="heart" size={ACTION_ICON_SIZE} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => setLikersOpen(true)}
+              onPress={handleOpenLikers}
               disabled={likesCount === 0}
               hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             >
@@ -527,10 +544,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           <TouchableOpacity
             style={styles.statBtn}
             activeOpacity={0.7}
-            onPress={() => onCommentsPress?.(post.id)}
+            onPress={handleOpenComments}
             disabled={!onCommentsPress}
           >
-            <Icon name="comment" size={16} color={COLORS.textSecondary} />
+            <Icon name="comment" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
         </View>
@@ -539,7 +556,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           postId={post.id}
           likesCount={likesCount}
           viewerHasLiked={liked}
-          onPress={() => setLikersOpen(true)}
+          onPress={handleOpenLikers}
         />
 
         <TrackContextMenu
@@ -845,11 +862,11 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit}>
-              <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
+              <Icon name="heart" size={ACTION_ICON_SIZE} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => setLikersOpen(true)}
+              onPress={handleOpenLikers}
               disabled={likesCount === 0}
               hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             >
@@ -861,10 +878,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           <TouchableOpacity
             style={styles.statBtn}
             activeOpacity={0.7}
-            onPress={() => onCommentsPress?.(post.id)}
+            onPress={handleOpenComments}
             disabled={!onCommentsPress}
           >
-            <Icon name="comment" size={16} color={COLORS.textSecondary} />
+            <Icon name="comment" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
           {/* Reposts: only meaningful on upload posts. Reposts of reposts aren't
@@ -881,7 +898,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
               accessibilityLabel="Repost"
             >
-              <Icon name="repost" size={16} color={COLORS.textSecondary} />
+              <Icon name="repost" size={ACTION_ICON_SIZE} color={COLORS.white} />
               <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
             </TouchableOpacity>
           ) : null}
@@ -920,7 +937,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         postId={post.id}
         likesCount={likesCount}
         viewerHasLiked={liked}
-        onPress={() => setLikersOpen(true)}
+        onPress={handleOpenLikers}
       />
 
       <SharePostSheet
@@ -1312,12 +1329,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-around',
   },
-  // The heart is 16pt; this makes its touch box 44pt without moving or resizing it — the
+  // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
   // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
   // LAYOUT overflows there, and hitSlop does not count — so a bigger hitSlop on this short row
   // would never fire. The count beside it is a later sibling, so it keeps its own taps.
-  likeHit: { padding: 14, margin: -14 },
+  likeHit: { padding: (44 - ACTION_ICON_SIZE) / 2, margin: -(44 - ACTION_ICON_SIZE) / 2 },
   statBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1364,9 +1381,9 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   statValue: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   statValueLiked: {
