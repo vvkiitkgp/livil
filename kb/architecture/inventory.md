@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-330 TypeScript file(s) under `src/`, 76,965 lines.
+330 TypeScript file(s) under `src/`, 76,979 lines.
 
 ## Size hotspots
 
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-125 file(s), 27,409 lines.
+125 file(s), 27,423 lines.
 
 | File | Lines |
 |---|---:|
@@ -171,7 +171,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentsSheet.tsx` | 743 |
 | `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
-| `src/components/SheetModal.tsx` | 556 |
+| `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/cardsFeed.tsx` | 494 |
 | `src/components/MediaPlayer.tsx` | 449 |
 | `src/components/QueueList.tsx` | 424 |
