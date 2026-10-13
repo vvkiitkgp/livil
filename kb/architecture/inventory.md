@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-329 TypeScript file(s) under `src/`, 76,801 lines.
+330 TypeScript file(s) under `src/`, 76,965 lines.
 
 ## Size hotspots
 
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-124 file(s), 27,245 lines.
+125 file(s), 27,409 lines.
 
 | File | Lines |
 |---|---:|
@@ -194,30 +194,30 @@ case the call fails silently wherever its result is discarded.
 | `src/components/OnboardingNotice.tsx` | 251 |
 | `src/components/guide/cardsPlayer.tsx` | 247 |
 | `src/components/ShareProfileSheet.tsx` | 240 |
+| `src/components/StoryReportModal.tsx` | 239 |
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
-| `src/components/StoryReportModal.tsx` | 230 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
-| `src/components/PostReportModal.tsx` | 207 |
-| `src/components/ExitFeedbackModal.tsx` | 205 |
+| `src/components/PostReportModal.tsx` | 216 |
+| `src/components/ExitFeedbackModal.tsx` | 214 |
+| `src/components/CommentReportModal.tsx` | 211 |
+| `src/components/AppUpdatePrompt.tsx` | 210 |
+| `src/components/ConfirmActionModal.tsx` | 205 |
 | `src/components/AddToAlbumSheet.tsx` | 203 |
 | `src/components/ProfileBadges.tsx` | 203 |
-| `src/components/CommentReportModal.tsx` | 202 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
-| `src/components/AppUpdatePrompt.tsx` | 199 |
+| `src/components/JamExitModal.tsx` | 199 |
 | `src/components/GradientBorder.tsx` | 198 |
-| `src/components/ConfirmActionModal.tsx` | 192 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
-| `src/components/JamExitModal.tsx` | 188 |
 | `src/components/PlaylistCoverPicker.tsx` | 185 |
 | `src/components/FriendPickerStrip.tsx` | 184 |
 | `src/components/ChatReplySnippet.tsx` | 179 |
+| `src/components/NotificationPermissionModal.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/ProfileLinkCard.tsx` | 173 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 173 |
 | `src/components/GroupAvatarCluster.tsx` | 170 |
-| `src/components/NotificationPermissionModal.tsx` | 168 |
 | `src/components/TagInput.tsx` | 167 |
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
@@ -227,12 +227,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 153 |
+| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 151 |
 | `src/components/onboarding/StageLamp.tsx` | 151 |
 | `src/components/__tests__/AppleSignInButton.test.tsx` | 148 |
 | `src/components/guide/cardWelcome.tsx` | 148 |
 | `src/components/ChatSongCard.tsx` | 146 |
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
-| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 132 |
 | `src/components/StoryCard.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
@@ -274,6 +274,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
 | `src/components/__tests__/ChatReplySnippet.test.tsx` | 64 |
 | `src/components/FirstHundredBadge.tsx` | 63 |
+| `src/components/__tests__/ConfirmActionModal.test.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
 | `src/components/guide/timeline.ts` | 60 |
 | `src/components/VerifiedBadge.tsx` | 58 |
