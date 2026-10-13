@@ -226,7 +226,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         />
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
-            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }} accessibilityLabel={liked ? 'Unlike' : 'Like'}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit} accessibilityLabel={liked ? 'Unlike' : 'Like'}>
               <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.7} onPress={() => setLikersOpen(true)} disabled={likesCount === 0} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
@@ -332,6 +332,12 @@ const styles = StyleSheet.create({
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
   actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 14 },
   statsGroup: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-around' },
+  // The heart is 16pt; this makes its touch box 44pt without moving or resizing it — the
+  // padding grows the box and the equal negative margin gives the space back. A real box, not
+  // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
+  // LAYOUT overflows there, and hitSlop does not count — so a bigger hitSlop on this short row
+  // would never fire. The count beside it is a later sibling, so it keeps its own taps.
+  likeHit: { padding: 14, margin: -14 },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 6 },
   statValue: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   statValueLiked: { color: '#FF4D6D' },

@@ -510,7 +510,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
         <View style={styles.tombstoneStatsRow}>
           <View style={styles.statBtn}>
-            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit}>
               <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
@@ -844,7 +844,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
-            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit}>
               <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.textSecondary} weight={liked ? 'fill' : 'regular'} />
             </TouchableOpacity>
             <TouchableOpacity
@@ -1312,6 +1312,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-around',
   },
+  // The heart is 16pt; this makes its touch box 44pt without moving or resizing it — the
+  // padding grows the box and the equal negative margin gives the space back. A real box, not
+  // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
+  // LAYOUT overflows there, and hitSlop does not count — so a bigger hitSlop on this short row
+  // would never fire. The count beside it is a later sibling, so it keeps its own taps.
+  likeHit: { padding: 14, margin: -14 },
   statBtn: {
     flexDirection: 'row',
     alignItems: 'center',
