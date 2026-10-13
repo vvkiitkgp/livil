@@ -1,17 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
 import UsernameBadges from './UsernameBadges';
 import { Button } from './Button';
+import SheetModal, { SheetScrollView } from './SheetModal';
 import { useRelationships } from '../contexts/RelationshipContext';
 
 type ProfilePreview = {
@@ -36,6 +36,7 @@ export default function AddUserSheet({
   onClose: () => void;
 }) {
   const rel = useRelationships();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<ProfilePreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -126,18 +127,12 @@ export default function AddUserSheet({
   const name = profile?.displayName || profile?.username || '';
 
   return (
-    <Modal
-      transparent
+    <SheetModal
       visible={visible}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop} />
-      </TouchableWithoutFeedback>
-      <View style={styles.sheet}>
-        <View style={styles.grabber} />
-
+      onClose={onClose}
+      fit
+      style={styles.sheet}
+      header={
         <View style={styles.header}>
           {profile?.avatarUrl ? (
             <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
@@ -156,7 +151,13 @@ export default function AddUserSheet({
             {handle ? <Text style={styles.handle} numberOfLines={1}>{handle}</Text> : null}
           </View>
         </View>
-
+      }
+    >
+      {/* In the sheet's scroll body, so a drag down anywhere on it closes the sheet. */}
+      <SheetScrollView
+        style={styles.body}
+        contentContainerStyle={[styles.bodyContent, { paddingBottom: 28 + insets.bottom }]}
+      >
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {confirm ? (
@@ -198,8 +199,8 @@ export default function AddUserSheet({
         <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={busy}>
           <Text style={styles.closeBtnText}>Close</Text>
         </TouchableOpacity>
-      </View>
-    </Modal>
+      </SheetScrollView>
+    </SheetModal>
   );
 }
 
@@ -340,32 +341,16 @@ function renderActions(p: ActionsProps) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0, right: 0, bottom: 0,
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 28,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: COLORS.border,
-    marginBottom: 16,
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
+  sheet: { backgroundColor: COLORS.surface },
+  body: { flexShrink: 1 },
+  bodyContent: { paddingHorizontal: 20 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
     marginBottom: 18,
   },
   avatar: { width: 48, height: 48, borderRadius: 24 },
