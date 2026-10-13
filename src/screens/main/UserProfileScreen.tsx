@@ -647,7 +647,7 @@ export default function UserProfileScreen() {
                 index={1}
                 onPress={() => goToAlbum(item.b!)}
               />
-            ) : <View style={{ flex: 1 }} />}
+            ) : <View style={styles.gridSpacer} />}
           </View>
         );
       }
@@ -677,7 +677,7 @@ export default function UserProfileScreen() {
                 index={1}
                 onPress={() => goToPlaylist(item.b!)}
               />
-            ) : <View style={{ flex: 1 }} />}
+            ) : <View style={styles.gridSpacer} />}
           </View>
         );
       }
@@ -738,8 +738,8 @@ export default function UserProfileScreen() {
                 styles.avatarRingGlow,
                 storyCluster
                   ? storyCluster.hasUnseen
-                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
-                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                    ? styles.avatarRingUnseen
+                    : styles.avatarRingSeen
                   : null,
               ]}
             />
@@ -1180,6 +1180,8 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.purple, shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.7, shadowRadius: 10, elevation: 8,
   },
+  avatarRingSeen: { borderColor: COLORS.textMuted, shadowColor: 'transparent' },
+  avatarRingUnseen: { borderColor: COLORS.purple, shadowColor: COLORS.purple },
   avatarInner: {
     width: AVATAR_D, height: AVATAR_D, borderRadius: AVATAR_D / 2,
     backgroundColor: COLORS.purpleDim, overflow: 'hidden',
@@ -1238,6 +1240,7 @@ const styles = StyleSheet.create({
   tabIndicatorActive: { backgroundColor: COLORS.purple },
 
   gridRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  gridSpacer: { flex: 1 },
   // Same quiet line as the owner sees on their own profile, without "Change".
   audienceRow: {
     flexDirection: 'row',

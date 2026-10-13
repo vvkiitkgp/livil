@@ -280,7 +280,7 @@ export default function GroupInfoScreen() {
           )}
           {canRemove && (
             removingId === item.userId ? (
-              <ActivityIndicator size="small" color={COLORS.error} style={{ marginLeft: 8 }} />
+              <ActivityIndicator size="small" color={COLORS.error} style={styles.removeSpinner} />
             ) : (
               <TouchableOpacity
                 style={styles.removeBtn}
@@ -563,6 +563,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   adminBadgeText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  removeSpinner: { marginLeft: 8 },
   removeBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,

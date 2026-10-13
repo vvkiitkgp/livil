@@ -660,7 +660,7 @@ export default function RepostScreen() {
             <View style={styles.successGlow} />
             <View style={styles.successIconOuter}>
               <View style={styles.successIconInner}>
-                <View style={{ marginTop: -2 }}>
+                <View style={styles.successCheck}>
                   <Icon name="check" size={30} color={COLORS.white} />
                 </View>
               </View>
@@ -926,6 +926,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purple,
     marginBottom: 18,
   },
+  successCheck: { marginTop: -2 },
   successIconInner: {
     width: 60,
     height: 60,

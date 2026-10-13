@@ -1449,7 +1449,7 @@ export default function ConversationScreen() {
                 inverted
                 contentContainerStyle={[
                   styles.listContent,
-                  { paddingTop: 200 },
+                  styles.listContentRest,
                 ]}
                 onEndReached={loadMore}
                 onEndReachedThreshold={0.2}
@@ -1707,6 +1707,8 @@ const styles = StyleSheet.create({
   headerSubtitle: { color: COLORS.purple, fontSize: 12, marginTop: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingHorizontal: 12, paddingTop: 12, gap: 6 },
+  // The newest message rests 200pt up the inverted list; see the scroll-to-newest note.
+  listContentRest: { paddingTop: 200 },
   // Deliberately no `transform`: the inverted FlatList un-flips its empty component
   // itself, per platform — see the comment at the ListEmptyComponent.
   emptyThread: {

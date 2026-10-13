@@ -89,7 +89,7 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
 
       <StepFade step={step}>
         <View style={styles.body}>
-          <View style={{ height: PHONE_H * phoneScale, justifyContent: 'center' }}>
+          <View style={[styles.phoneSlot, { height: PHONE_H * phoneScale }]}>
             <View style={{ transform: [{ scale: phoneScale }] }}>
               <card.Illustration />
             </View>
@@ -199,6 +199,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
   fill: { flex: 1 },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 26 },
+  phoneSlot: { justifyContent: 'center' },
   copy: { alignItems: 'center', gap: 10, maxWidth: 300 },
   headline: {
     fontFamily: FONTS.display,

@@ -188,7 +188,7 @@ export default function PlaylistScreen({ route }: Props) {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <ActivityIndicator size="large" color={COLORS.purpleLight} style={{ marginTop: 80 }} />
+        <ActivityIndicator size="large" color={COLORS.purpleLight} style={styles.loader} />
       </SafeAreaView>
     );
   }
@@ -262,6 +262,7 @@ export default function PlaylistScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  loader: { marginTop: 80 },
   errorWrap: { paddingHorizontal: 24, paddingTop: 60, alignItems: 'center' },
   errorText: { color: COLORS.error, fontSize: 14, textAlign: 'center' },
 });

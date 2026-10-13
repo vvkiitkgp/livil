@@ -206,9 +206,7 @@ function FriendStoriesRow({
               <View style={styles.storyRingWrap}>
                 <View style={[
                   styles.storyRing,
-                  seen
-                    ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
-                    : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
+                  seen ? styles.storyRingSeen : styles.storyRingUnseen,
                 ]}>
                   <View style={styles.storyAvatar}>
                     {cluster.author.avatarUrl ? (
@@ -1220,6 +1218,8 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6,
   },
+  storyRingSeen: { borderColor: COLORS.textMuted, shadowColor: 'transparent' },
+  storyRingUnseen: { borderColor: COLORS.purple, shadowColor: COLORS.purple },
   storyAvatar: {
     flex: 1,
     borderRadius: 34,

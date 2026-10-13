@@ -162,10 +162,10 @@ export default function EditPlaylistScreen({ route }: Props) {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color={COLORS.purpleLight} style={{ marginTop: 60 }} />
+        <ActivityIndicator size="large" color={COLORS.purpleLight} style={styles.loader} />
       ) : (
         <ScrollView
-          style={{ flex: 1 }}
+          style={styles.scroll}
           contentContainerStyle={[styles.body, { paddingBottom: 24 + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
         >
@@ -180,7 +180,7 @@ export default function EditPlaylistScreen({ route }: Props) {
             maxLength={80}
           />
 
-          <Text style={[styles.label, { marginTop: 24 }]}>Cover</Text>
+          <Text style={[styles.label, styles.labelSpaced]}>Cover</Text>
           <PlaylistCoverPicker
             emoji={coverEmoji}
             color={coverColor}
@@ -192,7 +192,7 @@ export default function EditPlaylistScreen({ route }: Props) {
             }}
           />
 
-          <Text style={[styles.label, { marginTop: 24 }]}>Visibility</Text>
+          <Text style={[styles.label, styles.labelSpaced]}>Visibility</Text>
           <VisibilitySelector value={visibility} onChange={setVisibility} />
 
           {/* Posts — ✕ removes the post from this playlist; the post itself
@@ -212,7 +212,7 @@ export default function EditPlaylistScreen({ route }: Props) {
                 const initial = p.title.trim().charAt(0).toUpperCase() || '♪';
                 const isRemoving = removingPostId === p.postId;
                 return (
-                  <View key={p.postId} style={[styles.trackRow, isRemoving && { opacity: 0.5 }]}>
+                  <View key={p.postId} style={[styles.trackRow, isRemoving && styles.trackRowRemoving]}>
                     <Text style={styles.trackNum}>{idx + 1}</Text>
                     <View style={[styles.trackCover, { backgroundColor: accents[0] }]}>
                       {p.coverArtUrl ? (
@@ -280,6 +280,8 @@ export default function EditPlaylistScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  loader: { marginTop: 60 },
+  scroll: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,6 +296,7 @@ const styles = StyleSheet.create({
 
   body: { paddingHorizontal: 20, paddingTop: 20 },
   label: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 },
+  labelSpaced: { marginTop: 24 },
   input: {
     backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
     borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
@@ -304,6 +307,7 @@ const styles = StyleSheet.create({
   tracksCount: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   emptyTracksText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
   tracksList: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, overflow: 'hidden' },
+  trackRowRemoving: { opacity: 0.5 },
   trackRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 9, paddingHorizontal: 12,
