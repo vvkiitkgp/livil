@@ -25,6 +25,7 @@ const PROMPT_STATUS_KEY = 'livil.push_prompt_status';
 
 export type PushPromptStatus = 'pending' | 'shown' | 'accepted' | 'denied';
 
+/* eslint-disable no-bitwise -- RFC 4122 v4 layout: `| 0` truncates to a nibble, `& 0x3 | 0x8` sets the variant bits */
 function generateDeviceId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = (Math.random() * 16) | 0;
@@ -32,6 +33,7 @@ function generateDeviceId(): string {
     return v.toString(16);
   });
 }
+/* eslint-enable no-bitwise */
 
 export async function getOrCreateDeviceId(): Promise<string> {
   let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
@@ -417,7 +419,6 @@ export async function displayPushNotification(
     try {
       const displayed = await notifee.getDisplayedNotifications();
       const existing = displayed.find(d => d.id === notifId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const style = (existing?.notification?.android?.style as any) ?? null;
       if (style && Array.isArray(style.messages)) {
         prior = style.messages.map((m: { text: string; timestamp: number }) => ({
@@ -562,7 +563,6 @@ export function initPush(): void {
 }
 
 async function upsertToken(userId: string, token: string, deviceId: string): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
   const { error } = await db
     .from('device_tokens')
@@ -675,7 +675,6 @@ export async function unregisterDevice(userId: string): Promise<void> {
       tokenRefreshUnsub = null;
     }
     const deviceId = await getOrCreateDeviceId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await db
       .from('device_tokens')

@@ -1038,7 +1038,6 @@ export async function recordPlay(postId: string): Promise<void> {
   // The RPC does the real post_views insert (so trg_post_views_count still
   // fires) and, if this play crosses a milestone on an original post, writes
   // the activity row and returns the author + threshold so we can push.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('activity_record_play', { p_post_id: postId });
   if (error) {
     throw new Error(error.message);

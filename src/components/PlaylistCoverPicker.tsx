@@ -132,7 +132,7 @@ export default function PlaylistCoverPicker({
       />
       <Text style={styles.helper}>Open your emoji keyboard and pick any one — even custom ones like 💪 or 🌶️.</Text>
 
-      <Text style={[styles.label, { marginTop: 16 }]}>Background</Text>
+      <Text style={[styles.label, styles.labelSpaced]}>Background</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.swatchRow}>
         {COVER_COLOR_OPTIONS.map((opt, i) => {
           const selected = isSameOption(value, opt);
@@ -166,6 +166,7 @@ const styles = StyleSheet.create({
   clearBtn: { color: COLORS.error, fontSize: 12, fontWeight: '700', paddingHorizontal: 4 },
 
   label: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  labelSpaced: { marginTop: 16 },
   helper: { color: COLORS.textMuted, fontSize: 11, marginTop: 6, lineHeight: 16 },
 
   emojiInput: {

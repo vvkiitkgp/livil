@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
@@ -594,7 +594,12 @@ export default function GlobalAudioPlayer() {
       {...(Platform.OS === 'android'
         ? { bufferConfig: AUDIO_BUFFER_CONFIG }
         : { preferredForwardBufferDuration: 20 })}
-      style={{ width: 0, height: 0, position: 'absolute' }}
+      style={styles.hiddenSurface}
     />
   );
 }
+
+const styles = StyleSheet.create({
+  // No picture: a video post's audio plays through this invisible 0x0 surface.
+  hiddenSurface: { width: 0, height: 0, position: 'absolute' },
+});

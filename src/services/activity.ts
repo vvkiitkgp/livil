@@ -3,7 +3,6 @@ import { sendPush, type PushKind } from './pushDispatch';
 import { isProfileBadge, type ProfileBadge } from './profileBadges';
 import { fetchSpotifyTrackIds } from './spotify';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -405,12 +404,12 @@ export async function notifyPostActivity(
       | { recipient_id: string; agg_count: number; actor_display_name: string | null; recipient_should_push: boolean }
       | undefined;
     if (!row || !row.recipient_should_push) { return; }  // self-action or missing post
-    const actorName = row.actor_display_name ?? 'Someone';
+    const actorDisplayName = row.actor_display_name ?? 'Someone';
     void sendPush({
       recipientUserId: row.recipient_id,
       kind: POST_PUSH_KIND[type],
       title: 'Livil',
-      body: postPushBody(type, actorName, Number(row.agg_count ?? 1), opts?.commentText),
+      body: postPushBody(type, actorDisplayName, Number(row.agg_count ?? 1), opts?.commentText),
       data: { route: 'ActivityCenter' },
     });
   } catch (e) {

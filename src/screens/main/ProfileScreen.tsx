@@ -636,7 +636,7 @@ export default function ProfileScreen() {
                 index={1}
                 onPress={() => goToAlbum(item.b!)}
               />
-            ) : <View style={{ flex: 1 }} />}
+            ) : <View style={styles.gridSpacer} />}
           </View>
         );
       }
@@ -668,7 +668,7 @@ export default function ProfileScreen() {
                 index={1}
                 onPress={() => goToPlaylist(item.b!)}
               />
-            ) : <View style={{ flex: 1 }} />}
+            ) : <View style={styles.gridSpacer} />}
           </View>
         );
       }
@@ -731,8 +731,8 @@ export default function ProfileScreen() {
                 styles.avatarRingGlow,
                 myStoryCluster
                   ? myStoryCluster.hasUnseen
-                    ? { borderColor: COLORS.purple, shadowColor: COLORS.purple }
-                    : { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
+                    ? styles.avatarRingUnseen
+                    : styles.avatarRingSeen
                   : null,
               ]}
             />
@@ -778,7 +778,7 @@ export default function ProfileScreen() {
                   activeOpacity={0.7}
                   onPress={() => openLink(url)}
                 >
-                  <View style={{ marginRight: 5 }}>
+                  <View style={styles.linkChipIcon}>
                     <Icon name="externalLink" size={12} color={COLORS.purpleLight} />
                   </View>
                   <Text style={styles.linkChipText} numberOfLines={1}>
@@ -1018,6 +1018,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purpleGlow,
     opacity: 0.6,
   },
+  avatarRingSeen: { borderColor: COLORS.textMuted, shadowColor: 'transparent' },
+  avatarRingUnseen: { borderColor: COLORS.purple, shadowColor: COLORS.purple },
   avatarInner: {
     width: 104,
     height: 104,
@@ -1096,6 +1098,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     maxWidth: 180,
   },
+  linkChipIcon: { marginRight: 5 },
   linkChipText: {
     color: COLORS.textSecondary,
     fontSize: 12,
@@ -1208,6 +1211,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  gridSpacer: { flex: 1 },
   gridRow: {
     flexDirection: 'row',
     gap: 12,

@@ -178,7 +178,7 @@ export default function ShareProfileSheet({ visible, profile, isOwn, onClose }: 
         {/* ── Everywhere else ── */}
         <Pressable
           style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}
-          onPress={() => void handleShareLink()}
+          onPress={() => { void handleShareLink(); }}
           disabled={sharingLink}
           accessibilityRole="button"
           accessibilityLabel="Share link"

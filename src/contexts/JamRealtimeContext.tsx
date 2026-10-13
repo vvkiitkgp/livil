@@ -30,7 +30,6 @@ import {
   setJamHeartbeatTarget,
 } from '../services/jamHeartbeat';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 /**

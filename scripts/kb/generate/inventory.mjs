@@ -42,7 +42,7 @@ export function generate() {
 
   const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'));
   const routes = extractRoutes();
-  const { rpcCalls, undefinedRpcs } = analyseRpcs();
+  const { undefinedRpcs } = analyseRpcs();
   const allSrc = walk(join(REPO, 'src'));
   const totalLines = allSrc.reduce((n, f) => n + lines(f), 0);
 

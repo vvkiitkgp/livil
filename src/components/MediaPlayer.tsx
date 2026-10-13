@@ -94,6 +94,7 @@ export type MediaPlayerProps = {
  * We coordinate with PlaybackContext so only one player ever runs at a time —
  * when this player starts, others see `activePostId` change and pause.
  */
+// eslint-disable-next-line @typescript-eslint/no-shadow -- the inner name is the component's DevTools/stack name
 const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function MediaPlayer(
   {
     postId,
@@ -355,7 +356,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       {effectivePaused ? (
         <View pointerEvents="none" style={styles.playGlyphWrap}>
           <View style={styles.playGlyph}>
-            <View style={{ marginLeft: 4 }}>
+            <View style={styles.playIconNudge}>
               <Icon name="play" size={24} color={COLORS.white} />
             </View>
           </View>
@@ -427,6 +428,10 @@ const styles = StyleSheet.create({
   playGlyphText: {
     color: COLORS.white,
     fontSize: 24,
+    marginLeft: 4,
+  },
+  // Optical centring: a play triangle reads off-centre when centred by its box.
+  playIconNudge: {
     marginLeft: 4,
   },
   errorOverlay: {

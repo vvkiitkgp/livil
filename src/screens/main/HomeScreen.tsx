@@ -206,9 +206,7 @@ function FriendStoriesRow({
               <View style={styles.storyRingWrap}>
                 <View style={[
                   styles.storyRing,
-                  seen
-                    ? { borderColor: COLORS.textMuted, shadowColor: 'transparent' }
-                    : { borderColor: COLORS.purple, shadowColor: COLORS.purple },
+                  seen ? styles.storyRingSeen : styles.storyRingUnseen,
                 ]}>
                   <View style={styles.storyAvatar}>
                     {cluster.author.avatarUrl ? (
@@ -915,7 +913,7 @@ export default function HomeScreen() {
               size="md"
               variant="primary"
               style={styles.retryButton}
-              onPress={() => void appendFeedPage('initial')}
+              onPress={() => { void appendFeedPage('initial'); }}
             />
           </View>
         ) : null}
@@ -953,7 +951,6 @@ export default function HomeScreen() {
       { paddingBottom: tabBarHeight + 56 + FLOATING_PLAYER_HEIGHT + 16 },
       !loadingInitial && feedRows.length === 0 ? styles.listContentFlex : null,
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [feedRows.length, loadingInitial, tabBarHeight],
   );
 
@@ -1221,6 +1218,8 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6,
   },
+  storyRingSeen: { borderColor: COLORS.textMuted, shadowColor: 'transparent' },
+  storyRingUnseen: { borderColor: COLORS.purple, shadowColor: COLORS.purple },
   storyAvatar: {
     flex: 1,
     borderRadius: 34,

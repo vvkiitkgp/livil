@@ -201,7 +201,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
       </View>
 
       {loadingSuggestions && (
-        <ActivityIndicator color={COLORS.purpleLight} style={{ marginTop: 20 }} />
+        <ActivityIndicator color={COLORS.purpleLight} style={styles.suggestionsLoader} />
       )}
 
       {!loadingSuggestions && suggestions.length === 0 && (
@@ -263,6 +263,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  suggestionsLoader: { marginTop: 20 },
 
   header: {
     flexDirection: 'row',

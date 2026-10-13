@@ -1,7 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { resolveAuthorById, type AuthorDisplay } from '../utils/authorDisplay';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 export type ConversationKind = 'dm' | 'group';

@@ -73,7 +73,7 @@ export function MomentsIllustration() {
   }));
   return (
     <Phone rowsOpacity={0.4}>
-      <View style={[styles.post, styles.postHot, { top: 60 }]}>
+      <View style={[styles.post, styles.postHot, styles.postHotTop]}>
         <View style={styles.who}>
           <Avatar letter="R" size={26} />
           <Text style={styles.whoName}>riya.wav</Text>
@@ -131,7 +131,7 @@ export function LikeIllustration() {
               <Reanimated.View style={[styles.iconSlot, filled]}>
                 <Icon name="heart" size={16} color={COLORS.purpleNeon} weight="fill" />
               </Reanimated.View>
-              <View style={{ width: 16 }} />
+              <View style={styles.iconSpacer} />
               <Reanimated.Text style={[styles.actCount, styles.countAbs, n12]}>12</Reanimated.Text>
               <Reanimated.Text style={[styles.actCount, styles.countAbs, { color: COLORS.purpleLight }, n13]}>13</Reanimated.Text>
             </View>
@@ -199,7 +199,7 @@ export function RepostIllustration() {
       <Reanimated.View style={[styles.editor, editor]}>
         <Kicker size={8}>YOUR MOMENT</Kicker>
         <Track>
-          <View style={[styles.band, styles.bandTheirs, { left: TRACK_W * 0.14, width: bandW, opacity: 0.35 }]} />
+          <View style={[styles.band, styles.bandTheirs, styles.bandTheirsGhost, { width: bandW }]} />
           <Reanimated.View style={[styles.band, styles.bandMine, { width: bandW }, mine]} />
           <Reanimated.Text style={[styles.pickLabel, label]}>YOUR PICK</Reanimated.Text>
         </Track>
@@ -271,8 +271,8 @@ export function ShareIllustration() {
           </View>
         </View>
         <View style={styles.apps}>
-          <View style={[styles.app, { backgroundColor: '#25D366' }]} />
-          <View style={[styles.app, { backgroundColor: '#0A84FF' }]} />
+          <View style={[styles.app, styles.appGreen]} />
+          <View style={[styles.app, styles.appBlue]} />
           <View style={[styles.app, { backgroundColor: COLORS.border }]}>
             <Text style={styles.appMore}>…</Text>
           </View>
@@ -320,7 +320,7 @@ export function StoriesIllustration() {
           <View style={styles.pbTrack}><Reanimated.View style={[styles.pbFill, pa]} /></View>
           <View style={styles.pbTrack}><Reanimated.View style={[styles.pbFill, pb]} /></View>
         </View>
-        <View style={[styles.who, { marginTop: 10 }]}>
+        <View style={[styles.who, styles.storyWho]}>
           <Avatar letter="R" size={24} />
           <Text style={styles.whoName}>riya.wav</Text>
           <Text style={styles.time}>2h</Text>
@@ -329,7 +329,7 @@ export function StoriesIllustration() {
           <EqBars bars={5} height={60} width={8} gap={5} />
         </View>
         <TrackTitle size={18}>Midnight Loop</TrackTitle>
-        <Text style={[styles.time, { marginTop: 4 }]}>tap to skip · hold to pause</Text>
+        <Text style={[styles.time, styles.storyHint]}>tap to skip · hold to pause</Text>
       </Reanimated.View>
       <Orb />
     </Phone>
@@ -349,6 +349,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   postHot: { borderWidth: 1.5, borderColor: COLORS.purple, padding: 14, gap: 12 },
+  postHotTop: { top: 60 },
   who: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   whoName: { fontFamily: FONTS.monoBold, fontSize: 11, color: COLORS.white },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -357,6 +358,7 @@ const styles = StyleSheet.create({
   actCount: { fontFamily: FONTS.mono, fontSize: 10, color: COLORS.textSecondary },
   iconSlot: { position: 'absolute', left: 0, top: 2 },
   countAbs: { position: 'absolute', left: 22 },
+  iconSpacer: { width: 16 },
   burst: {
     position: 'absolute',
     left: -3,
@@ -371,6 +373,7 @@ const styles = StyleSheet.create({
   trackLine: { position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 2, backgroundColor: COLORS.border },
   band: { position: 'absolute', height: 12, borderRadius: 6, borderWidth: 1, overflow: 'hidden' },
   bandTheirs: { borderColor: COLORS.purple, backgroundColor: 'rgba(139, 61, 255, 0.25)' },
+  bandTheirsGhost: { left: TRACK_W * 0.14, opacity: 0.35 },
   bandMine: { borderColor: COLORS.info, backgroundColor: 'rgba(34, 211, 238, 0.25)' },
   bandFill: { height: '100%', backgroundColor: COLORS.purpleNeon },
   times: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -477,6 +480,8 @@ const styles = StyleSheet.create({
   optSub: { fontFamily: FONTS.mono, fontSize: 8, color: COLORS.textSecondary },
   apps: { flexDirection: 'row', gap: 8, justifyContent: 'center', paddingVertical: 2 },
   app: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  appGreen: { backgroundColor: '#25D366' },
+  appBlue: { backgroundColor: '#0A84FF' },
   appMore: { fontFamily: FONTS.monoBold, fontSize: 12, color: COLORS.textSecondary },
   ringsRow: { position: 'absolute', left: 16, top: 20, flexDirection: 'row', gap: 10 },
   storyRing: { padding: 2, borderRadius: 20, backgroundColor: COLORS.purpleNeon },
@@ -489,5 +494,7 @@ const styles = StyleSheet.create({
   pb: { flexDirection: 'row', gap: 4 },
   pbTrack: { flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' },
   pbFill: { height: 3, backgroundColor: COLORS.white },
+  storyWho: { marginTop: 10 },
+  storyHint: { marginTop: 4 },
   storyEq: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

@@ -2,7 +2,6 @@ import { supabase } from '../../lib/supabase';
 import { sendPush } from './pushDispatch';
 import { notifyFriendOutcome, notifyNewFan } from './activity';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 export type IncomingFriendRequest = {

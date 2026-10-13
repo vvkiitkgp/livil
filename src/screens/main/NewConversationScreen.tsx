@@ -198,7 +198,7 @@ export default function NewConversationScreen() {
     <TouchableOpacity
       style={styles.row}
       activeOpacity={0.75}
-      onPress={() => void handleSelectFriend(item)}
+      onPress={() => { void handleSelectFriend(item); }}
       disabled={!!startingId}
     >
       <Avatar friend={item} />
@@ -367,7 +367,7 @@ export default function NewConversationScreen() {
         <View style={styles.createBtnWrap}>
           <Button
             label={`Create Group${selected.size > 0 ? ` · ${selected.size} member${selected.size > 1 ? 's' : ''}` : ''}`}
-            onPress={() => void handleCreateGroup()}
+            onPress={() => { void handleCreateGroup(); }}
             variant="primary"
             size="md"
             fullWidth

@@ -22,7 +22,7 @@ Every rule below states **how it is enforced**. A rule with no enforcement is ma
 
 | Mechanism | Exists? | State |
 |---|:--:|---|
-| ESLint (`npm run lint`) | yes | **failing — 24 errors, 200 warnings** |
+| ESLint (`npm run lint`) | yes | passing — 0 errors, 1 warning (2026-10-13: `no-control-regex` in `scripts/enforce-agent-scope.mjs`, whose NUL placeholder is intentional) |
 | TypeScript strict | yes | on, but **there is no `typecheck` script** and nothing runs it |
 | Tests (`npm test`) | yes | **failing** — one boilerplate test, no assertions |
 | KB validator | yes | passing |

@@ -178,8 +178,10 @@ describe('profile page — hostile input', () => {
   });
 
   it('never emits a non-https avatar URL', async () => {
+    /* eslint-disable no-script-url -- a script URL is the hostile input under test */
     const res = await render('riya', [{ ...ARTIST, avatar_url: 'javascript:alert(1)' }]);
     expect(res.body).not.toContain('javascript:');
+    /* eslint-enable no-script-url */
     expect(res.body).toContain('avatar--initial');
   });
 

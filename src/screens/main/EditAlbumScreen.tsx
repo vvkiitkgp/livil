@@ -100,7 +100,7 @@ export default function EditAlbumScreen({ route }: Props) {
     try {
       // Resolve next cover URL: upload local pick, or null when removed, or
       // keep the existing remote URL.
-      let nextCoverUrl: string | null | undefined = undefined;
+      let nextCoverUrl: string | null | undefined;
       if (cover.kind === 'local') {
         const { data: sess } = await supabase.auth.getSession();
         const { data: userData } = await supabase.auth.getUser();
@@ -180,10 +180,10 @@ export default function EditAlbumScreen({ route }: Props) {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color={COLORS.purpleLight} style={{ marginTop: 60 }} />
+        <ActivityIndicator size="large" color={COLORS.purpleLight} style={styles.loader} />
       ) : (
         <ScrollView
-          style={{ flex: 1 }}
+          style={styles.scroll}
           contentContainerStyle={[styles.body, { paddingBottom: 24 + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
         >
@@ -222,7 +222,7 @@ export default function EditAlbumScreen({ route }: Props) {
             ) : null}
           </View>
 
-          <Text style={[styles.label, { marginTop: 22 }]}>Title</Text>
+          <Text style={[styles.label, styles.labelSpaced]}>Title</Text>
           <TextInput
             style={styles.input}
             value={title}
@@ -233,7 +233,7 @@ export default function EditAlbumScreen({ route }: Props) {
             maxLength={120}
           />
 
-          <Text style={[styles.label, { marginTop: 22 }]}>Description</Text>
+          <Text style={[styles.label, styles.labelSpaced]}>Description</Text>
           <TextInput
             style={[styles.input, styles.inputMultiline]}
             value={description}
@@ -261,7 +261,7 @@ export default function EditAlbumScreen({ route }: Props) {
                 const initial = t.title.trim().charAt(0).toUpperCase() || '♪';
                 const isRemoving = removingTrackId === t.trackId;
                 return (
-                  <View key={t.trackId} style={[styles.trackRow, isRemoving && { opacity: 0.5 }]}>
+                  <View key={t.trackId} style={[styles.trackRow, isRemoving && styles.trackRowRemoving]}>
                     <Text style={styles.trackNum}>{idx + 1}</Text>
                     <View style={[styles.trackCover, { backgroundColor: accents[0] }]}>
                       {t.coverArtUrl ? (
@@ -328,6 +328,8 @@ export default function EditAlbumScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  loader: { marginTop: 60 },
+  scroll: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -360,6 +362,7 @@ const styles = StyleSheet.create({
   coverOverlayText: { color: COLORS.white, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
   coverRemoveLink: { color: COLORS.error, fontSize: 12, fontWeight: '700', paddingVertical: 4 },
   label: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 },
+  labelSpaced: { marginTop: 22 },
   input: {
     backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
     borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
@@ -371,6 +374,7 @@ const styles = StyleSheet.create({
   tracksCount: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
   emptyTracksText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
   tracksList: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, overflow: 'hidden' },
+  trackRowRemoving: { opacity: 0.5 },
   trackRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 9, paddingHorizontal: 12,

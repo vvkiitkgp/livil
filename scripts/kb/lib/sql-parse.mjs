@@ -542,8 +542,6 @@ export function writeGenerated(path, content, { alsoIgnoreDates } = {}) {
 }
 
 const VERIFIED_LINE = /^last_verified: \d{4}-\d{2}-\d{2}$/m;
-const sameButForDate = (a, b) =>
-  a.replace(VERIFIED_LINE, 'last_verified: -') === b.replace(VERIFIED_LINE, 'last_verified: -');
 
 export const GENERATED_WARNING =
   '> **GENERATED FILE — DO NOT EDIT.**\n' +

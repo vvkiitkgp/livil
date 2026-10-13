@@ -221,12 +221,14 @@ describe('share page — user-authored text cannot escape its markup', () => {
 
   it('drops an image URL that is not https rather than emitting it', async () => {
     // A stored URL becomes an attribute, and an attribute is a navigation target.
+    /* eslint-disable no-script-url -- a script URL is the hostile input under test */
     const res = await render(POST_ID, [{
       ...POST,
       track_cover_art_url: 'javascript:alert(2)',
       track_thumbnail_url: 'javascript:alert(3)',
     }]);
     expect(res.body).not.toContain('javascript:');
+    /* eslint-enable no-script-url */
   });
 });
 

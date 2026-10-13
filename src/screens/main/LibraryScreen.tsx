@@ -49,8 +49,8 @@ function RecentSkeletonStrip() {
       {placeholders.map(i => (
         <View key={i} style={styles.recentCard}>
           <View style={[styles.recentCover, styles.recentCoverSkeleton]} />
-          <View style={[styles.skelLine, { width: '88%' }]} />
-          <View style={[styles.skelLine, { width: '62%', marginTop: 8 }]} />
+          <View style={[styles.skelLine, styles.skelRecentTitle]} />
+          <View style={[styles.skelLine, styles.skelRecentSub]} />
         </View>
       ))}
     </ScrollView>
@@ -61,11 +61,11 @@ function PlaylistSkeleton() {
   return (
     <View style={styles.list}>
       {[0, 1, 2].map(i => (
-        <View key={i} style={[styles.row, { opacity: 0.5 }]}>
+        <View key={i} style={[styles.row, styles.rowSkeleton]}>
           <View style={[styles.thumb, { backgroundColor: COLORS.border }]} />
           <View style={styles.rowText}>
-            <View style={[styles.skelLine, { width: '55%', marginBottom: 6 }]} />
-            <View style={[styles.skelLine, { width: '35%' }]} />
+            <View style={[styles.skelLine, styles.skelRowTitle]} />
+            <View style={[styles.skelLine, styles.skelRowSub]} />
           </View>
         </View>
       ))}
@@ -357,14 +357,14 @@ export default function LibraryScreen() {
                   {likedCount !== null ? `${likedCount} posts` : '—'}
                 </Text>
               </View>
-              <View style={{ marginRight: 6 }}>
+              <View style={styles.rowChevron}>
                 <Icon name="forward" size={24} color={COLORS.textMuted} />
               </View>
             </TouchableOpacity>
 
             {/* Following — virtual (user directory) */}
             <TouchableOpacity style={styles.row} onPress={goToFollowing} activeOpacity={0.75}>
-              <View style={[styles.thumb, { backgroundColor: '#F59E0B' }]}>
+              <View style={[styles.thumb, styles.thumbFollowing]}>
                 <Icon name="musicNote" size={22} color={COLORS.white} />
               </View>
               <View style={styles.rowText}>
@@ -373,7 +373,7 @@ export default function LibraryScreen() {
                   {starsCount !== null ? `${starsCount} artists` : '—'}
                 </Text>
               </View>
-              <View style={{ marginRight: 6 }}>
+              <View style={styles.rowChevron}>
                 <Icon name="forward" size={24} color={COLORS.textMuted} />
               </View>
             </TouchableOpacity>
@@ -400,7 +400,7 @@ export default function LibraryScreen() {
                       gradientId={`lib_${playlist.id}`}
                     />
                   ) : (
-                    <View style={[styles.thumb, { backgroundColor: accents[0], overflow: 'hidden' }]}>
+                    <View style={[styles.thumb, styles.thumbClip, { backgroundColor: accents[0] }]}>
                       {playlist.coverArtUrl ? (
                         <Image source={{ uri: playlist.coverArtUrl }} style={StyleSheet.absoluteFill} />
                       ) : (
@@ -414,7 +414,7 @@ export default function LibraryScreen() {
                       {playlist.postCount} {playlist.postCount === 1 ? 'post' : 'posts'}
                     </Text>
                   </View>
-                  <View style={{ marginRight: 6 }}>
+                  <View style={styles.rowChevron}>
                     <Icon name="forward" size={24} color={COLORS.textMuted} />
                   </View>
                 </TouchableOpacity>
@@ -567,6 +567,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
     opacity: 0.55,
   },
+  skelRecentTitle: { width: '88%' },
+  skelRecentSub: { width: '62%', marginTop: 8 },
+  skelRowTitle: { width: '55%', marginBottom: 6 },
+  skelRowSub: { width: '35%' },
   list: {
     paddingHorizontal: 20,
     gap: 10,
@@ -582,6 +586,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  rowSkeleton: { opacity: 0.5 },
+  rowChevron: { marginRight: 6 },
   thumb: {
     width: 52,
     height: 52,
@@ -589,6 +595,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  thumbFollowing: { backgroundColor: '#F59E0B' },
+  thumbClip: { overflow: 'hidden' },
   thumbText: {
     color: COLORS.white,
     fontSize: 22,

@@ -144,7 +144,7 @@ export default function CreateAlbumScreen({ route }: Props) {
           <Text style={styles.suggHeaderCount}>{selectedIds.size} selected</Text>
         )}
       </View>
-      {loading && <ActivityIndicator color={COLORS.purpleLight} style={{ marginTop: 20 }} />}
+      {loading && <ActivityIndicator color={COLORS.purpleLight} style={styles.loader} />}
       {!loading && tracks.length === 0 && (
         <Text style={styles.noSugg}>
           You don't have any untagged uploads. Upload a track first — it'll appear here ready to add.
@@ -190,6 +190,7 @@ export default function CreateAlbumScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  loader: { marginTop: 20 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

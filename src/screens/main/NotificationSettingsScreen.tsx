@@ -229,7 +229,7 @@ export default function NotificationSettingsScreen() {
                 }
                 toggle={{
                   value: on,
-                  onValueChange: next => void onToggleCategory(category, next),
+                  onValueChange: next => { void onToggleCategory(category, next); },
                   disabled: loading || !userId || savingCategory === channel.id,
                 }}
               />
@@ -247,7 +247,7 @@ export default function NotificationSettingsScreen() {
                 : 'Sound, banners and badges for Livil'
             }
             external
-            onPress={() => void openChannel()}
+            onPress={() => { void openChannel(); }}
           />
         </SettingsSection>
 

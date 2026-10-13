@@ -35,7 +35,6 @@ import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { useToast } from '../../contexts/ToastContext';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -281,7 +280,7 @@ export default function GroupInfoScreen() {
           )}
           {canRemove && (
             removingId === item.userId ? (
-              <ActivityIndicator size="small" color={COLORS.error} style={{ marginLeft: 8 }} />
+              <ActivityIndicator size="small" color={COLORS.error} style={styles.removeSpinner} />
             ) : (
               <TouchableOpacity
                 style={styles.removeBtn}
@@ -301,7 +300,7 @@ export default function GroupInfoScreen() {
     <TouchableOpacity
       style={styles.memberRow}
       activeOpacity={0.75}
-      onPress={() => void handleAddMember(item)}
+      onPress={() => { void handleAddMember(item); }}
       disabled={!!addingId}
     >
       <MemberAvatar member={item} />
@@ -391,7 +390,7 @@ export default function GroupInfoScreen() {
           <TouchableOpacity
             style={[styles.saveBtn, (saving || !groupName.trim() || groupName.trim() === savedName) && styles.saveBtnDisabled]}
             activeOpacity={0.8}
-            onPress={() => void handleSaveName()}
+            onPress={() => { void handleSaveName(); }}
             disabled={saving || !groupName.trim() || groupName.trim() === savedName}
           >
             {saving
@@ -433,7 +432,7 @@ export default function GroupInfoScreen() {
           <TouchableOpacity
             style={styles.addMemberBtn}
             activeOpacity={0.8}
-            onPress={() => void loadFriends()}
+            onPress={() => { void loadFriends(); }}
           >
             <Text style={styles.addMemberBtnText}>+ Add member</Text>
           </TouchableOpacity>
@@ -564,6 +563,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   adminBadgeText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  removeSpinner: { marginLeft: 8 },
   removeBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,

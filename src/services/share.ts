@@ -110,7 +110,6 @@ function loadNativeShare(): RNShareModule | null {
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     cachedShareModule = require('react-native-share') as RNShareModule;
   } catch (e) {
     console.warn('[LIVIL][share] react-native-share failed to load:', (e as Error).message);

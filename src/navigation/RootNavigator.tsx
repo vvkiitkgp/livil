@@ -379,13 +379,13 @@ export default function RootNavigator() {
     }
 
     void updatePresenceHeartbeat();
-    heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), LAST_SEEN_HEARTBEAT_MS);
+    heartbeatRef.current = setInterval(() => { void updatePresenceHeartbeat(); }, LAST_SEEN_HEARTBEAT_MS);
 
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         void updatePresenceHeartbeat();
         if (!heartbeatRef.current) {
-          heartbeatRef.current = setInterval(() => void updatePresenceHeartbeat(), LAST_SEEN_HEARTBEAT_MS);
+          heartbeatRef.current = setInterval(() => { void updatePresenceHeartbeat(); }, LAST_SEEN_HEARTBEAT_MS);
         }
       } else {
         if (heartbeatRef.current) {
@@ -466,7 +466,7 @@ export default function RootNavigator() {
       if (url) void handleDeepLink(url);
     });
 
-    const sub = Linking.addEventListener('url', ({ url }) => void handleDeepLink(url));
+    const sub = Linking.addEventListener('url', ({ url }) => { void handleDeepLink(url); });
     return () => sub.remove();
   }, []);
 

@@ -1169,6 +1169,11 @@ a {
   gap: 8px;
 }
 
+/* Ops rights claims: the actions sit a step below the claim text. */
+.rights__actions--spaced {
+  margin-top: var(--space-2);
+}
+
 /*
  * Progress fill uses the same deep->neon ramp as the button outlines, for the same reason
  * the mobile app uses GradientFill: a flat purple slab reads as a leftover block. The
@@ -1991,11 +1996,36 @@ a.btn {
   margin-top: var(--space-12);
 }
 
+/* Ops user page: the badge grant/revoke column, right-aligned beside the title. */
+.opsbadges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.opsbadges__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+/* The inline player under a track row once it is opened. */
+.opstrack__player {
+  margin-top: var(--space-3);
+}
+
 /* ── Chips, badges ──────────────────────────────────────────────────────── */
 
 .filters {
   display: flex;
   gap: var(--space-2);
+}
+
+/* A filter row pushed to the far end of a flex line (report actions in Ops). */
+.filters--end {
+  margin-left: auto;
 }
 
 .chip {

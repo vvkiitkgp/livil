@@ -94,12 +94,12 @@ export default function CommentItem(props: Props) {
           {/* 13 to match the name beside it. headerRow already sets gap: 4. */}
           <UsernameBadges userId={node.authorId} size={13} />
           <Text style={styles.time}>· {relativeTime(node.createdAt)}</Text>
-          <View style={{ flex: 1 }} />
+          <View style={styles.spacer} />
           <TouchableOpacity
             onPress={() => setMenuOpen(true)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <View style={{ paddingHorizontal: 4 }}>
+            <View style={styles.menuIcon}>
               <Icon name="overflow" size={18} color={COLORS.textSecondary} />
             </View>
           </TouchableOpacity>
@@ -230,6 +230,12 @@ const styles = StyleSheet.create({
   time: {
     color: COLORS.textSecondary,
     fontSize: 12,
+  },
+  spacer: {
+    flex: 1,
+  },
+  menuIcon: {
+    paddingHorizontal: 4,
   },
   bodyText: {
     color: COLORS.white,

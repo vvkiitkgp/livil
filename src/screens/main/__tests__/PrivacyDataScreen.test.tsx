@@ -98,9 +98,9 @@ describe('PrivacyDataScreen', () => {
 
   it('labels the switch "Show what I\'m listening to"', async () => {
     const tree = await mount();
-    const texts = tree.root.findAllByType(Text).map(n => n.props.children).flat();
-    expect(texts).toContain("Show what I'm listening to");
-    expect(texts).not.toContain('Activity status');
+    const rendered = tree.root.findAllByType(Text).map(n => n.props.children).flat();
+    expect(rendered).toContain("Show what I'm listening to");
+    expect(rendered).not.toContain('Activity status');
   });
 
   it('reflects the stored listening-visibility value', async () => {

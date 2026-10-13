@@ -1,6 +1,5 @@
 import { supabase } from '../../lib/supabase';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 /** How often the host's app records "I'm still here" in the database. */

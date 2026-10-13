@@ -323,10 +323,10 @@ export default function SearchScreen() {
     Promise.all([
       fetchPostsByIds(ids('track')).catch(() => [] as FeedPost[]),
       fetchAlbumsByIds(ids('album')).catch(() => [] as AlbumSearchResult[]),
-    ]).then(([posts, albums]) => {
+    ]).then(([recentPosts, recentAlbums]) => {
       if (cancelled) { return; }
-      const postById = new Map(posts.map(p => [p.id, p]));
-      const albumById = new Map(albums.map(a => [a.id, a]));
+      const postById = new Map(recentPosts.map(p => [p.id, p]));
+      const albumById = new Map(recentAlbums.map(a => [a.id, a]));
       // Stored order (newest first) across both kinds; anything unreadable drops out.
       const items: SearchResult[] = [];
       for (const open of recentOpens) {

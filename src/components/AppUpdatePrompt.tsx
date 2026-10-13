@@ -148,7 +148,7 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
         <Text style={styles.title} accessibilityRole="header">{copy.title}</Text>
         <Text style={styles.body}>{verdict.message ?? copy.body}</Text>
 
-        <Button label="Update" onPress={() => void update()} variant="primary" size="md" fullWidth />
+        <Button label="Update" onPress={() => { void update(); }} variant="primary" size="md" fullWidth />
         {verdict.kind === 'soft' ? (
           <Button label="Later" onPress={later} variant="ghost" size="md" fullWidth style={styles.later} />
         ) : null}

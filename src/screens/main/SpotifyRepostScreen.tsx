@@ -355,7 +355,7 @@ export default function SpotifyRepostScreen() {
       <View style={styles.footer}>
         <Button
           label={pickedId ? 'Repost' : 'Pick a song to repost'}
-          onPress={() => void handleSubmit()}
+          onPress={() => { void handleSubmit(); }}
           variant="primary"
           size="lg"
           fullWidth

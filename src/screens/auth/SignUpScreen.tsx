@@ -67,7 +67,6 @@ export default function SignUpScreen({ navigation }: Props) {
     setUsernameStatus('checking');
     let cancelled = false;
     const timer = setTimeout(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       const { data, error: rpcError } = await db.rpc('is_username_available', {
         p_username: cleanedUsername,

@@ -29,7 +29,6 @@ import { Icon } from '../../components/Icon';
 import { respondToCredit } from '../../services/tracks';
 import { useToast } from '../../contexts/ToastContext';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../../assets/livil-logo.png');
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;

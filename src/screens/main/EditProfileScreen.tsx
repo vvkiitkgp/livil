@@ -312,7 +312,7 @@ export default function EditProfileScreen() {
           style={styles.headerSide}
           accessibilityLabel="Back"
         >
-          <View style={{ marginTop: Platform.OS === 'android' ? -4 : 0 }}>
+          <View style={styles.backIcon}>
             <Icon name="back" size={32} color={COLORS.white} />
           </View>
         </TouchableOpacity>
@@ -565,6 +565,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
+  backIcon: { marginTop: Platform.OS === 'android' ? -4 : 0 },
   headerSide: {
     minWidth: 64,
     paddingHorizontal: 12,

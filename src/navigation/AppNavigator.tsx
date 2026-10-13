@@ -58,6 +58,10 @@ function AnimatedTabBar(props: BottomTabBarProps) {
   );
 }
 
+// Render callbacks the navigator invokes, hoisted so they aren't rebuilt per render.
+const renderTabBar = (props: BottomTabBarProps) => <AnimatedTabBar {...props} />;
+const renderTabBarBackground = () => <View style={styles.tabBarBg} />;
+
 export default function AppNavigator() {
   const insets = useSafeAreaInsets();
   const { showChrome } = useChromeVisibility();
@@ -65,7 +69,7 @@ export default function AppNavigator() {
   return (
     <Tab.Navigator
       initialRouteName="Home"
-      tabBar={props => <AnimatedTabBar {...props} />}
+      tabBar={renderTabBar}
       // Light tick on every tab press. A listener rather than a custom
       // tabBarButton so the navigator keeps owning the press — it still decides
       // navigate vs re-select-and-scroll-to-top; this only observes.
@@ -88,7 +92,7 @@ export default function AppNavigator() {
           },
         ],
         tabBarItemStyle: styles.tabItem,
-        tabBarBackground: () => <View style={styles.tabBarBg} />,
+        tabBarBackground: renderTabBarBackground,
         sceneStyle: { backgroundColor: COLORS.bg },
         // Default lazy=true: mounting Profile (many videos) while Home is visible
         // starves Android audio focus — Home playback dies after ~1s.
