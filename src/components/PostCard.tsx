@@ -24,6 +24,7 @@ import ConfirmActionModal from './ConfirmActionModal';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import AddBadge from './AddBadge';
+import { useRelationships } from '../contexts/RelationshipContext';
 import { Icon } from './Icon';
 import SharePostSheet from './SharePostSheet';
 import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
@@ -462,6 +463,11 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
+  // No Repost pill on your own repost: it would only repost the same song again. The id comes
+  // from RelationshipContext (resolved once for the app) rather than `viewerId`, which each
+  // card fetches after it draws — gating on that would flash the pill on every own repost.
+  const { meId } = useRelationships();
+  const isOwnRepost = post.kind === 'repost' && !!meId && meId === post.author.id;
 
   // Orphaned repost: the original upload was deleted (FK ON DELETE SET NULL
   // nulled out original_post_id). Reposts survive with their own engagement
@@ -678,16 +684,18 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             </View>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.repostBtn}
-          activeOpacity={0.85}
-          accessibilityLabel="Repost"
-          onPress={handleRepost}
-        >
-          <GradientBorder borderRadius={999} />
-          <Icon name="repost" size={14} color={COLORS.purpleNeon} />
-          <Text style={styles.repostBtnLabel}>Repost</Text>
-        </TouchableOpacity>
+        {isOwnRepost ? null : (
+          <TouchableOpacity
+            style={styles.repostBtn}
+            activeOpacity={0.85}
+            accessibilityLabel="Repost"
+            onPress={handleRepost}
+          >
+            <GradientBorder borderRadius={999} />
+            <Icon name="repost" size={14} color={COLORS.purpleNeon} />
+            <Text style={styles.repostBtnLabel}>Repost</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.moreBtn}
           onPress={() => setContextMenuVisible(true)}
