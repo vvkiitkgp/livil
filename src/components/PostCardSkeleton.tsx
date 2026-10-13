@@ -8,18 +8,18 @@ export default function PostCardSkeleton() {
       <View style={styles.header}>
         <View style={styles.avatar} />
         <View style={styles.headerText}>
-          <View style={[styles.line, { width: '46%' }]} />
-          <View style={[styles.line, { width: '30%', marginTop: 8 }]} />
+          <View style={[styles.line, styles.lineName]} />
+          <View style={[styles.line, styles.lineHandle]} />
         </View>
       </View>
       <View style={styles.media} />
       <View style={styles.actions}>
-        <View style={[styles.pill, { width: 52 }]} />
-        <View style={[styles.pill, { width: 52 }]} />
-        <View style={[styles.pill, { width: 52 }]} />
+        <View style={[styles.pill, styles.pillAction]} />
+        <View style={[styles.pill, styles.pillAction]} />
+        <View style={[styles.pill, styles.pillAction]} />
       </View>
-      <View style={[styles.line, { width: '72%', marginTop: 14 }]} />
-      <View style={[styles.line, { width: '54%', marginTop: 10 }]} />
+      <View style={[styles.line, styles.lineCaption]} />
+      <View style={[styles.line, styles.lineCaptionEnd]} />
     </View>
   );
 }
@@ -55,6 +55,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: COLORS.border,
   },
+  lineName: { width: '46%' },
+  lineHandle: { width: '30%', marginTop: 8 },
+  lineCaption: { width: '72%', marginTop: 14 },
+  lineCaptionEnd: { width: '54%', marginTop: 10 },
   media: {
     height: 220,
     borderRadius: 14,
@@ -70,4 +74,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: COLORS.border,
   },
+  pillAction: { width: 52 },
 });

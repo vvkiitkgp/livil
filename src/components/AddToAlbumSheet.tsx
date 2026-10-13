@@ -120,7 +120,7 @@ export default function AddToAlbumSheet(props: Props) {
         </Pressable>
 
         {loading ? (
-          <ActivityIndicator color={COLORS.purpleLight} style={{ marginVertical: 30 }} />
+          <ActivityIndicator color={COLORS.purpleLight} style={styles.loader} />
         ) : albums.length === 0 ? (
           <Text style={styles.emptyText}>
             No albums yet. Tap "New album" to start one with this track.
@@ -134,7 +134,7 @@ export default function AddToAlbumSheet(props: Props) {
               return (
                 <Pressable
                   key={a.id}
-                  style={[styles.albumRow, isBusy && { opacity: 0.6 }]}
+                  style={[styles.albumRow, isBusy && styles.albumRowBusy]}
                   onPress={() => handlePickAlbum(a)}
                   disabled={!!busy}
                   android_ripple={{ color: COLORS.purpleDim }}
@@ -172,6 +172,7 @@ export default function AddToAlbumSheet(props: Props) {
 
 const styles = StyleSheet.create({
   title: { color: COLORS.white, fontSize: 15, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
+  loader: { marginVertical: 30 },
 
   newRow: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
@@ -185,6 +186,7 @@ const styles = StyleSheet.create({
   newRowText: { flex: 1, color: COLORS.purpleLight, fontSize: 14, fontWeight: '700' },
 
   albumRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 22, paddingVertical: 10 },
+  albumRowBusy: { opacity: 0.6 },
   cover: {
     width: 40, height: 40, borderRadius: 8, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,

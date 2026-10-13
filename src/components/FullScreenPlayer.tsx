@@ -700,7 +700,7 @@ function InfoContent({
 
       {/* ── Collaborators ── */}
       {loading ? (
-        <ActivityIndicator size="small" color={COLORS.purpleLight} style={{ marginTop: 20 }} />
+        <ActivityIndicator size="small" color={COLORS.purpleLight} style={infoSt.loader} />
       ) : otherCredits.length > 0 ? (
         <View style={infoSt.creditsBlock}>
           <Text style={infoSt.creditsLabel}>CREDITS</Text>
@@ -806,6 +806,7 @@ function InfoContent({
 const infoSt = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
+  loader: { marginTop: 20 },
 
   artistRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
   albumRow: {
@@ -981,7 +982,7 @@ function AddToPlaylistModal({
               onPress={() => handleAddToPlaylist(p.id)}
               activeOpacity={0.7}
             >
-              <View style={[modalSt.rowThumb, { backgroundColor: accent, overflow: 'hidden' }]}>
+              <View style={[modalSt.rowThumb, modalSt.rowThumbClip, { backgroundColor: accent }]}>
                 {p.coverArtUrl ? (
                   <Image source={{ uri: p.coverArtUrl }} style={StyleSheet.absoluteFill} />
                 ) : (
@@ -999,7 +1000,7 @@ function AddToPlaylistModal({
 
         {/* New playlist */}
         <TouchableOpacity style={modalSt.row} onPress={onNavigateToCreate} activeOpacity={0.7}>
-          <View style={[modalSt.rowThumb, { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border }]}>
+          <View style={[modalSt.rowThumb, modalSt.rowThumbNew]}>
             <Icon name="add" size={22} color={COLORS.purpleLight} />
           </View>
           <View style={modalSt.rowMeta}>
@@ -1048,6 +1049,8 @@ const modalSt = StyleSheet.create({
     flexShrink: 0,
   },
   rowThumbText: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
+  rowThumbClip: { overflow: 'hidden' },
+  rowThumbNew: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   rowMeta: { flex: 1, minWidth: 0 },
   rowName: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   rowSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
@@ -2124,7 +2127,7 @@ export default function FullScreenPlayer() {
             </View>
           )}
           {activeTab === 'info' && (
-            <View style={[styles.panelScroll, { paddingHorizontal: 0, paddingTop: 0 }]}>
+            <View style={[styles.panelScroll, styles.panelScrollFlush]}>
               <InfoContent
                 nowPlaying={nowPlaying}
                 onCommentsPress={() => setCommentsOpen(true)}
@@ -2491,6 +2494,7 @@ const styles = StyleSheet.create({
   panelTabText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '600' },
   panelTabTextActive: { color: COLORS.purpleNeon },
   panelScroll: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
+  panelScrollFlush: { paddingHorizontal: 0, paddingTop: 0 },
 
 
   actionRow: {

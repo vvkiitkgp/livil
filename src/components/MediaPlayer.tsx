@@ -356,7 +356,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       {effectivePaused ? (
         <View pointerEvents="none" style={styles.playGlyphWrap}>
           <View style={styles.playGlyph}>
-            <View style={{ marginLeft: 4 }}>
+            <View style={styles.playIconNudge}>
               <Icon name="play" size={24} color={COLORS.white} />
             </View>
           </View>
@@ -428,6 +428,10 @@ const styles = StyleSheet.create({
   playGlyphText: {
     color: COLORS.white,
     fontSize: 24,
+    marginLeft: 4,
+  },
+  // Optical centring: a play triangle reads off-centre when centred by its box.
+  playIconNudge: {
     marginLeft: 4,
   },
   errorOverlay: {

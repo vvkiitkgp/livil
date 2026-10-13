@@ -100,7 +100,7 @@ export function StoryCard({
           {artistName}
         </Text>
 
-        <View style={[styles.brand, { marginTop: u * 9, paddingVertical: u * 2.6, paddingHorizontal: u * 5, borderRadius: 999 }]}>
+        <View style={[styles.brand, { marginTop: u * 9, paddingVertical: u * 2.6, paddingHorizontal: u * 5 }]}>
           <Logo size={u * 5} color={COLORS.white} />
           <Text style={[styles.brandText, { fontSize: u * 3.6, marginLeft: u * 2.2 }]}>
             Listen on Livil
@@ -125,6 +125,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
   },
   brandText: { color: COLORS.white, fontWeight: '700', letterSpacing: 0.3 },
 });

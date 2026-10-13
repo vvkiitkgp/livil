@@ -29,7 +29,7 @@ export function FriendsIllustration() {
 
   return (
     <Phone rows={0}>
-      <View style={[styles.relCard, { top: 26 }]}>
+      <View style={[styles.relCard, styles.relCardTop]}>
         <View style={styles.relTop}>
           <Avatar letter="R" size={30} />
           <Text style={styles.relName}>riya.wav</Text>
@@ -58,7 +58,7 @@ export function FriendsIllustration() {
       </View>
       <TapFinger t={t} at={12} left={PHONE_INNER_W / 2 - 10} top={92} />
 
-      <View style={[styles.relCard, { top: 186 }]}>
+      <View style={[styles.relCard, styles.relCardBottom]}>
         <View style={styles.relTop}>
           <Avatar letter="N" size={30} ring={COLORS.border} />
           <Text style={styles.relName}>
@@ -141,7 +141,7 @@ export function JamIllustration() {
     <Phone rows={0}>
       <View style={styles.jamHead}>
         <View style={styles.jamArt} />
-        <View style={{ gap: 3 }}>
+        <View style={styles.jamMeta}>
           <TrackTitle size={13}>Midnight Loop</TrackTitle>
           <View style={styles.live}>
             <View style={styles.liveDot} />
@@ -155,13 +155,13 @@ export function JamIllustration() {
         <Avatar letter="R" size={22} style={styles.face} />
         <Avatar letter="YOU" size={22} you style={styles.face} />
       </View>
-      <View style={[styles.chat, { top: 110, justifyContent: 'flex-start', paddingBottom: 0 }]}>
+      <View style={[styles.chat, styles.chatJam]}>
         <Reanimated.View style={[styles.bubble, styles.them, m1]}><Text style={styles.bubbleText}>this drop tho 🔥</Text></Reanimated.View>
         <Reanimated.View style={[styles.bubble, styles.me, m2]}><Text style={styles.bubbleText}>wait for the second one</Text></Reanimated.View>
         <Reanimated.View style={[styles.suggest, m3]}>
           <Kicker size={7} color={COLORS.infoLight}>YOU SUGGESTED</Kicker>
           <View style={styles.suggestRow}>
-            <View style={[styles.songArt, { width: 22, height: 22, backgroundColor: COLORS.infoDeep }]} />
+            <View style={[styles.songArt, styles.songArtSuggested]} />
             <View>
               <Text style={styles.songName}>Echo Chamber</Text>
               <Text style={styles.songBy}>noor.sings</Text>
@@ -192,7 +192,7 @@ export function ListeningIllustration() {
   const row = (letter: string, name: string, song: string | null, you = false) => (
     <View style={[styles.friendRow, you && { borderColor: COLORS.info }]}>
       <Avatar letter={letter} size={30} you={you} ring={song ? COLORS.purple : COLORS.border} />
-      <Text style={[styles.relName, { flex: 1 }]}>{name}</Text>
+      <Text style={[styles.relName, styles.relNameFill]}>{name}</Text>
       {song ? (
         <View style={styles.pill}>
           <EqBars bars={3} height={8} width={2} gap={2} />
@@ -210,7 +210,7 @@ export function ListeningIllustration() {
         {row('R', 'riya.wav', 'Midnight Loop')}
         {row('S', 'samdrums', 'Echo Chamber')}
         <Reanimated.View style={mine}>{row('YOU', 'you', 'Glass Heart', true)}</Reanimated.View>
-        <View style={{ opacity: 0.5 }}>{row('N', 'noor.sings', null)}</View>
+        <View style={styles.friendOffline}>{row('N', 'noor.sings', null)}</View>
       </View>
       <View style={styles.switchCard}>
         <Icon name="musicNote" size={14} color={COLORS.purpleLight} />
@@ -272,7 +272,7 @@ export function LibraryIllustration() {
       <View style={styles.grid}>
         {tile(t1, <Icon name="heart" size={18} color={COLORS.purpleNeon} weight="fill" />, 'LIKED', '48 songs')}
         {tile(t2, <View style={[styles.glyphSq, { backgroundColor: COLORS.purpleRoyal }]} />, 'PLAYLISTS', '3 playlists')}
-        {tile(t3, <View style={[styles.glyphSq, { borderRadius: 9, backgroundColor: COLORS.infoDeep }]} />, 'ALBUMS', 'from artists')}
+        {tile(t3, <View style={[styles.glyphSq, styles.glyphAlbum]} />, 'ALBUMS', 'from artists')}
         {tile(t4, <Icon name="recent" size={18} color={COLORS.purpleLight} />, 'RECENT', 'played today')}
       </View>
       <View style={styles.recent}>
@@ -304,7 +304,7 @@ export function NotifyIllustration() {
   const row = (style: object, letter: string, who: string, what: string, why: string, you = false) => (
     <Reanimated.View style={[styles.notif, style]}>
       <Avatar letter={letter} size={26} you={you} />
-      <View style={{ flex: 1 }}>
+      <View style={styles.notifBody}>
         <Text style={styles.notifText}>
           <Text style={styles.notifWho}>{who}</Text> {what}
         </Text>
@@ -323,7 +323,7 @@ export function NotifyIllustration() {
       </View>
       <Text style={styles.why}>Without them, you find out{'\n'}after the Jam is over.</Text>
       <View style={styles.notifCta}>
-        <Reanimated.View style={[bell, { transformOrigin: 'top' }]}>
+        <Reanimated.View style={[bell, styles.bellPivot]}>
           <Icon name="bell" size={16} color={COLORS.purpleLight} />
         </Reanimated.View>
         <Text style={styles.notifCtaText}>TURN ON NOTIFICATIONS</Text>
@@ -346,8 +346,11 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 8,
   },
+  relCardTop: { top: 26 },
+  relCardBottom: { top: 186 },
   relTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   relName: { fontFamily: FONTS.monoBold, fontSize: 11, color: COLORS.white, flexGrow: 1 },
+  relNameFill: { flex: 1 },
   relSub: { fontFamily: FONTS.mono, fontSize: 11, color: COLORS.textSecondary },
   relBtn: { height: 24 },
   relBtnFace: {
@@ -423,6 +426,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 8,
   },
+  chatJam: { top: 110, justifyContent: 'flex-start', paddingBottom: 0 },
   bubble: { maxWidth: 150, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 14 },
   bubbleText: { fontFamily: FONTS.mono, fontSize: 10, lineHeight: 14, color: COLORS.white },
   them: { alignSelf: 'flex-start', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderBottomLeftRadius: 4 },
@@ -440,6 +444,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   songArt: { width: 32, height: 32, borderRadius: 6, backgroundColor: COLORS.purpleRoyal },
+  songArtSuggested: { width: 22, height: 22, backgroundColor: COLORS.infoDeep },
   songName: { fontFamily: FONTS.monoBold, fontSize: 10, color: COLORS.white },
   songBy: { fontFamily: FONTS.mono, fontSize: 9, color: COLORS.textSecondary },
   composer: {
@@ -469,6 +474,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1B1B2A',
   },
+  jamMeta: { gap: 3 },
   jamArt: { width: 40, height: 40, borderRadius: 8, backgroundColor: COLORS.purpleRoyal },
   live: {
     alignSelf: 'flex-start',
@@ -523,6 +529,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1B1B2A',
   },
+  friendOffline: { opacity: 0.5 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -581,6 +588,7 @@ const styles = StyleSheet.create({
   tileName: { fontFamily: FONTS.monoBold, fontSize: 11, letterSpacing: 1, color: COLORS.white },
   tileSub: { fontFamily: FONTS.mono, fontSize: 9, color: COLORS.textSecondary },
   glyphSq: { width: 18, height: 18, borderRadius: 4 },
+  glyphAlbum: { borderRadius: 9, backgroundColor: COLORS.infoDeep },
   recent: { position: 'absolute', left: 14, right: 14, top: 260, gap: 8 },
   recentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   recentArt: { width: 28, height: 28, borderRadius: 6 },
@@ -598,6 +606,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   notifText: { fontFamily: FONTS.mono, fontSize: 10, lineHeight: 13, color: COLORS.white },
+  notifBody: { flex: 1 },
   notifWho: { fontFamily: FONTS.monoBold, color: COLORS.purpleLight },
   notifWhy: { fontFamily: FONTS.mono, fontSize: 8, color: COLORS.textSecondary, marginTop: 2 },
   why: {
@@ -625,5 +634,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  bellPivot: { transformOrigin: 'top' },
   notifCtaText: { fontFamily: FONTS.monoBold, fontSize: 10, letterSpacing: 1, color: COLORS.purpleNeon },
 });

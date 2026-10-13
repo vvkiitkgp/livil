@@ -65,7 +65,7 @@ export default function ProfileGridCard({
             gradientId={`grid_${index}`}
           />
         ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: accents[0], borderRadius: 14 }]}>
+          <View style={[StyleSheet.absoluteFill, styles.artFill, { backgroundColor: accents[0] }]}>
             <View style={[styles.artAccent, { backgroundColor: accents[1] }]} />
             {coverArtUrl ? (
               <Image source={{ uri: coverArtUrl }} style={StyleSheet.absoluteFill} />
@@ -96,6 +96,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
+  artFill: { borderRadius: 14 },
   artAccent: {
     position: 'absolute',
     width: '60%', height: '60%',

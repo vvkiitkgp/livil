@@ -207,7 +207,7 @@ export default function DetailView(props: DetailViewProps) {
         <TouchableOpacity style={styles.iconBtn} onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Icon name="back" size={28} color={COLORS.white} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }} />
+        <View style={styles.headerSpacer} />
         {isOwner && onOverflow ? (
           <TouchableOpacity style={styles.iconBtn} onPress={onOverflow} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Icon name="overflow" size={24} color={COLORS.white} />
@@ -240,7 +240,7 @@ export default function DetailView(props: DetailViewProps) {
         ListHeaderComponent={
           <View style={styles.hero}>
             {hasEmojiCover ? (
-              <View style={{ marginBottom: 12 }}>
+              <View style={styles.heroEmojiWrap}>
                 <EmojiCoverArt
                   emoji={coverEmoji ?? null}
                   color={coverColor ?? null}
@@ -330,6 +330,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 6 },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerSpacer: { flex: 1 },
 
   hero: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 18, alignItems: 'center' },
   heroArt: {
@@ -342,6 +343,7 @@ const styles = StyleSheet.create({
   },
   heroInitial: { color: COLORS.white, fontSize: 64, fontWeight: '900' },
   heroEmojiCover: { fontSize: 96, lineHeight: 110 },
+  heroEmojiWrap: { marginBottom: 12 },
 
   kindTag: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

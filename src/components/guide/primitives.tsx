@@ -154,7 +154,7 @@ export function EqBars({
   style?: AnimStyle;
 }) {
   return (
-    <Reanimated.View style={[{ flexDirection: 'row', alignItems: 'flex-end', height, gap }, style]}>
+    <Reanimated.View style={[styles.eq, { height, gap }, style]}>
       {Array.from({ length: bars }, (_, i) => (
         <EqBar key={i} height={height} width={width} color={color} delay={i * 150} />
       ))}
@@ -176,7 +176,7 @@ function EqBar({ height, width, color, delay }: { height: number; width: number;
   const style = useAnimatedStyle(() => ({ transform: [{ scaleY: s.value }] }));
   return (
     <Reanimated.View
-      style={[{ width, height, borderRadius: 2, backgroundColor: color, transformOrigin: 'bottom' }, style]}
+      style={[styles.eqBar, { width, height, backgroundColor: color }, style]}
     />
   );
 }
@@ -198,15 +198,13 @@ export function Avatar({
   return (
     <View
       style={[
+        styles.avatar,
         {
           width: size,
           height: size,
           borderRadius: size / 2,
-          borderWidth: 1.5,
           borderColor: you ? COLORS.info : ring,
           backgroundColor: you ? COLORS.infoBg : COLORS.purpleDeep,
-          alignItems: 'center',
-          justifyContent: 'center',
         },
         style,
       ]}
@@ -229,7 +227,7 @@ export function Kicker({ children, color = COLORS.textSecondary, size = 9, style
   children: string; color?: string; size?: number; style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <Text style={[{ fontFamily: FONTS.mono, fontSize: size, letterSpacing: 2, color }, style as object]}>
+    <Text style={[styles.kicker, { fontSize: size, color }, style as object]}>
       {children}
     </Text>
   );
@@ -238,7 +236,7 @@ export function Kicker({ children, color = COLORS.textSecondary, size = 9, style
 /** Track title in the display face. */
 export function TrackTitle({ children, size = 14 }: { children: string; size?: number }) {
   return (
-    <Text style={{ fontFamily: FONTS.display, fontSize: size, letterSpacing: 1, color: COLORS.white, textTransform: 'uppercase' }}>
+    <Text style={[styles.trackTitle, { fontSize: size }]}>
       {children}
     </Text>
   );
@@ -312,4 +310,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: COLORS.purpleRoyal,
   },
+  eq: { flexDirection: 'row', alignItems: 'flex-end' },
+  eqBar: { borderRadius: 2, transformOrigin: 'bottom' },
+  avatar: { borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  kicker: { fontFamily: FONTS.mono, letterSpacing: 2 },
+  trackTitle: { fontFamily: FONTS.display, letterSpacing: 1, color: COLORS.white, textTransform: 'uppercase' },
 });

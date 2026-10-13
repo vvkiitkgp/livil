@@ -103,7 +103,7 @@ export function FriendRequestsBanner({ refreshKey }: { refreshKey: number }) {
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>{namesPreview}</Text>
       </View>
-      <View style={{ marginLeft: 4 }}>
+      <View style={styles.chevron}>
         <Icon name="forward" size={24} color={COLORS.purpleLight} />
       </View>
     </TouchableOpacity>
@@ -202,7 +202,7 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
           <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
         </View>
       ) : (
-        <View style={{ marginLeft: 4 }}>
+        <View style={styles.chevron}>
           <Icon name="forward" size={24} color={COLORS.purpleLight} />
         </View>
       )}
@@ -249,4 +249,5 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 2 },
   title: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   subtitle: { color: COLORS.textSecondary, fontSize: 12 },
+  chevron: { marginLeft: 4 },
 });
