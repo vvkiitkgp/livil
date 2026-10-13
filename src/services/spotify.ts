@@ -268,6 +268,35 @@ export function rememberSpotifyTrack(track: SpotifyTrack): void {
   trackCache.set(track.id, track);
 }
 
+/**
+ * Post id → Spotify track id, for whichever of these posts are Spotify reposts.
+ *
+ * Read with its own query, never added to an existing select or RPC: this app must keep
+ * working against a database that does not have `posts.spotify_track_id` yet, and selecting
+ * a missing column fails the WHOLE query. Callers pass only posts that came back with no
+ * Livil track — a Spotify repost is the only post without one (posts_media_source_check).
+ *
+ * Fail-safe: any error is an empty map, and the caller draws what it would have drawn
+ * without Spotify.
+ */
+export async function fetchSpotifyTrackIds(postIds: string[]): Promise<Map<string, string>> {
+  const byId = new Map<string, string>();
+  if (postIds.length === 0) {return byId;}
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('id, spotify_track_id')
+      .in('id', postIds);
+    if (error || !data) {return byId;}
+    for (const row of data as Array<{ id: string; spotify_track_id: string | null }>) {
+      if (row.spotify_track_id) { byId.set(row.id, row.spotify_track_id); }
+    }
+  } catch {
+    // Same as an error response: nothing is known to be a Spotify repost.
+  }
+  return byId;
+}
+
 // ── Opening Spotify ─────────────────────────────────────────────────────────
 
 /**

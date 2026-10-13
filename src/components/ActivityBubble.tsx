@@ -2,11 +2,13 @@ import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { Icon, type IconName } from './Icon';
+import { SpotifyLogo } from './SpotifyLogo';
 import {
   activityBubbleParts,
   type ActivityItem,
   type ActivityPostRef,
 } from '../services/activity';
+import { artistLine, useSpotifyTrack } from '../services/spotify';
 
 // The Livil bot avatar shown on every message (this is a chat "from livil Bot",
 // so the actor's own profile picture is intentionally NOT used).
@@ -135,21 +137,27 @@ export default function ActivityBubble({
               onPress={post.postId ? () => onPostPress?.(item) : undefined}
               disabled={!post.postId}
             >
-              {post.coverArtUrl ? (
-                <Image source={{ uri: post.coverArtUrl }} style={styles.trackCardArt} />
+              {post.spotifyTrackId ? (
+                <SpotifyCardBody spotifyTrackId={post.spotifyTrackId} />
               ) : (
-                <View style={[styles.trackCardArt, styles.trackCardArtPlaceholder]}>
-                  <Icon name="musicNote" size={20} color={COLORS.textSecondary} />
-                </View>
+                <>
+                  {post.coverArtUrl ? (
+                    <Image source={{ uri: post.coverArtUrl }} style={styles.trackCardArt} />
+                  ) : (
+                    <View style={[styles.trackCardArt, styles.trackCardArtPlaceholder]}>
+                      <Icon name="musicNote" size={20} color={COLORS.textSecondary} />
+                    </View>
+                  )}
+                  <View style={styles.trackCardInfo}>
+                    <Text style={styles.trackCardTitle} numberOfLines={1}>
+                      {post.title || 'Your post'}
+                    </Text>
+                    <Text style={styles.trackCardArtist} numberOfLines={1}>
+                      Tap to view
+                    </Text>
+                  </View>
+                </>
               )}
-              <View style={styles.trackCardInfo}>
-                <Text style={styles.trackCardTitle} numberOfLines={1}>
-                  {post.title || 'Your post'}
-                </Text>
-                <Text style={styles.trackCardArtist} numberOfLines={1}>
-                  Tap to view
-                </Text>
-              </View>
             </TouchableOpacity>
           )}
 
@@ -176,6 +184,37 @@ export default function ActivityBubble({
         </View>
       </View>
     </View>
+  );
+}
+
+/**
+ * The card for a Spotify repost. Livil stores only the Spotify id, never the song's details
+ * (ADR-0027), so they are looked up from Spotify as the card mounts. Spotify's rules, as in
+ * the chat song row: artwork as given (corners ≤ 4px, nothing drawn over it) and the
+ * Spotify mark beside the details it supplied.
+ */
+function SpotifyCardBody({ spotifyTrackId }: { spotifyTrackId: string }) {
+  const meta = useSpotifyTrack(spotifyTrackId);
+  const track = meta.status === 'ready' ? meta.track : null;
+  return (
+    <>
+      {track?.imageUrl ? (
+        <Image source={{ uri: track.imageUrl }} style={[styles.trackCardArt, styles.spotifyArt]} />
+      ) : (
+        <View style={[styles.trackCardArt, styles.spotifyArt, styles.trackCardArtPlaceholder]}>
+          <Icon name="musicNote" size={20} color={COLORS.textSecondary} />
+        </View>
+      )}
+      <View style={styles.trackCardInfo}>
+        <Text style={styles.trackCardTitle} numberOfLines={1}>
+          {track?.title ?? (meta.status === 'loading' ? ' ' : 'Your Spotify repost')}
+        </Text>
+        <Text style={styles.trackCardArtist} numberOfLines={1}>
+          {track ? artistLine(track) : 'Tap to view'}
+        </Text>
+      </View>
+      <SpotifyLogo size="xs" />
+    </>
   );
 }
 
@@ -230,6 +269,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   trackCardArt: { width: 44, height: 44, borderRadius: 6 },
+  spotifyArt: { borderRadius: 4 },
   trackCardArtPlaceholder: {
     backgroundColor: COLORS.surface,
     alignItems: 'center',
