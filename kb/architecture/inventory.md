@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-329 TypeScript file(s) under `src/`, 76,672 lines.
+329 TypeScript file(s) under `src/`, 76,725 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2562 |
+| `src/components/FullScreenPlayer.tsx` | 2516 |
 | `src/screens/main/ConversationScreen.tsx` | 2073 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
@@ -160,11 +160,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-124 file(s), 27,118 lines.
+124 file(s), 27,171 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2562 |
+| `src/components/FullScreenPlayer.tsx` | 2516 |
 | `src/components/PostCard.tsx` | 1413 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
@@ -172,15 +172,15 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/cardsPeople.tsx` | 630 |
 | `src/components/GlobalAudioPlayer.tsx` | 601 |
 | `src/components/guide/cardsFeed.tsx` | 494 |
+| `src/components/SheetModal.tsx` | 456 |
 | `src/components/MediaPlayer.tsx` | 449 |
-| `src/components/QueueList.tsx` | 414 |
+| `src/components/QueueList.tsx` | 424 |
 | `src/components/DetailView.tsx` | 409 |
 | `src/components/AddUserSheet.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/SharePostSheet.tsx` | 373 |
 | `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/SpotifyPostCard.tsx` | 371 |
-| `src/components/SheetModal.tsx` | 367 |
 | `src/components/ChatSongPicker.tsx` | 360 |
 | `src/components/PostLikersSheet.tsx` | 324 |
 | `src/components/ActivityBubble.tsx` | 320 |
