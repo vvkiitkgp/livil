@@ -22,6 +22,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import ArtGlow from './ArtGlow';
 import { useImageAspect } from '../hooks/useImageAspect';
 import { haptics } from '../utils/haptics';
+import { likeCountAfterToggle } from '../utils/likeCount';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -607,7 +608,7 @@ function InfoContent({
     setLikesCount(prevCount + (next ? 1 : -1));
     try {
       const serverLiked = await toggleLike(effective.postId);
-      const finalCount = prevCount + (serverLiked ? 1 : 0);
+      const finalCount = likeCountAfterToggle(prevCount, prev, serverLiked);
       if (serverLiked !== next) {
         setLiked(serverLiked);
         setLikesCount(finalCount);
@@ -2307,7 +2308,7 @@ function CompactStats({
     setCount(prevCount + (next ? 1 : -1));
     try {
       const serverLiked = await toggleLike(effective.postId);
-      const finalCount = prevCount + (serverLiked ? 1 : 0);
+      const finalCount = likeCountAfterToggle(prevCount, prev, serverLiked);
       setLiked(serverLiked);
       setCount(finalCount);
       // Write back to PlaybackContext so the add-to-playlist modal reads the

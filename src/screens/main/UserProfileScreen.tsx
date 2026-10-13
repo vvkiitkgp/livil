@@ -147,7 +147,6 @@ export default function UserProfileScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fansNoticeOpen, setFansNoticeOpen] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
-  const comments = useCommentsCountDeltas();
   /**
    * Blocked profiles show one explanation instead of the whole profile body.
    *
@@ -213,6 +212,7 @@ export default function UserProfileScreen() {
   );
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const comments = useCommentsCountDeltas(posts);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);

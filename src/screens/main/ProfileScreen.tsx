@@ -136,7 +136,6 @@ export default function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const spotify = useSpotifyAvailability();
   const { showToast } = useToast();
-  const comments = useCommentsCountDeltas();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const handlePostDeleted = useCallback((postId: string) => {
     setDeletedIds(prev => {
@@ -199,6 +198,7 @@ export default function ProfileScreen() {
   const [tab, setTab] = useState<ProfileTab>('reposts');
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const comments = useCommentsCountDeltas(posts);
   // Neither of these comes back from a post query: a takedown deletes the post, so the
   // track would otherwise vanish from its own owner's profile with no explanation.
   const [blocked, setBlocked] = useState<BlockedTrack[]>([]);

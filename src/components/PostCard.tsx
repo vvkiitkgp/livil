@@ -13,7 +13,8 @@ import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import TrackContextMenu from './TrackContextMenu';
 import AddToAlbumSheet from './AddToAlbumSheet';
 import type { FeedPost } from '../services/posts';
-import { toggleLike, deletePost } from '../services/posts';
+import { deletePost } from '../services/posts';
+import { usePostLike } from '../hooks/usePostLike';
 import { fetchAlbumForTrack, removeTrackFromAlbum, addTrackToAlbum, type AlbumForTrack } from '../services/albums';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import PostReportModal from './PostReportModal';
@@ -170,8 +171,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const [position, setPosition] = useState(0);
 
   // Engagement state (optimistic).
-  const [liked, setLiked] = useState(post.viewerHasLiked);
-  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const { liked, likesCount, toggleLike: handleToggleLike } = usePostLike(post);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [currentAlbum, setCurrentAlbum] = useState<AlbumForTrack | null>(null);
@@ -442,29 +442,6 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       seedClipEndSec: post.clipEndSec,
     });
   }, [navigation, post.kind, post.originalPostId, post.id, post.clipStartSec, post.clipEndSec]);
-
-  const handleToggleLike = useCallback(async () => {
-    // Optimistic update — flip immediately, revert on failure.
-    const prevLiked = liked;
-    const prevCount = likesCount;
-    const nextLiked = !prevLiked;
-    // Only on the way ON — unliking is not an achievement, and buzzing both
-    // directions turns an accidental double-tap into a rattle.
-    if (nextLiked) { haptics.toggleOn(); }
-    setLiked(nextLiked);
-    setLikesCount(prevCount + (nextLiked ? 1 : -1));
-    try {
-      const serverLiked = await toggleLike(post.id);
-      if (serverLiked !== nextLiked) {
-        // Server disagreed (rare race) — trust the server.
-        setLiked(serverLiked);
-        setLikesCount(prevCount + (serverLiked ? 1 : 0));
-      }
-    } catch {
-      setLiked(prevLiked);
-      setLikesCount(prevCount);
-    }
-  }, [liked, likesCount, post.id]);
 
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
