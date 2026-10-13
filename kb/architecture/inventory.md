@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-329 TypeScript file(s) under `src/`, 76,556 lines.
+329 TypeScript file(s) under `src/`, 76,672 lines.
 
 ## Size hotspots
 
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-124 file(s), 27,002 lines.
+124 file(s), 27,118 lines.
 
 | File | Lines |
 |---|---:|
@@ -180,6 +180,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SharePostSheet.tsx` | 373 |
 | `src/components/CopyrightMatchModal.tsx` | 371 |
 | `src/components/SpotifyPostCard.tsx` | 371 |
+| `src/components/SheetModal.tsx` | 367 |
 | `src/components/ChatSongPicker.tsx` | 360 |
 | `src/components/PostLikersSheet.tsx` | 324 |
 | `src/components/ActivityBubble.tsx` | 320 |
@@ -190,7 +191,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentItem.tsx` | 274 |
 | `src/components/Button.tsx` | 254 |
 | `src/components/InboxBanner.tsx` | 254 |
-| `src/components/SheetModal.tsx` | 251 |
 | `src/components/guide/cardsPlayer.tsx` | 247 |
 | `src/components/ShareProfileSheet.tsx` | 246 |
 | `src/components/OnboardingNotice.tsx` | 242 |
