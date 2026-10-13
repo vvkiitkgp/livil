@@ -417,7 +417,6 @@ export async function displayPushNotification(
     try {
       const displayed = await notifee.getDisplayedNotifications();
       const existing = displayed.find(d => d.id === notifId);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const style = (existing?.notification?.android?.style as any) ?? null;
       if (style && Array.isArray(style.messages)) {
         prior = style.messages.map((m: { text: string; timestamp: number }) => ({
@@ -562,7 +561,6 @@ export function initPush(): void {
 }
 
 async function upsertToken(userId: string, token: string, deviceId: string): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
   const { error } = await db
     .from('device_tokens')
@@ -675,7 +673,6 @@ export async function unregisterDevice(userId: string): Promise<void> {
       tokenRefreshUnsub = null;
     }
     const deviceId = await getOrCreateDeviceId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     await db
       .from('device_tokens')

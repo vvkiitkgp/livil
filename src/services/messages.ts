@@ -3,7 +3,6 @@ import { findSpotifyLinkInText } from '../utils/spotifyLinks';
 import { sendPush } from './pushDispatch';
 import { profileHandleIfExactLink } from '../utils/shareLinks';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 /**

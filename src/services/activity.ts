@@ -3,7 +3,6 @@ import { sendPush, type PushKind } from './pushDispatch';
 import { isProfileBadge, type ProfileBadge } from './profileBadges';
 import { fetchSpotifyTrackIds } from './spotify';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 // ── Types ────────────────────────────────────────────────────────────────────

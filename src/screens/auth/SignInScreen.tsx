@@ -43,7 +43,6 @@ export default function SignInScreen({ navigation }: Props) {
 
     let emailToUse = trimmed;
     if (!trimmed.includes('@')) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
       const { data, error: lookupError } = await db.rpc('get_email_for_username', {
         p_username: trimmed.toLowerCase(),

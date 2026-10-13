@@ -165,7 +165,6 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
       return null;
     }
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
       const { captureRef } = require('react-native-view-shot') as typeof import('react-native-view-shot');
       return await captureRef(cardRef, {
         format: 'jpg',

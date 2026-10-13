@@ -87,7 +87,6 @@ import SwipeRevealRow from '../../components/SwipeRevealRow';
 import SwipeReplyRow from '../../components/SwipeReplyRow';
 import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
 import { formatChatTimestamp, formatChatTimeOnly, shouldShowTimeSeparator } from '../../utils/chatTime';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;

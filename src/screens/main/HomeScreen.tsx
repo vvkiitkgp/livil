@@ -953,7 +953,6 @@ export default function HomeScreen() {
       { paddingBottom: tabBarHeight + 56 + FLOATING_PLAYER_HEIGHT + 16 },
       !loadingInitial && feedRows.length === 0 ? styles.listContentFlex : null,
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [feedRows.length, loadingInitial, tabBarHeight],
   );
 

@@ -1,5 +1,4 @@
 import { supabase } from '../../lib/supabase';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { ChatMessage } from './messages';
@@ -237,7 +236,6 @@ export async function broadcastPlaybackState(
   // subscribers on this project (verified empirically — SQL-side realtime.send
   // works, client-side .send does not). So we route through a server RPC.
   const payload = { ...state, type: 'PLAYBACK_STATE', host_ts: Date.now() };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any).rpc('broadcast_jam_state', {
     p_jam_room_id: jamRoomId,
     p_payload: payload,

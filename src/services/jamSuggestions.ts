@@ -2,7 +2,6 @@ import { supabase } from '../../lib/supabase';
 import { fetchPostsByIds, type FeedPost } from './posts';
 
 // jam_suggestions is newer than the generated database types.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 export type SuggestionStatus = 'waiting' | 'queued' | 'played';

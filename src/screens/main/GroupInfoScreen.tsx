@@ -35,7 +35,6 @@ import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { useToast } from '../../contexts/ToastContext';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;

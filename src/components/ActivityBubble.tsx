@@ -16,7 +16,6 @@ import { artistLine, useSpotifyTrack } from '../services/spotify';
 // The Livil bot avatar shown on every message (this is a chat "from livil Bot",
 // so the actor's own profile picture is NOT the sender avatar — it sits inside
 // the bubble, beside their name).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../assets/livil-logo.png');
 
 /** The face of the person a message is about, inside the bubble. */

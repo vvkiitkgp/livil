@@ -23,7 +23,6 @@ import {
   listActivity,
 } from '../services/activity';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../assets/livil-logo.png');
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
