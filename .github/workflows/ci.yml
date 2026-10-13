@@ -35,7 +35,7 @@ env:
 jobs:
   verify:
     name: typecheck · lint · test
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
@@ -78,7 +78,7 @@ jobs:
 
   knowledge-base:
     name: knowledge base
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -106,7 +106,7 @@ jobs:
 
   drift:
     name: version drift
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: CLAUDE.md must match build.gradle
@@ -119,7 +119,7 @@ jobs:
   # no database, and so runs on every PR in seconds.
   definer-grants:
     name: definer functions are not anon-callable
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: No SECURITY DEFINER function left executable by anon
@@ -127,7 +127,7 @@ jobs:
 
   migrations:
     name: migrations apply cleanly
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
 
     # Replays every migration against an empty Postgres. This is the check that
     # would have caught INC-0003, where a migration referenced a column that did
@@ -775,7 +775,7 @@ jobs:
 
   schema-parity:
     name: production matches the repo
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
 
     # ========================================================================
     # The gap between "CI proved it correct" and "it is installed".
@@ -891,7 +891,7 @@ jobs:
 
   board-readonly:
     name: board is proposal-only
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -913,7 +913,7 @@ jobs:
 
   guide-drift:
     name: first-run guide still true
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -935,7 +935,7 @@ jobs:
 
   agent-scope:
     name: agents write only where tests exist
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:

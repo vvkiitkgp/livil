@@ -24,7 +24,7 @@ concurrency:
 jobs:
   route:
     name: decide which reviewers run
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     outputs:
       security: ${{ steps.paths.outputs.security }}
       code: ${{ steps.paths.outputs.code }}
@@ -64,7 +64,7 @@ jobs:
   required-reviews:
     name: required reviews for this PR
     needs: route
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
       - name: Report
         run: |
