@@ -827,7 +827,7 @@ export function Ops() {
                           variant="secondary"
                           size="sm"
                           busy={actingId === s.id}
-                          onClick={() => void onRestore(s)}
+                          onClick={() => { void onRestore(s); }}
                         >
                           Restore
                         </Button>
@@ -836,7 +836,7 @@ export function Ops() {
                           variant="destructive"
                           size="sm"
                           busy={actingId === s.id}
-                          onClick={() => void onTakeDown(s)}
+                          onClick={() => { void onTakeDown(s); }}
                         >
                           Take down
                         </Button>
@@ -847,7 +847,7 @@ export function Ops() {
                         variant={s.reviewedAt ? 'secondary' : 'ghost'}
                         size="sm"
                         disabled={scanBusyId === s.id}
-                        onClick={() => void handleScanReviewed(s)}
+                        onClick={() => { void handleScanReviewed(s); }}
                       >
                         {s.reviewedAt ? 'Reopen' : 'Mark reviewed'}
                       </Button>

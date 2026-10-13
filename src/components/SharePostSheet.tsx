@@ -305,7 +305,7 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
           <Pressable
             key={d.key}
             style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}
-            onPress={() => void handleDestination(d.key)}
+            onPress={() => { void handleDestination(d.key); }}
             disabled={busyKey !== null}
             accessibilityRole="button"
             accessibilityLabel={d.label}

@@ -301,7 +301,7 @@ export default function GroupInfoScreen() {
     <TouchableOpacity
       style={styles.memberRow}
       activeOpacity={0.75}
-      onPress={() => void handleAddMember(item)}
+      onPress={() => { void handleAddMember(item); }}
       disabled={!!addingId}
     >
       <MemberAvatar member={item} />
@@ -391,7 +391,7 @@ export default function GroupInfoScreen() {
           <TouchableOpacity
             style={[styles.saveBtn, (saving || !groupName.trim() || groupName.trim() === savedName) && styles.saveBtnDisabled]}
             activeOpacity={0.8}
-            onPress={() => void handleSaveName()}
+            onPress={() => { void handleSaveName(); }}
             disabled={saving || !groupName.trim() || groupName.trim() === savedName}
           >
             {saving
@@ -433,7 +433,7 @@ export default function GroupInfoScreen() {
           <TouchableOpacity
             style={styles.addMemberBtn}
             activeOpacity={0.8}
-            onPress={() => void loadFriends()}
+            onPress={() => { void loadFriends(); }}
           >
             <Text style={styles.addMemberBtnText}>+ Add member</Text>
           </TouchableOpacity>

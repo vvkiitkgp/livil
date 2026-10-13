@@ -11,6 +11,15 @@ module.exports = {
   // kb/standards/coding.md as guidance, not here.
   rules: {
     'no-second-media-session': 'error',
+
+    // `void promise();` is this codebase's marker for a deliberate fire-and-forget
+    // call — the idiom @typescript-eslint/no-floating-promises accepts. The preset
+    // warns on every `void`, which buried ~190 intentional uses and with them any new
+    // warning worth reading. Rewriting them as `.catch(() => {})` is NOT equivalent:
+    // it swallows rejections that today still reach the unhandled-rejection tracker.
+    // `void` in expression position (`x = void 0`, `a ? void b() : c`) stays flagged;
+    // a concise arrow body is an expression too, so write `() => { void f(); }`.
+    'no-void': ['warn', { allowAsStatement: true }],
   },
 
   overrides: [

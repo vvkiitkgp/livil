@@ -915,7 +915,7 @@ export default function HomeScreen() {
               size="md"
               variant="primary"
               style={styles.retryButton}
-              onPress={() => void appendFeedPage('initial')}
+              onPress={() => { void appendFeedPage('initial'); }}
             />
           </View>
         ) : null}

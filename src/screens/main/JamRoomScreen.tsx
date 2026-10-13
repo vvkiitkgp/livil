@@ -922,7 +922,7 @@ export default function JamRoomScreen() {
               <TouchableOpacity
                 style={[styles.sendBtn, (!chatText.trim() || sending) && styles.sendBtnDisabled]}
                 activeOpacity={0.7}
-                onPress={() => void handleSend()}
+                onPress={() => { void handleSend(); }}
                 disabled={!chatText.trim() || sending}
               >
                 <GradientBorder borderRadius={19} />

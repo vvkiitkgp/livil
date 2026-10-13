@@ -185,14 +185,14 @@ export default function SettingsScreen() {
               icon="star"
               label="Rate Livil on the App Store"
               external
-              onPress={() => void openUrl(APP_STORE_REVIEW_URL, APP_STORE_URL)}
+              onPress={() => { void openUrl(APP_STORE_REVIEW_URL, APP_STORE_URL); }}
             />
           ) : (
             <SettingsRow
               icon="star"
               label="Rate Livil on the Play Store"
               external
-              onPress={() => void openUrl(PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL)}
+              onPress={() => { void openUrl(PLAY_STORE_APP_URL, PLAY_STORE_WEB_URL); }}
             />
           )}
         </SettingsSection>
@@ -202,13 +202,13 @@ export default function SettingsScreen() {
             icon="document"
             label="Privacy policy"
             external
-            onPress={() => void openUrl(PRIVACY_POLICY_URL)}
+            onPress={() => { void openUrl(PRIVACY_POLICY_URL); }}
           />
           <SettingsRow
             icon="shield"
             label="Child safety policy"
             external
-            onPress={() => void openUrl(CHILD_SAFETY_URL)}
+            onPress={() => { void openUrl(CHILD_SAFETY_URL); }}
           />
         </SettingsSection>
 
@@ -226,7 +226,7 @@ export default function SettingsScreen() {
             label="Instagram"
             subtitle="New features, behind the scenes, and what's next"
             external
-            onPress={() => void openUrl(INSTAGRAM_URL)}
+            onPress={() => { void openUrl(INSTAGRAM_URL); }}
           />
         </SettingsSection>
 

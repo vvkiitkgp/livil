@@ -637,7 +637,7 @@ export default function RepostScreen() {
           <View style={styles.footer}>
             <Button
               label={submitLabel}
-              onPress={() => void handleSubmit()}
+              onPress={() => { void handleSubmit(); }}
               variant="primary"
               size="lg"
               fullWidth

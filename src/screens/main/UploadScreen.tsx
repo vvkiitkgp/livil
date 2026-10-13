@@ -1040,7 +1040,7 @@ export default function UploadScreen() {
               />
               <Button
                 label="Post track"
-                onPress={() => void handleSubmit()}
+                onPress={() => { void handleSubmit(); }}
                 variant="primary"
                 size="lg"
                 fullWidth
