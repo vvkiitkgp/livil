@@ -77,6 +77,14 @@ describe('GUIDE_CARDS', () => {
     });
   });
 
+  it('never promises listening outside the app — a shared link shows the song, it does not play', () => {
+    // The share page is metadata plus "Listen on Livil" (web/api/share.ts); playback needs
+    // an account, and shared_post_public withholds the media URLs (20261023000000).
+    GUIDE_CARDS.forEach(c => {
+      expect(lineFor(c, { spotifyReposts: true, repostAudience: true })).not.toMatch(/without (the|an?) (app|account)|no app/i);
+    });
+  });
+
   it('promises Spotify reposts only while the server switch is on', () => {
     // Spotify reposts sit behind a server switch (ADR-0027). Someone who sees the guide
     // while it is off must not be told about a button they cannot find.

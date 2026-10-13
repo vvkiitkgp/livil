@@ -90,7 +90,7 @@ export const GUIDE_CARDS: GuideCard[] = [
   {
     key: 'share',
     headline: 'Share it outside',
-    line: 'Send a link to anyone — WhatsApp, Messages, anywhere. They can listen without the app.',
+    line: 'Send a link to anyone — WhatsApp, Messages, anywhere. They see the song and play it in Livil.',
     Illustration: ShareIllustration,
   },
   {
