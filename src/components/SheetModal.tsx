@@ -198,6 +198,10 @@ export function SheetSurface({
   const entering = useSharedValue(enterFromClosed ? 1 : 0);
 
   const [expanded, setExpanded] = useState(false);
+  // Once a close starts, the sheet takes no more touches until it is gone. A menu row tapped
+  // while the sheet slides away would otherwise replace the first tap's action
+  // (useRunAfterDismiss keeps only the newest) — "Share" turning into "Delete post?".
+  const [closing, setClosing] = useState(false);
   const [typing, setTyping] = useState(false);
 
   // Told once per open — when the slide lands, or when a drag cuts it short.
@@ -241,6 +245,7 @@ export function SheetSurface({
   );
 
   const close = useCallback((after?: () => void) => {
+    setClosing(true);
     entering.value = 0;
     offsetY.value = withTiming(closedOffset, { duration: CLOSE_DURATION }, finished => {
       if (finished) { runOnJS(after ?? onClose)(); }
@@ -248,6 +253,7 @@ export function SheetSurface({
   }, [entering, offsetY, closedOffset, onClose]);
 
   const open = useCallback(() => {
+    setClosing(false);
     offsetY.value = withSpring(halfOffset, SNAP_SPRING);
   }, [offsetY, halfOffset]);
 
@@ -262,6 +268,7 @@ export function SheetSurface({
     const snapTo = (target: number, velocity: number) => {
       'worklet';
       if (target >= closedOffset) {
+        runOnJS(setClosing)(true);
         offsetY.value = withTiming(closedOffset, { duration: CLOSE_DURATION }, finished => {
           if (finished) { runOnJS(onClose)(); }
         });
@@ -400,7 +407,10 @@ export function SheetSurface({
   return (
     <>
       {backdrop ? (
-        <Animated.View style={[styles.backdrop, backdropStyle]}>
+        <Animated.View
+          style={[styles.backdrop, backdropStyle]}
+          pointerEvents={closing ? 'none' : 'auto'}
+        >
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={onClose}
@@ -410,7 +420,11 @@ export function SheetSurface({
         </Animated.View>
       ) : null}
 
-      <Animated.View style={[styles.sheet, style, sheetStyle]} onLayout={onSheetLayout}>
+      <Animated.View
+        style={[styles.sheet, style, sheetStyle]}
+        onLayout={onSheetLayout}
+        pointerEvents={closing ? 'none' : 'auto'}
+      >
         <GestureDetector gesture={gestures.handle}>
           <View collapsable={false}>
             <View style={styles.grabber} />
