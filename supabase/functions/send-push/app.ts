@@ -35,17 +35,18 @@
 //      the emoji of a `reaction` (parsed and validated, never copied). `data.params` are
 //      CLAIMS to verify (conversationId, jamRoomId), never keys to copy, so no caller
 //      string can overwrite `kind`/`channelId`/`title`/`body`/`route` or add `actor*`.
-//   4. BLOCKS — a block stops every person-to-person push in both directions, and does so
-//      silently: the response is identical to a delivered one, because telling the
-//      blocked person would hand a harasser the signal blocked_users hides from them.
+//   4. BLOCKS — a block stops every person-to-person push in both directions, group
+//      conversations included, and does so silently: the response is identical to a
+//      delivered one, because telling the blocked person would hand a harasser the signal
+//      blocked_users hides from them.
 //
 // KNOWN RESIDUAL (D-45): a conversation member can still push a `message` preview that
 // was never sent as a message, to people they share that conversation with. It is titled
 // with their own name (or the group's) and prefixed with their handle in a group. Unlike a
-// real message it reaches only the recipient and leaves no record in the conversation —
-// and a group push is exempt from blocks, so a blocked member can still reach the person
-// who blocked them this way. The durable fix is dispatch from inside the message insert
-// (or requiring the actor's messages row as evidence); do not treat this as closing D-45.
+// real message it reaches only the recipient and leaves no record in the conversation.
+// Blocks apply here too, so it cannot reach someone who blocked the actor. The durable fix
+// is dispatch from inside the message insert (or requiring the actor's messages row as
+// evidence); do not treat this as closing D-45.
 //
 // SECRETS (custom): FCM_PROJECT_ID, FCM_CLIENT_EMAIL, FCM_PRIVATE_KEY.
 // Platform-injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY.
@@ -130,24 +131,19 @@ export const isValidRecipient = (r: unknown): r is string =>
 const isUuid = isValidRecipient;
 
 /**
- * The kinds that are one person contacting another. The two left out are notices FROM
- * Livil: the listener whose play crossed a milestone is not talking to the author, and a
- * badge is announced by staff, not by a person on either side of a block.
+ * The kinds that are one person contacting another — the kinds a block stops. The two left
+ * out are notices FROM Livil: the listener whose play crossed a milestone is not talking
+ * to the author, and a badge is announced by staff, not by a person on either side of a
+ * block.
+ *
+ * Group conversations are included. The database still lets a blocked pair post in a group
+ * they share (dm_blocked_for_sender bars only the DM, so a block never degrades the group
+ * for everyone else), but a push reaches one person only: the blocker no longer gets buzzed
+ * by the person they blocked, and that person cannot send them a group "message" preview
+ * that never appears in the group (D-45). The message itself still lands in the group.
  */
 export const isPersonToPerson = (kind: string): boolean =>
   kind !== 'activity_milestone' && kind !== 'badge_granted';
-
-/**
- * Whether a block between the two people stops this push.
- *
- * Every person-to-person kind EXCEPT one posted into a GROUP conversation. That exception
- * is the database's rule, not a new one: dm_blocked_for_sender (20260808100000) bars a
- * blocked pair from writing to their DM and says "a block never silences a group
- * conversation" — both stay members and keep posting there. A group push is the group's
- * activity reaching a member, so it follows the group's rule. Revisit both together.
- */
-export const blockApplies = (kind: string, grant: Grant): boolean =>
-  isPersonToPerson(kind) && grant.conversation?.kind !== 'group';
 
 /** The request body. Every field is a claim; nothing here is copied into a notification. */
 export type PushRequest = {
@@ -1151,8 +1147,8 @@ export async function handler(req: Request): Promise<Response> {
   };
 
   // 3a. BLOCKS — after authorization (an unauthorized actor learns nothing) and before
-  // anything is sent. Group-conversation pushes are exempt; see blockApplies.
-  if (blockApplies(kind, grant) && await isBlockedBetween(admin, actor, recipient)) {
+  // anything is sent. Group conversations included; see isPersonToPerson.
+  if (isPersonToPerson(kind) && await isBlockedBetween(admin, actor, recipient)) {
     return done('blocked');
   }
 

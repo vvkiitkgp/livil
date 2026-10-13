@@ -44,11 +44,13 @@ review.
    - `badge_granted` → actor is in `ops_users` and the recipient holds a live badge.
    - Self-targeting is refused for every kind except `badge_granted`.
 3. **Blocks**: any person-to-person kind is dropped when either side has blocked the
-   other (`blocked_users`, both directions, fails closed) — **except pushes posted into a
-   group conversation**, matching the database's rule that a block bars the DM but never
-   a group (`dm_blocked_for_sender`). The caller gets the same `{ ok: true }` as a
-   delivered push — every 200 is identical, including an FCM auth failure, so the response
-   body never reveals a block, a muted category, or whether the recipient has a phone.
+   other (`blocked_users`, both directions, fails closed) — **group conversations
+   included**. The database still lets a blocked pair post in a group they share
+   (`dm_blocked_for_sender` bars only the DM), and those messages still land in the group;
+   they just no longer buzz the person who blocked the sender. The caller gets the same
+   `{ ok: true }` as a delivered push — every 200 is identical, including an FCM auth
+   failure, so the response body never reveals a block, a muted category, or whether the
+   recipient has a phone.
    (Response TIME still differs: only a real send pays for the FCM round-trip.)
 4. **Content is server-derived** (`buildPush`): caller `title` is ignored for every kind;
    caller `body` is read only as a chat `message` preview (titled with the sender's name or
@@ -88,10 +90,9 @@ review.
    a shared store before relying on it (D-12).
 7. **Residual (D-45)**: a conversation member can still push a `message` preview that was
    never actually sent, to people already in that conversation with them, attributed to
-   themselves. It reaches only the recipient and leaves no record in the conversation, and
-   group pushes are exempt from blocks — so a blocked member of a shared group can still
-   send the person who blocked them a private, forged "message" this way. Do not close
-   D-45 on the back of this.
+   themselves. It reaches only the recipient and leaves no record in the conversation.
+   Blocks apply to group pushes, so it cannot reach someone who blocked the actor. Do not
+   close D-45 on the back of this.
 8. **Residual (repeats)**: `activity_notify_post` accepts any past comment or repost by the
    actor and inserts a fresh row on each call, so an actor can mint new comment / repost
    evidence at will, not only re-present one event. Separately, inside the 10-minute

@@ -10,7 +10,6 @@
 import { assertEquals } from 'jsr:@std/assert@1';
 import {
   authorize,
-  blockApplies,
   buildPush,
   claimsFrom,
   channelFor,
@@ -608,18 +607,13 @@ Deno.test('isBlockedBetween: checks BOTH directions', async () => {
   assertEquals(expr.includes(`blocker_id.eq.${B},blocked_id.eq.${A}`), true);
 });
 
-Deno.test('blockApplies: every person-to-person push except one posted into a group', () => {
-  // The database's rule: a block bars the DM, never a group conversation.
-  const g: Grant = { conversation: { id: CONV, kind: 'group', name: 'Weekend Crew' } };
-  const d: Grant = { conversation: { id: CONV, kind: 'dm', name: null } };
-  assertEquals(blockApplies('message', d), true);
-  assertEquals(blockApplies('reaction', d), true);
-  assertEquals(blockApplies('message', g), false);
-  assertEquals(blockApplies('jam_invite_dm', g), false);
-  assertEquals(blockApplies('activity_like', {}), true);
-  assertEquals(blockApplies('friend_request', {}), true);
-  assertEquals(blockApplies('activity_milestone', {}), false);
-  assertEquals(blockApplies('badge_granted', {}), false);
+Deno.test('blocks: group-conversation pushes are stopped too', () => {
+  // A blocked member's group message still lands in the group (the database bars only the
+  // DM), but no longer buzzes the person who blocked them — and they cannot send that person
+  // a group "message" preview nobody else sees. The gate is by kind, never by conversation.
+  for (const kind of ['message', 'reaction', 'jam_invite_dm']) {
+    assertEquals(isPersonToPerson(kind), true, kind);
+  }
 });
 
 Deno.test('isBlockedBetween: no block → false; a failed read counts as blocked', async () => {
