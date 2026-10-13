@@ -9,10 +9,15 @@
  */
 const mockInvoke = jest.fn();
 const mockRpc = jest.fn();
+const mockIn = jest.fn();
+const mockFrom = jest.fn((_table: string) => ({
+  select: () => ({ in: (...a: unknown[]) => mockIn(...a) }),
+}));
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     functions: { invoke: (...a: unknown[]) => mockInvoke(...a) },
     rpc: (...a: unknown[]) => mockRpc(...a),
+    from: (table: string) => mockFrom(table),
   },
 }));
 
@@ -31,6 +36,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockInvoke.mockReset();
   mockRpc.mockReset();
+  mockIn.mockReset();
+  mockFrom.mockClear();
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -156,5 +163,38 @@ describe('searchSpotify', () => {
     const { searchSpotify } = load();
     mockInvoke.mockResolvedValue({ data: null, error: { message: 'boom' } });
     await expect(searchSpotify('taylor swift')).resolves.toEqual([]);
+  });
+});
+
+describe('fetchSpotifyTrackIds', () => {
+  it('maps only the posts that are Spotify reposts', async () => {
+    const { fetchSpotifyTrackIds } = load();
+    mockIn.mockResolvedValue({
+      data: [
+        { id: 'post-spotify', spotify_track_id: ID_A },
+        { id: 'post-livil', spotify_track_id: null },
+      ],
+      error: null,
+    });
+    const byId = await fetchSpotifyTrackIds(['post-spotify', 'post-livil']);
+    expect(mockFrom).toHaveBeenCalledWith('posts');
+    expect(mockIn).toHaveBeenCalledWith('id', ['post-spotify', 'post-livil']);
+    expect(Array.from(byId.entries())).toEqual([['post-spotify', ID_A]]);
+  });
+
+  it('asks nothing when there is nothing to ask about', async () => {
+    const { fetchSpotifyTrackIds } = load();
+    await expect(fetchSpotifyTrackIds([])).resolves.toEqual(new Map());
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  // A database without the column yet (the app can land before the migration) answers
+  // with an error; a dropped connection rejects. Neither may reach the screen.
+  it('is empty — never a throw — when the query fails', async () => {
+    const { fetchSpotifyTrackIds } = load();
+    mockIn.mockResolvedValueOnce({ data: null, error: { message: 'column does not exist' } });
+    await expect(fetchSpotifyTrackIds(['p1'])).resolves.toEqual(new Map());
+    mockIn.mockRejectedValueOnce(new Error('network'));
+    await expect(fetchSpotifyTrackIds(['p1'])).resolves.toEqual(new Map());
   });
 });

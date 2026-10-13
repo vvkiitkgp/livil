@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Modal,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -57,6 +58,18 @@ export default function ConfirmActionModal({
       onRequestClose={busy ? undefined : onCancel}
     >
       <View style={styles.backdrop}>
+        {/* A tap outside the card is the Cancel button, exactly. A sibling BEHIND the card,
+            not its parent, so taps on the card never reach it. Hidden from screen readers:
+            the button itself is the accessible way out. */}
+        {cancelLabel === null ? null : (
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onCancel}
+            disabled={busy}
+            accessible={false}
+            importantForAccessibility="no"
+          />
+        )}
         <View style={styles.card}>
           <View style={styles.iconWrap}>
             <View style={[styles.iconCircle, { backgroundColor: accent.bg, borderColor: accent.ring }]}>

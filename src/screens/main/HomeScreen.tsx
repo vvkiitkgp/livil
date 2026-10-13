@@ -241,7 +241,6 @@ export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const spotify = useSpotifyAvailability();
   const playback = usePlayback();
-  const comments = useCommentsCountDeltas();
   // Posts the viewer has deleted in this session. Filtered out before the
   // FlatList sees them, so the card unmounts immediately.
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -351,6 +350,7 @@ export default function HomeScreen() {
   const [storiesLoading, setStoriesLoading] = useState(true);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const comments = useCommentsCountDeltas(posts);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);

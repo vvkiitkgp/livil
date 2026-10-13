@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import {
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 import UsernameBadges from './UsernameBadges';
 import { Icon } from './Icon';
+import SheetModal, { SheetScrollView } from './SheetModal';
+import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
 import type { CommentNode } from '../services/comments';
 
@@ -65,6 +65,9 @@ export default function CommentItem(props: Props) {
   const { node, depth, viewerId, highlighted } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
+  // Delete and Report open a modal of the comments sheet's; on iOS it must wait until this
+  // menu has closed (see useRunAfterDismiss).
+  const { runAfterDismiss, onDismiss } = useRunAfterDismiss();
   const indent = Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX;
   const isOwn = node.authorId === viewerId;
   const displayName = node.author.displayName || node.author.username;
@@ -134,34 +137,39 @@ export default function CommentItem(props: Props) {
         </View>
       </View>
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <TouchableWithoutFeedback onPress={() => setMenuOpen(false)}>
-          <View style={styles.menuBackdrop}>
-            <TouchableWithoutFeedback>
-              <View style={[styles.menuCard, { paddingBottom: 12 + insets.bottom }]}>
-                {isOwn ? (
-                  <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={() => { setMenuOpen(false); props.onDelete(node); }}
-                  >
-                    <Text style={[styles.menuText, { color: COLORS.error }]}>Delete</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={() => { setMenuOpen(false); props.onReport(node); }}
-                  >
-                    <Text style={styles.menuText}>Report</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.menuItem} onPress={() => setMenuOpen(false)}>
-                  <Text style={[styles.menuText, { color: COLORS.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+      <SheetModal
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onDismiss={onDismiss}
+        fit
+        style={styles.menuCard}
+        header={null}
+      >
+        {/* In the sheet's scroll body, so a drag down anywhere on the menu closes it. */}
+        <SheetScrollView
+          style={styles.menuBody}
+          contentContainerStyle={{ paddingBottom: 12 + insets.bottom }}
+        >
+          {isOwn ? (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); runAfterDismiss(() => props.onDelete(node)); }}
+            >
+              <Text style={[styles.menuText, { color: COLORS.error }]}>Delete</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); runAfterDismiss(() => props.onReport(node)); }}
+            >
+              <Text style={styles.menuText}>Report</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.menuItem} onPress={() => setMenuOpen(false)}>
+            <Text style={[styles.menuText, { color: COLORS.textSecondary }]}>Cancel</Text>
+          </TouchableOpacity>
+        </SheetScrollView>
+      </SheetModal>
     </View>
   );
 }
@@ -248,19 +256,9 @@ const styles = StyleSheet.create({
   actionTextActive: {
     color: COLORS.error,
   },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  menuCard: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
+  menuCard: { backgroundColor: COLORS.surface },
+  menuBody: { flexShrink: 1 },
   menuItem: {
     paddingVertical: 16,
     alignItems: 'center',

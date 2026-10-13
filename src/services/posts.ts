@@ -3,6 +3,7 @@ import { normalizeTag } from '../../shared/constants/tags';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 import { notifyPostActivity } from './activity';
 import { sendPush } from './pushDispatch';
+import { fetchSpotifyTrackIds } from './spotify';
 
 export type AuthorRef = {
   id: string;
@@ -356,18 +357,10 @@ function mapRpcFeedPost(raw: RpcFeedPostJson): FeedPost {
 async function attachSpotifyTrackIds(posts: FeedPost[]): Promise<FeedPost[]> {
   const candidates = posts.filter(p => p.kind === 'repost' && p.track.id === '').map(p => p.id);
   if (candidates.length === 0) {return posts;}
-  const { data, error } = await supabase
-    .from('posts')
-    .select('id, spotify_track_id')
-    .in('id', candidates);
   // On failure the post keeps spotifyTrackId = null and PostCard draws its "original no
   // longer available" tombstone — wrong-looking but safe: it has no play button, and
   // isPlayableInLivil already keeps it out of every queue (it has no media URL).
-  if (error || !data) {return posts;}
-  const byId = new Map<string, string>();
-  for (const row of data as Array<{ id: string; spotify_track_id: string | null }>) {
-    if (row.spotify_track_id) { byId.set(row.id, row.spotify_track_id); }
-  }
+  const byId = await fetchSpotifyTrackIds(candidates);
   if (byId.size === 0) {return posts;}
   return posts.map(p => (byId.has(p.id) ? { ...p, spotifyTrackId: byId.get(p.id)! } : p));
 }

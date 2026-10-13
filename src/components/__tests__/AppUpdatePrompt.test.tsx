@@ -87,6 +87,23 @@ it('gentle prompt: Update and Later; Later snoozes this release and hides it', a
   expect(r.toJSON()).toBeNull();
 });
 
+/** The full-screen tap-away target behind the card (hidden from screen readers). */
+function outsideTargets(r: Renderer) {
+  return r.root.findAll(
+    n => n.props.importantForAccessibility === 'no' && typeof n.props.onPress === 'function',
+  );
+}
+
+it('gentle prompt: a tap outside the card is Later — snoozes and hides', async () => {
+  mockPolicy = { latestBuild: 79, minimumBuild: 0, message: null };
+  const r = await mount(77);
+  const [outside] = outsideTargets(r);
+  expect(outside).toBeDefined();
+  await act(async () => { outside!.props.onPress(); });
+  expect(mockSnooze).toHaveBeenCalledWith(79);
+  expect(r.toJSON()).toBeNull();
+});
+
 it('gentle prompt stays away while snoozed', async () => {
   mockPolicy = { latestBuild: 79, minimumBuild: 0, message: null };
   mockSnoozed = true;
@@ -107,6 +124,8 @@ it('blocking prompt has no Later, and lifts when the minimum is lowered — on r
   const r = await mount(77);
   expect(texts(r)).toContain('Please update Livil');
   expect(() => pressButton(r, 'Later')).toThrow();
+  // …and nothing to tap away: a blocking prompt has no cancel.
+  expect(outsideTargets(r)).toHaveLength(0);
 
   mockPolicy = { latestBuild: 79, minimumBuild: 0, message: null };
   await act(async () => { appStateListener?.('active'); });

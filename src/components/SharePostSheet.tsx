@@ -2,11 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +25,7 @@ import { FriendPickerStrip } from './FriendPickerStrip';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
 import { StoryCard } from './StoryCard';
+import SheetModal, { SheetScrollView } from './SheetModal';
 
 /**
  * The Share sheet for an upload post.
@@ -72,6 +71,12 @@ const LINK_DESTINATION: Destination = {
  * degraded to the link — three rows where two do the same thing is the worst outcome,
  * because nothing tells the user which one failed.
  */
+/**
+ * Opens taller than the other sheets: the friends row and every destination fit at once on
+ * a typical phone, rather than hiding the last option below the fold.
+ */
+const SHARE_HALF_SHARE = 0.62;
+
 const IMAGE_DESTINATIONS: Destination[] = [
   { key: 'story', label: 'Instagram Story', hint: 'Post the card with a link back', icon: 'instagram' },
   { key: 'image', label: 'Send the card', hint: 'The artwork as an image, not a link', icon: 'externalLink' },
@@ -237,83 +242,90 @@ export default function SharePostSheet({ visible, post, onClose }: Props) {
   ];
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* The offscreen story card. See `cardHost` for why it is clipped rather than
-          hidden, and why "rendered behind the backdrop" was not good enough. */}
-      <View style={styles.cardHost} pointerEvents="none">
-        <View ref={cardRef} collapsable={false} style={styles.cardInner}>
-          <StoryCard
-            width={cardWidth}
-            height={cardHeight}
-            title={post.title}
-            artistName={post.artistName}
-            coverArtUrl={post.coverArtUrl}
-            onArtworkReady={onArtworkReady}
-          />
+    <SheetModal
+      visible={visible}
+      onClose={onClose}
+      halfShare={SHARE_HALF_SHARE}
+      style={styles.sheet}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.heading}>Share</Text>
+          <Text style={styles.subheading} numberOfLines={1}>
+            {post.title} — {post.artistName}
+          </Text>
         </View>
-      </View>
-
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
-              <View style={styles.grabber} />
-              <Text style={styles.heading}>Share</Text>
-              <Text style={styles.subheading} numberOfLines={1}>
-                {post.title} — {post.artistName}
-              </Text>
-
-              {/* ── Friends ── */}
-              <FriendPickerStrip
-                visible={visible}
-                selected={selected}
-                onToggle={toggle}
-                emptyText="Add friends to send tracks straight to them."
+      }
+      outside={
+        <>
+          {/* The offscreen story card. See `cardHost` for why it is clipped rather than
+              hidden. It stays in this Modal's window, where captureRef can draw it. */}
+          <View style={styles.cardHost} pointerEvents="none">
+            <View ref={cardRef} collapsable={false} style={styles.cardInner}>
+              <StoryCard
+                width={cardWidth}
+                height={cardHeight}
+                title={post.title}
+                artistName={post.artistName}
+                coverArtUrl={post.coverArtUrl}
+                onArtworkReady={onArtworkReady}
               />
-
-              {selected.size > 0 ? (
-                <View style={styles.sendWrap}>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    busy={sending}
-                    onPress={handleSend}
-                    label={`Send to ${selected.size}`}
-                  />
-                </View>
-              ) : null}
-
-              <View style={styles.divider} />
-
-              {/* ── Everywhere else ── */}
-              {destinations.map(d => (
-                <Pressable
-                  key={d.key}
-                  style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}
-                  onPress={() => void handleDestination(d.key)}
-                  disabled={busyKey !== null}
-                  accessibilityRole="button"
-                  accessibilityLabel={d.label}
-                >
-                  <View style={styles.destIcon}>
-                    <GradientBorder borderRadius={999} />
-                    {busyKey === d.key ? (
-                      <ActivityIndicator size="small" color={COLORS.purpleNeon} />
-                    ) : (
-                      <Icon name={d.icon} size={18} color={COLORS.purpleNeon} />
-                    )}
-                  </View>
-                  <View style={styles.destText}>
-                    <Text style={styles.destLabel}>{d.label}</Text>
-                    <Text style={styles.destHint}>{d.hint}</Text>
-                  </View>
-                </Pressable>
-              ))}
             </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
-    </Modal>
+          </View>
+        </>
+      }
+    >
+      <SheetScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 16 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── Friends ── */}
+        <FriendPickerStrip
+          visible={visible}
+          selected={selected}
+          onToggle={toggle}
+          emptyText="Add friends to send tracks straight to them."
+        />
+
+        {selected.size > 0 ? (
+          <View style={styles.sendWrap}>
+            <Button
+              variant="primary"
+              size="md"
+              busy={sending}
+              onPress={handleSend}
+              label={`Send to ${selected.size}`}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.divider} />
+
+        {/* ── Everywhere else ── */}
+        {destinations.map(d => (
+          <Pressable
+            key={d.key}
+            style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}
+            onPress={() => void handleDestination(d.key)}
+            disabled={busyKey !== null}
+            accessibilityRole="button"
+            accessibilityLabel={d.label}
+          >
+            <View style={styles.destIcon}>
+              <GradientBorder borderRadius={999} />
+              {busyKey === d.key ? (
+                <ActivityIndicator size="small" color={COLORS.purpleNeon} />
+              ) : (
+                <Icon name={d.icon} size={18} color={COLORS.purpleNeon} />
+              )}
+            </View>
+            <View style={styles.destText}>
+              <Text style={styles.destLabel}>{d.label}</Text>
+              <Text style={styles.destHint}>{d.hint}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </SheetScrollView>
+    </SheetModal>
   );
 }
 
@@ -336,22 +348,10 @@ const styles = StyleSheet.create({
    */
   cardHost: { position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden' },
   cardInner: { position: 'absolute', top: 0, left: 0 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    marginBottom: 12,
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
+  sheet: { backgroundColor: COLORS.surface },
+  header: { paddingHorizontal: 16 },
+  body: { paddingHorizontal: 16 },
   heading: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
   subheading: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2, marginBottom: 14 },
   pressed: { opacity: 0.6 },

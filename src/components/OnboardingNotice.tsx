@@ -125,6 +125,15 @@ export function OnboardingNoticeHost() {
       onRequestClose={() => close(false)}
     >
       <View style={styles.backdrop}>
+        {/* A tap outside the card is the cancel button: nothing runs, and a ticked "Don't
+            show this again" is still remembered. A sibling BEHIND the card, not its parent,
+            so taps on the card never reach it. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => close(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
         {copy && request ? (
           <View style={styles.card} accessibilityViewIsModal>
             <View style={styles.iconWrap}>

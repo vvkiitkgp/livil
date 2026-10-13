@@ -8,9 +8,6 @@ import {
   Dimensions,
   Platform,
   TouchableOpacity,
-  TouchableWithoutFeedback,
-  Modal,
-  ScrollView,
   Image,
   ActivityIndicator,
   InteractionManager,
@@ -22,6 +19,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import ArtGlow from './ArtGlow';
 import { useImageAspect } from '../hooks/useImageAspect';
 import { haptics } from '../utils/haptics';
+import { likeCountAfterToggle } from '../utils/likeCount';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -64,6 +62,7 @@ import { COLORS } from '../theme/colors';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
 import SharePostSheet from './SharePostSheet';
+import SheetModal, { SheetScrollView, SheetSurface, type SheetHandle } from './SheetModal';
 import type { ShareablePost } from '../services/share';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -73,6 +72,12 @@ const EDGE_BACK_ZONE = 20;
 const IS_IOS = Platform.OS === 'ios';
 
 const FLOAT_D = 60;
+/**
+ * The Queue/Info panel's resting height, as a share of the window. Taller than the other
+ * sheets' half: the floating player, its pill and the Queue/Info buttons cover roughly the
+ * panel's bottom 300pt, so at 50% almost nothing of the list would show.
+ */
+const PANEL_HALF_SHARE = 0.6;
 
 /** Below this much movement a released scrub was a tap, and seeks nothing. */
 const SCRUB_NOOP_SECONDS = 0.25;
@@ -607,7 +612,7 @@ function InfoContent({
     setLikesCount(prevCount + (next ? 1 : -1));
     try {
       const serverLiked = await toggleLike(effective.postId);
-      const finalCount = prevCount + (serverLiked ? 1 : 0);
+      const finalCount = likeCountAfterToggle(prevCount, prev, serverLiked);
       if (serverLiked !== next) {
         setLiked(serverLiked);
         setLikesCount(finalCount);
@@ -631,7 +636,7 @@ function InfoContent({
 
 
   return (
-    <ScrollView
+    <SheetScrollView
       style={infoSt.scroll}
       contentContainerStyle={infoSt.content}
       showsVerticalScrollIndicator={false}
@@ -794,7 +799,7 @@ function InfoContent({
           </View>
         </View>
       </View>
-    </ScrollView>
+    </SheetScrollView>
   );
 }
 
@@ -888,6 +893,7 @@ function AddToPlaylistModal({
   onNavigateToCreate: () => void;
 }) {
   const { setNowPlaying } = usePlayback();
+  const insets = useSafeAreaInsets();
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
@@ -940,106 +946,77 @@ function AddToPlaylistModal({
   }, [addedIds, nowPlaying.postId]);
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      style={modalSt.sheet}
+      header={<Text style={modalSt.sheetTitle}>Add to playlist</Text>}
     >
-      <View style={modalSt.overlay}>
-        <TouchableWithoutFeedback onPress={onClose}>
-          <View style={StyleSheet.absoluteFill} />
-        </TouchableWithoutFeedback>
+      <SheetScrollView
+        style={modalSt.list}
+        contentContainerStyle={[modalSt.listContent, { paddingBottom: 16 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Liked Songs — always first */}
+        <TouchableOpacity style={modalSt.row} onPress={handleToggleLiked} activeOpacity={0.7}>
+          <View style={[modalSt.rowThumb, { backgroundColor: COLORS.purple }]}>
+            <Icon name="heart" size={20} color={COLORS.white} weight="fill" />
+          </View>
+          <View style={modalSt.rowMeta}>
+            <Text style={modalSt.rowName}>Liked Songs</Text>
+          </View>
+          {liked && <Icon name="check" size={18} color={COLORS.purpleLight} />}
+        </TouchableOpacity>
 
-        <View style={modalSt.sheet}>
-          <View style={modalSt.handle} />
-          <Text style={modalSt.sheetTitle}>Add to playlist</Text>
-
-          <ScrollView
-            style={modalSt.list}
-            contentContainerStyle={modalSt.listContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Liked Songs — always first */}
-            <TouchableOpacity style={modalSt.row} onPress={handleToggleLiked} activeOpacity={0.7}>
-              <View style={[modalSt.rowThumb, { backgroundColor: COLORS.purple }]}>
-                <Icon name="heart" size={20} color={COLORS.white} weight="fill" />
+        {/* Custom playlists */}
+        {playlists.map((p, index) => {
+          const added = addedIds.has(p.id);
+          const accent = MODAL_ACCENTS[index % MODAL_ACCENTS.length]!;
+          const initial = p.name.trim().charAt(0).toUpperCase() || '♪';
+          return (
+            <TouchableOpacity
+              key={p.id}
+              style={modalSt.row}
+              onPress={() => handleAddToPlaylist(p.id)}
+              activeOpacity={0.7}
+            >
+              <View style={[modalSt.rowThumb, { backgroundColor: accent, overflow: 'hidden' }]}>
+                {p.coverArtUrl ? (
+                  <Image source={{ uri: p.coverArtUrl }} style={StyleSheet.absoluteFill} />
+                ) : (
+                  <Text style={modalSt.rowThumbText}>{initial}</Text>
+                )}
               </View>
               <View style={modalSt.rowMeta}>
-                <Text style={modalSt.rowName}>Liked Songs</Text>
+                <Text style={modalSt.rowName}>{p.name}</Text>
+                <Text style={modalSt.rowSub}>{p.postCount} {p.postCount === 1 ? 'post' : 'posts'}</Text>
               </View>
-              {liked && <Icon name="check" size={18} color={COLORS.purpleLight} />}
+              {added && <Icon name="check" size={18} color={COLORS.purpleLight} />}
             </TouchableOpacity>
+          );
+        })}
 
-            {/* Custom playlists */}
-            {playlists.map((p, index) => {
-              const added = addedIds.has(p.id);
-              const accent = MODAL_ACCENTS[index % MODAL_ACCENTS.length]!;
-              const initial = p.name.trim().charAt(0).toUpperCase() || '♪';
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  style={modalSt.row}
-                  onPress={() => handleAddToPlaylist(p.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[modalSt.rowThumb, { backgroundColor: accent, overflow: 'hidden' }]}>
-                    {p.coverArtUrl ? (
-                      <Image source={{ uri: p.coverArtUrl }} style={StyleSheet.absoluteFill} />
-                    ) : (
-                      <Text style={modalSt.rowThumbText}>{initial}</Text>
-                    )}
-                  </View>
-                  <View style={modalSt.rowMeta}>
-                    <Text style={modalSt.rowName}>{p.name}</Text>
-                    <Text style={modalSt.rowSub}>{p.postCount} {p.postCount === 1 ? 'post' : 'posts'}</Text>
-                  </View>
-                  {added && <Icon name="check" size={18} color={COLORS.purpleLight} />}
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* New playlist */}
-            <TouchableOpacity style={modalSt.row} onPress={onNavigateToCreate} activeOpacity={0.7}>
-              <View style={[modalSt.rowThumb, { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border }]}>
-                <Icon name="add" size={22} color={COLORS.purpleLight} />
-              </View>
-              <View style={modalSt.rowMeta}>
-                <Text style={[modalSt.rowName, { color: COLORS.purpleLight }]}>New playlist</Text>
-              </View>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+        {/* New playlist */}
+        <TouchableOpacity style={modalSt.row} onPress={onNavigateToCreate} activeOpacity={0.7}>
+          <View style={[modalSt.rowThumb, { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border }]}>
+            <Icon name="add" size={22} color={COLORS.purpleLight} />
+          </View>
+          <View style={modalSt.rowMeta}>
+            <Text style={[modalSt.rowName, { color: COLORS.purpleLight }]}>New playlist</Text>
+          </View>
+        </TouchableOpacity>
+      </SheetScrollView>
+    </SheetModal>
   );
 }
 
 const modalSt = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    justifyContent: 'flex-end',
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
   sheet: {
     backgroundColor: COLORS.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-    paddingBottom: 36,
-    height: SCREEN_H * 0.65,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 4,
   },
   sheetTitle: {
     color: COLORS.white,
@@ -1174,7 +1151,9 @@ export default function FullScreenPlayer() {
   const posYAnim    = useRef(new Animated.Value(convergeY)).current;   // translateY
   const scaleAnim   = useRef(new Animated.Value(0.02)).current;         // scaleX / scaleY
   const opacityAnim = useRef(new Animated.Value(0)).current;            // opacity
-  const panelAnim   = useRef(new Animated.Value(0)).current;
+  // The Queue/Info panel. Closed from outside (its buttons, back) through this, so it
+  // animates away before it unmounts.
+  const panelRef = useRef<SheetHandle>(null);
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
@@ -1244,7 +1223,7 @@ export default function FullScreenPlayer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
 
-  // Controls hide/show (RN Animated, native driver — consistent with panelAnim).
+  // Controls hide/show (RN Animated, native driver).
   // 1 = controls shown, 0 = clean view. Header + credits slide up, the bottom
   // info / seek / action rows slide down, all fade out.
   const controlsAnim = useRef(new Animated.Value(1)).current;
@@ -1415,7 +1394,6 @@ export default function FullScreenPlayer() {
         Animated.timing(opacityAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
       ]).start();
     } else {
-      panelAnim.setValue(0);
       setActiveTab(null);
       // Reset zoom/pan to the default full-height framing (masked by the converge
       // animation) so re-opening the same track never starts mid-zoom.
@@ -1448,7 +1426,7 @@ export default function FullScreenPlayer() {
   // Animated values + zoom shared values are stable refs; convergeY only matters
   // at the open/close edge, which is keyed by isFullScreenOpen.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullScreenOpen, posYAnim, scaleAnim, opacityAnim, panelAnim]);
+  }, [isFullScreenOpen, posYAnim, scaleAnim, opacityAnim]);
 
   // ── No ownership / handler registration ───────────────────────────────────
   // The old two-engine model registered PlayerHandlers here and "took ownership"
@@ -1503,15 +1481,19 @@ export default function FullScreenPlayer() {
   }, [fsBuffering, frameMounted, setVideoFrameBuffering]);
 
   // ── Panel helpers ─────────────────────────────────────────────────────────
+  // Opening mounts the panel's SheetSurface, which slides itself up to half. Switching tab
+  // while it is open only swaps the body.
   const openTab = useCallback((tab: TabId) => {
     setActiveTab(tab);
-    Animated.spring(panelAnim, { toValue: 1, bounciness: 4, speed: 12, useNativeDriver: true }).start();
-  }, [panelAnim]);
+  }, []);
+
+  const handlePanelClosed = useCallback(() => {
+    setActiveTab(null);
+  }, []);
 
   const closePanel = useCallback(() => {
-    Animated.timing(panelAnim, { toValue: 0, duration: 220, useNativeDriver: true })
-      .start(() => setActiveTab(null));
-  }, [panelAnim]);
+    if (panelRef.current) { panelRef.current.close(); } else { setActiveTab(null); }
+  }, []);
 
   const handleTabPress = useCallback((tab: TabId) => {
     // Covers the Queue/Info row AND the credit line under the title,
@@ -1656,14 +1638,6 @@ export default function FullScreenPlayer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [closeFullScreenPlayer]);
 
-  // ── Swipe-down the panel handle to dismiss the panel ─────────────────────
-  const panelDismissGesture = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetY([8, Infinity])
-    .onEnd((e) => {
-      if (e.translationY > 60 || e.velocityY > 400) { closePanel(); }
-    });
-
   // ── Muted-frame sync callbacks ────────────────────────────────────────────
   // The frame is a SLAVE to GlobalAudioPlayer. It never drives positionRef,
   // duration, the play tracker, the queue, or clip-end — GAP owns all of that.
@@ -1797,27 +1771,6 @@ export default function FullScreenPlayer() {
   const controlsBottomHide = controlsAnim.interpolate({
     inputRange: [0, 1], outputRange: [seekRowBottom + 160, 0],
   });
-  // Memoize the interpolation node + style array. Without this, every render
-  // (e.g. when activeTab changes from null → 'queue') creates a fresh
-  // interpolation and a new style array; React Native re-binds the
-  // Animated.Value to the native view, and during the re-bind the panel
-  // briefly snaps to its non-animated rest position for one frame — that's
-  // the flicker the user sees when opening Queue / Info.
-  const panelTranslateY = useMemo(
-    () => panelAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [panelHeight, 0],
-      extrapolate: 'clamp',
-    }),
-    [panelAnim, panelHeight],
-  );
-  const panelStyle = useMemo(
-    () => [
-      styles.contentPanel,
-      { top: panelTop, transform: [{ translateY: panelTranslateY }] },
-    ],
-    [panelTop, panelTranslateY],
-  );
 
   if (!nowPlaying) { return null; }
 
@@ -2136,47 +2089,52 @@ export default function FullScreenPlayer() {
 
       {/* Shuffle + Repeat live in the FloatingPlayer pill when fullscreen is open */}
 
-      {/* ── Content panel ── */}
-      <Animated.View
-        style={panelStyle}
-        pointerEvents={activeTab ? 'box-none' : 'none'}
-      >
-        <GestureDetector gesture={panelDismissGesture}>
-          <TouchableOpacity style={styles.panelHandleArea} onPress={closePanel}>
-            <View style={styles.panelHandleBar} />
-          </TouchableOpacity>
-        </GestureDetector>
-
-        <View style={styles.panelTabs}>
-          {PANEL_TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.panelTab, activeTab === tab && styles.panelTabActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.panelTabText, activeTab === tab && styles.panelTabTextActive]}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {activeTab === 'queue' && (
-          <View style={styles.panelScroll}>
-            <QueueList paddingBottom={panelScrollPad} />
-          </View>
-        )}
-        {activeTab === 'info' && (
-          <View style={[styles.panelScroll, { paddingHorizontal: 0, paddingTop: 0 }]}>
-            <InfoContent
-              nowPlaying={nowPlaying}
-              onCommentsPress={() => setCommentsOpen(true)}
-              onLikesPress={(postId) => setLikersPostId(postId)}
-              trackPlaysTotal={trackPlaysTotal}
-            />
-          </View>
-        )}
-      </Animated.View>
+      {/* ── Content panel ──
+          The same half → tall → drag-to-close sheet as likes and comments, but inline: it
+          must stay UNDER the floating player and the Queue/Info buttons, which a Modal would
+          cover. Mounted only while a tab is open. */}
+      {activeTab !== null ? (
+        <SheetSurface
+          ref={panelRef}
+          onClose={handlePanelClosed}
+          backdrop={false}
+          enterFromClosed
+          halfShare={PANEL_HALF_SHARE}
+          expandedHeight={panelHeight}
+          style={styles.contentPanel}
+          header={
+            <View style={styles.panelTabs}>
+              {PANEL_TABS.map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.panelTab, activeTab === tab && styles.panelTabActive]}
+                  onPress={() => setActiveTab(tab)}
+                >
+                  <Text style={[styles.panelTabText, activeTab === tab && styles.panelTabTextActive]}>
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          }
+        >
+          {activeTab === 'queue' && (
+            <View style={styles.panelScroll}>
+              <QueueList paddingBottom={panelScrollPad} />
+            </View>
+          )}
+          {activeTab === 'info' && (
+            <View style={[styles.panelScroll, { paddingHorizontal: 0, paddingTop: 0 }]}>
+              <InfoContent
+                nowPlaying={nowPlaying}
+                onCommentsPress={() => setCommentsOpen(true)}
+                onLikesPress={(postId) => setLikersPostId(postId)}
+                trackPlaysTotal={trackPlaysTotal}
+              />
+            </View>
+          )}
+        </SheetSurface>
+      ) : null}
 
       {/* ── Action buttons ── */}
       <Animated.View
@@ -2307,7 +2265,7 @@ function CompactStats({
     setCount(prevCount + (next ? 1 : -1));
     try {
       const serverLiked = await toggleLike(effective.postId);
-      const finalCount = prevCount + (serverLiked ? 1 : 0);
+      const finalCount = likeCountAfterToggle(prevCount, prev, serverLiked);
       setLiked(serverLiked);
       setCount(finalCount);
       // Write back to PlaybackContext so the add-to-playlist modal reads the
@@ -2519,14 +2477,11 @@ const styles = StyleSheet.create({
   seekRow: { position: 'absolute', left: 0, right: 0 },
 
 
+  // The surface only — position, height, grabber and drag come from SheetSurface.
   contentPanel: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
     backgroundColor: COLORS.surface,
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    borderTopWidth: 1, borderColor: COLORS.border,
   },
-  panelHandleArea: { alignItems: 'center', paddingVertical: 12 },
-  panelHandleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border },
   panelTabs: {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border,
     paddingHorizontal: 20, gap: 4,

@@ -15,6 +15,7 @@ import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
 import EqualizerBars from './EqualizerBars';
+import { useSheetList } from './SheetModal';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const ROW_H = 64;
@@ -268,6 +269,9 @@ export default function QueueList({
   const [internalData, setInternalData] = useState<DisplayItem[]>([]);
   const [version, setVersion] = useState(0);
   const [scrollLocked, setScrollLocked] = useState(false);
+  // Inside a sheet (the full-screen player's Queue panel), the list hands drags to it.
+  // Null elsewhere — the Jam room's queue — where nothing below changes.
+  const sheet = useSheetList();
 
   const dragActiveIndex = useSharedValue(-1);
   const dragTY = useSharedValue(0);
@@ -339,7 +343,9 @@ export default function QueueList({
 
   const handleDragToggle = useCallback((active: boolean) => {
     setScrollLocked(active);
-  }, []);
+    // A row being reordered must not drag the sheet with it.
+    sheet?.setLocked(active);
+  }, [sheet]);
 
   const renderItem = useCallback(({ item }: { item: DisplayItem }) => (
     <QueueRow
@@ -364,19 +370,23 @@ export default function QueueList({
     index,
   }), []);
 
-  return (
+  const list = (
     <Animated.FlatList
       data={data}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
       itemLayoutAnimation={skipNextLayoutAnim.current ? undefined : LinearTransition.springify().damping(40).stiffness(400)}
       getItemLayout={getItemLayout}
-      scrollEnabled={!scrollLocked}
+      scrollEnabled={!scrollLocked && (sheet ? sheet.scrollEnabled : true)}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom }}
       ListEmptyComponent={<Text style={st.empty}>Queue is empty</Text>}
+      {...(sheet
+        ? { onScroll: sheet.onScroll, scrollEventThrottle: 16, bounces: false, overScrollMode: 'never' as const }
+        : null)}
     />
   );
+  return sheet ? <GestureDetector gesture={sheet.gesture}>{list}</GestureDetector> : list;
 }
 
 // ─── Styles ────────────────────────────────────────────────────────────────

@@ -1,13 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +17,7 @@ import { Button } from './Button';
 import { useToast } from '../contexts/ToastContext';
 import { useRelationships, type RelationshipStatus } from '../contexts/RelationshipContext';
 import AddUserSheet from './AddUserSheet';
+import SheetModal, { SheetFlatList } from './SheetModal';
 import { listPostLikers, type PostLiker } from '../services/posts';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import type { RootStackParamList } from '../navigation/types';
@@ -66,6 +64,10 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
 
   const [likers, setLikers] = useState<PostLiker[]>([]);
   const [loading, setLoading] = useState(false);
+  // The list is built only once the open slide has landed (building it during the slide
+  // makes it stutter); likers still load in parallel, behind the spinner.
+  const [entered, setEntered] = useState(false);
+  const handleEntered = useCallback(() => setEntered(true), []);
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
@@ -105,6 +107,7 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
     setLoadingMore(false);
     setEndReached(false);
     setActionUserId(null);
+    setEntered(false);
   }, [visible]);
 
   const handleEndReached = useCallback(async () => {
@@ -176,97 +179,62 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
   }, [rel, handleRowPress]);
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop} />
-      </TouchableWithoutFeedback>
-
-      <View style={styles.sheetWrap} pointerEvents="box-none">
-        <View style={styles.sheet}>
-          <View style={styles.grabber} />
-          <View style={styles.header}>
-            <Text style={styles.title}>Likes</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Icon name="close" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {loading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={COLORS.purpleLight} />
-            </View>
-          ) : likers.length === 0 ? (
-            <View style={styles.emptyHint}>
-              <Text style={styles.emptyTitle}>No likes yet</Text>
-              <Text style={styles.emptyBody}>Be the first to like this post.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={likers}
-              keyExtractor={item => item.userId}
-              renderItem={renderRow}
-              contentContainerStyle={[
-                styles.listContent,
-                { paddingBottom: insets.bottom + 12 },
-              ]}
-              onEndReached={handleEndReached}
-              onEndReachedThreshold={0.4}
-              ListFooterComponent={
-                loadingMore ? (
-                  <View style={styles.footerLoading}>
-                    <ActivityIndicator color={COLORS.purpleLight} />
-                  </View>
-                ) : null
-              }
-            />
-          )}
+      onClose={onClose}
+      onEntered={handleEntered}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.title}>Likes</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Icon name="close" size={20} color={COLORS.textSecondary} />
+          </TouchableOpacity>
         </View>
-      </View>
-
-      {actionUserId !== null && (
-        <AddUserSheet
-          userId={actionUserId}
-          visible={actionUserId !== null}
-          onClose={() => setActionUserId(null)}
+      }
+      outside={
+        actionUserId !== null && (
+          <AddUserSheet
+            userId={actionUserId}
+            visible={actionUserId !== null}
+            onClose={() => setActionUserId(null)}
+          />
+        )
+      }
+    >
+      {loading || !entered ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={COLORS.purpleLight} />
+        </View>
+      ) : likers.length === 0 ? (
+        <View style={styles.emptyHint}>
+          <Text style={styles.emptyTitle}>No likes yet</Text>
+          <Text style={styles.emptyBody}>Be the first to like this post.</Text>
+        </View>
+      ) : (
+        <SheetFlatList
+          data={likers}
+          keyExtractor={item => item.userId}
+          renderItem={renderRow}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + 12 },
+          ]}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.footerLoading}>
+                <ActivityIndicator color={COLORS.purpleLight} />
+              </View>
+            ) : null
+          }
         />
       )}
-    </Modal>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  sheetWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    height: '75%',
-    backgroundColor: COLORS.bg,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    marginTop: 8,
-    marginBottom: 8,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

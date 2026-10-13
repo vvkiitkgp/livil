@@ -3,14 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 import { Icon, type IconName } from './Icon';
+import SheetModal, { SheetScrollView } from './SheetModal';
+import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 
 export type TrackContextMenuProps = {
@@ -88,6 +88,7 @@ export default function TrackContextMenu({
   onRemoveFromAlbum,
 }: TrackContextMenuProps) {
   const insets = useSafeAreaInsets();
+  const { runAfterDismiss, onDismiss } = useRunAfterDismiss();
 
   // Compose the menu item list dynamically — ownership decides whether Report
   // (others' posts) or Delete (own posts) appears at the bottom. Playback
@@ -124,128 +125,114 @@ export default function TrackContextMenu({
 
   const handlePress = useCallback((id: string) => {
     if (!track) { return; }
-    // Report + Delete need the menu to stay open until the follow-up modal
-    // takes over (the caller opens its own confirm/report modal in response).
-    // Closing here first looks cleaner than fading the menu under the modal.
+    // Close first, then act once the menu has CLOSED. Several actions open a modal of the
+    // caller's (share, report, delete confirm, album picker), and iOS refuses to present
+    // one while this sheet is still on screen sliding away — the new one opens into
+    // nothing. Android has no such refusal and runs it on the next tick. See
+    // useRunAfterDismiss.
     onClose();
-    switch (id) {
-      case 'play-next':
-        onPlayNext(track);
-        break;
-      case 'add-to-queue':
-        onAddToQueue(track);
-        break;
-      case 'add-to-playlist':
-        onAddToPlaylist?.(track);
-        break;
-      case 'go-to-artist':
-        onGoToArtist?.(track.authorId);
-        break;
-      case 'add-to-album':
-        onAddToAlbum?.(track);
-        break;
-      case 'move-to-album':
-        onMoveToAlbum?.(track);
-        break;
-      case 'remove-from-album':
-        onRemoveFromAlbum?.(track);
-        break;
-      case 'share-post':
-        onSharePost?.();
-        break;
-      case 'report-post':
-        if (postId) { onReportPost?.(postId); }
-        break;
-      case 'delete-post':
-        if (postId) { onDeletePost?.(postId); }
-        break;
-    }
-  }, [track, onClose, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onSharePost, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
+    runAfterDismiss(() => {
+      switch (id) {
+        case 'play-next':
+          onPlayNext(track);
+          break;
+        case 'add-to-queue':
+          onAddToQueue(track);
+          break;
+        case 'add-to-playlist':
+          onAddToPlaylist?.(track);
+          break;
+        case 'go-to-artist':
+          onGoToArtist?.(track.authorId);
+          break;
+        case 'add-to-album':
+          onAddToAlbum?.(track);
+          break;
+        case 'move-to-album':
+          onMoveToAlbum?.(track);
+          break;
+        case 'remove-from-album':
+          onRemoveFromAlbum?.(track);
+          break;
+        case 'share-post':
+          onSharePost?.();
+          break;
+        case 'report-post':
+          if (postId) { onReportPost?.(postId); }
+          break;
+        case 'delete-post':
+          if (postId) { onDeletePost?.(postId); }
+          break;
+      }
+    });
+  }, [track, onClose, runAfterDismiss, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onSharePost, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
 
   if (!track) { return null; }
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
-              <View style={styles.handleBar} />
-
-              <View style={styles.trackPreview}>
-                {track.coverArtUrl ? (
-                  <Image source={{ uri: track.coverArtUrl }} style={styles.cover} />
-                ) : (
-                  <View style={[styles.cover, styles.coverFallback]} />
-                )}
-                <View style={styles.trackMeta}>
-                  <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
-                  <Text style={styles.trackArtist} numberOfLines={1}>{track.artistName}</Text>
-                </View>
-              </View>
-
-              <View style={styles.divider} />
-
-              {items.map((item) => {
-                if (item.id === 'add-to-playlist' && !onAddToPlaylist) { return null; }
-                if (item.id === 'go-to-artist' && !onGoToArtist) { return null; }
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.menuItem}
-                    onPress={() => handlePress(item.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.menuIcon}>
-                      <Icon
-                        name={item.icon}
-                        size={18}
-                        color={item.destructive ? COLORS.error : COLORS.white}
-                      />
-                    </View>
-                    <Text style={[styles.menuLabel, item.destructive && styles.menuLabelDestructive]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+      onClose={onClose}
+      onDismiss={onDismiss}
+      fit
+      style={styles.sheet}
+      header={
+        <View style={styles.header}>
+          <View style={styles.trackPreview}>
+            {track.coverArtUrl ? (
+              <Image source={{ uri: track.coverArtUrl }} style={styles.cover} />
+            ) : (
+              <View style={[styles.cover, styles.coverFallback]} />
+            )}
+            <View style={styles.trackMeta}>
+              <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
+              <Text style={styles.trackArtist} numberOfLines={1}>{track.artistName}</Text>
             </View>
-          </TouchableWithoutFeedback>
+          </View>
+
+          <View style={styles.divider} />
         </View>
-      </TouchableWithoutFeedback>
-    </Modal>
+      }
+    >
+      <SheetScrollView
+        style={styles.body}
+        contentContainerStyle={[styles.bodyContent, { paddingBottom: 16 + insets.bottom }]}
+      >
+        {items.map((item) => {
+          if (item.id === 'add-to-playlist' && !onAddToPlaylist) { return null; }
+          if (item.id === 'go-to-artist' && !onGoToArtist) { return null; }
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.menuItem}
+              onPress={() => handlePress(item.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.menuIcon}>
+                <Icon
+                  name={item.icon}
+                  size={18}
+                  color={item.destructive ? COLORS.error : COLORS.white}
+                />
+              </View>
+              <Text style={[styles.menuLabel, item.destructive && styles.menuLabelDestructive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </SheetScrollView>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    // paddingBottom set dynamically via insets.bottom so the last menu item
-    // clears the Android nav bar / iOS home indicator.
-  },
-  handleBar: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
+  sheet: { backgroundColor: COLORS.surface },
+  header: { paddingHorizontal: 20, paddingTop: 8 },
+  // Shrinks to fit under the sheet's height cap, where it scrolls.
+  body: { flexShrink: 1 },
+  bodyContent: { paddingHorizontal: 20 },
   trackPreview: {
     flexDirection: 'row',
     alignItems: 'center',

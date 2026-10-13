@@ -112,6 +112,16 @@ describe('OnboardingNoticeHost', () => {
     unmount(t);
   });
 
+  it('a tap outside the card cancels: nothing runs, and it hides', async () => {
+    const t = mount();
+    const go = jest.fn();
+    await request('spotify', go);
+    press(t, 'Close');
+    expect(go).not.toHaveBeenCalled();
+    expect(modal(t).props.visible).toBe(false);
+    unmount(t);
+  });
+
   it('with no host mounted, the action runs at once rather than doing nothing', async () => {
     const go = jest.fn();
     await request('spotify', go);

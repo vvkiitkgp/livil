@@ -61,6 +61,7 @@ one lands unchallenged.
 | Use `Icon`, never a unicode glyph or emoji as an icon | One import surface; consistent sizing and weight | `ADVISORY` |
 | Never nest `<Icon>` inside `<Text>` | It is an SVG, not inline text — wrap in a `View` row | `ADVISORY` |
 | Never `Alert.alert` | The OS dialog breaks the dark theme | `ADVISORY` — currently **0 violations** |
+| Bottom sheets use `SheetModal` (`SheetSurface` inline); never a hand-rolled `Modal` + backdrop + grabber | Each sheet used to copy its own: none could be dragged, and every height differed. One component gives every sheet half → tall → drag-to-close (or `fit` for short menus) | `ADVISORY` — exceptions by choice: `SpotifyTrackSheet`, and the profile ⋯ drop-down (not a sheet) |
 | Use `createNativeStackNavigator` | The JS stack has touch and gesture problems on Android 15 | `ADVISORY` — currently **0 violations** |
 | Import `COLORS`; never hard-code a colour | One palette source | `ADVISORY` — **widely violated**, see [design-system.md](design-system.md) |
 
@@ -74,6 +75,7 @@ copy strings, single-character initials fallbacks, and the decorative glyph prop
 |---|---|
 | Confirmation, destructive action, a decision | `ConfirmActionModal` |
 | Error, warning, short status | `useToast()` with `kind: 'error' \| 'success' \| 'info'` |
+| A list or menu that slides up from the bottom | `SheetModal` — body in `SheetFlatList` / `SheetScrollView`; `fit` for a short menu; `SheetSurface` inside the full-screen player |
 | Neither fits | Build a modal matching the existing visual template |
 
 **Never let a save fail silently.** There are known sites where an upload or edit failure
