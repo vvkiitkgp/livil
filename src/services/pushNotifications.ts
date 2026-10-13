@@ -25,6 +25,7 @@ const PROMPT_STATUS_KEY = 'livil.push_prompt_status';
 
 export type PushPromptStatus = 'pending' | 'shown' | 'accepted' | 'denied';
 
+/* eslint-disable no-bitwise -- RFC 4122 v4 layout: `| 0` truncates to a nibble, `& 0x3 | 0x8` sets the variant bits */
 function generateDeviceId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = (Math.random() * 16) | 0;
@@ -32,6 +33,7 @@ function generateDeviceId(): string {
     return v.toString(16);
   });
 }
+/* eslint-enable no-bitwise */
 
 export async function getOrCreateDeviceId(): Promise<string> {
   let id = await AsyncStorage.getItem(DEVICE_ID_KEY);

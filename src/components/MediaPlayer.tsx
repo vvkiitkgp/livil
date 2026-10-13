@@ -94,6 +94,7 @@ export type MediaPlayerProps = {
  * We coordinate with PlaybackContext so only one player ever runs at a time —
  * when this player starts, others see `activePostId` change and pause.
  */
+// eslint-disable-next-line @typescript-eslint/no-shadow -- the inner name is the component's DevTools/stack name
 const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function MediaPlayer(
   {
     postId,

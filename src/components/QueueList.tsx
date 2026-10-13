@@ -44,6 +44,7 @@ type RowProps = {
   onDragToggle: (active: boolean) => void;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-shadow -- the inner name is the component's DevTools/stack name
 const QueueRow = React.memo(function QueueRow({
   item,
   dragActiveIndex,

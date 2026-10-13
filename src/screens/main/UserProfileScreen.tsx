@@ -318,8 +318,8 @@ export default function UserProfileScreen() {
    * their owner) and everything about a blocked pair (zeros both ways).
    */
   const fetchTabCounts = useCallback(async (uid: string): Promise<TabCounts> => {
-    const { data, error } = await supabase.rpc('profile_tab_counts', { p_user_id: uid });
-    if (error) { throw new Error(error.message); }
+    const { data, error: rpcError } = await supabase.rpc('profile_tab_counts', { p_user_id: uid });
+    if (rpcError) { throw new Error(rpcError.message); }
     const row = (data ?? [])[0];
     return {
       reposts: row?.reposts ?? 0,

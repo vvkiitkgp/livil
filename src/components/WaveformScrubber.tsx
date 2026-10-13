@@ -682,9 +682,9 @@ export default function WaveformScrubber({
 
   /** Which bar an absolute time falls on, in the window currently drawn. */
   const barIndexAt = useCallback((seconds: number): number => {
-    const span = viewSpanRef.current;
-    if (!(span > 0)) { return 0; }
-    return Math.floor(((seconds - viewStartRef.current) / span) * barCountRef.current);
+    const drawnSpan = viewSpanRef.current;
+    if (!(drawnSpan > 0)) { return 0; }
+    return Math.floor(((seconds - viewStartRef.current) / drawnSpan) * barCountRef.current);
   }, []);
 
   const slideStartTo = useCallback((raw: number): [number, number] =>

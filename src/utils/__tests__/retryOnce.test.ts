@@ -24,6 +24,9 @@ it('retries once after the delay when the first call fails', async () => {
 it('gives up after the second failure, so callers keep their fallback', async () => {
   const fn = jest.fn().mockRejectedValue(new Error('down'));
   const p = retryOnce(fn, 10);
+  // Attach the rejection handler BEFORE the timers run, or `p` rejects unhandled;
+  // the assertion is awaited below, once the retry has fired.
+  // eslint-disable-next-line jest/valid-expect
   const assertion = expect(p).rejects.toThrow('down');
   await jest.advanceTimersByTimeAsync(10);
   await assertion;

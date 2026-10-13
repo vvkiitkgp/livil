@@ -100,7 +100,7 @@ export default function EditAlbumScreen({ route }: Props) {
     try {
       // Resolve next cover URL: upload local pick, or null when removed, or
       // keep the existing remote URL.
-      let nextCoverUrl: string | null | undefined = undefined;
+      let nextCoverUrl: string | null | undefined;
       if (cover.kind === 'local') {
         const { data: sess } = await supabase.auth.getSession();
         const { data: userData } = await supabase.auth.getUser();
