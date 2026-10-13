@@ -18,6 +18,7 @@ import LikedByLine from './LikedByLine';
 import ConfirmActionModal from './ConfirmActionModal';
 import DetailActionSheet, { type DetailAction } from './DetailActionSheet';
 import AddBadge from './AddBadge';
+import { useRelationships } from '../contexts/RelationshipContext';
 import UsernameBadges from './UsernameBadges';
 import ProgressiveImage from './ProgressiveImage';
 import { Icon } from './Icon';
@@ -95,6 +96,11 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     return () => { cancelled = true; };
   }, []);
   const isOwner = !!viewerId && viewerId === post.author.id;
+  // No Repost pill on your own repost: it would only repost the same song again. Read from
+  // RelationshipContext (resolved once for the app), not `viewerId`, which arrives after the
+  // card draws and would flash the pill on every own repost.
+  const { meId } = useRelationships();
+  const isOwnRepost = !!meId && meId === post.author.id;
 
   const { liked, likesCount, toggleLike: handleToggleLike } = usePostLike(post);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -200,7 +206,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             </View>
           </View>
         </TouchableOpacity>
-        {repostsOn ? (
+        {repostsOn && !isOwnRepost ? (
           <TouchableOpacity style={styles.repostBtn} activeOpacity={0.85} accessibilityLabel="Repost" onPress={handleRepost}>
             <GradientBorder borderRadius={999} />
             <Icon name="repost" size={14} color={COLORS.purpleNeon} />
