@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Modal,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -36,6 +37,16 @@ export default function NotificationPermissionModal({
       onRequestClose={onMaybeLater}
     >
       <View style={styles.backdrop}>
+        {/* A tap outside the card is the "Maybe later" button, exactly. A sibling BEHIND the
+            card, not its parent, so taps on the card never reach it. Hidden from screen
+            readers: the button itself is the accessible way out. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onMaybeLater}
+          disabled={busy}
+          accessible={false}
+          importantForAccessibility="no"
+        />
         <View style={styles.card}>
           <View style={styles.iconWrap}>
             <View style={styles.iconCircle}>

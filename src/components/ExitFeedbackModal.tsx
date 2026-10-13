@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { COLORS } from '../theme/colors';
 import { Button } from './Button';
@@ -56,6 +56,15 @@ export default function ExitFeedbackModal({ visible, onConfirm, onCancel }: Prop
           frames. `navigationBarTranslucent` alongside `statusBarTranslucent` is what lets
           the library measure the modal's own window on Android. */}
       <KeyboardAvoidingView behavior="padding" style={styles.backdrop}>
+        {/* A tap outside the card is the Cancel button, exactly. A sibling BEHIND the card,
+            not its parent, so taps on the card never reach it. Hidden from screen readers:
+            the button itself is the accessible way out. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onCancel}
+          accessible={false}
+          importantForAccessibility="no"
+        />
         <View style={styles.card}>
           <Text style={styles.title}>Before you go</Text>
           <Text style={styles.subtitle}>

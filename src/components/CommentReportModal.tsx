@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { COLORS } from '../theme/colors';
 import { Button } from './Button';
@@ -71,6 +71,15 @@ export default function CommentReportModal({ visible, commentId, onClose }: Prop
           ExitFeedbackModal: RN's `behavior="height"` fights KeyboardProvider on Android
           and the card flickers. */}
       <KeyboardAvoidingView behavior="padding" style={styles.backdrop}>
+        {/* A tap outside the card is the Cancel button, exactly. A sibling BEHIND the card,
+            not its parent, so taps on the card never reach it. Hidden from screen readers:
+            the button itself is the accessible way out. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={handleClose}
+          accessible={false}
+          importantForAccessibility="no"
+        />
         <View style={styles.card}>
           <Text style={styles.title}>Report comment</Text>
           <Text style={styles.subtitle}>Why are you reporting this comment?</Text>
