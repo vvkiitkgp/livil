@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { sendPush, type PushKind } from './pushDispatch';
 import { isProfileBadge, type ProfileBadge } from './profileBadges';
+import { fetchSpotifyTrackIds } from './spotify';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
@@ -35,6 +36,9 @@ export type ActivityPostRef = {
   postId: string;
   title: string | null;
   coverArtUrl: string | null;
+  /** Set when the post is a Spotify repost. It has no Livil track, so `title` and
+      `coverArtUrl` are null and the card describes the Spotify song instead. */
+  spotifyTrackId: string | null;
 };
 
 type ActivityBase = {
@@ -125,6 +129,7 @@ function rowToPost(row: RawActivityRow): ActivityPostRef {
     postId: row.post_id ?? '',
     title: row.post_title,
     coverArtUrl: row.post_cover_art_url,
+    spotifyTrackId: null, // filled in by attachSpotifyTrackIds
   };
 }
 
@@ -302,13 +307,37 @@ export async function listActivity(beforeUpdatedAt?: string): Promise<ActivityIt
     p_before: beforeUpdatedAt ?? null,
   });
   if (error) { throw error; }
-  return ((data ?? []) as RawActivityRow[])
+  const items = ((data ?? []) as RawActivityRow[])
     .map(rowToItem)
     // `!=` not `!==`, deliberately: an unrecognised activity TYPE falls out of the switch
     // as `undefined`, not `null`, and `undefined !== null` is true — so a strict filter
     // passes it straight through to ActivityBubble, which throws on it. That is the exact
     // scenario this guard exists for: a type added server-side ahead of a client release.
     .filter((item): item is ActivityItem => item != null);
+  return attachSpotifyTrackIds(items);
+}
+
+/**
+ * activity_list finds a post's title and artwork through its Livil track, and a Spotify
+ * repost has none — so a like or comment on one arrived as a blank "Your post" card. Mark
+ * those posts so the bubble can describe the Spotify song. Only posts that came back with
+ * neither a title nor artwork are asked about; on any failure the item is left as it was.
+ */
+async function attachSpotifyTrackIds(items: ActivityItem[]): Promise<ActivityItem[]> {
+  const candidates = new Set<string>();
+  for (const item of items) {
+    if ('post' in item && item.post.postId && !item.post.title && !item.post.coverArtUrl) {
+      candidates.add(item.post.postId);
+    }
+  }
+  if (candidates.size === 0) { return items; }
+  const byId = await fetchSpotifyTrackIds(Array.from(candidates));
+  if (byId.size === 0) { return items; }
+  return items.map(item => {
+    if (!('post' in item)) { return item; }
+    const spotifyTrackId = byId.get(item.post.postId);
+    return spotifyTrackId ? { ...item, post: { ...item.post, spotifyTrackId } } : item;
+  });
 }
 
 export async function getActivityUnreadCount(): Promise<number> {
