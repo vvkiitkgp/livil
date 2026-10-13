@@ -31,6 +31,8 @@ export const VERIFIED = 'verified';
 
 export type OpsBadge = { badge: string; label: string };
 
+// Mirrored by BADGE_LABELS in supabase/functions/send-push/app.ts, which writes the push
+// "You received the <label> badge". A badge missing there still announces, generically.
 export const OPS_BADGES: OpsBadge[] = [
   { badge: FIRST_100, label: 'First 100' },
   { badge: VERIFIED, label: 'Verified Artist' },

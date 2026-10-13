@@ -129,9 +129,11 @@ No React Query, SWR, or Redux. Three hand-rolled mechanisms:
 [rpc-reference.md](rpc-reference.md) for the inventory and which ones carry an authorization
 check.
 
-**One edge function** handles push fan-out. Its source is **not in this repository** — it is
-deployed directly to Supabase. That is unversioned production code we cannot review or restore
-from source, which contradicts Constitution P51. Getting it into git is recorded debt.
+**Edge functions** live in `supabase/functions/` and are deployed from there by a human; the
+`edge-function-parity` CI job fails if a required one is missing from production. `send-push`
+handles push fan-out and is the authorization perimeter for who can make whose phone buzz —
+its gates, and the rule that the server (not the caller) writes what a notification says,
+are in `supabase/functions/send-push/README.md`.
 
 **Edge functions were explicitly ruled out for audio decoding** — a hard CPU limit and no
 media tooling make full-song decode unreliable there. That is why waveform analysis is
