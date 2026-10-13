@@ -1,16 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
+  type FlatList,
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from 'react-native';
@@ -24,6 +21,7 @@ import FormInput from './FormInput';
 import CommentItem from './CommentItem';
 import CommentReportModal from './CommentReportModal';
 import ConfirmActionModal from './ConfirmActionModal';
+import SheetModal, { SheetFlatList } from './SheetModal';
 import MentionSuggestions from './MentionSuggestions';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
@@ -571,122 +569,84 @@ export default function CommentsSheet({
   );
 
   return (
-    <Modal
+    <SheetModal
       visible={visible}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop} />
-      </TouchableWithoutFeedback>
-
-      <KeyboardAvoidingView
-        behavior="padding"
-        keyboardVerticalOffset={0}
-        style={styles.sheetWrap}
-        pointerEvents="box-none"
-      >
-        <View style={styles.sheet}>
-          <View style={styles.grabber} />
-          <View style={styles.header}>
-            <Text style={styles.title}>Comments</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Icon name="close" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {loading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={COLORS.purpleLight} />
-            </View>
-          ) : (
-            <FlatList
-              ref={listRef}
-              data={rows}
-              keyExtractor={item => item.key}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={[
-                styles.listContent,
-                { paddingBottom: insets.bottom + 8 },
-              ]}
-              renderItem={renderRow}
-              ListEmptyComponent={null}
-              ListFooterComponent={
-                nodes.length === 0 && !loading ? (
-                  <View style={styles.emptyHint}>
-                    <Text style={styles.emptyTitle}>No comments yet</Text>
-                    <Text style={styles.emptyBody}>Be the first to say something.</Text>
-                  </View>
-                ) : null
-              }
-              onScrollToIndexFailed={info => {
-                // FlatList hasn't measured all items yet — wait, then retry.
-                setTimeout(() => {
-                  listRef.current?.scrollToIndex({
-                    index: info.index,
-                    animated: true,
-                    viewPosition: 0,
-                  });
-                }, 100);
-              }}
-            />
-          )}
+      onClose={onClose}
+      keyboardAware
+      header={
+        <View style={styles.header}>
+          <Text style={styles.title}>Comments</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Icon name="close" size={20} color={COLORS.textSecondary} />
+          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      }
+      outside={
+        <>
+          <CommentReportModal
+            visible={reportTarget !== null}
+            commentId={reportTarget?.id ?? null}
+            onClose={() => setReportTarget(null)}
+          />
 
-      <CommentReportModal
-        visible={reportTarget !== null}
-        commentId={reportTarget?.id ?? null}
-        onClose={() => setReportTarget(null)}
-      />
-
-      <ConfirmActionModal
-        visible={confirmDelete !== null}
-        title="Delete comment?"
-        message={
-          (confirmDelete?.replies.length ?? 0) > 0
-            ? 'This will also delete every reply underneath. This cannot be undone.'
-            : 'This cannot be undone.'
-        }
-        confirmLabel="Delete"
-        tone="destructive"
-        busy={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmDelete(null)}
-      />
-    </Modal>
+          <ConfirmActionModal
+            visible={confirmDelete !== null}
+            title="Delete comment?"
+            message={
+              (confirmDelete?.replies.length ?? 0) > 0
+                ? 'This will also delete every reply underneath. This cannot be undone.'
+                : 'This cannot be undone.'
+            }
+            confirmLabel="Delete"
+            tone="destructive"
+            busy={deleting}
+            onConfirm={handleDelete}
+            onCancel={() => setConfirmDelete(null)}
+          />
+        </>
+      }
+    >
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={COLORS.purpleLight} />
+        </View>
+      ) : (
+        <SheetFlatList
+          ref={listRef}
+          data={rows}
+          keyExtractor={item => item.key}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + 8 },
+          ]}
+          renderItem={renderRow}
+          ListEmptyComponent={null}
+          ListFooterComponent={
+            nodes.length === 0 && !loading ? (
+              <View style={styles.emptyHint}>
+                <Text style={styles.emptyTitle}>No comments yet</Text>
+                <Text style={styles.emptyBody}>Be the first to say something.</Text>
+              </View>
+            ) : null
+          }
+          onScrollToIndexFailed={info => {
+            // FlatList hasn't measured all items yet — wait, then retry.
+            setTimeout(() => {
+              listRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+                viewPosition: 0,
+              });
+            }, 100);
+          }}
+        />
+      )}
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  sheetWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    height: '90%',
-    backgroundColor: COLORS.bg,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    marginTop: 8,
-    marginBottom: 8,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
