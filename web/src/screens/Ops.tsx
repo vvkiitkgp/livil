@@ -642,7 +642,7 @@ export function Ops() {
                     {r.reviewerUsername ? ` by @${r.reviewerUsername}` : ''}
                   </span>
                 )}
-                <div className="filters" style={{ marginLeft: 'auto' }}>
+                <div className="filters filters--end">
                   {/* Only when there is a track to act on. A comment report offers this
                       too — a comment can be reported ON an upload that is itself the
                       problem — but the button says what it actually does, because taking
@@ -821,7 +821,7 @@ export function Ops() {
                       </div>
                     )}
 
-                    <div className="rights__actions" style={{ marginTop: 'var(--space-2)' }}>
+                    <div className="rights__actions rights__actions--spaced">
                       {s.takenDownAt ? (
                         <Button
                           variant="secondary"

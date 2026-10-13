@@ -189,7 +189,7 @@ export function OpsUser() {
           {profile?.username && <p className="hint">@{profile.username}</p>}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+        <div className="opsbadges">
           {held === null ? (
             <Button variant="ghost" disabled>Badges unavailable</Button>
           ) : (
@@ -201,10 +201,7 @@ export function OpsUser() {
               // for an uncapped badge, which is not the same as none left.
               const outOfSlots = !isHeld && st?.remaining != null && st.remaining <= 0;
               return (
-                <div
-                  key={badge}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}
-                >
+                <div key={badge} className="opsbadges__item">
                   <Button
                     variant={isHeld ? 'secondary' : 'primary'}
                     busy={badgeBusy === badge}
@@ -291,7 +288,7 @@ export function OpsUser() {
                       </div>
                       {rowResult[t.id] && <div className="hint">{rowResult[t.id]}</div>}
                       {openTrackId === t.id && (
-                        <div style={{ marginTop: 12 }}>
+                        <div className="opstrack__player">
                           {t.mediaUrl === null ? (
                             <p className="hint">
                               This row has no media URL, which should be impossible under
