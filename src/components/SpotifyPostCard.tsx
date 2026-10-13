@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } fr
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
-import { haptics } from '../utils/haptics';
 import { useToast } from '../contexts/ToastContext';
-import { toggleLike, deletePost } from '../services/posts';
+import { deletePost } from '../services/posts';
+import { usePostLike } from '../hooks/usePostLike';
 import { artistLine, useSpotifyAvailability, useSpotifyTrack } from '../services/spotify';
 import { useOpenInSpotify } from '../hooks/useOpenInSpotify';
 import { friendlyErrorMessage } from '../utils/errorMessages';
@@ -90,8 +90,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }, []);
   const isOwner = !!viewerId && viewerId === post.author.id;
 
-  const [liked, setLiked] = useState(post.viewerHasLiked);
-  const [likesCount, setLikesCount] = useState(post.likesCount);
+  const { liked, likesCount, toggleLike: handleToggleLike } = usePostLike(post);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [likersOpen, setLikersOpen] = useState(false);
@@ -116,25 +115,6 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       fromUsername: author.username,
     });
   }, [navigation, spotifyId, author.username]);
-
-  const handleToggleLike = useCallback(async () => {
-    const prevLiked = liked;
-    const prevCount = likesCount;
-    const nextLiked = !prevLiked;
-    if (nextLiked) { haptics.toggleOn(); }
-    setLiked(nextLiked);
-    setLikesCount(prevCount + (nextLiked ? 1 : -1));
-    try {
-      const serverLiked = await toggleLike(post.id);
-      if (serverLiked !== nextLiked) {
-        setLiked(serverLiked);
-        setLikesCount(prevCount + (serverLiked ? 1 : 0));
-      }
-    } catch {
-      setLiked(prevLiked);
-      setLikesCount(prevCount);
-    }
-  }, [liked, likesCount, post.id]);
 
   const handleConfirmDelete = useCallback(async () => {
     setDeleting(true);
