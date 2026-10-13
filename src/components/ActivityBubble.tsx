@@ -2,7 +2,10 @@ import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { Icon, type IconName } from './Icon';
+import CollabAvatar from './CollabAvatar';
+import UsernameBadges from './UsernameBadges';
 import { SpotifyLogo } from './SpotifyLogo';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import {
   activityBubbleParts,
   type ActivityItem,
@@ -11,9 +14,13 @@ import {
 import { artistLine, useSpotifyTrack } from '../services/spotify';
 
 // The Livil bot avatar shown on every message (this is a chat "from livil Bot",
-// so the actor's own profile picture is intentionally NOT used).
+// so the actor's own profile picture is NOT the sender avatar — it sits inside
+// the bubble, beside their name).
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LIVIL_LOGO = require('../assets/livil-logo.png');
+
+/** The face of the person a message is about, inside the bubble. */
+const ACTOR_AVATAR_SIZE = 24;
 
 // ── Extensibility seam ───────────────────────────────────────────────────────
 // Every activity type maps to one RenderFormat. Adding a new activity kind
@@ -111,23 +118,51 @@ export default function ActivityBubble({
       <View style={styles.bubbleColumn}>
         <View style={[styles.bubble, styles.bubbleThem]}>
           <View style={styles.bubbleTextRow}>
-            {body.format === 'text' ? (
+            {/* The person a message is about gets their face beside their name, tappable like
+                the name. It takes the type icon's slot on text messages: the sentence already
+                says what happened, and the face says who. */}
+            {actor && name ? (
+              <TouchableOpacity
+                style={styles.actorAvatar}
+                activeOpacity={0.7}
+                onPress={actor.id ? () => onActorPress?.(actor.id) : undefined}
+                disabled={!actor.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${name}'s profile`}
+              >
+                <CollabAvatar
+                  uri={actor.avatarUrl}
+                  display={resolveAuthorDisplay(actor)}
+                  size={ACTOR_AVATAR_SIZE}
+                />
+              </TouchableOpacity>
+            ) : body.format === 'text' ? (
               <View style={styles.bubbleIcon}>
                 <Icon name={body.icon} size={15} color={COLORS.textSecondary} />
               </View>
             ) : null}
-            <Text style={[styles.bubbleText, styles.bubbleTextFlex]}>
-              {actor && name ? (
-                <Text
-                  style={styles.actorName}
-                  suppressHighlighting
-                  onPress={actor.id ? () => onActorPress?.(actor.id) : undefined}
-                >
-                  {name}
-                </Text>
-              ) : null}
-              {parts.text}
-            </Text>
+            {/* A person's name gets its own line so their badges can sit beside it — a badge is
+                an SVG, which React Native will not lay out inside a run of text. Every message
+                about a person takes this shape, badged or not, so nothing shifts when the
+                badges arrive from their batched fetch. */}
+            {actor && name ? (
+              <View style={styles.bubbleTextFlex}>
+                <View style={styles.actorNameRow}>
+                  <Text
+                    style={[styles.bubbleText, styles.actorName]}
+                    numberOfLines={1}
+                    suppressHighlighting
+                    onPress={actor.id ? () => onActorPress?.(actor.id) : undefined}
+                  >
+                    {name}
+                  </Text>
+                  <UsernameBadges userId={actor.id || null} size={15} />
+                </View>
+                <Text style={styles.bubbleText}>{parts.text.trimStart()}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.bubbleText, styles.bubbleTextFlex]}>{parts.text}</Text>
+            )}
           </View>
 
           {post && (
@@ -257,8 +292,11 @@ const styles = StyleSheet.create({
   bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
   bubbleTextRow: { flexDirection: 'row', alignItems: 'flex-start' },
   bubbleIcon: { marginRight: 5, marginTop: 3 },
+  // Centred on the first line of text (lineHeight 21), so a one-line message reads level.
+  actorAvatar: { marginRight: 8, marginTop: (21 - ACTOR_AVATAR_SIZE) / 2 },
   bubbleTextFlex: { flexShrink: 1 },
-  actorName: { color: COLORS.white, fontWeight: '700' },
+  actorNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  actorName: { color: COLORS.white, fontWeight: '700', flexShrink: 1 },
   trackCard: {
     flexDirection: 'row',
     alignItems: 'center',
