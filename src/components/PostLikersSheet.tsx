@@ -64,6 +64,10 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
 
   const [likers, setLikers] = useState<PostLiker[]>([]);
   const [loading, setLoading] = useState(false);
+  // The list is built only once the open slide has landed (building it during the slide
+  // makes it stutter); likers still load in parallel, behind the spinner.
+  const [entered, setEntered] = useState(false);
+  const handleEntered = useCallback(() => setEntered(true), []);
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
@@ -103,6 +107,7 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
     setLoadingMore(false);
     setEndReached(false);
     setActionUserId(null);
+    setEntered(false);
   }, [visible]);
 
   const handleEndReached = useCallback(async () => {
@@ -177,6 +182,7 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
     <SheetModal
       visible={visible}
       onClose={onClose}
+      onEntered={handleEntered}
       header={
         <View style={styles.header}>
           <Text style={styles.title}>Likes</Text>
@@ -195,7 +201,7 @@ export default function PostLikersSheet({ visible, postId, onClose }: Props) {
         )
       }
     >
-      {loading ? (
+      {loading || !entered ? (
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>

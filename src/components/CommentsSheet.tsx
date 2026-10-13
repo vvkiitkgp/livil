@@ -185,6 +185,11 @@ export default function CommentsSheet({
   const [viewerId, setViewerId] = useState<string>('');
   const [nodes, setNodes] = useState<CommentNode[]>([]);
   const [loading, setLoading] = useState(false);
+  // The list is built only once the open slide has landed: building it during the slide is
+  // what made opening stutter. Comments still load in parallel, behind the spinner.
+  const [entered, setEntered] = useState(false);
+  const showList = !loading && entered;
+  const handleEntered = useCallback(() => setEntered(true), []);
   const [composer, setComposer] = useState('');
   const [caret, setCaret] = useState(0);
   const [replyingTo, setReplyingTo] = useState<CommentNode | null>(null);
@@ -274,6 +279,7 @@ export default function CommentsSheet({
     setCaret(0);
     setReplyingTo(null);
     setHighlightIds(new Set());
+    setEntered(false);
     for (const t of highlightTimers.current.values()) { clearTimeout(t); }
     highlightTimers.current.clear();
     deepLinkFiredFor.current = null;
@@ -338,7 +344,7 @@ export default function CommentsSheet({
   // from re-renders of `nodes` won't re-trigger.
   useEffect(() => {
     if (!visible || !highlightCommentId) { return; }
-    if (loading) { return; }
+    if (!showList) { return; }
     if (deepLinkFiredFor.current === highlightCommentId) { return; }
     const flat = flattenTree(nodes);
     const idx = flat.findIndex(r => r.kind === 'comment' && r.node.id === highlightCommentId);
@@ -348,7 +354,7 @@ export default function CommentsSheet({
       listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.2 });
       flashHighlight(highlightCommentId);
     }, 200);
-  }, [visible, loading, nodes, highlightCommentId, flashHighlight]);
+  }, [visible, showList, nodes, highlightCommentId, flashHighlight]);
 
   const handleSend = useCallback(async () => {
     if (!postId) { return; }
@@ -573,6 +579,7 @@ export default function CommentsSheet({
       visible={visible}
       onClose={onClose}
       keyboardAware
+      onEntered={handleEntered}
       header={
         <View style={styles.header}>
           <Text style={styles.title}>Comments</Text>
@@ -606,7 +613,7 @@ export default function CommentsSheet({
         </>
       }
     >
-      {loading ? (
+      {!showList ? (
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>

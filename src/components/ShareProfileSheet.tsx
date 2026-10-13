@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +20,7 @@ import { Button } from './Button';
 import { FriendPickerStrip } from './FriendPickerStrip';
 import { GradientBorder } from './GradientBorder';
 import { Icon } from './Icon';
+import SheetModal, { SheetScrollView } from './SheetModal';
 
 /**
  * The Share sheet for a profile — your own (the "Share profile" button) or someone
@@ -40,6 +39,9 @@ type Props = {
   isOwn: boolean;
   onClose: () => void;
 };
+
+/** Opens at the same height as the post Share sheet, for the same reason: everything fits. */
+const SHARE_PROFILE_HALF_SHARE = 0.62;
 
 export default function ShareProfileSheet({ visible, profile, isOwn, onClose }: Props) {
   const { showToast } = useToast();
@@ -111,107 +113,99 @@ export default function ShareProfileSheet({ visible, profile, isOwn, onClose }: 
   const url = profileShareUrl(profile.username);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
-              <View style={styles.grabber} />
-              <Text style={styles.heading}>{isOwn ? 'Share your profile' : 'Share profile'}</Text>
-              <Text style={styles.subheading} numberOfLines={1}>
-                {profile.displayName?.trim()
-                  ? `${profile.displayName.trim()} · @${profile.username}`
-                  : `@${profile.username}`}
-              </Text>
-
-              <View style={styles.linkPill}>
-                <Icon name="link" size={16} color={COLORS.purpleLight} />
-                {/* No numberOfLines: a long handle wraps rather than being cut off, so
-                    what is copied is always what was seen. */}
-                <Text
-                  style={styles.linkText}
-                  selectable
-                  accessibilityLabel={`Profile link, ${url}`}
-                >
-                  {url}
-                </Text>
-              </View>
-              <Text style={styles.linkHint}>
-                {isOwn
-                  ? 'Put it in your Instagram bio. Long-press to copy.'
-                  : 'Long-press to copy.'}
-              </Text>
-
-              <View style={styles.divider} />
-
-              {/* ── Friends ── */}
-              <FriendPickerStrip
-                visible={visible}
-                selected={selected}
-                onToggle={toggle}
-                emptyText="Add friends to send profiles straight to them."
-              />
-
-              {selected.size > 0 ? (
-                <View style={styles.sendWrap}>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    busy={sending}
-                    onPress={handleSend}
-                    label={`Send to ${selected.size}`}
-                  />
-                </View>
-              ) : null}
-
-              <View style={styles.divider} />
-
-              {/* ── Everywhere else ── */}
-              <Pressable
-                style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}
-                onPress={() => void handleShareLink()}
-                disabled={sharingLink}
-                accessibilityRole="button"
-                accessibilityLabel="Share link"
-              >
-                <View style={styles.destIcon}>
-                  <GradientBorder borderRadius={999} />
-                  {sharingLink ? (
-                    <ActivityIndicator size="small" color={COLORS.purpleNeon} />
-                  ) : (
-                    <Icon name="share" size={18} color={COLORS.purpleNeon} />
-                  )}
-                </View>
-                <View style={styles.destText}>
-                  <Text style={styles.destLabel}>Share link</Text>
-                  <Text style={styles.destHint}>Instagram, WhatsApp, Copy — anywhere</Text>
-                </View>
-              </Pressable>
-            </View>
-          </TouchableWithoutFeedback>
+    <SheetModal
+      visible={visible}
+      onClose={onClose}
+      halfShare={SHARE_PROFILE_HALF_SHARE}
+      style={styles.sheet}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.heading}>{isOwn ? 'Share your profile' : 'Share profile'}</Text>
+          <Text style={styles.subheading} numberOfLines={1}>
+            {profile.displayName?.trim()
+              ? `${profile.displayName.trim()} · @${profile.username}`
+              : `@${profile.username}`}
+          </Text>
         </View>
-      </TouchableWithoutFeedback>
-    </Modal>
+      }
+    >
+      <SheetScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 16 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.linkPill}>
+          <Icon name="link" size={16} color={COLORS.purpleLight} />
+          {/* No numberOfLines: a long handle wraps rather than being cut off, so
+              what is copied is always what was seen. */}
+          <Text
+            style={styles.linkText}
+            selectable
+            accessibilityLabel={`Profile link, ${url}`}
+          >
+            {url}
+          </Text>
+        </View>
+        <Text style={styles.linkHint}>
+          {isOwn
+            ? 'Put it in your Instagram bio. Long-press to copy.'
+            : 'Long-press to copy.'}
+        </Text>
+
+        <View style={styles.divider} />
+
+        {/* ── Friends ── */}
+        <FriendPickerStrip
+          visible={visible}
+          selected={selected}
+          onToggle={toggle}
+          emptyText="Add friends to send profiles straight to them."
+        />
+
+        {selected.size > 0 ? (
+          <View style={styles.sendWrap}>
+            <Button
+              variant="primary"
+              size="md"
+              busy={sending}
+              onPress={handleSend}
+              label={`Send to ${selected.size}`}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.divider} />
+
+        {/* ── Everywhere else ── */}
+        <Pressable
+          style={({ pressed }) => [styles.destRow, pressed && styles.pressed]}
+          onPress={() => void handleShareLink()}
+          disabled={sharingLink}
+          accessibilityRole="button"
+          accessibilityLabel="Share link"
+        >
+          <View style={styles.destIcon}>
+            <GradientBorder borderRadius={999} />
+            {sharingLink ? (
+              <ActivityIndicator size="small" color={COLORS.purpleNeon} />
+            ) : (
+              <Icon name="share" size={18} color={COLORS.purpleNeon} />
+            )}
+          </View>
+          <View style={styles.destText}>
+            <Text style={styles.destLabel}>Share link</Text>
+            <Text style={styles.destHint}>Instagram, WhatsApp, Copy — anywhere</Text>
+          </View>
+        </Pressable>
+      </SheetScrollView>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-  },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
-    marginBottom: 12,
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
+  sheet: { backgroundColor: COLORS.surface },
+  header: { paddingHorizontal: 16 },
+  body: { paddingHorizontal: 16 },
   heading: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
   subheading: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2, marginBottom: 14 },
   linkPill: {

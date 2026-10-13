@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type Ref,
@@ -17,6 +18,7 @@ import {
   View,
   type FlatList,
   type FlatListProps,
+  type LayoutChangeEvent,
   type ScrollView,
   type ScrollViewProps,
   type StyleProp,
@@ -94,8 +96,10 @@ const SNAP_SPRING = { damping: 45, stiffness: 500, overshootClamping: true };
 const CLOSE_DURATION = 200;
 
 export type SheetHandle = {
-  /** Animate closed, then call onClose. */
-  close: () => void;
+  /** Animate closed, then call `after` (default: onClose). */
+  close: (after?: () => void) => void;
+  /** Animate back up to half — a reopen that arrives while a close is still running. */
+  open: () => void;
 };
 
 export type SheetList = {
@@ -130,6 +134,17 @@ type SheetSurfaceProps = {
   backdrop?: boolean;
   /** Slide up from closed on mount. A Modal does its own slide, so only inline sheets want it. */
   enterFromClosed?: boolean;
+  /**
+   * Size to the content — one resting height, drag down to close, no tall step. For short
+   * menus, where a half/tall pair would only add empty space. Capped at EXPANDED; past it,
+   * put the rows in a SheetScrollView (style `flexShrink: 1`).
+   */
+  fit?: boolean;
+  /**
+   * The open slide has finished (or a drag cut it short). The moment to build heavy content:
+   * the slide runs on the UI thread, and building a long list during it makes it stutter.
+   */
+  onEntered?: () => void;
   /** The sheet's own surface — background, corners. */
   style?: StyleProp<ViewStyle>;
   ref?: Ref<SheetHandle>;
@@ -148,6 +163,8 @@ export function SheetSurface({
   expandedHeight: expandedProp,
   backdrop = true,
   enterFromClosed = false,
+  fit = false,
+  onEntered,
   style,
   ref,
 }: SheetSurfaceProps) {
@@ -158,9 +175,14 @@ export function SheetSurface({
   const maxTop = insets.top + TOP_GAP;
   const expandedHeight =
     expandedProp ?? Math.min(windowHeight * EXPANDED_SHARE, windowHeight - maxTop);
-  const halfHeight = Math.min(windowHeight * halfShare, expandedHeight);
-  const halfOffset = expandedHeight - halfHeight;
-  const closedOffset = expandedHeight;
+  // A fit sheet is as tall as its content, known after its first layout. Until then, closing
+  // from EXPANDED is merely further than it needs to go.
+  const [fitHeight, setFitHeight] = useState(0);
+  const halfHeight = fit
+    ? fitHeight || expandedHeight
+    : Math.min(windowHeight * halfShare, expandedHeight);
+  const halfOffset = fit ? 0 : expandedHeight - halfHeight;
+  const closedOffset = fit ? fitHeight || expandedHeight : expandedHeight;
 
   /** How far the sheet sits below EXPANDED: 0 = expanded, halfOffset = half. */
   const offsetY = useSharedValue(enterFromClosed ? closedOffset : halfOffset);
@@ -171,12 +193,42 @@ export function SheetSurface({
   // The list drag's translation when it began moving the sheet down from the top; -1 before.
   const listDragOrigin = useSharedValue(-1);
   const locked = useSharedValue(false);
+  // 1 while the sheet slides in on open. The backdrop shows at full strength from the first
+  // frame instead of fading in with the climb (it fades only on a drag or a close).
+  const entering = useSharedValue(enterFromClosed ? 1 : 0);
 
   const [expanded, setExpanded] = useState(false);
   const [typing, setTyping] = useState(false);
 
+  // Told once per open — when the slide lands, or when a drag cuts it short.
+  const enteredNotified = useRef(false);
+  const notifyEntered = useCallback(() => {
+    if (enteredNotified.current) { return; }
+    enteredNotified.current = true;
+    onEntered?.();
+  }, [onEntered]);
+
+  // The open slide is an in-app animation (see SheetModal), so it shares the UI thread with
+  // building the sheet. It starts only once the sheet has been laid out natively, a frame
+  // later, so the two never overlap — overlapping is what made the comments sheet stutter.
+  const enterStarted = useRef(false);
+  const startEnter = useCallback(() => {
+    if (!enterFromClosed || enterStarted.current) { return; }
+    enterStarted.current = true;
+    requestAnimationFrame(() => {
+      offsetY.value = withSpring(halfOffset, SNAP_SPRING, finished => {
+        if (!finished) { return; }
+        entering.value = 0;
+        runOnJS(notifyEntered)();
+      });
+    });
+  }, [enterFromClosed, offsetY, halfOffset, entering, notifyEntered]);
+
+  // Safety net in case a layout is never reported: never leave the sheet below the screen.
   useEffect(() => {
-    if (enterFromClosed) { offsetY.value = withSpring(halfOffset, SNAP_SPRING); }
+    if (!enterFromClosed) { return; }
+    const id = setTimeout(startEnter, 250);
+    return () => clearTimeout(id);
   // Mount only: the entrance happens once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -188,13 +240,18 @@ export function SheetSurface({
     },
   );
 
-  const close = useCallback(() => {
+  const close = useCallback((after?: () => void) => {
+    entering.value = 0;
     offsetY.value = withTiming(closedOffset, { duration: CLOSE_DURATION }, finished => {
-      if (finished) { runOnJS(onClose)(); }
+      if (finished) { runOnJS(after ?? onClose)(); }
     });
-  }, [offsetY, closedOffset, onClose]);
+  }, [entering, offsetY, closedOffset, onClose]);
 
-  useImperativeHandle(ref, () => ({ close }), [close]);
+  const open = useCallback(() => {
+    offsetY.value = withSpring(halfOffset, SNAP_SPRING);
+  }, [offsetY, halfOffset]);
+
+  useImperativeHandle(ref, () => ({ close, open }), [close, open]);
 
   const gestures = useMemo(() => {
     const typingProgress = () => {
@@ -233,6 +290,7 @@ export function SheetSurface({
     const handle = Gesture.Pan()
       .activeOffsetY([-8, 8])
       .onStart(() => {
+        if (entering.value) { entering.value = 0; runOnJS(notifyEntered)(); }
         dragStart.value = offsetY.value;
         if (typingProgress() > 0) { runOnJS(dismissKeyboard)(); }
       })
@@ -245,6 +303,7 @@ export function SheetSurface({
       .activeOffsetY([-8, 8])
       .failOffsetX([-20, 20])
       .onStart(() => {
+        if (entering.value) { entering.value = 0; runOnJS(notifyEntered)(); }
         dragStart.value = offsetY.value;
         // What the reader SEES: while typing, the sheet shows expanded whatever its offset.
         listOwnsDrag.value = offsetY.value * (1 - typingProgress()) <= 0.5 ? 1 : 0;
@@ -291,6 +350,8 @@ export function SheetSurface({
     listOwnsDrag,
     listDragOrigin,
     locked,
+    entering,
+    notifyEntered,
     halfOffset,
     halfHeight,
     closedOffset,
@@ -304,23 +365,33 @@ export function SheetSurface({
   const setLocked = useCallback((value: boolean) => { locked.value = value; }, [locked]);
 
   const sheetList = useMemo<SheetList>(
-    () => ({ gesture: gestures.list, onScroll, scrollEnabled: expanded || typing, setLocked }),
-    [gestures.list, onScroll, expanded, typing, setLocked],
+    () => ({ gesture: gestures.list, onScroll, scrollEnabled: fit || expanded || typing, setLocked }),
+    [gestures.list, onScroll, fit, expanded, typing, setLocked],
   );
 
   const sheetStyle = useAnimatedStyle(() => {
     const keyboardHeight = keyboardAware ? Math.abs(keyboard.height.value) : 0;
     const progress = keyboardAware ? keyboard.progress.value : 0;
-    return {
-      // Constant with the keyboard down, so sliding never re-lays-out the list.
-      height: Math.min(expandedHeight, windowHeight - keyboardHeight - maxTop),
-      transform: [{ translateY: offsetY.value * (1 - progress) - keyboardHeight }],
-    };
+    // Constant with the keyboard down, so sliding never re-lays-out the list.
+    const room = Math.min(expandedHeight, windowHeight - keyboardHeight - maxTop);
+    const translateY = offsetY.value * (1 - progress) - keyboardHeight;
+    return fit
+      ? { maxHeight: room, transform: [{ translateY }] }
+      : { height: room, transform: [{ translateY }] };
   });
 
-  // Full between expanded and half; fades below half, so a drag-close leaves nothing for a
-  // Modal's own slide-out to show.
+  const onSheetLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      if (fit) { setFitHeight(Math.round(e.nativeEvent.layout.height)); }
+      startEnter();
+    },
+    [fit, startEnter],
+  );
+
+  // At full strength from the first frame of an open (no fade-in), and between expanded and
+  // half; fades as the sheet goes below half on a drag or a close.
   const backdropStyle = useAnimatedStyle(() => {
+    if (entering.value) { return { opacity: 1 }; }
     const progress = keyboardAware ? keyboard.progress.value : 0;
     const belowHalf = offsetY.value * (1 - progress) - halfOffset;
     return { opacity: 1 - Math.min(1, Math.max(0, belowHalf / halfHeight)) };
@@ -339,7 +410,7 @@ export function SheetSurface({
         </Animated.View>
       ) : null}
 
-      <Animated.View style={[styles.sheet, style, sheetStyle]}>
+      <Animated.View style={[styles.sheet, style, sheetStyle]} onLayout={onSheetLayout}>
         <GestureDetector gesture={gestures.handle}>
           <View collapsable={false}>
             <View style={styles.grabber} />
@@ -356,23 +427,52 @@ type SheetModalProps = Omit<SheetSurfaceProps, 'backdrop' | 'enterFromClosed' | 
   visible: boolean;
   /** Other modals launched from inside the sheet, or views that must share its window. */
   outside?: ReactNode;
+  /** The Modal has finished closing (iOS only) — see useRunAfterDismiss. */
+  onDismiss?: () => void;
 };
 
-export default function SheetModal({ visible, outside, ...surface }: SheetModalProps) {
+export default function SheetModal({ visible, outside, onDismiss, ...surface }: SheetModalProps) {
+  // The Modal itself does not animate (animationType "none"): its slide carried the backdrop
+  // up with the sheet. The backdrop appears at once and only the sheet slides. So that
+  // closing still slides too, the Modal stays shown after `visible` drops until the sheet has
+  // animated away.
+  const surfaceRef = useRef<SheetHandle>(null);
+  const [shown, setShown] = useState(visible);
+  if (visible && !shown) { setShown(true); }
+
+  useEffect(() => {
+    if (!shown) { return; }
+    if (visible) {
+      // Reopened while a close was still running: climb back up. (Interrupting the close
+      // animation also skips its hide.)
+      surfaceRef.current?.open();
+      return;
+    }
+    // Closed from outside the sheet's own drag — a button, the backdrop, back, the parent.
+    if (surfaceRef.current) {
+      surfaceRef.current.close(() => setShown(false));
+    } else {
+      setShown(false);
+    }
+  // `shown` is read, not reacted to: only a change of `visible` starts a slide.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
   return (
     <Modal
-      visible={visible}
+      visible={shown}
       transparent
-      animationType="slide"
+      animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={surface.onClose}
+      onDismiss={onDismiss}
     >
-      {/* The Modal mounts its children only while open, so the keyboard hook (which switches
-          the Android resize mode) is held only then, and every open starts at half. Android
-          needs a gesture root of its own inside a Modal. */}
+      {/* The Modal mounts its children only while shown, so the keyboard hook (which switches
+          the Android resize mode) is held only then, and every open starts from closed.
+          Android needs a gesture root of its own inside a Modal. */}
       <GestureHandlerRootView style={styles.root}>
-        <SheetSurface {...surface} />
+        <SheetSurface ref={surfaceRef} enterFromClosed {...surface} />
         {outside}
       </GestureHandlerRootView>
     </Modal>

@@ -2,19 +2,18 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
+import SheetModal, { SheetScrollView } from './SheetModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { addTrackToAlbum, fetchAlbumsByUser, type AlbumSummary } from '../services/albums';
 import type { RootStackParamList } from '../navigation/types';
@@ -50,6 +49,7 @@ export default function AddToAlbumSheet(props: Props) {
   const { visible, onClose } = props;
   const mode = props.mode ?? 'tag';
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -105,86 +105,72 @@ export default function AddToAlbumSheet(props: Props) {
   }, [busy, mode, props, onClose]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop}>
-          <TouchableWithoutFeedback>
-            <View style={styles.sheet}>
-              <View style={styles.handle} />
-              <Text style={styles.title}>Add to album</Text>
+    <SheetModal
+      visible={visible}
+      onClose={onClose}
+      header={<Text style={styles.title}>Add to album</Text>}
+    >
+      <SheetScrollView contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}>
+        <Pressable style={styles.newRow} onPress={handleNewAlbum} android_ripple={{ color: COLORS.purpleDim }}>
+          <View style={styles.newRowIconBox}>
+            <Icon name="add" size={18} color={COLORS.purpleLight} />
+          </View>
+          <Text style={styles.newRowText}>New album</Text>
+          <Icon name="forward" size={16} color={COLORS.textSecondary} />
+        </Pressable>
 
-              <Pressable style={styles.newRow} onPress={handleNewAlbum} android_ripple={{ color: COLORS.purpleDim }}>
-                <View style={styles.newRowIconBox}>
-                  <Icon name="add" size={18} color={COLORS.purpleLight} />
-                </View>
-                <Text style={styles.newRowText}>New album</Text>
-                <Icon name="forward" size={16} color={COLORS.textSecondary} />
-              </Pressable>
+        {loading ? (
+          <ActivityIndicator color={COLORS.purpleLight} style={{ marginVertical: 30 }} />
+        ) : albums.length === 0 ? (
+          <Text style={styles.emptyText}>
+            No albums yet. Tap "New album" to start one with this track.
+          </Text>
+        ) : (
+          <>
+            {albums.map((a, idx) => {
+              const accents = FALLBACK_ACCENTS[idx % FALLBACK_ACCENTS.length]!;
+              const initial = a.title.trim().charAt(0).toUpperCase() || '♪';
+              const isBusy = busy === a.id;
+              return (
+                <Pressable
+                  key={a.id}
+                  style={[styles.albumRow, isBusy && { opacity: 0.6 }]}
+                  onPress={() => handlePickAlbum(a)}
+                  disabled={!!busy}
+                  android_ripple={{ color: COLORS.purpleDim }}
+                >
+                  <View style={[styles.cover, { backgroundColor: accents[0] }]}>
+                    <View style={[styles.coverAccent, { backgroundColor: accents[1] }]} />
+                    {a.coverArtUrl ? (
+                      <Image source={{ uri: a.coverArtUrl }} style={StyleSheet.absoluteFill} />
+                    ) : (
+                      <Text style={styles.coverInitial}>{initial}</Text>
+                    )}
+                  </View>
+                  <View style={styles.meta}>
+                    <Text style={styles.albumTitle} numberOfLines={1}>{a.title}</Text>
+                    <Text style={styles.albumSub}>
+                      {a.trackCount} {a.trackCount === 1 ? 'track' : 'tracks'}
+                    </Text>
+                  </View>
+                  {isBusy
+                    ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                    : <Icon name="forward" size={16} color={COLORS.textSecondary} />}
+                </Pressable>
+              );
+            })}
+          </>
+        )}
 
-              {loading ? (
-                <ActivityIndicator color={COLORS.purpleLight} style={{ marginVertical: 30 }} />
-              ) : albums.length === 0 ? (
-                <Text style={styles.emptyText}>
-                  No albums yet. Tap "New album" to start one with this track.
-                </Text>
-              ) : (
-                <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 8 }}>
-                  {albums.map((a, idx) => {
-                    const accents = FALLBACK_ACCENTS[idx % FALLBACK_ACCENTS.length]!;
-                    const initial = a.title.trim().charAt(0).toUpperCase() || '♪';
-                    const isBusy = busy === a.id;
-                    return (
-                      <Pressable
-                        key={a.id}
-                        style={[styles.albumRow, isBusy && { opacity: 0.6 }]}
-                        onPress={() => handlePickAlbum(a)}
-                        disabled={!!busy}
-                        android_ripple={{ color: COLORS.purpleDim }}
-                      >
-                        <View style={[styles.cover, { backgroundColor: accents[0] }]}>
-                          <View style={[styles.coverAccent, { backgroundColor: accents[1] }]} />
-                          {a.coverArtUrl ? (
-                            <Image source={{ uri: a.coverArtUrl }} style={StyleSheet.absoluteFill} />
-                          ) : (
-                            <Text style={styles.coverInitial}>{initial}</Text>
-                          )}
-                        </View>
-                        <View style={styles.meta}>
-                          <Text style={styles.albumTitle} numberOfLines={1}>{a.title}</Text>
-                          <Text style={styles.albumSub}>
-                            {a.trackCount} {a.trackCount === 1 ? 'track' : 'tracks'}
-                          </Text>
-                        </View>
-                        {isBusy
-                          ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
-                          : <Icon name="forward" size={16} color={COLORS.textSecondary} />}
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              )}
-
-              <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
-    </Modal>
+        <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
+          <Text style={styles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </SheetScrollView>
+    </SheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: COLORS.bg,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingTop: 12, paddingBottom: 24,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border,
-    maxHeight: '80%',
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.border, alignSelf: 'center', marginBottom: 12 },
   title: { color: COLORS.white, fontSize: 15, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
 
   newRow: {
@@ -198,7 +184,6 @@ const styles = StyleSheet.create({
   },
   newRowText: { flex: 1, color: COLORS.purpleLight, fontSize: 14, fontWeight: '700' },
 
-  list: { maxHeight: 360 },
   albumRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 22, paddingVertical: 10 },
   cover: {
     width: 40, height: 40, borderRadius: 8, overflow: 'hidden',

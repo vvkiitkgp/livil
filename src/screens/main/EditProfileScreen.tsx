@@ -6,8 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
-  Pressable,
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +18,8 @@ import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
+import SheetModal, { SheetScrollView } from '../../components/SheetModal';
+import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
 import { useToast } from '../../contexts/ToastContext';
 import {
   getMyPrivateProfile,
@@ -195,27 +195,35 @@ export default function EditProfileScreen() {
   const openAvatarSheet = useCallback(() => setAvatarSheetOpen(true), []);
   const closeAvatarSheet = useCallback(() => setAvatarSheetOpen(false), []);
 
-  const handlePickFromLibrary = useCallback(async () => {
-    closeAvatarSheet();
-    try {
-      const asset = await pickAvatarFromLibrary();
-      if (asset) {setAvatar({ kind: 'local', asset });}
-    } catch (e) {
-      console.warn('[profile] pickAvatarFromLibrary failed', e);
-      showToast("Couldn't open the photo library.", { kind: 'error' });
-    }
-  }, [closeAvatarSheet, showToast]);
+  // The library and camera are native screens presented over the app. On iOS they must wait
+  // until the photo sheet has closed, or they open into nothing (see useRunAfterDismiss).
+  const { runAfterDismiss, onDismiss: onAvatarSheetDismiss } = useRunAfterDismiss();
 
-  const handleTakePhoto = useCallback(async () => {
+  const handlePickFromLibrary = useCallback(() => {
     closeAvatarSheet();
-    try {
-      const asset = await pickAvatarFromCamera();
-      if (asset) {setAvatar({ kind: 'local', asset });}
-    } catch (e) {
-      console.warn('[profile] pickAvatarFromCamera failed', e);
-      showToast("Couldn't open the camera.", { kind: 'error' });
-    }
-  }, [closeAvatarSheet, showToast]);
+    runAfterDismiss(async () => {
+      try {
+        const asset = await pickAvatarFromLibrary();
+        if (asset) {setAvatar({ kind: 'local', asset });}
+      } catch (e) {
+        console.warn('[profile] pickAvatarFromLibrary failed', e);
+        showToast("Couldn't open the photo library.", { kind: 'error' });
+      }
+    });
+  }, [closeAvatarSheet, runAfterDismiss, showToast]);
+
+  const handleTakePhoto = useCallback(() => {
+    closeAvatarSheet();
+    runAfterDismiss(async () => {
+      try {
+        const asset = await pickAvatarFromCamera();
+        if (asset) {setAvatar({ kind: 'local', asset });}
+      } catch (e) {
+        console.warn('[profile] pickAvatarFromCamera failed', e);
+        showToast("Couldn't open the camera.", { kind: 'error' });
+      }
+    });
+  }, [closeAvatarSheet, runAfterDismiss, showToast]);
 
   const handleRemoveAvatar = useCallback(() => {
     closeAvatarSheet();
@@ -483,50 +491,53 @@ export default function EditProfileScreen() {
         <View style={styles.bottomSpacer} />
       </KeyboardAwareScrollView>
 
-      <Modal
+      <SheetModal
         visible={avatarSheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={closeAvatarSheet}
+        onClose={closeAvatarSheet}
+        onDismiss={onAvatarSheetDismiss}
+        fit
+        style={styles.sheet}
+        header={<Text style={styles.sheetTitle}>Profile picture</Text>}
       >
-        <Pressable style={styles.sheetBackdrop} onPress={closeAvatarSheet}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
-            <Text style={styles.sheetTitle}>Profile picture</Text>
+        {/* In the sheet's scroll body, so a drag down anywhere on it closes the sheet. */}
+        <SheetScrollView
+          style={styles.sheetBody}
+          contentContainerStyle={[styles.sheetBodyContent, { paddingBottom: 28 + insets.bottom }]}
+        >
+          <TouchableOpacity
+            onPress={handleTakePhoto}
+            style={styles.sheetRow}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sheetRowText}>Take photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handlePickFromLibrary}
+            style={styles.sheetRow}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sheetRowText}>Choose from library</Text>
+          </TouchableOpacity>
+          {hasAvatar ? (
             <TouchableOpacity
-              onPress={handleTakePhoto}
+              onPress={handleRemoveAvatar}
               style={styles.sheetRow}
               activeOpacity={0.7}
             >
-              <Text style={styles.sheetRowText}>Take photo</Text>
+              <Text style={[styles.sheetRowText, styles.sheetRowDestructive]}>
+                Remove photo
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handlePickFromLibrary}
-              style={styles.sheetRow}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.sheetRowText}>Choose from library</Text>
-            </TouchableOpacity>
-            {hasAvatar ? (
-              <TouchableOpacity
-                onPress={handleRemoveAvatar}
-                style={styles.sheetRow}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.sheetRowText, styles.sheetRowDestructive]}>
-                  Remove photo
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              onPress={closeAvatarSheet}
-              style={[styles.sheetRow, styles.sheetCancel]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.sheetRowText, styles.sheetCancelText]}>Cancel</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          ) : null}
+          <TouchableOpacity
+            onPress={closeAvatarSheet}
+            style={[styles.sheetRow, styles.sheetCancel]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sheetRowText, styles.sheetCancelText]}>Cancel</Text>
+          </TouchableOpacity>
+        </SheetScrollView>
+      </SheetModal>
 
       <ConfirmActionModal
         visible={discardOpen}
@@ -683,19 +694,10 @@ const styles = StyleSheet.create({
 
   bottomSpacer: { height: 24 },
 
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
+  // The surface only — height, grabber, backdrop and drag come from SheetModal.
+  sheet: { backgroundColor: COLORS.surface },
+  sheetBody: { flexShrink: 1 },
+  sheetBodyContent: { paddingHorizontal: 16 },
   sheetTitle: {
     color: COLORS.textSecondary,
     fontSize: 12,
