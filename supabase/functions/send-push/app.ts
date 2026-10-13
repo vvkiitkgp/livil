@@ -41,9 +41,11 @@
 //
 // KNOWN RESIDUAL (D-45): a conversation member can still push a `message` preview that
 // was never sent as a message, to people they share that conversation with. It is titled
-// with their own name (or the group's) and prefixed with their handle in a group, so it
-// is no more than they could say by messaging. The durable fix is dispatch from inside
-// the message insert; do not treat this as closing D-45.
+// with their own name (or the group's) and prefixed with their handle in a group. Unlike a
+// real message it reaches only the recipient and leaves no record in the conversation —
+// and a group push is exempt from blocks, so a blocked member can still reach the person
+// who blocked them this way. The durable fix is dispatch from inside the message insert
+// (or requiring the actor's messages row as evidence); do not treat this as closing D-45.
 //
 // SECRETS (custom): FCM_PROJECT_ID, FCM_CLIENT_EMAIL, FCM_PRIVATE_KEY.
 // Platform-injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY.
@@ -79,8 +81,18 @@ export function channelFor(kind: string): string {
 
 const MAX_TITLE = 120;
 const MAX_BODY = 240;
+/**
+ * The first `n` UTF-16 units of `s`, minus a trailing high surrogate the cut would strand:
+ * a lone half of an emoji is not valid Unicode and reaches the phone as a broken glyph.
+ */
+export function sliceWhole(s: string, n: number): string {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 export const clamp = (s: unknown, n: number) =>
-  typeof s === 'string' ? s.slice(0, n) : '';
+  typeof s === 'string' ? sliceWhole(s, n) : '';
 
 /**
  * How far back authorize() looks for the row an event left behind. The legitimate push is
@@ -683,8 +695,23 @@ const PHOTO_KINDS = new Set(['activity_like', 'activity_comment', 'activity_repo
  */
 export function isAllowedAvatarUrl(url: unknown, supabaseUrl: string): url is string {
   if (typeof url !== 'string' || url.length > 2048) return false;
-  const ownBucket = `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/avatars/`;
-  return url.startsWith(ownBucket) || url.startsWith('https://lh3.googleusercontent.com/');
+  // A prefix check is not enough: `avatars/../../auth/v1/verify?redirect_to=…` starts with
+  // the bucket's prefix, and the phone's HTTP client normalizes it to another endpoint on
+  // our host — one that may redirect off it. Refuse dot-segments, backslashes and their
+  // percent-encodings outright, and refuse any URL the parser had to rewrite.
+  if (/%2e|%2f|%5c|\\/i.test(url)) return false;
+  let u: URL;
+  let own: URL;
+  try {
+    u = new URL(url);
+    own = new URL(supabaseUrl);
+  } catch {
+    return false;
+  }
+  if (u.href !== url) return false;
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return false;
+  if (u.host === own.host) return u.pathname.startsWith('/storage/v1/object/public/avatars/');
+  return u.host === 'lh3.googleusercontent.com';
 }
 
 const SONG_TITLE_MAX = 60;
@@ -780,7 +807,7 @@ const COMMENT_INLINE_MAX = 80;
 /** Same as truncateInline in src/services/activity.ts, so the push matches the Activity row. */
 function truncateInline(s: string, max: number): string {
   const trimmed = s.replace(/\s+/g, ' ').trim();
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+  return trimmed.length > max ? `${sliceWhole(trimmed, max - 1)}…` : trimmed;
 }
 
 /** "1K", "5K", "100" — same formatting as recordPlay in src/services/posts.ts. */
@@ -1004,12 +1031,18 @@ const SPOTIFY_LOOKUP_MS = 1500;
 export async function describePost(
   admin: SupabaseClient,
   postId: string,
+  recipient: string,
   spotifyTitleOf: (spotifyTrackId: string) => Promise<string | null>,
 ): Promise<PostSubject | null> {
+  // Only the recipient's OWN post: activity_notify_post only ever writes a row about the
+  // author's post, but a recipient can edit their own activity rows (the update policy
+  // covers every column), and this read is service-role — without the author filter it
+  // would name a post RLS hides from them (blocked author, taken down, friends-only).
   const { data, error } = await admin
     .from('posts')
     .select('kind, spotify_track_id, tracks(title)')
     .eq('id', postId)
+    .eq('author_id', recipient)
     .maybeSingle();
   if (error || !data) return null;
   const row = data as { kind?: unknown; spotify_track_id?: unknown; tracks?: unknown };
@@ -1157,7 +1190,7 @@ export async function handler(req: Request): Promise<Response> {
   // 4b. The song the push names. After the token lookup, so a recipient with no phone costs
   // no lookups; best-effort throughout — any failure leaves the copy at "your post".
   if (grant.activity?.postId && SONG_KINDS.has(kind)) {
-    const subject = await describePost(admin, grant.activity.postId, id =>
+    const subject = await describePost(admin, grant.activity.postId, recipient, id =>
       spotifyTitle(url, authHeader, Deno.env.get('SUPABASE_ANON_KEY') ?? '', id));
     if (subject) grant.post = subject;
   }

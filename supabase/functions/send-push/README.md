@@ -21,8 +21,11 @@ review.
 
 1. **Auth**: actor is derived from the JWT, never the body; anon is rejected.
 2. **Authorization** (`authorize()` → a `Grant` or `null`): deny-by-default, one gate per
-   `kind`, all against verified schema. Where an event leaves a row behind, the gate finds
-   THAT row; a relationship alone is not enough.
+   `kind`, all against verified schema. For message / reaction / jam invite / like /
+   comment / repost / milestone / friend request / badge, the gate finds the row the event
+   left behind. `friend_accepted`, `jam_started` / `jam_join` / `jam_ended`, `new_fan` and
+   `new_follower` still pass on the relationship alone (unchanged from before; the copy is
+   server-written, so the most a caller can do is announce a true relationship again).
    - `message` / `reaction` → both people are members of **the conversation named in
      `params.conversationId`** (every shipped build sends it). `jam_invite_dm` additionally
      needs `params.jamRoomId` to be a jam room of that conversation.
@@ -66,6 +69,14 @@ review.
      `profiles.avatar_url` **only when `isAllowedAvatarUrl` accepts it** — this project's
      public `avatars` bucket or `lh3.googleusercontent.com`. Android fetches it unprompted,
      so an arbitrary URL would turn every push into a request to a server the actor chose.
+     The check parses the URL and requires https, the exact host, no userinfo/port, the
+     bucket path, and `URL.href === url`; dot-segments, backslashes and `%2e`/`%2f`/`%5c`
+     are refused outright, because the phone's HTTP client would normalize
+     `avatars/../../auth/v1/verify?redirect_to=…` into another endpoint on our host.
+   - **`describePost` reads only the recipient's own post** (`author_id = recipient`). It
+     runs as service role, and a recipient can rewrite their own activity row's `post_id`
+     (`activity_notifications_update_own` covers every column), so without that filter a
+     push could name a post RLS hides from them.
      iOS ignores it (an image would need a Notification Service Extension).
 5. **Token pruning**: only on FCM `UNREGISTERED`, `SENDER_ID_MISMATCH`, or an
    `INVALID_ARGUMENT` about `message.token` (`shouldPruneToken`). A malformed payload, an
@@ -77,9 +88,14 @@ review.
    a shared store before relying on it (D-12).
 7. **Residual (D-45)**: a conversation member can still push a `message` preview that was
    never actually sent, to people already in that conversation with them, attributed to
-   themselves. Do not close D-45 on the back of this.
-8. **Residual (repeats)**: inside the 10-minute window the same evidence can be presented
-   again, so one real like/comment/milestone can be re-announced — always with
+   themselves. It reaches only the recipient and leaves no record in the conversation, and
+   group pushes are exempt from blocks — so a blocked member of a shared group can still
+   send the person who blocked them a private, forged "message" this way. Do not close
+   D-45 on the back of this.
+8. **Residual (repeats)**: `activity_notify_post` accepts any past comment or repost by the
+   actor and inserts a fresh row on each call, so an actor can mint new comment / repost
+   evidence at will, not only re-present one event. Separately, inside the 10-minute
+   window the same evidence can be presented again, so one real like/comment/milestone can be re-announced — always with
    server-written, true text naming the real actor — up to the advisory rate limit. A
    durable once-per-event guard needs state (D-12's shared store).
 

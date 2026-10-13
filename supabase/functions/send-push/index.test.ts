@@ -18,6 +18,7 @@ import {
   composeContent,
   defaultBody,
   describePost,
+  sliceWhole,
   type Grant,
   isAllowedAvatarUrl,
   isBlockedBetween,
@@ -900,7 +901,9 @@ Deno.test('claimsFrom: reads conversationId and jamRoomId from data.params, noth
 
 // ── every request the store app sends today still works ─────────────────────
 //
-// The literal request bodies of release 1aa88a7 (src/services/*.ts → pushDispatch.ts) and
+// The literal request bodies of release 1aa88a7 (2.1.2), re-checked against 2.1.3 (77) at
+// 1c56cd0 — the only call-site change is a group preview's wording, not its shape —
+// (src/services/*.ts → pushDispatch.ts) and
 // of the ops dashboard (web/src/data/push.ts), run through the same three steps the
 // handler runs: claimsFrom → authorize → buildPush. The database is scripted to hold the
 // rows each call site's own RPC or insert has just written. A gate that stops accepting a
@@ -1039,6 +1042,42 @@ Deno.test('isAllowedAvatarUrl: only this project\'s avatars bucket and Google ac
   assertEquals(isAllowedAvatarUrl(null, SUPA), false);
 });
 
+Deno.test('isAllowedAvatarUrl: no way out of the host or the bucket', () => {
+  const bucket = `${SUPA}/storage/v1/object/public/avatars`;
+  for (const bad of [
+    // off-host
+    'https://lh3.googleusercontent.com@evil.example/x',
+    `${SUPA}.evil.example/storage/v1/object/public/avatars/x.png`,
+    `${SUPA}@evil.example/storage/v1/object/public/avatars/x.png`,
+    'http://lh3.googleusercontent.com/a/x',
+    'HTTPS://lh3.googleusercontent.com/a/x',
+    'https://lh3.googleusercontent.com:8443/a/x',
+    'https://user:pw@lh3.googleusercontent.com/a/x',
+    // out of the bucket, onto another endpoint of our own host (which may redirect)
+    `${bucket}/../../../../../auth/v1/verify?type=signup&token=x&redirect_to=https://evil.example`,
+    `${bucket}/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/rest/v1/profiles`,
+    `${bucket}/%2E%2E/x`,
+    `${bucket}/..%2fx`,
+    `${bucket}/..\\x`,
+    `${bucket}/a/./../../x`,
+    `${SUPA}/storage/v1/object/public/avatarsX/x.png`,
+  ]) {
+    assertEquals(isAllowedAvatarUrl(bad, SUPA), false, bad);
+  }
+  // Real production shapes still pass.
+  assertEquals(isAllowedAvatarUrl(`${bucket}/0a1b2c3d-0000-4000-8000-000000000000/avatar-1728900000000.jpg`, SUPA), true);
+  assertEquals(isAllowedAvatarUrl(`${bucket}/0a1b/avatar.jpg?t=1728900000000`, SUPA), true);
+  assertEquals(isAllowedAvatarUrl('https://lh3.googleusercontent.com/a/ACg8ocJx_y-Z=s96-c', SUPA), true);
+});
+
+Deno.test('clamp / long comments never strand half an emoji', () => {
+  assertEquals(sliceWhole('ab😀', 3), 'ab');
+  assertEquals(sliceWhole('ab😀', 4), 'ab😀');
+  assertEquals(clamp('😀😀', 3), '😀');
+  const body = composeContent('activity_comment', { activity: { aggCount: 1, commentText: `${'x'.repeat(78)}😀tail` } }, riya, {}).body;
+  assertEquals(body, `commented on your post: “${'x'.repeat(78)}…”`);
+});
+
 Deno.test('buildPush: the actor\'s photo rides only on like / comment / repost', () => {
   const withPhoto = { ...riya, avatarUrl: 'https://lh3.googleusercontent.com/a/abc' };
   const grant: Grant = { activity: { aggCount: 1, commentText: null, postId: POST } };
@@ -1055,21 +1094,29 @@ Deno.test('buildPush: the actor\'s photo rides only on like / comment / repost',
 
 Deno.test('describePost: a Spotify repost asks Spotify for its title; a Livil post reads its track', async () => {
   const asked: string[] = [];
-  const spotifyRow = fakeAdmin(() => ({ data: { kind: 'repost', spotify_track_id: SPOTIFY_ID, tracks: null } }));
+  let filters: Record<string, string> = {};
+  const spotifyRow = fakeAdmin((_t, f) => {
+    filters = { ...f };
+    return { data: { kind: 'repost', spotify_track_id: SPOTIFY_ID, tracks: null } };
+  });
   assertEquals(
-    await describePost(spotifyRow, POST, id => { asked.push(id); return Promise.resolve('Blinding Lights'); }),
+    await describePost(spotifyRow, POST, B, id => { asked.push(id); return Promise.resolve('Blinding Lights'); }),
     { kind: 'repost', title: 'Blinding Lights' },
   );
   assertEquals(asked, [SPOTIFY_ID]);
+  // Only the recipient's own post — a recipient can rewrite their activity row's post_id,
+  // and this read bypasses RLS.
+  assertEquals(filters.id, POST);
+  assertEquals(filters.author_id, B);
 
   const upload = fakeAdmin(() => ({ data: { kind: 'upload', spotify_track_id: null, tracks: { title: ' Monsoon Letters ' } } }));
-  assertEquals(await describePost(upload, POST, () => Promise.resolve('never')), { kind: 'upload', title: 'Monsoon Letters' });
+  assertEquals(await describePost(upload, POST, B, () => Promise.resolve('never')), { kind: 'upload', title: 'Monsoon Letters' });
 
   const gone = fakeAdmin(() => ({ data: null }));
-  assertEquals(await describePost(gone, POST, () => Promise.resolve('never')), null);
+  assertEquals(await describePost(gone, POST, B, () => Promise.resolve('never')), null);
 
   const broken = fakeAdmin(() => ({ data: null, error: { message: 'boom' } }));
-  assertEquals(await describePost(broken, POST, () => Promise.resolve('never')), null);
+  assertEquals(await describePost(broken, POST, B, () => Promise.resolve('never')), null);
 });
 
 Deno.test('spotifyTitle: asks the spotify function on the caller\'s session; any failure is null', async () => {
