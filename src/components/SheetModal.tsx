@@ -1,6 +1,9 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
+  useImperativeHandle,
   useMemo,
   useState,
   type ReactNode,
@@ -14,6 +17,10 @@ import {
   View,
   type FlatList,
   type FlatListProps,
+  type ScrollView,
+  type ScrollViewProps,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import {
   Gesture,
@@ -38,11 +45,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
 
 /**
- * A bottom sheet in its own Modal with two resting heights: HALF (where it opens) and
- * EXPANDED. Up from half — dragging the grabber/header, or trying to scroll the list —
- * expands it; the list scrolls only once it is expanded. Down from expanded returns to half
- * (from the grabber, or from the list once it is at the top); down from half closes it.
- * Put the list in `SheetFlatList` so it can hand those drags to the sheet.
+ * A bottom sheet with two resting heights: HALF (where it opens) and EXPANDED. Up from half
+ * — dragging the grabber/header, or trying to scroll the list — expands it; the list scrolls
+ * only once it is expanded. Down from expanded returns to half (from the grabber, or from the
+ * list once it is at the top); down from half closes it. Put the scrolling body in
+ * `SheetFlatList` / `SheetScrollView` (or read `useSheetList()`) so it can hand those drags
+ * to the sheet.
+ *
+ * Two ways to show one:
+ *   - `SheetModal` — in its own Modal, with a backdrop (likes, comments, share, playlists).
+ *   - `SheetSurface` — inline, positioned over whatever it is rendered in (the full-screen
+ *     player's Queue/Info panel, which must stay under the floating player). Close it from
+ *     outside through its ref, so it animates away before it unmounts.
  *
  * The sheet is always laid out at its EXPANDED height and slides: `offsetY` is how far it
  * sits below fully expanded. Sliding is a transform, so a drag never re-lays-out the list,
@@ -52,15 +66,11 @@ import { COLORS } from '../theme/colors';
  * keyboardAware sheets (comments) sit on the keyboard and fill the space above it while it
  * is up, whatever the resting height, then return to it. A drag that moves the sheet closes
  * the keyboard first.
- *
- * Everything that tracks the keyboard or the finger lives in SheetBody, which the Modal
- * mounts only while it is open — the keyboard hook switches the Android resize mode while
- * mounted, and a fresh body means every open starts at half.
  */
 
-/** Share of the window the sheet shows at HALF. */
+/** Default share of the window the sheet shows at HALF. */
 const HALF_SHARE = 0.5;
-/** Share of the window at EXPANDED (capped below the status bar). */
+/** Default share of the window at EXPANDED (capped below the status bar). */
 const EXPANDED_SHARE = 0.9;
 /** Below the status bar, so the sheet's top never runs under it. */
 const TOP_GAP = 8;
@@ -81,76 +91,95 @@ const CLOSE_VELOCITY = 900;
  * would otherwise carry it past. (24/260 bounced visibly at both ends.)
  */
 const SNAP_SPRING = { damping: 45, stiffness: 500, overshootClamping: true };
+const CLOSE_DURATION = 200;
 
-type ListDrag = {
+export type SheetHandle = {
+  /** Animate closed, then call onClose. */
+  close: () => void;
+};
+
+export type SheetList = {
   gesture: ComposedGesture;
   onScroll: ReturnType<typeof useAnimatedScrollHandler>;
   /** Only once expanded (or while typing). At half, an upward swipe expands the sheet instead. */
   scrollEnabled: boolean;
+  /** While true the sheet ignores drags on its list — e.g. a queue row being reordered. */
+  setLocked: (locked: boolean) => void;
 };
 
-const ListDragContext = createContext<ListDrag | null>(null);
+const SheetListContext = createContext<SheetList | null>(null);
 
-type SheetModalProps = {
-  visible: boolean;
+/** The sheet this list sits in, or null outside one — a list used elsewhere is unchanged. */
+export function useSheetList(): SheetList | null {
+  return useContext(SheetListContext);
+}
+
+type SheetSurfaceProps = {
   onClose: () => void;
   /** Title row under the grabber. Part of the drag area. */
   header: ReactNode;
-  /** The sheet's body — usually a SheetFlatList. */
+  /** The sheet's body — usually a SheetFlatList or SheetScrollView. */
   children: ReactNode;
-  /** Other modals launched from inside the sheet. They must live in this Modal's tree. */
-  outside?: ReactNode;
   /** Sit on the keyboard when an input in the sheet opens it. */
   keyboardAware?: boolean;
+  /** Share of the window shown at HALF. */
+  halfShare?: number;
+  /** EXPANDED height in px; defaults to 90% of the window, below the status bar. */
+  expandedHeight?: number;
+  /** Dim what is behind the sheet; a tap on it closes. */
+  backdrop?: boolean;
+  /** Slide up from closed on mount. A Modal does its own slide, so only inline sheets want it. */
+  enterFromClosed?: boolean;
+  /** The sheet's own surface — background, corners. */
+  style?: StyleProp<ViewStyle>;
+  ref?: Ref<SheetHandle>;
 };
-
-export default function SheetModal({ visible, onClose, ...body }: SheetModalProps) {
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
-    >
-      <SheetBody onClose={onClose} {...body} />
-    </Modal>
-  );
-}
 
 function dismissKeyboard() {
   KeyboardController.dismiss().catch(() => {});
 }
 
-function SheetBody({
+export function SheetSurface({
   onClose,
   header,
   children,
-  outside,
   keyboardAware = false,
-}: Omit<SheetModalProps, 'visible'>) {
+  halfShare = HALF_SHARE,
+  expandedHeight: expandedProp,
+  backdrop = true,
+  enterFromClosed = false,
+  style,
+  ref,
+}: SheetSurfaceProps) {
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const keyboard = useReanimatedKeyboardAnimation();
 
   const maxTop = insets.top + TOP_GAP;
-  const halfHeight = windowHeight * HALF_SHARE;
-  const expandedHeight = Math.min(windowHeight * EXPANDED_SHARE, windowHeight - maxTop);
+  const expandedHeight =
+    expandedProp ?? Math.min(windowHeight * EXPANDED_SHARE, windowHeight - maxTop);
+  const halfHeight = Math.min(windowHeight * halfShare, expandedHeight);
   const halfOffset = expandedHeight - halfHeight;
   const closedOffset = expandedHeight;
 
   /** How far the sheet sits below EXPANDED: 0 = expanded, halfOffset = half. */
-  const offsetY = useSharedValue(halfOffset);
+  const offsetY = useSharedValue(enterFromClosed ? closedOffset : halfOffset);
   const dragStart = useSharedValue(0);
   const scrollY = useSharedValue(0);
   /** Set by a list drag at the start: 1 = the sheet was expanded, so the list owns the drag. */
   const listOwnsDrag = useSharedValue(0);
   // The list drag's translation when it began moving the sheet down from the top; -1 before.
   const listDragOrigin = useSharedValue(-1);
+  const locked = useSharedValue(false);
 
   const [expanded, setExpanded] = useState(false);
   const [typing, setTyping] = useState(false);
+
+  useEffect(() => {
+    if (enterFromClosed) { offsetY.value = withSpring(halfOffset, SNAP_SPRING); }
+  // Mount only: the entrance happens once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useAnimatedReaction(
     () => keyboardAware && keyboard.progress.value > 0.5,
@@ -158,6 +187,14 @@ function SheetBody({
       if (open !== wasOpen) { runOnJS(setTyping)(open); }
     },
   );
+
+  const close = useCallback(() => {
+    offsetY.value = withTiming(closedOffset, { duration: CLOSE_DURATION }, finished => {
+      if (finished) { runOnJS(onClose)(); }
+    });
+  }, [offsetY, closedOffset, onClose]);
+
+  useImperativeHandle(ref, () => ({ close }), [close]);
 
   const gestures = useMemo(() => {
     const typingProgress = () => {
@@ -168,7 +205,7 @@ function SheetBody({
     const snapTo = (target: number, velocity: number) => {
       'worklet';
       if (target >= closedOffset) {
-        offsetY.value = withTiming(closedOffset, { duration: 200 }, finished => {
+        offsetY.value = withTiming(closedOffset, { duration: CLOSE_DURATION }, finished => {
           if (finished) { runOnJS(onClose)(); }
         });
         return;
@@ -213,6 +250,7 @@ function SheetBody({
         listOwnsDrag.value = offsetY.value * (1 - typingProgress()) <= 0.5 ? 1 : 0;
       })
       .onUpdate(e => {
+        if (locked.value) { return; }
         if (listOwnsDrag.value === 0) {
           // At half the list is locked: the sheet follows the finger, up or down.
           offsetY.value = Math.max(0, dragStart.value + e.translationY);
@@ -228,6 +266,7 @@ function SheetBody({
         offsetY.value = Math.max(0, e.translationY - listDragOrigin.value);
       })
       .onEnd(e => {
+        if (locked.value) { return; }
         if (listOwnsDrag.value === 1) {
           if (listDragOrigin.value < 0) { return; } // a plain scroll — the sheet never moved
           settle(0, e.velocityY);
@@ -251,6 +290,7 @@ function SheetBody({
     scrollY,
     listOwnsDrag,
     listDragOrigin,
+    locked,
     halfOffset,
     halfHeight,
     closedOffset,
@@ -261,9 +301,11 @@ function SheetBody({
     scrollY.value = e.contentOffset.y;
   });
 
-  const listDrag = useMemo<ListDrag>(
-    () => ({ gesture: gestures.list, onScroll, scrollEnabled: expanded || typing }),
-    [gestures.list, onScroll, expanded, typing],
+  const setLocked = useCallback((value: boolean) => { locked.value = value; }, [locked]);
+
+  const sheetList = useMemo<SheetList>(
+    () => ({ gesture: gestures.list, onScroll, scrollEnabled: expanded || typing, setLocked }),
+    [gestures.list, onScroll, expanded, typing, setLocked],
   );
 
   const sheetStyle = useAnimatedStyle(() => {
@@ -276,7 +318,7 @@ function SheetBody({
     };
   });
 
-  // Full between expanded and half; fades below half, so a drag-close leaves nothing for the
+  // Full between expanded and half; fades below half, so a drag-close leaves nothing for a
   // Modal's own slide-out to show.
   const backdropStyle = useAnimatedStyle(() => {
     const progress = keyboardAware ? keyboard.progress.value : 0;
@@ -285,33 +327,60 @@ function SheetBody({
   });
 
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <Animated.View style={[styles.backdrop, backdropStyle]}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        />
-      </Animated.View>
+    <>
+      {backdrop ? (
+        <Animated.View style={[styles.backdrop, backdropStyle]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          />
+        </Animated.View>
+      ) : null}
 
-      <Animated.View style={[styles.sheet, sheetStyle]}>
+      <Animated.View style={[styles.sheet, style, sheetStyle]}>
         <GestureDetector gesture={gestures.handle}>
           <View collapsable={false}>
             <View style={styles.grabber} />
             {header}
           </View>
         </GestureDetector>
-        <ListDragContext.Provider value={listDrag}>{children}</ListDragContext.Provider>
+        <SheetListContext.Provider value={sheetList}>{children}</SheetListContext.Provider>
       </Animated.View>
+    </>
+  );
+}
 
-      {outside}
-    </GestureHandlerRootView>
+type SheetModalProps = Omit<SheetSurfaceProps, 'backdrop' | 'enterFromClosed' | 'ref'> & {
+  visible: boolean;
+  /** Other modals launched from inside the sheet, or views that must share its window. */
+  outside?: ReactNode;
+};
+
+export default function SheetModal({ visible, outside, ...surface }: SheetModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={surface.onClose}
+    >
+      {/* The Modal mounts its children only while open, so the keyboard hook (which switches
+          the Android resize mode) is held only then, and every open starts at half. Android
+          needs a gesture root of its own inside a Modal. */}
+      <GestureHandlerRootView style={styles.root}>
+        <SheetSurface {...surface} />
+        {outside}
+      </GestureHandlerRootView>
+    </Modal>
   );
 }
 
 /**
- * The list for a SheetModal. Scrolls only once the sheet is expanded, and hands the drags
+ * The FlatList for a sheet. Scrolls only once the sheet is expanded, and hands the drags
  * that move the sheet to it. No bounce or overscroll stretch at the top: the sheet moving
  * IS the overscroll.
  */
@@ -319,19 +388,39 @@ export function SheetFlatList<T>({
   ref,
   ...props
 }: Omit<FlatListProps<T>, 'CellRendererComponent'> & { ref?: Ref<FlatList<T>> }) {
-  const drag = useContext(ListDragContext);
+  const sheet = useSheetList();
   const list = (
     <Animated.FlatList
       ref={ref}
       {...props}
-      onScroll={drag?.onScroll}
+      onScroll={sheet?.onScroll}
       scrollEventThrottle={16}
-      scrollEnabled={drag ? drag.scrollEnabled : props.scrollEnabled}
+      scrollEnabled={sheet ? sheet.scrollEnabled : props.scrollEnabled}
       bounces={false}
       overScrollMode="never"
     />
   );
-  return drag ? <GestureDetector gesture={drag.gesture}>{list}</GestureDetector> : list;
+  return sheet ? <GestureDetector gesture={sheet.gesture}>{list}</GestureDetector> : list;
+}
+
+/** The ScrollView for a sheet, for bodies that are not lists. Same rules as SheetFlatList. */
+export function SheetScrollView({
+  ref,
+  ...props
+}: ScrollViewProps & { ref?: Ref<ScrollView> }) {
+  const sheet = useSheetList();
+  const scroll = (
+    <Animated.ScrollView
+      ref={ref}
+      {...props}
+      onScroll={sheet?.onScroll}
+      scrollEventThrottle={16}
+      scrollEnabled={sheet ? sheet.scrollEnabled : props.scrollEnabled}
+      bounces={false}
+      overScrollMode="never"
+    />
+  );
+  return sheet ? <GestureDetector gesture={sheet.gesture}>{scroll}</GestureDetector> : scroll;
 }
 
 const styles = StyleSheet.create({
