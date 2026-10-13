@@ -42,13 +42,20 @@ jobs:
     name: required edge functions exist in prod
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           # No `cache: npm` and no `npm ci`: the script uses only Node built-ins (global
           # fetch on Node 22), so installing dependencies would only slow the job down.
+          #
+          # Off explicitly, not just omitted: since setup-node v5 caching turns itself ON
+          # when package.json gains a `packageManager: npm@…` field. This job holds an
+          # account-level Supabase PAT on main and the daily schedule, and a restored cache
+          # is a cache-poisoning path into it — setup-node's own README recommends exactly
+          # this for privileged jobs.
+          package-manager-cache: false
 
       # Runs on EVERY trigger (including pull_request). No secret is referenced, so it is safe
       # on PR branches, and it is the one real regression guard on the parsing/assertion logic.

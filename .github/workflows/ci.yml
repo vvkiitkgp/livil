@@ -24,14 +24,22 @@ concurrency:
 env:
   NODE_VERSION: '22.11.0'
 
+# Runners stay on `ubuntu-latest` deliberately, not pinned to an image. Everything a job
+# depends on is already pinned by the job itself — Node (above), Postgres server (the
+# `postgres:15` / `postgres:17` service images), Deno (setup-deno) — so the image only
+# contributes bash, git, Docker and the psql CLIENT. psql reads older servers and
+# schema-parity runs the same client against both sides, so the 24.04 → 26.04 move
+# (psql 16 → 18) cannot make the two fingerprints disagree. Verified on ubuntu-26.04
+# before the 2026-10-19 rollout. If a future image breaks a job, pin THAT job's
+# `runs-on` with the reason, rather than all of them.
 jobs:
   verify:
     name: typecheck · lint · test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -72,8 +80,8 @@ jobs:
     name: knowledge base
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -100,7 +108,7 @@ jobs:
     name: version drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: CLAUDE.md must match build.gradle
         run: node scripts/check-version-sync.mjs
 
@@ -113,7 +121,7 @@ jobs:
     name: definer functions are not anon-callable
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: No SECURITY DEFINER function left executable by anon
         run: node scripts/check-definer-anon-grants.mjs
 
@@ -143,7 +151,7 @@ jobs:
           - 5432:5432
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Migrations reference auth.uid(), the auth schema, and Supabase's storage
       # objects. A bare Postgres has none of these, so stub just enough for the
@@ -816,7 +824,7 @@ jobs:
           - 5432:5432
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Same shims as the `migrations` job. Kept in step with it by hand; if they
       # drift, this job fails on replay rather than silently comparing the wrong thing.
@@ -885,7 +893,7 @@ jobs:
     name: board is proposal-only
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -907,7 +915,7 @@ jobs:
     name: first-run guide still true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -929,7 +937,7 @@ jobs:
     name: agents write only where tests exist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
