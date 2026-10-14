@@ -6,7 +6,11 @@ export type AuthStackParamList = {
 };
 
 export type AppTabParamList = {
-  Home: undefined;
+  /**
+   * `tab` opens Home on that feed (a New music push lands on New on Livil). `at` makes a
+   * repeat of the same request a new params object, so Home reacts to it every time.
+   */
+  Home: { tab?: 'for_you' | 'new_on_livil'; at?: number } | undefined;
   Search: undefined;
   Library: undefined;
   Profile: undefined;

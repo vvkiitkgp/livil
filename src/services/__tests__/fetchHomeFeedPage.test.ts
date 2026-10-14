@@ -128,3 +128,16 @@ test('a database error surfaces rather than rendering an empty feed', async () =
   mockRpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
   await expect(fetchHomeFeedPage({ limit: 12 })).rejects.toThrow('permission denied');
 });
+
+test('New on Livil is its own RPC, with exactly For you\'s arguments', async () => {
+  // Home's second tab (20261026000000) is the same ranker, uploads only — so the call must
+  // differ in the function name and nothing else, or the shared cursor stops lining up.
+  const session = newHomeFeedSession();
+  const cursor = { bucket: 1, sortKey: 2.25, id: 'p9' };
+  await fetchHomeFeedPage({ limit: 12, session, cursor });
+  await fetchHomeFeedPage({ limit: 12, session, cursor, tab: 'new_on_livil' });
+
+  expect(mockRpc.mock.calls[0][0]).toBe('fetch_home_feed');
+  expect(mockRpc.mock.calls[1][0]).toBe('fetch_new_on_livil');
+  expect(mockRpc.mock.calls[1][1]).toEqual(mockRpc.mock.calls[0][1]);
+});
