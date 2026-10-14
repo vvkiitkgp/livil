@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-331 TypeScript file(s) under `src/`, 77,167 lines.
+332 TypeScript file(s) under `src/`, 77,393 lines.
 
 ## Size hotspots
 
@@ -292,13 +292,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-70 file(s), 14,006 lines.
+71 file(s), 14,232 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1220 |
 | `src/services/tracks.ts` | 1001 |
-| `src/services/pushNotifications.ts` | 714 |
+| `src/services/pushNotifications.ts` | 775 |
 | `src/services/albums.ts` | 518 |
 | `src/services/profileService.ts` | 487 |
 | `src/services/share.ts` | 484 |
@@ -326,6 +326,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/appBadge.ts` | 166 |
+| `src/services/__tests__/pushScheduled.test.ts` | 165 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 149 |
 | `src/services/__tests__/appUpdate.test.ts` | 141 |

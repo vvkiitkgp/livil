@@ -105,7 +105,8 @@ review.
    deny-all; send ids never leave the database — the push carries the delivery id as
    `pushId`, which only `push_record_open` accepts, and only from its recipient). Mood
    nudges open `AddToLivil` and replace the previous mood card (`collapseId: mood`);
-   digests open `App` and replace the previous digest (`collapseId: digest`).
+   digests open `App` (builds after 2.1.3 land on the Home tab) and replace the previous
+   digest (`collapseId: digest`).
 5. **Token pruning**: only on FCM `UNREGISTERED`, `SENDER_ID_MISMATCH`, or an
    `INVALID_ARGUMENT` about `message.token` (`shouldPruneToken`). A malformed payload, an
    APNs credential error, quota or a 5xx never deletes a device token. **Before rotating
