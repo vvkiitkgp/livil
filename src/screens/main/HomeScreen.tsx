@@ -1090,7 +1090,10 @@ export default function HomeScreen() {
     // Acknowledge the pull the moment it fires — the spinner is at the top
     // of the screen, often under the user's own thumb.
     haptics.select();
-    playback.pauseAll();
+    // No pauseAll() here (owner report: refreshing stopped the music). It dates from when
+    // each card played its own media and a refresh replaced the cards; playback is one
+    // engine now (ADR-0001), independent of the cards, and its queue lives in
+    // PlaybackContext — so the song, and next/previous, carry on through a refresh.
     // The fixed top bar sits above the list at the same spot the pull-to-refresh
     // spinner draws in — slide it out of the way for the duration of the refresh
     // so the spinner is actually visible, then let it back in once done.
@@ -1114,7 +1117,7 @@ export default function HomeScreen() {
       setRefreshing(false);
       showTopBar();
     }
-  }, [playback, hideTopBar, showTopBar, setStories, refreshNewDot, markNewOnLivilSeen]);
+  }, [hideTopBar, showTopBar, setStories, refreshNewDot, markNewOnLivilSeen]);
 
   const handleEndReached = useCallback((which: HomeFeedTab) => {
     const f = feedsRef.current[which];
