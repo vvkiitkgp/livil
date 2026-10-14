@@ -420,10 +420,24 @@ type RpcHomeFeedRow = {
  * refresh — see `HomeFeedSession`. Omitting it falls back to the unseeded ordering, which
  * is stable but identical on every refresh.
  */
+/**
+ * Home's two tabs. Both are the same server-side ranker (`home_feed_ranked`,
+ * 20261026000000); `new_on_livil` adds one filter — uploads only, never reposts — so the
+ * cursor, session and row shape are identical and everything below is shared.
+ */
+export type HomeFeedTab = 'for_you' | 'new_on_livil';
+
+const HOME_FEED_RPC: Record<HomeFeedTab, string> = {
+  for_you: 'fetch_home_feed',
+  new_on_livil: 'fetch_new_on_livil',
+};
+
 export async function fetchHomeFeedPage(options: {
   limit?: number;
   cursor?: HomeFeedCursor | null;
   session?: HomeFeedSession | null;
+  /** Default `for_you`. */
+  tab?: HomeFeedTab;
 }): Promise<{ posts: FeedPost[]; nextCursor: HomeFeedCursor | null }> {
   const limit = options.limit ?? 12;
   const c = options.cursor ?? null;
@@ -443,7 +457,7 @@ export async function fetchHomeFeedPage(options: {
     ) => Promise<{ data: unknown; error: { message: string } | null }>;
   };
 
-  const { data, error } = await db.rpc('fetch_home_feed', {
+  const { data, error } = await db.rpc(HOME_FEED_RPC[options.tab ?? 'for_you'], {
     p_limit: limit,
     p_cursor_bucket: c?.bucket ?? undefined,
     p_cursor_sort_key: c?.sortKey ?? undefined,
@@ -470,6 +484,29 @@ export async function fetchHomeFeedPage(options: {
       : null;
 
   return { posts, nextCursor };
+}
+
+/**
+ * When the newest upload by someone else that the viewer may see was posted — what the
+ * New on Livil tab's dot compares against the viewer's last visit to the tab. The posts
+ * read policy decides visibility (blocks, signed out), exactly as for the tab itself.
+ * Null when there is none, or on any error: a missing dot is the safe failure.
+ */
+export async function fetchNewestUploadAt(viewerId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('created_at')
+      .eq('kind', 'upload')
+      .neq('author_id', viewerId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) { return null; }
+    return (data as { created_at: string }).created_at;
+  } catch {
+    return null;
+  }
 }
 
 export type ListPostsOptions = {

@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
@@ -32,18 +33,18 @@ import { Logo } from '../../components/Logo';
 import { Button } from '../../components/Button';
 import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
+import { HomeFeedTabs } from '../../components/HomeFeedTabs';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
-  fetchHomeFeedPage,
-  newHomeFeedSession,
+  fetchNewestUploadAt,
   isPlayableInLivil,
   type FeedPost,
-  type HomeFeedCursor,
-  type HomeFeedSession,
+  type HomeFeedTab,
 } from '../../services/posts';
+import { useHomeFeed } from '../../hooks/useHomeFeed';
 import { useSpotifyAvailability } from '../../services/spotify';
 import { recordImpression, flushImpressions } from '../../services/feedImpressions';
 import { listActiveStories, type Story } from '../../services/stories';
@@ -57,7 +58,6 @@ import {
   onBadgeRefreshRequested,
 } from '../../services/appBadge';
 import { retryOnce } from '../../utils/retryOnce';
-import { avoidRepeatTop } from '../../utils/avoidRepeatTop';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -89,6 +89,15 @@ const PREFETCH_FROM_END = 5;
  * eleventh records one impression, not eleven.
  */
 const IMPRESSION_DWELL_MS = 1200;
+
+/**
+ * When the viewer last opened New on Livil, per account: the created_at of the newest
+ * upload they could have seen then (server time, so a wrong phone clock cannot re-light
+ * the dot). Device-local on purpose — it only decides a dot.
+ */
+const newOnLivilSeenKey = (uid: string) => `livil.home.newOnLivilSeenAt.${uid}`;
+/** With no visit recorded yet, uploads from the last week light the dot. */
+const NEW_DOT_FIRST_LOOK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Warm RN's image cache for a freshly-fetched page so cover art / thumbnails /
@@ -291,6 +300,36 @@ export default function HomeScreen() {
   // with the top bar's direction-based behaviour below.
   const { hideChrome, showChrome } = useChromeVisibility();
 
+  // ── For you | New on Livil: the pinned copy ─────────────────────────────────
+  // The tab bar lives in the list under the stories. Once it would scroll under the top
+  // bar (or off the top, while the top bar is hidden) a copy pinned to the screen takes
+  // over, following the top bar as it slides. Two copies rather than FlatList's
+  // stickyHeaderIndices: a sticky header sticks to the list's own top edge, which is
+  // underneath the floating top bar whenever that is showing.
+  const tabBarYRef = useRef<number | null>(null);
+  const pinnedRef = useRef(false);
+  const [pinned, setPinned] = useState(false);
+  const updatePinned = useCallback((scrollY: number) => {
+    const tabY = tabBarYRef.current;
+    if (tabY === null) { return; }
+    // On both platforms the bar's distance from the list's top edge is tabY - scrollY
+    // (iOS rests at -TOP_BAR_H because of the content inset).
+    const pinTop = topBarVisible.current ? TOP_BAR_H : 0;
+    const next = tabY - scrollY <= pinTop;
+    if (next !== pinnedRef.current) {
+      pinnedRef.current = next;
+      setPinned(next);
+    }
+  }, []);
+  const pinnedTabsY = useMemo(
+    () => topBarAnim.interpolate({
+      inputRange: [-(TOP_BAR_H + insets.top), 0],
+      outputRange: [-TOP_BAR_H, 0],
+      extrapolate: 'clamp',
+    }),
+    [topBarAnim, insets.top],
+  );
+
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
@@ -299,11 +338,13 @@ export default function HomeScreen() {
     // off-screen (momentum, content resizing). Only the visible tab may move the
     // shared tab bar — otherwise Home could hide it while you are on Library, a tab
     // root with no back gesture, and there is then no way out.
-    if (!navigation.isFocused()) { return; }
-    if (y < 10) { showTopBar(); showChrome(); return; }
-    if (diff > 4) { hideTopBar(); hideChrome(); }
-    else if (diff < -4) { showTopBar(); showChrome(); }
-  }, [navigation, showTopBar, hideTopBar, showChrome, hideChrome]);
+    if (navigation.isFocused()) {
+      if (y < 10) { showTopBar(); showChrome(); }
+      else if (diff > 4) { hideTopBar(); hideChrome(); }
+      else if (diff < -4) { showTopBar(); showChrome(); }
+    }
+    updatePinned(y);
+  }, [navigation, showTopBar, hideTopBar, showChrome, hideChrome, updatePinned]);
 
   // Always restore the chrome when leaving Home (e.g. switching tabs while the
   // bar is hidden) so it isn't stuck off-screen on the next screen.
@@ -347,23 +388,174 @@ export default function HomeScreen() {
 
   const [storiesLoading, setStoriesLoading] = useState(true);
 
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const comments = useCommentsCountDeltas(posts);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [feedError, setFeedError] = useState('');
-  // Mirrors `nextCursorRef.current === null` as state so the footer re-renders
-  // when pagination is exhausted (refs alone don't trigger re-renders).
-  const [endOfFeed, setEndOfFeed] = useState(false);
 
-  const nextCursorRef = useRef<HomeFeedCursor | null>(null);
-  // One pass through the feed. Replaced on cold open and on every refresh; every page in
-  // between is fetched with the SAME session, which is what keeps the ranking still while
-  // the viewer scrolls (PROP-0010 phase 2).
-  const feedSessionRef = useRef<HomeFeedSession>(newHomeFeedSession());
-  const loadingMoreRef = useRef(false);
-  const loadingInitialRef = useRef(true);
+  // Cards currently being timed for the dwell threshold, and the ones already counted in
+  // this feed session. `countedRef` is what stops a card being re-armed every time it
+  // re-enters the viewport while the viewer scrolls up and down the same stretch — the
+  // server's 10-minute window would collapse those anyway, but not sending them is cheaper
+  // than having them ignored.
+  const dwellTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const countedRef = useRef(new Set<string>());
+
+  // A new pass is about to replace the list wholesale, so anything mid-dwell is measuring
+  // a card that is on its way off screen. Send what has been counted and start clean — a
+  // post that comes back in the new page is a new showing, and the server's 10-minute
+  // window decides whether it counts as a separate occasion.
+  const settleImpressions = useCallback(() => {
+    for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
+    dwellTimersRef.current.clear();
+    countedRef.current.clear();
+    flushImpressions();
+  }, []);
+
+  // Home's two feeds (owner design 2026-10-14): For you, and New on Livil — the same
+  // ranker server-side with one filter, uploads only. Each keeps its own pass, cursor and
+  // list; `feed` is the one on screen. New on Livil loads the first time it is opened.
+  const [tab, setTab] = useState<HomeFeedTab>('for_you');
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const feedOptions = {
+    pageSize: FEED_PAGE_SIZE,
+    onNewPass: settleImpressions,
+    isDeleted: (postId: string) => deletedIdsRef.current.has(postId),
+    onPage: prefetchFeedMedia,
+  };
+  const forYou = useHomeFeed('for_you', feedOptions);
+  const newOnLivil = useHomeFeed('new_on_livil', feedOptions);
+  const feed = tab === 'for_you' ? forYou : newOnLivil;
+  // Read by callbacks created once (viewability, refresh) — always the feed on screen.
+  const feedRef = useRef(feed);
+  feedRef.current = feed;
+  const { posts, loadingInitial, loadingMore, feedError, endOfFeed, appendFeedPage } = feed;
+  // A comment made on a card in either tab adjusts that post's count in both.
+  const bothFeedsPosts = useMemo(
+    () => [...forYou.posts, ...newOnLivil.posts],
+    [forYou.posts, newOnLivil.posts],
+  );
+  const comments = useCommentsCountDeltas(bothFeedsPosts);
+
+  const listRef = useRef<FlatList<FeedListItem>>(null);
+
+  // ── The New on Livil dot ────────────────────────────────────────────────────
+  // Lit when someone uploaded since the viewer last opened the tab. Compared in server
+  // time: the newest upload's created_at against the newest one there was at the last
+  // visit. Any failure leaves the dot off — a missing dot is the safe mistake.
+  const [newDot, setNewDot] = useState(false);
+  const newDotRef = useRef(false);
+  newDotRef.current = newDot;
+  const newestUploadAtRef = useRef<string | null>(null);
+  const refreshNewDot = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user.id;
+      if (!uid) { return; }
+      const newest = await fetchNewestUploadAt(uid);
+      newestUploadAtRef.current = newest;
+      if (!newest) {
+        setNewDot(false);
+        return;
+      }
+      if (tabRef.current === 'new_on_livil') {
+        // Looking at the tab is seeing it: move the marker, or the dot would light up the
+        // moment the viewer switches back to For you.
+        setNewDot(false);
+        try { await AsyncStorage.setItem(newOnLivilSeenKey(uid), newest); } catch { /* ignore */ }
+        return;
+      }
+      let seenAt: string | null = null;
+      try { seenAt = await AsyncStorage.getItem(newOnLivilSeenKey(uid)); } catch { /* treat as never */ }
+      const seenMs = seenAt ? Date.parse(seenAt) : Date.now() - NEW_DOT_FIRST_LOOK_MS;
+      setNewDot(Date.parse(newest) > seenMs);
+    } catch {
+      // ignore — the dot stays as it is
+    }
+  }, []);
+  const markNewOnLivilSeen = useCallback(() => {
+    setNewDot(false);
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const uid = data.session?.user.id;
+        if (!uid) { return; }
+        const marker = newestUploadAtRef.current ?? new Date().toISOString();
+        await AsyncStorage.setItem(newOnLivilSeenKey(uid), marker);
+      } catch {
+        // ignore — at worst the dot shows once more
+      }
+    })();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNewDot();
+    }, [refreshNewDot]),
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') { void refreshNewDot(); }
+    });
+    return () => sub.remove();
+  }, [refreshNewDot]);
+
+  // ── Switching tabs ──────────────────────────────────────────────────────────
+  const forYouLoad = forYou.appendFeedPage;
+  const newOnLivilLoad = newOnLivil.appendFeedPage;
+  const forYouStarted = forYou.startedRef;
+  const newOnLivilStarted = newOnLivil.startedRef;
+  // Where the list should sit once the new tab's rows are on screen: kept pinned if it
+  // was pinned, so switching does not throw the viewer back up to the stories.
+  const pendingSwitchOffsetRef = useRef<number | null>(null);
+  const selectTab = useCallback((next: HomeFeedTab, opts?: { fresh?: boolean }) => {
+    if (next === 'new_on_livil') { markNewOnLivilSeen(); }
+    if (next !== tabRef.current) {
+      haptics.select();
+      // The cards being timed are about to leave the screen. Not a new pass: what has
+      // been counted stays counted.
+      for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
+      dwellTimersRef.current.clear();
+      const tabY = tabBarYRef.current;
+      pendingSwitchOffsetRef.current =
+        pinnedRef.current && tabY !== null ? tabY - (topBarVisible.current ? TOP_BAR_H : 0) : null;
+      tabRef.current = next;
+      setTab(next);
+    }
+    const [load, started] = next === 'for_you'
+      ? [forYouLoad, forYouStarted]
+      : [newOnLivilLoad, newOnLivilStarted];
+    if (!started.current) {
+      void load('initial');
+    } else if (opts?.fresh || (next === 'new_on_livil' && newDotRef.current)) {
+      // Someone uploaded since this tab's pass began: the pass's frozen origin would
+      // leave their song out, so start a new one.
+      void load('refresh');
+    }
+  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted]);
+
+  useEffect(() => {
+    const offset = pendingSwitchOffsetRef.current;
+    if (offset === null) { return; }
+    pendingSwitchOffsetRef.current = null;
+    listRef.current?.scrollToOffset({ offset, animated: false });
+    updatePinned(offset);
+  }, [tab, updatePinned]);
+
+  // A New music push opens Home on a tab (pushNotifications' handleNotificationData).
+  // `at` changes on every tap, so a second identical tap still lands.
+  const route = useRoute<RouteProp<AppTabParamList, 'Home'>>();
+  const routeTab = route.params?.tab;
+  const routeAt = route.params?.at;
+  useEffect(() => {
+    if (!routeTab) { return; }
+    // From the top, so the viewer sees where they landed — and a fresh pass, so the song
+    // the push was about is in it.
+    const top = Platform.OS === 'ios' ? -TOP_BAR_H : 0;
+    pendingSwitchOffsetRef.current = null;
+    listRef.current?.scrollToOffset({ offset: top, animated: false });
+    updatePinned(top);
+    showTopBar();
+    selectTab(routeTab, { fresh: true });
+  }, [routeTab, routeAt, selectTab, updatePinned, showTopBar]);
 
   // Viewability feeds ONLY the pagination prefetch (refs, no setState). The former
   // per-scroll `visibleIds` state re-rendered every mounted PostCard several times a
@@ -416,22 +608,12 @@ export default function HomeScreen() {
         };
       }),
       startIdx,
-      'Home',
+      // Playing from New on Livil queues uploads only — that tab's list is all there is.
+      tabRef.current === 'for_you' ? 'Home' : 'New on Livil',
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, playback.setQueue]);
 
-  const appendFeedPageRef = useRef<(mode: 'initial' | 'refresh' | 'prefetch' | 'end') => Promise<void>>(
-    async () => {},
-  );
-
-  // Cards currently being timed for the dwell threshold, and the ones already counted in
-  // this feed session. `countedRef` is what stops a card being re-armed every time it
-  // re-enters the viewport while the viewer scrolls up and down the same stretch — the
-  // server's 10-minute window would collapse those anyway, but not sending them is cheaper
-  // than having them ignored.
-  const dwellTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const countedRef = useRef(new Set<string>());
 
   const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -471,12 +653,13 @@ export default function HomeScreen() {
         );
       }
 
-      const len = postsRef.current.length;
+      const f = feedRef.current;
+      const len = f.postsRef.current.length;
       const nearEnd =
         len > 0 &&
-        nextCursorRef.current !== null &&
-        !loadingMoreRef.current &&
-        !loadingInitialRef.current &&
+        f.nextCursorRef.current !== null &&
+        !f.loadingMoreRef.current &&
+        !f.loadingInitialRef.current &&
         maxIndex >= len - PREFETCH_FROM_END;
 
       if (!nearEnd) {
@@ -485,7 +668,7 @@ export default function HomeScreen() {
 
       // Never kick off pagination synchronously from this callback — it can trip RN invariant paths.
       setTimeout(() => {
-        void appendFeedPageRef.current('prefetch');
+        void feedRef.current.appendFeedPage('prefetch');
       }, 0);
     },
   ).current;
@@ -684,106 +867,6 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const appendFeedPage = useCallback(async (mode: 'initial' | 'refresh' | 'prefetch' | 'end') => {
-    if (loadingMoreRef.current) {
-      return;
-    }
-    if ((mode === 'prefetch' || mode === 'end') && nextCursorRef.current === null) {
-      return;
-    }
-
-    loadingMoreRef.current = true;
-    // Surface the skeleton footer for any pagination fetch (prefetch + end).
-    // Initial/refresh are handled by their own indicators, not this footer.
-    const showSpinner = mode === 'end' || mode === 'prefetch';
-    if (showSpinner) {
-      setLoadingMore(true);
-    }
-    if (mode === 'initial' || mode === 'refresh') {
-      // A new pass through the feed gets a new seed and a new decay origin — this is what
-      // makes pulling down actually re-rank rather than hand back the page already on
-      // screen. Minted before the fetch below reads it.
-      feedSessionRef.current = newHomeFeedSession();
-
-      // The list is about to be replaced wholesale, so anything mid-dwell is measuring a
-      // card that is on its way off screen. Send what has been counted and start clean —
-      // a post that comes back in the new page is a new showing, and the server's
-      // 10-minute window decides whether it counts as a separate occasion.
-      for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
-      dwellTimersRef.current.clear();
-      countedRef.current.clear();
-      flushImpressions();
-    }
-    if (mode === 'initial') {
-      setLoadingInitial(true);
-      setFeedError('');
-      nextCursorRef.current = null;
-      setPosts([]);
-      setEndOfFeed(false);
-    }
-    if (mode === 'refresh') {
-      setFeedError('');
-      nextCursorRef.current = null;
-      setEndOfFeed(false);
-    }
-
-    try {
-      const cursor =
-        mode === 'initial' || mode === 'refresh'
-          ? null
-          : nextCursorRef.current;
-
-      const { posts: chunk, nextCursor } = await fetchHomeFeedPage({
-        limit: FEED_PAGE_SIZE,
-        cursor,
-        session: feedSessionRef.current,
-      });
-
-      // Warm the cache for this page's media so cards below the fold (and the
-      // next page's cards) fade in instantly instead of popping when scrolled to.
-      prefetchFeedMedia(chunk);
-
-      // The post the user was just looking at at the top, for avoidRepeatTop.
-      // Read BEFORE setPosts replaces the list.
-      const previousTopId = postsRef.current.find(post => !deletedIdsRef.current.has(post.id))?.id;
-
-      setPosts(prev => {
-        if (mode === 'refresh') {
-          return avoidRepeatTop(chunk, previousTopId);
-        }
-        if (mode === 'initial') {
-          return chunk;
-        }
-        const seen = new Set(prev.map(p => p.id));
-        const merged = chunk.filter(p => !seen.has(p.id));
-        return [...prev, ...merged];
-      });
-
-      nextCursorRef.current = nextCursor;
-      setEndOfFeed(nextCursor === null);
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message || 'Could not load your feed.'
-          : typeof err === 'string'
-            ? err
-            : 'Could not load your feed.';
-      if (mode === 'initial' || mode === 'refresh') {
-        setFeedError(message);
-      }
-    } finally {
-      loadingMoreRef.current = false;
-      setLoadingMore(false);
-      setLoadingInitial(false);
-    }
-  }, []);
-
-  appendFeedPageRef.current = appendFeedPage;
-
-  useEffect(() => {
-    loadingInitialRef.current = loadingInitial;
-  }, [loadingInitial]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -805,12 +888,12 @@ export default function HomeScreen() {
       }
     })();
 
-    void Promise.all([storiesPromise, appendFeedPage('initial')]);
+    void Promise.all([storiesPromise, forYouLoad('initial')]);
 
     return () => {
       cancelled = true;
     };
-  }, [appendFeedPage, setStories]);
+  }, [forYouLoad, setStories]);
 
   const handleRefresh = useCallback(async () => {
     // Acknowledge the pull the moment it fires — the spinner is at the top
@@ -832,17 +915,18 @@ export default function HomeScreen() {
             setStories([]);
           }
         })(),
-        appendFeedPage('refresh'),
+        feedRef.current.appendFeedPage('refresh'),
+        refreshNewDot(),
       ]);
     } finally {
       setRefreshing(false);
       showTopBar();
     }
-  }, [appendFeedPage, playback, hideTopBar, showTopBar, setStories]);
+  }, [playback, hideTopBar, showTopBar, setStories, refreshNewDot]);
 
   const handleEndReached = useCallback(() => {
-    void appendFeedPage('end');
-  }, [appendFeedPage]);
+    void feedRef.current.appendFeedPage('end');
+  }, []);
 
   const feedRows = useMemo((): FeedListItem[] => {
     if (loadingInitial) {
@@ -896,12 +980,26 @@ export default function HomeScreen() {
 
         <FriendStoriesRow loading={storiesLoading} stories={stories} />
 
+        {/* The in-list For you | New on Livil switch. Its position is what decides when
+            the pinned copy (rendered over the list, below) takes over. */}
+        <View
+          onLayout={e => {
+            tabBarYRef.current = e.nativeEvent.layout.y;
+            updatePinned(lastScrollY.current);
+          }}
+        >
+          <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
+        </View>
+
         <View style={styles.feedHeadingBlock}>
-          <Text style={styles.feedHeading}>For you</Text>
           <Text style={styles.feedSubheading}>
-            {loadingInitial
-              ? 'Loading your personalized mix…'
-              : "Mutual friends first, people you star next, then what's trending."}
+            {tab === 'for_you'
+              ? loadingInitial
+                ? 'Loading your personalized mix…'
+                : "Mutual friends first, people you star next, then what's trending."
+              : loadingInitial
+                ? 'Loading new songs…'
+                : "Only songs uploaded to Livil. Friends first, people you star next, then what's trending."}
           </Text>
         </View>
 
@@ -923,7 +1021,8 @@ export default function HomeScreen() {
     // Removing them would change when this header recomputes; with no tests over
     // the feed that is an unverifiable change. Left as-is pending coverage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount],
+    [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount,
+      tab, selectTab, newDot, updatePinned],
   );
 
   const footer = useMemo(() => {
@@ -957,6 +1056,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <FlatList
+        ref={listRef}
         data={feedRows}
         keyExtractor={feedKeyExtractor}
         renderItem={renderFeedItem}
@@ -973,12 +1073,21 @@ export default function HomeScreen() {
                   <Text style={styles.emptyFeedHint}>Pull to refresh or tap Retry above.</Text>
                 </>
               ) : (
-                <>
-                  <Text style={styles.emptyFeedTitle}>No posts yet</Text>
-                  <Text style={styles.emptyFeedBody}>
-                    Follow friends or upload a track — new posts will appear here automatically.
-                  </Text>
-                </>
+                tab === 'for_you' ? (
+                  <>
+                    <Text style={styles.emptyFeedTitle}>No posts yet</Text>
+                    <Text style={styles.emptyFeedBody}>
+                      Follow friends or upload a track — new posts will appear here automatically.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.emptyFeedTitle}>No uploads yet</Text>
+                    <Text style={styles.emptyFeedBody}>
+                      Songs uploaded to Livil will show up here.
+                    </Text>
+                  </>
+                )
               )}
             </View>
           )
@@ -1055,6 +1164,21 @@ export default function HomeScreen() {
           </View>
         </View>
       </Animated.View>
+
+      {/* The pinned For you | New on Livil switch: shown once the in-list one has scrolled
+          under the top bar, and slid with the top bar so it sits right below it — or at
+          the top of the screen while the top bar is hidden. Under the top bar (zIndex) so
+          the bar slides over it, never under it. */}
+      {pinned ? (
+        <Animated.View
+          style={[
+            styles.pinnedTabs,
+            { top: insets.top + TOP_BAR_H, transform: [{ translateY: pinnedTabsY }] },
+          ]}
+        >
+          <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
+        </Animated.View>
+      ) : null}
 
       <CommentsSheet
         visible={comments.commentsPostId !== null}
@@ -1274,11 +1398,11 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     gap: 6,
   },
-  feedHeading: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.4,
+  pinnedTabs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 9,
   },
   feedSubheading: {
     color: COLORS.textMuted,

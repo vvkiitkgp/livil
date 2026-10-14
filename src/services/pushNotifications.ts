@@ -216,6 +216,15 @@ export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
   // 20261025000000). Its own switch is what lets those be sent at all: App Store guideline
   // 4.5.4 wants an in-app opt-out for this kind of message. DEFAULT, not HIGH: a nudge
   // should land in the tray, not drop down over whatever the person is doing.
+  // A friend's (or a starred artist's) new song, and the weekly Fresh on Livil roundup
+  // (migration 20261026000000 adds the switch). Livil's own push about other people's
+  // music, so it gets a switch of its own rather than riding Activity.
+  {
+    id: 'new_music',
+    name: 'New music',
+    description: 'New songs from friends and artists you star, and a weekly roundup of fresh Livil songs',
+    importance: AndroidImportance.DEFAULT,
+  },
   {
     id: 'reminders',
     name: 'Mood reminders',
@@ -230,6 +239,7 @@ export type NotificationCategoryPrefs = {
   activity: boolean;
   messages: boolean;
   jam: boolean;
+  new_music: boolean;
   reminders: boolean;
 };
 
@@ -239,6 +249,7 @@ export const ALL_CATEGORIES_ON: NotificationCategoryPrefs = {
   activity: true,
   messages: true,
   jam: true,
+  new_music: true,
   reminders: true,
 };
 
@@ -274,6 +285,7 @@ export async function getNotificationPreferences(
     activity: row.activity ?? true,
     messages: row.messages ?? true,
     jam: row.jam ?? true,
+    new_music: row.new_music ?? true,
     reminders: row.reminders ?? true,
   };
 }
@@ -323,6 +335,16 @@ export async function shouldShowPushPrompt(): Promise<boolean> {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Livil's own pushes that this build files under their own Android channel. A Map, not an
+ * object literal: `kind` comes off the wire, and `'constructor'` must not find anything.
+ */
+const OWN_CHANNEL_FOR_KIND = new Map<string, string>([
+  ['mood_nudge', 'reminders'],
+  ['new_drop', 'new_music'],
+  ['originals_weekly', 'new_music'],
+]);
+
+/**
  * Where a tap goes, and — for Livil's scheduled pushes, which carry `pushId` (their
  * delivery row) — telling the server it was opened, so the ops dashboard can count it.
  * Every tap path (foreground, background, cold start, FCM-rendered) lands here; the
@@ -342,8 +364,13 @@ export function handleNotificationData(data: Record<string, string> | undefined)
   }
   // A data-only push carries strings only, so the repost digest names the tab navigator
   // (`App`); land on Home, where the reposts are, rather than whichever tab was last open.
+  // A New music push also names Home's tab (`tab: new_on_livil`); `at` makes a second
+  // identical tap still switch, since Home reacts to its params changing.
   if (route === 'App') {
-    navigateWhenReady('App', { screen: 'Home' });
+    const tab = rest.tab === 'new_on_livil' || rest.tab === 'for_you' ? rest.tab : undefined;
+    navigateWhenReady('App', tab
+      ? { screen: 'Home', params: { tab, at: Date.now() } }
+      : { screen: 'Home' });
     return;
   }
   navigateWhenReady(route as keyof RootStackParamList, rest);
@@ -419,14 +446,16 @@ export async function displayPushNotification(
     return;
   }
 
-  // Mood nudges arrive on the `activity` channel (the only one older builds have);
-  // this build gives them their own, so Android's per-category settings can mute them
-  // without muting likes. Created here as well as in initPush: an app updated but not
-  // yet opened has never run initPush, and Android drops a notification posted to a
-  // channel that does not exist. createChannel is a no-op when it already does.
-  const channelId = kind === 'mood_nudge' ? 'reminders' : (data.channelId ?? 'messages');
-  if (channelId === 'reminders' && Platform.OS === 'android') {
-    const def = NOTIFICATION_CHANNELS.find(c => c.id === 'reminders');
+  // Mood nudges and New music pushes arrive on the `activity` channel (the only one
+  // older builds have); this build gives them their own, so Android's per-category
+  // settings can mute them without muting likes. Created here as well as in initPush: an
+  // app updated but not yet opened has never run initPush, and Android drops a
+  // notification posted to a channel that does not exist. createChannel is a no-op when
+  // it already does.
+  const ownChannel = OWN_CHANNEL_FOR_KIND.get(kind);
+  const channelId = ownChannel ?? data.channelId ?? 'messages';
+  if (ownChannel && Platform.OS === 'android') {
+    const def = NOTIFICATION_CHANNELS.find(c => c.id === ownChannel);
     if (def) await createChannel(def);
   }
   const title = data.title ?? '';
@@ -546,6 +575,8 @@ export async function displayPushNotification(
  *   • activity_like   `like:<post uuid>` — one card per liked post
  *   • mood_nudge      `mood`             — the evening nudge replaces the morning one
  *   • repost_digest   `digest`           — the 6 PM digest replaces the 11 AM one
+ *   • new_drop        `drop`             — a friend's new song replaces an unread earlier one
+ *   • originals_weekly `fresh`           — this week's roundup replaces last week's
  * Anything else, or a malformed id, keeps a card per push.
  */
 function cardIdFor(kind: string, collapseId: string | undefined): string | null {
@@ -553,7 +584,9 @@ function cardIdFor(kind: string, collapseId: string | undefined): string | null 
   const ok =
     (kind === 'activity_like' && collapseId.startsWith('like:') && UUID_RE.test(collapseId.slice(5)))
     || (kind === 'mood_nudge' && collapseId === 'mood')
-    || (kind === 'repost_digest' && collapseId === 'digest');
+    || (kind === 'repost_digest' && collapseId === 'digest')
+    || (kind === 'new_drop' && collapseId === 'drop')
+    || (kind === 'originals_weekly' && collapseId === 'fresh');
   return ok ? `${LIVIL_NOTIFICATION_ID_PREFIX}${collapseId.toLowerCase()}` : null;
 }
 

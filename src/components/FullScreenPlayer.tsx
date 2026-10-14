@@ -17,6 +17,7 @@ import {
 import Video, { type VideoRef, type OnLoadData, type OnProgressData } from 'react-native-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import ArtGlow from './ArtGlow';
+import { StarArtistButton } from './StarArtistButton';
 import { useImageAspect } from '../hooks/useImageAspect';
 import { haptics } from '../utils/haptics';
 import { likeCountAfterToggle } from '../utils/likeCount';
@@ -2073,7 +2074,14 @@ export default function FullScreenPlayer() {
         }}
       >
         <Text style={styles.trackTitle} numberOfLines={2}>{nowPlaying.title}</Text>
-        <CreditLine nowPlaying={nowPlaying} onPress={() => handleTabPress('info')} />
+        <View style={styles.creditRow}>
+          <View style={styles.creditLineSlot}>
+            <CreditLine nowPlaying={nowPlaying} onPress={() => handleTabPress('info')} />
+          </View>
+          <View style={styles.starSlot}>
+            <StarArtistButton authorId={nowPlaying.authorId} artistName={nowPlaying.artistName} />
+          </View>
+        </View>
         <CompactStats
           nowPlaying={nowPlaying}
           onCommentsPress={() => setCommentsOpen(true)}
@@ -2472,6 +2480,11 @@ const styles = StyleSheet.create({
 
   // Bottom overlay — track title + credit line + stats
   bottomInfo: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24 },
+  // The credit line takes what is left; Star sits at the end, level with the faces
+  // (CreditLine's own row carries the 8pt top margin, so the Star slot matches it).
+  creditRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  creditLineSlot: { flex: 1, minWidth: 0 },
+  starSlot: { marginTop: 8 },
   trackTitle: {
     color: COLORS.white, fontSize: 22, fontWeight: '800', letterSpacing: -0.5,
     textShadowColor: 'rgba(0,0,0,0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8,
