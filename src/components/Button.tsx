@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  type Insets,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -91,6 +92,11 @@ export type ButtonProps = {
    * own haptic on the resulting state change and would otherwise double-buzz.
    */
   haptic?: 'tap' | 'select' | 'impact' | 'warning' | 'none';
+  /**
+   * Extra touchable area beyond the visible edge, for a small control that must still be
+   * easy to hit (44pt is the guideline). Visual size is unchanged.
+   */
+  hitSlop?: Insets;
 };
 
 const SIZES: Record<ButtonSize, { padV: number; padH: number; radius: number; font: number; icon: number; gap: number }> = {
@@ -160,6 +166,7 @@ export function Button({
   accessibilityLabel,
   haptic,
   borderColors,
+  hitSlop,
 }: ButtonProps) {
   const s = SIZES[size];
   const inactive = disabled || busy;
@@ -187,6 +194,7 @@ export function Button({
     <TouchableOpacity
       onPress={handlePress}
       disabled={inactive}
+      hitSlop={hitSlop}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityState={{ disabled: inactive, busy }}

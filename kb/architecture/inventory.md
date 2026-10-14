@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-341 TypeScript file(s) under `src/`, 78,546 lines.
+341 TypeScript file(s) under `src/`, 78,562 lines.
 
 ## Size hotspots
 
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-127 file(s), 27,628 lines.
+127 file(s), 27,644 lines.
 
 | File | Lines |
 |---|---:|
@@ -189,7 +189,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/CommentItem.tsx` | 278 |
 | `src/components/Icon.tsx` | 276 |
-| `src/components/Button.tsx` | 254 |
+| `src/components/Button.tsx` | 262 |
 | `src/components/InboxBanner.tsx` | 254 |
 | `src/components/OnboardingNotice.tsx` | 251 |
 | `src/components/guide/cardsPlayer.tsx` | 247 |
@@ -244,10 +244,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/__tests__/timeline.test.ts` | 112 |
 | `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
 | `src/components/Choice.tsx` | 108 |
+| `src/components/HomeFeedTabs.tsx` | 106 |
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
-| `src/components/HomeFeedTabs.tsx` | 98 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 92 |

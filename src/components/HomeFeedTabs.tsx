@@ -4,6 +4,8 @@ import { COLORS } from '../theme/colors';
 import { Button } from './Button';
 import type { HomeFeedTab } from '../services/posts';
 
+const PILL_HIT_SLOP = { top: 6, bottom: 6, left: 3, right: 3 };
+
 const TABS: { key: HomeFeedTab; label: string }[] = [
   { key: 'for_you', label: 'For you' },
   { key: 'new_on_livil', label: 'New on Livil' },
@@ -46,6 +48,10 @@ export function HomeFeedTabs({
               haptic="none"
               // Opaque near-black fill: the pinned copy floats over posts and artwork.
               onMedia
+              // The pill reads ~40pt tall; this makes the touch target 52pt without
+              // making it look bigger. Sideways only as far as half the gap between pills,
+              // so a tap there can never land on the wrong one.
+              hitSlop={PILL_HIT_SLOP}
               style={styles.pill}
               labelStyle={styles.pillLabel}
               accessibilityLabel={`${t.label}${selected ? ', selected' : ''}${dot ? ', new songs' : ''}`}
@@ -60,18 +66,20 @@ export function HomeFeedTabs({
 }
 
 const styles = StyleSheet.create({
+  // The bar's own padding is the slots' padding taken off, so the pills sit where they did.
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    gap: 3,
+    paddingHorizontal: 17,
+    paddingVertical: 2,
   },
-  // Room for the dot to sit on the pill's corner INSIDE the slot: Android clips a child
-  // that overhangs its parent, so an outward offset would be cut off.
+  // Exactly PILL_HIT_SLOP of room around each pill. Android only delivers a touch to a view
+  // inside its parent's bounds, so the slop must lie within the slot; it is also where the
+  // dot sits on the pill's corner (Android clips a child that overhangs its parent).
   pillSlot: {
-    paddingTop: 3,
-    paddingRight: 3,
+    paddingVertical: PILL_HIT_SLOP.top,
+    paddingHorizontal: PILL_HIT_SLOP.left,
   },
   // Bigger than Button's `sm` (owner request), keeping its full pill radius — `md` would
   // square the corners off.
@@ -85,7 +93,7 @@ const styles = StyleSheet.create({
   // On the pill's top-right edge, ringed in the page colour so it reads as a badge.
   dot: {
     position: 'absolute',
-    top: 0,
+    top: PILL_HIT_SLOP.top - 3,
     right: 0,
     width: 10,
     height: 10,
