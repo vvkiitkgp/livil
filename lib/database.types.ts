@@ -805,6 +805,7 @@ export type Database = {
           activity: boolean
           jam: boolean
           messages: boolean
+          new_music: boolean
           reminders: boolean
           social: boolean
           updated_at: string
@@ -814,6 +815,7 @@ export type Database = {
           activity?: boolean
           jam?: boolean
           messages?: boolean
+          new_music?: boolean
           reminders?: boolean
           social?: boolean
           updated_at?: string
@@ -823,6 +825,7 @@ export type Database = {
           activity?: boolean
           jam?: boolean
           messages?: boolean
+          new_music?: boolean
           reminders?: boolean
           social?: boolean
           updated_at?: string
@@ -2347,6 +2350,22 @@ export type Database = {
           sort_key: number
         }[]
       }
+      fetch_new_on_livil: {
+        Args: {
+          p_cursor_bucket?: number
+          p_cursor_id?: string
+          p_cursor_sort_key?: number
+          p_limit?: number
+          p_seed?: number
+          p_session_started_at?: string
+        }
+        Returns: {
+          feed_bucket: number
+          post: Json
+          post_id: string
+          sort_key: number
+        }[]
+      }
       get_email_for_username: { Args: { p_username: string }; Returns: string }
       get_jam_snapshot: { Args: { p_jam_room_id: string }; Returns: Json }
       get_or_create_dm: {
@@ -2356,6 +2375,23 @@ export type Database = {
       grant_badge: {
         Args: { p_badge: string; p_user_id: string }
         Returns: string
+      }
+      home_feed_ranked: {
+        Args: {
+          p_uploads_only: boolean
+          p_cursor_bucket?: number
+          p_cursor_id?: string
+          p_cursor_sort_key?: number
+          p_limit?: number
+          p_seed?: number
+          p_session_started_at?: string
+        }
+        Returns: {
+          feed_bucket: number
+          post: Json
+          post_id: string
+          sort_key: number
+        }[]
       }
       is_blocked_between: { Args: { a: string; b: string }; Returns: boolean }
       is_conversation_member: { Args: { conv_id: string }; Returns: boolean }

@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-80 document(s) under `kb/`.
+81 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 80 |
-| Drift-proof (tier 1 + 4) | 47 |
+| Documents | 81 |
+| Drift-proof (tier 1 + 4) | 48 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 2 |
 | Private-content stubs | 6 |
@@ -135,6 +135,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0027-spotify-reposts.md` | chief-architect | ALL | 2026-10-09 | 9999d |
 | `decisions/0028-repost-audience-profile-switch.md` | chief-architect | ALL | 2026-10-09 | 9999d |
 | `decisions/0029-scheduled-pushes-from-the-database.md` | chief-architect | ALL | 2026-10-14 | 9999d |
+| `decisions/0030-new-on-livil-is-for-you-filtered-to-uploads.md` | chief-architect | ALL | 2026-10-14 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -148,7 +149,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 37 |
+| chief-architect | 38 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |

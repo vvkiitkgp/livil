@@ -207,6 +207,9 @@ function actorName(a: ActivityActor): string {
   return a.displayName?.trim() || `@${a.username}`;
 }
 
+/** activity_record_play's lowest threshold (array[5,25,100,…] in the migration). */
+const FIRST_PLAY_MILESTONE = 5;
+
 export function formatPlayThreshold(n: number): string {
   if (n >= 1000) {
     const k = n / 1000;
@@ -248,7 +251,11 @@ export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
     case 'repost':
       return { actor: item.actor, text: ' reposted your track' };
     case 'play_milestone':
-      return { actor: null, text: `Your track hit ${formatPlayThreshold(item.threshold)} plays 🎉` };
+      // The first milestone (5 plays, activity_record_play) is the moment strangers start
+      // listening — said as that, since "hit 5 plays" undersells it.
+      return item.threshold === FIRST_PLAY_MILESTONE
+        ? { actor: null, text: `Your first listeners are in 🎉 ${item.threshold} plays so far` }
+        : { actor: null, text: `Your track hit ${formatPlayThreshold(item.threshold)} plays 🎉` };
     // Livil speaking, not a person — hence actor: null and a whole sentence rather than a
     // fragment that expects a bold name in front of it.
     case 'badge_granted':

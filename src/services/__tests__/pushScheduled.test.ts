@@ -139,10 +139,13 @@ describe('tapping one', () => {
     expect(mockNavigate).toHaveBeenCalledWith('AddToLivil', expect.objectContaining({ kind: 'mood_nudge' }));
   });
 
-  it('lands a digest on the Home tab, not whichever tab was last open', () => {
+  it('lands a digest on Home\'s For you — where reposts are — whichever feed Home was left on', () => {
     handleNotificationData(digest('Arjun, Kavya and 10 others'));
 
-    expect(mockNavigate).toHaveBeenCalledWith('App', { screen: 'Home' });
+    expect(mockNavigate).toHaveBeenCalledWith('App', {
+      screen: 'Home',
+      params: { tab: 'for_you', at: expect.any(Number) },
+    });
   });
 
   it('still navigates when the open cannot be recorded', async () => {
@@ -150,7 +153,7 @@ describe('tapping one', () => {
     handleNotificationData(digest('Arjun'));
     await flush();
 
-    expect(mockNavigate).toHaveBeenCalledWith('App', { screen: 'Home' });
+    expect(mockNavigate).toHaveBeenCalledWith('App', expect.objectContaining({ screen: 'Home' }));
   });
 
   it('reports nothing for pushes without a delivery id, or with a malformed one', async () => {
@@ -162,3 +165,65 @@ describe('tapping one', () => {
     expect(mockNavigate).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('a New music push', () => {
+  const drop = (title: string) => ({
+    kind: 'new_drop',
+    route: 'App',
+    tab: 'new_on_livil',
+    channelId: 'activity',
+    title,
+    body: '“Midnight Chai” · be one of the first to listen',
+    collapseId: 'drop',
+    pushId: DELIVERY,
+  });
+
+  it('goes to the New music channel, creating it first, and keeps one card', async () => {
+    await displayPushNotification(drop('Arjun dropped a new song 🎧'));
+    await displayPushNotification(drop('Kavya dropped a new song 🎧'));
+
+    expect(mockCreateChannel).toHaveBeenCalledWith(expect.objectContaining({ id: 'new_music' }));
+    expect(shown(0).android.channelId).toBe('new_music');
+    expect(shown(0).id).toBe('livil:drop');
+    expect(shown(1).id).toBe('livil:drop');
+  });
+
+  it('files the weekly roundup under New music too, one card a week', async () => {
+    await displayPushNotification({ ...drop('Fresh on Livil this week ✨'), kind: 'originals_weekly', collapseId: 'fresh' });
+
+    expect(shown(0).android.channelId).toBe('new_music');
+    expect(shown(0).id).toBe('livil:fresh');
+  });
+
+  it('opens Home on the New on Livil tab, and counts the open', async () => {
+    handleNotificationData(drop('Arjun dropped a new song 🎧'));
+    await flush();
+
+    expect(mockRpc).toHaveBeenCalledWith('push_record_open', { p_delivery_id: DELIVERY });
+    expect(mockNavigate).toHaveBeenCalledWith('App', {
+      screen: 'Home',
+      params: { tab: 'new_on_livil', at: expect.any(Number) },
+    });
+  });
+
+  it('treats a tab it does not know as For you', () => {
+    handleNotificationData({ ...drop('x'), tab: 'something_else' });
+
+    expect(mockNavigate).toHaveBeenCalledWith('App', {
+      screen: 'Home',
+      params: { tab: 'for_you', at: expect.any(Number) },
+    });
+  });
+
+  it('is a settings row of its own, on by default', () => {
+    expect(NOTIFICATION_CHANNELS.find(c => c.id === 'new_music')?.name).toBe('New music');
+    expect(ALL_CATEGORIES_ON.new_music).toBe(true);
+  });
+});
+
+it('never finds a channel for a kind named after an object property', async () => {
+  await displayPushNotification({ ...mood('x'), kind: 'constructor', channelId: 'activity' });
+
+  expect(shown(0).android.channelId).toBe('activity');
+});
+
