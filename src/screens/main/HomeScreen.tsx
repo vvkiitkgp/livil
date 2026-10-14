@@ -447,7 +447,10 @@ export default function HomeScreen() {
   // the tabs instead of showing an error — the order the app and the backend land in is
   // not guaranteed (CLAUDE.md, Production compatibility).
   const newTabAvailable = !newOnLivil.unavailable;
-  const feed = tab === 'for_you' ? forYou : newOnLivil;
+  // Decided at render, not in an effect: the effect below only re-syncs `tab`, and until it
+  // runs, the frame would otherwise show the missing function's error.
+  const shownTab: HomeFeedTab = newTabAvailable ? tab : 'for_you';
+  const feed = shownTab === 'for_you' ? forYou : newOnLivil;
   // Read by callbacks created once (viewability, refresh) — always the feed on screen.
   const feedRef = useRef(feed);
   feedRef.current = feed;
@@ -456,10 +459,10 @@ export default function HomeScreen() {
   // screen goes first: a delta is measured against the first copy of the post found, and
   // that must be the copy the viewer is looking at.
   const bothFeedsPosts = useMemo(
-    () => (tab === 'for_you'
+    () => (shownTab === 'for_you'
       ? [...forYou.posts, ...newOnLivil.posts]
       : [...newOnLivil.posts, ...forYou.posts]),
-    [tab, forYou.posts, newOnLivil.posts],
+    [shownTab, forYou.posts, newOnLivil.posts],
   );
   const comments = useCommentsCountDeltas(bothFeedsPosts);
 
@@ -981,8 +984,10 @@ export default function HomeScreen() {
         ) : null}
 
         <View style={styles.feedHeadingBlock}>
+          {/* Without the tabs (backend not there yet), Home reads as it always has. */}
+          {newTabAvailable ? null : <Text style={styles.feedHeading}>For you</Text>}
           <Text style={styles.feedSubheading}>
-            {tab === 'for_you'
+            {shownTab === 'for_you'
               ? loadingInitial
                 ? 'Loading your personalized mix…'
                 : "Mutual friends first, people you star next, then what's trending."
@@ -1067,7 +1072,7 @@ export default function HomeScreen() {
                   <Text style={styles.emptyFeedHint}>Pull to refresh or tap Retry above.</Text>
                 </>
               ) : (
-                tab === 'for_you' ? (
+                shownTab === 'for_you' ? (
                   <>
                     <Text style={styles.emptyFeedTitle}>No posts yet</Text>
                     <Text style={styles.emptyFeedBody}>
@@ -1391,6 +1396,12 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 14,
     gap: 6,
+  },
+  feedHeading: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.4,
   },
   pinnedTabs: {
     position: 'absolute',
