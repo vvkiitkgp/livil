@@ -14,6 +14,12 @@
 -- person per 24 hours — a second friend's song the same day is left to the tab's dot.
 -- Each upload is announced once (push_sends.post_id, unique for this slot).
 --
+-- Bounded per UPLOADER too: only a post whose track that same person uploaded counts, and
+-- at most one announcement per uploader per 24 hours (push_sends.author_id). The posts
+-- insert policy checks only author_id, so anyone can write "upload" rows pointing at any
+-- visible track with any created_at; without these, one account writing fake uploads could
+-- fill every run's 50 places and no real upload would ever be announced (security review).
+--
 -- ── FRESH ON LIVIL (weekly, Sunday 19:00 IST) ───────────────────────────────
 -- push_run_originals() tells everyone with the switch on how many uploads from the last
 -- seven days they have not yet seen in their feed (post_impressions, as the repost digest).
@@ -50,13 +56,16 @@ alter table public.push_messages add constraint push_messages_pool_check
 -- Fill-ins per pool. The digest's three again for the roundup ({names} = artists); a new
 -- drop names one person and one song. Any other brace is a typo that would reach phones.
 alter table public.push_messages drop constraint if exists push_messages_fill_ins;
+-- Title and body each on their own, so a brace split across the two cannot pass.
 alter table public.push_messages add constraint push_messages_fill_ins check (
   case
     when pool in ('digest', 'originals')
-      then regexp_replace(title || body, '\{(names|songs|since)\}', '', 'g') !~ '[{}]'
+      then regexp_replace(title, '\{(names|songs|since)\}', '', 'g') !~ '[{}]'
+       and regexp_replace(body,  '\{(names|songs|since)\}', '', 'g') !~ '[{}]'
     when pool = 'new_drop'
-      then regexp_replace(title || body, '\{(name|song)\}', '', 'g') !~ '[{}]'
-    else (title || body) !~ '[{}]'
+      then regexp_replace(title, '\{(name|song)\}', '', 'g') !~ '[{}]'
+       and regexp_replace(body,  '\{(name|song)\}', '', 'g') !~ '[{}]'
+    else title !~ '[{}]' and body !~ '[{}]'
   end
 );
 
@@ -82,6 +91,11 @@ alter table public.push_sends
   add column if not exists post_id uuid references public.posts(id) on delete set null;
 create unique index if not exists push_sends_new_drop_once
   on public.push_sends (post_id) where slot = 'new_drop' and post_id is not null;
+-- …and whose upload it was, for the one-per-uploader-per-day bound (kept if the post goes).
+alter table public.push_sends
+  add column if not exists author_id uuid references public.profiles(id) on delete set null;
+create index if not exists push_sends_new_drop_author
+  on public.push_sends (author_id, created_at) where slot = 'new_drop';
 
 -- ── 3. The two switches ─────────────────────────────────────────────────────
 -- new_drop has no time of day (it follows uploads); send_at_ist is required by the table
@@ -92,23 +106,34 @@ insert into public.push_slots (slot, pool, send_at_ist) values
 on conflict (slot) do nothing;
 
 -- ── 4. Names and titles, made safe to show ──────────────────────────────────
--- Display name, else @username, with control and direction-override characters turned into
--- spaces (the rule push_digest_for uses) and runs of spaces collapsed to one.
+-- Display name, else @username: control, direction-override and other invisible characters
+-- become spaces, runs of spaces collapse, braces become parentheses (a name cannot pose as
+-- a fill-in), and at most 30 characters — so " dropped a new song" is always seen.
+create or replace function public.push_clean_text(p_text text)
+returns text
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select btrim(regexp_replace(regexp_replace(translate(coalesce(p_text, ''), '{}', '()'),
+    '[[:cntrl:]' || chr(1564) || chr(4447) || chr(4448) || chr(6158)
+      || chr(8203) || '-' || chr(8207) || chr(8232) || '-' || chr(8238)
+      || chr(8288) || '-' || chr(8297) || chr(12644) || chr(65279) || chr(65440) || ']+',
+    ' ', 'g'), ' {2,}', ' ', 'g'));
+$$;
+
 create or replace function public.push_person_name(p_display_name text, p_username text)
 returns text
 language sql
 immutable
 set search_path = public, pg_temp
 as $$
-  select coalesce(
-    nullif(btrim(regexp_replace(regexp_replace(p_display_name,
-      '[[:cntrl:]' || chr(8203) || '-' || chr(8207) || chr(8234) || '-' || chr(8238)
-        || chr(8294) || '-' || chr(8297) || ']+', ' ', 'g'), ' {2,}', ' ', 'g')), ''),
-    '@' || p_username);
+  select case when char_length(n) > 30 then left(n, 29) || '…' else n end
+    from (select coalesce(nullif(public.push_clean_text(p_display_name), ''),
+                          '@' || public.push_clean_text(p_username)) as n) s;
 $$;
 
--- A song title for a notification: the same characters removed, spaces collapsed, at most
--- 60 characters.
+-- A song title for a notification: cleaned the same way, at most 60 characters.
 create or replace function public.push_song_title(p_title text)
 returns text
 language sql
@@ -116,10 +141,7 @@ immutable
 set search_path = public, pg_temp
 as $$
   select case when char_length(t) > 60 then left(t, 59) || '…' else t end
-    from (select coalesce(nullif(btrim(regexp_replace(regexp_replace(coalesce(p_title, ''),
-            '[[:cntrl:]' || chr(8203) || '-' || chr(8207) || chr(8234) || '-' || chr(8238)
-              || chr(8294) || '-' || chr(8297) || ']+', ' ', 'g'), ' {2,}', ' ', 'g')), ''),
-            'a new song') as t) s;
+    from (select coalesce(nullif(public.push_clean_text(p_title), ''), 'a new song') as t) s;
 $$;
 
 create or replace function public.push_render_drop(p_template text, p_name text, p_song text)
@@ -157,6 +179,7 @@ as $$
              order by s.created_at desc
              limit 1) as clean
       from public.posts u
+      join public.tracks tr on tr.id = u.track_id and tr.uploader_id = u.author_id
      where u.kind = 'upload'
        and u.created_at >= p_since and u.created_at < p_until
        and u.author_id <> p_viewer
@@ -281,16 +304,23 @@ begin
   end if;
 
   for v_up in
-    select u.id, u.author_id, t.title, a.display_name, a.username, a.avatar_url
-      from public.posts u
-      join public.tracks t on t.id = u.track_id
-      join public.profiles a on a.id = u.author_id
-     where u.kind = 'upload'
-       and u.created_at < now() - interval '2 minutes'
-       and u.created_at > greatest(now() - interval '2 hours', v_slot.updated_at)
-       and not exists (select 1 from public.push_sends s
-                        where s.slot = 'new_drop' and s.post_id = u.id)
-     order by u.created_at
+    select * from (
+      select distinct on (u.author_id)
+             u.id, u.author_id, u.created_at, t.title, a.display_name, a.username, a.avatar_url
+        from public.posts u
+        join public.tracks t on t.id = u.track_id and t.uploader_id = u.author_id
+        join public.profiles a on a.id = u.author_id
+       where u.kind = 'upload'
+         and u.created_at < now() - interval '2 minutes'
+         and u.created_at > greatest(now() - interval '2 hours', v_slot.updated_at)
+         and not exists (select 1 from public.push_sends s
+                          where s.slot = 'new_drop' and s.post_id = u.id)
+         and not exists (select 1 from public.push_sends s
+                          where s.slot = 'new_drop' and s.author_id = u.author_id
+                            and s.created_at > now() - interval '24 hours')
+       order by u.author_id, u.created_at
+    ) one_each
+     order by one_each.created_at
      limit 50
   loop
     select * into v_msg
@@ -303,8 +333,8 @@ begin
     end if;
 
     v_send := null;  -- RETURNING INTO leaves it untouched on a conflict
-    insert into public.push_sends (slot, kind, message_id, post_id)
-    values ('new_drop', 'new_drop', v_msg.id, v_up.id)
+    insert into public.push_sends (slot, kind, message_id, post_id, author_id)
+    values ('new_drop', 'new_drop', v_msg.id, v_up.id, v_up.author_id)
     on conflict do nothing
     returning id into v_send;
     if v_send is null then
@@ -338,7 +368,7 @@ begin
          select 1 from public.push_deliveries d
            join public.push_sends s on s.id = d.send_id
           where d.recipient_id = r.id
-            and s.kind = 'new_drop'
+            and s.slot = 'new_drop'          -- an operator's preview does not count
             and d.created_at > now() - interval '24 hours');
 
     get diagnostics v_count = row_count;
@@ -448,6 +478,8 @@ revoke all on function public.push_run_originals() from public;
 revoke all on function public.push_run_originals() from anon, authenticated;
 revoke all on function public.push_originals_for(uuid, timestamptz, timestamptz) from public;
 revoke all on function public.push_originals_for(uuid, timestamptz, timestamptz) from anon, authenticated;
+revoke all on function public.push_clean_text(text) from public;
+revoke all on function public.push_clean_text(text) from anon, authenticated;
 revoke all on function public.push_person_name(text, text) from public;
 revoke all on function public.push_person_name(text, text) from anon, authenticated;
 revoke all on function public.push_song_title(text) from public;

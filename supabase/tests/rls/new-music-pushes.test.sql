@@ -9,7 +9,9 @@
 -- own, and a stranger's upload only once its copyright scan is clean (never a stranger's
 -- video); it names friends and starred artists and counts everyone else; (4) both slots do
 -- nothing while off; (5) the fill-ins are checked per pool; (6) no client can run them;
--- (7) "Preview on my phone" fills both in.
+-- (7) "Preview on my phone" fills both in, for operators only; (8) a fake "upload" — a post
+-- pointing at someone else's track, which the posts insert policy allows — is never
+-- announced or counted, and one uploader gets at most one announcement a day.
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/new-music-pushes.test.sql
 
@@ -137,6 +139,8 @@ insert into posts (id, author_id, kind, track_id, created_at) values
   ('d3000000-0000-0000-0000-000000000002', 'd1000000-0000-0000-0000-000000000001', 'upload', 'd2000000-0000-0000-0000-000000000002', now() - interval '50 minutes'),
   -- Under the two-minute grace: not yet.
   ('d3000000-0000-0000-0000-000000000003', 'd1000000-0000-0000-0000-000000000001', 'upload', 'd2000000-0000-0000-0000-000000000003', now() - interval '30 seconds'),
+  -- STRANGER's fake "upload" of ARTIST's track, backdated to jump the queue.
+  ('d3000000-0000-0000-0000-000000000008', 'd1000000-0000-0000-0000-000000000004', 'upload', 'd2000000-0000-0000-0000-000000000001', now() - interval '30 minutes'),
   -- DEV's week: clean, unscanned, a video, and a matched one.
   ('d3000000-0000-0000-0000-000000000004', 'd1000000-0000-0000-0000-000000000009', 'upload', 'd2000000-0000-0000-0000-000000000004', now() - interval '2 days'),
   ('d3000000-0000-0000-0000-000000000005', 'd1000000-0000-0000-0000-000000000009', 'upload', 'd2000000-0000-0000-0000-000000000005', now() - interval '2 days'),
@@ -155,8 +159,10 @@ update push_slots set enabled = true where slot in ('new_drop', 'originals_weekl
 update push_slots set updated_at = now() - interval '40 minutes' where slot = 'new_drop';
 
 -- ── 1/2. New drop ───────────────────────────────────────────────────────────
-select pg_temp.assert('1a  one upload is announced (old and too-fresh ones are not)',
+select pg_temp.assert('1a  one upload is announced (old, too-fresh and fake ones are not)',
   push_run_new_drops() = 1, true);
+select pg_temp.assert('8a  a post of someone else''s track is never announced',
+  not exists (select 1 from push_sends where post_id = 'd3000000-0000-0000-0000-000000000008'), true);
 select id as drop1 from push_sends where slot = 'new_drop' and post_id = 'd3000000-0000-0000-0000-000000000001' \gset
 
 select pg_temp.assert_eq('1b  it reaches the friend and the fan, nobody else',
@@ -181,13 +187,12 @@ select pg_temp.assert('1f  the post_id is unique for new drops',
   pg_temp.allows($q$insert into push_sends (slot, kind, post_id)
                     values ('new_drop', 'new_drop', 'd3000000-0000-0000-0000-000000000001')$q$), false);
 
--- The too-fresh upload, once past the grace, goes to the fan and the friend — no: both just
--- had a new drop, so the day's cap holds it back from both.
+-- The too-fresh upload, once past the grace: ARTIST was announced today already, so it is
+-- not — one uploader, one announcement a day, however many rows they write.
 update posts set created_at = now() - interval '5 minutes' where id = 'd3000000-0000-0000-0000-000000000003';
-select pg_temp.assert('1g  a second upload the same day is announced…',
-  push_run_new_drops() = 1, true);
-select pg_temp.assert('1h  …to nobody who already had a new drop today',
-  (select recipients from push_sends where post_id = 'd3000000-0000-0000-0000-000000000003') = 0, true);
+select pg_temp.assert('8b  a second upload by the same artist the same day is not announced',
+  push_run_new_drops() = 0
+    and not exists (select 1 from push_sends where post_id = 'd3000000-0000-0000-0000-000000000003'), true);
 
 -- ── 3. The roundup ──────────────────────────────────────────────────────────
 -- STRANGER knows nobody: DEV's clean audio counts; unscanned, video and matched do not;
@@ -196,6 +201,7 @@ select pg_temp.assert_eq('3a  a stranger''s upload counts only when its scan is 
   (select songs || ' / ' || names from push_originals_for('d1000000-0000-0000-0000-000000000004', now() - interval '7 days', now())),
   '1 / 1 Livil artist');
 -- FRIEND knows ARTIST: all three of ARTIST's count without a scan, plus DEV's clean one.
+-- (STRANGER's fake upload of ARTIST's track is not among them: not a real upload.)
 select pg_temp.assert_eq('3b  a friend''s uploads count without a scan, and the friend is named',
   (select songs || ' / ' || names from push_originals_for('d1000000-0000-0000-0000-000000000002', now() - interval '7 days', now())),
   '4 / Arjun Mehta and 1 other');
@@ -203,6 +209,12 @@ insert into post_impressions (user_id, post_id, seen_count, last_seen_at) values
   ('d1000000-0000-0000-0000-000000000004', 'd3000000-0000-0000-0000-000000000004', 1, now());
 select pg_temp.assert('3c  what the viewer already saw in the feed is not news',
   (select songs from push_originals_for('d1000000-0000-0000-0000-000000000004', now() - interval '7 days', now())) = 0, true);
+select pg_temp.assert_eq('3g  an artist the viewer stars is named too',
+  (select names from push_originals_for('d1000000-0000-0000-0000-000000000003', now() - interval '7 days', now())),
+  'Arjun Mehta and 1 other');
+select pg_temp.assert('3h  a friend who blocked the artist is never told about, or named, them',
+  (select coalesce(names, '') not like '%Arjun%'
+     from push_originals_for('d1000000-0000-0000-0000-000000000005', now() - interval '7 days', now())), true);
 select pg_temp.assert('3d  the uploader is never told about their own songs',
   (select songs from push_originals_for('d1000000-0000-0000-0000-000000000009', now() - interval '7 days', now())) = 0, true);
 
@@ -232,13 +244,16 @@ select pg_temp.assert('5d  mood lines still refuse braces',
                     values ('mood_evening', 9, 'hey {name}', 'x')$q$), false);
 
 -- ── 6. Scheduler-only ───────────────────────────────────────────────────────
-select pg_temp.assert('6a  no client can run a new-drop pass',
-  has_function_privilege('authenticated', 'public.push_run_new_drops()', 'execute')
-  or has_function_privilege('anon', 'public.push_run_new_drops()', 'execute'), false);
+-- Signed out only: CI's harness re-grants every function to `authenticated` before the
+-- tests run, so that half is proven where it matters — by the migration's own self-check,
+-- which raises on apply (in production, under Supabase's real default grants) if either
+-- client role can run these. `anon` inherits PUBLIC, so a missing PUBLIC revoke fails here.
+select pg_temp.assert('6a  signed out cannot run a new-drop pass',
+  has_function_privilege('anon', 'public.push_run_new_drops()', 'execute'), false);
 select pg_temp.assert('6b  …or the roundup',
-  has_function_privilege('authenticated', 'public.push_run_originals()', 'execute'), false);
+  has_function_privilege('anon', 'public.push_run_originals()', 'execute'), false);
 select pg_temp.assert('6c  …or read anyone''s roundup',
-  has_function_privilege('authenticated', 'public.push_originals_for(uuid, timestamptz, timestamptz)', 'execute'), false);
+  has_function_privilege('anon', 'public.push_originals_for(uuid, timestamptz, timestamptz)', 'execute'), false);
 
 -- ── 7. Preview on my phone ──────────────────────────────────────────────────
 select pg_temp.set_user('d1000000-0000-0000-0000-000000000010');
@@ -253,5 +268,16 @@ select pg_temp.assert('7b  a roundup preview is filled in',
 select pg_temp.assert('7c  …and both are recorded with their own kind',
   (select string_agg(kind, ',' order by kind) from push_sends where id in (:'t_drop', :'t_week'))
     = 'new_drop,originals_weekly', true);
+select pg_temp.set_user('d1000000-0000-0000-0000-000000000002');
+set local role authenticated;
+select pg_temp.assert('7d  someone who is not an operator gets no preview',
+  ops_push_test((select id from public.push_messages where pool = 'new_drop' and position = 1)) is null, true);
+reset role;
+
+-- ── 2d. Cleaning ────────────────────────────────────────────────────────────
+select pg_temp.assert_eq('2d  invisible characters and braces cannot shape a name',
+  push_person_name('Li' || chr(8232) || chr(65279) || 'vil {song}', 'x'), 'Li vil (song)');
+select pg_temp.assert_eq('2e  a long name is cut so the rest of the line is always seen',
+  push_person_name(repeat('A', 80), 'x'), repeat('A', 29) || '…');
 
 rollback;
