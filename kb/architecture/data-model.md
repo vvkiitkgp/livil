@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 148 migration(s) in `supabase/migrations/`.
+Reconstructed from 149 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -552,6 +552,7 @@ RLS enabled · defined in `20260803120000_notification_preferences.sql`
 | Column | Definition | Migration |
 |---|---|---|
 | `reminders` | `boolean not null default true` | `20261025000000_scheduled_pushes.sql` |
+| `new_music` | `boolean not null default true` | `20261027000000_new_music_pushes.sql` |
 
 ### `ops_copyright_reviews`
 
@@ -1067,9 +1068,18 @@ RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
 | `recipients` | `integer not null default 0` |
 | `created_at` | `timestamptz not null default now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `post_id` | `uuid references public.posts(id) on delete set null` | `20261027000000_new_music_pushes.sql` |
+| `author_id` | `uuid references public.profiles(id) on delete set null` | `20261027000000_new_music_pushes.sql` |
+
 **Indexes**
 
 - `push_sends_created_idx` `(created_at desc)`
+- **unique** `push_sends_new_drop_once` `(post_id) where slot = 'new_drop' and post_id is not null`
+- `push_sends_new_drop_author` `(author_id, created_at) where slot = 'new_drop'`
 
 ### `push_slots`
 

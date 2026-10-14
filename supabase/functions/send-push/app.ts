@@ -176,6 +176,8 @@ export type Grant = {
   post?: PostSubject;
   /** The threshold activity_record_play recorded (activity_milestone). */
   milestone?: number;
+  /** The recipient's post that crossed it — what the milestone push names (describePost). */
+  milestonePostId?: string;
   /** The holder's newest live badge key, or null when it could not be read (badge_granted). */
   badge?: string | null;
 };
@@ -608,7 +610,9 @@ async function authorizeMilestone(
     .map(p => ({ postId: p.post_id, at: typeof p.played_at === 'string' ? Date.parse(p.played_at) : NaN }));
   const hit = milestones.find(m =>
     myPlays.some(p => p.postId === m.postId && Math.abs(p.at - m.at) <= MILESTONE_PLAY_SKEW_MS));
-  return hit ? { milestone: hit.threshold } : null;
+  return hit
+    ? { milestone: hit.threshold, ...(typeof hit.postId === 'string' ? { milestonePostId: hit.postId } : {}) }
+    : null;
 }
 
 /**
@@ -910,10 +914,17 @@ export function composeContent(
         : 'reposted your track');
     }
 
-    case 'activity_milestone':
-      return out('Livil', grant.milestone
-        ? `Your track hit ${milestoneLabel(grant.milestone)} plays 🎉`
-        : 'Your track hit a new milestone 🎉');
+    case 'activity_milestone': {
+      // Named when the song could be read. The first threshold (5, activity_record_play) is
+      // the moment strangers start listening, and says so.
+      const title = grant.post?.title;
+      const song = title ? `“${truncateInline(title, SONG_TITLE_MAX)}”` : 'Your track';
+      if (!grant.milestone) return out('Livil', `${song} hit a new milestone 🎉`);
+      if (grant.milestone === FIRST_PLAY_MILESTONE) {
+        return out('Livil', `Your first listeners are in 🎉 ${song} hit ${grant.milestone} plays`);
+      }
+      return out('Livil', `${song} hit ${milestoneLabel(grant.milestone)} plays 🎉`);
+    }
 
     case 'badge_granted': {
       const label = grant.badge ? BADGE_LABELS[grant.badge] : undefined;
@@ -1060,6 +1071,9 @@ function checkRateLimit(actor: string): boolean {
 /** The kinds whose copy names the song. */
 const SONG_KINDS = new Set(['activity_like', 'activity_comment', 'activity_repost']);
 
+/** activity_record_play's lowest threshold (array[5,25,100,…]). */
+const FIRST_PLAY_MILESTONE = 5;
+
 /** How long a Spotify title lookup may hold a push before it goes out saying "your post". */
 const SPOTIFY_LOOKUP_MS = 1500;
 
@@ -1199,12 +1213,16 @@ export async function spotifyTitle(
 // 20261025000000); this file only delivers rows it queued. See flushScheduled.
 
 /** Where each scheduled kind opens, and the card it replaces (iOS apns-collapse-id). */
-const SCHEDULED_KINDS: Record<string, { route: string; collapseId: string }> = {
+const SCHEDULED_KINDS: Record<string, { route: string; collapseId: string; tab?: string }> = {
   // The "+ Track" chooser: repost from Spotify or upload. Present in every shipped build.
   mood_nudge: { route: 'AddToLivil', collapseId: 'mood' },
   // The main tabs (Home first). A tab cannot be named from a data-only push, which carries
   // strings only; the app lands on the tab navigator it already shows.
   repost_digest: { route: 'App', collapseId: 'digest' },
+  // New music (20261027000000): Home again, and `tab` asks a build with Home's New on Livil
+  // tab (ADR-0030) to open on it. Older builds ignore it and land on Home as they would.
+  new_drop: { route: 'App', collapseId: 'drop', tab: 'new_on_livil' },
+  originals_weekly: { route: 'App', collapseId: 'fresh', tab: 'new_on_livil' },
 };
 
 /**
@@ -1341,6 +1359,7 @@ export async function flushScheduled(
       // The delivery, not the send: what the app reports a tap with (push_record_open).
       pushId: row.id,
       collapseId: shape.collapseId,
+      ...(shape.tab ? { tab: shape.tab } : {}),
     };
     if (isAllowedAvatarUrl(row.avatar_url, supabaseUrl)) data.actorAvatarUrl = row.avatar_url;
 
@@ -1480,8 +1499,12 @@ export async function handler(req: Request): Promise<Response> {
 
   // 4b. The song the push names. After the token lookup, so a recipient with no phone costs
   // no lookups; best-effort throughout — any failure leaves the copy at "your post".
-  if (grant.activity?.postId && SONG_KINDS.has(kind)) {
-    const subject = await describePost(admin, grant.activity.postId, recipient, id =>
+  // A milestone names the recipient's own upload that crossed it (describePost reads only
+  // the recipient's own posts, as for likes).
+  const songPostId = (SONG_KINDS.has(kind) ? grant.activity?.postId : null)
+    ?? (kind === 'activity_milestone' ? grant.milestonePostId : null);
+  if (songPostId) {
+    const subject = await describePost(admin, songPostId, recipient, id =>
       spotifyTitle(url, authHeader, Deno.env.get('SUPABASE_ANON_KEY') ?? '', id));
     if (subject) grant.post = subject;
   }

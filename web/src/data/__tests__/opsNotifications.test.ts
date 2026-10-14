@@ -61,5 +61,21 @@ it('edits a line by id and adds one at the given place, both in push_messages', 
 
 it('turns the database’s fill-in refusal into words', async () => {
   mockEq.mockResolvedValueOnce({ error: { message: 'new row violates check constraint "push_messages_fill_ins"' } });
-  await expect(updateMessage('m-1', '{name}', 'x')).rejects.toThrow(/Only \{names\}, \{songs\} and \{since\}/);
+  await expect(updateMessage('m-1', '{name}', 'x')).rejects.toThrow(/fill-in this kind of notification does not have/);
+});
+
+it('checks each New music pool against its own fill-ins', () => {
+  // A new drop names one person and one song; the roundup counts like the digest.
+  expect(fillInProblem('new_drop', '{name} dropped a new song 🎧')).toBeNull();
+  expect(fillInProblem('new_drop', '“{song}” · be one of the first to listen')).toBeNull();
+  expect(fillInProblem('new_drop', '{names} dropped')).toMatch(/Only \{name\} and \{song\}/);
+  expect(fillInProblem('originals', '{songs} from {names} · have a listen')).toBeNull();
+  expect(fillInProblem('originals', '{name} uploaded')).toMatch(/Only \{names\}, \{songs\} and \{since\}/);
+});
+
+it('previews the New music lines the way a person reads them', () => {
+  expect(previewText('new_drop', '{name} dropped a new song 🎧')).toBe('Arjun dropped a new song 🎧');
+  expect(previewText('originals', '{songs} from {names} · have a listen')).toBe(
+    '5 songs from Arjun, Kavya and 3 others · have a listen',
+  );
 });
