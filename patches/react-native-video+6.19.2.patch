@@ -1494,6 +1494,27 @@ index 4760ea5..83f7816 100644
                  COMMAND.TOGGLE_PLAY -> handleCommand(if (session.player.isPlaying) COMMAND.PAUSE else COMMAND.PLAY, session)
                  COMMAND.PLAY -> session.player.play()
                  COMMAND.PAUSE -> session.player.pause()
+diff --git a/node_modules/react-native-video/ios/Video/AudioSessionManager.swift b/node_modules/react-native-video/ios/Video/AudioSessionManager.swift
+index 93a8a9f..ae00ec3 100644
+--- a/node_modules/react-native-video/ios/Video/AudioSessionManager.swift
++++ b/node_modules/react-native-video/ios/Video/AudioSessionManager.swift
+@@ -168,7 +168,15 @@ class AudioSessionManager {
+         }
+ 
+         if !anyPlayerPlaying {
+-            options.insert(.mixWithOthers)
++            // Livil patch: a paused player that owns the lock-screen controls stays
++            // NON-mixable. iOS never makes an app with .mixWithOthers the Now Playing
++            // app, so going mixable on every pause handed the lock screen back to the
++            // previous audio app (Spotify) and left no way to resume Livil from it.
++            // Music apps (Apple Music, Spotify) keep their card while paused; another
++            // app that starts playing still interrupts us as usual.
++            if !anyPlayerShowNotificationControls {
++                options.insert(.mixWithOthers)
++            }
+         } else if canAllowMixing {
+             let shouldEnableMixing = videoViews.allObjects.contains { view in
+                 return view._mixWithOthers == "mix"
 diff --git a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift b/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
 index 7927c37..86ad04a 100644
 --- a/node_modules/react-native-video/ios/Video/NowPlayingInfoCenterManager.swift
