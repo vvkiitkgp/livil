@@ -212,6 +212,8 @@ export default function SearchScreen() {
   const spotify = useSpotifyAvailability();
   const openSpotify = useOpenInSpotify('search');
   const [spotifyResults, setSpotifyResults] = useState<SpotifyTrack[]>([]);
+  /** The query `spotifyResults` answer — kept rows outlive the query that fetched them. */
+  const [spotifyResultsQuery, setSpotifyResultsQuery] = useState('');
   /**
    * A Spotify search for the CURRENT query is waiting on its debounce or its answer. It
    * starts later than the Livil one (450ms vs 200ms), so without this the screen said
@@ -407,10 +409,13 @@ export default function SearchScreen() {
   // the section and fetch the same results again.
   const spotifyQuery = query.trim();
   useEffect(() => {
-    // Cleared on EVERY change, not just when empty: the previous query's Spotify rows must
-    // not sit under this query's Livil results while the new Spotify call is in flight.
-    setSpotifyResults([]);
+    // Kept while the next Spotify call is in flight, like the Livil rows: clearing them on
+    // every keystroke unmounted the list when Spotify was all there was to show. Whether
+    // stale ones are SHOWN is decided below (`visibleSpotify`). Cleared only when this
+    // query will not search Spotify at all.
     if (!spotify.search || spotifyQuery.length < 2 || spotifyQuery.startsWith('#')) {
+      setSpotifyResults([]);
+      setSpotifyResultsQuery('');
       setSpotifyPending(false);
       return;
     }
@@ -420,6 +425,7 @@ export default function SearchScreen() {
       const found = await searchSpotify(spotifyQuery, SPOTIFY_RESULTS).catch(() => [] as SpotifyTrack[]);
       if (cancelled) { return; }
       setSpotifyResults(found);
+      setSpotifyResultsQuery(spotifyQuery);
       setSpotifyPending(false);
     }, SPOTIFY_DEBOUNCE_MS);
     return () => {
@@ -660,16 +666,23 @@ export default function SearchScreen() {
 
   const trimmedQuery = query.trim();
   const searching = loading || spotifyPending;
-  const hasRows = results.length > 0 || spotifyResults.length > 0;
+  /**
+   * Spotify rows that answer a different query than the Livil rows are hidden — the previous
+   * query's songs must not sit under this query's results — EXCEPT when they are all there
+   * is: then they hold the list on screen until their replacement lands.
+   */
+  const visibleSpotify =
+    spotifyResultsQuery === resultsQuery || results.length === 0 ? spotifyResults : [];
+  const hasRows = results.length > 0 || visibleSpotify.length > 0;
 
   // An ELEMENT (not a function), for the same remount reason as the list header below.
-  const spotifySection = spotifyResults.length > 0 ? (
+  const spotifySection = visibleSpotify.length > 0 ? (
     <View>
       <View style={[styles.sectionHeading, styles.spotifyHeading]}>
         <Text style={[styles.recentHeading, styles.spotifyHeadingText]}>On Spotify</Text>
         <SpotifyLogo size="xs" />
       </View>
-      {spotifyResults.map(track => (
+      {visibleSpotify.map(track => (
         <Pressable
           key={track.id}
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -833,11 +846,11 @@ export default function SearchScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         />
-      ) : results.length === 0 && spotifyResults.length === 0 && trimmedQuery.length > 0 ? (
+      ) : !hasRows && trimmedQuery.length > 0 ? (
         <View style={styles.topState}>
           <Text style={styles.emptyText}>Nothing matches "{trimmedQuery}".</Text>
         </View>
-      ) : results.length === 0 && spotifyResults.length === 0 ? (
+      ) : !hasRows ? (
         <View style={styles.centerState}>
           {trimmedQuery.length === 0 ? (
             <>
@@ -961,9 +974,10 @@ const styles = StyleSheet.create({
 
   duration: { color: COLORS.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
 
-  /** Owns the gap to the field's right edge — FormInput zeroes the input's own padding. */
   trailingRow: { flexDirection: 'row', alignItems: 'center' },
+  /** Fixed size whether or not it spins, so the field's text never shifts. */
   refreshing: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  /** Owns the gap to the field's right edge — FormInput zeroes the input's own padding. */
   clearButton: { paddingHorizontal: 14, paddingVertical: 12 },
 
   // Inside the list now, whose content already has 12 of horizontal padding: 8 more keeps

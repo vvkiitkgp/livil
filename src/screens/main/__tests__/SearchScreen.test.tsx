@@ -246,4 +246,49 @@ describe('SearchScreen while a search is loading', () => {
     expect(texts(tree)).toContain('Midday Sun');
     expect(texts(tree)).not.toContain('Mirror Mirror');
   });
+
+  it('keeps Spotify-only rows mounted while the next query loads', async () => {
+    // Spotify rows used to be cleared on every keystroke, so when they were all there was,
+    // the list unmounted for the spinner — the same bug, through the other section.
+    mockSearchPosts.mockResolvedValue([]);
+    mockSearchSpotify.mockResolvedValueOnce([spotifyTrack('s1', 'Blinding Lights')]);
+    const tree = await mount();
+    type(tree, 'blinding');
+    await advance(600);
+    expect(texts(tree)).toContain('Blinding Lights');
+    const list = tree.root.findByType(FlatList);
+
+    const next = deferred<unknown[]>();
+    mockSearchSpotify.mockReturnValueOnce(next.promise);
+    type(tree, 'blinding l');
+    await advance(600); // Livil answered (empty), Spotify's request out and unanswered
+    expect(tree.root.findByType(FlatList).instance).toBe(list.instance);
+    expect(texts(tree)).toContain('Blinding Lights');
+    expect(spinners(tree)).toEqual({ full: 0, inField: 1 });
+
+    await act(async () => { next.resolve([spotifyTrack('s2', 'Blinding Lights (Remix)')]); });
+    expect(texts(tree)).toContain('Blinding Lights (Remix)');
+    expect(texts(tree)).not.toContain('Blinding Lights');
+  });
+
+  it("never shows the previous query's Spotify rows under the new query's Livil rows", async () => {
+    mockSearchPosts.mockResolvedValueOnce([post('p1', 'Midnight Drive')]);
+    mockSearchSpotify.mockResolvedValueOnce([spotifyTrack('s1', 'Mid Air')]);
+    const tree = await mount();
+    type(tree, 'mid');
+    await advance(600);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Midnight Drive', 'Mid Air']));
+
+    const spotifyNext = deferred<unknown[]>();
+    mockSearchPosts.mockResolvedValueOnce([post('p2', 'Midnight Train')]);
+    mockSearchSpotify.mockReturnValueOnce(spotifyNext.promise);
+    type(tree, 'midn');
+    await advance(300); // Livil answered 'midn'; Spotify still on its debounce
+    expect(texts(tree)).toContain('Midnight Train');
+    expect(texts(tree)).not.toContain('Mid Air');
+
+    await advance(300);
+    await act(async () => { spotifyNext.resolve([spotifyTrack('s2', 'Midnight City')]); });
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Midnight Train', 'Midnight City']));
+  });
 });
