@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-332 TypeScript file(s) under `src/`, 77,393 lines.
+333 TypeScript file(s) under `src/`, 77,594 lines.
 
 ## Size hotspots
 
@@ -44,8 +44,8 @@ reading alone (Constitution P28).
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/components/guide/cardsPeople.tsx` | 640 |
 | `src/screens/main/LibraryScreen.tsx` | 632 |
+| `src/components/GlobalAudioPlayer.tsx` | 624 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 607 |
-| `src/components/GlobalAudioPlayer.tsx` | 606 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 
 > 21 file(s) over the threshold against **14 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-125 file(s), 27,482 lines.
+126 file(s), 27,680 lines.
 
 | File | Lines |
 |---|---:|
@@ -170,7 +170,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 743 |
 | `src/components/guide/cardsPeople.tsx` | 640 |
-| `src/components/GlobalAudioPlayer.tsx` | 606 |
+| `src/components/GlobalAudioPlayer.tsx` | 624 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/cardsFeed.tsx` | 501 |
 | `src/components/MediaPlayer.tsx` | 454 |
@@ -212,6 +212,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/FriendPickerStrip.tsx` | 184 |
+| `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ChatReplySnippet.tsx` | 179 |
 | `src/components/NotificationPermissionModal.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
@@ -370,11 +371,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-13 file(s), 3,160 lines.
+13 file(s), 3,163 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 1024 |
+| `src/contexts/PlaybackContext.tsx` | 1027 |
 | `src/contexts/JamRealtimeContext.tsx` | 487 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/JamSuggestionsContext.tsx` | 200 |
