@@ -309,7 +309,17 @@ export default function UploadScreen() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => { setPreviewPaused(true); setPreviewDurationSec(null); setPreviewPositionSec(0); }, [previewMedia]);
+  // Reset the preview only when the SONG changes. previewMedia also changes with the cover
+  // art, but picking a cover does not reload the player — so a reset there wiped the length
+  // the player had already reported, and it was never reported again: every upload that
+  // picked the song before the cover was saved without a length (duration_seconds null,
+  // which only the uploader's own first play backfills). Keyed on the media file alone.
+  const previewMediaUri = mode === 'audio' ? audio?.uri : video?.uri;
+  useEffect(() => {
+    setPreviewPaused(true);
+    setPreviewDurationSec(null);
+    setPreviewPositionSec(0);
+  }, [mode, previewMediaUri]);
 
   // Hide the FloatingPlayer for the length of this screen, and stop whatever it
   // was controlling on the way in. Hiding it alone would leave music playing with
