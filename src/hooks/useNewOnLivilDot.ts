@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,48 +20,29 @@ async function currentUserId(): Promise<string | null> {
 }
 
 /**
- * The dot on Home's New on Livil tab: lit when someone uploaded since the viewer last saw the
- * tab. Re-checked when Home gains focus and when the app returns to the foreground.
- *
- * While the tab itself is open, a newer upload is not a dot — it is a list that is out of
- * date — so `onNewWhileOpen` refreshes it, and only then does the marker move.
+ * The dot on Home's New on Livil pill: lit when there is an upload newer than the viewer's
+ * New on Livil list — the list reloads only on a pull-to-refresh (owner decision), so the
+ * marker moves only when it does (`markSeen`, called by Home on a pull or a first load),
+ * never just because the tab was opened. Re-checked when Home gains focus and when the app
+ * returns to the foreground. The pill itself hides the dot while its tab is open.
  *
  * Every failure leaves the dot as it was: a missing dot is the safe mistake.
  */
-export function useNewOnLivilDot({
-  isOnTab,
-  onNewWhileOpen,
-}: {
-  isOnTab: () => boolean;
-  onNewWhileOpen: () => void;
-}) {
+export function useNewOnLivilDot() {
   const [newDot, setNewDot] = useState(false);
-  const newDotRef = useRef(false);
-  newDotRef.current = newDot;
-  const newestRef = useRef<string | null>(null);
-  const optsRef = useRef({ isOnTab, onNewWhileOpen });
-  optsRef.current = { isOnTab, onNewWhileOpen };
 
   const refresh = useCallback(async () => {
     try {
       const uid = await currentUserId();
       if (!uid) { return; }
       const newest = await fetchNewestUploadAt(uid);
-      newestRef.current = newest;
       if (!newest) {
         setNewDot(false);
         return;
       }
       let seenAt: string | null = null;
       try { seenAt = await AsyncStorage.getItem(newOnLivilSeenKey(uid)); } catch { /* treat as never */ }
-      const isNew = Date.parse(newest) > (seenAt ? Date.parse(seenAt) : Date.now() - FIRST_LOOK_MS);
-      if (optsRef.current.isOnTab()) {
-        if (isNew) { optsRef.current.onNewWhileOpen(); }
-        setNewDot(false);
-        try { await AsyncStorage.setItem(newOnLivilSeenKey(uid), newest); } catch { /* ignore */ }
-        return;
-      }
-      setNewDot(isNew);
+      setNewDot(Date.parse(newest) > (seenAt ? Date.parse(seenAt) : Date.now() - FIRST_LOOK_MS));
     } catch {
       // ignore — the dot stays as it is
     }
@@ -73,9 +54,9 @@ export function useNewOnLivilDot({
       try {
         const uid = await currentUserId();
         if (!uid) { return; }
-        const newest = newestRef.current ?? await fetchNewestUploadAt(uid);
+        // Asked afresh: the list being (re)loaded now includes everything up to now.
+        const newest = await fetchNewestUploadAt(uid);
         if (!newest) { return; }
-        newestRef.current = newest;
         await AsyncStorage.setItem(newOnLivilSeenKey(uid), newest);
       } catch {
         // ignore — at worst the dot shows once more
@@ -95,5 +76,5 @@ export function useNewOnLivilDot({
     return () => sub.remove();
   }, [refresh]);
 
-  return { newDot, newDotRef, refresh, markSeen };
+  return { newDot, refresh, markSeen };
 }

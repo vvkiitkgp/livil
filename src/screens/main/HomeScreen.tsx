@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -450,6 +450,12 @@ export default function HomeScreen() {
   // Decided at render, not in an effect: the effect below only re-syncs `tab`, and until it
   // runs, the frame would otherwise show the missing function's error.
   const shownTab: HomeFeedTab = newTabAvailable ? tab : 'for_you';
+  // The pill the viewer tapped, lit at once. Switching the list itself means mounting a
+  // page of post cards, so it runs as a transition behind it (selectTab); until it lands,
+  // the list shows skeletons rather than the feed being left (`switching`).
+  const [pillTab, setPillTab] = useState<HomeFeedTab>('for_you');
+  const [switching, setSwitching] = useState(false);
+  const shownPill: HomeFeedTab = newTabAvailable ? pillTab : 'for_you';
   const feed = shownTab === 'for_you' ? forYou : newOnLivil;
   // Read by callbacks created once (viewability, refresh) — always the feed on screen.
   const feedRef = useRef(feed);
@@ -469,11 +475,9 @@ export default function HomeScreen() {
   const listRef = useRef<FlatList<FeedListItem>>(null);
 
   // ── The New on Livil dot ────────────────────────────────────────────────────
-  const newOnLivilRefresh = newOnLivil.appendFeedPage;
-  const { newDot, newDotRef, refresh: refreshNewDot, markSeen: markNewOnLivilSeen } = useNewOnLivilDot({
-    isOnTab: () => tabRef.current === 'new_on_livil',
-    onNewWhileOpen: () => { void newOnLivilRefresh('refresh'); },
-  });
+  // Means "an upload newer than your New on Livil list": the list only reloads when the
+  // viewer pulls to refresh (owner decision), so the dot stays until they do.
+  const { newDot, refresh: refreshNewDot, markSeen: markNewOnLivilSeen } = useNewOnLivilDot();
 
   // ── Switching tabs ──────────────────────────────────────────────────────────
   const forYouLoad = forYou.appendFeedPage;
@@ -483,8 +487,14 @@ export default function HomeScreen() {
   // Where the list should sit once the new tab's rows are on screen: kept pinned if it
   // was pinned, so switching does not throw the viewer back up to the stories.
   const pendingSwitchOffsetRef = useRef<number | null>(null);
+  // Switching shows each feed exactly as it was left; only pull-to-refresh reloads it
+  // (owner decision). `fresh` is for a push tap only: the song it announced must be there.
   const selectTab = useCallback((next: HomeFeedTab, opts?: { fresh?: boolean }) => {
-    if (next === 'new_on_livil') { markNewOnLivilSeen(); }
+    const [load, started] = next === 'for_you'
+      ? [forYouLoad, forYouStarted]
+      : [newOnLivilLoad, newOnLivilStarted];
+    const reload = !started.current || Boolean(opts?.fresh);
+    if (reload && next === 'new_on_livil') { markNewOnLivilSeen(); }
     if (next !== tabRef.current) {
       haptics.select();
       // The cards being timed are about to leave the screen. Not a new pass: what has
@@ -497,19 +507,20 @@ export default function HomeScreen() {
           ? keepPinnedOffset(tabY, pinTop(topBarVisible.current, TOP_BAR_H))
           : null;
       tabRef.current = next;
-      setTab(next);
+      // Urgent: the pill — and skeletons, but only when the feed being opened has nothing
+      // to show yet. A loaded feed comes back exactly as it was.
+      setPillTab(next);
+      setSwitching(reload);
+      // Behind it: the list itself.
+      startTransition(() => {
+        setTab(next);
+        setSwitching(false);
+      });
     }
-    const [load, started] = next === 'for_you'
-      ? [forYouLoad, forYouStarted]
-      : [newOnLivilLoad, newOnLivilStarted];
-    if (!started.current) {
+    if (reload) {
       void load('initial');
-    } else if (opts?.fresh || (next === 'new_on_livil' && newDotRef.current)) {
-      // Someone uploaded since this tab's pass began: the pass's frozen origin would
-      // leave their song out, so start a new one.
-      void load('refresh');
     }
-  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted, newDotRef]);
+  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted]);
 
   useEffect(() => {
     const offset = pendingSwitchOffsetRef.current;
@@ -527,6 +538,8 @@ export default function HomeScreen() {
     if (!newTabAvailable && tabRef.current === 'new_on_livil') {
       tabRef.current = 'for_you';
       setTab('for_you');
+      setPillTab('for_you');
+      setSwitching(false);
     }
   }, [newTabAvailable]);
 
@@ -906,20 +919,21 @@ export default function HomeScreen() {
           }
         })(),
         feedRef.current.appendFeedPage('refresh'),
-        refreshNewDot(),
+        // Pulling New on Livil is what brings the newest uploads in: that clears the dot.
+        tabRef.current === 'new_on_livil' ? Promise.resolve(markNewOnLivilSeen()) : refreshNewDot(),
       ]);
     } finally {
       setRefreshing(false);
       showTopBar();
     }
-  }, [playback, hideTopBar, showTopBar, setStories, refreshNewDot]);
+  }, [playback, hideTopBar, showTopBar, setStories, refreshNewDot, markNewOnLivilSeen]);
 
   const handleEndReached = useCallback(() => {
     void feedRef.current.appendFeedPage('end');
   }, []);
 
   const feedRows = useMemo((): FeedListItem[] => {
-    if (loadingInitial) {
+    if (loadingInitial || switching) {
       return Array.from({ length: 4 }, (_, i) => ({
         kind: 'skeleton' as const,
         id: `sk-${i}`,
@@ -928,7 +942,7 @@ export default function HomeScreen() {
     return posts
       .filter(post => !deletedIds.has(post.id))
       .map(post => ({ kind: 'post' as const, post }));
-  }, [loadingInitial, posts, deletedIds]);
+  }, [loadingInitial, switching, posts, deletedIds]);
 
   const renderFeedItem = useCallback(
     ({ item }: { item: FeedListItem }) => {
@@ -982,7 +996,7 @@ export default function HomeScreen() {
             // where it would show through as a ghost of the same pills.
             style={pinned ? styles.inListTabsHidden : undefined}
           >
-            <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
+            <HomeFeedTabs active={shownPill} onSelect={selectTab} showNewDot={newDot} />
           </View>
         ) : null}
 
@@ -990,11 +1004,11 @@ export default function HomeScreen() {
           {/* Without the tabs (backend not there yet), Home reads as it always has. */}
           {newTabAvailable ? null : <Text style={styles.feedHeading}>For you</Text>}
           <Text style={styles.feedSubheading}>
-            {shownTab === 'for_you'
-              ? loadingInitial
+            {shownPill === 'for_you'
+              ? loadingInitial || switching
                 ? 'Loading your personalized mix…'
                 : "Mutual friends first, people you star next, then what's trending."
-              : loadingInitial
+              : loadingInitial || switching
                 ? 'Loading new songs…'
                 : "Only songs uploaded to Livil. Friends first, people you star next, then what's trending."}
           </Text>
@@ -1019,7 +1033,7 @@ export default function HomeScreen() {
     // the feed that is an unverifiable change. Left as-is pending coverage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount,
-      tab, selectTab, newDot, updatePinned, newTabAvailable, pinned],
+      tab, selectTab, newDot, updatePinned, newTabAvailable, pinned, shownPill, switching],
   );
 
   const footer = useMemo(() => {
@@ -1178,7 +1192,7 @@ export default function HomeScreen() {
             { top: insets.top + TOP_BAR_H, transform: [{ translateY: pinnedTabsY }] },
           ]}
         >
-          <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
+          <HomeFeedTabs active={shownPill} onSelect={selectTab} showNewDot={newDot} />
         </Animated.View>
       ) : null}
 

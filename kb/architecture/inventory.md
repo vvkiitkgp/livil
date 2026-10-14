@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-343 TypeScript file(s) under `src/`, 78,569 lines.
+343 TypeScript file(s) under `src/`, 78,564 lines.
 
 ## Size hotspots
 
@@ -30,7 +30,7 @@ reading alone (Constitution P28).
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
-| `src/screens/main/HomeScreen.tsx` | 1472 |
+| `src/screens/main/HomeScreen.tsx` | 1486 |
 | `src/components/PostCard.tsx` | 1413 |
 | `src/screens/main/UserProfileScreen.tsx` | 1310 |
 | `src/screens/main/ProfileScreen.tsx` | 1281 |
@@ -105,14 +105,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-48 file(s), 25,561 lines.
+48 file(s), 25,575 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
-| `src/screens/main/HomeScreen.tsx` | 1472 |
+| `src/screens/main/HomeScreen.tsx` | 1486 |
 | `src/screens/main/UserProfileScreen.tsx` | 1310 |
 | `src/screens/main/ProfileScreen.tsx` | 1281 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -395,17 +395,17 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-18 file(s), 1,322 lines.
+18 file(s), 1,303 lines.
 
 | File | Lines |
 |---|---:|
 | `src/hooks/useHomeFeed.ts` | 173 |
 | `src/hooks/__tests__/useHomeFeed.test.tsx` | 115 |
-| `src/hooks/useNewOnLivilDot.ts` | 100 |
 | `src/hooks/__tests__/useRunAfterDismiss.test.tsx` | 98 |
 | `src/hooks/useListeningNow.ts` | 93 |
 | `src/hooks/useRecentSearches.ts` | 85 |
 | `src/hooks/useGroupFaces.ts` | 83 |
+| `src/hooks/useNewOnLivilDot.ts` | 81 |
 | `src/hooks/usePlayFullScreen.ts` | 80 |
 | `src/hooks/__tests__/useNewOnLivilDot.test.tsx` | 78 |
 | `src/hooks/useRecentSearchOpens.ts` | 60 |
