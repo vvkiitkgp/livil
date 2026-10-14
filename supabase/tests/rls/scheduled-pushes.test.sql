@@ -7,8 +7,8 @@
 --      the ops readers and the test send answer nobody else.
 --   2. WHAT A DIGEST SAYS — exactly the reposts the recipient may see (the posts policy's
 --      predicate: public reposters, friends' friends-only reposts, never a block, never
---      their own), named friends first, then people they star, then everyone else; and
---      only reposts since the previous digest.
+--      their own) and has not already seen in the feed, named friends first, then people
+--      they star, then everyone else; and only reposts since the previous digest.
 --   3. WHO GETS ONE — a phone, the right switch on, something to say; mood nudges skip
 --      anyone who posted today; a slot that is off sends nothing.
 --   4. THE LOOP — rotation, the hand-off to send-push, retry, expiry, and came_back.
@@ -157,6 +157,19 @@ select pg_temp.assert_eq('2g  fill-ins: names, songs (plural), since',
   'Bea and Cyd|reposted 4 songs today');
 select pg_temp.assert_eq('2h  one song is singular',
   push_render('reposted {songs}', 'Bea', 1, ''), 'reposted 1 song');
+
+-- A repost Ana already scrolled past in her feed is not news: Cyd's drops out.
+insert into post_impressions (user_id, post_id)
+select 'c7000000-0000-0000-0000-000000000002', id from posts
+ where author_id = 'c7000000-0000-0000-0000-000000000004';
+select pg_temp.assert_eq('2i  reposts already seen in the feed are not counted or named',
+  (select songs || ' / ' || names from push_digest_for('c7000000-0000-0000-0000-000000000002',
+     now() - interval '1 hour', now())),
+  '3 / Bea and @sp_eli');
+select pg_temp.assert_count('2j  … and only for the person who saw them (Op still counts Cyd)',
+  (select songs from push_digest_for('c7000000-0000-0000-0000-000000000001',
+     now() - interval '1 hour', now())), 4);
+delete from post_impressions where user_id = 'c7000000-0000-0000-0000-000000000002';
 
 -- ── 3. Who gets one ─────────────────────────────────────────────────────────
 select pg_temp.assert('3a  a slot that is off sends nothing',

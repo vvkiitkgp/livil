@@ -6,7 +6,8 @@
 --
 --   08:00 IST  mood_morning    "Ssup, music buddy? 👀" — skipped if you posted today
 --   11:00 IST  digest_morning  "Arjun, Kavya and 10 others" / "reposted 18 songs since
---                              last night" — skipped when nobody you can see reposted
+--                              last night" — counts only reposts you have not already
+--                              seen in your feed; skipped when there are none
 --   18:00 IST  digest_evening  same, counting reposts since the 11:00 digest
 --   20:00 IST  mood_evening    "Hey, are you okay? 🫶" — skipped if you posted today
 --
@@ -246,8 +247,11 @@ $$;
 -- What one person's digest says: the reposts in [p_since, p_until) that THEY may see,
 -- under the same predicate as posts_select_authenticated (20261019000000) — not blocked
 -- either way, and the reposter shows reposts to everyone OR is their friend — minus their
--- own. Named in order: friends, then people they star, then everyone else; most recent
--- first within each. A name is the display name, else @username, like the Activity rows.
+-- own, and minus any they have ALREADY SEEN: a post_impressions row means the card was on
+-- their screen in the Home feed (every shipped build records it), so telling them about
+-- it again would be news they already have. Named in order: friends, then people they
+-- star, then everyone else; most recent first within each. A name is the display name,
+-- else @username, like the Activity rows.
 create or replace function public.push_digest_for(
   p_viewer uuid, p_since timestamptz, p_until timestamptz
 )
@@ -265,6 +269,8 @@ as $$
        and r.author_id <> p_viewer
        and not public.is_blocked_between(p_viewer, r.author_id)
        and (public.reposts_public(r.author_id) or public.are_friends(p_viewer, r.author_id))
+       and not exists (select 1 from public.post_impressions pi
+                        where pi.user_id = p_viewer and pi.post_id = r.id)
   ),
   who as (
     select s.author_id,

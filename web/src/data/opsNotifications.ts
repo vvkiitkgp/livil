@@ -21,7 +21,7 @@ export const POOLS: { key: PushPool; label: string; hint: string }[] = [
   {
     key: 'digest',
     label: 'Repost digest · 11 AM + 6 PM',
-    hint: 'Sent only when someone the person can see reposted since the last digest.',
+    hint: 'Sent only when there are new reposts the person can see and has not already seen in their feed.',
   },
 ];
 

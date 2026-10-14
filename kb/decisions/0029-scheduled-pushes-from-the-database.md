@@ -46,7 +46,10 @@ existing way; something on the server has to wake up, decide who gets what, and 
 2. **Digest visibility is the posts policy's own predicate.** `push_digest_for(viewer, …)`
    counts reposts under exactly `posts_select_authenticated`'s rule (not blocked either way;
    reposter public or a friend; never the viewer's own), so a friends-only repost is never
-   counted or named to a stranger. Names: friends, then people the viewer stars, then others.
+   counted or named to a stranger — and skips any repost the viewer already has a
+   `post_impressions` row for (it was on their screen in the Home feed; every shipped build
+   records that), so a digest is only news. Names: friends, then people the viewer stars,
+   then others.
 3. **Wording is data.** `push_messages` (ops-only by RLS, no DELETE — lines are switched off,
    so stats keep their meaning) holds every line; digests may use `{names}`, `{songs}`,
    `{since}` and nothing else (CHECK constraint, mirrored in the ops form). `push_slots`

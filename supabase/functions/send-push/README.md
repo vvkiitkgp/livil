@@ -94,7 +94,8 @@ review.
      iOS ignores it (an image would need a Notification Service Extension).
 4b. **Scheduled pushes** (mood nudges, repost digests — migration `20261025000000`): the
    database decides who gets what and writes the final text (`push_run_slot`, under the
-   posts policy's visibility predicate), then hands the send to this function with
+   posts policy's visibility predicate, skipping reposts already seen in the feed), then
+   hands the send to this function with
    `{"scheduledSendId": …}` and the public anon key. That body is recognised BEFORE the
    user is resolved and handled by `flushScheduled`, which only delivers rows the database
    queued: it claims `queued → sending` in one UPDATE (a repeated hand-off sends nothing
