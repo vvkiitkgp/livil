@@ -15,7 +15,9 @@
 --                      spent on reposts the uploads tab then throws away) and once where
 --                      every candidate is joined to its post. With p_uploads_only = false
 --                      each of those lines is `true`, so For you is unchanged row for row
---                      (pinned by supabase/tests/rls/new-on-livil.test.sql).
+--                      (verified on a seeded before/after replay — 150 rows, three viewers,
+--                      no differences — and by the feed-* suites, which now run against
+--                      the wrapper).
 --   fetch_home_feed    same signature, return shape, cursor and grants as before; its body
 --                      is now `select … from home_feed_ranked(false, …)`. Every shipped app
 --                      calls it exactly as before and gets the same rows.

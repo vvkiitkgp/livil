@@ -94,6 +94,15 @@ it('says why when the first load fails', async () => {
   expect(feed.current.feedError).toMatch(/fetch_new_on_livil/);
   expect(feed.current.loadingInitial).toBe(false);
   expect(feed.current.posts).toEqual([]);
+  // A missing function means the backend is not there yet: Home hides the tab.
+  expect(feed.current.unavailable).toBe(true);
+});
+
+it('does not call an ordinary failure "unavailable"', async () => {
+  mockFetch.mockRejectedValueOnce(new Error('Network request failed'));
+  const feed = mount('new_on_livil');
+  await act(async () => { await feed.current.appendFeedPage('initial'); });
+  expect(feed.current.unavailable).toBe(false);
 });
 
 it('remembers whether it has been opened (New on Livil loads on first visit)', async () => {

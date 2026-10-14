@@ -43,6 +43,9 @@ export function useHomeFeed(tab: HomeFeedTab, options: Options) {
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [feedError, setFeedError] = useState('');
+  // The server has no such feed (PostgREST "Could not find the function", e.g. the
+  // migration not yet applied). Home hides the tab rather than show that.
+  const [unavailable, setUnavailable] = useState(false);
   // Mirrors `nextCursorRef.current === null` as state so the footer re-renders when
   // pagination is exhausted (refs alone don't trigger re-renders).
   const [endOfFeed, setEndOfFeed] = useState(false);
@@ -136,6 +139,9 @@ export function useHomeFeed(tab: HomeFeedTab, options: Options) {
           : typeof err === 'string'
             ? err
             : 'Could not load your feed.';
+      if (/could not find the function|PGRST202/i.test(message)) {
+        setUnavailable(true);
+      }
       if (mode === 'initial' || mode === 'refresh') {
         setFeedError(message);
       }
@@ -153,6 +159,7 @@ export function useHomeFeed(tab: HomeFeedTab, options: Options) {
     loadingMore,
     feedError,
     endOfFeed,
+    unavailable,
     appendFeedPage,
     postsRef,
     nextCursorRef,

@@ -17,7 +17,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
@@ -39,12 +38,18 @@ import { usePlayback } from '../../contexts/PlaybackContext';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
-  fetchNewestUploadAt,
   isPlayableInLivil,
   type FeedPost,
   type HomeFeedTab,
 } from '../../services/posts';
 import { useHomeFeed } from '../../hooks/useHomeFeed';
+import { useNewOnLivilDot } from '../../hooks/useNewOnLivilDot';
+import {
+  clampScrollOffset,
+  isTabBarPinned,
+  keepPinnedOffset,
+  pinTop,
+} from '../../utils/homeTabsPin';
 import { useSpotifyAvailability } from '../../services/spotify';
 import { recordImpression, flushImpressions } from '../../services/feedImpressions';
 import { listActiveStories, type Story } from '../../services/stories';
@@ -89,15 +94,6 @@ const PREFETCH_FROM_END = 5;
  * eleventh records one impression, not eleven.
  */
 const IMPRESSION_DWELL_MS = 1200;
-
-/**
- * When the viewer last opened New on Livil, per account: the created_at of the newest
- * upload they could have seen then (server time, so a wrong phone clock cannot re-light
- * the dot). Device-local on purpose — it only decides a dot.
- */
-const newOnLivilSeenKey = (uid: string) => `livil.home.newOnLivilSeenAt.${uid}`;
-/** With no visit recorded yet, uploads from the last week light the dot. */
-const NEW_DOT_FIRST_LOOK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Warm RN's image cache for a freshly-fetched page so cover art / thumbnails /
@@ -279,7 +275,9 @@ export default function HomeScreen() {
     scrollIndicatorInsets: { top: TOP_BAR_H },
   }), []);
   const topBarAnim = useRef(new Animated.Value(0)).current;
-  const lastScrollY = useRef(0);
+  // Where the list rests before any scroll event: iOS clears the top bar with a content
+  // inset, so its resting offset is -TOP_BAR_H.
+  const lastScrollY = useRef(Platform.OS === 'ios' ? -TOP_BAR_H : 0);
   const topBarVisible = useRef(true);
 
   const showTopBar = useCallback(() => {
@@ -312,15 +310,27 @@ export default function HomeScreen() {
   const updatePinned = useCallback((scrollY: number) => {
     const tabY = tabBarYRef.current;
     if (tabY === null) { return; }
-    // On both platforms the bar's distance from the list's top edge is tabY - scrollY
-    // (iOS rests at -TOP_BAR_H because of the content inset).
-    const pinTop = topBarVisible.current ? TOP_BAR_H : 0;
-    const next = tabY - scrollY <= pinTop;
+    const next = isTabBarPinned(tabY, scrollY, pinTop(topBarVisible.current, TOP_BAR_H));
     if (next !== pinnedRef.current) {
       pinnedRef.current = next;
       setPinned(next);
     }
   }, []);
+  // After a programmatic scroll, decide from where the list can really rest: a short tab
+  // clamps the scroll, and iOS may not report that with a scroll event (homeTabsPin.ts).
+  const viewportHRef = useRef(0);
+  const contentHRef = useRef(0);
+  const recheckPin = useCallback(() => {
+    if (!viewportHRef.current || !contentHRef.current) { return; }
+    const y = clampScrollOffset(
+      lastScrollY.current,
+      contentHRef.current,
+      viewportHRef.current,
+      Platform.OS === 'ios' ? -TOP_BAR_H : 0,
+    );
+    lastScrollY.current = y;
+    updatePinned(y);
+  }, [updatePinned]);
   const pinnedTabsY = useMemo(
     () => topBarAnim.interpolate({
       inputRange: [-(TOP_BAR_H + insets.top), 0],
@@ -395,17 +405,22 @@ export default function HomeScreen() {
   // re-enters the viewport while the viewer scrolls up and down the same stretch — the
   // server's 10-minute window would collapse those anyway, but not sending them is cheaper
   // than having them ignored.
+  // Counted per tab: each tab has its own passes, and a new pass in one must not make the
+  // other's already-counted cards count again.
   const dwellTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const countedRef = useRef(new Set<string>());
+  const countedRef = useRef<Record<HomeFeedTab, Set<string>>>({
+    for_you: new Set(),
+    new_on_livil: new Set(),
+  });
 
-  // A new pass is about to replace the list wholesale, so anything mid-dwell is measuring
-  // a card that is on its way off screen. Send what has been counted and start clean — a
-  // post that comes back in the new page is a new showing, and the server's 10-minute
-  // window decides whether it counts as a separate occasion.
-  const settleImpressions = useCallback(() => {
+  // A new pass is about to replace one tab's list wholesale, so anything mid-dwell is
+  // measuring a card that is on its way off screen. Send what has been counted and start
+  // that tab clean — a post that comes back in the new page is a new showing, and the
+  // server's 10-minute window decides whether it counts as a separate occasion.
+  const settleImpressions = useCallback((which: HomeFeedTab) => {
     for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
     dwellTimersRef.current.clear();
-    countedRef.current.clear();
+    countedRef.current[which].clear();
     flushImpressions();
   }, []);
 
@@ -415,88 +430,47 @@ export default function HomeScreen() {
   const [tab, setTab] = useState<HomeFeedTab>('for_you');
   const tabRef = useRef(tab);
   tabRef.current = tab;
-  const feedOptions = {
+  const isDeleted = (postId: string) => deletedIdsRef.current.has(postId);
+  const forYou = useHomeFeed('for_you', {
     pageSize: FEED_PAGE_SIZE,
-    onNewPass: settleImpressions,
-    isDeleted: (postId: string) => deletedIdsRef.current.has(postId),
+    onNewPass: () => settleImpressions('for_you'),
+    isDeleted,
     onPage: prefetchFeedMedia,
-  };
-  const forYou = useHomeFeed('for_you', feedOptions);
-  const newOnLivil = useHomeFeed('new_on_livil', feedOptions);
+  });
+  const newOnLivil = useHomeFeed('new_on_livil', {
+    pageSize: FEED_PAGE_SIZE,
+    onNewPass: () => settleImpressions('new_on_livil'),
+    isDeleted,
+    onPage: prefetchFeedMedia,
+  });
+  // A database without the New on Livil function (the migration not yet applied) hides
+  // the tabs instead of showing an error — the order the app and the backend land in is
+  // not guaranteed (CLAUDE.md, Production compatibility).
+  const newTabAvailable = !newOnLivil.unavailable;
   const feed = tab === 'for_you' ? forYou : newOnLivil;
   // Read by callbacks created once (viewability, refresh) — always the feed on screen.
   const feedRef = useRef(feed);
   feedRef.current = feed;
   const { posts, loadingInitial, loadingMore, feedError, endOfFeed, appendFeedPage } = feed;
-  // A comment made on a card in either tab adjusts that post's count in both.
+  // A comment made on a card in either tab adjusts that post's count in both. The tab on
+  // screen goes first: a delta is measured against the first copy of the post found, and
+  // that must be the copy the viewer is looking at.
   const bothFeedsPosts = useMemo(
-    () => [...forYou.posts, ...newOnLivil.posts],
-    [forYou.posts, newOnLivil.posts],
+    () => (tab === 'for_you'
+      ? [...forYou.posts, ...newOnLivil.posts]
+      : [...newOnLivil.posts, ...forYou.posts]),
+    [tab, forYou.posts, newOnLivil.posts],
   );
   const comments = useCommentsCountDeltas(bothFeedsPosts);
 
   const listRef = useRef<FlatList<FeedListItem>>(null);
 
   // ── The New on Livil dot ────────────────────────────────────────────────────
-  // Lit when someone uploaded since the viewer last opened the tab. Compared in server
-  // time: the newest upload's created_at against the newest one there was at the last
-  // visit. Any failure leaves the dot off — a missing dot is the safe mistake.
-  const [newDot, setNewDot] = useState(false);
-  const newDotRef = useRef(false);
-  newDotRef.current = newDot;
-  const newestUploadAtRef = useRef<string | null>(null);
-  const refreshNewDot = useCallback(async () => {
-    try {
-      const { data } = await supabase.auth.getSession();
-      const uid = data.session?.user.id;
-      if (!uid) { return; }
-      const newest = await fetchNewestUploadAt(uid);
-      newestUploadAtRef.current = newest;
-      if (!newest) {
-        setNewDot(false);
-        return;
-      }
-      if (tabRef.current === 'new_on_livil') {
-        // Looking at the tab is seeing it: move the marker, or the dot would light up the
-        // moment the viewer switches back to For you.
-        setNewDot(false);
-        try { await AsyncStorage.setItem(newOnLivilSeenKey(uid), newest); } catch { /* ignore */ }
-        return;
-      }
-      let seenAt: string | null = null;
-      try { seenAt = await AsyncStorage.getItem(newOnLivilSeenKey(uid)); } catch { /* treat as never */ }
-      const seenMs = seenAt ? Date.parse(seenAt) : Date.now() - NEW_DOT_FIRST_LOOK_MS;
-      setNewDot(Date.parse(newest) > seenMs);
-    } catch {
-      // ignore — the dot stays as it is
-    }
-  }, []);
-  const markNewOnLivilSeen = useCallback(() => {
-    setNewDot(false);
-    void (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const uid = data.session?.user.id;
-        if (!uid) { return; }
-        const marker = newestUploadAtRef.current ?? new Date().toISOString();
-        await AsyncStorage.setItem(newOnLivilSeenKey(uid), marker);
-      } catch {
-        // ignore — at worst the dot shows once more
-      }
-    })();
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshNewDot();
-    }, [refreshNewDot]),
-  );
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') { void refreshNewDot(); }
-    });
-    return () => sub.remove();
-  }, [refreshNewDot]);
+  const newOnLivilRefresh = newOnLivil.appendFeedPage;
+  const { newDot, newDotRef, refresh: refreshNewDot, markSeen: markNewOnLivilSeen } = useNewOnLivilDot({
+    isOnTab: () => tabRef.current === 'new_on_livil',
+    onNewWhileOpen: () => { void newOnLivilRefresh('refresh'); },
+  });
 
   // ── Switching tabs ──────────────────────────────────────────────────────────
   const forYouLoad = forYou.appendFeedPage;
@@ -516,7 +490,9 @@ export default function HomeScreen() {
       dwellTimersRef.current.clear();
       const tabY = tabBarYRef.current;
       pendingSwitchOffsetRef.current =
-        pinnedRef.current && tabY !== null ? tabY - (topBarVisible.current ? TOP_BAR_H : 0) : null;
+        pinnedRef.current && tabY !== null
+          ? keepPinnedOffset(tabY, pinTop(topBarVisible.current, TOP_BAR_H))
+          : null;
       tabRef.current = next;
       setTab(next);
     }
@@ -530,15 +506,26 @@ export default function HomeScreen() {
       // leave their song out, so start a new one.
       void load('refresh');
     }
-  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted]);
+  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted, newDotRef]);
 
   useEffect(() => {
     const offset = pendingSwitchOffsetRef.current;
     if (offset === null) { return; }
     pendingSwitchOffsetRef.current = null;
     listRef.current?.scrollToOffset({ offset, animated: false });
-    updatePinned(offset);
-  }, [tab, updatePinned]);
+    // Decided from where the list can really rest, not from the offset asked for; checked
+    // again once the new tab's rows have a size (onContentSizeChange).
+    lastScrollY.current = offset;
+    recheckPin();
+  }, [tab, recheckPin]);
+
+  // The tab is missing on the server: put the viewer back on For you.
+  useEffect(() => {
+    if (!newTabAvailable && tabRef.current === 'new_on_livil') {
+      tabRef.current = 'for_you';
+      setTab('for_you');
+    }
+  }, [newTabAvailable]);
 
   // A New music push opens Home on a tab (pushNotifications' handleNotificationData).
   // `at` changes on every tap, so a second identical tap still lands.
@@ -552,6 +539,7 @@ export default function HomeScreen() {
     const top = Platform.OS === 'ios' ? -TOP_BAR_H : 0;
     pendingSwitchOffsetRef.current = null;
     listRef.current?.scrollToOffset({ offset: top, animated: false });
+    lastScrollY.current = top;
     updatePinned(top);
     showTopBar();
     selectTab(routeTab, { fresh: true });
@@ -566,8 +554,6 @@ export default function HomeScreen() {
     minimumViewTime: 120,
   }).current;
 
-  const postsRef = useRef<FeedPost[]>([]);
-  postsRef.current = posts;
 
   useEffect(() => {
     if (!playback.activePostId) { return; }
@@ -576,7 +562,7 @@ export default function HomeScreen() {
     if (playback.playSourceRef.current !== 'user') { return; }
     // Spotify reposts are opened in Spotify, never played by Livil (ADR-0027), so they
     // are not part of the queue — skipping over one must land on the next Livil song.
-    const allPosts = postsRef.current.filter(isPlayableInLivil);
+    const allPosts = feedRef.current.postsRef.current.filter(isPlayableInLivil);
     const startIdx = allPosts.findIndex(p => p.id === playback.activePostId);
     if (startIdx < 0) { return; }
     playback.setQueue(
@@ -642,12 +628,13 @@ export default function HomeScreen() {
         }
       }
       for (const postId of visiblePostIds) {
-        if (timers.has(postId) || countedRef.current.has(postId)) { continue; }
+        const counted = countedRef.current[tabRef.current];
+        if (timers.has(postId) || counted.has(postId)) { continue; }
         timers.set(
           postId,
           setTimeout(() => {
             timers.delete(postId);
-            countedRef.current.add(postId);
+            counted.add(postId);
             recordImpression(postId);
           }, IMPRESSION_DWELL_MS),
         );
@@ -982,14 +969,16 @@ export default function HomeScreen() {
 
         {/* The in-list For you | New on Livil switch. Its position is what decides when
             the pinned copy (rendered over the list, below) takes over. */}
-        <View
-          onLayout={e => {
-            tabBarYRef.current = e.nativeEvent.layout.y;
-            updatePinned(lastScrollY.current);
-          }}
-        >
-          <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
-        </View>
+        {newTabAvailable ? (
+          <View
+            onLayout={e => {
+              tabBarYRef.current = e.nativeEvent.layout.y;
+              updatePinned(lastScrollY.current);
+            }}
+          >
+            <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
+          </View>
+        ) : null}
 
         <View style={styles.feedHeadingBlock}>
           <Text style={styles.feedSubheading}>
@@ -1022,7 +1011,7 @@ export default function HomeScreen() {
     // the feed that is an unverifiable change. Left as-is pending coverage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount,
-      tab, selectTab, newDot, updatePinned],
+      tab, selectTab, newDot, updatePinned, newTabAvailable],
   );
 
   const footer = useMemo(() => {
@@ -1058,6 +1047,11 @@ export default function HomeScreen() {
       <FlatList
         ref={listRef}
         data={feedRows}
+        onLayout={e => { viewportHRef.current = e.nativeEvent.layout.height; }}
+        onContentSizeChange={(_w, h) => {
+          contentHRef.current = h;
+          recheckPin();
+        }}
         keyExtractor={feedKeyExtractor}
         renderItem={renderFeedItem}
         ListHeaderComponent={listHeader}
@@ -1169,7 +1163,7 @@ export default function HomeScreen() {
           under the top bar, and slid with the top bar so it sits right below it — or at
           the top of the screen while the top bar is hidden. Under the top bar (zIndex) so
           the bar slides over it, never under it. */}
-      {pinned ? (
+      {pinned && newTabAvailable ? (
         <Animated.View
           style={[
             styles.pinnedTabs,

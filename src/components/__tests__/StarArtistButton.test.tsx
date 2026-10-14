@@ -6,10 +6,11 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
 const mockStatus = jest.fn();
+let mockReady = true;
 const mockAddStar = jest.fn();
 const mockToast = jest.fn();
 jest.mock('../../contexts/RelationshipContext', () => ({
-  useRelationships: () => ({ status: mockStatus, addStar: mockAddStar }),
+  useRelationships: () => ({ status: mockStatus, addStar: mockAddStar, ready: mockReady }),
 }));
 jest.mock('../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: mockToast }),
@@ -31,7 +32,21 @@ function render(authorId: string) {
 const button = (tree: TestRenderer.ReactTestRenderer) =>
   tree.root.findAll(n => typeof n.props.label === 'string' && typeof n.props.onPress === 'function')[0];
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { jest.clearAllMocks(); mockReady = true; });
+
+it('shows nothing until relationships are loaded (everyone reads as a stranger before)', () => {
+  mockReady = false;
+  mockStatus.mockReturnValue('none');
+  expect(render('u1').toJSON()).toBeNull();
+});
+
+it('never says "try again" when the artist turns out to be a friend', async () => {
+  mockStatus.mockReturnValue('none');
+  mockAddStar.mockRejectedValue(new Error('already_friends'));
+  const tree = render('u1');
+  await act(async () => { button(tree).props.onPress(); });
+  expect(mockToast).toHaveBeenCalledWith(expect.stringMatching(/friends/), { kind: 'info' });
+});
 
 it.each(['me', 'friend', 'blocked', 'pending_outgoing', 'pending_incoming'])(
   'shows nothing for a %s', status => {

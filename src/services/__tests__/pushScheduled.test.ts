@@ -139,10 +139,13 @@ describe('tapping one', () => {
     expect(mockNavigate).toHaveBeenCalledWith('AddToLivil', expect.objectContaining({ kind: 'mood_nudge' }));
   });
 
-  it('lands a digest on the Home tab, not whichever tab was last open', () => {
+  it('lands a digest on Home\'s For you — where reposts are — whichever feed Home was left on', () => {
     handleNotificationData(digest('Arjun, Kavya and 10 others'));
 
-    expect(mockNavigate).toHaveBeenCalledWith('App', { screen: 'Home' });
+    expect(mockNavigate).toHaveBeenCalledWith('App', {
+      screen: 'Home',
+      params: { tab: 'for_you', at: expect.any(Number) },
+    });
   });
 
   it('still navigates when the open cannot be recorded', async () => {
@@ -150,7 +153,7 @@ describe('tapping one', () => {
     handleNotificationData(digest('Arjun'));
     await flush();
 
-    expect(mockNavigate).toHaveBeenCalledWith('App', { screen: 'Home' });
+    expect(mockNavigate).toHaveBeenCalledWith('App', expect.objectContaining({ screen: 'Home' }));
   });
 
   it('reports nothing for pushes without a delivery id, or with a malformed one', async () => {
@@ -203,10 +206,13 @@ describe('a New music push', () => {
     });
   });
 
-  it('ignores a tab it does not know, landing on Home as before', () => {
+  it('treats a tab it does not know as For you', () => {
     handleNotificationData({ ...drop('x'), tab: 'something_else' });
 
-    expect(mockNavigate).toHaveBeenCalledWith('App', { screen: 'Home' });
+    expect(mockNavigate).toHaveBeenCalledWith('App', {
+      screen: 'Home',
+      params: { tab: 'for_you', at: expect.any(Number) },
+    });
   });
 
   it('is a settings row of its own, on by default', () => {

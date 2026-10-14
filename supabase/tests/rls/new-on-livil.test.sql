@@ -135,7 +135,10 @@ create temp table fy on commit drop as
 
 select pg_temp.assert('3a  For you still has reposts in it',
   (select count(*) > 0 from fy where post->>'kind' = 'repost'), true);
-select pg_temp.assert_count('3b  For you is the shared ranker with the filter off, row for row',
+-- (By construction — fetch_home_feed's body IS this call. That For you is unchanged from
+-- 20261009000000 is shown by the feed-* suites, which run against the wrapper, and by the
+-- seeded before/after replay recorded in ADR-0030.)
+select pg_temp.assert_count('3b  For you is the shared ranker with the filter off',
   (select count(*) from (
      (select feed_bucket, sort_key, post_id from fy
       except
@@ -165,6 +168,18 @@ select pg_temp.assert_count('3d  …and page 1 + page 2 is the whole tab',
 reset role;
 
 -- ── 2c / 5. Signed out ──────────────────────────────────────────────────────
+-- At runtime, not only by grant: CI's Postgres lacks Supabase's default EXECUTE-to-anon on
+-- new functions, so the has_function_privilege checks below would pass even without the
+-- migration's explicit anon revokes. A request with no user gets nothing either way.
+select pg_temp.set_user(null);
+set local role authenticated;
+select pg_temp.assert_count('2c  a request with no signed-in user gets no rows from the tab',
+  (select count(*) from public.fetch_new_on_livil(p_limit => 50)), 0);
+select pg_temp.assert_count('2d  …nor from the shared ranker, either way round',
+  (select count(*) from public.home_feed_ranked(true, p_limit => 50))
+  + (select count(*) from public.home_feed_ranked(false, p_limit => 50)), 0);
+reset role;
+
 select pg_temp.assert('5a  signed out cannot run New on Livil',
   has_function_privilege('anon', 'public.fetch_new_on_livil(integer, integer, double precision, uuid, bigint, timestamptz)', 'execute'), false);
 select pg_temp.assert('5b  …nor the shared ranker',

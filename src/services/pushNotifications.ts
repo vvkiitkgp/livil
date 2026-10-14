@@ -212,10 +212,6 @@ export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
     description: 'Jam invites and host activity',
     importance: AndroidImportance.HIGH,
   },
-  // Livil's own morning/evening nudge to share a song (scheduled server-side, migration
-  // 20261025000000). Its own switch is what lets those be sent at all: App Store guideline
-  // 4.5.4 wants an in-app opt-out for this kind of message. DEFAULT, not HIGH: a nudge
-  // should land in the tray, not drop down over whatever the person is doing.
   // A friend's (or a starred artist's) new song, and the weekly Fresh on Livil roundup
   // (migration 20261026000000 adds the switch). Livil's own push about other people's
   // music, so it gets a switch of its own rather than riding Activity.
@@ -225,6 +221,10 @@ export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
     description: 'New songs from friends and artists you star, and a weekly roundup of fresh Livil songs',
     importance: AndroidImportance.DEFAULT,
   },
+  // Livil's own morning/evening nudge to share a song (scheduled server-side, migration
+  // 20261025000000). Its own switch is what lets those be sent at all: App Store guideline
+  // 4.5.4 wants an in-app opt-out for this kind of message. DEFAULT, not HIGH: a nudge
+  // should land in the tray, not drop down over whatever the person is doing.
   {
     id: 'reminders',
     name: 'Mood reminders',
@@ -364,13 +364,12 @@ export function handleNotificationData(data: Record<string, string> | undefined)
   }
   // A data-only push carries strings only, so the repost digest names the tab navigator
   // (`App`); land on Home, where the reposts are, rather than whichever tab was last open.
-  // A New music push also names Home's tab (`tab: new_on_livil`); `at` makes a second
-  // identical tap still switch, since Home reacts to its params changing.
+  // A New music push also names Home's feed (`tab: new_on_livil`); anything else — the
+  // digest included — opens For you, the feed reposts are in, whichever feed Home was left
+  // on. `at` makes a second identical tap still switch, since Home reacts to its params.
   if (route === 'App') {
-    const tab = rest.tab === 'new_on_livil' || rest.tab === 'for_you' ? rest.tab : undefined;
-    navigateWhenReady('App', tab
-      ? { screen: 'Home', params: { tab, at: Date.now() } }
-      : { screen: 'Home' });
+    const tab = rest.tab === 'new_on_livil' ? 'new_on_livil' : 'for_you';
+    navigateWhenReady('App', { screen: 'Home', params: { tab, at: Date.now() } });
     return;
   }
   navigateWhenReady(route as keyof RootStackParamList, rest);

@@ -14,11 +14,13 @@ import { useToast } from '../contexts/ToastContext';
  * a star stays on their profile, where it can be confirmed.
  */
 export function StarArtistButton({ authorId, artistName }: { authorId: string; artistName: string }) {
-  const { status, addStar } = useRelationships();
+  const { status, addStar, ready } = useRelationships();
   const { showToast } = useToast();
   const [busy, setBusy] = useState(false);
 
-  if (!authorId) { return null; }
+  // Until the viewer's relationships are loaded everyone reads as a stranger, and a Star on
+  // a friend can only fail (add_star refuses friends).
+  if (!authorId || !ready) { return null; }
   const current = status(authorId);
   if (current !== 'none' && current !== 'star') { return null; }
 
@@ -49,7 +51,15 @@ export function StarArtistButton({ authorId, artistName }: { authorId: string; a
         setBusy(true);
         addStar(authorId)
           .then(() => showToast(`Starred. You'll hear when ${artistName} drops a new song.`, { kind: 'success' }))
-          .catch(() => showToast(`Couldn't star ${artistName}. Try again.`, { kind: 'error' }))
+          .catch((e: unknown) => {
+            const friends = e instanceof Error && /already_friends/.test(e.message);
+            showToast(
+              friends
+                ? `You and ${artistName} are friends — you'll hear about their songs anyway.`
+                : `Couldn't star ${artistName}. Try again.`,
+              { kind: friends ? 'info' : 'error' },
+            );
+          })
           .finally(() => setBusy(false));
       }}
     />
