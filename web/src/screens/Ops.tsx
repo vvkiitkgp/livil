@@ -21,6 +21,7 @@ import {
 import { BarChart } from '../components/BarChart';
 import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
 import { TakedownDialog } from '../components/TakedownDialog';
+import { OpsNotifications } from './OpsNotifications';
 import {
   claimLabel,
   concernLabel,
@@ -89,6 +90,7 @@ const OPS_TABS = [
   { key: 'people', label: 'People' },
   { key: 'inbox', label: 'Inbox' },
   { key: 'insights', label: 'Insights' },
+  { key: 'notifications', label: 'Notifications' },
 ] as const;
 
 type OpsTab = (typeof OPS_TABS)[number]['key'];
@@ -535,6 +537,7 @@ export function Ops() {
     people: 0,
     inbox: 0,
     insights: 0,
+    notifications: 0,
   }), [reports, scans]);
 
   /**
@@ -1436,6 +1439,12 @@ export function Ops() {
           {renderPlays()}
           {renderSearched()}
           {renderExitFeedback()}
+        </div>
+      )}
+
+      {tab === 'notifications' && (
+        <div className="opsgroup">
+          <OpsNotifications />
         </div>
       )}
 

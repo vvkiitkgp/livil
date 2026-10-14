@@ -19,6 +19,10 @@ import {
   apnsFor,
   claimLikeAlert,
   describePost,
+  chunked,
+  flushScheduled,
+  scheduledSendIdOf,
+  sendFcm,
   LIKE_ALERT_WINDOW_MS,
   sliceWhole,
   type Grant,
@@ -66,6 +70,7 @@ function fakeAdmin(resolver: Resolver): any {
       // Recorded under `<col>__gte` so a resolver can assert a read is time-bounded.
       gte(col: string, val: string) { filters[`${col}__gte`] = val; return b; },
       lt(col: string, val: string) { filters[`${col}__lt`] = val; return b; },
+      delete() { filters.__op = 'delete'; return b; },
       // Writes are recorded as the operation plus its row, so a resolver can answer per step.
       update(row: Record<string, unknown>) { filters.__op = 'update'; filters.__row = JSON.stringify(row); return b; },
       upsert(row: Record<string, unknown>, o?: { onConflict?: string; ignoreDuplicates?: boolean }) {
@@ -1232,4 +1237,166 @@ Deno.test('claimLikeAlert: any failure alerts, as before this existed', async ()
   assertEquals(await claimLikeAlert(fakeAdmin((_t, f) => (f.__op === 'update' ? { data: [] } : boom)), B, POST), true);
   const throwing = { from: () => { throw new Error('network'); } } as never;
   assertEquals(await claimLikeAlert(throwing, B, POST), true);
+});
+
+// ── Scheduled pushes: delivering what the database queued (20261025000000) ──────────────
+
+const SEND = 'aaaaaaaa-0000-4000-8000-000000000001';
+const ROW_ANA = 'bbbbbbbb-0000-4000-8000-000000000001';
+const ROW_BEA = 'bbbbbbbb-0000-4000-8000-000000000002';
+
+Deno.test('scheduledSendIdOf: only a uuid under scheduledSendId', () => {
+  assertEquals(scheduledSendIdOf({ scheduledSendId: SEND.toUpperCase() }), SEND);
+  assertEquals(scheduledSendIdOf({ scheduledSendId: 'not-a-uuid' }), null);
+  assertEquals(scheduledSendIdOf({ recipientUserId: B, kind: 'message' }), null);
+  assertEquals(scheduledSendIdOf(null), null);
+  assertEquals(scheduledSendIdOf('x'), null);
+});
+
+Deno.test('sendFcm: sent / dead (token gone) / failed (anything else, token kept)', async () => {
+  const reply = (status: number, body: unknown) =>
+    (() => Promise.resolve(new Response(JSON.stringify(body), { status }))) as unknown as typeof fetch;
+  assertEquals(await sendFcm('https://fcm', 'at', { token: 't' }, reply(200, {})), 'sent');
+  assertEquals(await sendFcm('https://fcm', 'at', { token: 't' },
+    reply(404, { error: { details: [{ errorCode: 'UNREGISTERED' }] } })), 'dead');
+  assertEquals(await sendFcm('https://fcm', 'at', { token: 't' }, reply(500, { error: {} })), 'failed');
+  const down = (() => Promise.reject(new Error('net'))) as unknown as typeof fetch;
+  assertEquals(await sendFcm('https://fcm', 'at', { token: 't' }, down), 'failed');
+});
+
+/** A database holding one queued digest for Ana (two phones, one dead) and Bea (no phone). */
+function scheduledWorld(kind: string | null) {
+  const calls: Array<{ table: string; f: Record<string, string> }> = [];
+  const admin = fakeAdmin((table, f) => {
+    calls.push({ table, f: { ...f } });
+    if (table === 'push_sends') return { data: kind ? { kind } : null };
+    if (table === 'push_deliveries' && f.__op === 'update' && JSON.parse(f.__row).status === 'sending') {
+      return { data: [
+        { id: ROW_ANA, recipient_id: A, title: 'Bea, @sp_eli and 1 other',
+          body: 'reposted 4 songs since last night · check them out',
+          avatar_url: 'https://lh3.googleusercontent.com/a/bea=s96-c' },
+        { id: ROW_BEA, recipient_id: B, title: 'Cyd and Dex', body: 'reposted 2 songs today · check them out',
+          avatar_url: 'https://evil.example/pixel.png' },
+      ] };
+    }
+    if (table === 'device_tokens' && f.__op !== 'delete') {
+      return { data: [
+        { user_id: A, token: 'tok-ana', platform: 'android' },
+        { user_id: A, token: 'tok-dead', platform: 'android' },
+      ] };
+    }
+    return { data: null };
+  });
+  const messages: Array<Record<string, unknown>> = [];
+  const fetchFn = ((_url: string, init: RequestInit) => {
+    const m = JSON.parse(String(init.body)).message;
+    messages.push(m);
+    return Promise.resolve(m.token === 'tok-dead'
+      ? new Response(JSON.stringify({ error: { details: [{ errorCode: 'UNREGISTERED' }] } }), { status: 404 })
+      : new Response('{}', { status: 200 }));
+  }) as unknown as typeof fetch;
+  return { admin, calls, messages, fetchFn };
+}
+
+Deno.test('flushScheduled: claims the queued rows, sends each to every phone, records the outcome', async () => {
+  const w = scheduledWorld('repost_digest');
+  const result = await flushScheduled(w.admin, SEND, SUPA,
+    { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: w.fetchFn });
+  assertEquals(result, { claimed: 2, sent: 1, failed: 1, pruned: 1 });
+
+  // The claim: only this send's QUEUED rows, flipped to sending in one statement.
+  const claim = w.calls.find(c => c.table === 'push_deliveries' && JSON.parse(c.f.__row ?? '{}').status === 'sending')!;
+  assertEquals(claim.f.send_id, SEND);
+  assertEquals(claim.f.status, 'queued');
+
+  // What Ana's phones receive: the database's text, the digest's route and card, her row id.
+  const live = w.messages.find(m => m.token === 'tok-ana')! as {
+    data: Record<string, string>; apns: { headers: Record<string, string>; payload: { aps: Record<string, unknown> } };
+  };
+  assertEquals(live.data, {
+    route: 'App', kind: 'repost_digest', channelId: 'activity',
+    title: 'Bea, @sp_eli and 1 other', body: 'reposted 4 songs since last night · check them out',
+    pushId: ROW_ANA, collapseId: 'digest',
+    actorAvatarUrl: 'https://lh3.googleusercontent.com/a/bea=s96-c',
+  });
+  assertEquals(live.apns.headers['apns-collapse-id'], 'digest');
+  assertEquals(live.apns.payload.aps.sound, 'default');
+
+  // Bea has no phone → failed, nothing sent; her row's off-list photo never went anywhere.
+  assertEquals(w.messages.some(m => JSON.stringify(m).includes('evil.example')), false);
+  const marked = (status: string) => w.calls.find(c =>
+    c.table === 'push_deliveries' && c.f.__op === 'update' && JSON.parse(c.f.__row).status === status)?.f.id__in;
+  assertEquals(marked('sent'), ROW_ANA);
+  assertEquals(marked('failed'), ROW_BEA);
+  // The dead token is pruned; the live one is not.
+  assertEquals(w.calls.find(c => c.table === 'device_tokens' && c.f.__op === 'delete')?.f.token__in, 'tok-dead');
+});
+
+Deno.test('flushScheduled: a mood nudge opens the + Track chooser and replaces the last mood card', async () => {
+  const w = scheduledWorld('mood_nudge');
+  await flushScheduled(w.admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: w.fetchFn });
+  const m = w.messages.find(x => x.token === 'tok-ana')! as { data: Record<string, string> };
+  assertEquals([m.data.route, m.data.kind, m.data.collapseId], ['AddToLivil', 'mood_nudge', 'mood']);
+});
+
+Deno.test('flushScheduled: an unknown send claims nothing and sends nothing', async () => {
+  const w = scheduledWorld(null);
+  const result = await flushScheduled(w.admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), fetchFn: w.fetchFn });
+  assertEquals(result, { claimed: 0, sent: 0, failed: 0, pruned: 0 });
+  assertEquals(w.calls.some(c => c.table === 'push_deliveries'), false);
+  assertEquals(w.messages.length, 0);
+});
+
+Deno.test('flushScheduled: FCM unreachable → the claimed rows go back to queued for the retry', async () => {
+  const w = scheduledWorld('repost_digest');
+  const result = await flushScheduled(w.admin, SEND, SUPA,
+    { accessToken: () => Promise.reject(new Error('fcm_token_failed: 500')), fetchFn: w.fetchFn });
+  assertEquals(result.claimed, 2);
+  assertEquals(w.messages.length, 0);
+  const requeue = w.calls.find(c =>
+    c.table === 'push_deliveries' && c.f.__op === 'update' && JSON.parse(c.f.__row).status === 'queued');
+  assertEquals(requeue?.f.id__in, `${ROW_ANA},${ROW_BEA}`);
+});
+
+Deno.test('chunked: splits id lists so no request carries more than 100', () => {
+  assertEquals(chunked([1, 2, 3], 2), [[1, 2], [3]]);
+  assertEquals(chunked([]), []);
+  assertEquals(chunked(Array.from({ length: 250 }, (_, i) => i)).map(c => c.length), [100, 100, 50]);
+});
+
+Deno.test('flushScheduled: a large send looks phones up and records outcomes 100 at a time', async () => {
+  const many = Array.from({ length: 150 }, (_, i) => ({
+    id: `bbbbbbbb-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    recipient_id: `cccccccc-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    title: 'x', body: 'y', avatar_url: null,
+  }));
+  const calls: Array<{ table: string; f: Record<string, string> }> = [];
+  const admin = fakeAdmin((table, f) => {
+    calls.push({ table, f: { ...f } });
+    if (table === 'push_sends') return { data: { kind: 'repost_digest' } };
+    if (table === 'push_deliveries' && f.__op === 'update' && JSON.parse(f.__row).status === 'sending') {
+      return { data: many };
+    }
+    if (table === 'device_tokens') {
+      return { data: f.user_id__in.split(',').map(u => ({ user_id: u, token: `tok-${u}`, platform: 'android' })) };
+    }
+    return { data: null };
+  });
+  const ok = (() => Promise.resolve(new Response('{}'))) as unknown as typeof fetch;
+  const result = await flushScheduled(admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: ok });
+  assertEquals(result.sent, 150);
+  const lookups = calls.filter(c => c.table === 'device_tokens');
+  assertEquals(lookups.map(c => c.f.user_id__in.split(',').length), [100, 50]);
+  const marks = calls.filter(c => c.table === 'push_deliveries' && c.f.__op === 'update'
+    && JSON.parse(c.f.__row).status === 'sent');
+  assertEquals(marks.map(c => c.f.id__in.split(',').length), [100, 50]);
+});
+
+Deno.test('handler: an oversized body is refused before anything reads it', async () => {
+  const res = await handler(new Request('https://x/send-push', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer x', 'content-length': '20000' },
+    body: 'x'.repeat(20_000),
+  }));
+  assertEquals(res.status, 413);
 });

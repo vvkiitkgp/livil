@@ -198,6 +198,19 @@ jobs:
               insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
               on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
               returning jobid $cron$;
+          -- pg_net stand-in, same idea: production has the real extension (the scheduled-
+          -- push migration creates it), a bare Postgres has none. Same signature, so
+          -- to_regprocedure finds it; requests are RECORDED instead of sent, so a test can
+          -- assert a send was handed to send-push without anything leaving the runner.
+          create schema if not exists net;
+          create table if not exists net.stub_requests (id bigserial primary key,
+            url text, body jsonb, headers jsonb, created_at timestamptz default now());
+          create or replace function net.http_post(url text, body jsonb default '{}'::jsonb,
+            params jsonb default '{}'::jsonb, headers jsonb default '{}'::jsonb,
+            timeout_milliseconds integer default 5000)
+            returns bigint language sql as $net$
+              insert into net.stub_requests (url, body, headers) values (url, body, headers)
+              returning id $net$;
           create or replace function auth.uid() returns uuid
             language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text
@@ -727,6 +740,16 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/push-like-alerts.test.sql
+
+      # Mood nudges + repost digests: ops-only messages and slots, deny-all sends; a digest
+      # counts exactly the reposts its reader may see; skip rules, rotation, the hand-off to
+      # send-push (recorded by the net.http_post stand-in), retry, expiry, came_back.
+      - name: Scheduled push tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/scheduled-pushes.test.sql
 
       # ADR-0027 — play stats: the Spotify hand-off log is write-only for clients, the
       # ops_play_* readers answer ops only, count people distinctly, and never name anyone.

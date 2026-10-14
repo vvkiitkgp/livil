@@ -92,6 +92,20 @@ review.
      (`activity_notifications_update_own` covers every column), so without that filter a
      push could name a post RLS hides from them.
      iOS ignores it (an image would need a Notification Service Extension).
+4b. **Scheduled pushes** (mood nudges, repost digests — migration `20261025000000`): the
+   database decides who gets what and writes the final text (`push_run_slot`, under the
+   posts policy's visibility predicate, skipping reposts already seen in the feed, and
+   naming only the recipient's friends and starred people — a stranger's free-text display
+   name is never broadcast), then hands the send to this function with
+   `{"scheduledSendId": …}` and the public anon key. That body is recognised BEFORE the
+   user is resolved and handled by `flushScheduled`, which only delivers rows the database
+   queued: it claims `queued → sending` in one UPDATE (a repeated hand-off sends nothing
+   twice), sends through the same `sendFcm` / `apnsFor` / token pruning as every other
+   push, and records `sent` / `failed`. An invented id claims nothing (the tables are
+   deny-all; send ids never leave the database — the push carries the delivery id as
+   `pushId`, which only `push_record_open` accepts, and only from its recipient). Mood
+   nudges open `AddToLivil` and replace the previous mood card (`collapseId: mood`);
+   digests open `App` and replace the previous digest (`collapseId: digest`).
 5. **Token pruning**: only on FCM `UNREGISTERED`, `SENDER_ID_MISMATCH`, or an
    `INVALID_ARGUMENT` about `message.token` (`shouldPruneToken`). A malformed payload, an
    APNs credential error, quota or a 5xx never deletes a device token. **Before rotating
