@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-343 TypeScript file(s) under `src/`, 78,569 lines.
+341 TypeScript file(s) under `src/`, 78,403 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2533 |
+| `src/components/FullScreenPlayer.tsx` | 2520 |
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
@@ -160,11 +160,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-129 file(s), 27,791 lines.
+127 file(s), 27,625 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2533 |
+| `src/components/FullScreenPlayer.tsx` | 2520 |
 | `src/components/PostCard.tsx` | 1418 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
@@ -254,7 +254,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/MutualsLine.tsx` | 87 |
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
-| `src/components/__tests__/StarArtistButton.test.tsx` | 85 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
 | `src/components/SpotifyLogo.tsx` | 81 |
@@ -270,7 +269,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ScrubTimeLabel.tsx` | 73 |
 | `src/components/FormInput.tsx` | 69 |
 | `src/components/onboarding/StripedFill.tsx` | 69 |
-| `src/components/StarArtistButton.tsx` | 68 |
 | `src/components/VisibilitySelector.tsx` | 68 |
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
