@@ -493,17 +493,32 @@ export default function UserProfileScreen() {
 
   const handleMessage = useCallback(async () => {
     if (messagingBusy) { return; }
+    // DMs are friends-only (get_or_create_dm → assert_friendship raises 'not_friends').
+    // Say so, instead of a generic failure — a star is not a friendship.
+    const name = profile?.display_name?.trim() || (profile?.username ? `@${profile.username}` : 'them');
+    const notFriends = () => showToast(
+      `Only friends can message each other. Add ${name} as a friend to chat.`,
+      { kind: 'info' },
+    );
+    if (rel.ready && rel.status(userId) !== 'friend') {
+      notFriends();
+      return;
+    }
     setMessagingBusy(true);
     try {
       const convId = await getOrCreateDm(userId);
       const title = profile?.display_name ?? profile?.username ?? 'Chat';
       navigation.navigate('Conversation', { conversationId: convId, title, kind: 'dm' });
-    } catch {
-      showToast('Could not open conversation.', { kind: 'error' });
+    } catch (e) {
+      if (e instanceof Object && 'message' in e && /not_friends/.test(String((e as { message: unknown }).message))) {
+        notFriends();
+      } else {
+        showToast('Could not open conversation.', { kind: 'error' });
+      }
     } finally {
       setMessagingBusy(false);
     }
-  }, [messagingBusy, userId, profile, navigation, showToast]);
+  }, [messagingBusy, userId, profile, navigation, showToast, rel]);
 
   const listData = useMemo<ListItem[]>(() => {
     const head: ListItem = { kind: 'tabs', key: '__tabs__' };
