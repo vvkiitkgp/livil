@@ -751,6 +751,17 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/scheduled-pushes.test.sql
 
+      # New music pushes (20261027000000): a new drop reaches only the uploader's friends and
+      # starrers (never blocked, switched off, phoneless, or twice a day), once per upload,
+      # only after the switch went on; the weekly roundup counts only unseen uploads and a
+      # stranger's only once its copyright scan is clean; scheduler-only functions.
+      - name: New music push tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/new-music-pushes.test.sql
+
       # ADR-0027 — play stats: the Spotify hand-off log is write-only for clients, the
       # ops_play_* readers answer ops only, count people distinctly, and never name anyone.
       - name: Play stats tests

@@ -202,7 +202,10 @@ select pg_temp.assert('3a  a slot that is off sends nothing',
   push_run_slot('digest_morning') is null, true);
 select pg_temp.assert_count('3b  … and queues nothing', (select count(*) from push_deliveries), 0);
 
-update push_slots set enabled = true;
+-- The four slots this suite is about (20261027000000 adds new_drop and originals_weekly,
+-- tested in new-music-pushes.test.sql).
+update push_slots set enabled = true
+ where slot in ('mood_morning', 'digest_morning', 'digest_evening', 'mood_evening');
 select push_run_slot('digest_morning') as digest1 \gset
 
 select pg_temp.assert_eq('3c  Ana''s digest, filled in',
@@ -346,7 +349,11 @@ reset role;
 -- Op: an operator.
 select pg_temp.set_user('c7000000-0000-0000-0000-000000000001');
 set local role authenticated;
-select pg_temp.assert_count('1m  an operator reads every message', (select count(*) from push_messages), 11);
+select pg_temp.assert_count('1m  an operator reads every message',
+  (select count(*) from push_messages) - (select count(*) from push_messages where pool in ('new_drop', 'originals')),
+  11);
+select pg_temp.assert('1m2 … including the New music lines (20261027000000)',
+  (select count(*) from push_messages where pool in ('new_drop', 'originals')) = 3, true);
 select pg_temp.assert('1n  … adds one',
   pg_temp.allows($q$insert into push_messages (pool, position, title, body)
                     values ('digest', 2, '{names}', 'reposted {songs} {since} 🎶')$q$), true);
@@ -365,12 +372,13 @@ select pg_temp.assert_count('1r  … and never deletes one (switch it off instea
   (select count(*) from push_messages where pool = 'mood_morning'), 5);
 update push_slots set enabled = false where slot = 'mood_evening';
 select pg_temp.assert_count('1s  … switches a slot off',
-  (select count(*) from push_slots where not enabled), 1);
+  (select count(*) from push_slots where not enabled
+     and slot in ('mood_morning', 'digest_morning', 'digest_evening', 'mood_evening')), 1);
 select pg_temp.assert_eq('1s2 … and the slot remembers who switched it',
   (select updated_by::text from push_slots where slot = 'mood_evening'),
   'c7000000-0000-0000-0000-000000000001');
 select pg_temp.assert('1t  … sees the numbers',
-  (select count(*) from ops_push_message_stats(14)) = 12
+  (select count(*) from ops_push_message_stats(14) where pool in ('mood_morning', 'mood_evening', 'digest')) = 12
     and (select count(*) from ops_push_recent_sends(20)) > 0, true);
 select pg_temp.assert('1u  … and the stats count the delivered digest',
   (select delivered from ops_push_message_stats(14) where pool = 'digest' and position = 1) = 4, true);
