@@ -1168,7 +1168,7 @@ export default function HomeScreen() {
     [newOnLivilRows, newOnLivil.loadingInitial, tabBarHeight],
   );
 
-  // One page: a feed's own list, header, footer and refresh. Both are mounted side by side
+  // One page: a feed's own list, header, footer and refresh. Both are mounted and drawn,
   // stacked (FeedLayer), so switching never re-renders a feed — it fades to it.
   const renderPage = (which: HomeFeedTab) => {
     const f = which === 'for_you' ? forYou : newOnLivil;
