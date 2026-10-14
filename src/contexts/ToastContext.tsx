@@ -121,7 +121,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <View style={styles.glyph}>
                 <Icon name={palette.icon} size={15} color={palette.glyph} />
               </View>
-              <Text style={styles.message} numberOfLines={1}>
+              {/* Two lines, not one: a sentence like "Only friends can message each other.
+                  Add Riya as a friend to chat." was cut off mid-name on a phone. */}
+              <Text style={styles.message} numberOfLines={2}>
                 {toast.message}
               </Text>
             </Pressable>
@@ -158,7 +160,9 @@ const styles = StyleSheet.create({
   toast: {
     maxWidth: '100%',
     alignSelf: 'center',
-    borderRadius: 999,
+    // Half of a one-line toast's height (10 + 20 + 10), so one line is still a pill and
+    // two lines become a rounded card instead of a stretched capsule.
+    borderRadius: 20,
     borderWidth: 1,
     backgroundColor: COLORS.card,
     shadowColor: '#000',
