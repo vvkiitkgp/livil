@@ -63,9 +63,9 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 20,
-    paddingVertical: 7,
+    paddingVertical: 8,
   },
   // Room for the dot to sit on the pill's corner INSIDE the slot: Android clips a child
   // that overhangs its parent, so an outward offset would be cut off.
@@ -73,11 +73,14 @@ const styles = StyleSheet.create({
     paddingTop: 3,
     paddingRight: 3,
   },
+  // Bigger than Button's `sm` (owner request), keeping its full pill radius — `md` would
+  // square the corners off.
   pill: {
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
   },
   pillLabel: {
-    fontSize: 14,
+    fontSize: 15,
   },
   // On the pill's top-right edge, ringed in the page colour so it reads as a badge.
   dot: {
