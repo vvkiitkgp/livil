@@ -11,11 +11,15 @@ import {
   Pressable,
   RefreshControl,
   Image,
-  useWindowDimensions,
+  ScrollView,
   type ViewToken,
 } from 'react-native';
-import { Gesture, GestureDetector, ScrollView as GestureScrollView } from 'react-native-gesture-handler';
-import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Reanimated, {
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
@@ -88,7 +92,9 @@ const TOP_BAR_H = 64;
 const RESTING_Y = Platform.OS === 'ios' ? -TOP_BAR_H : 0;
 /** Home's pages, left to right. */
 const PAGE_INDEX: Record<HomeFeedTab, number> = { for_you: 0, new_on_livil: 1 };
-const noop = () => {};
+/** How far a feed drifts sideways as it fades out (and in from), for a sense of direction. */
+const SWITCH_NUDGE = 14;
+const SWITCH_MS = 200;
 /** Fetch the next page while the viewer is still a few cards away from the bottom. */
 const PREFETCH_FROM_END = 5;
 
@@ -159,12 +165,9 @@ function FriendStorySkeletonStrip() {
 function FriendStoriesRow({
   loading,
   stories,
-  scrollRef,
 }: {
   loading: boolean;
   stories: Story[];
-  /** Home's pager waits for this row: a sideways swipe on the stories scrolls them. */
-  scrollRef?: React.RefObject<React.ElementRef<typeof GestureScrollView> | null>;
 }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   // One ring per author (Instagram-style). The viewer is handed the ordered
@@ -198,8 +201,7 @@ function FriendStoriesRow({
   return (
     <View style={styles.storiesSection}>
       <Text style={styles.storiesHeading}>Friends</Text>
-      <GestureScrollView
-        ref={scrollRef}
+      <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.storiesRow}
@@ -247,7 +249,7 @@ function FriendStoriesRow({
             </Pressable>
           );
         })}
-      </GestureScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -260,10 +262,8 @@ function FriendStoriesRow({
  */
 function HomeListHeader({
   which,
-  invisible = false,
   storiesLoading,
   stories,
-  storiesScrollRef,
   showTabs,
   tabsHidden,
   activeTab,
@@ -275,11 +275,8 @@ function HomeListHeader({
   onRetry,
 }: {
   which: HomeFeedTab;
-  /** Hidden (still laid out) while Home's still copy stands in for it mid-slide. */
-  invisible?: boolean;
   storiesLoading: boolean;
   stories: Story[];
-  storiesScrollRef?: React.RefObject<React.ElementRef<typeof GestureScrollView> | null>;
   showTabs: boolean;
   tabsHidden: boolean;
   activeTab: HomeFeedTab;
@@ -291,14 +288,14 @@ function HomeListHeader({
   onRetry: () => void;
 }) {
   return (
-    <View style={invisible ? styles.headerInvisible : undefined}>
+    <>
       {/* Spacer so content starts below the fixed top bar — Android only. iOS clears the
           bar with a content inset instead (see FEED_INSET_IOS), which is what puts the
           pull-to-refresh spinner BELOW the bar: a spacer is content, and the spinner draws
           above content, i.e. behind the bar. */}
       {Platform.OS === 'android' ? <View style={{ height: TOP_BAR_H }} /> : null}
 
-      <FriendStoriesRow loading={storiesLoading} stories={stories} scrollRef={storiesScrollRef} />
+      <FriendStoriesRow loading={storiesLoading} stories={stories} />
 
       {/* The in-list For you | New on Livil switch. Its position decides when the pinned
           copy (rendered over the pages) takes over. */}
@@ -339,7 +336,42 @@ function HomeListHeader({
           />
         </View>
       ) : null}
-    </View>
+    </>
+  );
+}
+
+/**
+ * One of Home's two stacked feeds. Both stay mounted and drawn — switching never rebuilds a
+ * feed card by card (owner report: the cards visibly morphed one by one when one list was
+ * handed the other feed's posts). The one on screen is fully visible and touchable; the
+ * other is transparent and ignores touches. A switch fades between them with a small
+ * sideways drift, on the UI thread, and a fast tap-back simply turns the fade around.
+ */
+function FeedLayer({
+  index,
+  progress,
+  active,
+  children,
+}: {
+  index: number;
+  progress: SharedValue<number>;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const style = useAnimatedStyle(() => {
+    const distance = progress.value - index;
+    return {
+      opacity: 1 - Math.min(1, Math.abs(distance)),
+      transform: [{ translateX: -distance * SWITCH_NUDGE }],
+    };
+  });
+  return (
+    <Reanimated.View
+      style={[StyleSheet.absoluteFill, active ? styles.feedLayerActive : null, style]}
+      pointerEvents={active ? 'auto' : 'none'}
+    >
+      {children}
+    </Reanimated.View>
   );
 }
 
@@ -398,11 +430,10 @@ export default function HomeScreen() {
   const { stories, setStories } = useStories();
   const { pendingIncomingCount } = useRelationships();
   const insets = useSafeAreaInsets();
-  const { width: screenW } = useWindowDimensions();
 
   // Home's two pages (owner design 2026-10-14): For you, and New on Livil — the same
-  // ranker server-side with one filter, uploads only — side by side in a pager the viewer
-  // swipes or taps a pill to move through. `tab` is the page on screen.
+  // ranker server-side with one filter, uploads only — stacked, both drawn, and a pill tap
+  // fades between them. `tab` is the feed on screen.
   const [tab, setTab] = useState<HomeFeedTab>('for_you');
   const tabRef = useRef(tab);
   tabRef.current = tab;
@@ -578,7 +609,7 @@ export default function HomeScreen() {
   }, []);
 
   // Each feed keeps its own pass, cursor and list; `feed` is the one on screen. New on
-  // Livil loads the first time it is opened (or swiped toward).
+  // Livil loads the first time it is opened.
   const isDeleted = (postId: string) => deletedIdsRef.current.has(postId);
   const forYou = useHomeFeed('for_you', {
     pageSize: FEED_PAGE_SIZE,
@@ -623,9 +654,6 @@ export default function HomeScreen() {
     () => ({ for_you: forYouListRef, new_on_livil: newOnLivilListRef }),
     [],
   );
-  // Each page's stories row, which the pager waits for (a swipe there scrolls the stories).
-  const forYouStoriesRef = useRef<React.ElementRef<typeof GestureScrollView>>(null);
-  const newOnLivilStoriesRef = useRef<React.ElementRef<typeof GestureScrollView>>(null);
 
   // ── The New on Livil dot ────────────────────────────────────────────────────
   // Means "an upload newer than your New on Livil list": the list only reloads when the
@@ -637,55 +665,38 @@ export default function HomeScreen() {
   const newOnLivilLoad = newOnLivil.appendFeedPage;
   const forYouStarted = forYou.startedRef;
   const newOnLivilStarted = newOnLivil.startedRef;
-  // The pager: 0 = For you, 1 = New on Livil, anything between mid-swipe.
+  // 0 = For you on screen, 1 = New on Livil, anything between mid-fade.
   const pageProgress = useSharedValue(0);
-  const swipeFrom = useSharedValue(0);
-  const pagesStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -pageProgress.value * screenW }],
-  }));
 
-  // ── Only the posts slide (owner decision) ─────────────────────────────────
-  // Each page carries its own copy of the stories + pills at its top, so a plain pager would
-  // slide them too. While the pages move, a still copy of that header is laid over them,
-  // exactly where it sits on screen, and the pages' own copies are hidden; once the pages
-  // settle the copy goes and the arriving page's own header is in the same place. Two
-  // things make that true: the arriving page is first lined up (alignOtherPage), and when
-  // the pills are pinned the header is off screen anyway — the pinned pills already stand
-  // still, so nothing is frozen.
-  const [frozenHeaderTop, setFrozenHeaderTop] = useState<number | null>(null);
+  // Before a switch, line the arriving feed up with the leaving one, so the stories and
+  // pills (each feed carries its own copy at its top) stay exactly where they are while the
+  // feeds fade: above the pin point both take the same offset; below it the header is off
+  // screen (the pinned pills already stand still), and the arriving feed only needs to be at
+  // least that far down — further, and it stays where it was left.
   const alignOtherPage = useCallback((from: HomeFeedTab) => {
     const other: HomeFeedTab = from === 'for_you' ? 'new_on_livil' : 'for_you';
     const fromY = lastScrollYRef.current[from];
     const otherY = lastScrollYRef.current[other];
     const tabY = tabBarYRef.current;
-    // The offset at which the pills pin. Above it the header is (partly) on screen and both
-    // pages must sit at the same offset; below it the header is gone, and the other page
-    // only needs to be at least that far down — further, and it stays where it was left.
     const pinAt = tabY === null ? Number.POSITIVE_INFINITY : tabY - pinTop(topBarVisible.current, TOP_BAR_H);
     const target = fromY < pinAt ? fromY : Math.max(otherY, pinAt);
     if (target !== otherY) {
       listRefs[other].current?.scrollToOffset({ offset: target, animated: false });
       lastScrollYRef.current[other] = target;
     }
-    // The header's top on screen: the list starts at the safe area, its content at -scroll.
-    setFrozenHeaderTop(pinnedRef.current ? null : insets.top - fromY);
-  }, [listRefs, insets.top]);
-  const unfreezeHeader = useCallback(() => { setFrozenHeaderTop(null); }, []);
+  }, [listRefs]);
 
   // Switching shows each feed exactly as it was left; only pull-to-refresh reloads it
   // (owner decision). `fresh` is for a push tap only: the song it announced must be there.
-  // A tap slides the pages to the pill; a swipe has already moved them (`fromSwipe`).
-  const selectTab = useCallback((next: HomeFeedTab, opts?: { fresh?: boolean; fromSwipe?: boolean }) => {
+  const selectTab = useCallback((next: HomeFeedTab, opts?: { fresh?: boolean }) => {
     const [load, started] = next === 'for_you'
       ? [forYouLoad, forYouStarted]
       : [newOnLivilLoad, newOnLivilStarted];
     const reload = !started.current || Boolean(opts?.fresh);
     if (reload && next === 'new_on_livil') { markNewOnLivilSeen(); }
     if (next !== tabRef.current) {
-      if (!opts?.fromSwipe) {
-        haptics.select();
-        alignOtherPage(tabRef.current);
-      }
+      haptics.select();
+      alignOtherPage(tabRef.current);
       // The cards being timed are about to leave the screen. Not a new pass: what has
       // been counted stays counted.
       for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
@@ -693,62 +704,12 @@ export default function HomeScreen() {
       tabRef.current = next;
       setTab(next);
     }
-    if (!opts?.fromSwipe) {
-      pageProgress.value = withTiming(PAGE_INDEX[next], { duration: 260 }, finished => {
-        if (finished) { runOnJS(unfreezeHeader)(); }
-      });
-    }
+    // From wherever the fade is now — a quick tap back turns it around, never queues.
+    pageProgress.value = withTiming(PAGE_INDEX[next], { duration: SWITCH_MS });
     if (reload) {
       void load('initial');
     }
-  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted, pageProgress,
-    alignOtherPage, unfreezeHeader]);
-
-  // A swipe toward New on Livil before it was ever opened: start loading it at once, so
-  // the page arriving under the finger has its skeletons turning into songs.
-  const onSwipeStart = useCallback(() => {
-    alignOtherPage(tabRef.current);
-    if (!newOnLivilStarted.current) {
-      markNewOnLivilSeen();
-      void newOnLivilLoad('initial');
-    }
-  }, [newOnLivilStarted, newOnLivilLoad, markNewOnLivilSeen, alignOtherPage]);
-  const onSwipeSettled = useCallback((index: number) => {
-    selectTab(index === PAGE_INDEX.new_on_livil ? 'new_on_livil' : 'for_you', { fromSwipe: true });
-  }, [selectTab]);
-
-  // Sideways only: a mostly-vertical drag fails it at once and stays the list's scroll, and
-  // a sideways swipe on the stories row scrolls the stories (the pager waits for them).
-  const pagerPan = useMemo(() => Gesture.Pan()
-    .enabled(newTabAvailable)
-    .activeOffsetX([-16, 16])
-    .failOffsetY([-12, 12])
-    // The library's own ScrollView, referenced the documented way; its typings only
-    // describe gesture objects and component classes, hence the cast.
-    .requireExternalGestureToFail(
-      forYouStoriesRef as unknown as React.RefObject<React.ComponentType>,
-      newOnLivilStoriesRef as unknown as React.RefObject<React.ComponentType>,
-    )
-    .onStart(() => {
-      swipeFrom.value = pageProgress.value;
-      runOnJS(onSwipeStart)();
-    })
-    .onUpdate(e => {
-      const raw = swipeFrom.value - e.translationX / screenW;
-      // A little give past either end, like a native pager.
-      pageProgress.value = raw < 0 ? raw * 0.2 : raw > 1 ? 1 + (raw - 1) * 0.2 : raw;
-    })
-    .onEnd(e => {
-      let target = Math.round(pageProgress.value);
-      // A flick decides by direction, however short.
-      if (Math.abs(e.velocityX) > 500) { target = e.velocityX < 0 ? 1 : 0; }
-      target = Math.min(1, Math.max(0, target));
-      pageProgress.value = withTiming(target, { duration: 220 }, finished => {
-        if (finished) { runOnJS(unfreezeHeader)(); }
-      });
-      runOnJS(onSwipeSettled)(target);
-    }),
-  [newTabAvailable, screenW, pageProgress, swipeFrom, onSwipeStart, onSwipeSettled, unfreezeHeader]);
+  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted, pageProgress, alignOtherPage]);
 
   // The page on screen changed: the pins and the top bar follow ITS scroll.
   useEffect(() => {
@@ -1208,7 +1169,7 @@ export default function HomeScreen() {
   );
 
   // One page: a feed's own list, header, footer and refresh. Both are mounted side by side
-  // in the pager, so switching never re-renders a feed — it slides to it.
+  // stacked (FeedLayer), so switching never re-renders a feed — it fades to it.
   const renderPage = (which: HomeFeedTab) => {
     const f = which === 'for_you' ? forYou : newOnLivil;
     const rows = which === 'for_you' ? forYouRows : newOnLivilRows;
@@ -1226,10 +1187,8 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <HomeListHeader
             which={which}
-            invisible={frozenHeaderTop !== null}
             storiesLoading={storiesLoading}
             stories={stories}
-            storiesScrollRef={which === 'for_you' ? forYouStoriesRef : newOnLivilStoriesRef}
             showTabs={newTabAvailable}
             tabsHidden={pinned && which === shownTab}
             activeTab={shownTab}
@@ -1294,37 +1253,18 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      {/* For you | New on Livil, side by side: swipe sideways (or tap a pill) to slide
-          between them, Instagram-style. Each page keeps its own scroll. */}
-      <GestureDetector gesture={pagerPan}>
-        <View style={styles.pagerViewport}>
-          <Reanimated.View style={[styles.pagerRow, { width: screenW * 2 }, pagesStyle]}>
-            <View style={{ width: screenW }}>{renderPage('for_you')}</View>
-            <View style={{ width: screenW }}>{newTabAvailable ? renderPage('new_on_livil') : null}</View>
-          </Reanimated.View>
-        </View>
-      </GestureDetector>
-
-      {/* The still copy of the stories + pills while the pages slide (see alignOtherPage).
-          Not touchable: the finger is on the swipe. */}
-      {frozenHeaderTop !== null ? (
-        <View pointerEvents="none" style={[styles.frozenHeader, { top: frozenHeaderTop }]}>
-          <HomeListHeader
-            which={shownTab}
-            storiesLoading={storiesLoading}
-            stories={stories}
-            showTabs={newTabAvailable}
-            tabsHidden={false}
-            activeTab={shownTab}
-            onSelectTab={selectTab}
-            newDot={newDot}
-            onTabsLayout={noop}
-            loading={feed.loadingInitial}
-            feedError={feed.feedError}
-            onRetry={noop}
-          />
-        </View>
-      ) : null}
+      {/* For you and New on Livil, stacked: both stay drawn, a pill tap fades between
+          them (FeedLayer). Each keeps its own scroll. */}
+      <View style={styles.feedStack}>
+        <FeedLayer index={PAGE_INDEX.for_you} progress={pageProgress} active={shownTab === 'for_you'}>
+          {renderPage('for_you')}
+        </FeedLayer>
+        {newTabAvailable ? (
+          <FeedLayer index={PAGE_INDEX.new_on_livil} progress={pageProgress} active={shownTab === 'new_on_livil'}>
+            {renderPage('new_on_livil')}
+          </FeedLayer>
+        ) : null}
+      </View>
 
       {/* Fixed top bar — slides up on scroll down, returns on scroll up */}
       <Animated.View
@@ -1612,22 +1552,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -0.4,
   },
-  headerInvisible: {
-    opacity: 0,
-  },
-  frozenHeader: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 5,
-  },
-  pagerViewport: {
+  feedStack: {
     flex: 1,
-    overflow: 'hidden',
   },
-  pagerRow: {
-    flex: 1,
-    flexDirection: 'row',
+  // The feed on screen sits above the transparent one, so its pull-to-refresh and scroll
+  // indicator are never behind the other's.
+  feedLayerActive: {
+    zIndex: 1,
   },
   inListTabsHidden: {
     opacity: 0,
