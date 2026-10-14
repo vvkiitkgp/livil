@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-342 TypeScript file(s) under `src/`, 78,791 lines.
+343 TypeScript file(s) under `src/`, 78,842 lines.
 
 ## Size hotspots
 
@@ -374,7 +374,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-13 file(s), 3,163 lines.
+14 file(s), 3,214 lines.
 
 | File | Lines |
 |---|---:|
@@ -382,7 +382,7 @@ case the call fails silently wherever its result is discarded.
 | `src/contexts/JamRealtimeContext.tsx` | 487 |
 | `src/contexts/RelationshipContext.tsx` | 345 |
 | `src/contexts/JamSuggestionsContext.tsx` | 200 |
-| `src/contexts/ToastContext.tsx` | 190 |
+| `src/contexts/ToastContext.tsx` | 194 |
 | `src/contexts/ProfileBadgesContext.tsx` | 172 |
 | `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
@@ -391,6 +391,7 @@ case the call fails silently wherever its result is discarded.
 | `src/contexts/ChromeVisibilityContext.tsx` | 69 |
 | `src/contexts/JamContext.tsx` | 68 |
 | `src/contexts/StoriesContext.tsx` | 54 |
+| `src/contexts/__tests__/ToastContext.test.tsx` | 47 |
 
 ## Hooks
 
