@@ -184,6 +184,13 @@ export default function SearchScreen() {
   const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
   const [albums, setAlbums] = useState<AlbumSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  /**
+   * The query the rows on screen ANSWER — not the one being typed. The previous rows stay
+   * up while the next search loads, so the list can still be scrolled; ranking them by the
+   * live text would reshuffle them under the finger on every keystroke.
+   */
+  const [resultsQuery, setResultsQuery] = useState('');
+  const resultsListRef = useRef<FlatList<SearchResult>>(null);
   const [error, setError] = useState('');
   const [meId, setMeId] = useState<string | null>(null);
   /** Bumped on every tab tap purely to remount the pills and replay their entrance. */
@@ -259,6 +266,7 @@ export default function SearchScreen() {
       setPosts([]);
       setProfiles([]);
       setAlbums([]);
+      setResultsQuery('');
       setError('');
       setLoading(false);
       return;
@@ -281,6 +289,7 @@ export default function SearchScreen() {
       setPosts(postsRes.status === 'fulfilled' ? postsRes.value : []);
       setProfiles(profilesRes.status === 'fulfilled' ? profilesRes.value : []);
       setAlbums(albumsRes.status === 'fulfilled' ? albumsRes.value : []);
+      setResultsQuery(trimmed);
 
       const failures = [postsRes, profilesRes, albumsRes].filter(r => r.status === 'rejected');
       // Only worth saying when everything failed. One rejected service alongside results is a
@@ -384,9 +393,15 @@ export default function SearchScreen() {
   }, [recentItems, discover]);
 
   const results = useMemo(
-    () => rankSearchResults({ posts, profiles, albums, query, taps }),
-    [posts, profiles, albums, query, taps],
+    () => rankSearchResults({ posts, profiles, albums, query: resultsQuery, taps }),
+    [posts, profiles, albums, resultsQuery, taps],
   );
+
+  // A new answer starts at its top. Only on a new query's rows — not on the popularity
+  // re-rank or the Spotify section arriving, which land while someone may be mid-scroll.
+  useEffect(() => {
+    resultsListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [resultsQuery]);
 
   // Keyed on the TRIMMED query: a trailing space is not a new search, so it must not clear
   // the section and fetch the same results again.
@@ -644,6 +659,8 @@ export default function SearchScreen() {
   );
 
   const trimmedQuery = query.trim();
+  const searching = loading || spotifyPending;
+  const hasRows = results.length > 0 || spotifyResults.length > 0;
 
   // An ELEMENT (not a function), for the same remount reason as the list header below.
   const spotifySection = spotifyResults.length > 0 ? (
@@ -755,20 +772,29 @@ export default function SearchScreen() {
           onSubmitEditing={() => { remember(query); Keyboard.dismiss(); }}
           trailing={
             query.length > 0 ? (
-              // `FormInput` sets paddingRight:0 on the input whenever a trailing element is
-              // present, which means the trailing element owns that gap. Without this the
-              // icon sits flat against the field's right edge.
-              <TouchableOpacity
-                onPress={() => {
-                  setQuery('');
-                  inputRef.current?.focus();
-                }}
-                style={styles.clearButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                accessibilityLabel="Clear search"
-              >
-                <Icon name="clear" size={16} color={COLORS.textMuted} />
-              </TouchableOpacity>
+              <View style={styles.trailingRow}>
+                {/* The previous rows stay up while the next search loads, so the "still
+                    searching" cue lives here, in a fixed slot that never moves the list. */}
+                <View style={styles.refreshing}>
+                  {searching && hasRows ? (
+                    <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                  ) : null}
+                </View>
+                {/* `FormInput` sets paddingRight:0 on the input whenever a trailing element
+                    is present, which means the trailing element owns that gap. Without this
+                    the icon sits flat against the field's right edge. */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setQuery('');
+                    inputRef.current?.focus();
+                  }}
+                  style={styles.clearButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear search"
+                >
+                  <Icon name="clear" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              </View>
             ) : null
           }
         />
@@ -780,14 +806,19 @@ export default function SearchScreen() {
         <View style={styles.topState}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : loading || (spotifyPending && results.length === 0) ? (
-        // Still loading while Spotify is pending with no Livil results to show: "Nothing
-        // matches" now would be contradicted a moment later by an "On Spotify" section.
+      ) : searching && !hasRows ? (
+        // Only when there is nothing to show. Swapping a list that HAS rows for this spinner
+        // unmounted it on every keystroke, so it could not be scrolled while a search ran.
+        // And while Spotify is pending, "Nothing matches" would be contradicted a moment
+        // later by an "On Spotify" section.
         <View style={styles.topState}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>
       ) : trimmedQuery.length === 0 && (recents.length > 0 || discoverItems.length > 0) ? (
         <FlatList
+          // Distinct keys: same component type in the same slot, so without them clearing
+          // the box reused the results list and the suggestions opened scrolled partway down.
+          key="discover"
           data={discoverItems}
           keyExtractor={item => `${item.kind}:${item.id}`}
           renderItem={renderItem}
@@ -819,6 +850,8 @@ export default function SearchScreen() {
         </View>
       ) : (
         <FlatList
+          key="results"
+          ref={resultsListRef}
           data={results}
           keyExtractor={item => `${item.kind}:${item.id}`}
           renderItem={renderItem}
@@ -929,6 +962,8 @@ const styles = StyleSheet.create({
   duration: { color: COLORS.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
 
   /** Owns the gap to the field's right edge — FormInput zeroes the input's own padding. */
+  trailingRow: { flexDirection: 'row', alignItems: 'center' },
+  refreshing: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   clearButton: { paddingHorizontal: 14, paddingVertical: 12 },
 
   // Inside the list now, whose content already has 12 of horizontal padding: 8 more keeps
