@@ -197,7 +197,7 @@ export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
   {
     id: 'activity',
     name: 'Activity',
-    description: 'Likes, comments, reposts, milestones, and new fans on your tracks',
+    description: 'Likes, comments, reposts, milestones, new fans, and repost roundups',
     importance: AndroidImportance.HIGH,
   },
   {
@@ -212,6 +212,16 @@ export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
     description: 'Jam invites and host activity',
     importance: AndroidImportance.HIGH,
   },
+  // Livil's own morning/evening nudge to share a song (scheduled server-side, migration
+  // 20261025000000). Its own switch is what lets those be sent at all: App Store guideline
+  // 4.5.4 wants an in-app opt-out for this kind of message. DEFAULT, not HIGH: a nudge
+  // should land in the tray, not drop down over whatever the person is doing.
+  {
+    id: 'reminders',
+    name: 'Mood reminders',
+    description: 'A friendly nudge, morning and evening, to share a song. Skipped on days you post',
+    importance: AndroidImportance.DEFAULT,
+  },
 ];
 
 /** One flag per notifee channel id. Mirrors the notification_preferences columns. */
@@ -220,6 +230,7 @@ export type NotificationCategoryPrefs = {
   activity: boolean;
   messages: boolean;
   jam: boolean;
+  reminders: boolean;
 };
 
 /** Every category on, which is what an absent row means server-side. */
@@ -228,6 +239,7 @@ export const ALL_CATEGORIES_ON: NotificationCategoryPrefs = {
   activity: true,
   messages: true,
   jam: true,
+  reminders: true,
 };
 
 /**
@@ -246,9 +258,11 @@ export const ALL_CATEGORIES_ON: NotificationCategoryPrefs = {
 export async function getNotificationPreferences(
   userId: string,
 ): Promise<NotificationCategoryPrefs> {
+  // `*`, not a column list: a database without `reminders` (20261025000000 not applied)
+  // must still return the other four rather than fail the whole read.
   const { data, error } = await supabase
     .from('notification_preferences')
-    .select('social, activity, messages, jam')
+    .select('*')
     .eq('user_id', userId)
     .maybeSingle();
   if (error || !data) {
@@ -260,6 +274,7 @@ export async function getNotificationPreferences(
     activity: row.activity ?? true,
     messages: row.messages ?? true,
     jam: row.jam ?? true,
+    reminders: row.reminders ?? true,
   };
 }
 
@@ -305,9 +320,32 @@ export async function shouldShowPushPrompt(): Promise<boolean> {
   return true;
 }
 
-function handleNotificationData(data: Record<string, string> | undefined): void {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Where a tap goes, and — for Livil's scheduled pushes, which carry `pushId` (their
+ * delivery row) — telling the server it was opened, so the ops dashboard can count it.
+ * Every tap path (foreground, background, cold start, FCM-rendered) lands here; the
+ * server records only the first open, so a tap seen twice counts once.
+ */
+export function handleNotificationData(data: Record<string, string> | undefined): void {
   if (!data?.route) return;
   const { route, ...rest } = data;
+  if (rest.pushId && UUID_RE.test(rest.pushId)) {
+    void (async () => {
+      try {
+        await supabase.rpc('push_record_open', { p_delivery_id: rest.pushId });
+      } catch {
+        // A lost count is not worth an error; the navigation below is what matters.
+      }
+    })();
+  }
+  // A data-only push carries strings only, so the repost digest names the tab navigator
+  // (`App`); land on Home, where the reposts are, rather than whichever tab was last open.
+  if (route === 'App') {
+    navigateWhenReady('App', { screen: 'Home' });
+    return;
+  }
   navigateWhenReady(route as keyof RootStackParamList, rest);
 }
 
@@ -332,19 +370,23 @@ let nonChatSeq = 0;
 async function ensureChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
   for (const channel of NOTIFICATION_CHANNELS) {
-    await notifee.createChannel({
-      id: channel.id,
-      name: channel.name,
-      importance: channel.importance,
-      description: channel.description,
-      // Already the default, but stated because the launcher badge depends on
-      // it: with `badge: false` a channel's notifications contribute nothing to
-      // the icon, and the setting CANNOT be changed after a channel is created.
-      // Leaving it implicit makes the badge one upstream default change away
-      // from silently disappearing, with no call site to grep for.
-      badge: true,
-    });
+    await createChannel(channel);
   }
+}
+
+async function createChannel(channel: NotificationChannel): Promise<void> {
+  await notifee.createChannel({
+    id: channel.id,
+    name: channel.name,
+    importance: channel.importance,
+    description: channel.description,
+    // Already the default, but stated because the launcher badge depends on
+    // it: with `badge: false` a channel's notifications contribute nothing to
+    // the icon, and the setting CANNOT be changed after a channel is created.
+    // Leaving it implicit makes the badge one upstream default change away
+    // from silently disappearing, with no call site to grep for.
+    badge: true,
+  });
 }
 
 /**
@@ -377,7 +419,16 @@ export async function displayPushNotification(
     return;
   }
 
-  const channelId = data.channelId ?? 'messages';
+  // Mood nudges arrive on the `activity` channel (the only one older builds have);
+  // this build gives them their own, so Android's per-category settings can mute them
+  // without muting likes. Created here as well as in initPush: an app updated but not
+  // yet opened has never run initPush, and Android drops a notification posted to a
+  // channel that does not exist. createChannel is a no-op when it already does.
+  const channelId = kind === 'mood_nudge' ? 'reminders' : (data.channelId ?? 'messages');
+  if (channelId === 'reminders' && Platform.OS === 'android') {
+    const def = NOTIFICATION_CHANNELS.find(c => c.id === 'reminders');
+    if (def) await createChannel(def);
+  }
   const title = data.title ?? '';
   const body = data.body ?? '';
   const actorDisplayName = data.actorDisplayName || title;
@@ -462,15 +513,17 @@ export async function displayPushNotification(
   // (collapseId) and marks a like inside its 15-minute alert window `quiet`; a quiet
   // like updates a card still in the tray without a sound, but onlyAlertOnce lets it
   // alert if the card was swiped away. A push without collapseId (an older send-push)
-  // keeps a card of its own.
-  const likeCard = kind === 'activity_like' ? likeCardId(data.collapseId) : null;
+  // keeps a card of its own. Mood nudges and repost digests also replace their own
+  // earlier card (never quiet: each is a new message), so an unread morning nudge
+  // and its evening one are one card, not two.
+  const sharedCard = cardIdFor(kind, data.collapseId);
 
   await notifee.displayNotification({
     // Prefixed so appBadge.ts can clear it; sequenced so two notifications that
-    // land in the same millisecond don't replace one another. Unlike chat and like
-    // cards, these are deliberately NOT merged -- a comment and a new fan are
+    // land in the same millisecond don't replace one another. Apart from the shared
+    // cards above, these are deliberately NOT merged -- a comment and a new fan are
     // separate events.
-    id: likeCard ?? `${LIVIL_NOTIFICATION_ID_PREFIX}${kind || 'push'}:${Date.now()}:${nonChatSeq++}`,
+    id: sharedCard ?? `${LIVIL_NOTIFICATION_ID_PREFIX}${kind || 'push'}:${Date.now()}:${nonChatSeq++}`,
     title,
     body,
     data: tapData,
@@ -480,20 +533,28 @@ export async function displayPushNotification(
       // launcher's sum is what we are steering here. A like card is one unit too:
       // it is one row in the Activity list, however many likes it counts.
       badgeCount: 1,
-      onlyAlertOnce: likeCard !== null && data.quiet === '1',
+      onlyAlertOnce: sharedCard !== null && data.quiet === '1',
       ...(actorAvatarUrl ? { largeIcon: actorAvatarUrl } : {}),
     },
   });
 }
 
 /**
- * The notification id a post's like card lives under, or null when the push does not
- * name a well-formed one (send-push writes `like:<post uuid>`).
+ * The notification id a card that later pushes REPLACE lives under, or null for a card of
+ * its own. send-push names it in `collapseId` (iOS honours the same value as
+ * apns-collapse-id):
+ *   • activity_like   `like:<post uuid>` — one card per liked post
+ *   • mood_nudge      `mood`             — the evening nudge replaces the morning one
+ *   • repost_digest   `digest`           — the 6 PM digest replaces the 11 AM one
+ * Anything else, or a malformed id, keeps a card per push.
  */
-function likeCardId(collapseId: string | undefined): string | null {
-  return collapseId && /^like:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collapseId)
-    ? `${LIVIL_NOTIFICATION_ID_PREFIX}${collapseId.toLowerCase()}`
-    : null;
+function cardIdFor(kind: string, collapseId: string | undefined): string | null {
+  if (!collapseId) return null;
+  const ok =
+    (kind === 'activity_like' && collapseId.startsWith('like:') && UUID_RE.test(collapseId.slice(5)))
+    || (kind === 'mood_nudge' && collapseId === 'mood')
+    || (kind === 'repost_digest' && collapseId === 'digest');
+  return ok ? `${LIVIL_NOTIFICATION_ID_PREFIX}${collapseId.toLowerCase()}` : null;
 }
 
 /**

@@ -94,6 +94,13 @@ existing way; something on the server has to wake up, decide who gets what, and 
   otherwise; CI stands it in with a recording stub (`net.stub_requests`).
 - The app release must add the Mood reminders switch, tap reporting (`pushId`), and
   `collapseId` handling for `mood` / `digest` on Android before mood slots are switched on.
+  All three live in `src/services/pushNotifications.ts`: a `reminders` entry in
+  `NOTIFICATION_CHANNELS` (the settings row and its own Android channel, which the display
+  path also creates on demand, since an updated-but-unopened app has never run `initPush`);
+  `handleNotificationData` calling `push_record_open` on every tap path, and landing a
+  digest on the Home tab; and `cardIdFor` mapping `mood` / `digest` to one replacing card
+  each. Builds before that release show mood nudges on the Activity channel and cannot
+  report opens, so their recipients count only toward "came back".
 - At today's size one hand-off sends a whole slot (lookups and status writes go 100 ids per
   request). Past a few thousand recipients, claim in batches and let `push_maintain` hand off
   the remainder.
