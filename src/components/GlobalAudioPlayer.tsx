@@ -394,6 +394,16 @@ export default function GlobalAudioPlayer() {
       console.log('[LIVIL][GAP] onEnd (Android — native naturalEndListener advances)');
       return;
     }
+    // RNV's iOS player pauses ITSELF at the end of an item and reports isPlaying=false right
+    // after this event. That stop is the track ending, not the user: read as a lock-screen
+    // pause (handlePlaybackStateChanged) it set paused=true in the same instant the next
+    // track was queued, and whenever that pause reached the native player before the
+    // effect's paused=false, the next track loaded paused — on a locked phone the music
+    // stopped and the lock-screen card went away (reproduced on an iPhone, 2026-10-14). Hold
+    // the pause-sync off across the hand-off, as the load guard already does for the new
+    // track itself. Repeat-one needs it too: the seek below resumes only while `paused` is
+    // still false (RNV re-applies it when the seek completes).
+    loadGuardUntilRef.current = Date.now() + 4000;
     // repeat-one: loop the current track at its natural end instead of advancing.
     if (repeatModeRef.current === 'one') {
       const start = clipWindowRef.current?.start ?? 0;
@@ -404,8 +414,16 @@ export default function GlobalAudioPlayer() {
       return;
     }
     console.log('[LIVIL][GAP] (iOS) onEnd → playNext');
-    playNext();
-  }, [playNext, positionRef, clipWindowRef]);
+    if (playNext()) { return; }
+    // Nothing follows (the end of the queue, or a story session's own clock decides): the
+    // stop is real. Record it as the pause-sync used to, or the guard above would leave the
+    // player showing "playing" over silence.
+    console.log('[LIVIL][GAP] (iOS) onEnd, nothing next → paused');
+    setPaused(true);
+    const mine = myPostIdRef.current;
+    if (mine) { reportPaused(mine); }
+    setListeningTrack(null);
+  }, [playNext, positionRef, clipWindowRef, reportPaused]);
 
   // GAP is the single engine, so a decode/URL failure here means the audio for
   // this post (audio OR video) won't play. Surface it and skip to the next

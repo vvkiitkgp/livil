@@ -107,6 +107,13 @@ review.
    nudges open `AddToLivil` and replace the previous mood card (`collapseId: mood`);
    digests open `App` (builds after 2.1.3 land on the Home tab) and replace the previous
    digest (`collapseId: digest`).
+   New music (`20261027000000`): `new_drop` (a friend's or starred artist's upload, to
+   their friends and starrers, at most one a day each) and `originals_weekly` (Sunday's
+   Fresh on Livil roundup) open `App` with `tab: new_on_livil` — builds with Home's New on
+   Livil tab (ADR-0030) open on it, older ones land on Home — and replace their previous
+   card (`collapseId: drop` / `fresh`). The database decides recipients and text, as for
+   the others.
+
 5. **Token pruning**: only on FCM `UNREGISTERED`, `SENDER_ID_MISMATCH`, or an
    `INVALID_ARGUMENT` about `message.token` (`shouldPruneToken`). A malformed payload, an
    APNs credential error, quota or a 5xx never deletes a device token. **Before rotating

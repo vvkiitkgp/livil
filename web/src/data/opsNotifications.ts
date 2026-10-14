@@ -12,8 +12,10 @@
  */
 import { supabase } from '../supabase';
 
-export type PushPool = 'mood_morning' | 'mood_evening' | 'digest';
-export type PushSlotKey = 'mood_morning' | 'digest_morning' | 'digest_evening' | 'mood_evening';
+export type PushPool = 'mood_morning' | 'mood_evening' | 'digest' | 'new_drop' | 'originals';
+export type PushSlotKey =
+  | 'mood_morning' | 'digest_morning' | 'digest_evening' | 'mood_evening'
+  | 'new_drop' | 'originals_weekly';
 
 export const POOLS: { key: PushPool; label: string; hint: string }[] = [
   { key: 'mood_morning', label: 'Morning mood · 8 AM', hint: 'Skipped for anyone who already posted today.' },
@@ -23,6 +25,16 @@ export const POOLS: { key: PushPool; label: string; hint: string }[] = [
     label: 'Repost digest · 11 AM + 6 PM',
     hint: 'Sent only when there are new reposts the person can see and has not already seen in their feed. Names only their friends and people they star; everyone else is counted.',
   },
+  {
+    key: 'new_drop',
+    label: 'New song from a friend',
+    hint: 'Sent a few minutes after someone uploads, to their friends and the people who star them — at most one of these a day per person.',
+  },
+  {
+    key: 'originals',
+    label: 'Fresh on Livil · Sunday 7 PM',
+    hint: 'New uploads from the past week the person has not seen yet. Names only their friends and artists they star; a stranger’s song counts only once its copyright check came back clean.',
+  },
 ];
 
 /** The fill-ins a digest line may use, and what they become. */
@@ -31,6 +43,22 @@ export const DIGEST_FILL_INS: { token: string; example: string }[] = [
   { token: '{songs}', example: '18 songs' },
   { token: '{since}', example: 'since last night' },
 ];
+
+/** Every pool's fill-ins — the same lists as the table's push_messages_fill_ins CHECK. */
+export const FILL_INS: Record<PushPool, { token: string; example: string }[]> = {
+  mood_morning: [],
+  mood_evening: [],
+  digest: DIGEST_FILL_INS,
+  new_drop: [
+    { token: '{name}', example: 'Arjun' },
+    { token: '{song}', example: 'Midnight Chai' },
+  ],
+  originals: [
+    { token: '{names}', example: 'Arjun, Kavya and 3 others' },
+    { token: '{songs}', example: '5 songs' },
+    { token: '{since}', example: 'this week' },
+  ],
+};
 
 /** Same limits as the table's CHECK constraints, so the form says no before the database does. */
 export const TITLE_MAX = 80;
@@ -60,7 +88,7 @@ export type PushMessage = {
 export type PushSend = {
   id: string;
   slot: PushSlotKey | 'test';
-  kind: 'mood_nudge' | 'repost_digest';
+  kind: 'mood_nudge' | 'repost_digest' | 'new_drop' | 'originals_weekly';
   createdAt: string;
   position: number | null;
   exampleTitle: string | null;
@@ -155,19 +183,26 @@ export async function sendTestToMe(messageId: string): Promise<boolean> {
 
 /** "{names}" as the person who gets it would read it, for the editor's preview. */
 export function previewText(pool: PushPool, text: string): string {
-  if (pool !== 'digest') return text;
-  return DIGEST_FILL_INS.reduce((t, f) => t.split(f.token).join(f.example), text);
+  return (FILL_INS[pool] ?? []).reduce((t, f) => t.split(f.token).join(f.example), text);
 }
 
 /** A typo'd fill-in, or braces in a mood line, would reach phones verbatim — say so here. */
 export function fillInProblem(pool: PushPool, text: string): string | null {
-  if (pool !== 'digest') return /[{}]/.test(text) ? 'Mood lines cannot use { } fill-ins.' : null;
-  const leftover = text.replace(/\{(names|songs|since)\}/g, '');
-  return /[{}]/.test(leftover) ? 'Only {names}, {songs} and {since} can be filled in.' : null;
+  const allowed = FILL_INS[pool] ?? [];
+  if (allowed.length === 0) return /[{}]/.test(text) ? 'Mood lines cannot use { } fill-ins.' : null;
+  const leftover = allowed.reduce((t, f) => t.split(f.token).join(''), text);
+  return /[{}]/.test(leftover) ? `Only ${listTokens(allowed.map(f => f.token))} can be filled in.` : null;
+}
+
+/** "{name} and {song}" / "{names}, {songs} and {since}". */
+function listTokens(tokens: string[]): string {
+  return tokens.length <= 1
+    ? (tokens[0] ?? '')
+    : `${tokens.slice(0, -1).join(', ')} and ${tokens[tokens.length - 1]}`;
 }
 
 function friendly(message: string): string {
-  if (message.includes('push_messages_fill_ins')) return 'Only {names}, {songs} and {since} can be filled in (none in mood lines).';
+  if (message.includes('push_messages_fill_ins')) return 'That line uses a fill-in this kind of notification does not have (see the list under the text box).';
   if (message.includes('push_messages_pool_position_key')) return 'Another line already has that place in the rotation. Reload and try again.';
   if (message.includes('char_length')) return `Keep the bold line under ${TITLE_MAX} characters and the text under ${BODY_MAX}.`;
   return message;

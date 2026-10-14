@@ -16,7 +16,7 @@ import { formatDate } from '../format';
 import {
   addMessage,
   BODY_MAX,
-  DIGEST_FILL_INS,
+  FILL_INS,
   fetchMessages,
   fetchRecentSends,
   fetchSlots,
@@ -41,14 +41,33 @@ const SLOT_LABELS: Record<PushSlot['slot'] | 'test', string> = {
   digest_morning: 'Repost digest',
   digest_evening: 'Repost digest',
   mood_evening: 'Evening mood',
+  new_drop: 'New song from a friend',
+  originals_weekly: 'Fresh on Livil',
   test: 'Preview (only you)',
 };
+
+/** The slots that need the app release with the "New music" switch before they start. */
+const NEW_MUSIC_SLOTS = new Set<PushSlot['slot']>(['new_drop', 'originals_weekly']);
 
 /** "08:00:00" → "8:00 AM". The column is a time of day in India; there is no date. */
 function istTime(t: string): string {
   const [h, m] = t.split(':').map(Number);
   const hour = ((h + 11) % 12) + 1;
   return `${hour}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** When a slot goes out, as the table shows it. */
+function slotWhen(s: PushSlot): string {
+  if (s.slot === 'new_drop') return 'When someone uploads';
+  if (s.slot === 'originals_weekly') return `Sundays ${istTime(s.sendAtIst)}`;
+  return istTime(s.sendAtIst);
+}
+
+/** What "on" means for a slot. */
+function onLabel(s: PushSlot): string {
+  if (s.slot === 'new_drop') return 'Sending';
+  if (s.slot === 'originals_weekly') return 'Sending weekly';
+  return 'Sending daily';
 }
 
 function percent(part: number, whole: number): string {
@@ -114,7 +133,7 @@ export function OpsNotifications() {
       setConfirmSlot(s);
       return;
     }
-    void run(`slot:${s.slot}`, () => setSlotEnabled(s.slot, false), `${SLOT_LABELS[s.slot]} at ${istTime(s.sendAtIst)}: stopped. Nobody gets it until you start it again.`);
+    void run(`slot:${s.slot}`, () => setSlotEnabled(s.slot, false), `${SLOT_LABELS[s.slot]} (${slotWhen(s)}): stopped. Nobody gets it until you start it again.`);
   };
 
   const saveDraft = () => {
@@ -154,7 +173,7 @@ export function OpsNotifications() {
     <>
       <header className="page__head">
         <div>
-          <p className="kicker">Mood nudges and repost digests</p>
+          <p className="kicker">Mood nudges, repost digests and new music</p>
           <h1 className="display page__title">Notifications</h1>
         </div>
       </header>
@@ -177,16 +196,18 @@ export function OpsNotifications() {
             <tbody>
               {slots.map(s => (
                 <tr key={s.slot}>
-                  <td className="num">{istTime(s.sendAtIst)}</td>
+                  <td className="num">{slotWhen(s)}</td>
                   <td>
                     <span className="table__title">{SLOT_LABELS[s.slot]}</span>
                     {s.pool !== 'digest' && !s.enabled && (
-                      <div className="hint">Start only once the app release with the “Mood reminders” switch is out (App Store rule).</div>
+                      <div className="hint">
+                        Start only once the app release with the “{NEW_MUSIC_SLOTS.has(s.slot) ? 'New music' : 'Mood reminders'}” switch is out (App Store rule).
+                      </div>
                     )}
                   </td>
                   <td>
                     <span className="onoff" data-on={s.enabled || undefined}>
-                      {s.enabled ? 'Sending daily' : 'Not sending'}
+                      {s.enabled ? onLabel(s) : 'Not sending'}
                     </span>
                   </td>
                   <td className="num">
@@ -310,9 +331,9 @@ export function OpsNotifications() {
             rows={3}
             onChange={e => setDraft({ ...draft, body: e.target.value })}
           />
-          {pool === 'digest' && (
+          {FILL_INS[pool].length > 0 && (
             <p className="hint">
-              Fill-ins: {DIGEST_FILL_INS.map(f => `${f.token} → “${f.example}”`).join(' · ')}
+              Fill-ins: {FILL_INS[pool].map(f => `${f.token} → “${f.example}”`).join(' · ')}
             </p>
           )}
           {draftError && <p className="hint" role="alert">{draftError}</p>}
@@ -372,11 +393,21 @@ export function OpsNotifications() {
 
       {confirmSlot && (
         <ConfirmDialog
-          title={`Start sending the ${SLOT_LABELS[confirmSlot.slot].toLowerCase()} every day at ${istTime(confirmSlot.sendAtIst)}?`}
+          title={
+            confirmSlot.slot === 'new_drop'
+              ? 'Start sending new-song alerts?'
+              : confirmSlot.slot === 'originals_weekly'
+                ? `Start sending Fresh on Livil every Sunday at ${istTime(confirmSlot.sendAtIst)}?`
+                : `Start sending the ${SLOT_LABELS[confirmSlot.slot].toLowerCase()} every day at ${istTime(confirmSlot.sendAtIst)}?`
+          }
           body={
-            confirmSlot.pool === 'digest'
-              ? 'From its next time, everyone with notifications on who has new reposts to see gets this, every day.'
-              : 'From its next time, everyone with notifications on who has not posted that day gets this, every day. Only do this once the app release with the “Mood reminders” switch is out.'
+            confirmSlot.slot === 'new_drop'
+              ? 'From now on, a few minutes after someone uploads, their friends and the people who star them get one — at most one a day each. Only do this once the app release with the “New music” switch is out.'
+              : confirmSlot.slot === 'originals_weekly'
+                ? 'Every Sunday, everyone with notifications on who has new Livil songs they have not seen gets this. Only do this once the app release with the “New music” switch is out.'
+                : confirmSlot.pool === 'digest'
+                  ? 'From its next time, everyone with notifications on who has new reposts to see gets this, every day.'
+                  : 'From its next time, everyone with notifications on who has not posted that day gets this, every day. Only do this once the app release with the “Mood reminders” switch is out.'
           }
           confirmLabel="Start sending"
           busy={busy === `slot:${confirmSlot.slot}`}
@@ -385,7 +416,7 @@ export function OpsNotifications() {
             void run(`slot:${s.slot}`, async () => {
               await setSlotEnabled(s.slot, true);
               setConfirmSlot(null);
-            }, `${SLOT_LABELS[s.slot]} at ${istTime(s.sendAtIst)}: sending daily from its next time.`);
+            }, `${SLOT_LABELS[s.slot]} (${slotWhen(s)}): ${onLabel(s).toLowerCase()} from now on.`);
           }}
           onCancel={() => setConfirmSlot(null)}
         />
