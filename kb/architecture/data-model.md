@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 147 migration(s) in `supabase/migrations/`.
+Reconstructed from 148 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-55 table(s).
+60 table(s).
 
 ### `account_exit_feedback`
 
@@ -547,6 +547,12 @@ RLS enabled · defined in `20260803120000_notification_preferences.sql`
 | `jam` | `boolean not null default true` |
 | `updated_at` | `timestamptz not null default now()` |
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `reminders` | `boolean not null default true` | `20261025000000_scheduled_pushes.sql` |
+
 ### `ops_copyright_reviews`
 
 RLS enabled · defined in `20261004010000_copyright_matches_reviewable.sql`
@@ -962,6 +968,44 @@ RLS enabled · defined in `20260607000000_edit_profile_schema.sql`
 | `phone_number` | `text` |
 | `updated_at` | `timestamptz not null default now()` |
 
+### `push_config`
+
+RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `integer primary key default 1 check (id = 1)` |
+| `function_url` | `text not null` |
+| `anon_key` | `text not null` |
+
+### `push_deliveries`
+
+RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `send_id` | `uuid not null references public.push_sends(id) on delete cascade` |
+| `recipient_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `title` | `text not null` |
+| `body` | `text not null` |
+| `avatar_url` | `text` |
+| `status` | `text not null default 'queued' check (status in ('queued', 'sending', 'sent', 'failed', 'expired'))` |
+| `created_at` | `timestamptz not null default now()` |
+| `sent_at` | `timestamptz` |
+| `opened_at` | `timestamptz` |
+| `came_back` | `boolean` |
+
+**Table constraints**
+
+- `unique (send_id, recipient_id)`
+
+**Indexes**
+
+- `push_deliveries_send_idx` `(send_id, status)`
+- `push_deliveries_recipient_idx` `(recipient_id)`
+- `push_deliveries_pending_idx` `(created_at) where status in ('queued', 'sending') or (status = 'sent' and came_back is null)`
+
 ### `push_like_alerts`
 
 RLS enabled · defined in `20261024000000_push_like_alerts.sql`
@@ -979,6 +1023,66 @@ RLS enabled · defined in `20261024000000_push_like_alerts.sql`
 **Indexes**
 
 - `push_like_alerts_post_idx` `(post_id)`
+
+### `push_messages`
+
+RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `pool` | `text not null check (pool in ('mood_morning', 'mood_evening', 'digest'))` |
+| `position` | `integer not null check (position between 1 and 999)` |
+| `title` | `text not null check (char_length(title) between 1 and 80)` |
+| `body` | `text not null check (char_length(body) between 1 and 200)` |
+| `active` | `boolean not null default true` |
+| `created_at` | `timestamptz not null default now()` |
+| `updated_at` | `timestamptz not null default now()` |
+| `updated_by` | `uuid references public.profiles(id) on delete set null` |
+
+**Table constraints**
+
+- `unique (pool, position)`
+- `constraint push_messages_fill_ins check (
+    case when pool = 'digest'
+      then regexp_replace(title || body, '\{(names|songs|since)\}', '', 'g') !~ '[{}]'
+      else (title || body) !~ '[{}]'
+    end
+  )`
+
+**Triggers**
+
+- `push_messages_stamp` — before insert or update (`20261025000000_scheduled_pushes.sql`)
+
+### `push_sends`
+
+RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `uuid primary key default gen_random_uuid()` |
+| `slot` | `text not null check (slot in ('mood_morning', 'digest_morning', 'digest_evening', 'mood_evening', 'test'))` |
+| `kind` | `text not null check (kind in ('mood_nudge', 'repost_digest'))` |
+| `message_id` | `uuid references public.push_messages(id) on delete set null` |
+| `recipients` | `integer not null default 0` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Indexes**
+
+- `push_sends_created_idx` `(created_at desc)`
+
+### `push_slots`
+
+RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
+
+| Column | Definition |
+|---|---|
+| `slot` | `text primary key check (slot in ('mood_morning', 'digest_morning', 'digest_evening', 'mood_evening'))` |
+| `pool` | `text not null check (pool in ('mood_morning', 'mood_evening', 'digest'))` |
+| `send_at_ist` | `time not null` |
+| `enabled` | `boolean not null default false` |
+| `last_position` | `integer not null default 0` |
+| `updated_at` | `timestamptz not null default now()` |
 
 ### `search_result_taps`
 
@@ -1431,6 +1535,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_enforce_username_reservation` | `profiles` | before insert or update | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_profiles_redirect_last_seen` | `profiles` | before insert or update of last_seen_at | `20260925010000_last_seen_is_ops_only.sql` |
 | `trg_profiles_stamp_reposts_public` | `profiles` | before update of reposts_public | `20261019000000_reposts_audience.sql` |
+| `push_messages_stamp` | `push_messages` | before insert or update | `20261025000000_scheduled_pushes.sql` |
 | `spotify_opens_server_time` | `spotify_opens` | before insert | `20261016000000_spotify_opens_server_time.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 | `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |

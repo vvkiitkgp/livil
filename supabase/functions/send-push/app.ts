@@ -1194,6 +1194,162 @@ export async function spotifyTitle(
   }
 }
 
+// ── Livil's own scheduled pushes (mood nudges, repost digests) ───────────────
+// The database decides who gets what and writes the final text (push_run_slot, migration
+// 20261025000000); this file only delivers rows it queued. See flushScheduled.
+
+/** Where each scheduled kind opens, and the card it replaces (iOS apns-collapse-id). */
+const SCHEDULED_KINDS: Record<string, { route: string; collapseId: string }> = {
+  // The "+ Track" chooser: repost from Spotify or upload. Present in every shipped build.
+  mood_nudge: { route: 'AddToLivil', collapseId: 'mood' },
+  // The main tabs (Home first). A tab cannot be named from a data-only push, which carries
+  // strings only; the app lands on the tab navigator it already shows.
+  repost_digest: { route: 'App', collapseId: 'digest' },
+};
+
+/** The send id of a hand-off from the database, or null when this is not one. */
+export function scheduledSendIdOf(payload: unknown): string | null {
+  const id = (payload as { scheduledSendId?: unknown } | null)?.scheduledSendId;
+  return isUuid(id) ? id.toLowerCase() : null;
+}
+
+/** One FCM HTTP v1 send. `dead` = the token itself is gone and should be pruned. */
+export async function sendFcm(
+  endpoint: string,
+  accessToken: string,
+  message: Record<string, unknown>,
+  fetchFn: typeof fetch = fetch,
+): Promise<'sent' | 'dead' | 'failed'> {
+  // One device's failure must not abort the others, so a thrown fetch is caught here.
+  try {
+    const res = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message }),
+    });
+    if (res.ok) { await res.body?.cancel(); return 'sent'; }
+    let errBody: unknown = null;
+    try { errBody = await res.json(); } catch { /* non-JSON error body */ }
+    if (shouldPruneToken(res.status, errBody)) return 'dead';
+    console.warn('[send-push] FCM refused a send; token kept', res.status, fcmErrorCode(errBody));
+    return 'failed';
+  } catch (e) {
+    console.warn('[send-push] FCM request threw; token kept', e instanceof Error ? e.message : e);
+    return 'failed';
+  }
+}
+
+type ScheduledRow = {
+  id: string;
+  recipient_id: string;
+  title: string;
+  body: string;
+  avatar_url: string | null;
+};
+
+/**
+ * Deliver the rows the database queued for one scheduled send — all of them in one call,
+ * which is fine at today's size (one row per person with a phone). Past a few thousand,
+ * claim in batches and have push_maintain hand off the remainder.
+ *
+ * CLAIMS before sending — `queued → sending` in one UPDATE — so a second hand-off of the
+ * same send (push_maintain's retry, or anyone repeating the call) finds nothing left and
+ * sends nothing twice. A caller cannot add or change a row: the tables are deny-all and
+ * this only reads what push_run_slot wrote. If FCM cannot be reached at all, the claimed
+ * rows go back to `queued` for the retry; push_maintain expires them after an hour.
+ */
+export async function flushScheduled(
+  admin: SupabaseClient,
+  sendId: string,
+  supabaseUrl: string,
+  deps: {
+    accessToken?: () => Promise<string>;
+    projectId?: string;
+    fetchFn?: typeof fetch;
+  } = {},
+): Promise<{ claimed: number; sent: number; failed: number; pruned: number }> {
+  const none = { claimed: 0, sent: 0, failed: 0, pruned: 0 };
+  const { data: send } = await admin.from('push_sends').select('kind').eq('id', sendId).maybeSingle();
+  const shape = SCHEDULED_KINDS[(send as { kind?: string } | null)?.kind ?? ''];
+  if (!shape) return none;
+  const kind = (send as { kind: string }).kind;
+
+  const { data: claimedRows, error: claimErr } = await admin
+    .from('push_deliveries')
+    .update({ status: 'sending' })
+    .eq('send_id', sendId)
+    .eq('status', 'queued')
+    .select('id, recipient_id, title, body, avatar_url');
+  const rows = (claimedRows ?? []) as ScheduledRow[];
+  if (claimErr || rows.length === 0) return none;
+
+  let accessToken: string;
+  try {
+    accessToken = await (deps.accessToken ?? getFcmAccessToken)();
+  } catch (e) {
+    console.error('[send-push] FCM auth failed; scheduled rows requeued', e instanceof Error ? e.message : e);
+    await admin.from('push_deliveries').update({ status: 'queued' }).in('id', rows.map(r => r.id));
+    return { ...none, claimed: rows.length };
+  }
+  const projectId = deps.projectId ?? Deno.env.get('FCM_PROJECT_ID')!;
+  const endpoint = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+
+  const { data: tokenRows } = await admin
+    .from('device_tokens')
+    .select('user_id, token, platform')
+    .in('user_id', [...new Set(rows.map(r => r.recipient_id))]);
+  const devices = (tokenRows ?? []) as Array<{ user_id: string; token: string; platform?: string | null }>;
+
+  const sentIds: string[] = [];
+  const failedIds: string[] = [];
+  const deadTokens: string[] = [];
+  await Promise.all(rows.map(async row => {
+    const mine = devices.filter(d => d.user_id === row.recipient_id && d.token);
+    const badge = mine.some(d => d.platform === 'ios') ? await unreadBadgeCount(admin, row.recipient_id) : null;
+    const title = clamp(row.title, MAX_TITLE);
+    const body = clamp(row.body, MAX_BODY);
+    const data: Record<string, string> = {
+      route: shape.route,
+      kind,
+      channelId: 'activity',
+      title,
+      body,
+      // The delivery, not the send: what the app reports a tap with (push_record_open).
+      pushId: row.id,
+      collapseId: shape.collapseId,
+    };
+    if (isAllowedAvatarUrl(row.avatar_url, supabaseUrl)) data.actorAvatarUrl = row.avatar_url;
+
+    let delivered = false;
+    for (const device of mine) {
+      const outcome = await sendFcm(endpoint, accessToken, {
+        token: device.token,
+        data,
+        android: { priority: 'high' },
+        apns: apnsFor(kind, title, body, data, badge),
+      }, deps.fetchFn);
+      if (outcome === 'sent') delivered = true;
+      if (outcome === 'dead') deadTokens.push(device.token);
+    }
+    (delivered ? sentIds : failedIds).push(row.id);
+  }));
+
+  const now = new Date().toISOString();
+  if (sentIds.length > 0) {
+    await admin.from('push_deliveries').update({ status: 'sent', sent_at: now }).in('id', sentIds);
+  }
+  if (failedIds.length > 0) {
+    await admin.from('push_deliveries').update({ status: 'failed' }).in('id', failedIds);
+  }
+  if (deadTokens.length > 0) {
+    await admin.from('device_tokens').delete().in('token', deadTokens);
+  }
+  return { claimed: rows.length, sent: sentIds.length, failed: failedIds.length, pruned: deadTokens.length };
+}
+
 export async function handler(req: Request): Promise<Response> {
   // Preflight, BEFORE the method check — a browser sends this before every cross-origin
   // POST carrying an Authorization header, and answering 405 stops the real request from
@@ -1210,6 +1366,20 @@ export async function handler(req: Request): Promise<Response> {
   const url = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+  // The body is read before the user is resolved only to recognise the database's
+  // hand-off of a scheduled send, which carries the public anon key rather than a user.
+  // It delivers rows the database already wrote, once (see flushScheduled); everything
+  // else still needs a real user below.
+  let payload: PushRequest | null = null;
+  try { payload = await req.json(); } catch { payload = null; }
+  const scheduledId = scheduledSendIdOf(payload);
+  if (scheduledId) {
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+    const result = await flushScheduled(admin, scheduledId, url);
+    console.log(JSON.stringify({ fn: 'send-push', kind: 'scheduled', outcome: 'flushed', ...result }));
+    return json(200, { ok: true });
+  }
+
   // A user-scoped client just to resolve the caller identity from their JWT.
   const asUser = createClient(url, Deno.env.get('SUPABASE_ANON_KEY') ?? serviceKey, {
     global: { headers: { Authorization: authHeader } },
@@ -1218,9 +1388,7 @@ export async function handler(req: Request): Promise<Response> {
   const actor = userData?.user?.id;
   if (authErr || !actor) return json(401, { error: 'invalid_token' });
 
-  // 2. Parse + validate input.
-  let payload: PushRequest;
-  try { payload = await req.json(); } catch { return json(400, { error: 'bad_json' }); }
+  // 2. Validate input.
   if (!payload || typeof payload !== 'object') return json(400, { error: 'bad_json' });
 
   const kind = typeof payload.kind === 'string' ? payload.kind : '';
@@ -1338,38 +1506,16 @@ export async function handler(req: Request): Promise<Response> {
   let failed = 0;
   const deadTokens: string[] = [];
   await Promise.all(tokens.map(async (token: string) => {
-    // One device's failure must not abort the others, so a thrown fetch is caught here
-    // rather than rejecting the whole Promise.all.
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: {
-            token,
-            data,
-            android: { priority: 'high' },
-            // iOS-only; FCM drops it for Android tokens, so one payload serves both.
-            apns: apnsFor(kind, title, body, data, badge),
-          },
-        }),
-      });
-      if (res.ok) { sent++; await res.body?.cancel(); return; }
-      let errBody: unknown = null;
-      try { errBody = await res.json(); } catch { /* non-JSON error body */ }
-      if (shouldPruneToken(res.status, errBody)) {
-        deadTokens.push(token);
-      } else {
-        failed++;
-        console.warn('[send-push] FCM refused a send; token kept', res.status, fcmErrorCode(errBody));
-      }
-    } catch (e) {
-      failed++;
-      console.warn('[send-push] FCM request threw; token kept', e instanceof Error ? e.message : e);
-    }
+    const outcome = await sendFcm(endpoint, accessToken, {
+      token,
+      data,
+      android: { priority: 'high' },
+      // iOS-only; FCM drops it for Android tokens, so one payload serves both.
+      apns: apnsFor(kind, title, body, data, badge),
+    });
+    if (outcome === 'sent') sent++;
+    else if (outcome === 'dead') deadTokens.push(token);
+    else failed++;
   }));
 
   if (deadTokens.length > 0) {

@@ -805,6 +805,7 @@ export type Database = {
           activity: boolean
           jam: boolean
           messages: boolean
+          reminders: boolean
           social: boolean
           updated_at: string
           user_id: string
@@ -813,6 +814,7 @@ export type Database = {
           activity?: boolean
           jam?: boolean
           messages?: boolean
+          reminders?: boolean
           social?: boolean
           updated_at?: string
           user_id: string
@@ -821,6 +823,7 @@ export type Database = {
           activity?: boolean
           jam?: boolean
           messages?: boolean
+          reminders?: boolean
           social?: boolean
           updated_at?: string
           user_id?: string
@@ -1464,6 +1467,69 @@ export type Database = {
           phone_number?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      push_messages: {
+        Row: {
+          active: boolean
+          body: string
+          created_at: string
+          id: string
+          pool: string
+          position: number
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          body: string
+          created_at?: string
+          id?: string
+          pool: string
+          position: number
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          body?: string
+          created_at?: string
+          id?: string
+          pool?: string
+          position?: number
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      push_slots: {
+        Row: {
+          enabled: boolean
+          last_position: number
+          pool: string
+          send_at_ist: string
+          slot: string
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          last_position?: number
+          pool: string
+          send_at_ist: string
+          slot: string
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          last_position?: number
+          pool?: string
+          send_at_ist?: string
+          slot?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2550,6 +2616,40 @@ export type Database = {
           spotify_people: number
         }[]
       }
+      ops_push_message_stats: {
+        Args: { p_days?: number }
+        Returns: {
+          active: boolean
+          body: string
+          came_back: number
+          delivered: number
+          message_id: string
+          opened: number
+          pool: string
+          position: number
+          sends: number
+          title: string
+          updated_at: string
+        }[]
+      }
+      ops_push_recent_sends: {
+        Args: { p_limit?: number }
+        Returns: {
+          came_back: number
+          created_at: string
+          delivered: number
+          example_body: string | null
+          example_title: string | null
+          kind: string
+          message_id: string | null
+          opened: number
+          position: number | null
+          recipients: number
+          send_id: string
+          slot: string
+        }[]
+      }
+      ops_push_test: { Args: { p_message_id: string }; Returns: string | null }
       ops_recent_plays: {
         Args: { p_limit?: number }
         Returns: {
@@ -2632,6 +2732,7 @@ export type Database = {
           uploads: number
         }[]
       }
+      push_record_open: { Args: { p_delivery_id: string }; Returns: undefined }
       record_post_impressions: {
         Args: { p_post_ids: string[] }
         Returns: undefined
