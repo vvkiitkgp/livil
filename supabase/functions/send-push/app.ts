@@ -949,6 +949,7 @@ export function buildPush(
   grant: Grant,
   profile: ActorProfile,
   request: PushRequest,
+  opts: { quiet?: boolean } = {},
 ): { title: string; body: string; data: Record<string, string> } {
   const { title, body } = composeContent(kind, grant, profile, request);
   const nav = routeFor(kind, request.data?.route, grant, actor);
@@ -963,7 +964,50 @@ export function buildPush(
   if (isPersonToPerson(kind)) data.actorUserId = actor;
   // Already vetted by isAllowedAvatarUrl in the handler; Android draws it as the picture.
   if (PHOTO_KINDS.has(kind) && profile.avatarUrl) data.actorAvatarUrl = profile.avatarUrl;
+  // Likes on one post share ONE card that each new like replaces: iOS via apns-collapse-id
+  // (apnsFor), Android by posting under this id (pushNotifications.ts, from the release that
+  // reads it; older apps ignore both keys). `quiet` marks a like inside the alert window
+  // (claimLikeAlert), which updates the card without a sound. postId is UUID-checked by
+  // authorizeLike, so the id is always `like:` + 36 characters.
+  if (kind === 'activity_like' && grant.activity?.postId) {
+    data.collapseId = `like:${grant.activity.postId}`;
+    if (opts.quiet) data.quiet = '1';
+  }
   return { title, body, data };
+}
+
+/**
+ * The FCM `apns` block: what iOS renders itself (iOS has no headless data wake-up, so a
+ * data-only push would display nothing). FCM drops it for Android tokens.
+ *
+ *   • thread-id stacks a conversation's notifications (or one kind's) together.
+ *   • apns-collapse-id makes a like REPLACE the earlier card for the same post instead of
+ *     adding one; iOS keeps only the newest notification per collapse id.
+ *   • A quiet push (a later like inside the alert window) carries no sound and is
+ *     `passive` (iOS 15+): it updates the card without lighting the screen.
+ */
+export function apnsFor(
+  kind: string,
+  title: string,
+  body: string,
+  data: Record<string, string>,
+  badge: number | null,
+): Record<string, unknown> {
+  const quiet = data.quiet === '1';
+  return {
+    headers: {
+      'apns-priority': '10',
+      ...(data.collapseId ? { 'apns-collapse-id': data.collapseId } : {}),
+    },
+    payload: {
+      aps: {
+        alert: { title, body },
+        ...(quiet ? { 'interruption-level': 'passive' } : { sound: 'default' }),
+        'thread-id': data.conversationId ?? kind,
+        ...(badge === null ? {} : { badge }),
+      },
+    },
+  };
 }
 
 /**
@@ -1018,6 +1062,64 @@ const SONG_KINDS = new Set(['activity_like', 'activity_comment', 'activity_repos
 
 /** How long a Spotify title lookup may hold a push before it goes out saying "your post". */
 const SPOTIFY_LOOKUP_MS = 1500;
+
+/** After a like push makes a sound, how long further likes on that post update it silently. */
+export const LIKE_ALERT_WINDOW_MS = 15 * 60_000;
+
+/**
+ * Whether this like push should make a sound: the first like on a post, or the first after
+ * LIKE_ALERT_WINDOW_MS of quiet. Later likes inside the window still go out — they replace
+ * the card with the new count — but silently.
+ *
+ * Claimed in push_like_alerts with two single statements, so two likes racing for one
+ * window cannot both be loud: move an existing row forward only if its last alert is older
+ * than the window (Postgres re-checks that condition after waiting on a concurrent writer's
+ * row lock), else insert the row, where a conflict means another like already holds the
+ * window.
+ *
+ * Fails LOUD. A missing table (send-push deployed before the migration), an error or a
+ * throw all answer true, which is exactly the behaviour before this existed. The worst
+ * case of failing this way is an extra buzz; failing quiet would swallow a notification.
+ */
+export async function claimLikeAlert(
+  admin: SupabaseClient,
+  recipient: string,
+  postId: string,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const at = new Date(now).toISOString();
+  const windowStart = new Date(now - LIKE_ALERT_WINDOW_MS).toISOString();
+  try {
+    const moved = await admin
+      .from('push_like_alerts')
+      .update({ last_alert_at: at })
+      .eq('recipient_id', recipient)
+      .eq('post_id', postId)
+      .lt('last_alert_at', windowStart)
+      .select('post_id');
+    if (moved.error) {
+      console.warn('[send-push] like alert claim failed; alerting', moved.error.message);
+      return true;
+    }
+    if ((moved.data ?? []).length > 0) return true;
+
+    const created = await admin
+      .from('push_like_alerts')
+      .upsert(
+        { recipient_id: recipient, post_id: postId, last_alert_at: at },
+        { onConflict: 'recipient_id,post_id', ignoreDuplicates: true },
+      )
+      .select('post_id');
+    if (created.error) {
+      console.warn('[send-push] like alert claim failed; alerting', created.error.message);
+      return true;
+    }
+    return (created.data ?? []).length > 0;
+  } catch (e) {
+    console.warn('[send-push] like alert claim threw; alerting', e instanceof Error ? e.message : e);
+    return true;
+  }
+}
 
 /**
  * The post a like / comment / repost push is about. A Spotify repost has no Livil track —
@@ -1191,7 +1293,14 @@ export async function handler(req: Request): Promise<Response> {
     if (subject) grant.post = subject;
   }
 
-  const { title, body, data } = buildPush(kind, actor, grant, profile, payload);
+  // 4c. Likes on one post: is this the like that makes a sound? Claimed only now, past the
+  // blocked / muted / no-phone exits, so a like that was never going to reach a phone
+  // cannot use up the window. (A send that then fails at FCM still uses it: the next like
+  // inside the window is silent rather than an extra buzz.)
+  const likePostId = kind === 'activity_like' ? grant.activity?.postId : null;
+  const quiet = likePostId ? !(await claimLikeAlert(admin, recipient, likePostId)) : false;
+
+  const { title, body, data } = buildPush(kind, actor, grant, profile, payload, { quiet });
 
   // 5b. The iOS home-screen badge number.
   //
@@ -1244,20 +1353,7 @@ export async function handler(req: Request): Promise<Response> {
             data,
             android: { priority: 'high' },
             // iOS-only; FCM drops it for Android tokens, so one payload serves both.
-            // `thread-id` is the iOS analogue of the Android `groupId`/merged chat card:
-            // it collapses a conversation's notifications into one stack instead of a
-            // column of identical rows.
-            apns: {
-              headers: { 'apns-priority': '10' },
-              payload: {
-                aps: {
-                  alert: { title, body },
-                  sound: 'default',
-                  'thread-id': data.conversationId ?? kind,
-                  ...(badge === null ? {} : { badge }),
-                },
-              },
-            },
+            apns: apnsFor(kind, title, body, data, badge),
           },
         }),
       });
@@ -1280,7 +1376,7 @@ export async function handler(req: Request): Promise<Response> {
     await admin.from('device_tokens').delete().in('token', deadTokens);
   }
 
-  return done('sent', { sent, failed, pruned: deadTokens.length });
+  return done('sent', { sent, failed, pruned: deadTokens.length, quiet: quiet ? 1 : 0 });
 }
 
 /** The FcmError code from an HTTP v1 error body, for the log line only. */

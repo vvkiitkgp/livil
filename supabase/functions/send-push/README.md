@@ -75,6 +75,18 @@ review.
      bucket path, and `URL.href === url`; dot-segments, backslashes and `%2e`/`%2f`/`%5c`
      are refused outright, because the phone's HTTP client would normalize
      `avatars/../../auth/v1/verify?redirect_to=…` into another endpoint on our host.
+   - **One card per liked post, one sound per 15 minutes** (`activity_like` only):
+     `buildPush` sets `collapseId = like:<postId>`, which iOS honours as
+     `apns-collapse-id` (`apnsFor`) and the app uses as the Android notification id, so
+     each like replaces the post's card instead of adding one. `claimLikeAlert` decides
+     whether this like may make a sound by claiming the `push_like_alerts` row (migration
+     `20261024000000`; deny-all, service role only) in two single statements — a
+     conditional UPDATE when the last alert is older than `LIKE_ALERT_WINDOW_MS`, else an
+     INSERT … ON CONFLICT DO NOTHING — so two racing likes cannot both be loud. A quiet
+     like sets `data.quiet = '1'` and goes to iOS with no sound and `interruption-level:
+     passive`. **Fails loud**: no table, an error or a throw means an ordinary alerting
+     push, so this function may deploy before the migration. Apps before the release that
+     reads `collapseId` / `quiet` ignore both keys on Android (a card per like, as before).
    - **`describePost` reads only the recipient's own post** (`author_id = recipient`). It
      runs as service role, and a recipient can rewrite their own activity row's `post_id`
      (`activity_notifications_update_own` covers every column), so without that filter a

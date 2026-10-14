@@ -719,6 +719,15 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/spotify-reposts.test.sql
 
+      # send-push's like window: deny-all to every app role, one alerting like per post per
+      # 15 minutes (the exact claim claimLikeAlert issues), and rows go with post and profile.
+      - name: Push like alert tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/push-like-alerts.test.sql
+
       # ADR-0027 — play stats: the Spotify hand-off log is write-only for clients, the
       # ops_play_* readers answer ops only, count people distinctly, and never name anyone.
       - name: Play stats tests

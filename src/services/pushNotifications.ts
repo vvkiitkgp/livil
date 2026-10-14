@@ -457,22 +457,43 @@ export async function displayPushNotification(
     return;
   }
 
+  // Likes on one post share ONE card: each new like replaces it ("Riya" → "Priya
+  // and 4 others"), so five likes are one card, not five. send-push names the card
+  // (collapseId) and marks a like inside its 15-minute alert window `quiet`; a quiet
+  // like updates a card still in the tray without a sound, but onlyAlertOnce lets it
+  // alert if the card was swiped away. A push without collapseId (an older send-push)
+  // keeps a card of its own.
+  const likeCard = kind === 'activity_like' ? likeCardId(data.collapseId) : null;
+
   await notifee.displayNotification({
     // Prefixed so appBadge.ts can clear it; sequenced so two notifications that
-    // land in the same millisecond don't replace one another. Unlike chat, these
-    // are deliberately NOT merged -- a like and a new fan are separate events.
-    id: `${LIVIL_NOTIFICATION_ID_PREFIX}${kind || 'push'}:${Date.now()}:${nonChatSeq++}`,
+    // land in the same millisecond don't replace one another. Unlike chat and like
+    // cards, these are deliberately NOT merged -- a comment and a new fan are
+    // separate events.
+    id: likeCard ?? `${LIVIL_NOTIFICATION_ID_PREFIX}${kind || 'push'}:${Date.now()}:${nonChatSeq++}`,
     title,
     body,
     data: tapData,
     android: {
       ...baseAndroid,
       // One event, one unit of badge. See the chat card's badgeCount for why the
-      // launcher's sum is what we are steering here.
+      // launcher's sum is what we are steering here. A like card is one unit too:
+      // it is one row in the Activity list, however many likes it counts.
       badgeCount: 1,
+      onlyAlertOnce: likeCard !== null && data.quiet === '1',
       ...(actorAvatarUrl ? { largeIcon: actorAvatarUrl } : {}),
     },
   });
+}
+
+/**
+ * The notification id a post's like card lives under, or null when the push does not
+ * name a well-formed one (send-push writes `like:<post uuid>`).
+ */
+function likeCardId(collapseId: string | undefined): string | null {
+  return collapseId && /^like:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collapseId)
+    ? `${LIVIL_NOTIFICATION_ID_PREFIX}${collapseId.toLowerCase()}`
+    : null;
 }
 
 /**
