@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-343 TypeScript file(s) under `src/`, 78,570 lines.
+343 TypeScript file(s) under `src/`, 78,569 lines.
 
 ## Size hotspots
 
@@ -30,7 +30,7 @@ reading alone (Constitution P28).
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
-| `src/screens/main/HomeScreen.tsx` | 1466 |
+| `src/screens/main/HomeScreen.tsx` | 1472 |
 | `src/components/PostCard.tsx` | 1413 |
 | `src/screens/main/UserProfileScreen.tsx` | 1310 |
 | `src/screens/main/ProfileScreen.tsx` | 1281 |
@@ -105,14 +105,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-48 file(s), 25,555 lines.
+48 file(s), 25,561 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
-| `src/screens/main/HomeScreen.tsx` | 1466 |
+| `src/screens/main/HomeScreen.tsx` | 1472 |
 | `src/screens/main/UserProfileScreen.tsx` | 1310 |
 | `src/screens/main/ProfileScreen.tsx` | 1281 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-129 file(s), 27,793 lines.
+129 file(s), 27,786 lines.
 
 | File | Lines |
 |---|---:|
@@ -243,12 +243,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
 | `src/components/guide/__tests__/timeline.test.ts` | 112 |
 | `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
-| `src/components/HomeFeedTabs.tsx` | 109 |
 | `src/components/Choice.tsx` | 108 |
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
+| `src/components/HomeFeedTabs.tsx` | 95 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 92 |
 | `src/components/EqualizerBars.tsx` | 89 |
@@ -285,10 +285,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/ListeningStatusReporter.tsx` | 48 |
 | `src/components/GoogleGlyph.tsx` | 46 |
+| `src/components/__tests__/HomeFeedTabs.test.tsx` | 43 |
 | `src/components/__tests__/UsernameBadges.integration.test.tsx` | 43 |
 | `src/components/onboarding/Barcode.tsx` | 41 |
 | `src/components/__tests__/SpotifyLogo.test.ts` | 39 |
-| `src/components/__tests__/HomeFeedTabs.test.tsx` | 36 |
 | `src/components/ChatTimeSeparator.tsx` | 31 |
 | `src/components/spotifyLogoArtwork.ts` | 31 |
 | `src/components/badgeShapes.ts` | 24 |

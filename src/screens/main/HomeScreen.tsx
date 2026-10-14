@@ -978,6 +978,9 @@ export default function HomeScreen() {
               tabBarYRef.current = e.nativeEvent.layout.y;
               updatePinned(lastScrollY.current);
             }}
+            // While the pinned copy is up, this one is under the translucent top bar,
+            // where it would show through as a ghost of the same pills.
+            style={pinned ? styles.inListTabsHidden : undefined}
           >
             <HomeFeedTabs active={tab} onSelect={selectTab} showNewDot={newDot} />
           </View>
@@ -1016,7 +1019,7 @@ export default function HomeScreen() {
     // the feed that is an unverifiable change. Left as-is pending coverage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [navigation, meProfile, storiesLoading, stories, feedError, loadingInitial, appendFeedPage, notificationCount,
-      tab, selectTab, newDot, updatePinned, newTabAvailable],
+      tab, selectTab, newDot, updatePinned, newTabAvailable, pinned],
   );
 
   const footer = useMemo(() => {
@@ -1402,6 +1405,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: -0.4,
+  },
+  inListTabsHidden: {
+    opacity: 0,
   },
   pinnedTabs: {
     position: 'absolute',
