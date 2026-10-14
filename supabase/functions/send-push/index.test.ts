@@ -452,6 +452,8 @@ Deno.test('activity_milestone: allowed for the listener whose play crossed it', 
   const row = { recipient_id: B, type: 'play_milestone', post_id: POST, payload: { threshold: 1000 }, created_at: at };
   const grant = await authorize(activityAdmin([row], [{ post_id: POST, played_at: at }]), 'activity_milestone', A, B);
   assertEquals(grant?.milestone, 1000);
+  // …and remembers which of the recipient's posts it was, so the push can name the song.
+  assertEquals(grant?.milestonePostId, POST);
 });
 
 Deno.test('activity_milestone: another recent listener cannot re-announce it', async () => {
@@ -696,6 +698,14 @@ Deno.test('composeContent: milestone and badge copy come from the proven facts',
   assertEquals(composeContent('activity_milestone', { milestone: 1000 }, riya, { body: 'hacked' }), {
     title: 'Livil', body: 'Your track hit 1K plays 🎉',
   });
+  // The song is named once describePost could read it; the first milestone greets listeners.
+  const song = { kind: 'upload' as const, title: 'Midnight Chai' };
+  assertEquals(composeContent('activity_milestone', { milestone: 25, post: song }, riya, {}).body,
+    '“Midnight Chai” hit 25 plays 🎉');
+  assertEquals(composeContent('activity_milestone', { milestone: 5, post: song }, riya, {}).body,
+    'Your first listeners are in 🎉 “Midnight Chai” hit 5 plays');
+  assertEquals(composeContent('activity_milestone', { milestone: 5 }, riya, {}).body,
+    'Your first listeners are in 🎉 Your track hit 5 plays');
   assertEquals(composeContent('badge_granted', { badge: 'verified' }, riya, { body: 'hacked' }).body,
     'Your account is now verified ✓');
   assertEquals(composeContent('badge_granted', { badge: 'first_100' }, riya, {}).body,
@@ -1337,6 +1347,22 @@ Deno.test('flushScheduled: a mood nudge opens the + Track chooser and replaces t
   await flushScheduled(w.admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: w.fetchFn });
   const m = w.messages.find(x => x.token === 'tok-ana')! as { data: Record<string, string> };
   assertEquals([m.data.route, m.data.kind, m.data.collapseId], ['AddToLivil', 'mood_nudge', 'mood']);
+});
+
+Deno.test('flushScheduled: New music pushes open Home on the New on Livil tab, one card each', async () => {
+  for (const [kind, collapseId] of [['new_drop', 'drop'], ['originals_weekly', 'fresh']]) {
+    const w = scheduledWorld(kind);
+    await flushScheduled(w.admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: w.fetchFn });
+    const m = w.messages.find(x => x.token === 'tok-ana')! as { data: Record<string, string> };
+    assertEquals([m.data.route, m.data.tab, m.data.collapseId, m.data.kind], ['App', 'new_on_livil', collapseId, kind]);
+  }
+});
+
+Deno.test('flushScheduled: older kinds carry no tab', async () => {
+  const w = scheduledWorld('repost_digest');
+  await flushScheduled(w.admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: w.fetchFn });
+  const m = w.messages.find(x => x.token === 'tok-ana')! as { data: Record<string, string> };
+  assertEquals(m.data.tab, undefined);
 });
 
 Deno.test('flushScheduled: an unknown send claims nothing and sends nothing', async () => {

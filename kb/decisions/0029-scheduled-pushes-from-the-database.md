@@ -107,3 +107,25 @@ existing way; something on the server has to wake up, decide who gets what, and 
 - Ops access now means a broadcast to every user (edit a line, switch a slot on). `is_ops()`
   is plain `ops_users` membership; requiring an MFA session (`aal2`) for these writes is a
   recorded follow-up. Slots stamp `updated_by` so a switch is attributable.
+
+## Amendment — New music (2026-10-14, `20261027000000_new_music_pushes.sql`)
+
+Two more sends on the same machinery, both created **off** and gated on
+`notification_preferences.new_music` (the "New music" switch the app release with ADR-0030
+adds):
+
+- **`new_drop`** — `push_run_new_drops()` every 5 minutes announces each upload (posted since
+  the switch went on, within 2 hours, at least 2 minutes old) to the uploader's friends and
+  starrers: not blocked either way, at most one new drop per person per 24 hours, once per
+  upload (`push_sends.post_id`, unique for the slot). Naming the uploader and the song is
+  safe here because only people who chose the uploader receive it.
+- **`originals_weekly`** — `push_run_originals()` on Sundays 19:00 IST counts unseen uploads
+  from the past week (`push_originals_for`, the digest's naming rule: friends and starred
+  named, the rest counted). A stranger's upload counts only when its latest copyright scan is
+  complete with no match — a broadcast in Livil's voice must not promote unchecked music —
+  so a stranger's video (never scanned) never counts.
+
+The CHECKs on `push_messages.pool`, `push_slots.slot/pool` and `push_sends.slot/kind` were
+widened (nothing removed); `ops_push_test` gained the two preview branches with its existing
+ones unchanged; `push_run_slot` and `push_digest_for` were not touched.
+
