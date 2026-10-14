@@ -22,13 +22,15 @@ const mockLoad = jest.fn();
 jest.mock('../../services/relationships', () => ({
   loadViewerRelationships: () => mockLoad(),
 }));
+const SIGNED_IN = { data: { user: { id: 'me' } }, error: null };
+const mockGetUser = jest.fn();
 
 jest.mock('../../../lib/supabase', () => {
   const channel = { on: () => channel, subscribe: () => channel };
   return {
     supabase: {
       auth: {
-        getUser: () => Promise.resolve({ data: { user: { id: 'me' } } }),
+        getUser: () => mockGetUser(),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
       },
       channel: () => channel,
@@ -76,6 +78,7 @@ beforeEach(() => {
   renders = 0;
   appStateListener = null;
   mockLoad.mockReset();
+  mockGetUser.mockReset().mockResolvedValue(SIGNED_IN);
   jest.spyOn(AppState, 'addEventListener').mockImplementation(((_: string, fn: (s: AppStateStatus) => void) => {
     appStateListener = fn;
     return { remove: () => {} };
@@ -138,5 +141,22 @@ describe('RelationshipContext', () => {
     // focus refresh among them, which would then refetch in a loop.
     expect(ctx).toBe(before);
     expect(renders).toBe(rendersBefore);
+  });
+
+  it('keeps everyone as they were when the auth check fails on resume', async () => {
+    mockLoad.mockResolvedValue(rels({ friends: ['u2'] }));
+    const tree = await mount();
+    expect(shown(tree)).toContain('friend');
+
+    // Offline, or the token refresh not through yet: getUser RETURNS the failure.
+    mockGetUser.mockResolvedValueOnce({ data: { user: null }, error: new Error('Failed to fetch') });
+    await ReactTestRenderer.act(async () => {
+      appStateListener!('background');
+      appStateListener!('active');
+    });
+
+    // Not read as a sign-out: still a friend, still the same user.
+    expect(shown(tree)).toContain('friend');
+    expect(ctx.meId).toBe('me');
   });
 });

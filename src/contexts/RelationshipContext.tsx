@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import { isAuthSessionMissingError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import * as svc from '../services/relationships';
 
@@ -85,7 +86,12 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
 
   const refresh = useCallback(async () => {
     try {
-      const { data } = await supabase.auth.getUser();
+      const { data, error } = await supabase.auth.getUser();
+      // getUser() RETURNS a failed request (offline, a token refresh not through yet —
+      // both likely right as the app resumes) rather than throwing. Only a missing session
+      // means signed out, and SIGNED_OUT clears on its own. Reading a blip as a sign-out
+      // showed "Add" on every friend and tore down the listeners that would retry.
+      if (error && !isAuthSessionMissingError(error)) { return; }
       const me = data?.user?.id ?? null;
       setMeId(me);
       if (!me) {
@@ -93,7 +99,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
         setReady(true);
         return;
       }
-      const r = await svc.loadViewerRelationships();
+      const r = await svc.loadViewerRelationships(me);
       applySets({
         friends: new Set(r.friends),
         stars: new Set(r.stars),
