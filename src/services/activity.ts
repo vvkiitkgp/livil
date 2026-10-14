@@ -35,6 +35,9 @@ export type ActivityPostRef = {
   postId: string;
   title: string | null;
   coverArtUrl: string | null;
+  /** Who made the song: the track's UPLOADER, so a like on your repost of someone's upload
+      names them, not you. Filled in by attachLivilPostDetails; null for Spotify reposts. */
+  artistName: string | null;
   /** Set when the post is a Spotify repost. It has no Livil track, so `title` and
       `coverArtUrl` are null and the card describes the Spotify song instead. */
   spotifyTrackId: string | null;
@@ -128,6 +131,7 @@ function rowToPost(row: RawActivityRow): ActivityPostRef {
     postId: row.post_id ?? '',
     title: row.post_title,
     coverArtUrl: row.post_cover_art_url,
+    artistName: null, // filled in by attachLivilPostDetails
     spotifyTrackId: null, // filled in by attachSpotifyTrackIds
   };
 }
@@ -320,7 +324,7 @@ export async function listActivity(beforeUpdatedAt?: string): Promise<ActivityIt
     // passes it straight through to ActivityBubble, which throws on it. That is the exact
     // scenario this guard exists for: a type added server-side ahead of a client release.
     .filter((item): item is ActivityItem => item != null);
-  return attachSpotifyTrackIds(items);
+  return attachLivilPostDetails(await attachSpotifyTrackIds(items));
 }
 
 /**
@@ -343,6 +347,65 @@ async function attachSpotifyTrackIds(items: ActivityItem[]): Promise<ActivityIte
     if (!('post' in item)) { return item; }
     const spotifyTrackId = byId.get(item.post.postId);
     return spotifyTrackId ? { ...item, post: { ...item.post, spotifyTrackId } } : item;
+  });
+}
+
+type RawPostDetails = {
+  id: string;
+  track: {
+    title: string | null;
+    cover_art_url: string | null;
+    thumbnail_url: string | null;
+    uploader: { username: string | null; display_name: string | null } | null;
+  } | null;
+};
+
+/**
+ * activity_list returns only the track's `cover_art_url` — a VIDEO upload has a thumbnail
+ * instead, so a like on one drew the grey placeholder — and no artist, so every Livil card
+ * said "Tap to view". Fill both in from the post's track: cover, else the video thumbnail
+ * (the order the player and the share card use), and the uploader as the artist.
+ *
+ * Read-time, so notifications written before this existed render correctly too. One
+ * batched query for every Livil post in the page; on any failure the items are left as
+ * they were, which is exactly what rendered before.
+ */
+async function attachLivilPostDetails(items: ActivityItem[]): Promise<ActivityItem[]> {
+  const ids = new Set<string>();
+  for (const item of items) {
+    if ('post' in item && item.post.postId && !item.post.spotifyTrackId) {
+      ids.add(item.post.postId);
+    }
+  }
+  if (ids.size === 0) { return items; }
+  let rows: RawPostDetails[];
+  try {
+    const { data, error } = await db
+      .from('posts')
+      .select(
+        'id, track:tracks ( title, cover_art_url, thumbnail_url, uploader:profiles!tracks_uploader_id_fkey ( username, display_name ) )',
+      )
+      .in('id', Array.from(ids));
+    if (error || !data) { return items; }
+    rows = data as RawPostDetails[];
+  } catch {
+    return items;
+  }
+  const trackByPost = new Map(rows.map(r => [r.id, r.track]));
+  return items.map(item => {
+    if (!('post' in item)) { return item; }
+    const track = trackByPost.get(item.post.postId);
+    if (!track) { return item; }
+    const uploader = track.uploader;
+    return {
+      ...item,
+      post: {
+        ...item.post,
+        title: item.post.title ?? track.title,
+        coverArtUrl: item.post.coverArtUrl ?? track.cover_art_url ?? track.thumbnail_url,
+        artistName: uploader ? uploader.display_name?.trim() || uploader.username : null,
+      },
+    };
   });
 }
 
