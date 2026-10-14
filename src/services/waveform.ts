@@ -41,6 +41,29 @@ export type {
 } from '../../shared/services/waveformDsp';
 
 /**
+ * Turn a picker's `file://` URI into the form `decodeAudioData` can open.
+ *
+ * The document picker's `keepLocalCopy` hands back a PERCENT-ENCODED URI on both platforms
+ * (iOS `URL.absoluteString`, Android `Uri.fromFile().toString()`), so "My Song.mp3" arrives
+ * as `file:///…/My%20Song.mp3`. react-native-audio-api only strips the `file://` prefix and
+ * passes the rest to miniaudio's `fopen` verbatim → ENOENT → "Resource does not exist", and
+ * the upload-time wave silently never gets computed for any filename with a space or a
+ * non-ASCII character.
+ *
+ * Keep the `file://` prefix: on an Android release build the library reads a scheme-less path
+ * as a BUNDLED ASSET, not a file. Remote URLs pass through untouched — `fetch` wants them
+ * encoded. A malformed escape returns the input unchanged rather than throwing.
+ */
+export function toDecoderSource(source: string): string {
+  if (!source.startsWith('file://')) { return source; }
+  try {
+    return 'file://' + decodeURIComponent(source.slice('file://'.length));
+  } catch {
+    return source;
+  }
+}
+
+/**
  * Decode `source` (a local file:// path at upload, OR a remote URL on lazy backfill —
  * `decodeAudioData` accepts both) and compute the v2 feature set.
  *
@@ -51,7 +74,7 @@ export type {
 export async function analyzeWaveformPeaks(source: string): Promise<WaveformData | null> {
   if (!source) { return null; }
   try {
-    const buffer = await decodeAudioData(source, TARGET_SAMPLE_RATE);
+    const buffer = await decodeAudioData(toDecoderSource(source), TARGET_SAMPLE_RATE);
     const seconds = buffer.length / (buffer.sampleRate || TARGET_SAMPLE_RATE);
     if (seconds > MAX_ANALYZE_SECONDS) {
       console.log(`[LIVIL][WAVE] skip analysis: ${seconds.toFixed(0)}s > ${MAX_ANALYZE_SECONDS}s cap`);
