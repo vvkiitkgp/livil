@@ -1,7 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { sendPush, type PushKind } from './pushDispatch';
 import { isProfileBadge, type ProfileBadge } from './profileBadges';
-import { fetchSpotifyTrackIds } from './spotify';
 
 const db = supabase as any;
 
@@ -36,7 +35,7 @@ export type ActivityPostRef = {
   title: string | null;
   coverArtUrl: string | null;
   /** Who made the song: the track's UPLOADER, so a like on your repost of someone's upload
-      names them, not you. Filled in by attachLivilPostDetails; null for Spotify reposts. */
+      names them, not you. Filled in by attachPostDetails; null for Spotify reposts. */
   artistName: string | null;
   /** Set when the post is a Spotify repost. It has no Livil track, so `title` and
       `coverArtUrl` are null and the card describes the Spotify song instead. */
@@ -131,8 +130,8 @@ function rowToPost(row: RawActivityRow): ActivityPostRef {
     postId: row.post_id ?? '',
     title: row.post_title,
     coverArtUrl: row.post_cover_art_url,
-    artistName: null, // filled in by attachLivilPostDetails
-    spotifyTrackId: null, // filled in by attachSpotifyTrackIds
+    artistName: null, // filled in by attachPostDetails
+    spotifyTrackId: null, // filled in by attachPostDetails
   };
 }
 
@@ -311,7 +310,15 @@ export function activitySummary(item: ActivityItem): string {
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
-export async function listActivity(beforeUpdatedAt?: string): Promise<ActivityItem[]> {
+/**
+ * `postDetails: false` skips the post lookup for callers that only need the text of an item
+ * (the Inbox banner's one-line preview): it never shows a card, so it never needs artwork,
+ * an artist or a Spotify id.
+ */
+export async function listActivity(
+  beforeUpdatedAt?: string,
+  { postDetails = true }: { postDetails?: boolean } = {},
+): Promise<ActivityItem[]> {
   const { data, error } = await db.rpc('activity_list', {
     p_limit: 50,
     p_before: beforeUpdatedAt ?? null,
@@ -324,34 +331,12 @@ export async function listActivity(beforeUpdatedAt?: string): Promise<ActivityIt
     // passes it straight through to ActivityBubble, which throws on it. That is the exact
     // scenario this guard exists for: a type added server-side ahead of a client release.
     .filter((item): item is ActivityItem => item != null);
-  return attachLivilPostDetails(await attachSpotifyTrackIds(items));
-}
-
-/**
- * activity_list finds a post's title and artwork through its Livil track, and a Spotify
- * repost has none — so a like or comment on one arrived as a blank "Your post" card. Mark
- * those posts so the bubble can describe the Spotify song. Only posts that came back with
- * neither a title nor artwork are asked about; on any failure the item is left as it was.
- */
-async function attachSpotifyTrackIds(items: ActivityItem[]): Promise<ActivityItem[]> {
-  const candidates = new Set<string>();
-  for (const item of items) {
-    if ('post' in item && item.post.postId && !item.post.title && !item.post.coverArtUrl) {
-      candidates.add(item.post.postId);
-    }
-  }
-  if (candidates.size === 0) { return items; }
-  const byId = await fetchSpotifyTrackIds(Array.from(candidates));
-  if (byId.size === 0) { return items; }
-  return items.map(item => {
-    if (!('post' in item)) { return item; }
-    const spotifyTrackId = byId.get(item.post.postId);
-    return spotifyTrackId ? { ...item, post: { ...item.post, spotifyTrackId } } : item;
-  });
+  return postDetails ? attachPostDetails(items) : items;
 }
 
 type RawPostDetails = {
   id: string;
+  spotify_track_id: string | null;
   track: {
     title: string | null;
     cover_art_url: string | null;
@@ -361,21 +346,23 @@ type RawPostDetails = {
 };
 
 /**
- * activity_list returns only the track's `cover_art_url` — a VIDEO upload has a thumbnail
- * instead, so a like on one drew the grey placeholder — and no artist, so every Livil card
- * said "Tap to view". Fill both in from the post's track: cover, else the video thumbnail
- * (the order the player and the share card use), and the uploader as the artist.
+ * What activity_list cannot say about a post, filled in with ONE batched query for the page:
  *
- * Read-time, so notifications written before this existed render correctly too. One
- * batched query for every Livil post in the page; on any failure the items are left as
- * they were, which is exactly what rendered before.
+ *  - A Spotify repost has no Livil track, so it arrives with no title or artwork. Mark it
+ *    with its Spotify id so the bubble describes the Spotify song (ADR-0027).
+ *  - activity_list returns only the track's `cover_art_url`. A VIDEO upload has a thumbnail
+ *    instead, so a like on one drew the grey placeholder: use cover, else thumbnail (the
+ *    order the player and the share card use).
+ *  - It returns no artist, so every Livil card said "Tap to view". Use the track's uploader,
+ *    so a repost of someone's song names them rather than the reposter.
+ *
+ * Read-time, so notifications written before this existed render correctly too. On any
+ * failure the items are left exactly as activity_list returned them.
  */
-async function attachLivilPostDetails(items: ActivityItem[]): Promise<ActivityItem[]> {
+async function attachPostDetails(items: ActivityItem[]): Promise<ActivityItem[]> {
   const ids = new Set<string>();
   for (const item of items) {
-    if ('post' in item && item.post.postId && !item.post.spotifyTrackId) {
-      ids.add(item.post.postId);
-    }
+    if ('post' in item && item.post.postId) { ids.add(item.post.postId); }
   }
   if (ids.size === 0) { return items; }
   let rows: RawPostDetails[];
@@ -383,7 +370,7 @@ async function attachLivilPostDetails(items: ActivityItem[]): Promise<ActivityIt
     const { data, error } = await db
       .from('posts')
       .select(
-        'id, track:tracks ( title, cover_art_url, thumbnail_url, uploader:profiles!tracks_uploader_id_fkey ( username, display_name ) )',
+        'id, spotify_track_id, track:tracks ( title, cover_art_url, thumbnail_url, uploader:profiles!tracks_uploader_id_fkey ( username, display_name ) )',
       )
       .in('id', Array.from(ids));
     if (error || !data) { return items; }
@@ -391,10 +378,15 @@ async function attachLivilPostDetails(items: ActivityItem[]): Promise<ActivityIt
   } catch {
     return items;
   }
-  const trackByPost = new Map(rows.map(r => [r.id, r.track]));
+  const byPost = new Map(rows.map(r => [r.id, r]));
   return items.map(item => {
     if (!('post' in item)) { return item; }
-    const track = trackByPost.get(item.post.postId);
+    const row = byPost.get(item.post.postId);
+    if (!row) { return item; }
+    if (row.spotify_track_id) {
+      return { ...item, post: { ...item.post, spotifyTrackId: row.spotify_track_id } };
+    }
+    const track = row.track;
     if (!track) { return item; }
     const uploader = track.uploader;
     return {

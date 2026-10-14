@@ -1,23 +1,21 @@
 /**
- * listActivity — Spotify reposts in the livil Bot thread.
+ * listActivity — what the livil Bot thread's post cards can say.
  *
- * activity_list finds a post's title and artwork through its Livil track. A Spotify repost
- * has no track (ADR-0027), so a like or comment on one used to arrive as a blank "Your post"
- * card. These pin that such a post is now marked with its Spotify id — and that nothing else
- * changes, including when the lookup fails.
+ * activity_list finds a post's title and artwork through its Livil track, returns only the
+ * track's cover (never a video's thumbnail) and no artist. So a like on a Spotify repost
+ * arrived as a blank "Your post" card, a like on a VIDEO upload drew a grey placeholder, and
+ * every Livil card read "Tap to view". One batched lookup now fills all three in. These pin
+ * what it fills, that it is ONE query, and that a failed lookup leaves the thread exactly as
+ * activity_list returned it.
  */
 const mockRpc = jest.fn();
-const mockFetchSpotifyTrackIds = jest.fn();
-/** The batched posts → track lookup: called with the post ids, resolves `{ data, error }`. */
+/** The batched posts lookup: called with the post ids, resolves `{ data, error }`. */
 const mockPostDetails = jest.fn();
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     rpc: (...a: unknown[]) => mockRpc(...a),
     from: () => ({ select: () => ({ in: (_col: string, ids: string[]) => mockPostDetails(ids) }) }),
   },
-}));
-jest.mock('../spotify', () => ({
-  fetchSpotifyTrackIds: (...a: unknown[]) => mockFetchSpotifyTrackIds(...a),
 }));
 jest.mock('../pushDispatch', () => ({ sendPush: jest.fn() }));
 
@@ -45,72 +43,52 @@ function row(over: Record<string, unknown>) {
 }
 
 const LIVIL_LIKE = row({ post_id: 'post-livil', post_title: 'Midnight Drive', post_cover_art_url: 'https://x/cover.jpg' });
+const VIDEO_LIKE = row({ post_id: 'post-video', post_title: 'Jamming live' });
 const SPOTIFY_LIKE = row({ post_id: 'post-spotify' });
 const SPOTIFY_COMMENT = row({ post_id: 'post-spotify', type: 'comment', id: 'n-comment' });
 const NEW_FAN = row({ post_id: null, type: 'new_fan', id: 'n-fan' });
 
-beforeEach(() => {
-  mockRpc.mockReset();
-  mockFetchSpotifyTrackIds.mockReset();
-  mockPostDetails.mockReset().mockResolvedValue({ data: [], error: null });
-});
+/** A posts row as the lookup returns it. */
+function details(id: string, over: { spotify?: string; track?: Record<string, unknown> | null } = {}) {
+  const track = over.track === undefined ? {} : over.track;
+  return {
+    id,
+    spotify_track_id: over.spotify ?? null,
+    track: track && { title: null, cover_art_url: null, thumbnail_url: null, uploader: null, ...track },
+  };
+}
 
-type PostRef = { title: string | null; coverArtUrl: string | null; artistName: string | null; spotifyTrackId: string | null };
+type PostRef = { postId: string; title: string | null; coverArtUrl: string | null; artistName: string | null; spotifyTrackId: string | null };
 function postOf(item: unknown) {
   return (item as { post?: PostRef }).post;
 }
 
-function details(id: string, track: Record<string, unknown> | null) {
-  return { id, track: track && { title: null, cover_art_url: null, thumbnail_url: null, uploader: null, ...track } };
-}
-
-it('marks likes and comments on a Spotify repost with its Spotify id', async () => {
-  mockRpc.mockResolvedValue({ data: [SPOTIFY_LIKE, SPOTIFY_COMMENT, LIVIL_LIKE, NEW_FAN], error: null });
-  mockFetchSpotifyTrackIds.mockResolvedValue(new Map([['post-spotify', SPOTIFY_ID]]));
-
-  const items = await listActivity();
-
-  expect(items.map(i => postOf(i)?.spotifyTrackId ?? null)).toEqual([SPOTIFY_ID, SPOTIFY_ID, null, null]);
-  // Asked once, and only about the post that came back without a title or artwork.
-  expect(mockFetchSpotifyTrackIds).toHaveBeenCalledTimes(1);
-  expect(mockFetchSpotifyTrackIds).toHaveBeenCalledWith(['post-spotify']);
+beforeEach(() => {
+  mockRpc.mockReset();
+  mockPostDetails.mockReset().mockResolvedValue({ data: [], error: null });
 });
 
-it('does not look anything up when every post has its Livil details', async () => {
-  mockRpc.mockResolvedValue({ data: [LIVIL_LIKE, NEW_FAN], error: null });
+describe('Spotify reposts', () => {
+  it('marks likes and comments on a Spotify repost with its Spotify id', async () => {
+    mockRpc.mockResolvedValue({ data: [SPOTIFY_LIKE, SPOTIFY_COMMENT, LIVIL_LIKE, NEW_FAN], error: null });
+    mockPostDetails.mockResolvedValue({
+      data: [details('post-spotify', { spotify: SPOTIFY_ID, track: null }), details('post-livil')],
+      error: null,
+    });
 
-  const items = await listActivity();
+    const items = await listActivity();
 
-  expect(mockFetchSpotifyTrackIds).not.toHaveBeenCalled();
-  expect(postOf(items[0])).toEqual({
-    postId: 'post-livil',
-    title: 'Midnight Drive',
-    coverArtUrl: 'https://x/cover.jpg',
-    artistName: null,
-    spotifyTrackId: null,
+    expect(items.map(i => postOf(i)?.spotifyTrackId ?? null)).toEqual([SPOTIFY_ID, SPOTIFY_ID, null, null]);
+    // A Spotify repost has no Livil track: no artist is invented for it.
+    expect(postOf(items[0])?.artistName).toBeNull();
   });
 });
 
-it('leaves the thread as it was when the lookup finds nothing', async () => {
-  mockRpc.mockResolvedValue({ data: [SPOTIFY_LIKE], error: null });
-  mockFetchSpotifyTrackIds.mockResolvedValue(new Map());
-
-  const items = await listActivity();
-
-  expect(items).toHaveLength(1);
-  expect(postOf(items[0])?.spotifyTrackId).toBeNull();
-});
-
 describe('Livil posts — cover and artist', () => {
-  // activity_list returns only the track's cover_art_url and no artist. A like on a VIDEO
-  // upload (thumbnail, no cover) drew the grey placeholder, and every Livil card read
-  // "Tap to view" instead of who made the song.
-
   it('uses the video thumbnail when the track has no cover', async () => {
-    const videoLike = row({ post_id: 'post-video', post_title: 'Jamming live' });
-    mockRpc.mockResolvedValue({ data: [videoLike], error: null });
+    mockRpc.mockResolvedValue({ data: [VIDEO_LIKE], error: null });
     mockPostDetails.mockResolvedValue({
-      data: [details('post-video', { title: 'Jamming live', thumbnail_url: 'https://x/thumb.jpg', uploader: { username: 'arjun', display_name: 'Arjun' } })],
+      data: [details('post-video', { track: { title: 'Jamming live', thumbnail_url: 'https://x/thumb.jpg', uploader: { username: 'arjun', display_name: 'Arjun' } } })],
       error: null,
     });
 
@@ -122,20 +100,26 @@ describe('Livil posts — cover and artist', () => {
   it("keeps the track's own cover over the thumbnail", async () => {
     mockRpc.mockResolvedValue({ data: [LIVIL_LIKE], error: null });
     mockPostDetails.mockResolvedValue({
-      data: [details('post-livil', { cover_art_url: 'https://x/cover.jpg', thumbnail_url: 'https://x/thumb.jpg' })],
+      data: [details('post-livil', { track: { cover_art_url: 'https://x/cover.jpg', thumbnail_url: 'https://x/thumb.jpg' } })],
       error: null,
     });
 
     const [item] = await listActivity();
 
-    expect(postOf(item)?.coverArtUrl).toBe('https://x/cover.jpg');
+    expect(postOf(item)).toEqual({
+      postId: 'post-livil',
+      title: 'Midnight Drive',
+      coverArtUrl: 'https://x/cover.jpg',
+      artistName: null,
+      spotifyTrackId: null,
+    });
   });
 
   it('names the uploader, falling back to the username when there is no display name', async () => {
     // On a repost the post's author is the reposter; the track's uploader made the song.
     mockRpc.mockResolvedValue({ data: [LIVIL_LIKE], error: null });
     mockPostDetails.mockResolvedValue({
-      data: [details('post-livil', { uploader: { username: 'sindhu', display_name: '  ' } })],
+      data: [details('post-livil', { track: { uploader: { username: 'sindhu', display_name: '  ' } } })],
       error: null,
     });
 
@@ -143,27 +127,46 @@ describe('Livil posts — cover and artist', () => {
 
     expect(postOf(item)?.artistName).toBe('sindhu');
   });
+});
 
-  it('asks once, for Livil posts only — never about a Spotify repost', async () => {
-    mockRpc.mockResolvedValue({ data: [SPOTIFY_LIKE, LIVIL_LIKE, NEW_FAN], error: null });
-    mockFetchSpotifyTrackIds.mockResolvedValue(new Map([['post-spotify', SPOTIFY_ID]]));
+describe('the lookup', () => {
+  it('is ONE query for every post in the page, each id once', async () => {
+    mockRpc.mockResolvedValue({ data: [SPOTIFY_LIKE, SPOTIFY_COMMENT, LIVIL_LIKE, NEW_FAN], error: null });
 
     await listActivity();
 
     expect(mockPostDetails).toHaveBeenCalledTimes(1);
-    expect(mockPostDetails).toHaveBeenCalledWith(['post-livil']);
+    expect(mockPostDetails.mock.calls[0][0].sort()).toEqual(['post-livil', 'post-spotify']);
+  });
+
+  it('is skipped when the caller only needs the text', async () => {
+    mockRpc.mockResolvedValue({ data: [LIVIL_LIKE], error: null });
+
+    await listActivity(undefined, { postDetails: false });
+
+    expect(mockPostDetails).not.toHaveBeenCalled();
+  });
+
+  it('is skipped when no item has a post', async () => {
+    mockRpc.mockResolvedValue({ data: [NEW_FAN], error: null });
+
+    await listActivity();
+
+    expect(mockPostDetails).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['an error response', () => mockPostDetails.mockResolvedValue({ data: null, error: { message: 'boom' } })],
-    ['a thrown error', () => mockPostDetails.mockRejectedValue(new Error('offline'))],
-  ])('renders the card as before on %s', async (_label, fail) => {
-    const videoLike = row({ post_id: 'post-video', post_title: 'Jamming live' });
-    mockRpc.mockResolvedValue({ data: [videoLike], error: null });
+    ['finds nothing', () => mockPostDetails.mockResolvedValue({ data: [], error: null })],
+    ['returns an error', () => mockPostDetails.mockResolvedValue({ data: null, error: { message: 'boom' } })],
+    ['throws', () => mockPostDetails.mockRejectedValue(new Error('offline'))],
+  ])('leaves the thread as activity_list returned it when it %s', async (_label, fail) => {
+    mockRpc.mockResolvedValue({ data: [VIDEO_LIKE, SPOTIFY_LIKE], error: null });
     fail();
 
-    const [item] = await listActivity();
+    const items = await listActivity();
 
-    expect(postOf(item)).toMatchObject({ title: 'Jamming live', coverArtUrl: null, artistName: null });
+    expect(items).toHaveLength(2);
+    expect(postOf(items[0])).toMatchObject({ title: 'Jamming live', coverArtUrl: null, artistName: null, spotifyTrackId: null });
+    expect(postOf(items[1])?.spotifyTrackId).toBeNull();
   });
 });
