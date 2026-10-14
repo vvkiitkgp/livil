@@ -562,6 +562,17 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/feed-candidates.test.sql
 
+      # New on Livil (20261026000000): Home's second tab is the For you ranker with an
+      # uploads-only filter. Pins that it returns no reposts, that the read policy still
+      # decides every row, that For you is the same ranker with the filter off, and that
+      # newer reposts cannot spend the LIMITed branches and starve the tab of uploads.
+      - name: New on Livil tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/new-on-livil.test.sql
+
       # shared_post_public is the ONLY function role `anon` may execute against post
       # data, so this suite is the whole anonymous perimeter. Two of its assertions
       # fail silently in production if broken: a repost becoming publicly readable
