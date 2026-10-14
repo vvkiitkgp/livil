@@ -88,6 +88,7 @@ const TOP_BAR_H = 64;
 const RESTING_Y = Platform.OS === 'ios' ? -TOP_BAR_H : 0;
 /** Home's pages, left to right. */
 const PAGE_INDEX: Record<HomeFeedTab, number> = { for_you: 0, new_on_livil: 1 };
+const noop = () => {};
 /** Fetch the next page while the viewer is still a few cards away from the bottom. */
 const PREFETCH_FROM_END = 5;
 
@@ -259,6 +260,7 @@ function FriendStoriesRow({
  */
 function HomeListHeader({
   which,
+  invisible = false,
   storiesLoading,
   stories,
   storiesScrollRef,
@@ -273,9 +275,11 @@ function HomeListHeader({
   onRetry,
 }: {
   which: HomeFeedTab;
+  /** Hidden (still laid out) while Home's still copy stands in for it mid-slide. */
+  invisible?: boolean;
   storiesLoading: boolean;
   stories: Story[];
-  storiesScrollRef: React.RefObject<React.ElementRef<typeof GestureScrollView> | null>;
+  storiesScrollRef?: React.RefObject<React.ElementRef<typeof GestureScrollView> | null>;
   showTabs: boolean;
   tabsHidden: boolean;
   activeTab: HomeFeedTab;
@@ -287,7 +291,7 @@ function HomeListHeader({
   onRetry: () => void;
 }) {
   return (
-    <>
+    <View style={invisible ? styles.headerInvisible : undefined}>
       {/* Spacer so content starts below the fixed top bar — Android only. iOS clears the
           bar with a content inset instead (see FEED_INSET_IOS), which is what puts the
           pull-to-refresh spinner BELOW the bar: a spacer is content, and the spinner draws
@@ -335,7 +339,7 @@ function HomeListHeader({
           />
         </View>
       ) : null}
-    </>
+    </View>
   );
 }
 
@@ -640,6 +644,34 @@ export default function HomeScreen() {
     transform: [{ translateX: -pageProgress.value * screenW }],
   }));
 
+  // ── Only the posts slide (owner decision) ─────────────────────────────────
+  // Each page carries its own copy of the stories + pills at its top, so a plain pager would
+  // slide them too. While the pages move, a still copy of that header is laid over them,
+  // exactly where it sits on screen, and the pages' own copies are hidden; once the pages
+  // settle the copy goes and the arriving page's own header is in the same place. Two
+  // things make that true: the arriving page is first lined up (alignOtherPage), and when
+  // the pills are pinned the header is off screen anyway — the pinned pills already stand
+  // still, so nothing is frozen.
+  const [frozenHeaderTop, setFrozenHeaderTop] = useState<number | null>(null);
+  const alignOtherPage = useCallback((from: HomeFeedTab) => {
+    const other: HomeFeedTab = from === 'for_you' ? 'new_on_livil' : 'for_you';
+    const fromY = lastScrollYRef.current[from];
+    const otherY = lastScrollYRef.current[other];
+    const tabY = tabBarYRef.current;
+    // The offset at which the pills pin. Above it the header is (partly) on screen and both
+    // pages must sit at the same offset; below it the header is gone, and the other page
+    // only needs to be at least that far down — further, and it stays where it was left.
+    const pinAt = tabY === null ? Number.POSITIVE_INFINITY : tabY - pinTop(topBarVisible.current, TOP_BAR_H);
+    const target = fromY < pinAt ? fromY : Math.max(otherY, pinAt);
+    if (target !== otherY) {
+      listRefs[other].current?.scrollToOffset({ offset: target, animated: false });
+      lastScrollYRef.current[other] = target;
+    }
+    // The header's top on screen: the list starts at the safe area, its content at -scroll.
+    setFrozenHeaderTop(pinnedRef.current ? null : insets.top - fromY);
+  }, [listRefs, insets.top]);
+  const unfreezeHeader = useCallback(() => { setFrozenHeaderTop(null); }, []);
+
   // Switching shows each feed exactly as it was left; only pull-to-refresh reloads it
   // (owner decision). `fresh` is for a push tap only: the song it announced must be there.
   // A tap slides the pages to the pill; a swipe has already moved them (`fromSwipe`).
@@ -650,7 +682,10 @@ export default function HomeScreen() {
     const reload = !started.current || Boolean(opts?.fresh);
     if (reload && next === 'new_on_livil') { markNewOnLivilSeen(); }
     if (next !== tabRef.current) {
-      if (!opts?.fromSwipe) { haptics.select(); }
+      if (!opts?.fromSwipe) {
+        haptics.select();
+        alignOtherPage(tabRef.current);
+      }
       // The cards being timed are about to leave the screen. Not a new pass: what has
       // been counted stays counted.
       for (const timer of dwellTimersRef.current.values()) { clearTimeout(timer); }
@@ -659,21 +694,25 @@ export default function HomeScreen() {
       setTab(next);
     }
     if (!opts?.fromSwipe) {
-      pageProgress.value = withTiming(PAGE_INDEX[next], { duration: 260 });
+      pageProgress.value = withTiming(PAGE_INDEX[next], { duration: 260 }, finished => {
+        if (finished) { runOnJS(unfreezeHeader)(); }
+      });
     }
     if (reload) {
       void load('initial');
     }
-  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted, pageProgress]);
+  }, [markNewOnLivilSeen, forYouLoad, newOnLivilLoad, forYouStarted, newOnLivilStarted, pageProgress,
+    alignOtherPage, unfreezeHeader]);
 
   // A swipe toward New on Livil before it was ever opened: start loading it at once, so
   // the page arriving under the finger has its skeletons turning into songs.
   const onSwipeStart = useCallback(() => {
+    alignOtherPage(tabRef.current);
     if (!newOnLivilStarted.current) {
       markNewOnLivilSeen();
       void newOnLivilLoad('initial');
     }
-  }, [newOnLivilStarted, newOnLivilLoad, markNewOnLivilSeen]);
+  }, [newOnLivilStarted, newOnLivilLoad, markNewOnLivilSeen, alignOtherPage]);
   const onSwipeSettled = useCallback((index: number) => {
     selectTab(index === PAGE_INDEX.new_on_livil ? 'new_on_livil' : 'for_you', { fromSwipe: true });
   }, [selectTab]);
@@ -704,10 +743,12 @@ export default function HomeScreen() {
       // A flick decides by direction, however short.
       if (Math.abs(e.velocityX) > 500) { target = e.velocityX < 0 ? 1 : 0; }
       target = Math.min(1, Math.max(0, target));
-      pageProgress.value = withTiming(target, { duration: 220 });
+      pageProgress.value = withTiming(target, { duration: 220 }, finished => {
+        if (finished) { runOnJS(unfreezeHeader)(); }
+      });
       runOnJS(onSwipeSettled)(target);
     }),
-  [newTabAvailable, screenW, pageProgress, swipeFrom, onSwipeStart, onSwipeSettled]);
+  [newTabAvailable, screenW, pageProgress, swipeFrom, onSwipeStart, onSwipeSettled, unfreezeHeader]);
 
   // The page on screen changed: the pins and the top bar follow ITS scroll.
   useEffect(() => {
@@ -1185,6 +1226,7 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <HomeListHeader
             which={which}
+            invisible={frozenHeaderTop !== null}
             storiesLoading={storiesLoading}
             stories={stories}
             storiesScrollRef={which === 'for_you' ? forYouStoriesRef : newOnLivilStoriesRef}
@@ -1262,6 +1304,27 @@ export default function HomeScreen() {
           </Reanimated.View>
         </View>
       </GestureDetector>
+
+      {/* The still copy of the stories + pills while the pages slide (see alignOtherPage).
+          Not touchable: the finger is on the swipe. */}
+      {frozenHeaderTop !== null ? (
+        <View pointerEvents="none" style={[styles.frozenHeader, { top: frozenHeaderTop }]}>
+          <HomeListHeader
+            which={shownTab}
+            storiesLoading={storiesLoading}
+            stories={stories}
+            showTabs={newTabAvailable}
+            tabsHidden={false}
+            activeTab={shownTab}
+            onSelectTab={selectTab}
+            newDot={newDot}
+            onTabsLayout={noop}
+            loading={feed.loadingInitial}
+            feedError={feed.feedError}
+            onRetry={noop}
+          />
+        </View>
+      ) : null}
 
       {/* Fixed top bar — slides up on scroll down, returns on scroll up */}
       <Animated.View
@@ -1548,6 +1611,15 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: -0.4,
+  },
+  headerInvisible: {
+    opacity: 0,
+  },
+  frozenHeader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 5,
   },
   pagerViewport: {
     flex: 1,
