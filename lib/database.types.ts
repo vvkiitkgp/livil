@@ -1514,6 +1514,7 @@ export type Database = {
           send_at_ist: string
           slot: string
           updated_at: string
+          updated_by: string | null
         }
         Insert: {
           enabled?: boolean
@@ -1522,6 +1523,7 @@ export type Database = {
           send_at_ist: string
           slot: string
           updated_at?: string
+          updated_by?: string | null
         }
         Update: {
           enabled?: boolean
@@ -1530,6 +1532,7 @@ export type Database = {
           send_at_ist?: string
           slot?: string
           updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }

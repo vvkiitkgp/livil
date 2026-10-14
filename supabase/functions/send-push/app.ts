@@ -1207,6 +1207,22 @@ const SCHEDULED_KINDS: Record<string, { route: string; collapseId: string }> = {
   repost_digest: { route: 'App', collapseId: 'digest' },
 };
 
+/**
+ * Ids per request. PostgREST carries `.in()` lists in the URL; a few hundred uuids would
+ * overrun the gateway's URL limit and fail every lookup, which here would mean marking a
+ * whole slot `failed`.
+ */
+const ID_CHUNK = 100;
+
+export function chunked<T>(xs: T[], size = ID_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
+  return out;
+}
+
+/** No legitimate request comes close: the longest is a chat preview of a few hundred bytes. */
+const MAX_BODY_BYTES = 16_384;
+
 /** The send id of a hand-off from the database, or null when this is not one. */
 export function scheduledSendIdOf(payload: unknown): string | null {
   const id = (payload as { scheduledSendId?: unknown } | null)?.scheduledSendId;
@@ -1291,17 +1307,22 @@ export async function flushScheduled(
     accessToken = await (deps.accessToken ?? getFcmAccessToken)();
   } catch (e) {
     console.error('[send-push] FCM auth failed; scheduled rows requeued', e instanceof Error ? e.message : e);
-    await admin.from('push_deliveries').update({ status: 'queued' }).in('id', rows.map(r => r.id));
+    for (const ids of chunked(rows.map(r => r.id))) {
+      await admin.from('push_deliveries').update({ status: 'queued' }).in('id', ids);
+    }
     return { ...none, claimed: rows.length };
   }
   const projectId = deps.projectId ?? Deno.env.get('FCM_PROJECT_ID')!;
   const endpoint = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
 
-  const { data: tokenRows } = await admin
-    .from('device_tokens')
-    .select('user_id, token, platform')
-    .in('user_id', [...new Set(rows.map(r => r.recipient_id))]);
-  const devices = (tokenRows ?? []) as Array<{ user_id: string; token: string; platform?: string | null }>;
+  const devices: Array<{ user_id: string; token: string; platform?: string | null }> = [];
+  for (const ids of chunked([...new Set(rows.map(r => r.recipient_id))])) {
+    const { data: tokenRows } = await admin
+      .from('device_tokens')
+      .select('user_id, token, platform')
+      .in('user_id', ids);
+    devices.push(...((tokenRows ?? []) as typeof devices));
+  }
 
   const sentIds: string[] = [];
   const failedIds: string[] = [];
@@ -1338,14 +1359,14 @@ export async function flushScheduled(
   }));
 
   const now = new Date().toISOString();
-  if (sentIds.length > 0) {
-    await admin.from('push_deliveries').update({ status: 'sent', sent_at: now }).in('id', sentIds);
+  for (const ids of chunked(sentIds)) {
+    await admin.from('push_deliveries').update({ status: 'sent', sent_at: now }).in('id', ids);
   }
-  if (failedIds.length > 0) {
-    await admin.from('push_deliveries').update({ status: 'failed' }).in('id', failedIds);
+  for (const ids of chunked(failedIds)) {
+    await admin.from('push_deliveries').update({ status: 'failed' }).in('id', ids);
   }
-  if (deadTokens.length > 0) {
-    await admin.from('device_tokens').delete().in('token', deadTokens);
+  for (const tokens of chunked(deadTokens)) {
+    await admin.from('device_tokens').delete().in('token', tokens);
   }
   return { claimed: rows.length, sent: sentIds.length, failed: failedIds.length, pruned: deadTokens.length };
 }
@@ -1358,6 +1379,10 @@ export async function handler(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
+  // Before anything reads the body (which now happens ahead of user resolution, see below).
+  if (Number(req.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) {
+    return json(413, { error: 'too_large' });
+  }
 
   // 1. AUTHENTICATION — resolve the actor from the JWT, not the body.
   const authHeader = req.headers.get('Authorization') ?? '';

@@ -1083,6 +1083,11 @@ RLS enabled · defined in `20261025000000_scheduled_pushes.sql`
 | `enabled` | `boolean not null default false` |
 | `last_position` | `integer not null default 0` |
 | `updated_at` | `timestamptz not null default now()` |
+| `updated_by` | `uuid references public.profiles(id) on delete set null` |
+
+**Triggers**
+
+- `push_slots_stamp` — before update (`20261025000000_scheduled_pushes.sql`)
 
 ### `search_result_taps`
 
@@ -1536,6 +1541,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_profiles_redirect_last_seen` | `profiles` | before insert or update of last_seen_at | `20260925010000_last_seen_is_ops_only.sql` |
 | `trg_profiles_stamp_reposts_public` | `profiles` | before update of reposts_public | `20261019000000_reposts_audience.sql` |
 | `push_messages_stamp` | `push_messages` | before insert or update | `20261025000000_scheduled_pushes.sql` |
+| `push_slots_stamp` | `push_slots` | before update | `20261025000000_scheduled_pushes.sql` |
 | `spotify_opens_server_time` | `spotify_opens` | before insert | `20261016000000_spotify_opens_server_time.sql` |
 | `stories_pin_expiry_trg` | `stories` | before insert or update | `20260724120000_prop0004_harden_stories.sql` |
 | `trg_terms_acceptances_no_update` | `terms_acceptances` | BEFORE UPDATE | `20260907000000_terms_acceptance_log.sql` |

@@ -140,14 +140,40 @@ select pg_temp.assert_eq('2c  a stranger (Cyd) sees Ana, Dex and Eli''s public r
   (select songs || '/' || people from push_digest_for('c7000000-0000-0000-0000-000000000004',
      now() - interval '1 hour', now())),
   '3/3');
-select pg_temp.assert('2d  … and Bea is never named to him',
-  (select names not like '%Bea%' and names like '%, % and 1 other'
-     from push_digest_for('c7000000-0000-0000-0000-000000000004', now() - interval '1 hour', now())),
-  true);
-select pg_temp.assert_eq('2e  a block works both ways (Dex never sees Ana); two people read "X and Y"',
-  (select names from push_digest_for('c7000000-0000-0000-0000-000000000005',
+select pg_temp.assert_eq('2d  … none of them is his friend or star, so nobody is named — strangers are counted',
+  (select names from push_digest_for('c7000000-0000-0000-0000-000000000004',
      now() - interval '1 hour', now())),
-  'Cyd and @sp_eli');
+  '3 people');
+select pg_temp.assert_eq('2e  a block works both ways: Dex never sees Ana (2 people, Cyd and Eli)',
+  (select songs || ' / ' || names from push_digest_for('c7000000-0000-0000-0000-000000000005',
+     now() - interval '1 hour', now())),
+  '2 / 2 people');
+select pg_temp.assert('2k  Ana''s stranger (Cyd) is counted in "1 other", never named',
+  (select names not like '%Cyd%' from push_digest_for('c7000000-0000-0000-0000-000000000002',
+     now() - interval '1 hour', now())), true);
+
+-- A name cannot smuggle a line break or a direction override into the notification.
+update profiles set display_name = 'Bea' || E'\n' || chr(8238) || 'Locked'
+ where id = 'c7000000-0000-0000-0000-000000000003';
+select pg_temp.assert_eq('2l  control and direction-override characters become a space',
+  (select names from push_digest_for('c7000000-0000-0000-0000-000000000002',
+     now() - interval '1 hour', now())),
+  'Bea Locked, @sp_eli and 1 other');
+update profiles set display_name = 'Bea' where id = 'c7000000-0000-0000-0000-000000000003';
+
+-- The photo is the first NAMED person's — never a stranger's, whose photo is their choice.
+update profiles set avatar_url = 'https://lh3.googleusercontent.com/a/' || username
+ where id in ('c7000000-0000-0000-0000-000000000003', 'c7000000-0000-0000-0000-000000000004');
+select pg_temp.assert_eq('2m  Ana''s digest carries Bea''s (her friend''s) photo',
+  (select avatar_url from push_digest_for('c7000000-0000-0000-0000-000000000002',
+     now() - interval '1 hour', now())),
+  'https://lh3.googleusercontent.com/a/sp_bea');
+select pg_temp.assert('2n  Op knows none of the reposters: "4 people", and no photo at all',
+  (select names = '4 people' and avatar_url is null
+     from push_digest_for('c7000000-0000-0000-0000-000000000001', now() - interval '1 hour', now())),
+  true);
+update profiles set avatar_url = null
+ where id in ('c7000000-0000-0000-0000-000000000003', 'c7000000-0000-0000-0000-000000000004');
 select pg_temp.assert_eq('2f  outside the window there is nothing',
   (select songs::text from push_digest_for('c7000000-0000-0000-0000-000000000002',
      now() - interval '2 hours', now() - interval '1 hour')),
@@ -269,6 +295,12 @@ select pg_temp.assert('4h  Bea did not → not came back',
   (select came_back from push_deliveries where send_id = :'digest1'
      and recipient_id = 'c7000000-0000-0000-0000-000000000003'), false);
 
+update push_deliveries set created_at = now() - interval '8 days' where send_id = :'digest3';
+select push_maintain();
+select pg_temp.assert_count('4i  a week on, the text that names people is blanked (the row and its stats stay)',
+  (select count(*) from push_deliveries where send_id = :'digest3' and title = '' and body = ''),
+  (select count(*) from push_deliveries where send_id = :'digest3'));
+
 -- ── 1. Who can touch it ─────────────────────────────────────────────────────
 -- Ana: not an operator. Delivery ids are looked up now, as the owner: Ana herself can
 -- read no delivery, which is the point of 1d.
@@ -334,6 +366,9 @@ select pg_temp.assert_count('1r  … and never deletes one (switch it off instea
 update push_slots set enabled = false where slot = 'mood_evening';
 select pg_temp.assert_count('1s  … switches a slot off',
   (select count(*) from push_slots where not enabled), 1);
+select pg_temp.assert_eq('1s2 … and the slot remembers who switched it',
+  (select updated_by::text from push_slots where slot = 'mood_evening'),
+  'c7000000-0000-0000-0000-000000000001');
 select pg_temp.assert('1t  … sees the numbers',
   (select count(*) from ops_push_message_stats(14)) = 12
     and (select count(*) from ops_push_recent_sends(20)) > 0, true);
@@ -352,5 +387,16 @@ select pg_temp.assert('1v  the test send goes to the operator only, filled in',
      from push_deliveries where send_id = :'t1'), true);
 select pg_temp.assert_count('1w  … and is handed off',
   (select count(*) from net.stub_requests where body ->> 'scheduledSendId' = :'t1'), 1);
+
+-- The operator deletes their account (delete_my_account runs with THEIR auth.uid()): the
+-- lines they edited lose the reference instead of keeping a dangling one.
+select pg_temp.set_user('c7000000-0000-0000-0000-000000000001');
+delete from profiles where id = 'c7000000-0000-0000-0000-000000000001';
+select pg_temp.assert_count('1x  no message or slot points at a deleted operator',
+  (select count(*) from push_messages m
+    where m.updated_by is not null and not exists (select 1 from profiles p where p.id = m.updated_by))
+  + (select count(*) from push_slots s
+    where s.updated_by is not null and not exists (select 1 from profiles p where p.id = s.updated_by)),
+  0);
 
 rollback;

@@ -7,7 +7,9 @@
 --   08:00 IST  mood_morning    "Ssup, music buddy? 👀" — skipped if you posted today
 --   11:00 IST  digest_morning  "Arjun, Kavya and 10 others" / "reposted 18 songs since
 --                              last night" — counts only reposts you have not already
---                              seen in your feed; skipped when there are none
+--                              seen in your feed; NAMES only your friends and people you
+--                              star ("12 people" when none of them reposted); skipped
+--                              when there is nothing new
 --   18:00 IST  digest_evening  same, counting reposts since the 11:00 digest
 --   20:00 IST  mood_evening    "Hey, are you okay? 🫶" — skipped if you posted today
 --
@@ -125,6 +127,12 @@ language plpgsql
 set search_path = public, pg_temp
 as $$
 begin
+  -- Only a direct edit is stamped. A nested update — the ON DELETE SET NULL cascade when an
+  -- operator deletes their account, which runs with THEIR auth.uid() — must pass through,
+  -- or the trigger would write the deleted id straight back over the NULL.
+  if pg_trigger_depth() > 1 then
+    return new;
+  end if;
   new.updated_at := now();
   new.updated_by := auth.uid();
   if tg_op = 'UPDATE' then
@@ -149,7 +157,9 @@ create table if not exists public.push_slots (
   send_at_ist   time not null,
   enabled       boolean not null default false,
   last_position integer not null default 0,
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+  -- Who last switched it. Stamped by trigger; ops cannot write it (column grant below).
+  updated_by    uuid references public.profiles(id) on delete set null
 );
 alter table public.push_slots enable row level security;
 revoke all on public.push_slots from anon, authenticated;
@@ -163,6 +173,27 @@ create policy push_slots_ops_select on public.push_slots
 drop policy if exists push_slots_ops_update on public.push_slots;
 create policy push_slots_ops_update on public.push_slots
   for update to authenticated using (public.is_ops()) with check (public.is_ops());
+
+-- Stamp who switched a slot. Only a change of `enabled` by a person counts: the scheduler's
+-- own rotation update (last_position) and the account-deletion cascade pass through.
+create or replace function public.push_slots_stamp()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if pg_trigger_depth() > 1 or new.enabled is not distinct from old.enabled then
+    return new;
+  end if;
+  new.updated_at := now();
+  new.updated_by := auth.uid();
+  return new;
+end;
+$$;
+drop trigger if exists push_slots_stamp on public.push_slots;
+create trigger push_slots_stamp
+  before update on public.push_slots
+  for each row execute function public.push_slots_stamp();
 
 insert into public.push_slots (slot, pool, send_at_ist) values
   ('mood_morning',   'mood_morning', '08:00'),
@@ -249,9 +280,15 @@ $$;
 -- either way, and the reposter shows reposts to everyone OR is their friend — minus their
 -- own, and minus any they have ALREADY SEEN: a post_impressions row means the card was on
 -- their screen in the Home feed (every shipped build records it), so telling them about
--- it again would be news they already have. Named in order: friends, then people they
--- star, then everyone else; most recent first within each. A name is the display name,
--- else @username, like the Activity rows.
+-- it again would be news they already have.
+--
+-- NAMED: only the recipient's friends and the people they star (friends first; most recent
+-- first within each). Everyone else is COUNTED, never named — a stranger's display name is
+-- any text they choose, and the digest is a broadcast in Livil's voice, so naming the last
+-- stranger to repost would let anyone put "Livil Security: account locked…" at the top of
+-- most people's notification twice a day. With nobody named it reads "12 people". Names are
+-- the display name, else @username, with control and direction-override characters turned
+-- into spaces. The photo is the first NAMED person's, never a stranger's.
 create or replace function public.push_digest_for(
   p_viewer uuid, p_since timestamptz, p_until timestamptz
 )
@@ -283,23 +320,37 @@ as $$
      group by s.author_id
   ),
   named as (
-    select coalesce(nullif(btrim(p.display_name), ''), '@' || p.username) as name,
+    select coalesce(
+             nullif(btrim(regexp_replace(p.display_name,
+               '[[:cntrl:]' || chr(8203) || '-' || chr(8207) || chr(8234) || '-' || chr(8238)
+                 || chr(8294) || '-' || chr(8297) || ']+', ' ', 'g')), ''),
+             '@' || p.username) as name,
            p.avatar_url,
            row_number() over (order by w.closeness, w.latest desc, w.author_id) as n
       from who w
       join public.profiles p on p.id = w.author_id
+     where w.closeness < 2
+  ),
+  tally as (
+    select (select count(*)::int from who) as total,
+           least((select count(*)::int from named), 2) as shown
   )
   select (select count(*)::int from seen),
-         (select count(*)::int from who),
-         case (select count(*) from who)
-           when 0 then null
-           when 1 then (select name from named where n = 1)
-           when 2 then (select name from named where n = 1) || ' and ' || (select name from named where n = 2)
-           else (select name from named where n = 1) || ', ' || (select name from named where n = 2)
-                || ' and ' || ((select count(*) from who) - 2)
-                || case when (select count(*) from who) - 2 = 1 then ' other' else ' others' end
+         t.total,
+         case
+           when t.total = 0 then null
+           when t.shown = 0 then t.total || case when t.total = 1 then ' person' else ' people' end
+           else
+             (select string_agg(name, case when t.shown = 2 and t.total = 2 then ' and ' else ', ' end
+                                order by n)
+                from named where n <= t.shown)
+             || case when t.total > t.shown
+                  then ' and ' || (t.total - t.shown)
+                       || case when t.total - t.shown = 1 then ' other' else ' others' end
+                  else '' end
          end,
-         (select avatar_url from named where n = 1);
+         (select avatar_url from named where n = 1)
+    from tally t;
 $$;
 
 -- Hands a queued send to send-push. pg_net is asynchronous: the request leaves after this
@@ -455,6 +506,14 @@ begin
    where d.status = 'sent'
      and d.came_back is null
      and d.sent_at < now() - interval '1 hour';
+
+  -- The rendered text names other people; once a week old it has served its purpose (the
+  -- dashboard's "recent sends" example), and keeping it would keep a deleted account's
+  -- name in other people's rows for the full 90 days.
+  update public.push_deliveries
+     set title = '', body = '', avatar_url = null
+   where created_at < now() - interval '7 days'
+     and (title <> '' or body <> '');
 
   -- Retention: who received what is kept 90 days, the per-send summary a year.
   delete from public.push_deliveries where created_at < now() - interval '90 days';
@@ -616,6 +675,17 @@ revoke all on function public.push_render(text, text, integer, text) from public
 revoke all on function public.push_render(text, text, integer, text) from anon, authenticated;
 revoke all on function public.push_messages_stamp() from public;
 revoke all on function public.push_messages_stamp() from anon, authenticated;
+revoke all on function public.push_slots_stamp() from public;
+revoke all on function public.push_slots_stamp() from anon, authenticated;
+
+-- pg_net's own setup may grant its functions to the API roles. Only cron (the owner) calls
+-- it here; no client should be able to make the database fetch a URL.
+do $$
+begin
+  execute 'revoke all on function net.http_post(text,jsonb,jsonb,jsonb,integer) from anon, authenticated';
+exception when others then
+  raise notice 'could not revoke net.http_post from client roles: %', sqlerrm;
+end $$;
 
 -- Signed-in users: report their own tap. Ops: the dashboard (empty / null for others).
 revoke all on function public.push_record_open(uuid) from public;
@@ -677,6 +747,19 @@ begin
   end loop;
   if has_function_privilege('anon', 'public.ops_push_test(uuid)', 'execute') then
     raise exception 'ops_push_test is executable by anon';
+  end if;
+  -- Ops may switch a slot and nothing else about it (checked here, before any test harness
+  -- re-grants tables).
+  if not has_column_privilege('authenticated', 'public.push_slots', 'enabled', 'update') then
+    raise exception 'operators cannot switch push_slots.enabled';
+  end if;
+  if has_column_privilege('authenticated', 'public.push_slots', 'pool', 'update')
+     or has_column_privilege('authenticated', 'public.push_slots', 'last_position', 'update')
+     or has_column_privilege('authenticated', 'public.push_slots', 'updated_by', 'update') then
+    raise exception 'push_slots must be updatable by clients in `enabled` only';
+  end if;
+  if has_function_privilege('anon', 'net.http_post(text,jsonb,jsonb,jsonb,integer)', 'execute') then
+    raise notice 'net.http_post is still executable by anon — revoke it';
   end if;
   if exists (select 1 from pg_class c where c.relname in
         ('push_sends', 'push_deliveries', 'push_config', 'push_messages', 'push_slots')

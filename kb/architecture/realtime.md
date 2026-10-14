@@ -172,7 +172,7 @@ Details that exist for specific reasons:
 - **Livil's own scheduled pushes are decided in the database** (ADR-0029). pg_cron runs
   `push_run_slot` at 08:00 / 11:00 / 18:00 / 20:00 IST; it queues `push_deliveries` with the
   final text (digest visibility = the posts policy's predicate, minus reposts already seen
-  in the feed) and hands the send to
+  in the feed; only friends and starred people are named) and hands the send to
   `send-push` (`flushScheduled`) over pg_net. Wording and per-slot switches are edited in
   `/studio/ops` → Notifications; every slot starts off.
 - **Likes on one post are one notification card.** Each like replaces the post's card

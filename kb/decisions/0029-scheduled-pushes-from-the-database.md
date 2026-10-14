@@ -48,8 +48,14 @@ existing way; something on the server has to wake up, decide who gets what, and 
    reposter public or a friend; never the viewer's own), so a friends-only repost is never
    counted or named to a stranger — and skips any repost the viewer already has a
    `post_impressions` row for (it was on their screen in the Home feed; every shipped build
-   records that), so a digest is only news. Names: friends, then people the viewer stars,
-   then others.
+   records that), so a digest is only news. **Only friends and people the viewer stars are
+   named** (friends first); everyone else is counted ("and 10 others", or "12 people" when
+   nobody known reposted), and the photo is only ever a named person's. A stranger's display
+   name is free text, and naming the last stranger to repost would let anyone put e.g.
+   "Livil Security: account locked…" atop most people's notification twice a day (security
+   review of #279). Control and direction-override characters in names become spaces.
+   Rendered text is blanked after 7 days, so a deleted account's name does not linger in
+   other people's delivery rows.
 3. **Wording is data.** `push_messages` (ops-only by RLS, no DELETE — lines are switched off,
    so stats keep their meaning) holds every line; digests may use `{names}`, `{songs}`,
    `{since}` and nothing else (CHECK constraint, mirrored in the ops form). `push_slots`
@@ -88,5 +94,9 @@ existing way; something on the server has to wake up, decide who gets what, and 
   otherwise; CI stands it in with a recording stub (`net.stub_requests`).
 - The app release must add the Mood reminders switch, tap reporting (`pushId`), and
   `collapseId` handling for `mood` / `digest` on Android before mood slots are switched on.
-- At today's size one hand-off sends a whole slot. Past a few thousand recipients, claim in
-  batches and let `push_maintain` hand off the remainder.
+- At today's size one hand-off sends a whole slot (lookups and status writes go 100 ids per
+  request). Past a few thousand recipients, claim in batches and let `push_maintain` hand off
+  the remainder.
+- Ops access now means a broadcast to every user (edit a line, switch a slot on). `is_ops()`
+  is plain `ops_users` membership; requiring an MFA session (`aal2`) for these writes is a
+  recorded follow-up. Slots stamp `updated_by` so a switch is attributable.

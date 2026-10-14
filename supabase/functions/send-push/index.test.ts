@@ -19,6 +19,7 @@ import {
   apnsFor,
   claimLikeAlert,
   describePost,
+  chunked,
   flushScheduled,
   scheduledSendIdOf,
   sendFcm,
@@ -1355,4 +1356,47 @@ Deno.test('flushScheduled: FCM unreachable → the claimed rows go back to queue
   const requeue = w.calls.find(c =>
     c.table === 'push_deliveries' && c.f.__op === 'update' && JSON.parse(c.f.__row).status === 'queued');
   assertEquals(requeue?.f.id__in, `${ROW_ANA},${ROW_BEA}`);
+});
+
+Deno.test('chunked: splits id lists so no request carries more than 100', () => {
+  assertEquals(chunked([1, 2, 3], 2), [[1, 2], [3]]);
+  assertEquals(chunked([]), []);
+  assertEquals(chunked(Array.from({ length: 250 }, (_, i) => i)).map(c => c.length), [100, 100, 50]);
+});
+
+Deno.test('flushScheduled: a large send looks phones up and records outcomes 100 at a time', async () => {
+  const many = Array.from({ length: 150 }, (_, i) => ({
+    id: `bbbbbbbb-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    recipient_id: `cccccccc-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    title: 'x', body: 'y', avatar_url: null,
+  }));
+  const calls: Array<{ table: string; f: Record<string, string> }> = [];
+  const admin = fakeAdmin((table, f) => {
+    calls.push({ table, f: { ...f } });
+    if (table === 'push_sends') return { data: { kind: 'repost_digest' } };
+    if (table === 'push_deliveries' && f.__op === 'update' && JSON.parse(f.__row).status === 'sending') {
+      return { data: many };
+    }
+    if (table === 'device_tokens') {
+      return { data: f.user_id__in.split(',').map(u => ({ user_id: u, token: `tok-${u}`, platform: 'android' })) };
+    }
+    return { data: null };
+  });
+  const ok = (() => Promise.resolve(new Response('{}'))) as unknown as typeof fetch;
+  const result = await flushScheduled(admin, SEND, SUPA, { accessToken: () => Promise.resolve('at'), projectId: 'p', fetchFn: ok });
+  assertEquals(result.sent, 150);
+  const lookups = calls.filter(c => c.table === 'device_tokens');
+  assertEquals(lookups.map(c => c.f.user_id__in.split(',').length), [100, 50]);
+  const marks = calls.filter(c => c.table === 'push_deliveries' && c.f.__op === 'update'
+    && JSON.parse(c.f.__row).status === 'sent');
+  assertEquals(marks.map(c => c.f.id__in.split(',').length), [100, 50]);
+});
+
+Deno.test('handler: an oversized body is refused before anything reads it', async () => {
+  const res = await handler(new Request('https://x/send-push', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer x', 'content-length': '20000' },
+    body: 'x'.repeat(20_000),
+  }));
+  assertEquals(res.status, 413);
 });
