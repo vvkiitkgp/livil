@@ -2067,6 +2067,52 @@ a.btn {
   color: var(--info);
 }
 
+/* Ops → Notifications: the CURRENT state of a switch, spelled out, kept apart from the
+   button that changes it. A lone "Turn on" button read as a state ("it's on?") as often as
+   an action. Green dot = live; hollow grey dot = not. */
+.onoff {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-cta);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.onoff::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--text-secondary);
+}
+
+.onoff[data-on] {
+  color: var(--success);
+}
+
+.onoff[data-on]::before {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+/* A row's buttons on one line, under the row's text (a fourth column of three buttons
+   pushed the table past the page width). */
+.rowactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* A line that is switched off reads as off: dimmed, not highlighted. */
+.table tr[data-off] .table__title,
+.table tr[data-off] .hint {
+  color: var(--text-muted);
+}
+
 /* ── Empty + skeleton ───────────────────────────────────────────────────── */
 
 .empty {

@@ -41,7 +41,7 @@ const SLOT_LABELS: Record<PushSlot['slot'] | 'test', string> = {
   digest_morning: 'Repost digest',
   digest_evening: 'Repost digest',
   mood_evening: 'Evening mood',
-  test: 'Test (to me)',
+  test: 'Preview (only you)',
 };
 
 /** "08:00:00" → "8:00 AM". The column is a time of day in India; there is no date. */
@@ -114,7 +114,7 @@ export function OpsNotifications() {
       setConfirmSlot(s);
       return;
     }
-    void run(`slot:${s.slot}`, () => setSlotEnabled(s.slot, false), `${SLOT_LABELS[s.slot]} at ${istTime(s.sendAtIst)} is off.`);
+    void run(`slot:${s.slot}`, () => setSlotEnabled(s.slot, false), `${SLOT_LABELS[s.slot]} at ${istTime(s.sendAtIst)}: stopped. Nobody gets it until you start it again.`);
   };
 
   const saveDraft = () => {
@@ -144,7 +144,9 @@ export function OpsNotifications() {
   const testSend = (m: PushMessage) => {
     void run(`test:${m.id}`, async () => {
       const ok = await sendTestToMe(m.id);
-      setNotice(ok ? 'Sent to your phone — it should arrive in a few seconds.' : 'This account has no phone registered for notifications.');
+      setNotice(ok
+        ? 'Sent to your phone only — nobody else gets it. It should arrive in a few seconds.'
+        : 'This account has no phone signed in to Livil with notifications on, so there is nowhere to send a preview.');
     });
   };
 
@@ -179,11 +181,13 @@ export function OpsNotifications() {
                   <td>
                     <span className="table__title">{SLOT_LABELS[s.slot]}</span>
                     {s.pool !== 'digest' && !s.enabled && (
-                      <div className="hint">Turn on only once the app release with the “Mood reminders” switch is out (App Store rule).</div>
+                      <div className="hint">Start only once the app release with the “Mood reminders” switch is out (App Store rule).</div>
                     )}
                   </td>
                   <td>
-                    {s.enabled ? <span className="chip" data-active>On</span> : <span className="chip">Off</span>}
+                    <span className="onoff" data-on={s.enabled || undefined}>
+                      {s.enabled ? 'Sending daily' : 'Not sending'}
+                    </span>
                   </td>
                   <td className="num">
                     <Button
@@ -192,7 +196,7 @@ export function OpsNotifications() {
                       busy={busy === `slot:${s.slot}`}
                       onClick={() => toggleSlot(s)}
                     >
-                      {s.enabled ? 'Turn off' : 'Turn on'}
+                      {s.enabled ? 'Stop sending' : 'Start sending'}
                     </Button>
                   </td>
                 </tr>
@@ -205,7 +209,7 @@ export function OpsNotifications() {
       <section className="panel">
         <div className="panel__head">
           <h2 className="panel__title">What they say</h2>
-          <span className="hint">{poolInfo.hint} Rotates through the lines that are on, in order.</span>
+          <span className="hint">{poolInfo.hint} Takes turns through the lines that are In rotation, one per day. Preview on my phone sends one line to your phone only.</span>
         </div>
         <div className="chiprow">
           {POOLS.map(p => (
@@ -232,31 +236,25 @@ export function OpsNotifications() {
                 <tr>
                   <th className="num">#</th>
                   <th>Message</th>
+                  <th>Status</th>
                   <th className="num">Sent</th>
                   <th className="num">Opened</th>
                   <th className="num">Came back</th>
-                  <th />
                 </tr>
               </thead>
               <tbody>
                 {inPool.map(m => (
-                  <tr key={m.id} data-blocked={!m.active || undefined}>
+                  <tr key={m.id} data-off={!m.active || undefined}>
                     <td className="num">{m.position}</td>
                     <td>
                       <span className="table__title">{m.title}</span>
                       <div className="hint">{m.body}</div>
-                      {!m.active && <span className="badge">off</span>}
-                    </td>
-                    <td className="num">{m.delivered}</td>
-                    <td className="num">{m.opened} <span className="hint">{percent(m.opened, m.delivered)}</span></td>
-                    <td className="num">{m.cameBack} <span className="hint">{percent(m.cameBack, m.delivered)}</span></td>
-                    <td className="num">
-                      <div className="chiprow">
+                      <div className="rowactions">
                         <Button size="sm" variant="ghost" onClick={() => { setDraft({ id: m.id, title: m.title, body: m.body }); setDraftError(null); }}>
                           Edit
                         </Button>
                         <Button size="sm" variant="ghost" busy={busy === `test:${m.id}`} onClick={() => testSend(m)}>
-                          Send to me
+                          Preview on my phone
                         </Button>
                         <Button
                           size="sm"
@@ -264,10 +262,18 @@ export function OpsNotifications() {
                           busy={busy === `active:${m.id}`}
                           onClick={() => { void run(`active:${m.id}`, () => setMessageActive(m.id, !m.active)); }}
                         >
-                          {m.active ? 'Turn off' : 'Turn on'}
+                          {m.active ? 'Skip this line' : 'Use this line'}
                         </Button>
                       </div>
                     </td>
+                    <td>
+                      <span className="onoff" data-on={m.active || undefined}>
+                        {m.active ? 'In rotation' : 'Skipped'}
+                      </span>
+                    </td>
+                    <td className="num">{m.delivered}</td>
+                    <td className="num">{m.opened} <span className="hint">{percent(m.opened, m.delivered)}</span></td>
+                    <td className="num">{m.cameBack} <span className="hint">{percent(m.cameBack, m.delivered)}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -366,20 +372,20 @@ export function OpsNotifications() {
 
       {confirmSlot && (
         <ConfirmDialog
-          title={`Turn on ${SLOT_LABELS[confirmSlot.slot].toLowerCase()} at ${istTime(confirmSlot.sendAtIst)}?`}
+          title={`Start sending the ${SLOT_LABELS[confirmSlot.slot].toLowerCase()} every day at ${istTime(confirmSlot.sendAtIst)}?`}
           body={
             confirmSlot.pool === 'digest'
               ? 'From its next time, everyone with notifications on who has new reposts to see gets this, every day.'
               : 'From its next time, everyone with notifications on who has not posted that day gets this, every day. Only do this once the app release with the “Mood reminders” switch is out.'
           }
-          confirmLabel="Turn on"
+          confirmLabel="Start sending"
           busy={busy === `slot:${confirmSlot.slot}`}
           onConfirm={() => {
             const s = confirmSlot;
             void run(`slot:${s.slot}`, async () => {
               await setSlotEnabled(s.slot, true);
               setConfirmSlot(null);
-            }, `${SLOT_LABELS[s.slot]} at ${istTime(s.sendAtIst)} is on.`);
+            }, `${SLOT_LABELS[s.slot]} at ${istTime(s.sendAtIst)}: sending daily from its next time.`);
           }}
           onCancel={() => setConfirmSlot(null)}
         />
