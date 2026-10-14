@@ -153,6 +153,15 @@ select pg_temp.assert('1d  anon cannot read it',
     and (select count(*) from push_like_alerts) > 0, false);
 reset role;
 
+-- 1a–1d hold through RLS alone: this harness re-grants every table to the app roles after
+-- the replay, which undoes the migration's REVOKE (production keeps it, so there the roles
+-- are refused outright). Pin the layer the assertions above rely on, so a future policy
+-- cannot quietly open the table.
+select pg_temp.assert('1e  RLS is on and the table has no policies',
+  (select relrowsecurity from pg_class where oid = 'public.push_like_alerts'::regclass)
+    and not exists (select 1 from pg_policies
+                     where schemaname = 'public' and tablename = 'push_like_alerts'), true);
+
 -- ── 3. Cleanup ──────────────────────────────────────────────────────────────
 delete from posts where id = 'e6000000-0000-0000-0000-000000000002';
 select pg_temp.assert_count('3a  deleting a post removes its rows',
