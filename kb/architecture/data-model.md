@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-11
+last_verified: 2026-10-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 146 migration(s) in `supabase/migrations/`.
+Reconstructed from 147 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-54 table(s).
+55 table(s).
 
 ### `account_exit_feedback`
 
@@ -961,6 +961,24 @@ RLS enabled · defined in `20260607000000_edit_profile_schema.sql`
 | `date_of_birth` | `date` |
 | `phone_number` | `text` |
 | `updated_at` | `timestamptz not null default now()` |
+
+### `push_like_alerts`
+
+RLS enabled · defined in `20261024000000_push_like_alerts.sql`
+
+| Column | Definition |
+|---|---|
+| `recipient_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `post_id` | `uuid not null references public.posts(id) on delete cascade` |
+| `last_alert_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (recipient_id, post_id)`
+
+**Indexes**
+
+- `push_like_alerts_post_idx` `(post_id)`
 
 ### `search_result_taps`
 

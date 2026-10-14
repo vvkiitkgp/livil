@@ -16,7 +16,10 @@ import {
   clamp,
   composeContent,
   defaultBody,
+  apnsFor,
+  claimLikeAlert,
   describePost,
+  LIKE_ALERT_WINDOW_MS,
   sliceWhole,
   type Grant,
   isAllowedAvatarUrl,
@@ -62,6 +65,16 @@ function fakeAdmin(resolver: Resolver): any {
       in(col: string, vals: string[]) { filters[`${col}__in`] = vals.join(','); return b; },
       // Recorded under `<col>__gte` so a resolver can assert a read is time-bounded.
       gte(col: string, val: string) { filters[`${col}__gte`] = val; return b; },
+      lt(col: string, val: string) { filters[`${col}__lt`] = val; return b; },
+      // Writes are recorded as the operation plus its row, so a resolver can answer per step.
+      update(row: Record<string, unknown>) { filters.__op = 'update'; filters.__row = JSON.stringify(row); return b; },
+      upsert(row: Record<string, unknown>, o?: { onConflict?: string; ignoreDuplicates?: boolean }) {
+        filters.__op = 'upsert';
+        filters.__row = JSON.stringify(row);
+        filters.__onConflict = o?.onConflict ?? '';
+        filters.__ignoreDuplicates = String(o?.ignoreDuplicates ?? false);
+        return b;
+      },
       order(col: string) { filters.__order = col; return b; },
       limit(n: number) { filters.__limit = String(n); return b; },
       // Terminal, like the real builder: resolves straight to the resolver's answer
@@ -1137,4 +1150,86 @@ Deno.test('spotifyTitle: asks the spotify function on the caller\'s session; any
   const spy = (() => { fetched = true; return Promise.resolve(new Response('{}')); }) as unknown as typeof fetch;
   assertEquals(await spotifyTitle(SUPA, 'Bearer x', 'anon', 'not-an-id', spy), null);
   assertEquals(fetched, false);
+});
+
+// ── One card per liked post, one sound per window (notifications #3) ────────────────────
+
+Deno.test('buildPush: a like carries its post\'s card id; quiet only when the window says so', () => {
+  const like: Grant = { activity: { aggCount: 3, commentText: null, postId: POST } };
+  const loud = buildPush('activity_like', A, like, riya, {} as never).data;
+  assertEquals(loud.collapseId, `like:${POST}`);
+  assertEquals(loud.quiet, undefined);
+  assertEquals(buildPush('activity_like', A, like, riya, {} as never, { quiet: true }).data.quiet, '1');
+
+  // Only likes share a card: every comment and repost is its own event.
+  const comment: Grant = { activity: { aggCount: 1, commentText: 'on repeat', postId: POST } };
+  assertEquals(buildPush('activity_comment', A, comment, riya, {} as never, { quiet: true }).data.collapseId, undefined);
+  assertEquals(buildPush('activity_repost', A, comment, riya, {} as never).data.collapseId, undefined);
+  // No post id (an older row) → no shared card, as before.
+  const noPost: Grant = { activity: { aggCount: 1, commentText: null } };
+  assertEquals(buildPush('activity_like', A, noPost, riya, {} as never).data.collapseId, undefined);
+});
+
+Deno.test('apnsFor: a like replaces its post\'s card; a quiet one makes no sound', () => {
+  const loud = apnsFor('activity_like', 'Riya', 'liked your post', { collapseId: `like:${POST}` }, 3);
+  assertEquals(loud, {
+    headers: { 'apns-priority': '10', 'apns-collapse-id': `like:${POST}` },
+    payload: { aps: {
+      alert: { title: 'Riya', body: 'liked your post' },
+      sound: 'default',
+      'thread-id': 'activity_like',
+      badge: 3,
+    } },
+  });
+
+  const quiet = apnsFor('activity_like', 'Priya and 4 others', 'liked your post',
+    { collapseId: `like:${POST}`, quiet: '1' }, null) as { payload: { aps: Record<string, unknown> } };
+  assertEquals(quiet.payload.aps.sound, undefined);
+  assertEquals(quiet.payload.aps['interruption-level'], 'passive');
+  assertEquals(quiet.payload.aps.badge, undefined);
+
+  // Everything else keeps the shape it shipped with: no collapse id, a sound, its thread.
+  assertEquals(apnsFor('message', 'Weekend Crew', '@riya: hi', { conversationId: CONV }, null), {
+    headers: { 'apns-priority': '10' },
+    payload: { aps: { alert: { title: 'Weekend Crew', body: '@riya: hi' }, sound: 'default', 'thread-id': CONV } },
+  });
+});
+
+Deno.test('claimLikeAlert: loud for the first like and after the window, quiet inside it', async () => {
+  const now = Date.parse('2026-10-14T09:30:00Z');
+  const windowStart = new Date(now - LIKE_ALERT_WINDOW_MS).toISOString();
+  type Step = { data?: unknown[]; error?: { message: string } };
+  const world = (onUpdate: Step, onUpsert: Step, calls: Record<string, string>[] = []) =>
+    fakeAdmin((table, f) => {
+      assertEquals(table, 'push_like_alerts');
+      calls.push({ ...f });
+      return f.__op === 'update' ? onUpdate : onUpsert;
+    });
+
+  // A row older than the window is moved forward: loud, and the insert is never tried.
+  const calls: Record<string, string>[] = [];
+  assertEquals(await claimLikeAlert(world({ data: [{ post_id: POST }] }, { data: [] }, calls), B, POST, now), true);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].recipient_id, B);
+  assertEquals(calls[0].post_id, POST);
+  assertEquals(calls[0].last_alert_at__lt, windowStart);
+  assertEquals(JSON.parse(calls[0].__row), { last_alert_at: new Date(now).toISOString() });
+
+  // No row yet: the insert claims it — loud. It must never overwrite an existing row.
+  const firstCalls: Record<string, string>[] = [];
+  assertEquals(await claimLikeAlert(world({ data: [] }, { data: [{ post_id: POST }] }, firstCalls), B, POST, now), true);
+  assertEquals(firstCalls[1].__op, 'upsert');
+  assertEquals(firstCalls[1].__onConflict, 'recipient_id,post_id');
+  assertEquals(firstCalls[1].__ignoreDuplicates, 'true');
+
+  // A row inside the window: neither step claims it — quiet.
+  assertEquals(await claimLikeAlert(world({ data: [] }, { data: [] }), B, POST, now), false);
+});
+
+Deno.test('claimLikeAlert: any failure alerts, as before this existed', async () => {
+  const boom = { error: { message: 'relation "push_like_alerts" does not exist' } };
+  assertEquals(await claimLikeAlert(fakeAdmin(() => boom), B, POST), true);
+  assertEquals(await claimLikeAlert(fakeAdmin((_t, f) => (f.__op === 'update' ? { data: [] } : boom)), B, POST), true);
+  const throwing = { from: () => { throw new Error('network'); } } as never;
+  assertEquals(await claimLikeAlert(throwing, B, POST), true);
 });

@@ -169,6 +169,10 @@ Details that exist for specific reasons:
   tap target itself. Caller text is read only for a chat message preview and a reaction's
   emoji; `data.params` are ids to verify, never keys to copy. A block stops every
   person-to-person push, silently. The full gate list is in that directory's README.
+- **Likes on one post are one notification card.** Each like replaces the post's card
+  (iOS `apns-collapse-id`, Android notification id `livil:like:<postId>`), and only the
+  first like in 15 minutes makes a sound (`push_like_alerts`, claimed by send-push). Comments,
+  reposts and everything else stay one card per event.
 
 ---
 

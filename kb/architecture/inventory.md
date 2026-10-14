@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-13
+last_verified: 2026-10-14
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-330 TypeScript file(s) under `src/`, 77,057 lines.
+331 TypeScript file(s) under `src/`, 77,167 lines.
 
 ## Size hotspots
 
@@ -292,13 +292,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-69 file(s), 13,896 lines.
+70 file(s), 14,006 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/posts.ts` | 1220 |
 | `src/services/tracks.ts` | 1001 |
-| `src/services/pushNotifications.ts` | 693 |
+| `src/services/pushNotifications.ts` | 714 |
 | `src/services/albums.ts` | 518 |
 | `src/services/profileService.ts` | 487 |
 | `src/services/share.ts` | 484 |
@@ -342,6 +342,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/appUpdate.ts` | 92 |
 | `src/services/__tests__/activity.test.ts` | 91 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
+| `src/services/__tests__/pushLikeCard.test.ts` | 89 |
 | `src/services/searchDiscover.ts` | 88 |
 | `src/services/__tests__/pushOpenChat.test.ts` | 87 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
