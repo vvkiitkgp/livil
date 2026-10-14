@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-343 TypeScript file(s) under `src/`, 78,564 lines.
+343 TypeScript file(s) under `src/`, 78,569 lines.
 
 ## Size hotspots
 
@@ -31,7 +31,7 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/UploadScreen.tsx` | 1546 |
 | `src/screens/main/HomeScreen.tsx` | 1486 |
-| `src/components/PostCard.tsx` | 1413 |
+| `src/components/PostCard.tsx` | 1418 |
 | `src/screens/main/UserProfileScreen.tsx` | 1310 |
 | `src/screens/main/ProfileScreen.tsx` | 1281 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
@@ -160,12 +160,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-129 file(s), 27,786 lines.
+129 file(s), 27,791 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2533 |
-| `src/components/PostCard.tsx` | 1413 |
+| `src/components/PostCard.tsx` | 1418 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/CommentsSheet.tsx` | 743 |

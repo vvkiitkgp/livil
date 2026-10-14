@@ -840,14 +840,19 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             <Text style={styles.seekTime}>{formatTime(waveViewStart)}</Text>
             <Text style={styles.seekTime}>{formatTime(waveViewEnd)}</Text>
           </View>
+          {/* Where the slice sits needs the WHOLE song's length. A track uploaded without
+              one (duration_seconds null until its uploader plays it) used to collapse
+              the box into a sliver at the right edge, so until the length is known the
+              wave shows just the slice, unboxed — and the box appears once this card
+              plays and the player reports the length. */}
           <WaveformScrubber
             duration={duration}
             position={position}
             seed={post.track.id}
-            span="full"
+            span={isClippedRepost && !(duration > 0) ? 'clip' : 'full'}
             clipStart={waveViewStart}
             clipEnd={waveViewEnd}
-            showBox={isClippedRepost}
+            showBox={isClippedRepost && duration > 0}
             showProgress={false}
             seekable={false}
             height={44}
