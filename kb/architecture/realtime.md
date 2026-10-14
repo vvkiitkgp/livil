@@ -163,8 +163,12 @@ Details that exist for specific reasons:
   arrives.
 - **Push dispatch is fail-safe.** A failed notification must never break the message or like
   that triggered it.
-
-The edge function's source is **not in this repository**. See [backend.md](backend.md).
+- **The caller names who and what kind; the server decides what it says.** The edge function
+  (`supabase/functions/send-push/`) authorizes each kind against the row the event left
+  behind (the Activity row, the conversation, the jam room), then builds the title, body and
+  tap target itself. Caller text is read only for a chat message preview and a reaction's
+  emoji; `data.params` are ids to verify, never keys to copy. A block stops every
+  person-to-person push, silently. The full gate list is in that directory's README.
 
 ---
 

@@ -30,8 +30,9 @@ export async function sendBadgePush(
       body: {
         recipientUserId,
         kind: 'badge_granted',
-        // The server authorizes on WHO is sending and whether the recipient really holds a
-        // badge; it does not read these strings for anything but display, and clamps them.
+        // Ignored by the server, which builds the copy from the holder's newest live badge
+        // (send-push composeContent). Still sent so an older deployment of the function,
+        // which displayed these, keeps working during a rollout.
         title: 'Livil',
         // Branch on the badge KEY, never on the label. This compared `badgeLabel ===
         // 'Verified'` until the badge was renamed to "Verified Artist", at which point the

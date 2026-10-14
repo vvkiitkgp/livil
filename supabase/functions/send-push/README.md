@@ -1,10 +1,11 @@
 # send-push — deploy & review checklist (LIV-9)
 
-**Status: PROPOSAL — not yet deployed.** `list_edge_functions` returns `[]` in production,
-which is why every push in Livil silently does nothing. This directory is the missing
-server half; the client half (`device_tokens`, data-only FCM, notifee rendering) already
-ships. This must be **security-reviewed and deployed by a human** — it is an outward-facing
-prod change and its authorization model is the whole point of the review.
+**Status: deployed** (the `edge-function-parity` CI job asserts it exists in production).
+This directory is the server half; the client half (`device_tokens`, data-only FCM,
+notifee rendering) ships in the app. Every change here must be **security-reviewed and
+deployed by a human** — it is an outward-facing prod change, it takes effect for every
+installed app version at once, and its authorization model is the whole point of the
+review.
 
 ## Why it can't be an agent-autonomous change
 
@@ -19,24 +20,85 @@ prod change and its authorization model is the whole point of the review.
 ## What the security review must confirm (see the SECURITY MODEL header in `app.ts`)
 
 1. **Auth**: actor is derived from the JWT, never the body; anon is rejected.
-2. **Authorization** (`authorize()`): deny-by-default, one relationship gate per `kind`,
-   all against verified schema (`conversation_members`, `friendships.status='accepted'`
-   with `user_a_id`/`user_b_id`, the one-way `follows` star edge, `posts.author_id`):
-   - `message` / `reaction` / `jam_invite_dm` → a REAL conversation-membership intersection.
+2. **Authorization** (`authorize()` → a `Grant` or `null`): deny-by-default, one gate per
+   `kind`, all against verified schema. For message / reaction / jam invite / like /
+   comment / repost / milestone / friend request / badge, the gate finds the row the event
+   left behind. `friend_accepted`, `jam_started` / `jam_join` / `jam_ended`, `new_fan` and
+   `new_follower` still pass on the relationship alone (unchanged from before; the copy is
+   server-written, so the most a caller can do is announce a true relationship again).
+   - `message` / `reaction` → both people are members of **the conversation named in
+     `params.conversationId`** (every shipped build sends it). `jam_invite_dm` additionally
+     needs `params.jamRoomId` to be a jam room of that conversation.
    - `friend_accepted` / `jam_*` → an accepted (mutual) friendship exists.
    - `new_follower` / `new_fan` → a one-way star edge `actor → recipient` exists.
-   - `activity_*` → **coarse** secondary gate (recipient is a real author). The client args
-     carry no post id and the legitimate dispatch already passed `activity_notify_post` (a
-     DEFINER RPC that authorizes). **Accepted for launch (2026-07-23):** clamped bodies + low
-     harm. D-45 (dispatch from inside that RPC) remains the durable fix.
-   - `friend_request` → a **pending** request from actor → recipient must exist (written by
-     `send_friend_request`). Tightened from the earlier `return true` (the spam vector).
-3. **Content**: `title`/`body` are clamped and only ever placed in the notification body.
-4. **Rate limit**: `checkRateLimit` is in-memory and therefore advisory only — replace with
+   - `activity_like` / `activity_comment` / `activity_repost` → the `activity_notifications`
+     row `activity_notify_post` wrote in the last 10 minutes for this recipient and actor
+     (that RPC already proved the like/comment/repost is real; a like matched only through
+     `payload.notified` must also still stand in `post_likes`). Replaces the old coarse
+     "recipient has ever posted" gate (accepted for launch 2026-07-23, closed 2026-10-08).
+   - `activity_milestone` → a recent `play_milestone` row for the recipient's post AND the
+     actor's own `post_views` row within 1 s of it — the play that crossed the threshold
+     (the RPC writes both in one transaction). (Previously only self-targeted milestones
+     passed, which the RPC never produces — no milestone push had ever been delivered.)
+   - `friend_request` → a **pending** request from actor → recipient must exist.
+   - `badge_granted` → actor is in `ops_users` and the recipient holds a live badge.
+   - Self-targeting is refused for every kind except `badge_granted`.
+3. **Blocks**: any person-to-person kind is dropped when either side has blocked the
+   other (`blocked_users`, both directions, fails closed) — **group conversations
+   included**. The database still lets a blocked pair post in a group they share
+   (`dm_blocked_for_sender` bars only the DM), and those messages still land in the group;
+   they just no longer buzz the person who blocked the sender. The caller gets the same
+   `{ ok: true }` as a delivered push — every 200 is identical, including an FCM auth
+   failure, so the response body never reveals a block, a muted category, or whether the
+   recipient has a phone.
+   (Response TIME still differs: only a real send pays for the FCM round-trip.)
+4. **Content is server-derived** (`buildPush`): caller `title` is ignored for every kind;
+   caller `body` is read only as a chat `message` preview (titled with the sender's name or
+   the group's, prefixed with the sender's handle in a group) and for a `reaction`'s emoji
+   (validated, never copied). `data.params` are claims to verify, never keys to copy; the
+   tap `route` is allowlisted per kind (`KIND_ROUTES`) and its params come only from the
+   Grant.
+   - **Song names** (like / comment / repost): after authorization, `describePost` reads the
+     activity row's post — its track's title, or for a Spotify repost its 22-char id — and
+     the copy names it (title "Riya", body "liked your repost of “Blinding Lights”" — the
+     person is the title for like / comment / repost, so a collapsed Android card, which
+     shows the title and one body line, still shows the song). A Spotify title is
+     asked of the project's own `spotify` function **on the caller's session** (no Spotify
+     credential here; that function's budget and breaker apply), bounded by
+     `SPOTIFY_LOOKUP_MS`, and never stored (ADR-0027). Any failure keeps the old wording,
+     "your post".
+   - **Photo** (like / comment / repost only): `actorAvatarUrl` is set from the actor's
+     `profiles.avatar_url` **only when `isAllowedAvatarUrl` accepts it** — this project's
+     public `avatars` bucket or `lh3.googleusercontent.com`. Android fetches it unprompted,
+     so an arbitrary URL would turn every push into a request to a server the actor chose.
+     The check parses the URL and requires https, the exact host, no userinfo/port, the
+     bucket path, and `URL.href === url`; dot-segments, backslashes and `%2e`/`%2f`/`%5c`
+     are refused outright, because the phone's HTTP client would normalize
+     `avatars/../../auth/v1/verify?redirect_to=…` into another endpoint on our host.
+   - **`describePost` reads only the recipient's own post** (`author_id = recipient`). It
+     runs as service role, and a recipient can rewrite their own activity row's `post_id`
+     (`activity_notifications_update_own` covers every column), so without that filter a
+     push could name a post RLS hides from them.
+     iOS ignores it (an image would need a Notification Service Extension).
+5. **Token pruning**: only on FCM `UNREGISTERED`, `SENDER_ID_MISMATCH`, or an
+   `INVALID_ARGUMENT` about `message.token` (`shouldPruneToken`). A malformed payload, an
+   APNs credential error, quota or a 5xx never deletes a device token. **Before rotating
+   the `FCM_*` secrets, check `FCM_PROJECT_ID`**: pointed at another Firebase project,
+   every token reads as `SENDER_ID_MISMATCH` and is deleted on that user's next push
+   (recoverable — the app re-registers on launch — but dormant users go dark).
+6. **Rate limit**: `checkRateLimit` is in-memory and therefore advisory only — replace with
    a shared store before relying on it (D-12).
-5. **Residual (D-45)**: this makes push work safely-enough; it does not make client-dispatched
-   push unforgeable. The durable fix is moving dispatch into the SECURITY DEFINER functions
-   that already authorize the event. Do not close D-45 on the back of this.
+7. **Residual (D-45)**: a conversation member can still push a `message` preview that was
+   never actually sent, to people already in that conversation with them, attributed to
+   themselves. It reaches only the recipient and leaves no record in the conversation.
+   Blocks apply to group pushes, so it cannot reach someone who blocked the actor. Do not
+   close D-45 on the back of this.
+8. **Residual (repeats)**: `activity_notify_post` accepts any past comment or repost by the
+   actor and inserts a fresh row on each call, so an actor can mint new comment / repost
+   evidence at will, not only re-present one event. Separately, inside the 10-minute
+   window the same evidence can be presented again, so one real like/comment/milestone can be re-announced — always with
+   server-written, true text naming the real actor — up to the advisory rate limit. A
+   durable once-per-event guard needs state (D-12's shared store).
 
 ## Deploy (human)
 
