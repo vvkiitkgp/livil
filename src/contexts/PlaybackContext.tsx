@@ -170,7 +170,8 @@ type PlaybackContextValue = {
 
   // --- queue ---
   setQueue: (posts: NowPlayingInfo[], startIndex: number, source: string) => void;
-  playNext: () => void;
+  /** Starts the next track; false when nothing follows (end of queue, or a story session). */
+  playNext: () => boolean;
   playPrev: () => void;
   playAtIndex: (index: number) => void;
   addToQueue: (track: NowPlayingInfo) => void;
@@ -582,7 +583,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     // so it shouldn't emit at all, but the naturalEndListener still fires at a true
     // STATE_ENDED (a clip that IS the whole short track), so keep this as a cheap
     // belt-and-suspenders: playNext never acts during a clip session.
-    if (clipSessionRef.current) { return; }
+    if (clipSessionRef.current) { return false; }
     if (userQueueRef.current.length > 0) {
       const track = userQueueRef.current.shift()!;
       activeRef.current = track.postId;
@@ -599,7 +600,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       console.log(`[LIVIL][CTX] playNext (userQueue) postId=${track.postId} clip=[${track.clipStartSec},${track.clipEndSec}] posRef=${startPos}`);
       setNowPlayingState(track);
       setPendingPlayId(track.postId);
-      return;
+      return true;
     }
 
     const queue = queueRef.current;
@@ -610,21 +611,23 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
           generateShuffleOrder(currentIndexRef.current, queue.length);
           shuffleIndexRef.current = 0;
         } else {
-          return;
+          return false;
         }
       }
       const nextIdx = shuffleOrderRef.current[shuffleIndexRef.current]!;
       playTrackAtIndex(nextIdx);
+      return true;
     } else {
       let nextIdx = currentIndexRef.current + 1;
       if (nextIdx >= queue.length) {
         if (repeatModeRef.current === 'all') {
           nextIdx = 0;
         } else {
-          return;
+          return false;
         }
       }
       playTrackAtIndex(nextIdx);
+      return true;
     }
   }, [generateShuffleOrder, playTrackAtIndex]);
 
