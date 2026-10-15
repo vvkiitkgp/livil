@@ -371,11 +371,12 @@ export default function InboxScreen() {
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity
           style={styles.composeButton}
-          activeOpacity={0.7}
+          activeOpacity={0.85}
           onPress={() => navigation.navigate('NewConversation')}
           accessibilityLabel="New message"
         >
-          <Icon name="compose" size={22} color={COLORS.purple} />
+          {/* Same round button and glyph size as Home's two-bubble messages button, its pair. */}
+          <Icon name="compose" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
 
@@ -494,7 +495,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  composeButton: { padding: 4 },
+  /** Mirrors HomeScreen `inboxButton`: the messages button and the new-message button match. */
+  composeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 24 },
   searchWrap: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
