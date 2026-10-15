@@ -334,6 +334,10 @@ export default function NewConversationScreen() {
         <FlatList
           data={filtered}
           keyExtractor={item => item.id}
+          // As on the Search tab: dragging the list puts the keyboard away, and a tap on a
+          // friend while it is up selects them on the FIRST tap instead of only closing it.
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           renderItem={tab === 'dm' ? renderDmItem : renderGroupItem}
           contentContainerStyle={
             filtered.length === 0
