@@ -36,7 +36,6 @@ import CommentsSheet from '../../components/CommentsSheet';
 import { Icon } from '../../components/Icon';
 import { Logo } from '../../components/Logo';
 import { Button } from '../../components/Button';
-import { GradientBorder } from '../../components/GradientBorder';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { HomeFeedTabs } from '../../components/HomeFeedTabs';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
@@ -1286,17 +1285,18 @@ export default function HomeScreen() {
             <Logo size={96} color={COLORS.white} />
           </View>
           <View style={styles.topBarActions}>
-            <TouchableOpacity
-              activeOpacity={0.85}
+            {/* The same "+ Track" as the Profile top bar, at this bar's 38pt height so it
+                lines up with the messages button beside it. With Spotify reposts switched
+                on it asks what to add (ADR-0027); otherwise it goes straight to Upload. */}
+            <Button
+              label="Track"
+              icon="add"
+              variant="primary"
+              size="sm"
               style={styles.uploadButton}
-              // With Spotify reposts switched on, "+" asks what to add (ADR-0027);
-              // otherwise it goes straight to Upload, as it always has.
               onPress={() => navigation.navigate(spotify.reposts ? 'AddToLivil' : 'Upload')}
-              accessibilityLabel={spotify.reposts ? 'Add to Livil' : 'Upload music'}
-            >
-              <GradientBorder borderRadius={19} />
-              <Text style={styles.uploadButtonText}>+</Text>
-            </TouchableOpacity>
+              accessibilityLabel={spotify.reposts ? 'Add a track' : 'Upload a track'}
+            />
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.inboxButton}
@@ -1385,20 +1385,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  uploadButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  uploadButtonText: {
-    color: COLORS.purpleNeon,
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 26,
-    marginTop: -2,
-  },
+  /** Height only: the pill shape, padding and gradient border are Button's `sm`. */
+  uploadButton: { height: 38, paddingVertical: 0 },
   inboxButton: {
     width: 38,
     height: 38,
