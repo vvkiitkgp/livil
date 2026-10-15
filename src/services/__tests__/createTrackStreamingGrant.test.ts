@@ -12,6 +12,9 @@
 // Native modules `tracks.ts` reaches at import time; none is involved in this check.
 jest.mock('@react-native-documents/picker', () => ({ keepLocalCopy: jest.fn() }));
 jest.mock('react-native-audio-api', () => ({ decodeAudioData: jest.fn() }));
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 const mockGetUser = jest.fn();
 const mockGetSession = jest.fn();

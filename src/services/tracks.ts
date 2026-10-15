@@ -20,6 +20,7 @@ import { TERMS_VERSION } from '../constants/termsContent';
 import { APP_VERSION_NAME } from '../constants/appVersion';
 import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
 import { resolveAuthorById, resolveAuthorDisplay, type AuthorDisplay } from '../utils/authorDisplay';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type PostMode = 'audio' | 'video';
 
@@ -513,152 +514,474 @@ export async function createTrack(
         : Promise.resolve<string | undefined>(undefined),
     ]);
 
-    onProgress?.({ stage: 'finalizing', fraction: 1 });
-
-    // Persist the captured length when we have it. Conditional so an unknown
-    // duration leaves the column null (it backfills on first play) rather than
-    // overwriting it with 0.
-    const durationSeconds =
-      typeof input.durationSeconds === 'number' && Number.isFinite(input.durationSeconds) && input.durationSeconds > 0
-        ? Math.round(input.durationSeconds)
-        : null;
-
-    const { error: updateError } = await supabase
-      .from('tracks')
-      .update({
-        audio_url: audioUrl ?? null,
-        video_url: videoUrl ?? null,
-        cover_art_url: coverArtUrl ?? null,
-        thumbnail_url: thumbnailUrl ?? null,
-        ...(durationSeconds !== null ? { duration_seconds: durationSeconds } : {}),
-      })
-      .eq('id', trackId);
-
-    if (updateError) {
-      throw new Error(`Failed to finalize track: ${updateError.message}`);
-    }
-
-    // ── Copyright scan ───────────────────────────────────────────────────────
-    //
-    // HERE, and not earlier or later. Earlier there is no final URL for the provider
-    // to fetch (the row still holds its `pending://` placeholder); later the post row
-    // exists, and a post that is published and then withdrawn has already been seen.
-    //
-    // Entirely fail-safe. `scanUpload` resolves rather than throwing, so a provider
-    // outage or an undeployed function costs a `failed` row and nothing else — the
-    // upload proceeds. The ONLY path that stops a publish is the uploader choosing to
-    // stop it, and that throw routes into the catch below, whose `safeDeleteTrack`
-    // already knows how to undo everything written so far.
-    //
-    // A match is not a finding of infringement: covers do not match at all, and a
-    // creator may legitimately own or be licensed for the recording. It asks; it does
-    // not judge.
-    if (onCopyrightMatch) {
-      const scan = await scanUpload(supabase, trackId);
-      if (needsAcknowledgement(scan)) {
-        const answer = await onCopyrightMatch(scan);
-        if (answer.acknowledgement === 'cancelled') {
-          // Deliberately NOT recorded. The catch below deletes the track, and the scan
-          // row cascades with it — so a write here would be undone microseconds later.
-          // Keeping "this person started an upload that matched, then thought better of
-          // it" would mean retaining a behavioural note about somebody who published
-          // nothing, which is a surveillance question and not this feature's to answer.
-          throw new UploadCancelledError();
-        }
-        // Not awaited: an acknowledgement that fails to land must not cost a creator an
-        // upload they were entitled to make. It is logged rather than surfaced, because
-        // this is the half of the feature with evidential value and a silent loss here
-        // should still be visible to us.
-        void acknowledgeScan(supabase, trackId, answer).then(ok => {
-          if (!ok) { console.log('[LIVIL][copyright] acknowledgement not recorded', trackId); }
-        });
-      }
-    }
-
-    // Compute the beat-synced loudness envelope from the LOCAL file (no
-    // re-download) and persist it. Fire-and-forget: a slow/failed decode must
-    // never delay or break the post — old/unanalyzed audio tracks backfill lazily
-    // on first play instead. AUDIO ONLY: decoding a (large) video file risks OOM,
-    // and the lazy remote path can't safely re-fetch a video either, so video
-    // posts intentionally have no envelope (the wave stays decorative).
-    if (input.mode === 'audio') {
-      kickoffWaveformAnalysisFromLocalFile(trackId, input.audio);
-    }
-
-    // The uploader's own credit goes in with everybody else's. `accepted` because it is
-    // self-declared — nobody confirms what you say you did on your own record, and the
-    // notification trigger skips self-credits anyway.
-    const collabRows = [
-      {
-        track_id: trackId,
-        user_id: user.id,
-        custom_name: null,
-        role: input.uploaderRole.trim(),
-        status: 'accepted',
-      },
-      ...input.collaborators.map(c => ({
-        track_id: trackId,
-        user_id: c.kind === 'user' ? c.userId ?? null : null,
-        custom_name: c.kind === 'custom' ? c.name : null,
-        role: c.role,
-        status: 'pending',
-      })),
-    ];
-
-    const { error: collabError } = await supabase
-      .from('track_collaborators')
-      .insert(collabRows);
-
-    if (collabError) {
-      throw new Error(`Failed to save collaborators: ${collabError.message}`);
-    }
-
-    // Create the matching upload-kind post. The post's caption mirrors the description so
-    // the feed UI only ever has to read from posts.caption.
-    const { data: postRow, error: postError } = await supabase
-      .from('posts')
-      .insert({
-        author_id: user.id,
-        kind: 'upload',
-        track_id: trackId,
-        caption: description,
-      })
-      .select('id')
-      .single();
-
-    if (postError || !postRow) {
-      throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
-    }
-
-    // ── The streaming grant ──────────────────────────────────────────────────
-    //
-    // Recorded on EVERY upload, which is the point: the copyright form only appears when
-    // a scan matches, so a grant captured there alone would cover the exception and miss
-    // the rule. The uploader ticked it beside the post button — see the guard at the top.
-    //
-    // AFTER the post exists, not before. `terms_acceptances` is append-only with no
-    // foreign key to `tracks`, so a row written earlier would outlive a track that was
-    // then cancelled at the copyright question or rolled back on a failed insert —
-    // recording a grant for something that was never published.
-    //
-    // Fire-and-forget by design: failing the publish because a consent row did not land
-    // would cost a creator their upload over bookkeeping. A missing row shows as an
-    // absence in the operator view, which is the honest way for this to fail.
-    void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
-      if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
-    });
-
-    return {
+    return await finishTrack({
       trackId,
-      postId: postRow.id,
-      audioUrl: audioUrl ?? undefined,
-      videoUrl: videoUrl ?? undefined,
-      coverArtUrl: coverArtUrl ?? undefined,
-      thumbnailUrl: thumbnailUrl ?? undefined,
-    };
+      userId: user.id,
+      input,
+      description,
+      tags,
+      urls: { audioUrl, videoUrl, coverArtUrl, thumbnailUrl },
+      scan: onCopyrightMatch ? { kind: 'ask', onCopyrightMatch } : { kind: 'skip' },
+      onProgress,
+    });
   } catch (err) {
     await safeDeleteTrack(trackId);
     await safeRemoveUploadedObjects(user.id, trackId);
+    throw err;
+  }
+}
+
+/**
+ * Everything after the files are in storage: the row's final fields, the copyright scan,
+ * credits, the post, the streaming grant. Shared by `createTrack` (all files uploaded at
+ * Post) and `publishStagedAudioTrack` (the song was uploaded and checked as soon as it was
+ * picked). Throws on failure; the caller owns the rollback.
+ */
+async function finishTrack({
+  trackId,
+  userId,
+  input,
+  description,
+  tags,
+  urls,
+  scan,
+  onProgress,
+}: {
+  trackId: string;
+  userId: string;
+  input: CreateTrackInput;
+  description: string | null;
+  tags: string[];
+  urls: { audioUrl?: string; videoUrl?: string; coverArtUrl?: string; thumbnailUrl?: string };
+  /**
+   * `ask`: scan now and ask on a match (createTrack). `answered`: the song was scanned when
+   * it was staged and the uploader already answered (or nothing matched) — record the answer
+   * now that there is a post. `skip`: no question can be asked.
+   */
+  scan:
+    | { kind: 'ask'; onCopyrightMatch: CopyrightMatchPrompt }
+    | { kind: 'answered'; declaration: RightsDeclaration | null }
+    | { kind: 'skip' };
+  onProgress?: CreateTrackProgressCallback;
+}): Promise<CreateTrackResult> {
+  const { audioUrl, videoUrl, coverArtUrl, thumbnailUrl } = urls;
+  onProgress?.({ stage: 'finalizing', fraction: 1 });
+
+  // Persist the captured length when we have it. Conditional so an unknown
+  // duration leaves the column null (it backfills on first play) rather than
+  // overwriting it with 0.
+  const durationSeconds =
+    typeof input.durationSeconds === 'number' && Number.isFinite(input.durationSeconds) && input.durationSeconds > 0
+      ? Math.round(input.durationSeconds)
+      : null;
+
+  // Title, description and tags too: a staged song's row was inserted with a provisional
+  // title before the artist had typed one.
+  const { error: updateError } = await supabase
+    .from('tracks')
+    .update({
+      title: input.title.trim(),
+      description,
+      tags: tags.length > 0 ? tags : null,
+      audio_url: audioUrl ?? null,
+      video_url: videoUrl ?? null,
+      cover_art_url: coverArtUrl ?? null,
+      thumbnail_url: thumbnailUrl ?? null,
+      ...(durationSeconds !== null ? { duration_seconds: durationSeconds } : {}),
+    })
+    .eq('id', trackId);
+
+  if (updateError) {
+    throw new Error(`Failed to finalize track: ${updateError.message}`);
+  }
+
+  // ── Copyright scan ───────────────────────────────────────────────────────
+  //
+  // After the media has its final URL and before any post exists: earlier there is
+  // nothing for the provider to fetch (the row still holds its `pending://`
+  // placeholder); later the post row exists, and a post that is published and then
+  // withdrawn has already been seen. A staged song (`stageAudioUpload`) hits the same
+  // moment, just as soon as it was picked rather than at Post.
+  //
+  // Entirely fail-safe. `scanUpload` resolves rather than throwing, so a provider
+  // outage or an undeployed function costs a `failed` row and nothing else — the
+  // upload proceeds. The ONLY path that stops a publish is the uploader choosing to
+  // stop it, and that throw reaches the caller's rollback, which already knows how to
+  // undo everything written so far.
+  //
+  // A match is not a finding of infringement: covers do not match at all, and a
+  // creator may legitimately own or be licensed for the recording. It asks; it does
+  // not judge.
+  if (scan.kind === 'answered') {
+    // Scanned when the song was staged; the answer is recorded only now that a post
+    // exists, exactly as below — never for an upload that was abandoned.
+    if (scan.declaration) {
+      const declaration = scan.declaration;
+      void acknowledgeScan(supabase, trackId, declaration).then(ok => {
+        if (!ok) { console.log('[LIVIL][copyright] acknowledgement not recorded', trackId); }
+      });
+    }
+  } else if (scan.kind === 'ask') {
+    const result = await scanUpload(supabase, trackId);
+    if (needsAcknowledgement(result)) {
+      const answer = await scan.onCopyrightMatch(result);
+      if (answer.acknowledgement === 'cancelled') {
+        // Deliberately NOT recorded. The caller's rollback deletes the track, so a
+        // write here would describe an upload that never happened.
+        // Keeping "this person started an upload that matched, then thought better of
+        // it" would mean retaining a behavioural note about somebody who published
+        // nothing, which is a surveillance question and not this feature's to answer.
+        throw new UploadCancelledError();
+      }
+      // Not awaited: an acknowledgement that fails to land must not cost a creator an
+      // upload they were entitled to make. It is logged rather than surfaced, because
+      // this is the half of the feature with evidential value and a silent loss here
+      // should still be visible to us.
+      void acknowledgeScan(supabase, trackId, answer).then(ok => {
+        if (!ok) { console.log('[LIVIL][copyright] acknowledgement not recorded', trackId); }
+      });
+    }
+  }
+
+  // Compute the beat-synced loudness envelope from the LOCAL file (no
+  // re-download) and persist it. Fire-and-forget: a slow/failed decode must
+  // never delay or break the post — old/unanalyzed audio tracks backfill lazily
+  // on first play instead. AUDIO ONLY: decoding a (large) video file risks OOM,
+  // and the lazy remote path can't safely re-fetch a video either, so video
+  // posts intentionally have no envelope (the wave stays decorative).
+  if (input.mode === 'audio') {
+    kickoffWaveformAnalysisFromLocalFile(trackId, input.audio);
+  }
+
+  // The uploader's own credit goes in with everybody else's. `accepted` because it is
+  // self-declared — nobody confirms what you say you did on your own record, and the
+  // notification trigger skips self-credits anyway.
+  const collabRows = [
+    {
+      track_id: trackId,
+      user_id: userId,
+      custom_name: null,
+      role: input.uploaderRole.trim(),
+      status: 'accepted',
+    },
+    ...input.collaborators.map(c => ({
+      track_id: trackId,
+      user_id: c.kind === 'user' ? c.userId ?? null : null,
+      custom_name: c.kind === 'custom' ? c.name : null,
+      role: c.role,
+      status: 'pending',
+    })),
+  ];
+
+  const { error: collabError } = await supabase
+    .from('track_collaborators')
+    .insert(collabRows);
+
+  if (collabError) {
+    throw new Error(`Failed to save collaborators: ${collabError.message}`);
+  }
+
+  // Create the matching upload-kind post. The post's caption mirrors the description so
+  // the feed UI only ever has to read from posts.caption.
+  const { data: postRow, error: postError } = await supabase
+    .from('posts')
+    .insert({
+      author_id: userId,
+      kind: 'upload',
+      track_id: trackId,
+      caption: description,
+    })
+    .select('id')
+    .single();
+
+  if (postError || !postRow) {
+    throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
+  }
+
+  // ── The streaming grant ──────────────────────────────────────────────────
+  //
+  // Recorded on EVERY upload, which is the point: the copyright form only appears when
+  // a scan matches, so a grant captured there alone would cover the exception and miss
+  // the rule. The uploader ticked it beside the post button — see the guard at the top.
+  //
+  // AFTER the post exists, not before. `terms_acceptances` is append-only with no
+  // foreign key to `tracks`, so a row written earlier would outlive a track that was
+  // then cancelled at the copyright question or rolled back on a failed insert —
+  // recording a grant for something that was never published.
+  //
+  // Fire-and-forget by design: failing the publish because a consent row did not land
+  // would cost a creator their upload over bookkeeping. A missing row shows as an
+  // absence in the operator view, which is the honest way for this to fail.
+  void recordUploadConsent(supabase, trackId, TERMS_VERSION, APP_VERSION_NAME).then(ok => {
+    if (!ok) { console.log('[LIVIL][consent] upload grant not recorded', trackId); }
+  });
+
+  return {
+    trackId,
+    postId: postRow.id,
+    audioUrl: audioUrl ?? undefined,
+    videoUrl: videoUrl ?? undefined,
+    coverArtUrl: coverArtUrl ?? undefined,
+    thumbnailUrl: thumbnailUrl ?? undefined,
+  };
+}
+
+// ─── Early song upload ("staging") ───────────────────────────────────────────
+//
+// The song is uploaded and copyright-checked AS SOON AS IT IS PICKED, while the artist is
+// still filling in the details — so a match is raised before they have typed anything,
+// and Post at the end only has the cover and the post to do. Audio only: video is not
+// checked by the provider, and a video is the file that should not upload over a
+// half-finished form on mobile data.
+//
+// A staged song is a `tracks` row with a real `audio_url` and NO post. Nothing lists a
+// track without its post, so it is invisible until published — but it is a file in the
+// bucket, so every way out of the upload screen has to remove it:
+//   • a different song picked, or the song removed      → the screen discards it
+//   • the screen closed without posting                 → the screen discards it
+//   • the app killed mid-way                            → `sweepStagedUploads` on the next
+//                                                          visit, from the ids remembered
+//                                                          on this device
+// The copyright ANSWER is held by the screen and recorded only at publish
+// (`finishTrack` → `answered`), exactly as before: never for an upload that was abandoned.
+
+const STAGED_KEY = 'livil.upload.staged.v1';
+
+type StagedRef = { trackId: string; userId: string };
+
+async function readStaged(): Promise<StagedRef[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STAGED_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(r => r && r.trackId && r.userId) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeStaged(list: StagedRef[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STAGED_KEY, JSON.stringify(list));
+  } catch {
+    // Best-effort: worst case a killed app leaves one invisible file behind.
+  }
+}
+
+// Read-modify-write on one key, from a sweep and a staging that can run at once: queued
+// so one cannot write back a list that is missing the other's entry.
+let stagedLock: Promise<void> = Promise.resolve();
+function withStagedLock(fn: () => Promise<void>): Promise<void> {
+  const next = stagedLock.then(fn, fn);
+  stagedLock = next.catch(() => {});
+  return next;
+}
+
+function rememberStaged(ref: StagedRef): Promise<void> {
+  return withStagedLock(async () => {
+    const list = await readStaged();
+    await writeStaged([...list.filter(r => r.trackId !== ref.trackId), ref]);
+  });
+}
+
+function forgetStaged(trackId: string): Promise<void> {
+  return withStagedLock(async () => {
+    const list = await readStaged();
+    await writeStaged(list.filter(r => r.trackId !== trackId));
+  });
+}
+
+export type StagedAudio = {
+  trackId: string;
+  userId: string;
+  audioUrl: string;
+  scan: ScanResult;
+  /** What the uploader answered at the copyright question; null when nothing matched. */
+  declaration: RightsDeclaration | null;
+};
+
+export type StageProgress = { stage: 'uploading' | 'checking'; fraction: number };
+
+/** The artist backed out at the copyright question while the song was staging. */
+export class StagingCancelledError extends Error {
+  constructor() {
+    super('Upload cancelled.');
+    this.name = 'StagingCancelledError';
+  }
+}
+
+/** The screen dropped this song (picked another, removed it, left) before staging finished. */
+export class StagingAbandonedError extends Error {
+  constructor() {
+    super('Staging abandoned.');
+    this.name = 'StagingAbandonedError';
+  }
+}
+
+/** A provisional title — the column is NOT NULL, 1–120 chars — until the artist types one. */
+function provisionalTitle(file: PickedFile): string {
+  const base = (file.name ?? '').replace(/\.[^.]+$/, '').trim();
+  return (base || 'Untitled').slice(0, 120);
+}
+
+/**
+ * Upload the picked song and run the copyright check on it, now. Resolves with the staged
+ * track; on a match it waits on `onCopyrightMatch`, and a `cancelled` answer discards the
+ * song and throws `StagingCancelledError`. `isAbandoned` is polled between steps: once the
+ * screen has moved on, whatever was written is removed and `StagingAbandonedError` thrown.
+ * Any other failure also removes what was written and rethrows — the screen then falls back
+ * to the classic all-at-Post `createTrack`.
+ */
+export async function stageAudioUpload(
+  audio: PickedFile,
+  onProgress: (p: StageProgress) => void,
+  onCopyrightMatch: CopyrightMatchPrompt,
+  isAbandoned: () => boolean,
+): Promise<StagedAudio> {
+  const [
+    { data: userData, error: userError },
+    { data: sessionData },
+  ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
+  const user = userData?.user;
+  const accessToken = sessionData.session?.access_token;
+  if (userError || !user || !accessToken) {
+    throw new Error('You must be signed in to upload a track.');
+  }
+  if (isAbandoned()) { throw new StagingAbandonedError(); }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('tracks')
+    .insert({
+      uploader_id: user.id,
+      title: provisionalTitle(audio),
+      media_kind: 'audio',
+      audio_url: 'pending://placeholder',
+    })
+    .select('id')
+    .single();
+  if (insertError || !inserted) {
+    throw new Error(insertError?.message ?? 'Failed to create track.');
+  }
+  const trackId = inserted.id;
+  // Remembered BEFORE the upload, so a kill at any point after this line is swept.
+  await rememberStaged({ trackId, userId: user.id });
+
+  const discard = async () => {
+    await safeDeleteTrack(trackId);
+    await safeRemoveUploadedObjects(user.id, trackId);
+    await forgetStaged(trackId);
+  };
+
+  try {
+    onProgress({ stage: 'uploading', fraction: 0 });
+    const audioUrl = await uploadTrackFile(audio, 'audio', trackId, user.id, accessToken, f => {
+      onProgress({ stage: 'uploading', fraction: f });
+    });
+    if (isAbandoned()) { throw new StagingAbandonedError(); }
+
+    const { error: updateError } = await supabase
+      .from('tracks')
+      .update({ audio_url: audioUrl })
+      .eq('id', trackId);
+    if (updateError) {
+      throw new Error(`Failed to save the song: ${updateError.message}`);
+    }
+
+    onProgress({ stage: 'checking', fraction: 1 });
+    const scan = await scanUpload(supabase, trackId);
+    if (isAbandoned()) { throw new StagingAbandonedError(); }
+
+    let declaration: RightsDeclaration | null = null;
+    if (needsAcknowledgement(scan)) {
+      const answer = await onCopyrightMatch(scan);
+      if (answer.acknowledgement === 'cancelled') { throw new StagingCancelledError(); }
+      declaration = answer;
+    }
+    return { trackId, userId: user.id, audioUrl, scan, declaration };
+  } catch (err) {
+    await discard();
+    throw err;
+  }
+}
+
+/** Remove a staged song that will not be posted. Never throws. */
+export async function discardStagedAudio(staged: { trackId: string; userId: string }): Promise<void> {
+  await safeDeleteTrack(staged.trackId);
+  await safeRemoveUploadedObjects(staged.userId, staged.trackId);
+  await forgetStaged(staged.trackId);
+}
+
+/**
+ * Remove songs this device staged and never posted — the app was killed mid-upload.
+ * Run when the upload screen opens. A staged id that DID get its post is only forgotten.
+ * Never throws.
+ */
+export async function sweepStagedUploads(): Promise<void> {
+  const list = await readStaged();
+  for (const ref of list) {
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('track_id', ref.trackId)
+        .limit(1);
+      if (error) { continue; } // unknown → keep it for the next visit
+      if (!data || data.length === 0) {
+        await discardStagedAudio(ref);
+      } else {
+        await forgetStaged(ref.trackId);
+      }
+    } catch {
+      // Next visit.
+    }
+  }
+}
+
+/**
+ * Publish a staged song: upload the cover, write the final fields, credits and post, and
+ * record the copyright answer given at staging. On any failure the staged song is removed
+ * too (as `createTrack` removes everything it wrote) and the error rethrown; the screen
+ * then falls back to a full `createTrack` on the next tap.
+ */
+export async function publishStagedAudioTrack(
+  staged: StagedAudio,
+  input: Extract<CreateTrackInput, { mode: 'audio' }>,
+  onProgress?: CreateTrackProgressCallback,
+): Promise<CreateTrackResult> {
+  if (!input.title.trim()) { throw new Error('Title is required.'); }
+  if (!input.cover) { throw new Error('Cover image is required for audio posts.'); }
+  if (input.streamingGrantAccepted !== true) {
+    throw new Error('Tick the box to let Livil stream this recording.');
+  }
+  const tags = normalizeTags(input.tags ?? []);
+  if (tags.length > MAX_TAGS_PER_TRACK) {
+    throw new Error(`Up to ${MAX_TAGS_PER_TRACK} tags per track.`);
+  }
+  const description = input.description?.trim() ? input.description.trim() : null;
+
+  onProgress?.({ stage: 'preparing', fraction: 0 });
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) { throw new Error('You must be signed in to upload a track.'); }
+
+  try {
+    onProgress?.({ stage: 'uploading', fraction: 0 });
+    const coverArtUrl = await uploadTrackFile(input.cover, 'cover', staged.trackId, staged.userId, accessToken, f => {
+      onProgress?.({ stage: 'uploading', fraction: f });
+    });
+    const result = await finishTrack({
+      trackId: staged.trackId,
+      userId: staged.userId,
+      input,
+      description,
+      tags,
+      urls: { audioUrl: staged.audioUrl, coverArtUrl },
+      scan: { kind: 'answered', declaration: staged.declaration },
+      onProgress,
+    });
+    await forgetStaged(staged.trackId);
+    return result;
+  } catch (err) {
+    await discardStagedAudio(staged);
     throw err;
   }
 }
