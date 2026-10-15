@@ -7,9 +7,11 @@
  * A staged song is a real file in a public bucket with no post pointing at it — invisible,
  * and permanent unless something removes it. So the failure paths matter more than the
  * happy one: backing out at the copyright question, the screen moving on mid-upload, a
- * failed publish and a killed app must each leave NOTHING behind. And the answer to the
- * copyright question must still be recorded only for a song that was actually posted,
- * exactly as before staging existed.
+ * failed publish and a killed app must each leave NOTHING behind. The answer to the
+ * copyright question must still be recorded only for a song that was actually posted —
+ * after its post exists — exactly as before staging existed. And staging must NEVER ask
+ * the question itself: on iOS an unprompted dialog over the photo picker is refused, and
+ * the upload would wait on it forever.
  */
 jest.mock('@react-native-documents/picker', () => ({ keepLocalCopy: jest.fn() }));
 jest.mock('react-native-audio-api', () => ({ decodeAudioData: jest.fn() }));
@@ -91,8 +93,8 @@ import {
   publishStagedAudioTrack,
   stageAudioUpload,
   StagingAbandonedError,
-  StagingCancelledError,
   sweepStagedUploads,
+  UploadCancelledError,
   type StagedAudio,
 } from '../tracks';
 
@@ -121,7 +123,7 @@ afterEach(() => jest.restoreAllMocks());
 describe('stageAudioUpload', () => {
   it('uploads the song, saves its URL, checks it, and keeps it when nothing matches', async () => {
     const progress: string[] = [];
-    const staged = await stageAudioUpload(SONG, p => progress.push(p.stage), jest.fn(), never);
+    const staged = await stageAudioUpload(SONG, p => progress.push(p.stage), never);
 
     expect(staged).toMatchObject({ trackId: 't1', userId: 'me', audioUrl: 'https://cdn/me/t1/audio', declaration: null });
     expect(mockDb.updates).toContainEqual({ audio_url: 'https://cdn/me/t1/audio' });
@@ -131,25 +133,13 @@ describe('stageAudioUpload', () => {
     expect(mockDb.deletedTracks).toEqual([]);
   });
 
-  it('removes the song and everything it wrote when the uploader backs out at a match', async () => {
-    mockScan.mockResolvedValue(MATCH);
-    const ask = jest.fn(async () => ({ acknowledgement: 'cancelled' }) as never);
-
-    await expect(stageAudioUpload(SONG, () => {}, ask, never)).rejects.toBeInstanceOf(StagingCancelledError);
-
-    expect(ask).toHaveBeenCalledTimes(1);
-    expect(mockDb.deletedTracks).toEqual(['t1']);
-    expect(mockDb.removedPaths).toEqual([['me/t1/audio.mp3']]);
-    // Nothing recorded about an upload that was abandoned.
-    expect(mockAck).not.toHaveBeenCalled();
-  });
-
-  it('holds the answer to a match for publish, without recording it yet', async () => {
+  it('reports a match without asking about it — the screen asks on a tap', async () => {
     mockScan.mockResolvedValue(MATCH);
 
-    const staged = await stageAudioUpload(SONG, () => {}, async () => OWNED, never);
+    const staged = await stageAudioUpload(SONG, () => {}, never);
 
-    expect(staged.declaration).toBe(OWNED);
+    expect(staged.scan).toEqual(MATCH);
+    expect(staged.declaration).toBeNull();
     expect(mockAck).not.toHaveBeenCalled();
     expect(mockDb.deletedTracks).toEqual([]);
   });
@@ -158,7 +148,7 @@ describe('stageAudioUpload', () => {
     let gone = false;
     mockUpload.mockImplementation(async () => { gone = true; return 'https://cdn/me/t1/audio'; });
 
-    await expect(stageAudioUpload(SONG, () => {}, jest.fn(), () => gone)).rejects.toBeInstanceOf(StagingAbandonedError);
+    await expect(stageAudioUpload(SONG, () => {}, () => gone)).rejects.toBeInstanceOf(StagingAbandonedError);
 
     expect(mockScan).not.toHaveBeenCalled(); // never paid for a check nobody will see
     expect(mockDb.deletedTracks).toEqual(['t1']);
@@ -167,7 +157,7 @@ describe('stageAudioUpload', () => {
   it('removes what it wrote when the upload fails', async () => {
     mockUpload.mockRejectedValue(new Error('network'));
 
-    await expect(stageAudioUpload(SONG, () => {}, jest.fn(), never)).rejects.toThrow('network');
+    await expect(stageAudioUpload(SONG, () => {}, never)).rejects.toThrow('network');
 
     expect(mockDb.deletedTracks).toEqual(['t1']);
   });
@@ -195,7 +185,7 @@ describe('publishStagedAudioTrack', () => {
   };
 
   it('uploads only the cover, writes the real title, and records the earlier answer without re-checking', async () => {
-    const result = await publishStagedAudioTrack(staged, input);
+    const result = await publishStagedAudioTrack(staged, input, undefined, jest.fn());
 
     expect(result).toMatchObject({ trackId: 't1', postId: 'p1' });
     expect(mockUpload).toHaveBeenCalledTimes(1);
@@ -213,21 +203,53 @@ describe('publishStagedAudioTrack', () => {
     expect(mockDb.deletedTracks).toEqual([]);
   });
 
-  it('removes the staged song too when publishing fails', async () => {
+  it('asks an unanswered match at Post, and records the answer', async () => {
+    const ask = jest.fn(async () => OWNED);
+
+    await publishStagedAudioTrack({ ...staged, declaration: null }, input, undefined, ask);
+
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(mockAck).toHaveBeenCalledWith(expect.anything(), 't1', OWNED);
+  });
+
+  it('removes the song when the uploader backs out at Post, recording nothing', async () => {
+    const ask = jest.fn(async () => ({ acknowledgement: 'cancelled' }) as never);
+
+    await expect(publishStagedAudioTrack({ ...staged, declaration: null }, input, undefined, ask))
+      .rejects.toBeInstanceOf(UploadCancelledError);
+
+    expect(mockDb.deletedTracks).toEqual(['t1']);
+    expect(mockAck).not.toHaveBeenCalled();
+  });
+
+  it('checks again at Post when the early check could not complete', async () => {
+    const ask = jest.fn();
+    await publishStagedAudioTrack({ ...staged, scan: { status: 'failed', matchFound: null }, declaration: null }, input, undefined, ask);
+
+    expect(mockScan).toHaveBeenCalledTimes(1);
+    expect(ask).not.toHaveBeenCalled(); // the re-check found nothing
+  });
+
+  it('removes the staged song and records no answer when publishing fails', async () => {
     mockDb.failPostInsert = true;
 
-    await expect(publishStagedAudioTrack(staged, input)).rejects.toThrow('posts insert exploded');
+    await expect(publishStagedAudioTrack(staged, input, undefined, jest.fn())).rejects.toThrow('posts insert exploded');
+
+    expect(mockDb.deletedTracks).toEqual(['t1']);
+    // The answer row would outlive the track: never written for a post that never existed.
+    expect(mockAck).not.toHaveBeenCalled();
+  });
+
+  it('removes the staged song when the input is refused before anything uploads', async () => {
+    await expect(publishStagedAudioTrack(staged, { ...input, title: '  ' }, undefined, jest.fn()))
+      .rejects.toThrow('Title is required.');
 
     expect(mockDb.deletedTracks).toEqual(['t1']);
   });
 });
 
 describe('sweepStagedUploads', () => {
-  it('removes a song staged before the app was killed, and only forgets one that got its post', async () => {
-    // Two stagings that each got as far as being remembered.
-    mockUpload.mockRejectedValueOnce(new Error('killed')); // stands in for the kill
-    await expect(stageAudioUpload(SONG, () => {}, jest.fn(), never)).rejects.toThrow();
-    mockDb.deletedTracks = [];
+  it("removes this account's song staged before the app was killed, and only forgets one that got its post", async () => {
     await AsyncStorage.setItem('livil.upload.staged.v1', JSON.stringify([
       { trackId: 'orphan', userId: 'me' },
       { trackId: 'posted', userId: 'me' },
@@ -238,5 +260,17 @@ describe('sweepStagedUploads', () => {
 
     expect(mockDb.deletedTracks).toEqual(['orphan']);
     expect(JSON.parse((await AsyncStorage.getItem('livil.upload.staged.v1')) ?? '[]')).toEqual([]);
+  });
+
+  it("leaves another account's leftovers for that account — the delete would be refused", async () => {
+    await AsyncStorage.setItem('livil.upload.staged.v1', JSON.stringify([
+      { trackId: 'theirs', userId: 'someone-else' },
+    ]));
+
+    await sweepStagedUploads();
+
+    expect(mockDb.deletedTracks).toEqual([]);
+    expect(JSON.parse((await AsyncStorage.getItem('livil.upload.staged.v1')) ?? '[]'))
+      .toEqual([{ trackId: 'theirs', userId: 'someone-else' }]);
   });
 });

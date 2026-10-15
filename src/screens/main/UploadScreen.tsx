@@ -41,7 +41,6 @@ import {
   publishStagedAudioTrack,
   stageAudioUpload,
   StagingAbandonedError,
-  StagingCancelledError,
   sweepStagedUploads,
   UploadCancelledError,
   type CreateTrackStage,
@@ -52,6 +51,7 @@ import CopyrightMatchModal from '../../components/CopyrightMatchModal';
 import { Choice } from '../../components/Choice';
 import {
   describeMatch,
+  needsAcknowledgement,
   type RightsDeclaration,
   type ScanResult,
 } from '../../../shared/services/copyrightScan';
@@ -518,6 +518,12 @@ export default function UploadScreen() {
   // runs straight after, while the artist fills in the rest — so a match is raised at step
   // 2, not after the whole form and the whole upload. See `stageAudioUpload`.
   //
+  // A match is NOT asked about when the check finishes: the artist answers on their own tap
+  // (step 2's card, or the banner on the other steps), and Post asks if they never did. An
+  // unprompted dialog would land on top of the photo picker, the collaborator picker, the
+  // album sheet or the full-screen preview, and iOS refuses to present it there — the
+  // question would never show, and Post would wait on it forever.
+  //
   // Each attempt gets a token. A newer pick (or a removal, a switch to video, leaving the
   // screen) marks the old token abandoned, and an abandoned attempt removes whatever it
   // wrote. The token also carries the attempt's promise and, once done, its staged song —
@@ -544,7 +550,6 @@ export default function UploadScreen() {
         if (abandoned()) { return; }
         setStaging(p.stage === 'checking' ? { status: 'checking' } : { status: 'uploading', fraction: p.fraction });
       },
-      askAboutMatch,
       abandoned,
     )
       .then(staged => {
@@ -555,15 +560,6 @@ export default function UploadScreen() {
       })
       .catch((err: unknown) => {
         if (err instanceof StagingAbandonedError || abandoned()) { return null; }
-        if (err instanceof StagingCancelledError) {
-          // Backed out at the copyright question: the song is gone, as at Post before.
-          // Abandoned NOW, not when the re-render's cleanup gets to it — a Post waiting on
-          // this attempt must see it and stop, not fall back to uploading the song again.
-          token.abandoned = true;
-          setAudio(null);
-          setNotice('Upload cancelled. You can pick a different song.');
-          return null;
-        }
         console.log('[LIVIL][upload] early upload failed', err);
         setStaging({ status: 'failed' });
         return null;
@@ -578,7 +574,44 @@ export default function UploadScreen() {
       setStaging({ status: 'idle' });
       if (staged) { void discardStagedAudio(staged); }
     };
-  }, [mode, audio, askAboutMatch]);
+  }, [mode, audio]);
+
+  // The staged song matched a known recording and the artist has not answered yet.
+  const needsAnswer =
+    staging.status === 'ready' && needsAcknowledgement(staging.staged.scan) && !staging.staged.declaration;
+
+  // Asked on the artist's tap, when nothing else is on screen (see the note above the
+  // staging effect). Backing out removes the song, as it always did.
+  const answerMatchNow = useCallback(async () => {
+    const token = stagingTokenRef.current;
+    const staged = token?.staged;
+    if (!token || token.abandoned || !staged) { return; }
+    const answer = await askAboutMatch(staged.scan);
+    if (token.abandoned || token.staged !== staged) { return; }
+    if (answer.acknowledgement === 'cancelled') {
+      token.abandoned = true;
+      token.staged = null;
+      void discardStagedAudio(staged);
+      setAudio(null);
+      setNotice('Upload cancelled. You can pick a different song.');
+      return;
+    }
+    const answered = { ...staged, declaration: answer };
+    token.staged = answered;
+    setStaging({ status: 'ready', staged: answered });
+  }, [askAboutMatch]);
+
+  // Step 2's Next waits (briefly) for the inline player to report the file's length: it is
+  // saved with the track and checked against the minimum, and the player only exists while
+  // step 2 is open. A file the player cannot read must not trap anyone, hence the timeout.
+  const [lengthWaitOver, setLengthWaitOver] = useState(false);
+  useEffect(() => {
+    setLengthWaitOver(false);
+    if (!previewMediaUri) { return; }
+    const t = setTimeout(() => setLengthWaitOver(true), 8000);
+    return () => clearTimeout(t);
+  }, [previewMediaUri]);
+  const lengthKnown = previewDurationSec != null || lengthWaitOver;
 
   // ── Steps ────────────────────────────────────────────────────────────────────
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
@@ -663,12 +696,13 @@ export default function UploadScreen() {
   const missing = useMemo(() => {
     const out: { key: StepKey; label: string }[] = [];
     if (!mediaFile) { out.push({ key: 'media', label: mode === 'audio' ? 'your song' : 'your video' }); }
+    if (needsAnswer) { out.push({ key: 'media', label: 'an answer to the copyright question' }); }
     if (!imageFile) { out.push({ key: 'cover', label: mode === 'audio' ? 'a cover' : 'a thumbnail' }); }
     if (!title.trim()) { out.push({ key: 'details', label: 'a title' }); }
     if (!uploaderRole.trim()) { out.push({ key: 'credits', label: 'your role' }); }
     if (!grantedStreaming) { out.push({ key: 'rights', label: 'streaming permission' }); }
     return out;
-  }, [mediaFile, imageFile, mode, title, uploaderRole, grantedStreaming]);
+  }, [mediaFile, needsAnswer, imageFile, mode, title, uploaderRole, grantedStreaming]);
 
   const canSubmit = !submitting && missing.length === 0;
 
@@ -725,7 +759,7 @@ export default function UploadScreen() {
           token.staged = null;
           token.promise = null;
           try {
-            result = await publishStagedAudioTrack(staged, input, onProgress);
+            result = await publishStagedAudioTrack(staged, input, onProgress, askAboutMatch);
           } catch (err) {
             // Removed with everything else by the failed publish — so a retry goes the
             // classic way, uploading everything at Post.
@@ -807,6 +841,10 @@ export default function UploadScreen() {
           {file ? (
             <Text style={styles.fileFilename} numberOfLines={1}>
               {file.name ?? 'Selected file'}
+              {/* The song or video's length (m:ss) once the player has read it. */}
+              {(slot.kind === 'audio' || slot.kind === 'video') && previewDurationSec && previewDurationSec > 0
+                ? `  ·  ${formatClock(previewDurationSec)}`
+                : ''}
               {file.size != null ? `  ·  ${formatBytes(file.size)}` : ''}
             </Text>
           ) : (
@@ -858,12 +896,23 @@ export default function UploadScreen() {
         text = 'Checking it against known recordings…';
         break;
       case 'ready':
+        if (needsAnswer) {
+          return (
+            <View style={styles.matchCard}>
+              <Text style={styles.matchTitle}>This sounds like a known recording</Text>
+              <Text style={styles.matchBody}>
+                {describeMatch(staging.staged.scan)} — tell us how it relates to you before you post.
+              </Text>
+              <Button label="Answer" onPress={() => { void answerMatchNow(); }} variant="primary" size="sm" />
+            </View>
+          );
+        }
         icon = <Icon name="check" size={16} color={COLORS.purpleLight} weight="bold" />;
         text = staging.staged.declaration
           ? 'Uploaded · your answer is saved for when you post'
           : staging.staged.scan.status === 'complete'
             ? 'Uploaded · no match with known recordings'
-            : "Uploaded · couldn't check it right now, it can still post";
+            : "Uploaded · couldn't check it yet, it's checked again when you post";
         break;
       case 'failed':
         icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
@@ -991,8 +1040,10 @@ export default function UploadScreen() {
         {renderInlinePlayer()}
         {renderNext(
           mode === 'audio' ? 'Next: cover' : 'Next: thumbnail',
-          Boolean(mediaFile),
-          mode === 'audio' ? 'Choose your song to continue.' : 'Choose your video to continue.',
+          Boolean(mediaFile) && lengthKnown,
+          !mediaFile
+            ? (mode === 'audio' ? 'Choose your song to continue.' : 'Choose your video to continue.')
+            : 'Reading the file…',
         )}
       </UploadStep>
 
@@ -1049,10 +1100,10 @@ export default function UploadScreen() {
             anyone not already following you ever finds the track. The moods are one-tap
             suggestions under the field. */}
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Tags · how people find it</Text>
+          <Text style={styles.label}>Tags · optional</Text>
           <Text style={styles.tagsHint}>
-            Tap the moods that fit, and add your own — genre, language, whatever you'd
-            search for. Listeners never see these.
+            How people find your track. Tap the moods that fit, or add something else —
+            genre, language, whatever you'd search for. Listeners never see these.
           </Text>
           <TagInput tags={tags} onChange={setTags} editable={!submitting} suggestions={EMOTION_TAGS} />
         </View>
@@ -1248,9 +1299,11 @@ export default function UploadScreen() {
       : staging.status === 'ready'
         ? staging.staged.declaration
           ? 'Matched a known recording · your answer is saved'
-          : staging.staged.scan.status === 'complete'
-            ? 'No match with known recordings'
-            : "Couldn't check yet — it's checked again when you post"
+          : needsAnswer
+            ? 'Matched a known recording · answer needed'
+            : staging.staged.scan.status === 'complete'
+              ? 'No match with known recordings'
+              : "Couldn't check yet — it's checked again when you post"
         : staging.status === 'uploading' || staging.status === 'checking'
           ? 'Still checking — finishes when you post'
           : 'Checked when you post';
@@ -1386,6 +1439,14 @@ export default function UploadScreen() {
         {notice ? (
           <View style={styles.noticeBox}>
             <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        ) : null}
+
+        {needsAnswer && !reviewing && step !== 'media' ? (
+          <View style={styles.matchCard}>
+            <Text style={styles.matchTitle}>Your song sounds like a known recording</Text>
+            <Text style={styles.matchBody}>Answer one question about it before you post.</Text>
+            <Button label="Answer now" onPress={() => { void answerMatchNow(); }} variant="primary" size="sm" />
           </View>
         ) : null}
 
@@ -1927,6 +1988,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     marginBottom: 14,
   },
+
+  matchCard: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.warningBorder,
+    backgroundColor: COLORS.warningBg,
+    gap: 8,
+    marginBottom: 14,
+    alignItems: 'flex-start',
+  },
+  matchTitle: { color: COLORS.warning, fontSize: 14, fontWeight: '700' },
+  matchBody: { color: COLORS.white, fontSize: 13, lineHeight: 18 },
 
   // ── Preview page ──
   previewIntro: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 12 },

@@ -50,6 +50,10 @@ export default function TagInput({
   // FormInput exists to prevent.
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // With suggestions on offer, the text box stays tucked away behind a "+ Something else"
+  // chip at the end of them: most artists only tap moods, and an always-open box read as
+  // homework. It opens (keyboard up) on that tap and tucks away again once they are done.
+  const [typing, setTyping] = useState(false);
 
   const commit = (raw: string) => {
     const result = addTags(tags, raw);
@@ -83,6 +87,8 @@ export default function TagInput({
 
   const full = tags.length >= MAX_TAGS_PER_TRACK;
   const remaining = suggestions.filter(s => !tags.includes(s));
+  const collapsible = suggestions.length > 0;
+  const showField = !full && (!collapsible || typing);
 
   // The draft is left alone: tapping a mood mid-word must not throw the word away.
   const addSuggestion = (tag: string) => {
@@ -121,14 +127,19 @@ export default function TagInput({
         </View>
       )}
 
-      {!full && (
+      {showField && (
         <FormInput
           value={draft}
           onChangeText={handleChange}
           onSubmitEditing={() => commit(draft)}
           // Saves the tag someone typed and then tapped away from, which would otherwise
-          // vanish at publish with nothing on screen having said so.
-          onBlur={() => commit(draft)}
+          // vanish at publish with nothing on screen having said so — and tucks the box
+          // back behind "+ Something else".
+          onBlur={() => {
+            commit(draft);
+            setTyping(false);
+          }}
+          autoFocus={collapsible}
           placeholder={placeholder}
           editable={editable}
           autoCapitalize="none"
@@ -140,8 +151,8 @@ export default function TagInput({
         />
       )}
 
-      {editable && !full && remaining.length > 0 && (
-        <View style={styles.suggestions}>
+      {editable && !full && (remaining.length > 0 || (collapsible && !typing)) && (
+        <View style={[styles.suggestions, !showField && styles.suggestionsFirst]}>
           {remaining.map(tag => (
             <TouchableOpacity
               key={tag}
@@ -155,6 +166,21 @@ export default function TagInput({
               <Text style={styles.suggestionText} numberOfLines={1}>{formatTag(tag)}</Text>
             </TouchableOpacity>
           ))}
+          {collapsible && !typing ? (
+            <TouchableOpacity
+              onPress={() => {
+                setError(null);
+                setTyping(true);
+              }}
+              activeOpacity={0.7}
+              style={[styles.suggestion, styles.somethingElse]}
+              accessibilityRole="button"
+              accessibilityLabel="Add a tag of your own"
+            >
+              <Icon name="add" size={12} color={COLORS.purpleNeon} />
+              <Text style={[styles.suggestionText, styles.somethingElseText]}>Something else</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
 
@@ -214,6 +240,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  // With the box tucked away there is nothing above the offers to space them from.
+  suggestionsFirst: { marginTop: 0 },
+  // The one offer that is an action, not a mood: purple outline and letters, no fill.
+  somethingElse: { borderColor: COLORS.purple },
+  somethingElseText: { color: COLORS.purpleNeon },
   error: {
     marginTop: 6,
     fontSize: 12,
