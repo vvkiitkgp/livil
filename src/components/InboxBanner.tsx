@@ -10,9 +10,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { COLORS } from '../theme/colors';
+import { Icon } from './Icon';
 import { GradientBorder } from './GradientBorder';
 import GroupAvatarCluster from './GroupAvatarCluster';
-import { Logo } from './Logo';
+import { LivilBotAvatar } from './LivilBotAvatar';
 import type { GroupFace } from '../utils/groupFaces';
 import { supabase } from '../../lib/supabase';
 import { useRelationships } from '../contexts/RelationshipContext';
@@ -222,22 +223,22 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
       accessibilityLabel={unread > 0 ? `livil Bot, ${unread} new` : 'livil Bot'}
     >
       <GradientBorder borderRadius={CARD_RADIUS} />
-      {/* The vector mark (same artwork as the app icon), not livil-logo.png: the bitmap's
-          mark fills barely half its circle and read as a thin squiggle at 44pt. */}
-      <View style={styles.activityAvatar}>
-        <Logo size={CARD_AVATAR * 0.82} color={COLORS.white} />
-      </View>
+      <LivilBotAvatar size={CARD_AVATAR} />
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>livil Bot</Text>
         <Text style={styles.subtitle} numberOfLines={1}>
           {preview ?? 'Likes, comments & milestones on your tracks'}
         </Text>
       </View>
+      {/* New activity → the count. All caught up → a quiet bell, so the card still says
+          what it is (your notifications) rather than ending in empty space. */}
       {unread > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
         </View>
-      ) : null}
+      ) : (
+        <Icon name="bell" size={22} color={COLORS.purpleLight} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -255,14 +256,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
     borderRadius: CARD_RADIUS,
-  },
-  activityAvatar: {
-    width: CARD_AVATAR,
-    height: CARD_AVATAR,
-    borderRadius: CARD_AVATAR / 2,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   badge: {
     backgroundColor: COLORS.purple,

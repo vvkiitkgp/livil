@@ -5,6 +5,7 @@ import { Icon, type IconName } from './Icon';
 import CollabAvatar from './CollabAvatar';
 import UsernameBadges from './UsernameBadges';
 import { SpotifyLogo } from './SpotifyLogo';
+import { LivilBotAvatar } from './LivilBotAvatar';
 import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import {
   activityBubbleParts,
@@ -13,10 +14,10 @@ import {
 } from '../services/activity';
 import { artistLine, useSpotifyTrack } from '../services/spotify';
 
-// The Livil bot avatar shown on every message (this is a chat "from livil Bot",
+// The Livil bot avatar is shown on every message (this is a chat "from livil Bot",
 // so the actor's own profile picture is NOT the sender avatar — it sits inside
 // the bubble, beside their name).
-const LIVIL_LOGO = require('../assets/livil-logo.png');
+const SENDER_AVATAR_SIZE = 28;
 
 /** The face of the person a message is about, inside the bubble. */
 const ACTOR_AVATAR_SIZE = 24;
@@ -111,7 +112,7 @@ export default function ActivityBubble({
   return (
     <View style={styles.bubbleRow}>
       <View style={styles.senderAvatarWrap}>
-        <Image source={LIVIL_LOGO} style={styles.senderAvatar} />
+        <LivilBotAvatar size={SENDER_AVATAR_SIZE} />
       </View>
 
       <View style={styles.bubbleColumn}>
@@ -262,7 +263,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   senderAvatarWrap: {},
-  senderAvatar: { width: 28, height: 28, borderRadius: 14 },
   bubbleColumn: { maxWidth: '75%' },
   bubble: {
     borderRadius: 18,
