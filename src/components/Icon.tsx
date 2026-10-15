@@ -32,6 +32,7 @@ import {
   CaretLineRight,
   CaretRight,
   ChatCircle,
+  ChatsCircle,
   Check,
   CheckCircle,
   Crown,
@@ -106,7 +107,7 @@ export type IconName =
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
   | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
-  | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp' | 'arrowDown'
+  | 'back' | 'backArrow' | 'forward' | 'send' | 'messages' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle' | 'upload'
   | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
@@ -166,6 +167,10 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   backArrow: [ArrowLeft, 'bold'],
   forward: [CaretRight, 'bold'],
   send: [PaperPlaneTilt, 'fill'],
+  // Home's "open your messages" button. Two bubbles — a conversation — not the paper plane,
+  // which is already `share` on every post card, and not one bubble, which is `comment`.
+  // Owner's pick, 2026-10-15.
+  messages: [ChatsCircle, 'regular'],
   arrowRight: [ArrowRight, 'bold'],
   arrowUp: [ArrowUp, 'bold'],
   arrowDown: [ArrowDown, 'bold'],

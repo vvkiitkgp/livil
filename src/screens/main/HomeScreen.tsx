@@ -1303,7 +1303,7 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('Inbox')}
               accessibilityLabel="Open messages"
             >
-              <Icon name="send" size={18} color={COLORS.white} />
+              <Icon name="messages" size={20} color={COLORS.white} />
               {notificationCount > 0 && (
                 <View style={styles.inboxBadge}>
                   <Text style={styles.inboxBadgeText}>
