@@ -152,6 +152,46 @@ async function safeRemoveUploadedObjects(userId: string, trackId: string): Promi
   }
 }
 
+/** How old a placeholder row must be before it is abandoned rather than still uploading. */
+const ABANDONED_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Remove this user's uploads that never finished.
+ *
+ * `createTrack` (and the web's `publishTrack`) inserts the row first, for an id to scope
+ * storage paths to, and rolls it back in its catch — but only while the app is still
+ * running. Closed or killed mid-upload, the row stays behind holding its `pending://`
+ * placeholder. Nobody can play or see it, and nothing ever removed it.
+ *
+ * Safe to delete: the post is inserted only after the placeholder is replaced, so a
+ * placeholder row has no post. 24 hours old, so an upload still running on another device
+ * is never touched. Owner-only twice over — filtered here, and `tracks_delete_own`.
+ * Once per launch / sign-in, fire-and-forget; never throws.
+ */
+export async function sweepAbandonedUploads(userId: string): Promise<void> {
+  if (!userId) { return; }
+  try {
+    const cutoff = new Date(Date.now() - ABANDONED_UPLOAD_AGE_MS).toISOString();
+    const stuck = (column: 'audio_url' | 'video_url') =>
+      supabase
+        .from('tracks')
+        .select('id')
+        .eq('uploader_id', userId)
+        .like(column, 'pending:%')
+        .lt('created_at', cutoff);
+    const [audio, video] = await Promise.all([stuck('audio_url'), stuck('video_url')]);
+    const ids = [...(audio.data ?? []), ...(video.data ?? [])].map(r => r.id);
+    for (const id of ids) {
+      // Same order as createTrack's own rollback.
+      await safeDeleteTrack(id);
+      await safeRemoveUploadedObjects(userId, id);
+    }
+    if (ids.length > 0) { console.log(`[LIVIL][upload] removed ${ids.length} abandoned upload(s)`); }
+  } catch {
+    // Best-effort: whatever is left is swept on the next launch.
+  }
+}
+
 /**
  * Backfill duration_seconds the first time a track's real length is known — from
  * the player's onLoad. Older rows (and any upload where the preview duration
