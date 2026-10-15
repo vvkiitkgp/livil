@@ -389,6 +389,7 @@ divergent button styles before this was centralized.
 | `secondary` | transparent | `COLORS.border` | `white` |
 | `ghost` | none | none | `textSecondary` |
 | `destructive` | **solid `COLORS.error`** | none | `white` |
+| `spotify` | **solid Spotify Green `#1ED760`** | none | black |
 
 Sizes `sm | md | lg`. Pass `onMedia` when the button floats over video/artwork
 (swaps in an opaque scrim so the border keeps contrast). `disabled`/`busy` are
@@ -397,6 +398,8 @@ handled internally — never layer your own opacity or `*Disabled` style.
 **Why:** at `#8B3DFF` a solid fill dominates the dark UI, and the Repost button
 appears on every feed card. Purple now outlines and letters; it never fills.
 `destructive` is the one exception — dangerous actions must stay visually heavy.
+`spotify` is a brand exception like Google's border: it is ONLY for the button that hands
+the listener to the Spotify app ("Open Spotify" in the Spotify notice), never decoration.
 
 **Rules that are easy to get wrong:**
 - **`borderColors` exists for exactly one button: "Continue with Google"**, which wears

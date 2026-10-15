@@ -164,11 +164,20 @@ export function OnboardingNoticeHost() {
               <Text style={styles.checkLabel}>Don't show this again</Text>
             </Pressable>
 
-            <Button label={copy.confirm} onPress={() => close(true)} variant="primary" size="md" fullWidth />
+            {/* Spotify: going is Spotify-green (it hands you to their app) and staying wears
+                Livil's own purple outline — two destinations, each in its own colours. The Jam
+                notice stays a Livil decision either way: purple confirm, quiet cancel. */}
+            <Button
+              label={copy.confirm}
+              onPress={() => close(true)}
+              variant={request.kind === 'spotify' ? 'spotify' : 'primary'}
+              size="md"
+              fullWidth
+            />
             <Button
               label={copy.cancel}
               onPress={() => close(false)}
-              variant="ghost"
+              variant={request.kind === 'spotify' ? 'primary' : 'ghost'}
               size="md"
               fullWidth
               style={styles.cancel}
