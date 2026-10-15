@@ -20,6 +20,7 @@ export function TagField({
   placeholder = 'Add a tag',
   morePlaceholder = '+ Add a tag',
   label,
+  suggestions = [],
 }: {
   tags: string[];
   onChange: (tags: string[]) => void;
@@ -32,6 +33,11 @@ export function TagField({
   morePlaceholder?: string;
   /** Names the field for screen readers, and captions it when it stands alone. */
   label: string;
+  /**
+   * One-tap tags shown under the box, each until it is added. The uploader passes
+   * EMOTION_TAGS: the moods are offered to click, not pre-applied to prune.
+   */
+  suggestions?: readonly string[];
 }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +70,7 @@ export function TagField({
   };
 
   const full = tags.length >= MAX_TAGS_PER_TRACK;
+  const remaining = suggestions.filter(s => !tags.includes(s));
 
   return (
     <div className="tags">
@@ -116,6 +123,26 @@ export function TagField({
           />
         )}
       </div>
+      {!disabled && !full && remaining.length > 0 && (
+        <div className="tags__suggestions">
+          {remaining.map(tag => (
+            <button
+              key={tag}
+              type="button"
+              className="tag tag--suggestion"
+              aria-label={`Add tag ${tag}`}
+              onClick={() => {
+                // The draft is left alone: clicking a mood mid-word must not lose the word.
+                const result = addTags(tags, tag);
+                setError(result.error);
+                if (result.tags.length !== tags.length) onChange(result.tags);
+              }}
+            >
+              + {formatTag(tag)}
+            </button>
+          ))}
+        </div>
+      )}
       {error && <span className="tags__error">{error}</span>}
     </div>
   );

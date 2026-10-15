@@ -164,7 +164,9 @@ export default function UploadScreen() {
   // Already normalized — `TagInput` commits the stored form, never the typed form. Seeded
   // with the emotions, pre-applied: the artist removes the ones this track is not, rather
   // than opting in to the ones it is.
-  const [tags, setTags] = useState<string[]>(() => [...EMOTION_TAGS]);
+  // Starts EMPTY; the moods are one-tap suggestions under the field (owner's call,
+  // 2026-10-15 — they used to arrive pre-applied and had to be pruned).
+  const [tags, setTags] = useState<string[]>([]);
   const [uploaderRole, setUploaderRole] = useState('');
   // The per-upload streaming grant, ticked beside the post button. Required on every
   // upload, matched or not — `createTrack` records it once the post exists.
@@ -832,15 +834,15 @@ export default function UploadScreen() {
               following you ever finds the track, and a collapsed section is how a field
               like that stays empty.
 
-              The hint asks for a removal, not an addition, because that is the action the
-              screen opens on: the emotions arrive already applied. */}
+              The moods sit under the field as one-tap suggestions, so an artist still sees
+              that Livil files music by feeling without having to prune ten pre-applied tags. */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Tags · how people find it</Text>
             <Text style={styles.tagsHint}>
-              Take off the moods this track isn't, and add your own — genre, language,
-              whatever you'd search for. Listeners never see these.
+              Tap the moods that fit, and add your own — genre, language, whatever you'd
+              search for. Listeners never see these.
             </Text>
-            <TagInput tags={tags} onChange={setTags} editable={!submitting} />
+            <TagInput tags={tags} onChange={setTags} editable={!submitting} suggestions={EMOTION_TAGS} />
           </View>
 
           {/* Add to album · optional — creators can group this upload with

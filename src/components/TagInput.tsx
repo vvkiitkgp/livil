@@ -31,6 +31,11 @@ type Props = {
   onChange: (tags: string[]) => void;
   editable?: boolean;
   placeholder?: string;
+  /**
+   * One-tap tags shown under the field, each until it is added. The upload screen passes
+   * EMOTION_TAGS: the moods are offered to tap, not pre-applied to prune.
+   */
+  suggestions?: readonly string[];
 };
 
 export default function TagInput({
@@ -38,6 +43,7 @@ export default function TagInput({
   onChange,
   editable = true,
   placeholder = 'lofi, latenight, tabla',
+  suggestions = [],
 }: Props) {
   // Held here, not lifted. Lifting the draft to the parent re-renders the screen on every
   // keystroke and remounts the TextInput on Android 15 + Fabric — the keyboard-dismiss bug
@@ -76,6 +82,16 @@ export default function TagInput({
   };
 
   const full = tags.length >= MAX_TAGS_PER_TRACK;
+  const remaining = suggestions.filter(s => !tags.includes(s));
+
+  // The draft is left alone: tapping a mood mid-word must not throw the word away.
+  const addSuggestion = (tag: string) => {
+    const result = addTags(tags, tag);
+    setError(result.error);
+    if (result.tags.length !== tags.length) {
+      onChange(result.tags);
+    }
+  };
 
   return (
     <View>
@@ -124,6 +140,24 @@ export default function TagInput({
         />
       )}
 
+      {editable && !full && remaining.length > 0 && (
+        <View style={styles.suggestions}>
+          {remaining.map(tag => (
+            <TouchableOpacity
+              key={tag}
+              onPress={() => addSuggestion(tag)}
+              activeOpacity={0.7}
+              style={styles.suggestion}
+              accessibilityRole="button"
+              accessibilityLabel={`Add tag ${tag}`}
+            >
+              <Icon name="add" size={12} color={COLORS.textSecondary} />
+              <Text style={styles.suggestionText} numberOfLines={1}>{formatTag(tag)}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
@@ -157,6 +191,28 @@ const styles = StyleSheet.create({
   },
   chipRemove: {
     marginLeft: 2,
+  },
+  suggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  // Grey outline, not purple: an offer, visibly different from a tag the track carries.
+  suggestion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  suggestionText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   error: {
     marginTop: 6,
