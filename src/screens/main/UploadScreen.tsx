@@ -9,9 +9,10 @@ import {
   Image,
   Linking,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, keepLocalCopy, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
@@ -36,9 +37,16 @@ import {
 } from '../../constants/roles';
 import {
   createTrack,
+  discardStagedAudio,
+  publishStagedAudioTrack,
+  stageAudioUpload,
+  StagingAbandonedError,
+  StagingCancelledError,
+  sweepStagedUploads,
   UploadCancelledError,
   type CreateTrackStage,
   type PostMode,
+  type StagedAudio,
 } from '../../services/tracks';
 import CopyrightMatchModal from '../../components/CopyrightMatchModal';
 import { Choice } from '../../components/Choice';
@@ -55,8 +63,38 @@ import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
 import { Icon } from '../../components/Icon';
 import AddToAlbumSheet from '../../components/AddToAlbumSheet';
+import UploadStep, { type UploadStepState } from '../../components/UploadStep';
+import UploadPreviewCard, { type UploadPreviewAuthor } from '../../components/UploadPreviewCard';
+import UploadPreviewPlayer from '../../components/UploadPreviewPlayer';
+import { GradientFill } from '../../components/GradientFill';
+import { supabase } from '../../../lib/supabase';
+import { getMyProfile } from '../../services/profileService';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
+
+/**
+ * The upload, as six steps in a vertical list and then a Preview page. One step is open at
+ * a time; done steps fold into a ticked one-line summary and stay tappable, so the order is
+ * a guide, not a lock. Post lives only on the Preview page, which also lists anything still
+ * missing with a jump to the step that fixes it.
+ */
+type StepKey = 'type' | 'media' | 'cover' | 'details' | 'credits' | 'rights';
+const STEP_ORDER: StepKey[] = ['type', 'media', 'cover', 'details', 'credits', 'rights'];
+
+/** One early-upload attempt: abandoned once the screen moves on; holds its promise and result. */
+type StagingToken = {
+  abandoned: boolean;
+  staged: StagedAudio | null;
+  promise: Promise<StagedAudio | null> | null;
+};
+
+/** The early song upload + copyright check (audio only) — see the effect that runs it. */
+type Staging =
+  | { status: 'idle' }
+  | { status: 'uploading'; fraction: number }
+  | { status: 'checking' }
+  | { status: 'ready'; staged: StagedAudio }
+  | { status: 'failed' };
 
 /**
  * Where the desktop studio lives.
@@ -474,43 +512,172 @@ export default function UploadScreen() {
     [audio, video, cover, thumbnail],
   );
 
-  const canSubmit = useMemo(() => {
-    if (submitting || title.trim().length === 0) {return false;}
-    // Your own role is required — see the Your role section.
-    if (uploaderRole.trim().length === 0) {return false;}
-    if (!grantedStreaming) {return false;}
-    if (mode === 'audio') {return Boolean(audio && cover);}
-    return Boolean(video && thumbnail);
-  }, [mode, audio, cover, video, thumbnail, title, uploaderRole, grantedStreaming, submitting]);
+  // ── The early song upload + copyright check ──────────────────────────────────
+  //
+  // Audio only. The song starts uploading the moment it is picked and the provider check
+  // runs straight after, while the artist fills in the rest — so a match is raised at step
+  // 2, not after the whole form and the whole upload. See `stageAudioUpload`.
+  //
+  // Each attempt gets a token. A newer pick (or a removal, a switch to video, leaving the
+  // screen) marks the old token abandoned, and an abandoned attempt removes whatever it
+  // wrote. The token also carries the attempt's promise and, once done, its staged song —
+  // read at Post, and cleared there once Post has taken it over.
+  const [staging, setStaging] = useState<Staging>({ status: 'idle' });
+  // A neutral note (not an error), e.g. after backing out at the copyright question.
+  const [notice, setNotice] = useState('');
+  const [stepBarW, setStepBarW] = useState(0);
+  const stagingTokenRef = useRef<StagingToken | null>(null);
+  const [awaitingStaging, setAwaitingStaging] = useState(false);
+
+  // Songs staged on an earlier visit whose app was killed before they were posted.
+  useEffect(() => { void sweepStagedUploads(); }, []);
+
+  useEffect(() => {
+    if (mode !== 'audio' || !audio) { return; }
+    const token: StagingToken = { abandoned: false, staged: null, promise: null };
+    stagingTokenRef.current = token;
+    const abandoned = () => token.abandoned;
+    setStaging({ status: 'uploading', fraction: 0 });
+    const promise = stageAudioUpload(
+      audio,
+      p => {
+        if (abandoned()) { return; }
+        setStaging(p.stage === 'checking' ? { status: 'checking' } : { status: 'uploading', fraction: p.fraction });
+      },
+      askAboutMatch,
+      abandoned,
+    )
+      .then(staged => {
+        if (abandoned()) { void discardStagedAudio(staged); return null; }
+        token.staged = staged;
+        setStaging({ status: 'ready', staged });
+        return staged;
+      })
+      .catch((err: unknown) => {
+        if (err instanceof StagingAbandonedError || abandoned()) { return null; }
+        if (err instanceof StagingCancelledError) {
+          // Backed out at the copyright question: the song is gone, as at Post before.
+          // Abandoned NOW, not when the re-render's cleanup gets to it — a Post waiting on
+          // this attempt must see it and stop, not fall back to uploading the song again.
+          token.abandoned = true;
+          setAudio(null);
+          setNotice('Upload cancelled. You can pick a different song.');
+          return null;
+        }
+        console.log('[LIVIL][upload] early upload failed', err);
+        setStaging({ status: 'failed' });
+        return null;
+      });
+    token.promise = promise;
+    return () => {
+      // A different song, no song, video, or leaving the screen: this attempt is over.
+      // A song Post has taken over is no longer on the token, so it is never removed here.
+      token.abandoned = true;
+      const staged = token.staged;
+      token.staged = null;
+      setStaging({ status: 'idle' });
+      if (staged) { void discardStagedAudio(staged); }
+    };
+  }, [mode, audio, askAboutMatch]);
+
+  // ── Steps ────────────────────────────────────────────────────────────────────
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const [step, setStep] = useState<StepKey>('type');
+  const [reviewing, setReviewing] = useState(false);
+  const [fullPreviewOpen, setFullPreviewOpen] = useState(false);
+
+  const mediaFile = mode === 'audio' ? audio : video;
+  const imageFile = mode === 'audio' ? cover : thumbnail;
+
+  const stepDone: Record<StepKey, boolean> = {
+    type: step !== 'type' || reviewing,
+    media: Boolean(mediaFile),
+    cover: Boolean(imageFile),
+    details: title.trim().length > 0,
+    credits: uploaderRole.trim().length > 0,
+    rights: grantedStreaming,
+  };
+  const doneCount = STEP_ORDER.filter(k => stepDone[k]).length;
+  const stepState = (key: StepKey): UploadStepState => {
+    if (!reviewing && step === key) { return 'current'; }
+    return stepDone[key] ? 'done' : 'todo';
+  };
+
+  const openStep = useCallback((key: StepKey) => {
+    setPreviewPaused(true);
+    setReviewing(false);
+    setStep(key);
+    setError('');
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
+
+  const openPreview = useCallback(() => {
+    setPreviewPaused(true);
+    setReviewing(true);
+    setError('');
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, []);
+
+  const goNext = useCallback(() => {
+    const i = STEP_ORDER.indexOf(step);
+    if (i >= STEP_ORDER.length - 1) { openPreview(); return; }
+    openStep(STEP_ORDER[i + 1]);
+  }, [step, openStep, openPreview]);
+
+  // Android back on the Preview page returns to the steps, as the header arrow does —
+  // never out of the screen with everything filled in. Mid-upload it does nothing.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (submitting) { return true; }
+        if (!reviewing) { return false; }
+        setReviewing(false);
+        return true;
+      });
+      return () => sub.remove();
+    }, [reviewing, submitting]),
+  );
+
+  // Who the preview card and player say posted it.
+  const [me, setMe] = useState<UploadPreviewAuthor | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const id = data?.user?.id;
+        if (!id) { return; }
+        const p = await getMyProfile(id);
+        if (!cancelled) {
+          setMe({ name: p.display_name?.trim() || p.username, username: p.username, avatarUrl: p.avatar_url });
+        }
+      } catch {
+        // The card says "You" instead.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const author: UploadPreviewAuthor = me ?? { name: 'You', username: null, avatarUrl: null };
+
+  // Everything Post still needs, each with the step that fixes it.
+  const missing = useMemo(() => {
+    const out: { key: StepKey; label: string }[] = [];
+    if (!mediaFile) { out.push({ key: 'media', label: mode === 'audio' ? 'your song' : 'your video' }); }
+    if (!imageFile) { out.push({ key: 'cover', label: mode === 'audio' ? 'a cover' : 'a thumbnail' }); }
+    if (!title.trim()) { out.push({ key: 'details', label: 'a title' }); }
+    if (!uploaderRole.trim()) { out.push({ key: 'credits', label: 'your role' }); }
+    if (!grantedStreaming) { out.push({ key: 'rights', label: 'streaming permission' }); }
+    return out;
+  }, [mediaFile, imageFile, mode, title, uploaderRole, grantedStreaming]);
+
+  const canSubmit = !submitting && missing.length === 0;
 
   const handleSubmit = useCallback(async () => {
     setPreviewPaused(true);
-    if (!title.trim()) {
-      setError('Add a title to continue.');
+    setFullPreviewOpen(false);
+    if (missing.length > 0) {
+      setError(`Still needed: ${missing.map(m => m.label).join(', ')}.`);
       return;
-    }
-    if (!uploaderRole.trim()) {
-      setError('Choose what you did on this track.');
-      return;
-    }
-    if (!grantedStreaming) {
-      setError('Tick the box to let Livil stream this recording.');
-      return;
-    }
-    if (mode === 'audio') {
-      if (!audio || !cover) {
-        setError('Audio posts need an audio file and a cover image.');
-        return;
-      }
-    } else {
-      if (!video) {
-        setError('Video posts need a video file.');
-        return;
-      }
-      if (!thumbnail) {
-        setError('Video posts need a thumbnail image.');
-        return;
-      }
     }
     // Unknown duration (the preview couldn't probe it) is let through: it backfills on
     // first play, and blocking would strand files that are perfectly fine.
@@ -520,42 +687,73 @@ export default function UploadScreen() {
     }
     setSubmitting(true);
     setError('');
+    setNotice('');
     setProgressStage('preparing');
     setProgressFraction(0);
+    const onProgress = ({ stage, fraction }: { stage: CreateTrackStage; fraction: number }) => {
+      setProgressStage(stage);
+      setProgressFraction(fraction);
+    };
     try {
-      const result = await createTrack(
-        mode === 'audio'
-          ? {
-              mode: 'audio',
-              title,
-              description,
-              audio: audio!,
-              cover: cover!,
-              uploaderRole,
-              collaborators,
-              tags,
-              durationSeconds: previewDurationSec,
-              streamingGrantAccepted: grantedStreaming,
-            }
-          : {
-              mode: 'video',
-              title,
-              description,
-              video: video!,
-              cover: cover ?? undefined,
-              thumbnail: thumbnail!,
-              uploaderRole,
-              collaborators,
-              tags,
-              durationSeconds: previewDurationSec,
-              streamingGrantAccepted: grantedStreaming,
-            },
-        ({ stage, fraction }) => {
-          setProgressStage(stage);
-          setProgressFraction(fraction);
-        },
-        askAboutMatch,
-      );
+      let result: { trackId: string } | null = null;
+      if (mode === 'audio') {
+        const input = {
+          mode: 'audio' as const,
+          title,
+          description,
+          audio: audio!,
+          cover: cover!,
+          uploaderRole,
+          collaborators,
+          tags,
+          durationSeconds: previewDurationSec,
+          streamingGrantAccepted: grantedStreaming,
+        };
+        // The song may still be uploading or being checked: wait for it rather than start
+        // a second copy. A match raised meanwhile is answered in the same dialog.
+        const token = stagingTokenRef.current;
+        let staged = token && !token.abandoned ? token.staged : null;
+        if (token && !token.abandoned && !staged && token.promise) {
+          setAwaitingStaging(true);
+          staged = await token.promise;
+          setAwaitingStaging(false);
+          if (token.abandoned) { return; } // backed out at the question: the song is gone
+        }
+        if (token && staged) {
+          // Post owns it now: leaving the screen must not remove it mid-publish. The
+          // publish removes it itself if it fails.
+          token.staged = null;
+          token.promise = null;
+          try {
+            result = await publishStagedAudioTrack(staged, input, onProgress);
+          } catch (err) {
+            // Removed with everything else by the failed publish — so a retry goes the
+            // classic way, uploading everything at Post.
+            setStaging({ status: 'failed' });
+            throw err;
+          }
+        } else {
+          result = await createTrack(input, onProgress, askAboutMatch);
+        }
+      } else {
+        result = await createTrack(
+          {
+            mode: 'video',
+            title,
+            description,
+            video: video!,
+            cover: cover ?? undefined,
+            thumbnail: thumbnail!,
+            uploaderRole,
+            collaborators,
+            tags,
+            durationSeconds: previewDurationSec,
+            streamingGrantAccepted: grantedStreaming,
+          },
+          onProgress,
+          askAboutMatch,
+        );
+      }
       // Tag into the selected album if the user picked one. Fire-and-forget —
       // a failed album tag shouldn't block the success state of the upload.
       if (selectedAlbum && result?.trackId) {
@@ -566,6 +764,7 @@ export default function UploadScreen() {
       haptics.success();
       setShowSuccess(true);
     } catch (err) {
+      setAwaitingStaging(false);
       // Backing out at the copyright question is a choice, not a failure. Showing it
       // as an error would tell someone who just decided not to publish that something
       // went wrong — the form stays as it was, ready to edit or abandon.
@@ -581,363 +780,381 @@ export default function UploadScreen() {
       setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [mode, audio, title, description, video, cover, thumbnail, uploaderRole, grantedStreaming, collaborators, tags, previewDurationSec, selectedAlbum, askAboutMatch]);
+  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRole, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum]);
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-          disabled={submitting}
-          style={styles.headerSide}
-        >
-          <Text style={[styles.headerCancel, submitting && styles.disabledText]}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>New track</Text>
-        <View style={styles.headerSide} />
-      </View>
+  // ── Pieces ───────────────────────────────────────────────────────────────────
 
-      <KeyboardAwareScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
+  const renderNext = (label: string, enabled: boolean, why: string) => (
+    <View style={styles.nextWrap}>
+      <Button
+        label={label}
+        onPress={goNext}
+        variant="primary"
+        size="md"
+        fullWidth
+        disabled={!enabled || submitting}
+      />
+      {enabled ? null : <Text style={styles.nextWhy}>{why}</Text>}
+    </View>
+  );
 
-          {/* Deliberately quiet and above the form rather than interrupting it: the artist
-              came here to upload, and a phone upload is a perfectly good outcome. This is
-              for the case where they are on a phone because they did not know there was
-              anywhere else to be. */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => { Linking.openURL(STUDIO_URL).catch(() => {}); }}
-            style={styles.studioCard}
-          >
-            <Text style={styles.studioTitle}>Got a laptop nearby?</Text>
-            <Text style={styles.studioBody}>
-              Livil for Creators publishes from your desktop — masters up to 2 GB, uploads
-              that resume if the connection drops, and a whole folder at once with cover art
-              read straight from your files. It&apos;s also the only place to attach lyrics,
-              edit a track after publishing, and see how each one is doing.
-            </Text>
-            <Text style={styles.studioLink}>livil-music.com →</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.sectionLabel}>Post type</Text>
-          <View style={styles.modeSegment}>
-            <TouchableOpacity
-              onPress={() => handleModeChange('audio')}
-              activeOpacity={0.85}
-              disabled={submitting}
-              style={[
-                styles.modeSegmentButton,
-                mode === 'audio' && styles.modeSegmentButtonActive,
-              ]}
-            >
-              {mode === 'audio' ? <GradientBorder borderRadius={14} /> : null}
-              <Text
-                style={[
-                  styles.modeSegmentLabel,
-                  mode === 'audio' && styles.modeSegmentLabelActive,
-                ]}
-              >
-                Audio + Cover
-              </Text>
-              <Text
-                style={[
-                  styles.modeSegmentSubLabel,
-                  mode === 'audio' && styles.modeSegmentSubLabelActive,
-                ]}
-              >
-                A song with a cover image
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleModeChange('video')}
-              activeOpacity={0.85}
-              disabled={submitting}
-              style={[
-                styles.modeSegmentButton,
-                mode === 'video' && styles.modeSegmentButtonActive,
-              ]}
-            >
-              {mode === 'video' ? <GradientBorder borderRadius={14} /> : null}
-              <Text
-                style={[
-                  styles.modeSegmentLabel,
-                  mode === 'video' && styles.modeSegmentLabelActive,
-                ]}
-              >
-                Video
-              </Text>
-              <Text
-                style={[
-                  styles.modeSegmentSubLabel,
-                  mode === 'video' && styles.modeSegmentSubLabelActive,
-                ]}
-              >
-                A music video — audio is baked in
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.sectionLabel}>Files</Text>
-          <View style={styles.filesGroup}>
-            {fileSlots.map(slot => {
-              const file = fileFor(slot.kind);
-              return (
-                <View key={slot.kind} style={styles.fileRow}>
-                  <View style={styles.fileText}>
-                    <Text style={styles.fileLabel}>
-                      {slot.label}
-                      {slot.required ? (
-                        <Text style={styles.fileRequired}> *</Text>
-                      ) : null}
-                    </Text>
-                    {file ? (
-                      <Text style={styles.fileFilename} numberOfLines={1}>
-                        {file.name ?? 'Selected file'}
-                        {file.size != null ? `  ·  ${formatBytes(file.size)}` : ''}
-                      </Text>
-                    ) : (
-                      <Text style={styles.fileDescription}>{slot.description}</Text>
-                    )}
-                  </View>
-                  {file ? (
-                    <View style={styles.fileActions}>
-                      <Button
-                        label="Change"
-                        size="sm"
-                        variant="secondary"
-                        onPress={() => handlePickFile(slot)}
-                        busy={pickingKind === slot.kind}
-                        disabled={submitting || !screenSettled || pickingKind !== null}
-                      />
-                      <Button
-                        label="Remove"
-                        size="sm"
-                        variant="ghost"
-                        onPress={() => handleClearFile(slot.kind)}
-                        disabled={submitting}
-                      />
-                    </View>
-                  ) : (
-                    <Button
-                      label="Choose"
-                      size="sm"
-                      variant="primary"
-                      onPress={() => handlePickFile(slot)}
-                      busy={pickingKind === slot.kind}
-                      disabled={submitting || !screenSettled || pickingKind !== null}
-                    />
-                  )}
-                </View>
-              );
-            })}
-          </View>
-
-          {previewMedia ? (
-            <>
-              <Text style={styles.sectionLabel}>Preview</Text>
-              <View style={styles.previewCard}>
-                <MediaPlayer
-                  ref={previewRef}
-                  postId="upload_preview"
-                  media={previewMedia}
-                  paused={previewPaused}
-                  onTogglePaused={() => setPreviewPaused(p => !p)}
-                  onProgress={handlePreviewProgress}
-                  onLoaded={setPreviewDurationSec}
-                  onEnded={handlePreviewEnded}
-                  visible
-                  pauseWhenOffScreen={false}
-                />
-                {title.trim() ? (
-                  <View style={styles.previewTrackInfo}>
-                    <Text style={styles.previewTitle} numberOfLines={1}>
-                      {title}
-                    </Text>
-                  </View>
-                ) : null}
-                {/* Same control the jam room uses: whole track, no clip, swipe to
-                    scrub. Audio and video alike — the preview is one file either
-                    way, and there is nothing to trim at upload. */}
-                {previewDurationSec && previewDurationSec > 0 ? (
-                  <View style={styles.previewSeekWrap}>
-                    <View style={styles.previewTimeRow}>
-                      <Text style={styles.previewTimeText}>{formatClock(0)}</Text>
-                      <Text style={styles.previewTimeNow}>{formatClock(previewPositionSec)}</Text>
-                      <Text style={styles.previewTimeText}>{formatClock(previewDurationSec)}</Text>
-                    </View>
-                    <WaveformScrubber
-                      position={previewPositionSec}
-                      duration={previewDurationSec}
-                      seed={previewMedia.kind === 'audio' ? (audio?.uri ?? '') : (video?.uri ?? '')}
-                      span="full"
-                      height={44}
-                      onSeekStart={handlePreviewScrubStart}
-                      onSeek={handlePreviewScrub}
-                      onSeekEnd={handlePreviewSeekEnd}
-                    />
-                  </View>
-                ) : null}
-              </View>
-            </>
-          ) : null}
-
-          {mode === 'video' && thumbnail ? (
-            <>
-              <Text style={styles.sectionLabel}>Feed thumbnail</Text>
-              <View style={styles.previewCard}>
-                <Image
-                  source={{ uri: thumbnail.uri }}
-                  style={styles.thumbnailPreview}
-                  resizeMode="cover"
-                />
-              </View>
-            </>
-          ) : null}
-
-          <Text style={styles.sectionLabel}>Track details</Text>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Title</Text>
-            <FormInput
-              value={title}
-              onChangeText={setTitle}
-              placeholder="Name your track"
-              maxLength={120}
-              editable={!submitting}
-            />
-          </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Description</Text>
-            <FormInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Tell people about this track"
-              multiline
-              maxLength={2000}
-              editable={!submitting}
-              wrapperStyle={styles.descriptionWrapper}
-              style={styles.descriptionInput}
-            />
-          </View>
-
-          {/* Tags sit with the description, not behind a disclosure. They are the only
-              metadata on this screen that decides whether anyone who is not already
-              following you ever finds the track, and a collapsed section is how a field
-              like that stays empty.
-
-              The moods sit under the field as one-tap suggestions, so an artist still sees
-              that Livil files music by feeling without having to prune ten pre-applied tags. */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Tags · how people find it</Text>
-            <Text style={styles.tagsHint}>
-              Tap the moods that fit, and add your own — genre, language, whatever you'd
-              search for. Listeners never see these.
-            </Text>
-            <TagInput tags={tags} onChange={setTags} editable={!submitting} suggestions={EMOTION_TAGS} />
-          </View>
-
-          {/* Add to album · optional — creators can group this upload with
-              their other tracks. Picker lists their existing albums. */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Add to album · optional</Text>
-            <TouchableOpacity
-              style={styles.albumRow}
-              onPress={() => setAlbumSheetOpen(true)}
-              disabled={submitting}
-              activeOpacity={0.75}
-            >
-              <Icon name="disc" size={18} color={selectedAlbum ? COLORS.purpleLight : COLORS.textSecondary} />
-              <View style={styles.albumRowMeta}>
-                {selectedAlbum ? (
-                  <>
-                    <Text style={styles.albumRowMini}>SELECTED</Text>
-                    <Text style={styles.albumRowTitle} numberOfLines={1}>{selectedAlbum.title}</Text>
-                  </>
-                ) : (
-                  <Text style={styles.albumRowPlaceholder}>Pick album or create new</Text>
-                )}
-              </View>
-              {selectedAlbum ? (
-                <TouchableOpacity
-                  onPress={() => setSelectedAlbum(null)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  disabled={submitting}
-                >
-                  <Icon name="close" size={16} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              ) : (
-                <Icon name="forward" size={16} color={COLORS.textSecondary} />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* The uploader's own credit. Above Collaborators, and required: a credit list
-              that names the guitarist and the mixer but not the person who made the record
-              is not a credit list. */}
-          <Text style={styles.sectionLabel}>Your role</Text>
-          <View style={styles.ownRoleWrap}>
-            {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
-                credited as a collaborator in its own right — "AI vocals" is never an
-                answer to what the person uploading did. */}
-            {ROLES.map(r => {
-              const active = uploaderRole === r;
-              return (
-                <TouchableOpacity
-                  key={r}
-                  activeOpacity={0.85}
-                  disabled={submitting}
-                  onPress={() => setUploaderRole(active ? '' : r)}
-                  style={[styles.roleChip, active && styles.roleChipActive]}
-                >
-                  {active ? <GradientBorder borderRadius={999} /> : null}
-                  <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
-                    {r}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* The list will always be missing somebody's instrument. A closed list here
-              would mean the wrong credit or, since this field is required, no upload. */}
-          <FormInput
-            value={isPresetRole(uploaderRole) ? '' : uploaderRole}
-            onChangeText={setUploaderRole}
-            placeholder="Or type your own — e.g. Tabla, Additional production"
-            maxLength={40}
-            autoCapitalize="words"
-            editable={!submitting}
-          />
-
-          <View style={styles.collabHeader}>
-            <Text style={styles.sectionLabel}>Collaborators</Text>
-            <TouchableOpacity
-              onPress={handleAddCollaborator}
-              activeOpacity={0.85}
-              disabled={submitting}
-              style={styles.addCollabButton}
-            >
-              <GradientBorder borderRadius={999} />
-              <Text style={styles.addCollabButtonText}>+ Add</Text>
-            </TouchableOpacity>
-          </View>
-
-          {collaborators.length === 0 ? (
-            <Text style={styles.collabEmpty}>
-              Tag people who played on this track. They'll get a request to confirm — once they
-              accept, the post lands on their profile too. You can also add custom names for folks
-              who aren't on Livil yet.
+  const renderFileSlot = (slot: FileSlot) => {
+    const file = fileFor(slot.kind);
+    return (
+      <View style={styles.fileRow}>
+        <View style={styles.fileText}>
+          <Text style={styles.fileLabel}>{slot.label}</Text>
+          {file ? (
+            <Text style={styles.fileFilename} numberOfLines={1}>
+              {file.name ?? 'Selected file'}
+              {file.size != null ? `  ·  ${formatBytes(file.size)}` : ''}
             </Text>
           ) : (
+            <Text style={styles.fileDescription}>{slot.description}</Text>
+          )}
+        </View>
+        {file ? (
+          <View style={styles.fileActions}>
+            <Button
+              label="Change"
+              size="sm"
+              variant="secondary"
+              onPress={() => handlePickFile(slot)}
+              busy={pickingKind === slot.kind}
+              disabled={submitting || !screenSettled || pickingKind !== null}
+            />
+            <Button
+              label="Remove"
+              size="sm"
+              variant="ghost"
+              onPress={() => handleClearFile(slot.kind)}
+              disabled={submitting}
+            />
+          </View>
+        ) : (
+          <Button
+            label="Choose"
+            size="sm"
+            variant="primary"
+            onPress={() => handlePickFile(slot)}
+            busy={pickingKind === slot.kind}
+            disabled={submitting || !screenSettled || pickingKind !== null}
+          />
+        )}
+      </View>
+    );
+  };
+
+  // What the early upload and copyright check are doing, under the picked song.
+  const renderStagingStatus = () => {
+    if (mode !== 'audio' || !audio) { return null; }
+    let icon: React.ReactNode = <ActivityIndicator size="small" color={COLORS.purpleLight} />;
+    let text: string;
+    switch (staging.status) {
+      case 'uploading':
+        text = `Uploading your song · ${Math.round(staging.fraction * 100)}%`;
+        break;
+      case 'checking':
+        text = 'Checking it against known recordings…';
+        break;
+      case 'ready':
+        icon = <Icon name="check" size={16} color={COLORS.purpleLight} weight="bold" />;
+        text = staging.staged.declaration
+          ? 'Uploaded · your answer is saved for when you post'
+          : staging.staged.scan.status === 'complete'
+            ? 'Uploaded · no match with known recordings'
+            : "Uploaded · couldn't check it right now, it can still post";
+        break;
+      case 'failed':
+        icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
+        text = "Couldn't upload it yet — it will upload when you post.";
+        break;
+      default:
+        return null;
+    }
+    return (
+      <View style={styles.stagingRow}>
+        {icon}
+        <Text style={styles.stagingText}>{text}</Text>
+      </View>
+    );
+  };
+
+  // The inline player under the picked song: confirms it is the right file, and is what
+  // reports its length (previewDurationSec) before anything is posted.
+  const renderInlinePlayer = () => (previewMedia ? (
+    <View style={styles.previewCard}>
+      <MediaPlayer
+        ref={previewRef}
+        postId="upload_preview"
+        media={previewMedia}
+        paused={previewPaused}
+        onTogglePaused={() => setPreviewPaused(p => !p)}
+        onProgress={handlePreviewProgress}
+        onLoaded={setPreviewDurationSec}
+        onEnded={handlePreviewEnded}
+        visible
+        pauseWhenOffScreen={false}
+      />
+      {/* Same control the jam room uses: whole track, no clip, swipe to scrub. */}
+      {previewDurationSec && previewDurationSec > 0 ? (
+        <View style={styles.previewSeekWrap}>
+          <View style={styles.previewTimeRow}>
+            <Text style={styles.previewTimeText}>{formatClock(0)}</Text>
+            <Text style={styles.previewTimeNow}>{formatClock(previewPositionSec)}</Text>
+            <Text style={styles.previewTimeText}>{formatClock(previewDurationSec)}</Text>
+          </View>
+          <WaveformScrubber
+            position={previewPositionSec}
+            duration={previewDurationSec}
+            seed={previewMedia.kind === 'audio' ? (audio?.uri ?? '') : (video?.uri ?? '')}
+            span="full"
+            height={44}
+            onSeekStart={handlePreviewScrubStart}
+            onSeek={handlePreviewScrub}
+            onSeekEnd={handlePreviewSeekEnd}
+          />
+        </View>
+      ) : null}
+    </View>
+  ) : null);
+
+  const typeCard = (value: PostMode, label: string, sub: string, icon: 'musicNote' | 'camera') => {
+    const active = mode === value;
+    return (
+      <TouchableOpacity
+        onPress={() => handleModeChange(value)}
+        activeOpacity={0.85}
+        disabled={submitting}
+        style={[styles.typeCard, active && styles.typeCardActive]}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: active }}
+      >
+        {active ? <GradientBorder borderRadius={14} /> : null}
+        <View style={[styles.typeIcon, active && styles.typeIconActive]}>
+          <Icon name={icon} size={22} color={active ? COLORS.purpleLight : COLORS.textSecondary} />
+        </View>
+        <View style={styles.typeText}>
+          <Text style={styles.typeLabel}>{label}</Text>
+          <Text style={styles.typeSub}>{sub}</Text>
+        </View>
+        <View style={[styles.radio, active && styles.radioOn]}>
+          {active ? <Icon name="check" size={13} color={COLORS.white} weight="bold" /> : null}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const mediaSlot = fileSlots[0];
+  const imageSlot = fileSlots[1];
+  const mediaSummary = mediaFile
+    ? [
+        mediaFile.name ?? 'Selected file',
+        previewDurationSec && previewDurationSec > 0 ? formatClock(previewDurationSec) : null,
+        mediaFile.size != null ? formatBytes(mediaFile.size) : null,
+      ].filter(Boolean).join(' · ')
+    : '';
+  const tagLine = tags.length > 0 ? tags.slice(0, 3).map(t => `#${t}`).join(' ') : '';
+  const collabLine = collaborators.length > 0
+    ? ` · with ${collaborators.length} collaborator${collaborators.length === 1 ? '' : 's'}`
+    : '';
+
+  const renderSteps = () => (
+    <>
+      <UploadStep
+        number={1}
+        title="Audio or video"
+        hint="What are you posting?"
+        summary={mode === 'audio' ? 'Song' : 'Video'}
+        state={stepState('type')}
+        onOpen={() => openStep('type')}
+        disabled={submitting}
+      >
+        <View style={styles.typeGroup}>
+          {typeCard('audio', 'Song', 'An audio file, with cover art', 'musicNote')}
+          {typeCard('video', 'Video', 'A music video, with a feed thumbnail', 'camera')}
+        </View>
+        {renderNext(mode === 'audio' ? 'Next: choose your song' : 'Next: choose your video', true, '')}
+      </UploadStep>
+
+      <UploadStep
+        number={2}
+        title={mode === 'audio' ? 'Your song' : 'Your video'}
+        hint={mode === 'audio' ? 'mp3, wav, m4a, flac or ogg' : 'mp4, mov or webm'}
+        summary={mediaSummary}
+        state={stepState('media')}
+        onOpen={() => openStep('media')}
+        disabled={submitting}
+      >
+        {renderFileSlot(mediaSlot)}
+        {renderStagingStatus()}
+        {renderInlinePlayer()}
+        {renderNext(
+          mode === 'audio' ? 'Next: cover' : 'Next: thumbnail',
+          Boolean(mediaFile),
+          mode === 'audio' ? 'Choose your song to continue.' : 'Choose your video to continue.',
+        )}
+      </UploadStep>
+
+      <UploadStep
+        number={3}
+        title={mode === 'audio' ? 'Cover' : 'Thumbnail'}
+        hint={mode === 'audio' ? 'A square picture · jpg, png or webp' : 'Shown in the feed · jpg, png or webp'}
+        summary={imageFile?.name ?? 'Selected'}
+        state={stepState('cover')}
+        onOpen={() => openStep('cover')}
+        disabled={submitting}
+        leading={imageFile ? <Image source={{ uri: imageFile.uri }} style={styles.stepThumb} /> : null}
+      >
+        {renderFileSlot(imageSlot)}
+        {imageFile ? (
+          <Image source={{ uri: imageFile.uri }} style={styles.imagePreview} resizeMode="cover" />
+        ) : null}
+        {renderNext('Next: details', Boolean(imageFile), mode === 'audio' ? 'Choose a cover to continue.' : 'Choose a thumbnail to continue.')}
+      </UploadStep>
+
+      <UploadStep
+        number={4}
+        title="Details"
+        hint="Title, description and tags"
+        summary={`"${title.trim()}"${tagLine ? ` · ${tagLine}` : ''}`}
+        state={stepState('details')}
+        onOpen={() => openStep('details')}
+        disabled={submitting}
+      >
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Title</Text>
+          <FormInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Name your track"
+            maxLength={120}
+            editable={!submitting}
+          />
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Description · optional</Text>
+          <FormInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Tell people about this track"
+            multiline
+            maxLength={2000}
+            editable={!submitting}
+            wrapperStyle={styles.descriptionWrapper}
+            style={styles.descriptionInput}
+          />
+        </View>
+        {/* Tags sit with the description, not behind a disclosure: they decide whether
+            anyone not already following you ever finds the track. The moods are one-tap
+            suggestions under the field. */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Tags · how people find it</Text>
+          <Text style={styles.tagsHint}>
+            Tap the moods that fit, and add your own — genre, language, whatever you'd
+            search for. Listeners never see these.
+          </Text>
+          <TagInput tags={tags} onChange={setTags} editable={!submitting} suggestions={EMOTION_TAGS} />
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Add to album · optional</Text>
+          <TouchableOpacity
+            style={styles.albumRow}
+            onPress={() => setAlbumSheetOpen(true)}
+            disabled={submitting}
+            activeOpacity={0.75}
+          >
+            <Icon name="disc" size={18} color={selectedAlbum ? COLORS.purpleLight : COLORS.textSecondary} />
+            <View style={styles.albumRowMeta}>
+              {selectedAlbum ? (
+                <>
+                  <Text style={styles.albumRowMini}>SELECTED</Text>
+                  <Text style={styles.albumRowTitle} numberOfLines={1}>{selectedAlbum.title}</Text>
+                </>
+              ) : (
+                <Text style={styles.albumRowPlaceholder}>Pick album or create new</Text>
+              )}
+            </View>
+            {selectedAlbum ? (
+              <TouchableOpacity
+                onPress={() => setSelectedAlbum(null)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                disabled={submitting}
+              >
+                <Icon name="close" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            ) : (
+              <Icon name="forward" size={16} color={COLORS.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </View>
+        {renderNext('Next: credits', title.trim().length > 0, 'Add a title to continue.')}
+      </UploadStep>
+
+      <UploadStep
+        number={5}
+        title="Credits"
+        hint="What you did, and who helped"
+        summary={`You · ${uploaderRole.trim()}${collabLine}`}
+        state={stepState('credits')}
+        onOpen={() => openStep('credits')}
+        disabled={submitting}
+      >
+        {/* The uploader's own credit, required: a credit list that names the guitarist
+            and the mixer but not the person who made the record is not a credit list. */}
+        <Text style={styles.label}>Your role</Text>
+        <View style={styles.ownRoleWrap}>
+          {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
+              credited as a collaborator in its own right. */}
+          {ROLES.map(r => {
+            const active = uploaderRole === r;
+            return (
+              <TouchableOpacity
+                key={r}
+                activeOpacity={0.85}
+                disabled={submitting}
+                onPress={() => setUploaderRole(active ? '' : r)}
+                style={[styles.roleChip, active && styles.roleChipActive]}
+              >
+                {active ? <GradientBorder borderRadius={999} /> : null}
+                <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
+                  {r}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {/* The list will always be missing somebody's instrument. A closed list here
+            would mean the wrong credit or, since this field is required, no upload. */}
+        <FormInput
+          value={isPresetRole(uploaderRole) ? '' : uploaderRole}
+          onChangeText={setUploaderRole}
+          placeholder="Or type your own — e.g. Tabla, Additional production"
+          maxLength={40}
+          autoCapitalize="words"
+          editable={!submitting}
+        />
+
+        <View style={styles.collabHeader}>
+          <Text style={styles.label}>Collaborators · optional</Text>
+          <TouchableOpacity
+            onPress={handleAddCollaborator}
+            activeOpacity={0.85}
+            disabled={submitting}
+            style={styles.addCollabButton}
+          >
+            <GradientBorder borderRadius={999} />
+            <Text style={styles.addCollabButtonText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
+        {collaborators.length === 0 ? (
+          <Text style={styles.collabEmpty}>
+            Tag people who played on this track. They'll get a request to confirm — once they
+            accept, the post lands on their profile too. You can also add custom names for folks
+            who aren't on Livil yet.
+          </Text>
+        ) : (
+          <>
             <View style={styles.chipsWrap}>
               {collaborators.map(c => {
                 const tone = getChipTone(c.kind, 'pending');
@@ -945,10 +1162,7 @@ export default function UploadScreen() {
                 return (
                   <View
                     key={c.clientId}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: palette.bg, borderColor: palette.border },
-                    ]}
+                    style={[styles.chip, { backgroundColor: palette.bg, borderColor: palette.border }]}
                   >
                     <Text style={[styles.chipText, { color: palette.text }]} numberOfLines={1}>
                       <Text style={styles.chipName}>{c.name}</Text>
@@ -968,57 +1182,225 @@ export default function UploadScreen() {
                 );
               })}
             </View>
-          )}
+            <View style={styles.chipLegend}>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: getChipStyle('pending').border }]} />
+                <Text style={styles.legendText}>Waiting on Livil user</Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: getChipStyle('custom').border }]} />
+                <Text style={styles.legendText}>Not on Livil yet</Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: getChipStyle('accepted').border }]} />
+                <Text style={styles.legendText}>Accepted (after they confirm)</Text>
+              </View>
+            </View>
+          </>
+        )}
+        {renderNext('Next: rights', uploaderRole.trim().length > 0, 'Choose what you did on this track to continue.')}
+      </UploadStep>
 
-          <View style={styles.chipLegend}>
-            <View style={styles.legendRow}>
-              <View
-                style={[
-                  styles.legendDot,
-                  { backgroundColor: getChipStyle('pending').border },
-                ]}
-              />
-              <Text style={styles.legendText}>Waiting on Livil user</Text>
+      <UploadStep
+        number={6}
+        title="Rights"
+        hint="Let Livil stream it"
+        summary="Streaming allowed"
+        state={stepState('rights')}
+        onOpen={() => openStep('rights')}
+        disabled={submitting}
+        isLast
+      >
+        <Choice
+          label="I grant Livil permission to stream this recording in the app"
+          hint="Required to post. You keep your rights — this lets Livil play it to listeners."
+          selected={grantedStreaming}
+          onPress={() => setGrantedStreaming(v => !v)}
+          compact
+          shape="checkbox"
+        />
+        {renderNext('Next: preview', grantedStreaming, 'Tick the box to continue.')}
+      </UploadStep>
+
+      {step === 'type' ? (
+        // Quiet, and below the steps: the artist came here to upload, and a phone upload
+        // is a perfectly good outcome. This is for someone who did not know there was
+        // anywhere else to be.
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => { Linking.openURL(STUDIO_URL).catch(() => {}); }}
+          style={styles.studioCard}
+        >
+          <Text style={styles.studioTitle}>Got a laptop nearby?</Text>
+          <Text style={styles.studioBody}>
+            Livil for Creators publishes from your desktop — masters up to 2 GB, uploads
+            that resume if the connection drops, and a whole folder at once.
+          </Text>
+          <Text style={styles.studioLink}>livil-music.com →</Text>
+        </TouchableOpacity>
+      ) : null}
+    </>
+  );
+
+  const copyrightLine =
+    mode !== 'audio'
+      ? null
+      : staging.status === 'ready'
+        ? staging.staged.declaration
+          ? 'Matched a known recording · your answer is saved'
+          : staging.staged.scan.status === 'complete'
+            ? 'No match with known recordings'
+            : "Couldn't check yet — it's checked again when you post"
+        : staging.status === 'uploading' || staging.status === 'checking'
+          ? 'Still checking — finishes when you post'
+          : 'Checked when you post';
+
+  const renderPreview = () => (
+    <>
+      <Text style={styles.previewIntro}>This is how your post looks in the feed.</Text>
+      <UploadPreviewCard
+        author={author}
+        title={title}
+        caption={description}
+        mediaKind={mode}
+        imageUri={imageFile?.uri ?? null}
+        durationSec={previewDurationSec}
+        onOpen={() => setFullPreviewOpen(true)}
+      />
+      <Text style={styles.previewHint}>Tap the post to play it full screen.</Text>
+
+      <View style={styles.summaryList}>
+        <TouchableOpacity style={styles.summaryRow} onPress={() => openStep('details')} disabled={submitting}>
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryLabel}>Tags · only used for search</Text>
+            <Text style={styles.summaryValue} numberOfLines={2}>
+              {tags.length > 0 ? tags.map(t => `#${t}`).join(' ') : 'None'}
+            </Text>
+          </View>
+          <Text style={styles.summaryEdit}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.summaryRow} onPress={() => openStep('credits')} disabled={submitting}>
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryLabel}>Credits</Text>
+            <Text style={styles.summaryValue} numberOfLines={2}>
+              {uploaderRole.trim() ? `You · ${uploaderRole.trim()}${collabLine}` : 'Your role is still needed'}
+            </Text>
+          </View>
+          <Text style={styles.summaryEdit}>Edit</Text>
+        </TouchableOpacity>
+        {selectedAlbum ? (
+          <TouchableOpacity style={styles.summaryRow} onPress={() => openStep('details')} disabled={submitting}>
+            <View style={styles.summaryText}>
+              <Text style={styles.summaryLabel}>Album</Text>
+              <Text style={styles.summaryValue} numberOfLines={1}>{selectedAlbum.title}</Text>
             </View>
-            <View style={styles.legendRow}>
-              <View
-                style={[
-                  styles.legendDot,
-                  { backgroundColor: getChipStyle('custom').border },
-                ]}
-              />
-              <Text style={styles.legendText}>Not on Livil yet</Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View
-                style={[
-                  styles.legendDot,
-                  { backgroundColor: getChipStyle('accepted').border },
-                ]}
-              />
-              <Text style={styles.legendText}>Accepted (after they confirm)</Text>
+            <Text style={styles.summaryEdit}>Edit</Text>
+          </TouchableOpacity>
+        ) : null}
+        {copyrightLine ? (
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryText}>
+              <Text style={styles.summaryLabel}>Copyright check</Text>
+              <Text style={styles.summaryValue}>{copyrightLine}</Text>
             </View>
           </View>
+        ) : null}
+        <TouchableOpacity style={[styles.summaryRow, styles.summaryRowLast]} onPress={() => openStep('rights')} disabled={submitting}>
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryLabel}>Streaming permission</Text>
+            <Text style={styles.summaryValue}>{grantedStreaming ? 'Granted' : 'Still needed'}</Text>
+          </View>
+          <Text style={styles.summaryEdit}>Edit</Text>
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.scrollSpacer} />
+      {missing.length > 0 ? (
+        <View style={styles.missingBox}>
+          <Text style={styles.missingTitle}>Before you can post</Text>
+          <View style={styles.missingRow}>
+            {missing.map(m => (
+              <TouchableOpacity key={m.key} onPress={() => openStep(m.key)} style={styles.missingChip}>
+                <Text style={styles.missingChipText}>Add {m.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
+
+  const headerBack = () => {
+    if (submitting) { return; }
+    if (reviewing) { setReviewing(false); return; }
+    navigation.goBack();
+  };
+
+  const barPercent = reviewing ? 100 : Math.round((doneCount / STEP_ORDER.length) * 100);
+  const progressLabel = awaitingStaging
+    ? 'Uploading your song…'
+    : progressStage === 'preparing'
+      ? 'Preparing files…'
+      : progressStage === 'finalizing'
+        ? 'Saving track…'
+        : 'Uploading…';
+  const progressPct = awaitingStaging
+    ? (staging.status === 'uploading' ? Math.round(staging.fraction * 100) : null)
+    : progressStage === 'uploading' ? Math.round(progressFraction * 100) : null;
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={headerBack}
+          activeOpacity={0.7}
+          disabled={submitting}
+          style={styles.headerBack}
+          accessibilityRole="button"
+          accessibilityLabel={reviewing ? 'Back to the steps' : 'Close upload'}
+        >
+          <Icon name="back" size={26} color={submitting ? COLORS.textMuted : COLORS.purple} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{reviewing ? 'Preview' : 'Upload'}</Text>
+        <Text style={styles.headerStep}>
+          {reviewing ? '' : `Step ${STEP_ORDER.indexOf(step) + 1} of ${STEP_ORDER.length}`}
+        </Text>
+      </View>
+      <View style={styles.stepBar} onLayout={e => setStepBarW(e.nativeEvent.layout.width)}>
+        <View style={[styles.stepBarFill, { width: `${barPercent}%` }]}>
+          {stepBarW > 0 ? <GradientFill width={stepBarW} height={4} /> : null}
+        </View>
+      </View>
+
+      <KeyboardAwareScrollView
+        ref={scrollRef}
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+        {notice ? (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        ) : null}
+
+        {reviewing ? renderPreview() : renderSteps()}
+
+        <View style={styles.scrollSpacer} />
       </KeyboardAwareScrollView>
 
+      {reviewing ? (
         <View style={styles.footer}>
           {submitting ? (
             <View style={styles.progressBlock}>
               <View style={styles.progressLabelRow}>
-                <Text style={styles.progressLabel}>
-                  {progressStage === 'preparing'
-                    ? 'Preparing files…'
-                    : progressStage === 'finalizing'
-                    ? 'Saving track…'
-                    : 'Uploading…'}
-                </Text>
-                <Text style={styles.progressPercent}>
-                  {progressStage === 'uploading'
-                    ? `${Math.round(progressFraction * 100)}%`
-                    : ''}
-                </Text>
+                <Text style={styles.progressLabel}>{progressLabel}</Text>
+                <Text style={styles.progressPercent}>{progressPct != null ? `${progressPct}%` : ''}</Text>
               </View>
               <View style={styles.progressTrack}>
                 <View
@@ -1026,30 +1408,21 @@ export default function UploadScreen() {
                     styles.progressFill,
                     {
                       width:
-                        progressStage === 'uploading'
-                          ? `${Math.max(2, Math.round(progressFraction * 100))}%`
+                        progressPct != null
+                          ? `${Math.max(2, progressPct)}%`
                           : progressStage === 'finalizing'
-                          ? '100%'
-                          : '6%',
+                            ? '100%'
+                            : '6%',
                     },
                   ]}
                 />
               </View>
-              {progressStage !== 'uploading' ? (
+              {progressPct == null ? (
                 <ActivityIndicator color={COLORS.purpleLight} style={styles.progressSpinner} />
               ) : null}
             </View>
           ) : (
             <View style={styles.footerStack}>
-              {/* Beside the button, so the tick and the post happen together. */}
-              <Choice
-                label="I grant Livil permission to stream this recording in the app"
-                hint="Required to post. You keep your rights — this lets Livil play it to listeners."
-                selected={grantedStreaming}
-                onPress={() => setGrantedStreaming(v => !v)}
-                compact
-                shape="checkbox"
-              />
               <Button
                 label="Post track"
                 onPress={() => { void handleSubmit(); }}
@@ -1061,6 +1434,16 @@ export default function UploadScreen() {
             </View>
           )}
         </View>
+      ) : null}
+
+      <UploadPreviewPlayer
+        visible={fullPreviewOpen}
+        media={previewMedia}
+        title={title}
+        artistLine={`${author.name}${uploaderRole.trim() ? ` · ${uploaderRole.trim()}` : ''}`}
+        onClose={() => setFullPreviewOpen(false)}
+        onDuration={s => setPreviewDurationSec(prev => prev ?? s)}
+      />
 
       <Modal
         visible={showSuccess}
@@ -1103,16 +1486,13 @@ export default function UploadScreen() {
         onPicked={album => setSelectedAlbum({ id: album.id, title: album.title })}
       />
 
-      {/* Only reached when the scan actually matched something. A clean scan, a failed
-          one, and an undeployed scanner all publish without ever showing this.
-
-          `key` IS LOAD-BEARING. This modal is mounted for the life of the screen and only
-          toggled with `visible`, so its internal state — the chosen option, the licence
-          fields, and BOTH consent checkboxes — outlived the upload that set them. A
-          second matched upload in the same session opened pre-filled with the previous
-          track's declaration, already valid, already submittable: one tap away from
-          recording a rights statement about the wrong song, under the uploader's name.
-          Keying it on the question number makes React throw the instance away instead. */}
+      {/* Only reached when the scan actually matched something — now usually at step 2,
+          while the song uploads early; at Post for a video or when the early upload
+          failed. `key` IS LOAD-BEARING: the modal is mounted for the life of the screen,
+          so without a fresh key its chosen option, licence fields and BOTH consent boxes
+          outlived the question that set them — a second match opened pre-filled with the
+          previous track's declaration, one tap from a rights statement about the wrong
+          song. Keying it on the question number makes React throw the instance away. */}
       <CopyrightMatchModal
         key={matchSeq}
         visible={pendingMatch !== null}
@@ -1166,22 +1546,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
-  headerSide: {
-    minWidth: 64,
-  },
-  headerCancel: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
   headerTitle: {
     color: COLORS.white,
     fontSize: 17,
     fontWeight: '800',
     letterSpacing: -0.2,
-  },
-  disabledText: {
-    opacity: 0.5,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -1201,58 +1570,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  sectionLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  modeSegment: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
-  },
-  modeSegmentButton: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: COLORS.card,
-  },
-  // Selected state is the gradient outline; no fill.
-  modeSegmentButtonActive: {
-    borderColor: 'transparent',
-  },
-  modeSegmentLabel: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  modeSegmentLabelActive: {
-    color: COLORS.purpleLight,
-  },
-  modeSegmentSubLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    marginTop: 4,
-    lineHeight: 14,
-  },
-  modeSegmentSubLabelActive: {
-    color: COLORS.purpleLight,
-    opacity: 0.85,
-  },
-  filesGroup: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 24,
-  },
   // Not a card any more — no fill, no outline, no rounding. The media sits
   // straight on the page and keeps its own square corners.
   previewCard: {
@@ -1264,29 +1581,18 @@ const styles = StyleSheet.create({
   previewTimeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: SCRUBBER_LABEL_PULL },
   previewTimeText: { color: COLORS.white, fontSize: 12, fontVariant: ['tabular-nums'] },
   previewTimeNow: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  previewTrackInfo: {
-    padding: 14,
-    gap: 4,
-  },
-  previewTitle: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  thumbnailPreview: {
-    aspectRatio: 1,
-    width: '100%',
-    backgroundColor: COLORS.card,
-  },
+  // One file per step now, so the row is its own card rather than a line in a group.
   fileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
     gap: 12,
+    marginBottom: 14,
   },
   fileText: {
     flex: 1,
@@ -1295,9 +1601,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 15,
     fontWeight: '700',
-  },
-  fileRequired: {
-    color: COLORS.purpleLight,
   },
   fileDescription: {
     color: COLORS.textMuted,
@@ -1554,4 +1857,117 @@ const styles = StyleSheet.create({
     marginBottom: 22,
     paddingHorizontal: 4,
   },
+
+  // ── Steps ──
+  headerBack: { width: 44, height: 44, justifyContent: 'center' },
+  headerStep: {
+    minWidth: 44,
+    textAlign: 'right',
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+  },
+  // A progress bar IS its fill: GradientFill at the full track width, clipped by the fill.
+  stepBar: { height: 4, backgroundColor: COLORS.border, overflow: 'hidden' },
+  stepBarFill: { height: 4, overflow: 'hidden' },
+  noticeBox: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  noticeText: { color: COLORS.white, fontSize: 14, lineHeight: 20 },
+  nextWrap: { marginTop: 6, gap: 8 },
+  nextWhy: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' },
+  stagingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  stagingText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  typeGroup: { gap: 10, marginBottom: 6 },
+  typeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  // Selected: the gradient outline carries it; no purple fill (Button rule).
+  typeCardActive: { borderColor: 'transparent', backgroundColor: COLORS.bg },
+  typeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.inputBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeIconActive: { backgroundColor: COLORS.purpleDim },
+  typeText: { flex: 1 },
+  typeLabel: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
+  typeSub: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
+  // A radio's ticked state is a small indicator — solid is allowed and reads as "on".
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: COLORS.textMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOn: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
+  stepThumb: { width: 40, height: 40, borderRadius: 8, backgroundColor: COLORS.card },
+  imagePreview: {
+    width: 140,
+    height: 140,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    marginBottom: 14,
+  },
+
+  // ── Preview page ──
+  previewIntro: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 12 },
+  previewHint: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 8, marginBottom: 18 },
+  summaryList: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  summaryRowLast: { borderBottomWidth: 0 },
+  summaryText: { flex: 1 },
+  summaryLabel: { color: COLORS.textSecondary, fontSize: 12 },
+  summaryValue: { color: COLORS.white, fontSize: 15, marginTop: 2 },
+  summaryEdit: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '600' },
+  missingBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.warningBorder,
+    backgroundColor: COLORS.warningBg,
+    gap: 10,
+  },
+  missingTitle: { color: COLORS.warning, fontSize: 14, fontWeight: '700' },
+  missingRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  missingChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.warningBorder,
+  },
+  missingChipText: { color: COLORS.warning, fontSize: 13, fontWeight: '600' },
 });
