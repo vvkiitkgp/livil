@@ -64,6 +64,7 @@ import PostGridCard from '../../components/PostGridCard';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
 import { useProfileLayout } from '../../hooks/useProfileLayout';
 import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
+import { usePinnedTabsScroll } from '../../hooks/usePinnedTabsScroll';
 import type { RootStackParamList } from '../../navigation/types';
 
 type ProfileRow = {
@@ -156,8 +157,11 @@ export default function ProfileScreen() {
   // the top).
   const { hideChrome, showChrome } = useChromeVisibility();
   const lastScrollY = useRef(0);
+  // Switching tab or list ↔ grid keeps the tab row pinned and starts at the first card.
+  const pinned = usePinnedTabsScroll<ListItem>();
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e.nativeEvent.contentOffset.y;
+    pinned.trackScroll(y);
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
     // Only the visible tab may move the shared tab bar — see HomeScreen.handleScroll.
@@ -165,7 +169,7 @@ export default function ProfileScreen() {
     if (y < 10) { showChrome(); return; }
     if (diff > 4) { hideChrome(); }
     else if (diff < -4) { showChrome(); }
-  }, [navigation, hideChrome, showChrome]);
+  }, [navigation, hideChrome, showChrome, pinned]);
 
   // Restore the chrome when leaving Profile so it's never stuck off-screen.
   useFocusEffect(
@@ -206,6 +210,10 @@ export default function ProfileScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
   const [layout, setLayout] = useProfileLayout();
+  const changeLayout = useCallback((next: typeof layout) => {
+    pinned.keepTabsPinned();
+    setLayout(next);
+  }, [pinned, setLayout]);
   // Neither of these comes back from a post query: a takedown deletes the post, so the
   // track would otherwise vanish from its own owner's profile with no explanation.
   const [blocked, setBlocked] = useState<BlockedTrack[]>([]);
@@ -432,6 +440,7 @@ export default function ProfileScreen() {
   const handleTabChange = useCallback(
     async (next: ProfileTab) => {
       if (next === tab) {return;}
+      pinned.keepTabsPinned();
       playback.pauseAll();
       setTab(next);
       setPosts([]);
@@ -442,7 +451,7 @@ export default function ProfileScreen() {
       await refresh(next);
       setLoading(false);
     },
-    [tab, refresh, playback],
+    [tab, refresh, playback, pinned],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -548,7 +557,7 @@ export default function ProfileScreen() {
             counts={tabCounts}
             onChange={handleTabChange}
             trailing={tab === 'reposts' || tab === 'uploads'
-              ? <ProfileLayoutToggle value={layout} onChange={setLayout} />
+              ? <ProfileLayoutToggle value={layout} onChange={changeLayout} />
               : null}
           />
         );
@@ -713,7 +722,7 @@ export default function ProfileScreen() {
     // re-rendered after the delete started and the button sat there looking idle while
     // the request was in flight.
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist,
-     removingId, repostsPublic, navigation, layout, setLayout, uploadPlays],
+     removingId, repostsPublic, navigation, layout, changeLayout, uploadPlays],
   );
 
   const renderHeader = useCallback(() => {
@@ -722,7 +731,7 @@ export default function ProfileScreen() {
     const handle = profile?.username ?? '';
     const isProfileLoading = loading && !profile;
     return (
-      <View style={styles.headerWrap}>
+      <View style={styles.headerWrap} onLayout={pinned.onHeaderLayout}>
         <View style={styles.topBar}>
           <Button
             label="Track"
@@ -898,7 +907,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -923,6 +932,8 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <FlatList
+        ref={pinned.listRef}
+        onLayout={pinned.onLayout}
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
@@ -944,7 +955,10 @@ export default function ProfileScreen() {
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16, minHeight: pinned.minContentHeight },
+        ]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
       />

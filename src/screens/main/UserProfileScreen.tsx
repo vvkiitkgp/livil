@@ -45,6 +45,7 @@ import PostGridCard from '../../components/PostGridCard';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
 import { useProfileLayout } from '../../hooks/useProfileLayout';
 import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
+import { usePinnedTabsScroll } from '../../hooks/usePinnedTabsScroll';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useStories } from '../../contexts/StoriesContext';
@@ -180,7 +181,9 @@ export default function UserProfileScreen() {
     fetchProfileMutuals(userId).then(m => { if (!cancelled) { setMutuals(m); } });
     return () => { cancelled = true; };
   }, [userId, isOwnProfile, blockedView]);
-  const listRef = useRef<FlatList<ListItem>>(null);
+  // Switching tab or list ↔ grid keeps the tab row pinned and starts at the first card.
+  const pinned = usePinnedTabsScroll<ListItem>();
+  const listRef = pinned.listRef;
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
   // auto-open comments) have already fired this mount — they're one-shot.
   const focusHandledRef = useRef(false);
@@ -220,6 +223,10 @@ export default function UserProfileScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
   const [layout, setLayout] = useProfileLayout();
+  const changeLayout = useCallback((next: typeof layout) => {
+    pinned.keepTabsPinned();
+    setLayout(next);
+  }, [pinned, setLayout]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -407,28 +414,10 @@ export default function UserProfileScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // One-shot deep-link side effects when arriving from an activity-center tap.
-  // Runs once after posts load: scroll the focused post into view, then (for a
-  // comment notification) auto-open the CommentsSheet so the highlight fires.
-  useEffect(() => {
-    if (focusHandledRef.current) { return; }
-    if (loading || !focusPostId) { return; }
-    const idx = posts.findIndex(p => p.id === focusPostId);
-    if (idx < 0) { return; }  // not in the first page — bail; user can scroll manually
-    focusHandledRef.current = true;
-    // +1 to skip the sticky tab-bar row at listData[0].
-    const listIndex = idx + 1;
-    setTimeout(() => {
-      listRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.1 });
-    }, 150);
-    if (openComments) {
-      setTimeout(() => comments.openComments(focusPostId), 450);
-    }
-  }, [loading, posts, focusPostId, openComments, comments]);
-
   const handleTabChange = useCallback(
     async (next: ProfileTab) => {
       if (next === tab) { return; }
+      pinned.keepTabsPinned();
       playback.pauseAll();
       setTab(next);
       setPosts([]);
@@ -439,7 +428,7 @@ export default function UserProfileScreen() {
       await refresh(next);
       setLoading(false);
     },
-    [tab, refresh, playback],
+    [tab, refresh, playback, pinned],
   );
 
   const refreshRelationships = rel.refresh;
@@ -574,6 +563,27 @@ export default function UserProfileScreen() {
   // Each upload's song total plays, for the grid's cards (Uploads only — never on reposts).
   const uploadPlays = useTrackPlaysTotals(posts, tab === 'uploads' && layout === 'grid');
 
+  // One-shot deep-link side effects when arriving from an activity-center tap.
+  // Runs once after posts load: scroll the focused post into view, then (for a
+  // comment notification) auto-open the CommentsSheet so the highlight fires.
+  // Found by row, not by counting posts: in the grid a row holds two, and the audience
+  // line on Reposts is a row of its own.
+  useEffect(() => {
+    if (focusHandledRef.current) { return; }
+    if (loading || !focusPostId) { return; }
+    const listIndex = listData.findIndex(item =>
+      (item.kind === 'post' && item.post.id === focusPostId)
+      || (item.kind === 'post-row' && (item.a.id === focusPostId || item.b?.id === focusPostId)));
+    if (listIndex < 0) { return; }  // not in the first page — bail; user can scroll manually
+    focusHandledRef.current = true;
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.1 });
+    }, 150);
+    if (openComments) {
+      setTimeout(() => comments.openComments(focusPostId), 450);
+    }
+  }, [loading, listData, focusPostId, openComments, comments, listRef]);
+
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
   }, [navigation]);
@@ -591,7 +601,7 @@ export default function UserProfileScreen() {
             counts={tabCounts}
             onChange={handleTabChange}
             trailing={tab === 'reposts' || tab === 'uploads'
-              ? <ProfileLayoutToggle value={layout} onChange={setLayout} />
+              ? <ProfileLayoutToggle value={layout} onChange={changeLayout} />
               : null}
           />
         );
@@ -743,7 +753,7 @@ export default function UserProfileScreen() {
       );
     },
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic,
-     layout, setLayout, uploadPlays],
+     layout, changeLayout, uploadPlays],
   );
 
   const renderHeader = useCallback(() => {
@@ -753,7 +763,7 @@ export default function UserProfileScreen() {
     const isProfileLoading = loading && !profile;
     const relStatus = rel.status(userId);
     return (
-      <View style={styles.headerWrap}>
+      <View style={styles.headerWrap} onLayout={pinned.onHeaderLayout}>
         {/* Top bar with back button */}
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -935,7 +945,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -961,6 +971,9 @@ export default function UserProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
         ref={listRef}
+        onLayout={pinned.onLayout}
+        onScroll={pinned.onScroll}
+        scrollEventThrottle={16}
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
@@ -982,7 +995,10 @@ export default function UserProfileScreen() {
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16, minHeight: pinned.minContentHeight },
+        ]}
       />
       {sheetOpen && (
         <AddUserSheet
