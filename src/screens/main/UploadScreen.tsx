@@ -256,6 +256,8 @@ export default function UploadScreen() {
   const [selectedAlbum, setSelectedAlbum] = useState<{ id: string; title: string } | null>(null);
   const [albumSheetOpen, setAlbumSheetOpen] = useState(false);
   const [error, setError] = useState('');
+  // A neutral note (not an error), e.g. after backing out at the copyright question.
+  const [notice, setNotice] = useState('');
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -491,6 +493,8 @@ export default function UploadScreen() {
         }
         setAudio(file);
         setError('');
+        // "Upload cancelled. You can pick a different song." has been acted on.
+        setNotice('');
       } catch (err) {
         if (isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED) {return;}
         // The picker's own messages are written for developers ("previous promise did not
@@ -555,8 +559,6 @@ export default function UploadScreen() {
   // wrote. The token also carries the attempt's promise and, once done, its staged song —
   // read at Post, and cleared there once Post has taken it over.
   const [staging, setStaging] = useState<Staging>({ status: 'idle' });
-  // A neutral note (not an error), e.g. after backing out at the copyright question.
-  const [notice, setNotice] = useState('');
   const [stepBarW, setStepBarW] = useState(0);
   const stagingTokenRef = useRef<StagingToken | null>(null);
   const [awaitingStaging, setAwaitingStaging] = useState(false);
