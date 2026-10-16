@@ -11,9 +11,10 @@ import { COLORS } from '../theme/colors';
 import UsernameBadges from './UsernameBadges';
 import { Icon } from './Icon';
 import SheetModal, { SheetScrollView } from './SheetModal';
+import CommentSongCard from './CommentSongCard';
 import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
-import type { CommentNode } from '../services/comments';
+import { commentDisplayText, type CommentNode } from '../services/comments';
 
 const INDENT_PX = 14;
 const MAX_INDENT_DEPTH = 4;
@@ -71,6 +72,9 @@ export default function CommentItem(props: Props) {
   const indent = Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX;
   const isOwn = node.authorId === viewerId;
   const displayName = node.author.displayName || node.author.username;
+  // With a song, the body's last line is the song's label (for apps that cannot draw the
+  // card); the card replaces it here.
+  const text = commentDisplayText(node);
 
   return (
     <View style={[styles.row, { paddingLeft: 16 + indent }, highlighted && styles.highlighted]}>
@@ -105,9 +109,12 @@ export default function CommentItem(props: Props) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.bodyText}>
-          {renderCommentBody(node.body, props.onMentionPress, styles.bodyText)}
-        </Text>
+        {text ? (
+          <Text style={styles.bodyText}>
+            {renderCommentBody(text, props.onMentionPress, styles.bodyText)}
+          </Text>
+        ) : null}
+        {node.song ? <CommentSongCard song={node.song} label={node.songLabel} /> : null}
 
         <View style={styles.actions}>
           <TouchableOpacity

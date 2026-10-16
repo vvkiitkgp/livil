@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Keyboard,
   StyleSheet,
   Text,
@@ -23,19 +24,29 @@ import CommentReportModal from './CommentReportModal';
 import ConfirmActionModal from './ConfirmActionModal';
 import SheetModal, { SheetFlatList } from './SheetModal';
 import MentionSuggestions from './MentionSuggestions';
+import { GradientBorder } from './GradientBorder';
+import { SpotifyLogo } from './SpotifyLogo';
+import { MusicToggleIcon, SongSearchPanel, type PickedSong } from './ChatSongPicker';
+import { primeCommentSongPost } from './CommentSongCard';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import {
+  composeCommentBody,
   createComment,
   deleteComment,
   fetchPostComments,
+  songLabelFor,
   subscribeToPostComments,
   toggleCommentLike,
   unsubscribeFromPostComments,
   type CommentNode,
+  type CommentSong,
   type MentionProfile,
 } from '../services/comments';
+import { fetchPostById, isPlayableInLivil, type FeedPost } from '../services/posts';
+import { toShareablePost } from '../services/share';
+import { artistLine, rememberSpotifyTrack, useSpotifyAvailability } from '../services/spotify';
 import { detectMentionTrigger } from '../utils/mentions';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 
@@ -56,6 +67,15 @@ type Props = {
    * realtime inserts (~1.5s tint).
    */
   highlightCommentId?: string | null;
+};
+
+/** The song attached to the comment being written, as the chip under the box shows it. */
+type SongAttachment = {
+  song: CommentSong;
+  label: string;
+  title: string;
+  artist: string;
+  artUrl: string | null;
 };
 
 type FlatRow =
@@ -198,6 +218,15 @@ export default function CommentsSheet({
   const [confirmDelete, setConfirmDelete] = useState<CommentNode | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [sending, setSending] = useState(false);
+  // 🎵 song search in the comment box (as in chat, ADR-0027). Its own query, so what was
+  // typed is still there after picking a song; a pick ATTACHES the song (chip under the box)
+  // and the comment goes when Send is tapped, words or not.
+  const [songMode, setSongMode] = useState(false);
+  const [songQuery, setSongQuery] = useState('');
+  const [attachment, setAttachment] = useState<SongAttachment | null>(null);
+  // A Livil pick may need a lookup first (a repost is attached as its original upload).
+  const [attaching, setAttaching] = useState(false);
+  const { search: spotifySearchOn } = useSpotifyAvailability();
 
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Remembers the deep-link highlight id we've already handled for the current
@@ -278,6 +307,9 @@ export default function CommentsSheet({
     setComposer('');
     setCaret(0);
     setReplyingTo(null);
+    setSongMode(false);
+    setSongQuery('');
+    setAttachment(null);
     setHighlightIds(new Set());
     setEntered(false);
     for (const t of highlightTimers.current.values()) { clearTimeout(t); }
@@ -359,15 +391,18 @@ export default function CommentsSheet({
   const handleSend = useCallback(async () => {
     if (!postId) { return; }
     const trimmed = composer.trim();
-    if (!trimmed || sending) { return; }
+    if ((!trimmed && !attachment) || sending || attaching) { return; }
     const parentId = replyingTo?.id ?? null;
+    const song = attachment ? { song: attachment.song, label: attachment.label } : null;
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: CommentNode = {
       id: tempId,
       postId,
       authorId: viewerId,
       author: { id: viewerId, username: 'you', displayName: 'You', avatarUrl: null },
-      body: trimmed,
+      body: composeCommentBody(trimmed, song?.label ?? null),
+      song: song?.song ?? null,
+      songLabel: song?.label ?? null,
       parentCommentId: parentId,
       createdAt: new Date().toISOString(),
       likeCount: 0,
@@ -376,11 +411,12 @@ export default function CommentsSheet({
     };
     setNodes(prev => insertNode(prev, optimistic, parentId));
     setComposer('');
+    setAttachment(null);
     setReplyingTo(null);
     setSending(true);
     onCommentsCountChange?.(1);
     try {
-      const saved = await createComment(postId, trimmed, parentId);
+      const saved = await createComment(postId, trimmed, parentId, song);
       setNodes(prev => replaceNode(prev, tempId, saved));
     } catch (e) {
       // Revert optimistic insert
@@ -390,7 +426,64 @@ export default function CommentsSheet({
     } finally {
       setSending(false);
     }
-  }, [composer, postId, replyingTo, sending, viewerId, onCommentsCountChange, showToast]);
+  }, [composer, attachment, attaching, postId, replyingTo, sending, viewerId, onCommentsCountChange, showToast]);
+
+  /** 🎵 on: the box becomes a song search, starting from "Recently played". */
+  const openSongSearch = useCallback(() => {
+    setSongQuery('');
+    setSongMode(true);
+    composerInputRef.current?.focus();
+  }, []);
+
+  const closeSongSearch = useCallback(() => setSongMode(false), []);
+
+  /**
+   * A song tapped in the search → attached, and the box goes back to the comment.
+   *
+   *   Livil   → by its post, always the ORIGINAL upload: a repost is swapped for the post it
+   *             reposts, so the card names the artist (as chat's track_share does).
+   *   Spotify → by its track id; its details are kept for the card (rememberSpotifyTrack).
+   */
+  const handlePickSong = useCallback(async (picked: PickedSong) => {
+    setSongMode(false);
+    if (picked.kind === 'spotify') {
+      rememberSpotifyTrack(picked.track);
+      const artist = artistLine(picked.track);
+      setAttachment({
+        song: { kind: 'spotify', trackId: picked.track.id },
+        label: songLabelFor(picked.track.title, artist),
+        title: picked.track.title,
+        artist,
+        artUrl: picked.track.imageUrl,
+      });
+      return;
+    }
+    setAttaching(true);
+    try {
+      let post: FeedPost | null = picked.kind === 'livil' ? picked.post : await fetchPostById(picked.postId);
+      if (post && post.kind === 'repost' && post.originalPostId) {
+        post = (await fetchPostById(post.originalPostId)) ?? post;
+      }
+      // Still a repost = its original is gone or hidden from us; never attach that.
+      if (!post || post.kind === 'repost' || !isPlayableInLivil(post)) {
+        showToast('That song is no longer available', { kind: 'info' });
+        return;
+      }
+      const shareable = toShareablePost(post);
+      primeCommentSongPost(post);
+      setAttachment({
+        song: { kind: 'livil', postId: post.id },
+        label: songLabelFor(shareable.title, shareable.artistName),
+        title: shareable.title,
+        artist: shareable.artistName,
+        artUrl: shareable.coverArtUrl,
+      });
+    } catch (e) {
+      showToast(friendlyErrorMessage(e, "Couldn't add that song. Please try again."), { kind: 'error' });
+    } finally {
+      setAttaching(false);
+    }
+  }, [showToast]);
 
   const handleToggleLike = useCallback(async (node: CommentNode) => {
     const wasLiked = node.likedByMe;
@@ -527,33 +620,113 @@ export default function CommentsSheet({
             </View>
           ) : null}
           <View style={styles.composerInputRow}>
+            {/* 🎵 turns the box into a song search (Livil + Spotify); a tap attaches it. */}
+            <TouchableOpacity
+              style={[styles.musicBtn, songMode && styles.musicBtnActive]}
+              activeOpacity={0.7}
+              onPress={songMode ? closeSongSearch : openSongSearch}
+              accessibilityRole="button"
+              accessibilityLabel={songMode ? 'Back to your comment' : 'Add a song'}
+              accessibilityState={{ selected: songMode }}
+            >
+              {songMode ? <GradientBorder borderRadius={20} /> : null}
+              <MusicToggleIcon active={songMode} color={songMode ? COLORS.purpleNeon : COLORS.textSecondary} />
+            </TouchableOpacity>
             <FormInput
               ref={composerInputRef}
-              value={composer}
-              onChangeText={handleComposerChange}
-              onSelectionChange={handleSelectionChange}
-              placeholder={isReply ? 'Write a reply…' : 'Add a comment…'}
+              value={songMode ? songQuery : composer}
+              // A search is one line: a pasted newline becomes a space.
+              onChangeText={songMode ? t => setSongQuery(t.replace(/\n/g, ' ').slice(0, 100)) : handleComposerChange}
+              onSelectionChange={songMode ? undefined : handleSelectionChange}
+              placeholder={
+                songMode
+                  ? (spotifySearchOn ? 'Search a song on Livil or Spotify…' : 'Search a song on Livil…')
+                  : isReply ? 'Write a reply…' : 'Add a comment…'
+              }
+              // ALWAYS multiline: on iOS it picks the native view, and swapping it with 🎵
+              // dropped the keyboard (as in chat). Song mode is one line via submitBehavior.
               multiline
+              submitBehavior={songMode ? 'blurAndSubmit' : 'newline'}
+              autoCorrect={!songMode}
+              returnKeyType={songMode ? 'search' : 'default'}
               editable={!sending}
               wrapperStyle={styles.composerInputWrap}
               style={styles.composerInput}
             />
-            <Button
-              label="Send"
-              onPress={onSendPressed}
-              variant="primary"
-              size="md"
-              busy={sending}
-              disabled={composer.trim().length === 0}
-            />
+            {songMode ? (
+              <TouchableOpacity
+                style={styles.musicBtn}
+                activeOpacity={0.7}
+                onPress={closeSongSearch}
+                accessibilityRole="button"
+                accessibilityLabel="Close song search"
+              >
+                <Icon name="close" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            ) : (
+              <Button
+                label="Send"
+                onPress={onSendPressed}
+                variant="primary"
+                size="md"
+                busy={sending}
+                disabled={(composer.trim().length === 0 && !attachment) || attaching}
+              />
+            )}
           </View>
-          {/* Mention suggestions render directly under the composer so they
-              always appear next to the active input — not at a fixed sheet
-              location that could be far away or hidden by the keyboard. */}
-          <MentionSuggestions
-            query={mentionTrigger?.partial ?? null}
-            onSelect={handleMentionSelect}
-          />
+          {songMode ? (
+            // Inline, under the box — the sheet's own list scrolls it.
+            <View style={styles.songPanel}>
+              <SongSearchPanel
+                query={songQuery}
+                onPick={picked => { void handlePickSong(picked); }}
+                verb="attach"
+                scrollable={false}
+              />
+            </View>
+          ) : (
+            <>
+              {attaching || attachment ? (
+                <View style={styles.attachment} testID="comment-song-attachment">
+                  {attachment?.artUrl ? (
+                    <Image source={{ uri: attachment.artUrl }} style={styles.attachmentArt} />
+                  ) : (
+                    <View style={[styles.attachmentArt, styles.attachmentArtEmpty]}>
+                      {attaching
+                        ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                        : <Icon name="musicNote" size={16} color={COLORS.textMuted} />}
+                    </View>
+                  )}
+                  <View style={styles.attachmentText}>
+                    <Text style={styles.attachmentTitle} numberOfLines={1}>
+                      {attachment?.title ?? 'Adding the song…'}
+                    </Text>
+                    {attachment ? (
+                      <Text style={styles.attachmentArtist} numberOfLines={1}>{attachment.artist}</Text>
+                    ) : null}
+                  </View>
+                  {attachment?.song.kind === 'spotify' ? <SpotifyLogo size="xs" /> : null}
+                  {attachment ? (
+                    <TouchableOpacity
+                      onPress={() => setAttachment(null)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${attachment.title}`}
+                    >
+                      <Icon name="close" size={18} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ) : null}
+              {/* Mention suggestions render directly under the composer so they
+                  always appear next to the active input — not at a fixed sheet
+                  location that could be far away or hidden by the keyboard. */}
+              <MentionSuggestions
+                query={mentionTrigger?.partial ?? null}
+                onSelect={handleMentionSelect}
+              />
+            </>
+          )}
         </View>
       );
     },
@@ -567,6 +740,14 @@ export default function CommentsSheet({
       sending,
       replyingTo,
       handleSend,
+      songMode,
+      songQuery,
+      attachment,
+      attaching,
+      spotifySearchOn,
+      openSongSearch,
+      closeSongSearch,
+      handlePickSong,
       handleComposerChange,
       handleSelectionChange,
       mentionTrigger,
@@ -623,6 +804,7 @@ export default function CommentsSheet({
           data={rows}
           keyExtractor={item => item.key}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: insets.bottom + 8 },
@@ -734,6 +916,44 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     paddingVertical: 10,
   },
+  musicBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginBottom: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  // The glow replaces the grey ring while song search is on.
+  musicBtnActive: { borderWidth: 0 },
+  songPanel: {
+    marginTop: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  attachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    marginLeft: 48,
+    padding: 6,
+    paddingRight: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  // Spotify's rule for its artwork: corners of 4 px at most, nothing drawn on it.
+  attachmentArt: { width: 36, height: 36, borderRadius: 4, backgroundColor: COLORS.card },
+  attachmentArtEmpty: { alignItems: 'center', justifyContent: 'center' },
+  attachmentText: { flex: 1, minWidth: 0 },
+  attachmentTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
+  attachmentArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
   sendBtnText: {
     color: COLORS.white,
     fontWeight: '700',

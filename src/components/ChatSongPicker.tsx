@@ -100,7 +100,7 @@ export default function ChatSongPicker({
       pointerEvents={open ? 'auto' : 'none'}
       style={[styles.popover, { bottom, transformOrigin: `${originX}px 100%` }, animatedStyle]}
     >
-      <ChatSongPickerPanel query={query} onPick={onPick} />
+      <SongSearchPanel query={query} onPick={onPick} />
     </Animated.View>
   );
 }
@@ -126,12 +126,26 @@ export function MusicToggleIcon({ active, color }: { active: boolean; color: str
   );
 }
 
-function ChatSongPickerPanel({
+/**
+ * The results themselves, without the popover — chat floats them over its composer; the
+ * comments sheet draws them inline under its comment box, where a tap attaches the song
+ * to the comment instead of sending it.
+ */
+export function SongSearchPanel({
   query,
   onPick,
+  verb = 'send',
+  scrollable = true,
 }: {
   query: string;
   onPick: (song: PickedSong) => void;
+  /** What a tap does: chat sends the song at once, a comment attaches it. */
+  verb?: 'send' | 'attach';
+  /**
+   * False inside a list that already scrolls (the comments sheet): the rows are laid out
+   * in a plain View, so a drag reaches the sheet's list instead of an inner scroll view.
+   */
+  scrollable?: boolean;
 }) {
   const { search: spotifyOn } = useSpotifyAvailability();
   const trimmed = query.trim();
@@ -189,9 +203,14 @@ function ChatSongPickerPanel({
   const loading = livilLoading || spotifyLoading;
   const nothing = searching && !loading && livil.length === 0 && spotify.length === 0;
 
+  const Body = scrollable ? ScrollView : View;
+  const bodyProps = scrollable
+    ? { keyboardShouldPersistTaps: 'handled' as const, contentContainerStyle: styles.content }
+    : { style: styles.content };
+
   return (
     <View>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      <Body {...bodyProps}>
         {!searching ? (
           <>
             <Text style={styles.heading}>Recently played</Text>
@@ -206,6 +225,7 @@ function ChatSongPickerPanel({
                   art={r.coverArtUrl}
                   title={r.title}
                   subtitle={r.artistLabel}
+                  verb={verb}
                   onPress={() => onPick({ kind: 'recent', postId: r.postId! })}
                 />
               ))
@@ -225,6 +245,7 @@ function ChatSongPickerPanel({
                     art={post.track.coverArtUrl ?? post.track.thumbnailUrl}
                     title={post.track.title}
                     subtitle={post.author.displayName?.trim() || `@${post.author.username}`}
+                    verb={verb}
                     onPress={() => onPick({ kind: 'livil', post })}
                   />
                 ))}
@@ -245,6 +266,7 @@ function ChatSongPickerPanel({
                     artRadius={4}
                     title={track.title}
                     subtitle={artistLine(track)}
+                    verb={verb}
                     onPress={() => onPick({ kind: 'spotify', track })}
                   />
                 ))}
@@ -259,7 +281,7 @@ function ChatSongPickerPanel({
             {nothing ? <Text style={styles.hint}>No songs match "{trimmed}".</Text> : null}
           </>
         )}
-      </ScrollView>
+      </Body>
     </View>
   );
 }
@@ -281,12 +303,14 @@ function Row({
   artRadius = 8,
   title,
   subtitle,
+  verb,
   onPress,
 }: {
   art: string | null;
   artRadius?: number;
   title: string;
   subtitle: string;
+  verb: 'send' | 'attach';
   onPress: () => void;
 }) {
   return (
@@ -294,7 +318,7 @@ function Row({
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={`Send ${title} by ${subtitle}`}
+      accessibilityLabel={`${verb === 'send' ? 'Send' : 'Add'} ${title} by ${subtitle}`}
     >
       {art ? (
         <Image source={{ uri: art }} style={[styles.art, { borderRadius: artRadius }]} />
@@ -307,7 +331,7 @@ function Row({
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
         <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
       </View>
-      <Icon name="send" size={16} color={COLORS.purpleNeon} />
+      <Icon name={verb === 'send' ? 'send' : 'add'} size={16} color={COLORS.purpleNeon} />
     </Pressable>
   );
 }

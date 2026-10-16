@@ -9,12 +9,20 @@ export type CommentAuthor = {
   avatarUrl: string | null;
 };
 
+/** A song shared in a comment: a Livil upload (its post) or a Spotify track (ADR-0027). */
+export type CommentSong =
+  | { kind: 'livil'; postId: string }
+  | { kind: 'spotify'; trackId: string };
+
 export type CommentNode = {
   id: string;
   postId: string;
   authorId: string;
   author: CommentAuthor;
+  /** As stored. With a song, its last line is `songLabel` — use `commentDisplayText`. */
   body: string;
+  song: CommentSong | null;
+  songLabel: string | null;
   parentCommentId: string | null;
   createdAt: string;
   likeCount: number;
@@ -27,6 +35,10 @@ type RawCommentRow = {
   post_id: string;
   author_id: string;
   body: string;
+  /** Absent before migration 20261029000000 (see songColumnsMissing). */
+  song_post_id?: string | null;
+  song_spotify_track_id?: string | null;
+  song_label?: string | null;
   parent_comment_id: string | null;
   created_at: string;
   like_count: number;
@@ -38,7 +50,7 @@ type RawCommentRow = {
   } | null;
 };
 
-const COMMENT_SELECT = `
+const COMMENT_SELECT_BASE = `
   id,
   post_id,
   author_id,
@@ -53,6 +65,70 @@ const COMMENT_SELECT = `
     avatar_url
   )
 ` as const;
+
+const COMMENT_SELECT_WITH_SONG = `${COMMENT_SELECT_BASE}, song_post_id, song_spotify_track_id, song_label`;
+
+// ── Songs in comments, before and after the backend change ─────────────────
+//
+// The app can reach users before migration 20261029000000 is applied (or run against a
+// backend where it is not). Selecting or inserting a column that does not exist fails the
+// whole request — every comment sheet would come up empty. So the first such failure
+// flips this switch and the request is retried without the song columns; a song comment
+// still posts, as its body (which already ends with the song's label line).
+let songColumnsMissing = false;
+
+function isMissingSongColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) { return false; }
+  // 42703: undefined column (select). PGRST204: column not in the schema cache (insert).
+  return (error.code === '42703' || error.code === 'PGRST204')
+    && /song_(post_id|spotify_track_id|label)/.test(error.message ?? '');
+}
+
+function commentSelect(): string {
+  return songColumnsMissing ? COMMENT_SELECT_BASE : COMMENT_SELECT_WITH_SONG;
+}
+
+/** Test-only: reset the switch between cases. */
+export function __resetSongColumnsMissingForTest(): void {
+  songColumnsMissing = false;
+}
+
+/** The text a shared song carries in `body`: "🎵 Kesariya — Arijit Singh". */
+export function songLabelFor(title: string, artist: string | null): string {
+  const t = title.trim() || 'A song';
+  const a = artist?.trim();
+  return `🎵 ${a ? `${t} — ${a}` : t}`.slice(0, 200);
+}
+
+/**
+ * What is stored as `body`: what was typed, then the song's label on its own last line —
+ * or just the label when nothing was typed. Apps that predate songs in comments show it
+ * as it is; this one strips the label back off (`commentDisplayText`).
+ */
+export function composeCommentBody(text: string, songLabel: string | null): string {
+  const typed = text.trim();
+  if (!songLabel) { return typed; }
+  return typed ? `${typed}\n${songLabel}` : songLabel;
+}
+
+/**
+ * The words to show above a comment's song card: the body without its label line. A
+ * comment whose song has gone (the shared upload was deleted) shows its body whole, so the
+ * label still says what was shared.
+ */
+export function commentDisplayText(node: Pick<CommentNode, 'body' | 'song' | 'songLabel'>): string {
+  const { body, song, songLabel } = node;
+  if (!song || !songLabel) { return body; }
+  if (body === songLabel) { return ''; }
+  const suffix = `\n${songLabel}`;
+  return body.endsWith(suffix) ? body.slice(0, -suffix.length) : body;
+}
+
+function songOf(row: RawCommentRow): CommentSong | null {
+  if (row.song_post_id) { return { kind: 'livil', postId: row.song_post_id }; }
+  if (row.song_spotify_track_id) { return { kind: 'spotify', trackId: row.song_spotify_track_id }; }
+  return null;
+}
 
 function toAuthor(row: RawCommentRow['author']): CommentAuthor {
   if (!row) {
@@ -73,6 +149,8 @@ function rowToNode(row: RawCommentRow, likedByMe: boolean): CommentNode {
     authorId: row.author_id,
     author: toAuthor(row.author),
     body: row.body,
+    song: songOf(row),
+    songLabel: row.song_label ?? null,
     parentCommentId: row.parent_comment_id,
     createdAt: row.created_at,
     likeCount: row.like_count ?? 0,
@@ -92,13 +170,18 @@ export async function fetchPostComments(
   postId: string,
   limit: number = 100,
 ): Promise<CommentNode[]> {
-  const { data, error } = await supabase
+  const query = () => supabase
     .from('post_comments')
-    .select(COMMENT_SELECT)
+    .select(commentSelect())
     .eq('post_id', postId)
     .order('like_count', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
+  let { data, error } = await query();
+  if (isMissingSongColumn(error)) {
+    songColumnsMissing = true;
+    ({ data, error } = await query());
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -141,12 +224,17 @@ function buildTree(nodes: CommentNode[]): CommentNode[] {
   return roots;
 }
 
+/**
+ * Post a comment. `song`, when given, is shared with it: `body` is then what was typed
+ * (possibly nothing) and the song's label is added as its last line (composeCommentBody).
+ */
 export async function createComment(
   postId: string,
   body: string,
   parentCommentId: string | null = null,
+  song: { song: CommentSong; label: string } | null = null,
 ): Promise<CommentNode> {
-  const trimmed = body.trim();
+  const trimmed = composeCommentBody(body, song?.label ?? null);
   if (!trimmed) {
     throw new Error('Comment cannot be empty.');
   }
@@ -156,16 +244,30 @@ export async function createComment(
   }
   const me = userData.user.id;
 
-  const { data, error } = await supabase
+  const base = {
+    post_id: postId,
+    author_id: me,
+    body: trimmed,
+    parent_comment_id: parentCommentId,
+  };
+  const songFields = song
+    ? {
+        song_post_id: song.song.kind === 'livil' ? song.song.postId : null,
+        song_spotify_track_id: song.song.kind === 'spotify' ? song.song.trackId : null,
+        song_label: song.label,
+      }
+    : {};
+  const insert = () => supabase
     .from('post_comments')
-    .insert({
-      post_id: postId,
-      author_id: me,
-      body: trimmed,
-      parent_comment_id: parentCommentId,
-    })
-    .select(COMMENT_SELECT)
+    .insert(songColumnsMissing ? base : { ...base, ...songFields })
+    .select(commentSelect())
     .single();
+  let { data, error } = await insert();
+  if (isMissingSongColumn(error)) {
+    // The backend has no song columns yet: post it as its body, label line and all.
+    songColumnsMissing = true;
+    ({ data, error } = await insert());
+  }
 
   if (error || !data) {
     throw new Error(error?.message ?? 'Failed to create comment.');
@@ -331,7 +433,7 @@ export function subscribeToPostComments(
           if (insertedAuthor === myId) { return; }
           const { data, error } = await supabase
             .from('post_comments')
-            .select(COMMENT_SELECT)
+            .select(commentSelect())
             .eq('id', newId)
             .single();
           if (error || !data) { return; }
