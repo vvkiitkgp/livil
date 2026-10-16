@@ -404,6 +404,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/comments-friends-only.test.sql
 
+      # GIFs in comments (ADR-0031): a GIF is stored whole or not at all, only with a known
+      # provider and a well-formed id (the edge function later sends that id to GIPHY), and
+      # never alongside a song — on insert or on the author's own update.
+      - name: Comment GIF tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-gifs.test.sql
+
       # A credit names somebody, so answering it is the one write a collaborator gets on a
       # track that is not theirs. Asserts that the write is status-only (the previous policy
       # let a tagged user rewrite their own role), that an answer is final, and that being

@@ -1018,6 +1018,10 @@ export type Database = {
           author_id: string
           body: string
           created_at: string
+          gif_height: number | null
+          gif_id: string | null
+          gif_provider: string | null
+          gif_width: number | null
           id: string
           like_count: number
           parent_comment_id: string | null
@@ -1030,6 +1034,10 @@ export type Database = {
           author_id: string
           body: string
           created_at?: string
+          gif_height?: number | null
+          gif_id?: string | null
+          gif_provider?: string | null
+          gif_width?: number | null
           id?: string
           like_count?: number
           parent_comment_id?: string | null
@@ -1042,6 +1050,10 @@ export type Database = {
           author_id?: string
           body?: string
           created_at?: string
+          gif_height?: number | null
+          gif_id?: string | null
+          gif_provider?: string | null
+          gif_width?: number | null
           id?: string
           like_count?: number
           parent_comment_id?: string | null
