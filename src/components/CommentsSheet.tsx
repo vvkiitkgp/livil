@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
-import { Button } from './Button';
 import { Icon } from './Icon';
 import FormInput from './FormInput';
 import CommentItem from './CommentItem';
@@ -29,6 +28,7 @@ import { SpotifyLogo } from './SpotifyLogo';
 import { MusicToggleIcon, SongSearchPanel, type PickedSong } from './ChatSongPicker';
 import { primeCommentSongPost } from './CommentSongCard';
 import { OnboardingNoticeHost } from './OnboardingNotice';
+import RoundTickButton, { ROUND_TICK_SIZE } from './RoundTickButton';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
@@ -86,6 +86,18 @@ type FlatRow =
 const HIGHLIGHT_MS = 1500;
 const COMPOSER_KEY = '__composer__';
 const MAX_INDENT_DEPTH = 4;
+/**
+ * One height for the comment row — the 🎵 button and the box (one line) — so they sit on one
+ * centre line. A longer comment grows the box; 🎵 and the ✓ inside it stay at its bottom.
+ */
+const COMPOSER_ROW_H = 44;
+/** FormInput's border, top + bottom. */
+const INPUT_BORDER = 3;
+/**
+ * The ✓ / ✕ inside the box: padded to exactly the box's inner height, so on one line it is
+ * centred and, as the box grows, it rides the bottom edge (alignSelf: 'flex-end').
+ */
+const TRAILING_PAD_V = (COMPOSER_ROW_H - INPUT_BORDER - ROUND_TICK_SIZE) / 2;
 
 function flattenTree(nodes: CommentNode[], depth = 0, out: FlatRow[] = []): FlatRow[] {
   for (const n of nodes) {
@@ -630,7 +642,7 @@ export default function CommentsSheet({
               accessibilityLabel={songMode ? 'Back to your comment' : 'Add a song'}
               accessibilityState={{ selected: songMode }}
             >
-              {songMode ? <GradientBorder borderRadius={20} /> : null}
+              {songMode ? <GradientBorder borderRadius={COMPOSER_ROW_H / 2} /> : null}
               <MusicToggleIcon active={songMode} color={songMode ? COLORS.purpleNeon : COLORS.textSecondary} />
             </TouchableOpacity>
             <FormInput
@@ -653,27 +665,32 @@ export default function CommentsSheet({
               editable={!sending}
               wrapperStyle={styles.composerInputWrap}
               style={styles.composerInput}
+              // Send is the round ✓ inside the box, as on Upload's "+ Something else" fields.
+              // Song search swaps it for a ✕ of the same size, so the box never changes width.
+              trailing={
+                songMode ? (
+                  <TouchableOpacity
+                    onPress={closeSongSearch}
+                    activeOpacity={0.7}
+                    style={styles.trailingHit}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close song search"
+                  >
+                    <View style={styles.trailingCircle}>
+                      <Icon name="close" size={14} color={COLORS.textSecondary} weight="bold" />
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <RoundTickButton
+                    enabled={(composer.trim().length > 0 || attachment !== null) && !attaching && !sending}
+                    onPress={onSendPressed}
+                    accessibilityLabel={isReply ? 'Send reply' : 'Send comment'}
+                    style={styles.trailingTick}
+                  />
+                )
+              }
             />
-            {songMode ? (
-              <TouchableOpacity
-                style={styles.musicBtn}
-                activeOpacity={0.7}
-                onPress={closeSongSearch}
-                accessibilityRole="button"
-                accessibilityLabel="Close song search"
-              >
-                <Icon name="close" size={16} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            ) : (
-              <Button
-                label="Send"
-                onPress={onSendPressed}
-                variant="primary"
-                size="md"
-                busy={sending}
-                disabled={(composer.trim().length === 0 && !attachment) || attaching}
-              />
-            )}
           </View>
           {songMode ? (
             // Inline, under the box — the sheet's own list scrolls it.
@@ -917,16 +934,16 @@ const styles = StyleSheet.create({
   },
   composerInputWrap: {
     flex: 1,
+    minHeight: COMPOSER_ROW_H,
   },
   composerInput: {
     maxHeight: 120,
     paddingVertical: 10,
   },
   musicBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginBottom: 2,
+    width: COMPOSER_ROW_H,
+    height: COMPOSER_ROW_H,
+    borderRadius: COMPOSER_ROW_H / 2,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -934,6 +951,18 @@ const styles = StyleSheet.create({
   },
   // The glow replaces the grey ring while song search is on.
   musicBtnActive: { borderWidth: 0 },
+  // Same geometry as RoundTickButton (its padding, a 32 pt ring), for the ✕ in song search.
+  trailingHit: { paddingLeft: 8, paddingRight: 10, paddingVertical: TRAILING_PAD_V, alignSelf: 'flex-end' },
+  trailingCircle: {
+    width: ROUND_TICK_SIZE,
+    height: ROUND_TICK_SIZE,
+    borderRadius: ROUND_TICK_SIZE / 2,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trailingTick: { paddingVertical: TRAILING_PAD_V, alignSelf: 'flex-end' },
   songPanel: {
     marginTop: 8,
     borderRadius: 14,
@@ -946,7 +975,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 8,
-    marginLeft: 48,
+    // Under the box, clear of the 🎵 button (its width + the row's gap).
+    marginLeft: COMPOSER_ROW_H + 8,
     padding: 6,
     paddingRight: 10,
     borderRadius: 12,
