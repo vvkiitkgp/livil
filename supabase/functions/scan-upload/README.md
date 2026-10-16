@@ -79,12 +79,12 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
   "$SUPABASE_URL/functions/v1/scan-upload" -d '{"trackId":"11111111-2222-3333-4444-555555555555"}'
 ```
 
-## Whole-song audio (`AUDD_FULL_SONG_ENABLED`)
+## Whole-song check, audio and video (`AUDD_FULL_SONG_ENABLED`)
 
 The standard endpoint identifies one short excerpt and refuses long or large files (a
 10 MB WAV failed with "audio is too large … use the enterprise endpoint"). With
-`AUDD_FULL_SONG_ENABLED=true`, an AUDIO scan whose request carries `"fullSong": true` goes
-to the enterprise endpoint with `skip=0`, `every=1`, `limit=100` — every 12-second chunk,
+`AUDD_FULL_SONG_ENABLED=true`, a scan whose request carries `"fullSong": true` — audio OR
+video — goes to the enterprise endpoint with `skip=0`, `every=1`, `limit=100` — every 12-second chunk,
 one billed request each (a 2-minute song is 10).
 
 - **Both gates are required.** The switch alone changes nothing for clients that do not
@@ -94,7 +94,13 @@ one billed request each (a 2-minute song is 10).
 - **Bounded in time.** The provider gets `FULL_SONG_PROVIDER_TIMEOUT_MS` (50 s), then the
   scan records `failed` with the reason. That is under the 60 s an iPhone waits for a
   silent response, so the app reads the recorded verdict rather than timing out first.
-- **Video is unaffected** — it still needs `AUDD_ENTERPRISE_ENABLED` (see below).
+- **Video goes as-is.** The enterprise docs take "a URL to the audio/video", so the video's
+  own URL is sent and the provider extracts the sound. Videos are not staged early like
+  songs, so the mobile app runs this check at Post ("Checking it against known
+  recordings…"). A large video has to be downloaded by the provider first and is the
+  likeliest to hit the 50 s ceiling; it then records `failed` and publishes.
+- **A video request without `fullSong`** (the store app, the web dashboard) is still
+  `skipped` unless `AUDD_ENTERPRISE_ENABLED` is set (the older sampled path, below).
 - **Off switch:** unset the secret. Every scan is the quick one again, no app release.
 
 ```bash

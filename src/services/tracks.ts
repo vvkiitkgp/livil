@@ -89,7 +89,7 @@ export type CreateTrackResult = {
   thumbnailUrl?: string;
 };
 
-export type CreateTrackStage = 'preparing' | 'uploading' | 'finalizing';
+export type CreateTrackStage = 'preparing' | 'uploading' | 'checking' | 'finalizing';
 
 export type CreateTrackProgress = {
   stage: CreateTrackStage;
@@ -651,8 +651,10 @@ async function finishTrack({
     declarationToRecord = scan.declaration;
   } else if (scan.kind === 'ask') {
     // The whole song, as at staging: this is a staged song whose check did not finish, or
-    // a video (which the server skips regardless).
+    // a video — checked here, while the uploader waits, because videos are not staged.
+    onProgress?.({ stage: 'checking', fraction: 1 });
     const result = await scanUpload(supabase, trackId, { fullSong: true });
+    onProgress?.({ stage: 'finalizing', fraction: 1 });
     if (needsAcknowledgement(result)) {
       const answer = await scan.onCopyrightMatch(result);
       if (answer.acknowledgement === 'cancelled') {

@@ -207,7 +207,22 @@ Deno.test('a client that does not ask gets the quick check even with the switch 
   assertEquals(seen.url, 'https://api.audd.io/');
 });
 
-Deno.test('a whole-song request does not open the video path', async () => {
+Deno.test('a whole-song request checks every chunk of a video too', async () => {
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: true, enterpriseEnabled: false, fetchImpl });
+  const out = await p.scan('https://example.test/a.mov', 'video', { fullSong: true });
+  // The video's own URL: the provider pulls the sound out on its servers.
+  assertEquals(seen.url, 'https://enterprise.audd.io/');
+  assertEquals(seen.body.get('url'), 'https://example.test/a.mov');
+  assertEquals(seen.body.get('skip'), '0');
+  assertEquals(seen.body.get('every'), '1');
+  assertEquals(seen.body.get('limit'), String(FULL_SONG_CHUNK_LIMIT));
+  assertEquals(out, { status: 'complete', matchFound: false });
+});
+
+Deno.test('a video nobody asked about stays skipped, even with the switch on', async () => {
+  // The app already in the stores never asks, and gives up after 20 s: its videos keep
+  // today's behaviour rather than a slow check it cannot wait for.
   const p = createAuddProvider('tok', {
     fullSongEnabled: true,
     enterpriseEnabled: false,
@@ -215,8 +230,18 @@ Deno.test('a whole-song request does not open the video path', async () => {
       throw new Error('must not call the provider');
     },
   });
-  const out = await p.scan('https://example.test/a.mp4', 'video', { fullSong: true });
-  assertEquals(out.status, 'skipped');
+  assertEquals((await p.scan('https://example.test/a.mp4', 'video')).status, 'skipped');
+});
+
+Deno.test('a whole-song video request with the switch off stays skipped', async () => {
+  const p = createAuddProvider('tok', {
+    fullSongEnabled: false,
+    enterpriseEnabled: false,
+    fetchImpl: () => {
+      throw new Error('must not call the provider');
+    },
+  });
+  assertEquals((await p.scan('https://example.test/a.mp4', 'video', { fullSong: true })).status, 'skipped');
 });
 
 Deno.test('a whole-song request that runs out of time is failed, not a negative', async () => {

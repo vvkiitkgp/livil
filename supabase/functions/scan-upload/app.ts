@@ -45,8 +45,9 @@
 // recording, and a cover is a different recording. Livil supports covers as
 // first-class uploads, so this is the desired behaviour, not a gap.
 //
-// SECRETS (custom): AUDD_API_TOKEN, and optionally AUDD_ENTERPRISE_ENABLED (video) and
-// AUDD_FULL_SONG_ENABLED (whole-song audio, for clients that ask for it).
+// SECRETS (custom): AUDD_API_TOKEN, and optionally AUDD_FULL_SONG_ENABLED (every chunk of
+// a song OR a video, for clients that ask for it) and AUDD_ENTERPRISE_ENABLED (the older
+// sampled video path, for clients that do not).
 // Platform-injected: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 // ============================================================================
 
@@ -101,28 +102,29 @@ export interface CopyrightDetectionProvider {
 // of finding out whether this works at all is a free tier rather than a sales call.
 //
 // Its standard endpoint caps at 10 MB, which an audio file clears and a video will not.
-// Long files belong on the enterprise endpoint, which chunks server-side. Whether that
-// endpoint accepts a video container and extracts the audio itself is NOT CONFIRMED by
-// the public documentation -- their docs list "short-form videos" among supported
-// content but never say it outright. Until that is confirmed with the vendor, video
-// returns `skipped`, with the reason recorded. It must never return a clean `complete`
-// on a request we did not actually make.
+// Long files belong on the enterprise endpoint, which chunks server-side. Its docs (as of
+// 2026-10) take "a URL to the audio/video", so a video goes to it as-is and the provider
+// pulls the sound out on its own servers -- but only on the whole-song path below, which
+// the uploader's app asks for. A video nobody asked about returns `skipped` unless
+// AUDD_ENTERPRISE_ENABLED is set, with the reason recorded. It must never return a clean
+// `complete` on a request we did not actually make.
 
 const AUDD_STANDARD = 'https://api.audd.io/';
 const AUDD_ENTERPRISE = 'https://enterprise.audd.io/';
 
-// ── Whole-song audio ──
+// ── Whole-song (audio or video) ──
 //
 // The standard endpoint identifies ONE short excerpt and refuses long or large files (a
-// 10 MB WAV came back "audio is too large ... use the enterprise endpoint"), so a song
+// WAV over 10 MB came back "the audio file is too big ... (the limit is 10M)"), so a song
 // whose commercial recording starts after its intro, or that is simply a big file, was
-// never really checked. The enterprise endpoint walks the file in 12-second chunks on the
-// provider's servers; `skip=0` + `every=1` asks for every chunk, so a 2-minute song is 10
-// chunks and 10 billed requests.
+// never really checked -- and a video was never checked at all. The enterprise endpoint
+// walks the file's sound in 12-second chunks on the provider's servers; `skip=0` +
+// `every=1` asks for every chunk, so a 2-minute song or clip is 10 chunks and 10 billed
+// requests.
 //
 // Two gates, both required: the client asks (`fullSong`, see ScanOptions) and the switch
 // is on (`AUDD_FULL_SONG_ENABLED`). The switch is the spend lever — unset, every scan is
-// the quick one again, with no app release.
+// the quick one again (and videos `skipped`), with no app release.
 
 /** Spend ceiling per scan: 100 chunks is 20 minutes of audio, $0.20 at $2 / 1,000. */
 export const FULL_SONG_CHUNK_LIMIT = 100;
@@ -131,7 +133,9 @@ export const FULL_SONG_CHUNK_LIMIT = 100;
  * How long we wait for a whole-song answer before recording `failed`. Under the 60 s an
  * iPhone waits for a silent HTTP response, so the app always hears the verdict this
  * function records instead of timing out first. The provider's own example — an hour-long
- * mix, 63 chunks — took 38 s; a 4-minute song is 20.
+ * mix, 63 chunks — took 38 s; a 4-minute song is 20. A large video also has to be
+ * downloaded by the provider first, so it is the likeliest to run out; it then records
+ * `failed` and publishes, as any failed check does.
  */
 export const FULL_SONG_PROVIDER_TIMEOUT_MS = 50_000;
 
@@ -144,16 +148,8 @@ export function createAuddProvider(
   return {
     name: 'audd',
     async scan(mediaUrl, kind, scanOpts = {}) {
-      if (kind === 'video' && !opts.enterpriseEnabled) {
-        return {
-          status: 'skipped',
-          reason:
-            'video scanning is not enabled: the enterprise endpoint accepts long files, '
-            + 'but its handling of video containers is unconfirmed with the vendor',
-        };
-      }
-
-      const fullSong = kind === 'audio' && scanOpts.fullSong === true && opts.fullSongEnabled === true;
+      // Audio or video alike: the provider takes the video's URL and checks its sound.
+      const fullSong = scanOpts.fullSong === true && opts.fullSongEnabled === true;
       if (fullSong) {
         // The enterprise response carries `isrc` on each song itself (no `return` param).
         return send(
@@ -167,6 +163,15 @@ export function createAuddProvider(
           }),
           FULL_SONG_PROVIDER_TIMEOUT_MS,
         );
+      }
+
+      if (kind === 'video' && !opts.enterpriseEnabled) {
+        return {
+          status: 'skipped',
+          reason:
+            'video scanning is not enabled for this request: only the whole-song check '
+            + '(an app that asks, with AUDD_FULL_SONG_ENABLED on) sends a video to the provider',
+        };
       }
 
       const endpoint = kind === 'video' ? AUDD_ENTERPRISE : AUDD_STANDARD;

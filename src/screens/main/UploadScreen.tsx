@@ -1518,9 +1518,11 @@ export default function UploadScreen() {
     ? 'Uploading your song…'
     : progressStage === 'preparing'
       ? 'Preparing files…'
-      : progressStage === 'finalizing'
-        ? 'Saving track…'
-        : 'Uploading…';
+      : progressStage === 'checking'
+        ? 'Checking it against known recordings…'
+        : progressStage === 'finalizing'
+          ? 'Saving track…'
+          : 'Uploading…';
   const progressPct = awaitingStaging
     ? (staging.status === 'uploading' ? Math.round(staging.fraction * 100) : null)
     : progressStage === 'uploading' ? Math.round(progressFraction * 100) : null;
@@ -1606,7 +1608,7 @@ export default function UploadScreen() {
                       width:
                         progressPct != null
                           ? `${Math.max(2, progressPct)}%`
-                          : progressStage === 'finalizing'
+                          : progressStage === 'finalizing' || progressStage === 'checking'
                             ? '100%'
                             : '6%',
                     },
