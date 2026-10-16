@@ -1022,6 +1022,9 @@ export type Database = {
           like_count: number
           parent_comment_id: string | null
           post_id: string
+          song_label: string | null
+          song_post_id: string | null
+          song_spotify_track_id: string | null
         }
         Insert: {
           author_id: string
@@ -1031,6 +1034,9 @@ export type Database = {
           like_count?: number
           parent_comment_id?: string | null
           post_id: string
+          song_label?: string | null
+          song_post_id?: string | null
+          song_spotify_track_id?: string | null
         }
         Update: {
           author_id?: string
@@ -1040,6 +1046,9 @@ export type Database = {
           like_count?: number
           parent_comment_id?: string | null
           post_id?: string
+          song_label?: string | null
+          song_post_id?: string | null
+          song_spotify_track_id?: string | null
         }
         Relationships: [
           {
@@ -1059,6 +1068,13 @@ export type Database = {
           {
             foreignKeyName: "post_comments_post_id_fkey"
             columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comments_song_post_id_fkey"
+            columns: ["song_post_id"]
             isOneToOne: false
             referencedRelation: "posts"
             referencedColumns: ["id"]
