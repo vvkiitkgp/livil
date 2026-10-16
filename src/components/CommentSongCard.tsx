@@ -81,8 +81,13 @@ function LivilSong({ postId, label }: { postId: string; label: string | null }) 
   const playing = activePostId === postId;
   const onPress = () => {
     if (!post) { return; }
-    if (nowPlaying?.postId === postId) {
-      if (playing) { handlersRef.current?.pause(); } else { requestPlay(postId); }
+    if (nowPlaying?.postId === postId && handlersRef.current) {
+      // Already loaded: pause, or resume from where it stopped. Through the engine's own
+      // handlers, as the floating player does — requestPlay alone only marks the post
+      // active, and the engine (GlobalAudioPlayer) treats "active is the one I hold" as
+      // already playing, so a paused song stayed silent while the card said playing
+      // (owner report: paused by a Spotify hand-off, then tapped here).
+      if (playing) { handlersRef.current.pause(); } else { handlersRef.current.play(); }
       return;
     }
     const item = feedPostToNowPlaying(post);

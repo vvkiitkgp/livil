@@ -14,7 +14,7 @@ jest.mock('../SpotifyLogo', () => ({ SpotifyLogo: () => null }));
 const mockPlayback = {
   nowPlaying: null as null | { postId: string },
   activePostId: null as string | null,
-  handlersRef: { current: { pause: jest.fn() } },
+  handlersRef: { current: { pause: jest.fn(), play: jest.fn() } },
   requestPlay: jest.fn(),
   setNowPlaying: jest.fn(),
   setQueue: jest.fn(),
@@ -99,10 +99,13 @@ describe('a Livil song', () => {
     expect(mockPlayback.handlersRef.current.pause).toHaveBeenCalled();
     expect(mockPlayback.setQueue).not.toHaveBeenCalled();
 
+    // Paused (e.g. by a Spotify hand-off): the engine itself must be told to play.
+    // requestPlay alone marks it active and the engine, already holding it, stays silent.
     mockPlayback.activePostId = null;
     await act(async () => { r.update(<CommentSongCard song={{ kind: 'livil', postId: 'p9' }} label="x" />); });
     act(() => { card(r).props.onPress(); });
-    expect(mockPlayback.requestPlay).toHaveBeenCalledWith('p9');
+    expect(mockPlayback.handlersRef.current.play).toHaveBeenCalledTimes(1);
+    expect(mockPlayback.requestPlay).not.toHaveBeenCalled();
     expect(mockPlayback.setQueue).not.toHaveBeenCalled();
   });
 
