@@ -740,7 +740,8 @@ export default function UploadScreen() {
   }, [mode, video]);
 
   const openStep = useCallback((key: StepKey) => {
-    if (key !== 'media') { confirmVideo(); }
+    // Forward only: going back to step 1 (e.g. to switch to a song) is not a "yes".
+    if (STEP_ORDER.indexOf(key) > STEP_ORDER.indexOf('media')) { confirmVideo(); }
     setPreviewPaused(true);
     setReviewing(false);
     setStep(key);

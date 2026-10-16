@@ -901,13 +901,20 @@ export async function stageMediaUpload(
   // Remembered BEFORE the upload, so a kill at any point after this line is swept.
   await rememberStaged({ trackId, userId: user.id });
 
-  const discard = async () => {
+  const discard = async ({ keepReference }: { keepReference: boolean }) => {
     await safeDeleteTrack(trackId);
     await safeRemoveUploadedObjects(user.id, trackId);
-    await forgetStaged(trackId);
+    // A STOPPED upload can still land: once the last byte is sent, storage finishes writing
+    // the file whether or not we are still listening — after the removal above found
+    // nothing. So the reference stays, and the next `sweepStagedUploads` lists the folder
+    // again (a missing row is fine there) and removes what arrived late.
+    if (!keepReference) { await forgetStaged(trackId); }
   };
 
   try {
+    // Dropped while the row was being created: stop before reading the file (on Android
+    // that is a full copy of a possibly 300 MB video) or sending any of it.
+    if (isAbandoned()) { throw new StagingAbandonedError(); }
     onProgress({ stage: 'uploading', fraction: 0 });
     const mediaUrl = await uploadTrackFile(file, mediaKind, trackId, user.id, accessToken, f => {
       onProgress({ stage: 'uploading', fraction: f });
@@ -930,10 +937,11 @@ export async function stageMediaUpload(
 
     return { trackId, userId: user.id, mediaKind, mediaUrl, scan, declaration: null };
   } catch (err) {
-    await discard();
+    const abandoned = isAbandoned();
+    await discard({ keepReference: abandoned });
     // A stopped upload rejects with "Upload aborted."; to the caller that is the screen
     // having moved on, not a failure to fall back from.
-    if (isAbandoned()) { throw new StagingAbandonedError(); }
+    if (abandoned) { throw new StagingAbandonedError(); }
     throw err;
   }
 }

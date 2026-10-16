@@ -169,14 +169,28 @@ describe('stageMediaUpload', () => {
 
     expect(mockScan).not.toHaveBeenCalled(); // never paid for a check nobody will see
     expect(mockDb.deletedTracks).toEqual(['t1']);
+    // Kept for the next sweep: a stopped upload's file can still land after the removal.
+    expect(JSON.parse((await AsyncStorage.getItem('livil.upload.staged.v1')) ?? '[]'))
+      .toEqual([{ trackId: 't1', userId: 'me' }]);
   });
 
-  it('removes what it wrote when the upload fails', async () => {
+  it('sends nothing when dropped while the row was being created', async () => {
+    // Still wanted at sign-in, dropped by the time the row exists.
+    let checks = 0;
+    const droppedAfterInsert = () => ++checks > 1;
+    await expect(stageMediaUpload(CLIP, 'video', () => {}, droppedAfterInsert)).rejects.toBeInstanceOf(StagingAbandonedError);
+
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(mockDb.deletedTracks).toEqual(['t1']);
+  });
+
+  it('removes what it wrote when the upload fails, and forgets it', async () => {
     mockUpload.mockRejectedValue(new Error('network'));
 
     await expect(stageMediaUpload(SONG, 'audio', () => {}, never)).rejects.toThrow('network');
 
     expect(mockDb.deletedTracks).toEqual(['t1']);
+    expect(JSON.parse((await AsyncStorage.getItem('livil.upload.staged.v1')) ?? '[]')).toEqual([]);
   });
 
   it('stages a video as a video row, and checks its whole sound', async () => {
