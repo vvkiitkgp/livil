@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { GradientBorder } from './GradientBorder';
@@ -77,17 +77,21 @@ export default function ProfileTabBar({
   active,
   counts,
   onChange,
+  trailing,
 }: {
   active: ProfileTab;
   counts: TabCounts;
   onChange: (next: ProfileTab) => void;
+  /** Pinned at the row's right end, outside the scrolling pills (the list/grid switch). */
+  trailing?: ReactNode;
 }) {
   const visible = visibleTabsFor(counts);
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, trailing ? styles.wrapWithTrailing : null]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={trailing ? styles.scroll : null}
         contentContainerStyle={styles.row}
       >
         {visible.map(tab => {
@@ -113,6 +117,7 @@ export default function ProfileTabBar({
           );
         })}
       </ScrollView>
+      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
     </View>
   );
 }
@@ -129,6 +134,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 8,
   },
+  wrapWithTrailing: { flexDirection: 'row', alignItems: 'center' },
+  // Takes what the switch leaves; the pills keep scrolling inside it.
+  scroll: { flex: 1 },
+  trailing: { paddingRight: 16, paddingLeft: 4 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',

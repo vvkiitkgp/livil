@@ -39,8 +39,16 @@ import ProfileBadges from '../../components/ProfileBadges';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { initialTabFor, visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import Reanimated from 'react-native-reanimated';
+import { useSwitchFade } from '../../hooks/useSwitchFade';
+import { useProfileTabCache } from '../../hooks/useProfileTabCache';
 import ProfileGridCard from '../../components/ProfileGridCard';
+import PostGridCard from '../../components/PostGridCard';
+import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
+import { useProfileLayout, type ProfileLayout } from '../../hooks/useProfileLayout';
+import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
+import { usePinnedTabsScroll } from '../../hooks/usePinnedTabsScroll';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useStories } from '../../contexts/StoriesContext';
@@ -72,6 +80,8 @@ type ListItem =
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
+  // Reposts / Uploads in the grid layout: two posts a row.
+  | { kind: 'post-row'; a: FeedPost; b: FeedPost | null; key: string }
   // Who can see this person's reposts (ADR-0028), shown above reposts the viewer can see.
   | { kind: 'audience'; key: string }
   | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
@@ -174,7 +184,9 @@ export default function UserProfileScreen() {
     fetchProfileMutuals(userId).then(m => { if (!cancelled) { setMutuals(m); } });
     return () => { cancelled = true; };
   }, [userId, isOwnProfile, blockedView]);
-  const listRef = useRef<FlatList<ListItem>>(null);
+  // Switching tab or list ↔ grid keeps the tab row pinned and starts at the first card.
+  const pinned = usePinnedTabsScroll<ListItem>();
+  const listRef = pinned.listRef;
   // Tracks whether the activity-center deep-link side effects (scroll-to-post,
   // auto-open comments) have already fired this mount — they're one-shot.
   const focusHandledRef = useRef(false);
@@ -213,6 +225,20 @@ export default function UserProfileScreen() {
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
+  const [layout, setLayout] = useProfileLayout();
+  // Home's tab cross-fade for the tab content. The pill / switch show the new choice at
+  // once (`pillTab`, `pendingLayout`); the content swaps once the old rows have faded out.
+  const fade = useSwitchFade();
+  const [pendingLayout, setPendingLayout] = useState<ProfileLayout | null>(null);
+  const changeLayout = useCallback((next: ProfileLayout) => {
+    if (next === (pendingLayout ?? layout)) { return; }
+    setPendingLayout(next);
+    fade.switchTo(next === 'grid' ? 1 : -1, () => {
+      pinned.keepTabsPinned();
+      setPendingLayout(null);
+      setLayout(next);
+    });
+  }, [pendingLayout, layout, fade, pinned, setLayout]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,6 +246,8 @@ export default function UserProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
+  // Each tab loads once; switching back shows what it had. Pull to refresh fetches again.
+  const tabCache = useProfileTabCache(tab, { posts, albums, playlists, endReached }, !loading && !error);
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // 'block' | 'unblock' — which confirmation is showing, if any.
@@ -331,17 +359,26 @@ export default function UserProfileScreen() {
 
   // Just the body of one tab. Split out of refresh() so the initial load can
   // decide WHICH tab to open before it fetches anything — see the effect below.
+  /**
+   * `isCurrent`: false once a newer tab switch or refresh started, and then nothing this
+   * load fetched is applied (see useProfileTabCache).
+   */
   const loadTabContent = useCallback(
-    async (currentTab: ProfileTab) => {
+    async (currentTab: ProfileTab, isCurrent: () => boolean = () => true) => {
       if (currentTab === 'reposts' || currentTab === 'uploads') {
         const fresh = await fetchPosts(userId, currentTab);
+        if (!isCurrent()) { return; }
         setPosts(fresh);
         setEndReached(fresh.length < PAGE_SIZE);
       } else if (currentTab === 'albums') {
-        setAlbums(await fetchAlbumsByUser(userId));
+        const fresh = await fetchAlbumsByUser(userId);
+        if (!isCurrent()) { return; }
+        setAlbums(fresh);
         setEndReached(true);
       } else {
-        setPlaylists(await fetchPlaylistsForUser(userId));
+        const fresh = await fetchPlaylistsForUser(userId);
+        if (!isCurrent()) { return; }
+        setPlaylists(fresh);
         setEndReached(true);
       }
     },
@@ -349,14 +386,14 @@ export default function UserProfileScreen() {
   );
 
   const refresh = useCallback(
-    async (currentTab: ProfileTab) => {
+    async (currentTab: ProfileTab, isCurrent: () => boolean = () => true) => {
       setError('');
       try {
         await fetchProfileAndStats(userId);
         setTabCounts(await fetchTabCounts(userId));
-        await loadTabContent(currentTab);
+        await loadTabContent(currentTab, isCurrent);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load profile.');
+        if (isCurrent()) { setError(err instanceof Error ? err.message : 'Failed to load profile.'); }
       }
     },
     [userId, fetchProfileAndStats, fetchTabCounts, loadTabContent],
@@ -375,6 +412,7 @@ export default function UserProfileScreen() {
   // whatever the counts say.
   useEffect(() => {
     let cancelled = false;
+    const isCurrent = tabCache.beginLoad();
     (async () => {
       setLoading(true);
       setError('');
@@ -387,52 +425,63 @@ export default function UserProfileScreen() {
         const initial: ProfileTab = focusPostKind === 'upload'
           ? 'uploads'
           : initialTabFor(counts);
+        if (!isCurrent()) { return; }
         setTab(initial);
-        await loadTabContent(initial);
+        await loadTabContent(initial, isCurrent);
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && isCurrent()) {
           setError(err instanceof Error ? err.message : 'Failed to load profile.');
         }
       }
-      if (!cancelled) { setLoading(false); }
+      if (!cancelled && isCurrent()) { setLoading(false); }
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // One-shot deep-link side effects when arriving from an activity-center tap.
-  // Runs once after posts load: scroll the focused post into view, then (for a
-  // comment notification) auto-open the CommentsSheet so the highlight fires.
-  useEffect(() => {
-    if (focusHandledRef.current) { return; }
-    if (loading || !focusPostId) { return; }
-    const idx = posts.findIndex(p => p.id === focusPostId);
-    if (idx < 0) { return; }  // not in the first page — bail; user can scroll manually
-    focusHandledRef.current = true;
-    // +1 to skip the sticky tab-bar row at listData[0].
-    const listIndex = idx + 1;
-    setTimeout(() => {
-      listRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.1 });
-    }, 150);
-    if (openComments) {
-      setTimeout(() => comments.openComments(focusPostId), 450);
-    }
-  }, [loading, posts, focusPostId, openComments, comments]);
-
+  const [pillTab, setPillTab] = useState<ProfileTab | null>(null);
   const handleTabChange = useCallback(
-    async (next: ProfileTab) => {
-      if (next === tab) { return; }
+    (next: ProfileTab) => {
+      const shown = pillTab ?? tab;
+      if (next === shown) { return; }
       playback.pauseAll();
-      setTab(next);
-      setPosts([]);
-      setAlbums([]);
-      setPlaylists([]);
-      setEndReached(false);
-      setLoading(true);
-      await refresh(next);
-      setLoading(false);
+      const order = visibleTabsFor(tabCounts).map(t => t.key);
+      setPillTab(next);
+      fade.switchTo(Math.sign(order.indexOf(next) - order.indexOf(shown)) || 1, stillCurrent => {
+        pinned.keepTabsPinned();
+        setPillTab(null);
+        const isCurrent = tabCache.beginLoad();
+        setTab(next);
+        // Opened before: what it had, no fetch.
+        const kept = tabCache.remembered(next);
+        if (kept) {
+          setPosts(kept.posts);
+          setAlbums(kept.albums);
+          setPlaylists(kept.playlists);
+          setEndReached(kept.endReached);
+          setLoading(false);
+          return;
+        }
+        setPosts([]);
+        setAlbums([]);
+        setPlaylists([]);
+        setEndReached(false);
+        setLoading(true);
+        setError('');
+        // Just this tab's content: the profile and its counts are already loaded.
+        void loadTabContent(next, isCurrent)
+          .catch(err => {
+            if (isCurrent()) { setError(err instanceof Error ? err.message : 'Failed to load profile.'); }
+          })
+          .then(() => {
+            if (!isCurrent()) { return; }
+            setLoading(false);
+            // The rows replace the loading row: fade them in rather than pop.
+            if (stillCurrent()) { fade.reveal(); }
+          });
+      });
     },
-    [tab, refresh, playback],
+    [pillTab, tab, tabCounts, loadTabContent, playback, pinned, fade, tabCache],
   );
 
   const refreshRelationships = rel.refresh;
@@ -445,17 +494,24 @@ export default function UserProfileScreen() {
     // The friend button reads the app-wide relationship cache, not this screen's
     // profile fetch — without refreshing it too, pulling down after someone accepted
     // your request left the button on "Requested".
-    await Promise.all([refresh(tab), refreshRelationships()]);
+    // A pull refreshes the profile: every tab loads afresh the next time it is opened.
+    tabCache.clear();
+    const isCurrent = tabCache.beginLoad();
+    await Promise.all([refresh(tab, isCurrent), refreshRelationships()]);
     setRefreshing(false);
-  }, [refresh, tab, playback, refreshRelationships]);
+    if (isCurrent()) { setLoading(false); }
+  }, [refresh, tab, playback, refreshRelationships, tabCache]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) { return; }
     if (tab !== 'reposts' && tab !== 'uploads') { return; }
     setLoadingMore(true);
+    // A page for the tab on screen now: dropped if a switch or a refresh lands first.
+    const isCurrent = tabCache.current();
     try {
       const last = posts[posts.length - 1]!;
       const more = await fetchPosts(userId, tab, last.createdAt);
+      if (!isCurrent()) { return; }
       if (more.length === 0) {
         setEndReached(true);
       } else {
@@ -467,7 +523,7 @@ export default function UserProfileScreen() {
     } finally {
       setLoadingMore(false);
     }
-  }, [endReached, fetchPosts, loadingMore, posts, tab, userId]);
+  }, [endReached, fetchPosts, loadingMore, posts, tab, userId, tabCache]);
 
   // ── Block / unblock ──
   // Both routed through ConfirmActionModal rather than acting on the tap: block
@@ -542,7 +598,13 @@ export default function UserProfileScreen() {
         ? [{ kind: 'audience', key: '__audience__' }]
         : [];
       if (visiblePosts.length > 0) {
-        return [head, ...audience, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
+        return [
+          head,
+          ...audience,
+          ...(layout === 'grid'
+            ? pairs(visiblePosts).map<ListItem>(([a, b]) => ({ kind: 'post-row', a, b, key: `post-row-${a.id}` }))
+            : visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))),
+        ];
       }
       return [head, ...audience, { kind: 'empty', key: '__empty__' }];
     }
@@ -556,7 +618,31 @@ export default function UserProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic, tabCounts.reposts]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic, tabCounts.reposts, layout]);
+
+  // Each upload's song total plays, for the grid's cards (Uploads only — never on reposts).
+  const uploadPlays = useTrackPlaysTotals(posts, tab === 'uploads' && layout === 'grid');
+
+  // One-shot deep-link side effects when arriving from an activity-center tap.
+  // Runs once after posts load: scroll the focused post into view, then (for a
+  // comment notification) auto-open the CommentsSheet so the highlight fires.
+  // Found by row, not by counting posts: in the grid a row holds two, and the audience
+  // line on Reposts is a row of its own.
+  useEffect(() => {
+    if (focusHandledRef.current) { return; }
+    if (loading || !focusPostId) { return; }
+    const listIndex = listData.findIndex(item =>
+      (item.kind === 'post' && item.post.id === focusPostId)
+      || (item.kind === 'post-row' && (item.a.id === focusPostId || item.b?.id === focusPostId)));
+    if (listIndex < 0) { return; }  // not in the first page — bail; user can scroll manually
+    focusHandledRef.current = true;
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.1 });
+    }, 150);
+    if (openComments) {
+      setTimeout(() => comments.openComments(focusPostId), 450);
+    }
+  }, [loading, listData, focusPostId, openComments, comments, listRef]);
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -566,10 +652,29 @@ export default function UserProfileScreen() {
     navigation.navigate('PlaylistDetail', { playlistId: p.id, playlistName: p.name });
   }, [navigation]);
 
-  const renderItem = useCallback(
+  const renderRow = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
-        return <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />;
+        const shownTab = pillTab ?? tab;
+        return (
+          <ProfileTabBar
+            active={shownTab}
+            counts={tabCounts}
+            onChange={handleTabChange}
+            trailing={shownTab === 'reposts' || shownTab === 'uploads'
+              ? <ProfileLayoutToggle value={pendingLayout ?? layout} onChange={changeLayout} />
+              : null}
+          />
+        );
+      }
+      if (item.kind === 'post-row') {
+        const playsFor = (p: FeedPost) => (tab === 'uploads' ? uploadPlays[p.track.id] ?? null : undefined);
+        return (
+          <View style={styles.gridRow}>
+            <PostGridCard post={item.a} plays={playsFor(item.a)} />
+            {item.b ? <PostGridCard post={item.b} plays={playsFor(item.b)} /> : <View style={styles.gridSpacer} />}
+          </View>
+        );
       }
       if (item.kind === 'blocked') {
         return (
@@ -708,7 +813,24 @@ export default function UserProfileScreen() {
         />
       );
     },
-    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic,
+     layout, changeLayout, uploadPlays, pillTab, pendingLayout],
+  );
+
+  // Everything under the tab row fades with a switch; the pinned row itself never does.
+  // The first card / grid row keeps the cards' own 14 pt gap from the tab row's divider
+  // instead of sitting on it (the audience line and the empty / loading rows pad themselves).
+  const renderItem = useCallback(
+    ({ item, index }: { item: ListItem; index: number }) => {
+      if (item.kind === 'tabs') { return renderRow({ item }); }
+      const padTop = index === 1 && item.kind !== 'audience' && item.kind !== 'empty' && item.kind !== 'loading';
+      return (
+        <Reanimated.View style={[fade.style, padTop ? styles.firstUnderTabs : null]}>
+          {renderRow({ item })}
+        </Reanimated.View>
+      );
+    },
+    [renderRow, fade.style],
   );
 
   const renderHeader = useCallback(() => {
@@ -718,7 +840,7 @@ export default function UserProfileScreen() {
     const isProfileLoading = loading && !profile;
     const relStatus = rel.status(userId);
     return (
-      <View style={styles.headerWrap}>
+      <View style={styles.headerWrap} onLayout={pinned.onHeaderLayout}>
         {/* Top bar with back button */}
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -900,7 +1022,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -921,11 +1043,18 @@ export default function UserProfileScreen() {
     }
     return <View style={styles.listFooter} />;
   }, [loadingMore, endReached, posts.length]);
+  const renderFadingFooter = useCallback(
+    () => <Reanimated.View style={fade.style}>{renderFooter()}</Reanimated.View>,
+    [renderFooter, fade.style],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
         ref={listRef}
+        onLayout={pinned.onLayout}
+        onScroll={pinned.onScroll}
+        scrollEventThrottle={16}
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
@@ -933,7 +1062,7 @@ export default function UserProfileScreen() {
         // type it remounts the header on every tab switch and flickers the
         // outlined buttons.
         ListHeaderComponent={renderHeader()}
-        ListFooterComponent={renderFooter}
+        ListFooterComponent={renderFadingFooter}
         stickyHeaderIndices={[1]}
         onScrollToIndexFailed={() => { /* item not laid out yet — silently skip */ }}
         refreshControl={
@@ -947,7 +1076,10 @@ export default function UserProfileScreen() {
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16, minHeight: pinned.minContentHeight },
+        ]}
       />
       {sheetOpen && (
         <AddUserSheet
@@ -1105,6 +1237,8 @@ const AVATAR_D = 80;
 const RING_D = AVATAR_D + 8;
 
 const styles = StyleSheet.create({
+  // Same as the gap between cards (PostCard's marginBottom).
+  firstUnderTabs: { paddingTop: 14 },
   container: { flex: 1, backgroundColor: COLORS.bg },
   listContent: { paddingBottom: 40 },
 

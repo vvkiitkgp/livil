@@ -4,8 +4,9 @@
  * Call-sites use a Livil-semantic `name` and never import phosphor/lucide
  * directly, so swapping a glyph (or the whole library) is a one-file change.
  * Backed by Phosphor (`phosphor-react-native`) for everything, plus Lucide
- * (`lucide-react-native`) for the one `drum` icon Phosphor lacks, and one glyph
- * composed from Phosphor's own paths (`compose`, see CHAT_CIRCLE_PLUS). All are
+ * (`lucide-react-native`) for the one `drum` icon Phosphor lacks, one glyph
+ * composed from Phosphor's own paths (`compose`, see CHAT_CIRCLE_PLUS) and one drawn
+ * on Phosphor's grid (`layoutList`, see FEED_SEAM). All are
  * pure-JS SVG renderers riding the already-installed `react-native-svg` — no
  * native module, no rebuild.
  *
@@ -87,6 +88,7 @@ import {
   SkipBack,
   Sparkle,
   SkipForward,
+  SquaresFour,
   Star,
   Trash,
   UploadSimple,
@@ -120,6 +122,8 @@ export type IconName =
   | 'musicNote' | 'musicNotes' | 'disc' | 'playlist'
   // visibility
   | 'public' | 'friends' | 'lock'
+  // layout switches (profile Reposts / Uploads: list ↔ grid)
+  | 'layoutList' | 'layoutGrid'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
@@ -141,10 +145,20 @@ const CHAT_CIRCLE_PLUS =
   'M176 128a8 8 0 0 1-8 8h-32v32a8 8 0 0 1-16 0v-32H88a8 8 0 0 1 0-16h32V88a8 8 0 0 1 16 0v32h32a8 8 0 0 1 8 8';
 
 /**
- * name → [Phosphor component, default weight]. Handled separately: `drum` (Lucide) and
- * `compose` (CHAT_CIRCLE_PLUS).
+ * "List" on the profile's layout switch: the seam between two feed cards — the bottom of one
+ * and the top of the next, like "] [" stood upright — so it reads as the scrolling feed the
+ * list shows rather than as a bulleted list. Phosphor has no such glyph; drawn as strokes on
+ * Phosphor's 256 grid at its regular line weight, so it sits beside `layoutGrid`.
  */
-const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose'>, [PhComponent, IconWeight]> = {
+const FEED_SEAM =
+  'M48 40V88a16 16 0 0 0 16 16H192a16 16 0 0 0 16-16V40' +
+  'M48 216V168a16 16 0 0 1 16-16H192a16 16 0 0 1 16 16v48';
+
+/**
+ * name → [Phosphor component, default weight]. Handled separately: `drum` (Lucide),
+ * `compose` (CHAT_CIRCLE_PLUS) and `layoutList` (FEED_SEAM).
+ */
+const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [PhComponent, IconWeight]> = {
   // playback
   play: [Play, 'fill'],
   pause: [Pause, 'fill'],
@@ -154,6 +168,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose'>, [PhComponent, Icon
   repeatOnce: [RepeatOnce, 'bold'],
   shuffle: [Shuffle, 'bold'],
   queue: [Queue, 'regular'],
+  // layout
+  layoutGrid: [SquaresFour, 'regular'],
   // engagement
   heart: [Heart, 'regular'],
   comment: [ChatCircle, 'regular'],
@@ -278,7 +294,7 @@ export interface IconProps {
   size?: number;
   /** Default `COLORS.textSecondary`. */
   color?: string;
-  /** Phosphor weight override; ignored by `drum` and `compose`. Falls back to the per-icon default. */
+  /** Phosphor weight override; ignored by `drum`, `compose` and `layoutList`. Falls back to the per-icon default. */
   weight?: IconWeight;
 }
 
@@ -291,6 +307,13 @@ export function Icon({ name, size = 20, color = COLORS.textSecondary, weight }: 
     return (
       <Svg width={size} height={size} viewBox="0 0 256 256" fill={color}>
         <Path d={CHAT_CIRCLE_PLUS} />
+      </Svg>
+    );
+  }
+  if (name === 'layoutList') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 256 256" fill="none">
+        <Path d={FEED_SEAM} stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" />
       </Svg>
     );
   }

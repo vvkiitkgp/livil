@@ -58,8 +58,16 @@ import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import ShareProfileSheet from '../../components/ShareProfileSheet';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { initialTabFor, visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import Reanimated from 'react-native-reanimated';
+import { useSwitchFade } from '../../hooks/useSwitchFade';
+import { useProfileTabCache } from '../../hooks/useProfileTabCache';
 import ProfileGridCard from '../../components/ProfileGridCard';
+import PostGridCard from '../../components/PostGridCard';
+import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
+import { useProfileLayout, type ProfileLayout } from '../../hooks/useProfileLayout';
+import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
+import { usePinnedTabsScroll } from '../../hooks/usePinnedTabsScroll';
 import type { RootStackParamList } from '../../navigation/types';
 
 type ProfileRow = {
@@ -95,6 +103,8 @@ type ListItem =
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
+  // Reposts / Uploads in the grid layout: two posts a row.
+  | { kind: 'post-row'; a: FeedPost; b: FeedPost | null; key: string }
   // Removed content has no post — a takedown deletes it — so it cannot ride the 'post'
   // branch and needs kinds of its own.
   | { kind: 'blocked'; track: BlockedTrack; key: string }
@@ -150,8 +160,11 @@ export default function ProfileScreen() {
   // the top).
   const { hideChrome, showChrome } = useChromeVisibility();
   const lastScrollY = useRef(0);
+  // Switching tab or list ↔ grid keeps the tab row pinned and starts at the first card.
+  const pinned = usePinnedTabsScroll<ListItem>();
   const handleScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = e.nativeEvent.contentOffset.y;
+    pinned.trackScroll(y);
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
     // Only the visible tab may move the shared tab bar — see HomeScreen.handleScroll.
@@ -159,7 +172,7 @@ export default function ProfileScreen() {
     if (y < 10) { showChrome(); return; }
     if (diff > 4) { hideChrome(); }
     else if (diff < -4) { showChrome(); }
-  }, [navigation, hideChrome, showChrome]);
+  }, [navigation, hideChrome, showChrome, pinned]);
 
   // Restore the chrome when leaving Profile so it's never stuck off-screen.
   useFocusEffect(
@@ -199,6 +212,20 @@ export default function ProfileScreen() {
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
+  const [layout, setLayout] = useProfileLayout();
+  // Home's tab cross-fade for the tab content. The pill / switch show the new choice at
+  // once (`pillTab`, `pendingLayout`); the content swaps once the old rows have faded out.
+  const fade = useSwitchFade();
+  const [pendingLayout, setPendingLayout] = useState<ProfileLayout | null>(null);
+  const changeLayout = useCallback((next: ProfileLayout) => {
+    if (next === (pendingLayout ?? layout)) { return; }
+    setPendingLayout(next);
+    fade.switchTo(next === 'grid' ? 1 : -1, () => {
+      pinned.keepTabsPinned();
+      setPendingLayout(null);
+      setLayout(next);
+    });
+  }, [pendingLayout, layout, fade, pinned, setLayout]);
   // Neither of these comes back from a post query: a takedown deletes the post, so the
   // track would otherwise vanish from its own owner's profile with no explanation.
   const [blocked, setBlocked] = useState<BlockedTrack[]>([]);
@@ -211,6 +238,8 @@ export default function ProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
+  // Each tab loads once; switching back shows what it had. Pull to refresh fetches again.
+  const tabCache = useProfileTabCache(tab, { posts, albums, playlists, endReached }, !loading && !error);
 
   const [allLinksOpen, setAllLinksOpen] = useState(false);
 
@@ -320,8 +349,17 @@ export default function ProfileScreen() {
     };
   }, []);
 
+  /**
+   * `contentOnly`: just the tab's content — a tab opened for the first time; the profile,
+   * counts and notices are already loaded. `isCurrent`: false once a newer tab switch or
+   * refresh started, and then nothing this load fetched is applied (see useProfileTabCache).
+   */
   const refresh = useCallback(
-    async (currentTab: ProfileTab, opts?: { resolveTab?: boolean }) => {
+    async (
+      currentTab: ProfileTab,
+      opts?: { resolveTab?: boolean; contentOnly?: boolean; isCurrent?: () => boolean },
+    ) => {
+      const isCurrent = opts?.isCurrent ?? (() => true);
       setError('');
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -329,35 +367,45 @@ export default function ProfileScreen() {
           throw new Error('You must be signed in to view your profile.');
         }
         const me = userData.user.id;
-        await fetchProfileAndStats(me);
-        const counts = await fetchTabCounts(me);
-        setTabCounts(counts);
+        let activeTab = currentTab;
+        if (!opts?.contentOnly) {
+          await fetchProfileAndStats(me);
+          const counts = await fetchTabCounts(me);
+          setTabCounts(counts);
 
-        // On the very first load the selection has not been decided yet: counts are what
-        // decide it, and they only exist now. Pull-to-refresh and tab switches pass no
-        // flag on purpose — re-resolving there would yank the reader off the tab they
-        // chose the moment their own counts crossed over.
-        const activeTab = opts?.resolveTab ? initialTabFor(counts) : currentTab;
-        if (activeTab !== currentTab) { setTab(activeTab); }
+          // On the very first load the selection has not been decided yet: counts are what
+          // decide it, and they only exist now. Pull-to-refresh and tab switches pass no
+          // flag on purpose — re-resolving there would yank the reader off the tab they
+          // chose the moment their own counts crossed over.
+          if (opts?.resolveTab) { activeTab = initialTabFor(counts); }
+          if (!isCurrent()) { return; }
+          if (activeTab !== currentTab) { setTab(activeTab); }
 
-        // Both resolve to [] on failure, so a profile never fails to render because a
-        // notice query errored. Not awaited together with the posts: a slow notice must
-        // not delay the content people actually came for.
-        void fetchMyBlockedTracks(supabase, me).then(setBlocked);
-        void fetchMyRemovals(supabase).then(setRemovals);
+          // Both resolve to [] on failure, so a profile never fails to render because a
+          // notice query errored. Not awaited together with the posts: a slow notice must
+          // not delay the content people actually came for.
+          void fetchMyBlockedTracks(supabase, me).then(setBlocked);
+          void fetchMyRemovals(supabase).then(setRemovals);
+        }
 
         if (activeTab === 'reposts' || activeTab === 'uploads') {
           const fresh = await fetchPosts(me, activeTab);
+          if (!isCurrent()) { return; }
           setPosts(fresh);
           setEndReached(fresh.length < PAGE_SIZE);
         } else if (activeTab === 'albums') {
-          setAlbums(await fetchAlbumsByUser(me));
+          const fresh = await fetchAlbumsByUser(me);
+          if (!isCurrent()) { return; }
+          setAlbums(fresh);
           setEndReached(true);
         } else {
-          setPlaylists(await fetchPlaylistsForUser(me));
+          const fresh = await fetchPlaylistsForUser(me);
+          if (!isCurrent()) { return; }
+          setPlaylists(fresh);
           setEndReached(true);
         }
       } catch (err) {
+        if (!isCurrent()) { return; }
         const message = err instanceof Error ? err.message : 'Failed to load profile.';
         setError(message);
       }
@@ -370,8 +418,9 @@ export default function ProfileScreen() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await refresh(tab, { resolveTab: true });
-      if (!cancelled) {setLoading(false);}
+      const isCurrent = tabCache.beginLoad();
+      await refresh(tab, { resolveTab: true, isCurrent });
+      if (!cancelled && isCurrent()) {setLoading(false);}
     })();
     return () => {
       cancelled = true;
@@ -422,20 +471,43 @@ export default function ProfileScreen() {
   );
 
   // Tab change → reload first page.
+  const [pillTab, setPillTab] = useState<ProfileTab | null>(null);
   const handleTabChange = useCallback(
-    async (next: ProfileTab) => {
-      if (next === tab) {return;}
+    (next: ProfileTab) => {
+      const shown = pillTab ?? tab;
+      if (next === shown) {return;}
       playback.pauseAll();
-      setTab(next);
-      setPosts([]);
-      setAlbums([]);
-      setPlaylists([]);
-      setEndReached(false);
-      setLoading(true);
-      await refresh(next);
-      setLoading(false);
+      const order = visibleTabsFor(tabCounts).map(t => t.key);
+      setPillTab(next);
+      fade.switchTo(Math.sign(order.indexOf(next) - order.indexOf(shown)) || 1, stillCurrent => {
+        pinned.keepTabsPinned();
+        setPillTab(null);
+        const isCurrent = tabCache.beginLoad();
+        setTab(next);
+        // Opened before: what it had, no fetch.
+        const kept = tabCache.remembered(next);
+        if (kept) {
+          setPosts(kept.posts);
+          setAlbums(kept.albums);
+          setPlaylists(kept.playlists);
+          setEndReached(kept.endReached);
+          setLoading(false);
+          return;
+        }
+        setPosts([]);
+        setAlbums([]);
+        setPlaylists([]);
+        setEndReached(false);
+        setLoading(true);
+        void refresh(next, { contentOnly: true, isCurrent }).then(() => {
+          if (!isCurrent()) { return; }
+          setLoading(false);
+          // The rows replace the loading row: fade them in rather than pop.
+          if (stillCurrent()) { fade.reveal(); }
+        });
+      });
     },
-    [tab, refresh, playback],
+    [pillTab, tab, tabCounts, refresh, playback, pinned, fade, tabCache],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -444,20 +516,27 @@ export default function ProfileScreen() {
     haptics.select();
     setRefreshing(true);
     playback.pauseAll();
-    await refresh(tab);
+    // A pull refreshes the profile: every tab loads afresh the next time it is opened.
+    tabCache.clear();
+    const isCurrent = tabCache.beginLoad();
+    await refresh(tab, { isCurrent });
     setRefreshing(false);
-  }, [refresh, tab, playback]);
+    if (isCurrent()) { setLoading(false); }
+  }, [refresh, tab, playback, tabCache]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) {return;}
     if (tab !== 'reposts' && tab !== 'uploads') { return; }
     setLoadingMore(true);
+    // A page for the tab on screen now: dropped if a switch or a refresh lands first.
+    const isCurrent = tabCache.current();
     try {
       const { data: userData } = await supabase.auth.getUser();
       const me = userData?.user?.id;
       if (!me) {return;}
       const last = posts[posts.length - 1]!;
       const more = await fetchPosts(me, tab, last.createdAt);
+      if (!isCurrent()) {return;}
       if (more.length === 0) {
         setEndReached(true);
       } else {
@@ -470,7 +549,7 @@ export default function ProfileScreen() {
     } finally {
       setLoadingMore(false);
     }
-  }, [endReached, fetchPosts, loadingMore, posts, tab]);
+  }, [endReached, fetchPosts, loadingMore, posts, tab, tabCache]);
 
   // Build the list data: a sentinel item for the sticky tab bar, then content
   // for the active tab (posts list / album grid / playlist grid) or an
@@ -501,7 +580,9 @@ export default function ProfileScreen() {
         return [
           ...top,
           ...notices,
-          ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id })),
+          ...(layout === 'grid'
+            ? pairs(visiblePosts).map<ListItem>(([a, b]) => ({ kind: 'post-row', a, b, key: `post-row-${a.id}` }))
+            : visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))),
         ];
       }
       return [...top, { kind: 'empty', key: '__empty__' }];
@@ -517,7 +598,10 @@ export default function ProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic, layout]);
+
+  // Each upload's song total plays, for the grid's cards (Uploads only — never on reposts).
+  const uploadPlays = useTrackPlaysTotals(posts, tab === 'uploads' && layout === 'grid');
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -527,11 +611,28 @@ export default function ProfileScreen() {
     navigation.navigate('PlaylistDetail', { playlistId: p.id, playlistName: p.name });
   }, [navigation]);
 
-  const renderItem = useCallback(
+  const renderRow = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
+        const shownTab = pillTab ?? tab;
         return (
-          <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />
+          <ProfileTabBar
+            active={shownTab}
+            counts={tabCounts}
+            onChange={handleTabChange}
+            trailing={shownTab === 'reposts' || shownTab === 'uploads'
+              ? <ProfileLayoutToggle value={pendingLayout ?? layout} onChange={changeLayout} />
+              : null}
+          />
+        );
+      }
+      if (item.kind === 'post-row') {
+        const playsFor = (p: FeedPost) => (tab === 'uploads' ? uploadPlays[p.track.id] ?? null : undefined);
+        return (
+          <View style={styles.gridRow}>
+            <PostGridCard post={item.a} plays={playsFor(item.a)} />
+            {item.b ? <PostGridCard post={item.b} plays={playsFor(item.b)} /> : <View style={styles.gridSpacer} />}
+          </View>
         );
       }
       if (item.kind === 'blocked') {
@@ -685,7 +786,23 @@ export default function ProfileScreen() {
     // re-rendered after the delete started and the button sat there looking idle while
     // the request was in flight.
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist,
-     removingId, repostsPublic, navigation],
+     removingId, repostsPublic, navigation, layout, changeLayout, uploadPlays, pillTab, pendingLayout],
+  );
+
+  // Everything under the tab row fades with a switch; the pinned row itself never does.
+  // The first card / grid row keeps the cards' own 14 pt gap from the tab row's divider
+  // instead of sitting on it (the audience line and the empty / loading rows pad themselves).
+  const renderItem = useCallback(
+    ({ item, index }: { item: ListItem; index: number }) => {
+      if (item.kind === 'tabs') { return renderRow({ item }); }
+      const padTop = index === 1 && item.kind !== 'audience' && item.kind !== 'empty' && item.kind !== 'loading';
+      return (
+        <Reanimated.View style={[fade.style, padTop ? styles.firstUnderTabs : null]}>
+          {renderRow({ item })}
+        </Reanimated.View>
+      );
+    },
+    [renderRow, fade.style],
   );
 
   const renderHeader = useCallback(() => {
@@ -694,7 +811,7 @@ export default function ProfileScreen() {
     const handle = profile?.username ?? '';
     const isProfileLoading = loading && !profile;
     return (
-      <View style={styles.headerWrap}>
+      <View style={styles.headerWrap} onLayout={pinned.onHeaderLayout}>
         <View style={styles.topBar}>
           <Button
             label="Track"
@@ -870,7 +987,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts]);
+  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -891,10 +1008,16 @@ export default function ProfileScreen() {
     }
     return <View style={styles.listFooter} />;
   }, [loadingMore, endReached, posts.length]);
+  const renderFadingFooter = useCallback(
+    () => <Reanimated.View style={fade.style}>{renderFooter()}</Reanimated.View>,
+    [renderFooter, fade.style],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <FlatList
+        ref={pinned.listRef}
+        onLayout={pinned.onLayout}
         data={listData}
         keyExtractor={item => item.key}
         renderItem={renderItem}
@@ -903,7 +1026,7 @@ export default function ProfileScreen() {
         // switch) remounts the whole header — which reset GradientBorder's
         // measured size to 0 and flashed the Edit-profile outline off for a frame.
         ListHeaderComponent={renderHeader()}
-        ListFooterComponent={renderFooter}
+        ListFooterComponent={renderFadingFooter}
         stickyHeaderIndices={[1]}
         refreshControl={
           <RefreshControl
@@ -916,7 +1039,10 @@ export default function ProfileScreen() {
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16 }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 64 + insets.bottom + 56 + FLOATING_PLAYER_HEIGHT + 16, minHeight: pinned.minContentHeight },
+        ]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
       />
@@ -973,6 +1099,8 @@ export default function ProfileScreen() {
 const AVATAR_RING_D = 116;
 
 const styles = StyleSheet.create({
+  // Same as the gap between cards (PostCard's marginBottom).
+  firstUnderTabs: { paddingTop: 14 },
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,

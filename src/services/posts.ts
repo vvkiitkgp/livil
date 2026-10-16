@@ -1021,6 +1021,30 @@ export async function fetchTrackPlaysTotal(trackId: string): Promise<number> {
 }
 
 /**
+ * `fetchTrackPlaysTotal` for a page of tracks in one request — the profile's Uploads grid
+ * shows each song's total on its card. Same sum, same visibility (only the posts this viewer
+ * may read count), so a card and the full-screen player agree.
+ *
+ * One row per post comes back, not per track: fine at a profile page's size (10 uploads and
+ * their reposts). A track nobody can see a post of gets no entry, which reads as 0.
+ */
+export async function fetchTrackPlaysTotals(trackIds: string[]): Promise<Record<string, number>> {
+  const ids = Array.from(new Set(trackIds.filter(Boolean)));
+  if (ids.length === 0) { return {}; }
+  const { data, error } = await supabase
+    .from('posts')
+    .select('track_id, views_count')
+    .in('track_id', ids);
+  if (error) {throw new Error(error.message);}
+  const totals: Record<string, number> = {};
+  for (const r of (data ?? []) as { track_id: string | null; views_count: number | null }[]) {
+    if (!r.track_id) { continue; }
+    totals[r.track_id] = (totals[r.track_id] ?? 0) + (r.views_count ?? 0);
+  }
+  return totals;
+}
+
+/**
  * Toggle the viewer's like on a post. Returns the resulting liked state.
  * Idempotent: clicking twice rapidly will end where it started.
  */
