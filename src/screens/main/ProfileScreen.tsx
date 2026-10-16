@@ -61,6 +61,7 @@ import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import Reanimated from 'react-native-reanimated';
 import { useSwitchFade } from '../../hooks/useSwitchFade';
+import { useProfileTabCache } from '../../hooks/useProfileTabCache';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import PostGridCard from '../../components/PostGridCard';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
@@ -237,6 +238,8 @@ export default function ProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
+  // Each tab loads once; switching back shows what it had. Pull to refresh fetches again.
+  const tabCache = useProfileTabCache(tab, { posts, albums, playlists, endReached }, !loading && !error);
 
   const [allLinksOpen, setAllLinksOpen] = useState(false);
 
@@ -346,8 +349,17 @@ export default function ProfileScreen() {
     };
   }, []);
 
+  /**
+   * `contentOnly`: just the tab's content — a tab opened for the first time; the profile,
+   * counts and notices are already loaded. `isCurrent`: false once a newer tab switch or
+   * refresh started, and then nothing this load fetched is applied (see useProfileTabCache).
+   */
   const refresh = useCallback(
-    async (currentTab: ProfileTab, opts?: { resolveTab?: boolean }) => {
+    async (
+      currentTab: ProfileTab,
+      opts?: { resolveTab?: boolean; contentOnly?: boolean; isCurrent?: () => boolean },
+    ) => {
+      const isCurrent = opts?.isCurrent ?? (() => true);
       setError('');
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -355,35 +367,45 @@ export default function ProfileScreen() {
           throw new Error('You must be signed in to view your profile.');
         }
         const me = userData.user.id;
-        await fetchProfileAndStats(me);
-        const counts = await fetchTabCounts(me);
-        setTabCounts(counts);
+        let activeTab = currentTab;
+        if (!opts?.contentOnly) {
+          await fetchProfileAndStats(me);
+          const counts = await fetchTabCounts(me);
+          setTabCounts(counts);
 
-        // On the very first load the selection has not been decided yet: counts are what
-        // decide it, and they only exist now. Pull-to-refresh and tab switches pass no
-        // flag on purpose — re-resolving there would yank the reader off the tab they
-        // chose the moment their own counts crossed over.
-        const activeTab = opts?.resolveTab ? initialTabFor(counts) : currentTab;
-        if (activeTab !== currentTab) { setTab(activeTab); }
+          // On the very first load the selection has not been decided yet: counts are what
+          // decide it, and they only exist now. Pull-to-refresh and tab switches pass no
+          // flag on purpose — re-resolving there would yank the reader off the tab they
+          // chose the moment their own counts crossed over.
+          if (opts?.resolveTab) { activeTab = initialTabFor(counts); }
+          if (!isCurrent()) { return; }
+          if (activeTab !== currentTab) { setTab(activeTab); }
 
-        // Both resolve to [] on failure, so a profile never fails to render because a
-        // notice query errored. Not awaited together with the posts: a slow notice must
-        // not delay the content people actually came for.
-        void fetchMyBlockedTracks(supabase, me).then(setBlocked);
-        void fetchMyRemovals(supabase).then(setRemovals);
+          // Both resolve to [] on failure, so a profile never fails to render because a
+          // notice query errored. Not awaited together with the posts: a slow notice must
+          // not delay the content people actually came for.
+          void fetchMyBlockedTracks(supabase, me).then(setBlocked);
+          void fetchMyRemovals(supabase).then(setRemovals);
+        }
 
         if (activeTab === 'reposts' || activeTab === 'uploads') {
           const fresh = await fetchPosts(me, activeTab);
+          if (!isCurrent()) { return; }
           setPosts(fresh);
           setEndReached(fresh.length < PAGE_SIZE);
         } else if (activeTab === 'albums') {
-          setAlbums(await fetchAlbumsByUser(me));
+          const fresh = await fetchAlbumsByUser(me);
+          if (!isCurrent()) { return; }
+          setAlbums(fresh);
           setEndReached(true);
         } else {
-          setPlaylists(await fetchPlaylistsForUser(me));
+          const fresh = await fetchPlaylistsForUser(me);
+          if (!isCurrent()) { return; }
+          setPlaylists(fresh);
           setEndReached(true);
         }
       } catch (err) {
+        if (!isCurrent()) { return; }
         const message = err instanceof Error ? err.message : 'Failed to load profile.';
         setError(message);
       }
@@ -396,8 +418,9 @@ export default function ProfileScreen() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await refresh(tab, { resolveTab: true });
-      if (!cancelled) {setLoading(false);}
+      const isCurrent = tabCache.beginLoad();
+      await refresh(tab, { resolveTab: true, isCurrent });
+      if (!cancelled && isCurrent()) {setLoading(false);}
     })();
     return () => {
       cancelled = true;
@@ -459,20 +482,32 @@ export default function ProfileScreen() {
       fade.switchTo(Math.sign(order.indexOf(next) - order.indexOf(shown)) || 1, stillCurrent => {
         pinned.keepTabsPinned();
         setPillTab(null);
+        const isCurrent = tabCache.beginLoad();
         setTab(next);
+        // Opened before: what it had, no fetch.
+        const kept = tabCache.remembered(next);
+        if (kept) {
+          setPosts(kept.posts);
+          setAlbums(kept.albums);
+          setPlaylists(kept.playlists);
+          setEndReached(kept.endReached);
+          setLoading(false);
+          return;
+        }
         setPosts([]);
         setAlbums([]);
         setPlaylists([]);
         setEndReached(false);
         setLoading(true);
-        void refresh(next).then(() => {
+        void refresh(next, { contentOnly: true, isCurrent }).then(() => {
+          if (!isCurrent()) { return; }
           setLoading(false);
           // The rows replace the loading row: fade them in rather than pop.
           if (stillCurrent()) { fade.reveal(); }
         });
       });
     },
-    [pillTab, tab, tabCounts, refresh, playback, pinned, fade],
+    [pillTab, tab, tabCounts, refresh, playback, pinned, fade, tabCache],
   );
 
   const handleRefresh = useCallback(async () => {
@@ -481,20 +516,27 @@ export default function ProfileScreen() {
     haptics.select();
     setRefreshing(true);
     playback.pauseAll();
-    await refresh(tab);
+    // A pull refreshes the profile: every tab loads afresh the next time it is opened.
+    tabCache.clear();
+    const isCurrent = tabCache.beginLoad();
+    await refresh(tab, { isCurrent });
     setRefreshing(false);
-  }, [refresh, tab, playback]);
+    if (isCurrent()) { setLoading(false); }
+  }, [refresh, tab, playback, tabCache]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) {return;}
     if (tab !== 'reposts' && tab !== 'uploads') { return; }
     setLoadingMore(true);
+    // A page for the tab on screen now: dropped if a switch or a refresh lands first.
+    const isCurrent = tabCache.current();
     try {
       const { data: userData } = await supabase.auth.getUser();
       const me = userData?.user?.id;
       if (!me) {return;}
       const last = posts[posts.length - 1]!;
       const more = await fetchPosts(me, tab, last.createdAt);
+      if (!isCurrent()) {return;}
       if (more.length === 0) {
         setEndReached(true);
       } else {
@@ -507,7 +549,7 @@ export default function ProfileScreen() {
     } finally {
       setLoadingMore(false);
     }
-  }, [endReached, fetchPosts, loadingMore, posts, tab]);
+  }, [endReached, fetchPosts, loadingMore, posts, tab, tabCache]);
 
   // Build the list data: a sentinel item for the sticky tab bar, then content
   // for the active tab (posts list / album grid / playlist grid) or an

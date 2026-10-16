@@ -42,6 +42,7 @@ import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import Reanimated from 'react-native-reanimated';
 import { useSwitchFade } from '../../hooks/useSwitchFade';
+import { useProfileTabCache } from '../../hooks/useProfileTabCache';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import PostGridCard from '../../components/PostGridCard';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
@@ -245,6 +246,8 @@ export default function UserProfileScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [error, setError] = useState('');
+  // Each tab loads once; switching back shows what it had. Pull to refresh fetches again.
+  const tabCache = useProfileTabCache(tab, { posts, albums, playlists, endReached }, !loading && !error);
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // 'block' | 'unblock' — which confirmation is showing, if any.
@@ -356,17 +359,26 @@ export default function UserProfileScreen() {
 
   // Just the body of one tab. Split out of refresh() so the initial load can
   // decide WHICH tab to open before it fetches anything — see the effect below.
+  /**
+   * `isCurrent`: false once a newer tab switch or refresh started, and then nothing this
+   * load fetched is applied (see useProfileTabCache).
+   */
   const loadTabContent = useCallback(
-    async (currentTab: ProfileTab) => {
+    async (currentTab: ProfileTab, isCurrent: () => boolean = () => true) => {
       if (currentTab === 'reposts' || currentTab === 'uploads') {
         const fresh = await fetchPosts(userId, currentTab);
+        if (!isCurrent()) { return; }
         setPosts(fresh);
         setEndReached(fresh.length < PAGE_SIZE);
       } else if (currentTab === 'albums') {
-        setAlbums(await fetchAlbumsByUser(userId));
+        const fresh = await fetchAlbumsByUser(userId);
+        if (!isCurrent()) { return; }
+        setAlbums(fresh);
         setEndReached(true);
       } else {
-        setPlaylists(await fetchPlaylistsForUser(userId));
+        const fresh = await fetchPlaylistsForUser(userId);
+        if (!isCurrent()) { return; }
+        setPlaylists(fresh);
         setEndReached(true);
       }
     },
@@ -374,14 +386,14 @@ export default function UserProfileScreen() {
   );
 
   const refresh = useCallback(
-    async (currentTab: ProfileTab) => {
+    async (currentTab: ProfileTab, isCurrent: () => boolean = () => true) => {
       setError('');
       try {
         await fetchProfileAndStats(userId);
         setTabCounts(await fetchTabCounts(userId));
-        await loadTabContent(currentTab);
+        await loadTabContent(currentTab, isCurrent);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load profile.');
+        if (isCurrent()) { setError(err instanceof Error ? err.message : 'Failed to load profile.'); }
       }
     },
     [userId, fetchProfileAndStats, fetchTabCounts, loadTabContent],
@@ -400,6 +412,7 @@ export default function UserProfileScreen() {
   // whatever the counts say.
   useEffect(() => {
     let cancelled = false;
+    const isCurrent = tabCache.beginLoad();
     (async () => {
       setLoading(true);
       setError('');
@@ -412,14 +425,15 @@ export default function UserProfileScreen() {
         const initial: ProfileTab = focusPostKind === 'upload'
           ? 'uploads'
           : initialTabFor(counts);
+        if (!isCurrent()) { return; }
         setTab(initial);
-        await loadTabContent(initial);
+        await loadTabContent(initial, isCurrent);
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && isCurrent()) {
           setError(err instanceof Error ? err.message : 'Failed to load profile.');
         }
       }
-      if (!cancelled) { setLoading(false); }
+      if (!cancelled && isCurrent()) { setLoading(false); }
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -436,20 +450,38 @@ export default function UserProfileScreen() {
       fade.switchTo(Math.sign(order.indexOf(next) - order.indexOf(shown)) || 1, stillCurrent => {
         pinned.keepTabsPinned();
         setPillTab(null);
+        const isCurrent = tabCache.beginLoad();
         setTab(next);
+        // Opened before: what it had, no fetch.
+        const kept = tabCache.remembered(next);
+        if (kept) {
+          setPosts(kept.posts);
+          setAlbums(kept.albums);
+          setPlaylists(kept.playlists);
+          setEndReached(kept.endReached);
+          setLoading(false);
+          return;
+        }
         setPosts([]);
         setAlbums([]);
         setPlaylists([]);
         setEndReached(false);
         setLoading(true);
-        void refresh(next).then(() => {
-          setLoading(false);
-          // The rows replace the loading row: fade them in rather than pop.
-          if (stillCurrent()) { fade.reveal(); }
-        });
+        setError('');
+        // Just this tab's content: the profile and its counts are already loaded.
+        void loadTabContent(next, isCurrent)
+          .catch(err => {
+            if (isCurrent()) { setError(err instanceof Error ? err.message : 'Failed to load profile.'); }
+          })
+          .then(() => {
+            if (!isCurrent()) { return; }
+            setLoading(false);
+            // The rows replace the loading row: fade them in rather than pop.
+            if (stillCurrent()) { fade.reveal(); }
+          });
       });
     },
-    [pillTab, tab, tabCounts, refresh, playback, pinned, fade],
+    [pillTab, tab, tabCounts, loadTabContent, playback, pinned, fade, tabCache],
   );
 
   const refreshRelationships = rel.refresh;
@@ -462,17 +494,24 @@ export default function UserProfileScreen() {
     // The friend button reads the app-wide relationship cache, not this screen's
     // profile fetch — without refreshing it too, pulling down after someone accepted
     // your request left the button on "Requested".
-    await Promise.all([refresh(tab), refreshRelationships()]);
+    // A pull refreshes the profile: every tab loads afresh the next time it is opened.
+    tabCache.clear();
+    const isCurrent = tabCache.beginLoad();
+    await Promise.all([refresh(tab, isCurrent), refreshRelationships()]);
     setRefreshing(false);
-  }, [refresh, tab, playback, refreshRelationships]);
+    if (isCurrent()) { setLoading(false); }
+  }, [refresh, tab, playback, refreshRelationships, tabCache]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) { return; }
     if (tab !== 'reposts' && tab !== 'uploads') { return; }
     setLoadingMore(true);
+    // A page for the tab on screen now: dropped if a switch or a refresh lands first.
+    const isCurrent = tabCache.current();
     try {
       const last = posts[posts.length - 1]!;
       const more = await fetchPosts(userId, tab, last.createdAt);
+      if (!isCurrent()) { return; }
       if (more.length === 0) {
         setEndReached(true);
       } else {
@@ -484,7 +523,7 @@ export default function UserProfileScreen() {
     } finally {
       setLoadingMore(false);
     }
-  }, [endReached, fetchPosts, loadingMore, posts, tab, userId]);
+  }, [endReached, fetchPosts, loadingMore, posts, tab, userId, tabCache]);
 
   // ── Block / unblock ──
   // Both routed through ConfirmActionModal rather than acting on the tap: block
