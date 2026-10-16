@@ -11,6 +11,8 @@ import {
   createAuddProvider,
   type Deps,
   FULL_SONG_CHUNK_LIMIT,
+  FULL_SONG_SCANS_PER_USER_PER_DAY,
+  SCANS_PER_USER_PER_DAY,
   handle,
   isOwnPublicMedia,
   normalizeAudd,
@@ -254,6 +256,18 @@ Deno.test('a whole-song request that runs out of time is failed, not a negative'
   assertEquals(out.status === 'failed' && out.reason.includes('longer than'), true);
 });
 
+Deno.test('across segments the strongest match wins, not the first', () => {
+  const out = normalizeAudd({
+    status: 'success',
+    result: [
+      { songs: [{ title: 'Weak echo', artist: 'Someone', score: 41 }] },
+      { songs: [] },
+      { songs: [{ title: 'Kesariya', artist: 'Arijit Singh', score: 98 }] },
+    ],
+  });
+  assertEquals(out.status === 'complete' && out.matchFound && out.title, 'Kesariya');
+});
+
 Deno.test('an enterprise match reads the isrc and score off the song itself', () => {
   const out = normalizeAudd({
     status: 'success',
@@ -279,14 +293,33 @@ Deno.test('a score outside 0–100 is recorded as no score, not clamped', () => 
 
 const OWNER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const SUPA = 'https://p.supabase.co';
+const OWN_AUDIO = `${SUPA}/storage/v1/object/public/tracks-media/${OWNER}/${TRACK}/audio.wav`;
+const attemptsOf = (n: number, fullSong: boolean): Attempt[] =>
+  Array.from({ length: n }, () => ({ user_id: OWNER, track_id: TRACK, full_song: fullSong }));
 
-/** Just enough of the two clients for `handle` to reach the provider and record. */
-function handlerDeps(seenOpts: Array<ScanOptions | undefined>): Deps {
+type Attempt = { user_id: string; track_id: string; full_song: boolean };
+type AdminState = {
+  attempts: Attempt[];
+  upserts: Array<Record<string, unknown>>;
+  /** The track's stored verdict, if any (step 4, REUSE). */
+  previous: Record<string, unknown> | null;
+  ledgerFails?: boolean;
+};
+
+/**
+ * Just enough of the two clients for `handle` to reach the provider and record. The admin
+ * fake keeps the attempts ledger as a list, so the quota is counted the way PostgREST would
+ * count it — by the filters the handler actually applies.
+ */
+function handlerDeps(
+  seenOpts: Array<ScanOptions | undefined>,
+  state: AdminState = { attempts: [], upserts: [], previous: null },
+): Deps {
   const track = {
     id: TRACK,
     uploader_id: OWNER,
     media_kind: 'audio',
-    audio_url: `${SUPA}/storage/v1/object/public/tracks-media/${OWNER}/${TRACK}/audio.wav`,
+    audio_url: OWN_AUDIO,
     video_url: null,
   };
   const userClient = {
@@ -296,9 +329,34 @@ function handlerDeps(seenOpts: Array<ScanOptions | undefined>): Deps {
     }),
   };
   const adminClient = {
-    from: () => ({
-      select: () => ({ eq: () => ({ gte: () => Promise.resolve({ count: 0, error: null }) }) }),
-      upsert: () => Promise.resolve({ error: null }),
+    from: (table: string) => ({
+      select: () => {
+        const filters: Record<string, unknown> = {};
+        const q = {
+          eq(col: string, val: unknown) { filters[col] = val; return q; },
+          gte() { return q; },
+          maybeSingle: () => Promise.resolve({
+            data: table === 'track_copyright_scans' ? state.previous : null,
+            error: null,
+          }),
+          then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+            const rows = state.attempts.filter(a =>
+              a.user_id === filters.user_id
+              && (filters.full_song === undefined || a.full_song === filters.full_song));
+            return Promise.resolve({ count: rows.length, error: null }).then(resolve, reject);
+          },
+        };
+        return q;
+      },
+      insert: (row: Attempt) => {
+        if (state.ledgerFails) return Promise.resolve({ error: { message: 'down' } });
+        state.attempts.push(row);
+        return Promise.resolve({ error: null });
+      },
+      upsert: (row: Record<string, unknown>) => {
+        state.upserts.push(row);
+        return Promise.resolve({ error: null });
+      },
     }),
   };
   return {
@@ -332,6 +390,94 @@ Deno.test('the handler asks for the whole song only when the client says exactly
   // Not a boolean: treated as not asked.
   assertEquals((await handle(post({ trackId: TRACK, fullSong: 'yes' }), deps)).status, 200);
   assertEquals(seen.map(o => o?.fullSong), [true, false, false]);
+});
+
+// ── the spend cap ───────────────────────────────────────────────────────────
+//
+// The cap used to count verdict rows. A verdict is upserted per track, and a deleted
+// track takes its unanswered verdict with it — so calling again on one track, or deleting
+// and re-uploading, never reached the limit. With the whole-song path a call can bill up
+// to 100 chunks, so these pin that every call reaching the provider is counted, before it.
+
+Deno.test('calls on one track still reach the daily cap: the ledger counts calls, not verdicts', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = { attempts: attemptsOf(SCANS_PER_USER_PER_DAY, false), upserts: [], previous: null };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(res.status, 429);
+  assertEquals(seen.length, 0); // the provider was never asked
+});
+
+Deno.test('every call that reaches the provider is written to the ledger first', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = { attempts: [], upserts: [], previous: null };
+  const deps = handlerDeps(seen, state);
+  await handle(post({ trackId: TRACK, fullSong: true }), deps);
+  await handle(post({ trackId: TRACK }), deps);
+  assertEquals(state.attempts, [
+    { user_id: OWNER, track_id: TRACK, full_song: true },
+    { user_id: OWNER, track_id: TRACK, full_song: false },
+  ]);
+});
+
+Deno.test('an attempt that cannot be written is not made', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = { attempts: [], upserts: [], previous: null, ledgerFails: true };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(res.status, 503);
+  assertEquals(seen.length, 0);
+});
+
+Deno.test('past the whole-song allowance a request is served as the quick check, not refused', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = {
+    attempts: attemptsOf(FULL_SONG_SCANS_PER_USER_PER_DAY, true),
+    upserts: [],
+    previous: null,
+  };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(res.status, 200);
+  assertEquals(seen.map(o => o?.fullSong), [false]);
+  assertEquals(state.attempts[state.attempts.length - 1].full_song, false);
+});
+
+Deno.test('a file with a complete verdict is answered from it: no provider call, nothing billed', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = {
+    attempts: [],
+    upserts: [],
+    previous: {
+      status: 'complete',
+      match_found: true,
+      matched_title: 'Kesariya',
+      matched_artist: 'Arijit Singh',
+      matched_isrc: 'INS182200001',
+      scanned_media_url: OWN_AUDIO,
+    },
+  };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(await res.json(), {
+    status: 'complete',
+    matchFound: true,
+    title: 'Kesariya',
+    artist: 'Arijit Singh',
+    isrc: 'INS182200001',
+  });
+  assertEquals(seen.length, 0);
+  assertEquals(state.attempts.length, 0);
+  assertEquals(state.upserts.length, 0);
+});
+
+Deno.test('a failed verdict, or one for another file, is checked again', async () => {
+  for (const previous of [
+    { status: 'failed', match_found: null, scanned_media_url: OWN_AUDIO },
+    { status: 'complete', match_found: false, scanned_media_url: `${OWN_AUDIO}.old` },
+  ]) {
+    const seen: Array<ScanOptions | undefined> = [];
+    const state: AdminState = { attempts: [], upserts: [], previous };
+    await handle(post({ trackId: TRACK }), handlerDeps(seen, state));
+    assertEquals(seen.length, 1);
+    assertEquals(state.attempts.length, 1);
+  }
 });
 
 // ── publicShape ─────────────────────────────────────────────────────────────
@@ -414,6 +560,17 @@ Deno.test('a user-id prefix collision is refused', () => {
   );
 });
 
+Deno.test('a path that climbs out of the uploader folder is refused, however it is spelled', () => {
+  for (const sneaky of [
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/../u2/t/a.mp3',
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/%2e%2e/u2/t/a.mp3',
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/..%2Fu2/t/a.mp3',
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/%2E%2E%2Fu2/t/a.mp3',
+  ]) {
+    assertEquals(isOwnPublicMedia(sneaky, 'https://p.supabase.co', 'u1'), false, sneaky);
+  }
+});
+
 Deno.test('every column is written on every branch, so an upsert cannot retain stale metadata', () => {
   const failed = rowFor(TRACK, 'audd', URL_, { status: 'failed', reason: 'x' });
   // The regression: a re-scan that fails after a match leaving matched_title behind.
@@ -444,7 +601,7 @@ Deno.test('the scan quota is counted without a relational embed', async () => {
   // broken form in prose, and a test that cannot tell code from a comment about code
   // would fail on its own documentation.
   const quota = src
-    .slice(src.indexOf('4. QUOTA'), src.indexOf('could not check the scan quota'))
+    .slice(src.indexOf('5. QUOTA'), src.indexOf('could not check the scan quota'))
     .split('\n')
     .filter(l => !l.trim().startsWith('//'))
     .join('\n');
@@ -456,8 +613,9 @@ Deno.test('the scan quota is counted without a relational embed', async () => {
       + 'so the embed cannot resolve and every scan will 503 into a silent free pass',
   );
   assertEquals(
-    quota.includes('track_uploader_id'),
+    quota.includes("from('copyright_scan_attempts')"),
     true,
-    'the quota must count on the scan row own track_uploader_id snapshot',
+    'the quota must count calls on the attempts ledger, never verdict rows (an upsert per '
+      + 'track and a deleted track both hand calls back)',
   );
 });

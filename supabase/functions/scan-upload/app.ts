@@ -262,7 +262,7 @@ export function normalizeAudd(payload: AuddResponse): ScanOutcome {
     return { status: 'failed', reason: msg.slice(0, 300) };
   }
 
-  const first = firstResult(payload.result);
+  const first = bestResult(payload.result);
   if (!first) {
     return { status: 'complete', matchFound: false };
   }
@@ -281,15 +281,23 @@ export function normalizeAudd(payload: AuddResponse): ScanOutcome {
   };
 }
 
-/** Standard endpoint returns one object; enterprise returns segments of songs. */
-function firstResult(result: AuddResponse['result']): AuddResult | null {
+/**
+ * Standard endpoint returns one object; enterprise returns segments of songs. Across
+ * segments the highest-scoring song wins (the first, on a tie or with no scores): with
+ * every 12-second chunk checked, the first hit can be a weak one somewhere in a long file,
+ * and it is the title the uploader is asked about.
+ */
+function bestResult(result: AuddResponse['result']): AuddResult | null {
   if (!result) return null;
   if (Array.isArray(result)) {
+    let best: AuddResult | null = null;
     for (const segment of result) {
-      const song = segment?.songs?.[0];
-      if (song) return song;
+      for (const song of segment?.songs ?? []) {
+        if (!song) continue;
+        if (!best || (song.score ?? -1) > (best.score ?? -1)) best = song;
+      }
     }
-    return null;
+    return best;
   }
   return result.title || result.artist ? result : null;
 }
@@ -317,19 +325,52 @@ function errText(e: unknown): string {
  * Pinning to `{uploaderId}/` also bounds the file to the bucket's own size ceiling.
  */
 export function isOwnPublicMedia(url: string, supabaseUrl: string, uploaderId: string): boolean {
-  const prefix = `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/tracks-media/${uploaderId}/`;
-  return url.startsWith(prefix);
+  // Parsed, not prefix-matched on the raw string: `…/<me>/../<them>/…` starts with the
+  // caller's folder but names someone else's file. The URL parser folds `.`/`..` segments
+  // (`%2e%2e` included), and the decoded path is checked again for any that survive
+  // encoded slashes (`..%2F`), which storage would decode on its side.
+  let parsed: URL;
+  let base: URL;
+  try {
+    parsed = new URL(url);
+    base = new URL(supabaseUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.origin !== base.origin) return false;
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname);
+  } catch {
+    return false;
+  }
+  if (path.split('/').some(seg => seg === '..' || seg === '.')) return false;
+  const basePath = base.pathname.replace(/\/+$/, '');
+  return path.startsWith(`${basePath}/storage/v1/object/public/tracks-media/${uploaderId}/`);
 }
 
 /**
- * How many scans one account may run per day.
+ * How many provider calls one account may make per day.
  *
  * There is no per-user upload quota anywhere in Livil and no rate limit in front of this
  * function, so before this cap the only bound on provider spend was the provider's own
  * plan. This is the first Livil surface where an unbounded request costs MONEY rather
  * than rows, which is why a cap ships with it rather than after it.
+ *
+ * Counted on `copyright_scan_attempts` (migration 20261028000000), one row per call that
+ * reaches the provider. It used to count `track_copyright_scans` rows, which a re-scan of
+ * the same track (an upsert) and a deleted track (whose unanswered rows go with it) both
+ * walked straight past.
  */
 export const SCANS_PER_USER_PER_DAY = 50;
+
+/**
+ * Of those, how many may be whole-song calls (up to FULL_SONG_CHUNK_LIMIT billed chunks
+ * each). Past it the request is served as the quick check — a song still gets checked, a
+ * video is `skipped` — rather than refused, so an artist uploading a lot is never stopped.
+ * Worst case per account per day: 20 × $0.20.
+ */
+export const FULL_SONG_SCANS_PER_USER_PER_DAY = 20;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -410,35 +451,54 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
 
   const admin = deps.adminClient();
 
-  // 4. QUOTA, before the billable call rather than after it.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  //
-  // Counted on the scan row's OWN `track_uploader_id`, with no join.
-  //
-  // This used to embed `tracks!inner(uploader_id)`. PostgREST resolves an embed from
-  // foreign-key metadata, so when 20260923070000 dropped the FK — deliberately, so a
-  // rights declaration outlives its track — the embed stopped resolving with PGRST200
-  // and every scan returned 503. The scan is fail-safe by design, so nothing broke
-  // loudly: uploads simply published with no copyright check at all.
-  //
-  // The snapshot column added by that same migration is the better key anyway. It is on
-  // the row, filled by a trigger, and survives the track being deleted — so the quota
-  // cannot be reset by deleting tracks, which the join-based version allowed.
-  const { count, error: countErr } = await admin
+  // 4. REUSE. A file that already has a complete verdict is not sent again: the answer
+  //    cannot change (the file is frozen once real), and every call costs money. Only a
+  //    complete verdict FOR THIS FILE — a failed or skipped one is worth another try.
+  const { data: previous, error: previousErr } = await admin
     .from('track_copyright_scans')
+    .select('status, match_found, matched_title, matched_artist, matched_isrc, scanned_media_url')
+    .eq('track_id', trackId)
+    .eq('provider', deps.provider.name)
+    .maybeSingle();
+  if (!previousErr && previous && previous.status === 'complete' && previous.scanned_media_url === mediaUrl) {
+    return json(200, publicShape(outcomeFromRow(previous)));
+  }
+
+  // 5. QUOTA, before the billable call rather than after it — counted on the attempts
+  //    ledger (see SCANS_PER_USER_PER_DAY), never on verdict rows and never through a
+  //    relational embed: the ledger has no foreign key to tracks, by design.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count, error: countErr } = await admin
+    .from('copyright_scan_attempts')
     .select('id', { count: 'exact', head: true })
-    .eq('track_uploader_id', user.id)
+    .eq('user_id', user.id)
     .gte('created_at', since);
   // A failed count must not become a free pass: if we cannot tell, we do not spend.
   if (countErr) return json(503, { error: 'could not check the scan quota' });
   if ((count ?? 0) >= SCANS_PER_USER_PER_DAY) {
     return json(429, { error: 'daily scan limit reached' });
   }
+  if (fullSong) {
+    const { count: fullCount, error: fullErr } = await admin
+      .from('copyright_scan_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('full_song', true)
+      .gte('created_at', since);
+    if (fullErr) return json(503, { error: 'could not check the scan quota' });
+    if ((fullCount ?? 0) >= FULL_SONG_SCANS_PER_USER_PER_DAY) fullSong = false;
+  }
 
-  // 5. ASK.
+  // 6. LEDGER, before the call: an attempt that is not written is not made.
+  const { error: ledgerErr } = await admin
+    .from('copyright_scan_attempts')
+    .insert({ user_id: user.id, track_id: trackId, full_song: fullSong });
+  if (ledgerErr) return json(503, { error: 'could not check the scan quota' });
+
+  // 7. ASK.
   const outcome = await deps.provider.scan(mediaUrl, kind, { fullSong });
 
-  // 6. RECORD. Upsert on (track_id, provider) so a retry or a duplicate delivery
+  // 8. RECORD. Upsert on (track_id, provider) so a retry or a duplicate delivery
   //    updates the one row rather than adding a second verdict for the same track.
   const row = rowFor(trackId, deps.provider.name, mediaUrl, outcome);
   const { error: writeErr } = await admin
@@ -523,6 +583,25 @@ export function rowFor(
     matched_artist: o.artist,
     matched_isrc: o.isrc,
     matched_metadata: o.raw as Record<string, unknown>,
+  };
+}
+
+/** A stored complete verdict, back as the outcome it was recorded from (step 4, REUSE). */
+export function outcomeFromRow(row: {
+  match_found: boolean | null;
+  matched_title: string | null;
+  matched_artist: string | null;
+  matched_isrc: string | null;
+}): ScanOutcome {
+  if (row.match_found !== true) return { status: 'complete', matchFound: false };
+  return {
+    status: 'complete',
+    matchFound: true,
+    confidence: null,
+    title: row.matched_title,
+    artist: row.matched_artist,
+    isrc: row.matched_isrc,
+    raw: null,
   };
 }
 

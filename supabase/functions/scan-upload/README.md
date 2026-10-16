@@ -42,15 +42,21 @@ silence.
 6. **CORS preflight is answered.** The web dashboard calls this from a browser. An
    unanswered `OPTIONS` means the POST is never sent — a failure this project has
    already paid for once (`20260914` / PR #216).
-7. **Spend is capped, but only here.** `SCANS_PER_USER_PER_DAY` (50) is checked BEFORE
-   the billable call, and a failed count returns 503 rather than becoming a free pass.
-   That is the only bound: there is still no per-user upload quota anywhere in Livil and
-   no rate limit in front of this function. Note the enterprise path bills per unit of
-   AUDIO DURATION, not per request, so one long file is one request and a large bill —
-   keep `AUDD_ENTERPRISE_ENABLED` unset until you are comfortable with that. The
-   whole-song audio path (below) is bounded per scan by `FULL_SONG_CHUNK_LIMIT` (100
-   chunks = 20 min of audio, $0.20), so the worst case for one account is 50 × $0.20 a
-   day.
+7. **Spend is capped, but only here.** `SCANS_PER_USER_PER_DAY` (50) provider calls a
+   day, counted on `copyright_scan_attempts` (migration 20261028000000): one row per call
+   that reaches the provider, written BEFORE the call (a row that cannot be written means
+   no call), never updated, not tied to the track. It used to count
+   `track_copyright_scans` rows, and that was walkable: the verdict is upserted per track
+   (re-scanning one track never moved the count) and a deleted track's unanswered
+   verdict goes with it (handing the slot back). A failed count returns 503 rather than
+   becoming a free pass. A file that already has a `complete` verdict is answered from
+   it without calling the provider at all. Whole-song calls (below) are bounded per call
+   by `FULL_SONG_CHUNK_LIMIT` (100 chunks = 20 min of audio, $0.20) and per day by
+   `FULL_SONG_SCANS_PER_USER_PER_DAY` (20; past it a request is served as the quick
+   check), so the worst case for one account is 20 × $0.20 + 30 quick calls a day. There
+   is still no per-user upload quota anywhere in Livil and no rate limit in front of this
+   function. The enterprise path bills per unit of AUDIO DURATION, not per request —
+   keep `AUDD_ENTERPRISE_ENABLED` unset until you are comfortable with that.
 8. **The uploader chooses what gets scanned — check both defences are present.** A
    security review killed the first draft over this: `tracks_update_own` constrains which
    rows, never which columns, so an uploader could scan a harmless file and then swap in
@@ -95,10 +101,14 @@ one billed request each (a 2-minute song is 10).
   scan records `failed` with the reason. That is under the 60 s an iPhone waits for a
   silent response, so the app reads the recorded verdict rather than timing out first.
 - **Video goes as-is.** The enterprise docs take "a URL to the audio/video", so the video's
-  own URL is sent and the provider extracts the sound. Videos are not staged early like
-  songs, so the mobile app runs this check at Post ("Checking it against known
-  recordings…"). A large video has to be downloaded by the provider first and is the
-  likeliest to hit the 50 s ceiling; it then records `failed` and publishes.
+  own URL is sent and the provider extracts the sound. The mobile app stages a video once
+  the artist moves on from its step (a song, as soon as it is picked) and runs this check
+  then; Post re-runs it only if that one did not complete. A large video has to be
+  downloaded by the provider first and is the likeliest to hit the 50 s ceiling; it then
+  records `failed` and publishes.
+- **Untested against a known match on video.** The vendor's docs say video URLs work and
+  a real `.mp4` came back `complete`, but no video containing a famous song has been
+  confirmed to MATCH yet. Do that once before relying on it.
 - **A video request without `fullSong`** (the store app, the web dashboard) is still
   `skipped` unless `AUDD_ENTERPRISE_ENABLED` is set (the older sampled path, below).
 - **Off switch:** unset the secret. Every scan is the quick one again, no app release.
