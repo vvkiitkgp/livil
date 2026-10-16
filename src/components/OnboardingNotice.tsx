@@ -16,7 +16,9 @@ import { SpotifyLogo } from './SpotifyLogo';
  *
  * ONE host, mounted once in RootNavigator, serves every caller through `requestNotice`,
  * so the feed card, chat card, Search and the ⋯ menu cannot drift into different
- * dialogs. "Don't show this again" is remembered per notice, per device (AsyncStorage):
+ * dialogs. A sheet that can raise a notice while it is OPEN (the comments sheet's song
+ * cards) mounts a second host inside itself: on iOS a modal is presented from the screen
+ * its host lives on, and the root's host cannot present over an open sheet (below). "Don't show this again" is remembered per notice, per device (AsyncStorage):
  * a convenience, not an account setting — losing it costs one extra dialog, nothing more.
  */
 export type NoticeKind = 'spotify' | 'jam';
@@ -69,7 +71,19 @@ function rememberDismissed(kind: NoticeKind): void {
 // ── The request channel ─────────────────────────────────────────────────────
 
 type Request = { kind: NoticeKind; onConfirm: () => void };
-let listener: ((req: Request) => void) | null = null;
+/**
+ * Every mounted host, newest last; the newest serves the request. A host inside an open
+ * sheet is mounted after the root's, so while the sheet is up its notice is presented from
+ * the sheet, on top of it. When the sheet closes its host unmounts and the root's serves
+ * again.
+ *
+ * WHY: iOS refuses to present a modal from a screen that is already presenting one, and
+ * RN's iOS modal still records itself as presented. A Spotify card tapped inside the
+ * comments sheet raised the notice from the ROOT's host: nothing appeared, Spotify never
+ * opened, and the notice stayed "open" in JS — the owner then found the app no longer
+ * answering taps (iPhone, 2026-10-16).
+ */
+const listeners: Array<(req: Request) => void> = [];
 
 /**
  * Show the notice (unless dismissed on this device), then run `onConfirm` if they go ahead.
@@ -78,7 +92,8 @@ let listener: ((req: Request) => void) | null = null;
  */
 export async function requestNotice(kind: NoticeKind, onConfirm: () => void): Promise<void> {
   if (await isNoticeDismissed(kind)) { onConfirm(); return; }
-  if (listener) { listener({ kind, onConfirm }); } else { onConfirm(); }
+  const host = listeners[listeners.length - 1];
+  if (host) { host({ kind, onConfirm }); } else { onConfirm(); }
 }
 
 export function OnboardingNoticeHost() {
@@ -98,12 +113,16 @@ export function OnboardingNoticeHost() {
   const [requestId, setRequestId] = useState(0);
 
   useEffect(() => {
-    listener = req => {
+    const serve = (req: Request) => {
       setDontShow(false);
       setRequestId(n => n + 1);
       setRequest(req);
     };
-    return () => { listener = null; };
+    listeners.push(serve);
+    return () => {
+      const i = listeners.lastIndexOf(serve);
+      if (i >= 0) { listeners.splice(i, 1); }
+    };
   }, []);
 
   const close = (go: boolean) => {

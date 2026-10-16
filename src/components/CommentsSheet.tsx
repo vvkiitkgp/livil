@@ -28,6 +28,7 @@ import { GradientBorder } from './GradientBorder';
 import { SpotifyLogo } from './SpotifyLogo';
 import { MusicToggleIcon, SongSearchPanel, type PickedSong } from './ChatSongPicker';
 import { primeCommentSongPost } from './CommentSongCard';
+import { OnboardingNoticeHost } from './OnboardingNotice';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
@@ -771,6 +772,11 @@ export default function CommentsSheet({
       }
       outside={
         <>
+          {/* The "plays on Spotify" notice for a Spotify song card in a comment. It must be
+              presented from inside this sheet: the app's own host, under the open sheet,
+              cannot show it on iOS (see OnboardingNotice's `listeners`). */}
+          <OnboardingNoticeHost />
+
           <CommentReportModal
             visible={reportTarget !== null}
             commentId={reportTarget?.id ?? null}
