@@ -779,10 +779,18 @@ export default function UserProfileScreen() {
   );
 
   // Everything under the tab row fades with a switch; the pinned row itself never does.
+  // The first card / grid row keeps the cards' own 14 pt gap from the tab row's divider
+  // instead of sitting on it (the audience line and the empty / loading rows pad themselves).
   const renderItem = useCallback(
-    ({ item }: { item: ListItem }) => (item.kind === 'tabs'
-      ? renderRow({ item })
-      : <Reanimated.View style={fade.style}>{renderRow({ item })}</Reanimated.View>),
+    ({ item, index }: { item: ListItem; index: number }) => {
+      if (item.kind === 'tabs') { return renderRow({ item }); }
+      const padTop = index === 1 && item.kind !== 'audience' && item.kind !== 'empty' && item.kind !== 'loading';
+      return (
+        <Reanimated.View style={[fade.style, padTop ? styles.firstUnderTabs : null]}>
+          {renderRow({ item })}
+        </Reanimated.View>
+      );
+    },
     [renderRow, fade.style],
   );
 
@@ -1190,6 +1198,8 @@ const AVATAR_D = 80;
 const RING_D = AVATAR_D + 8;
 
 const styles = StyleSheet.create({
+  // Same as the gap between cards (PostCard's marginBottom).
+  firstUnderTabs: { paddingTop: 14 },
   container: { flex: 1, backgroundColor: COLORS.bg },
   listContent: { paddingBottom: 40 },
 
