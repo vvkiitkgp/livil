@@ -9,10 +9,16 @@
 import { assertEquals, assertNotEquals } from 'jsr:@std/assert@1';
 import {
   createAuddProvider,
+  type Deps,
+  FULL_SONG_CHUNK_LIMIT,
+  FULL_SONG_SCANS_PER_USER_PER_DAY,
+  SCANS_PER_USER_PER_DAY,
+  handle,
   isOwnPublicMedia,
   normalizeAudd,
   publicShape,
   rowFor,
+  type ScanOptions,
   type ScanOutcome,
 } from './app.ts';
 
@@ -154,6 +160,326 @@ Deno.test('a network throw is failed, not a negative', async () => {
   assertEquals((await p.scan('https://example.test/a.mp3', 'audio')).status, 'failed');
 });
 
+// ── whole-song audio ────────────────────────────────────────────────────────
+
+/** Records what the provider was sent; answers "no match". */
+function recordingFetch() {
+  const seen = { url: '', body: new URLSearchParams(), signal: null as AbortSignal | null };
+  const fetchImpl: typeof fetch = (input, init) => {
+    seen.url = String(input);
+    seen.body = new URLSearchParams(String(init?.body ?? ''));
+    seen.signal = init?.signal ?? null;
+    return Promise.resolve(
+      new Response(JSON.stringify({ status: 'success', result: [] }), { status: 200 }),
+    );
+  };
+  return { seen, fetchImpl };
+}
+
+Deno.test('a whole-song request checks every chunk on the enterprise endpoint', async () => {
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: true, fetchImpl });
+  const out = await p.scan('https://example.test/a.wav', 'audio', { fullSong: true });
+  assertEquals(seen.url, 'https://enterprise.audd.io/');
+  assertEquals(seen.body.get('url'), 'https://example.test/a.wav');
+  // Every 12-second chunk, none skipped — the whole point of the request.
+  assertEquals(seen.body.get('skip'), '0');
+  assertEquals(seen.body.get('every'), '1');
+  // The spend ceiling travels with the request; the provider stops there.
+  assertEquals(seen.body.get('limit'), String(FULL_SONG_CHUNK_LIMIT));
+  // Bounded, so a slow provider becomes a recorded `failed`, not a client-side timeout.
+  assertEquals(seen.signal instanceof AbortSignal, true);
+  // An empty segment list is a real negative.
+  assertEquals(out, { status: 'complete', matchFound: false });
+});
+
+Deno.test('a whole-song request with the switch off gets the quick check', async () => {
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: false, fetchImpl });
+  await p.scan('https://example.test/a.mp3', 'audio', { fullSong: true });
+  assertEquals(seen.url, 'https://api.audd.io/');
+  assertEquals(seen.body.get('skip'), null);
+});
+
+Deno.test('a client that does not ask gets the quick check even with the switch on', async () => {
+  // The app already in the stores: it never sends `fullSong`, and gives up after 20 s.
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: true, fetchImpl });
+  await p.scan('https://example.test/a.mp3', 'audio');
+  assertEquals(seen.url, 'https://api.audd.io/');
+});
+
+Deno.test('a whole-song request checks every chunk of a video too', async () => {
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: true, enterpriseEnabled: false, fetchImpl });
+  const out = await p.scan('https://example.test/a.mov', 'video', { fullSong: true });
+  // The video's own URL: the provider pulls the sound out on its servers.
+  assertEquals(seen.url, 'https://enterprise.audd.io/');
+  assertEquals(seen.body.get('url'), 'https://example.test/a.mov');
+  assertEquals(seen.body.get('skip'), '0');
+  assertEquals(seen.body.get('every'), '1');
+  assertEquals(seen.body.get('limit'), String(FULL_SONG_CHUNK_LIMIT));
+  assertEquals(out, { status: 'complete', matchFound: false });
+});
+
+Deno.test('a video nobody asked about stays skipped, even with the switch on', async () => {
+  // The app already in the stores never asks, and gives up after 20 s: its videos keep
+  // today's behaviour rather than a slow check it cannot wait for.
+  const p = createAuddProvider('tok', {
+    fullSongEnabled: true,
+    enterpriseEnabled: false,
+    fetchImpl: () => {
+      throw new Error('must not call the provider');
+    },
+  });
+  assertEquals((await p.scan('https://example.test/a.mp4', 'video')).status, 'skipped');
+});
+
+Deno.test('a whole-song video request with the switch off stays skipped', async () => {
+  const p = createAuddProvider('tok', {
+    fullSongEnabled: false,
+    enterpriseEnabled: false,
+    fetchImpl: () => {
+      throw new Error('must not call the provider');
+    },
+  });
+  assertEquals((await p.scan('https://example.test/a.mp4', 'video', { fullSong: true })).status, 'skipped');
+});
+
+Deno.test('a whole-song request that runs out of time is failed, not a negative', async () => {
+  const p = createAuddProvider('tok', {
+    fullSongEnabled: true,
+    fetchImpl: () => Promise.reject(new DOMException('signal timed out', 'TimeoutError')),
+  });
+  const out = await p.scan('https://example.test/a.wav', 'audio', { fullSong: true });
+  assertEquals(out.status, 'failed');
+  assertEquals(out.status === 'failed' && out.reason.includes('longer than'), true);
+});
+
+Deno.test('across segments the strongest match wins, not the first', () => {
+  const out = normalizeAudd({
+    status: 'success',
+    result: [
+      { songs: [{ title: 'Weak echo', artist: 'Someone', score: 41 }] },
+      { songs: [] },
+      { songs: [{ title: 'Kesariya', artist: 'Arijit Singh', score: 98 }] },
+    ],
+  });
+  assertEquals(out.status === 'complete' && out.matchFound && out.title, 'Kesariya');
+});
+
+Deno.test('an enterprise match reads the isrc and score off the song itself', () => {
+  const out = normalizeAudd({
+    status: 'success',
+    result: [
+      { songs: [] },
+      { songs: [{ title: 'Kesariya', artist: 'Arijit Singh', isrc: 'INS182200001', score: 97 }] },
+    ],
+  });
+  assertEquals(out.status === 'complete' && out.matchFound && out.isrc, 'INS182200001');
+  // 0–100 from the provider, 0–1 in the column (its check constraint).
+  assertEquals(out.status === 'complete' && out.matchFound && out.confidence, 0.97);
+});
+
+Deno.test('a score outside 0–100 is recorded as no score, not clamped', () => {
+  const out = normalizeAudd({
+    status: 'success',
+    result: [{ songs: [{ title: 'x', artist: 'y', score: 140 }] }],
+  });
+  assertEquals(out.status === 'complete' && out.matchFound && out.confidence, null);
+});
+
+// ── the handler passes the request on ───────────────────────────────────────
+
+const OWNER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const SUPA = 'https://p.supabase.co';
+const OWN_AUDIO = `${SUPA}/storage/v1/object/public/tracks-media/${OWNER}/${TRACK}/audio.wav`;
+const attemptsOf = (n: number, fullSong: boolean): Attempt[] =>
+  Array.from({ length: n }, () => ({ user_id: OWNER, track_id: TRACK, full_song: fullSong }));
+
+type Attempt = { user_id: string; track_id: string; full_song: boolean };
+type AdminState = {
+  attempts: Attempt[];
+  upserts: Array<Record<string, unknown>>;
+  /** The track's stored verdict, if any (step 4, REUSE). */
+  previous: Record<string, unknown> | null;
+  ledgerFails?: boolean;
+};
+
+/**
+ * Just enough of the two clients for `handle` to reach the provider and record. The admin
+ * fake keeps the attempts ledger as a list, so the quota is counted the way PostgREST would
+ * count it — by the filters the handler actually applies.
+ */
+function handlerDeps(
+  seenOpts: Array<ScanOptions | undefined>,
+  state: AdminState = { attempts: [], upserts: [], previous: null },
+): Deps {
+  const track = {
+    id: TRACK,
+    uploader_id: OWNER,
+    media_kind: 'audio',
+    audio_url: OWN_AUDIO,
+    video_url: null,
+  };
+  const userClient = {
+    auth: { getUser: () => Promise.resolve({ data: { user: { id: OWNER } }, error: null }) },
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: track, error: null }) }) }),
+    }),
+  };
+  const adminClient = {
+    from: (table: string) => ({
+      select: () => {
+        const filters: Record<string, unknown> = {};
+        const q = {
+          eq(col: string, val: unknown) { filters[col] = val; return q; },
+          gte() { return q; },
+          maybeSingle: () => Promise.resolve({
+            data: table === 'track_copyright_scans' ? state.previous : null,
+            error: null,
+          }),
+          then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+            const rows = state.attempts.filter(a =>
+              a.user_id === filters.user_id
+              && (filters.full_song === undefined || a.full_song === filters.full_song));
+            return Promise.resolve({ count: rows.length, error: null }).then(resolve, reject);
+          },
+        };
+        return q;
+      },
+      insert: (row: Attempt) => {
+        if (state.ledgerFails) return Promise.resolve({ error: { message: 'down' } });
+        state.attempts.push(row);
+        return Promise.resolve({ error: null });
+      },
+      upsert: (row: Record<string, unknown>) => {
+        state.upserts.push(row);
+        return Promise.resolve({ error: null });
+      },
+    }),
+  };
+  return {
+    supabaseUrl: SUPA,
+    userClient: () => userClient as unknown as ReturnType<Deps['userClient']>,
+    adminClient: () => adminClient as unknown as ReturnType<Deps['adminClient']>,
+    provider: {
+      name: 'fake',
+      scan: (_url, _kind, opts) => {
+        seenOpts.push(opts);
+        return Promise.resolve({ status: 'complete', matchFound: false });
+      },
+    },
+  };
+}
+
+function post(body: unknown): Request {
+  return new Request('https://fn.test/scan-upload', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer jwt', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+Deno.test('the handler asks for the whole song only when the client says exactly true', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const deps = handlerDeps(seen);
+  assertEquals((await handle(post({ trackId: TRACK, fullSong: true }), deps)).status, 200);
+  // Today's apps send only the id.
+  assertEquals((await handle(post({ trackId: TRACK }), deps)).status, 200);
+  // Not a boolean: treated as not asked.
+  assertEquals((await handle(post({ trackId: TRACK, fullSong: 'yes' }), deps)).status, 200);
+  assertEquals(seen.map(o => o?.fullSong), [true, false, false]);
+});
+
+// ── the spend cap ───────────────────────────────────────────────────────────
+//
+// The cap used to count verdict rows. A verdict is upserted per track, and a deleted
+// track takes its unanswered verdict with it — so calling again on one track, or deleting
+// and re-uploading, never reached the limit. With the whole-song path a call can bill up
+// to 100 chunks, so these pin that every call reaching the provider is counted, before it.
+
+Deno.test('calls on one track still reach the daily cap: the ledger counts calls, not verdicts', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = { attempts: attemptsOf(SCANS_PER_USER_PER_DAY, false), upserts: [], previous: null };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(res.status, 429);
+  assertEquals(seen.length, 0); // the provider was never asked
+});
+
+Deno.test('every call that reaches the provider is written to the ledger first', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = { attempts: [], upserts: [], previous: null };
+  const deps = handlerDeps(seen, state);
+  await handle(post({ trackId: TRACK, fullSong: true }), deps);
+  await handle(post({ trackId: TRACK }), deps);
+  assertEquals(state.attempts, [
+    { user_id: OWNER, track_id: TRACK, full_song: true },
+    { user_id: OWNER, track_id: TRACK, full_song: false },
+  ]);
+});
+
+Deno.test('an attempt that cannot be written is not made', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = { attempts: [], upserts: [], previous: null, ledgerFails: true };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(res.status, 503);
+  assertEquals(seen.length, 0);
+});
+
+Deno.test('past the whole-song allowance a request is served as the quick check, not refused', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = {
+    attempts: attemptsOf(FULL_SONG_SCANS_PER_USER_PER_DAY, true),
+    upserts: [],
+    previous: null,
+  };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(res.status, 200);
+  assertEquals(seen.map(o => o?.fullSong), [false]);
+  assertEquals(state.attempts[state.attempts.length - 1].full_song, false);
+});
+
+Deno.test('a file with a complete verdict is answered from it: no provider call, nothing billed', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const state: AdminState = {
+    attempts: [],
+    upserts: [],
+    previous: {
+      status: 'complete',
+      match_found: true,
+      matched_title: 'Kesariya',
+      matched_artist: 'Arijit Singh',
+      matched_isrc: 'INS182200001',
+      scanned_media_url: OWN_AUDIO,
+    },
+  };
+  const res = await handle(post({ trackId: TRACK, fullSong: true }), handlerDeps(seen, state));
+  assertEquals(await res.json(), {
+    status: 'complete',
+    matchFound: true,
+    title: 'Kesariya',
+    artist: 'Arijit Singh',
+    isrc: 'INS182200001',
+  });
+  assertEquals(seen.length, 0);
+  assertEquals(state.attempts.length, 0);
+  assertEquals(state.upserts.length, 0);
+});
+
+Deno.test('a failed verdict, or one for another file, is checked again', async () => {
+  for (const previous of [
+    { status: 'failed', match_found: null, scanned_media_url: OWN_AUDIO },
+    { status: 'complete', match_found: false, scanned_media_url: `${OWN_AUDIO}.old` },
+  ]) {
+    const seen: Array<ScanOptions | undefined> = [];
+    const state: AdminState = { attempts: [], upserts: [], previous };
+    await handle(post({ trackId: TRACK }), handlerDeps(seen, state));
+    assertEquals(seen.length, 1);
+    assertEquals(state.attempts.length, 1);
+  }
+});
+
 // ── publicShape ─────────────────────────────────────────────────────────────
 
 Deno.test('the client is never handed the raw provider payload', () => {
@@ -234,6 +560,17 @@ Deno.test('a user-id prefix collision is refused', () => {
   );
 });
 
+Deno.test('a path that climbs out of the uploader folder is refused, however it is spelled', () => {
+  for (const sneaky of [
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/../u2/t/a.mp3',
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/%2e%2e/u2/t/a.mp3',
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/..%2Fu2/t/a.mp3',
+    'https://p.supabase.co/storage/v1/object/public/tracks-media/u1/%2E%2E%2Fu2/t/a.mp3',
+  ]) {
+    assertEquals(isOwnPublicMedia(sneaky, 'https://p.supabase.co', 'u1'), false, sneaky);
+  }
+});
+
 Deno.test('every column is written on every branch, so an upsert cannot retain stale metadata', () => {
   const failed = rowFor(TRACK, 'audd', URL_, { status: 'failed', reason: 'x' });
   // The regression: a re-scan that fails after a match leaving matched_title behind.
@@ -264,7 +601,7 @@ Deno.test('the scan quota is counted without a relational embed', async () => {
   // broken form in prose, and a test that cannot tell code from a comment about code
   // would fail on its own documentation.
   const quota = src
-    .slice(src.indexOf('4. QUOTA'), src.indexOf('could not check the scan quota'))
+    .slice(src.indexOf('5. QUOTA'), src.indexOf('could not check the scan quota'))
     .split('\n')
     .filter(l => !l.trim().startsWith('//'))
     .join('\n');
@@ -276,8 +613,9 @@ Deno.test('the scan quota is counted without a relational embed', async () => {
       + 'so the embed cannot resolve and every scan will 503 into a silent free pass',
   );
   assertEquals(
-    quota.includes('track_uploader_id'),
+    quota.includes("from('copyright_scan_attempts')"),
     true,
-    'the quota must count on the scan row own track_uploader_id snapshot',
+    'the quota must count calls on the attempts ledger, never verdict rows (an upsert per '
+      + 'track and a deleted track both hand calls back)',
   );
 });

@@ -206,8 +206,15 @@ list as described above.
 ## Rules
 - Always follow the confirmed dependency versions below. Never suggest upgrading or downgrading without explicit instruction.
 - Always use `FormInput` (`src/components/FormInput.tsx`) for text inputs — never create raw `TextInput` with focus state lifted to parent. **Why**: on Android 15 + Fabric, lifting focus state causes re-renders that remount the `TextInput` and immediately dismiss the keyboard.
+- **Handle the keyboard on EVERY change that adds or moves a text input — and check it with the keyboard open.** The app runs under `react-native-keyboard-controller`'s `KeyboardProvider` with edge-to-edge on, so Android never resizes the window for you. The checklist:
+  - **Scrolling screens/lists with an input:** `keyboardShouldPersistTaps="handled"` (a tap on a row or chip works on the FIRST tap while the keyboard is up, instead of only closing it) and `keyboardDismissMode="on-drag"` (dragging the page puts the keyboard away — Search, New message, Upload all do).
+  - **Inputs that must stay visible above the keyboard:** keyboard-controller's `KeyboardAwareScrollView` (with a `bottomOffset`, e.g. 24) or its `KeyboardAvoidingView behavior="padding"` in a `Modal` (plus `statusBarTranslucent` + `navigationBarTranslucent`). **Never** React Native's own `KeyboardAvoidingView`/`adjustResize` — it leaves inputs under the keyboard and flickers in Android modals.
+  - **A field that appears and takes focus in the same moment** (revealed by a tap, `autoFocus` on mount — e.g. "+ Something else" on Upload) is missed by `KeyboardAwareScrollView`: its position is unknown when the keyboard starts to rise, so it opens UNDER the keyboard. Call the scroll view ref's `assureFocusedInputVisible()` from the field's `onFocus`, after the keyboard is up (~350 ms) — see `revealFocusedField` in `UploadScreen`.
+  - **Status / empty / "nothing matches" text under a field goes at the TOP, never centred** — centred, it lands behind the keyboard.
+  - **Opening a modal straight after typing:** `await KeyboardController.dismiss()` first.
+  - **Before handing off,** walk the change with the keyboard OPEN: focus each new field, scroll, tap the controls next to it. A field half under the keys, or a tap that only closes the keyboard, is a bug.
 - Always use `createNativeStackNavigator` — never `createStackNavigator`.
-- **Always use `Icon` (`src/components/Icon.tsx`) for UI icons — never hard-code a unicode glyph/emoji in a `<Text>` as an icon.** `Icon` is the single import surface, backed by **Phosphor** (`phosphor-react-native`, pinned `3.0.6`) plus **Lucide** (`lucide-react-native`, pinned `1.18.0`) for the one `drum` icon Phosphor lacks. Props: `<Icon name={IconName} size={number} color={string} weight={'regular'|'fill'|'bold'|…} />`. Both libs are pure-JS SVG riding the existing `react-native-svg@15.15.5` — **no native rebuild**. Add a new icon by mapping a Livil-semantic name in the `REGISTRY` in `Icon.tsx`. **Never nest `<Icon>` inside `<Text>`** (it's an SVG, not inline text — wrap it in a `<View>` row instead). **Exceptions (stay as text/emoji):** chat reaction emoji + the emoji picker, emoji inside copy strings (e.g. `🎵 ${title}`, share/push messages), single-char initials fallbacks (`name.charAt(0) || '♪'`), and `ConfirmActionModal`'s decorative `glyph` prop. **The Apple logo is not an icon:** it exists only inside `AppleSignInButton`, as Apple's own artwork (App Review rejected a Phosphor Apple logo there).
+- **Always use `Icon` (`src/components/Icon.tsx`) for UI icons — never hard-code a unicode glyph/emoji in a `<Text>` as an icon.** `Icon` is the single import surface, backed by **Phosphor** (`phosphor-react-native`, pinned `3.0.6`) plus **Lucide** (`lucide-react-native`, pinned `1.18.0`) for the one `drum` icon Phosphor lacks, plus one glyph composed from Phosphor's own paths (`compose`, a bubble with a plus). Props: `<Icon name={IconName} size={number} color={string} weight={'regular'|'fill'|'bold'|…} />`. Both libs are pure-JS SVG riding the existing `react-native-svg@15.15.5` — **no native rebuild**. Add a new icon by mapping a Livil-semantic name in the `REGISTRY` in `Icon.tsx`. **Never nest `<Icon>` inside `<Text>`** (it's an SVG, not inline text — wrap it in a `<View>` row instead). **Exceptions (stay as text/emoji):** chat reaction emoji + the emoji picker, emoji inside copy strings (e.g. `🎵 ${title}`, share/push messages), single-char initials fallbacks (`name.charAt(0) || '♪'`), and `ConfirmActionModal`'s decorative `glyph` prop. **The Apple logo is not an icon:** it exists only inside `AppleSignInButton`, as Apple's own artwork (App Review rejected a Phosphor Apple logo there).
 - Always keep dark theme (`#0A0A0F` background, `#8B3DFF` purple accent). No light mode.
 - New screens go under `src/screens/` following the existing structure.
 - When adding navigation routes, update `src/navigation/types.ts` with the new route params.
@@ -389,6 +396,7 @@ divergent button styles before this was centralized.
 | `secondary` | transparent | `COLORS.border` | `white` |
 | `ghost` | none | none | `textSecondary` |
 | `destructive` | **solid `COLORS.error`** | none | `white` |
+| `spotify` | **solid Spotify Green `#1ED760`** | none | black |
 
 Sizes `sm | md | lg`. Pass `onMedia` when the button floats over video/artwork
 (swaps in an opaque scrim so the border keeps contrast). `disabled`/`busy` are
@@ -397,6 +405,8 @@ handled internally — never layer your own opacity or `*Disabled` style.
 **Why:** at `#8B3DFF` a solid fill dominates the dark UI, and the Repost button
 appears on every feed card. Purple now outlines and letters; it never fills.
 `destructive` is the one exception — dangerous actions must stay visually heavy.
+`spotify` is a brand exception like Google's border: it is ONLY for the button that hands
+the listener to the Spotify app ("Open Spotify" in the Spotify notice), never decoration.
 
 **Rules that are easy to get wrong:**
 - **`borderColors` exists for exactly one button: "Continue with Google"**, which wears

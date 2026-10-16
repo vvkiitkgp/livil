@@ -570,7 +570,8 @@ function InfoContent({
   // The uploader's own credit is a `track_collaborators` row like any other, so it arrives
   // in this list. It is split out here: the header shows it, and CREDITS shows everyone
   // else, rather than putting the same person on screen twice.
-  const uploaderCredit = collabs.find(c => c.userId === nowPlaying.authorId) ?? null;
+  // An uploader can give themselves several roles, each its own row: shown together.
+  const uploaderRoles = collabs.filter(c => c.userId === nowPlaying.authorId).map(c => c.role);
   const otherCredits = collabs.filter(c => c.userId !== nowPlaying.authorId);
   const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(nowPlaying.likesCount);
@@ -669,7 +670,7 @@ function InfoContent({
               to the handle for tracks uploaded before uploader roles existed, because a
               blank line there would read as missing data. */}
           <Text style={infoSt.artistHandle} numberOfLines={1}>
-            {uploaderCredit ? uploaderCredit.role : `@${nowPlaying.authorUsername}`}
+            {uploaderRoles.length > 0 ? uploaderRoles.join(' · ') : `@${nowPlaying.authorUsername}`}
           </Text>
         </View>
       </TouchableOpacity>

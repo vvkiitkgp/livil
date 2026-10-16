@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -11,6 +11,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
+import { GradientBorder } from './GradientBorder';
+import GroupAvatarCluster from './GroupAvatarCluster';
+import { LivilBotAvatar } from './LivilBotAvatar';
+import type { GroupFace } from '../utils/groupFaces';
 import { supabase } from '../../lib/supabase';
 import { useRelationships } from '../contexts/RelationshipContext';
 import {
@@ -23,7 +27,9 @@ import {
   listActivity,
 } from '../services/activity';
 
-const LIVIL_LOGO = require('../assets/livil-logo.png');
+/** The pinned cards above the chats: friend requests and livil Bot. */
+const CARD_RADIUS = 16;
+
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -32,24 +38,45 @@ function initial(name: string | null, fallback: string): string {
   return (n[0] ?? '?').toUpperCase();
 }
 
-function AvatarStack({
-  items,
-}: {
-  items: Array<{ avatarUrl: string | null; displayName: string | null; username: string }>;
-}) {
-  return (
-    <View style={styles.stack}>
-      {items.slice(0, 3).map((it, i) => (
-        <View key={i} style={[styles.stackItem, { left: i * 16, zIndex: 3 - i }]}>
-          {it.avatarUrl ? (
-            <Image source={{ uri: it.avatarUrl }} style={styles.stackAvatar} />
-          ) : (
-            <View style={styles.stackPlaceholder}>
-              <Text style={styles.stackInitial}>{initial(it.displayName, it.username)}</Text>
-            </View>
-          )}
-        </View>
-      ))}
+/** Same size as the livil Bot logo, so the two pinned cards line up. */
+const CARD_AVATAR = 44;
+
+/**
+ * Who is asking: one request is that person's photo; two or more are packed into the same
+ * bubble cluster a group chat uses, newest request largest — "several people" reads at a
+ * glance the way it does for a group, instead of a row of overlapping coins.
+ */
+function RequestersPicture({ items, seed }: { items: IncomingFriendRequest[]; seed: number }) {
+  const faces = useMemo<GroupFace[]>(
+    () => [...items]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(i => ({
+        userId: i.otherUserId,
+        username: i.username,
+        displayName: i.displayName,
+        avatarUrl: i.avatarUrl,
+        // The cluster sizes faces by recency; for a request that is when it was sent.
+        lastSentAt: i.createdAt,
+      })),
+    [items],
+  );
+  if (faces.length >= 2) {
+    return (
+      <GroupAvatarCluster
+        conversationId="friend-requests"
+        faces={faces}
+        size={CARD_AVATAR}
+        visitSeed={seed}
+        fallbackLabel="Friend requests"
+      />
+    );
+  }
+  const only = items[0];
+  return only.avatarUrl ? (
+    <Image source={{ uri: only.avatarUrl }} style={styles.single} />
+  ) : (
+    <View style={[styles.single, styles.singlePlaceholder]}>
+      <Text style={styles.singleInitial}>{initial(only.displayName, only.username)}</Text>
     </View>
   );
 }
@@ -86,25 +113,26 @@ export function FriendRequestsBanner({ refreshKey }: { refreshKey: number }) {
     return `${firstTwo.join(', ')} +${count - 2} other${count - 2 === 1 ? '' : 's'}`;
   })();
 
+  // Same card as the livil Bot row below it: Livil's purple outline, and the count in the
+  // unread bubble rather than in the title, so the two pinned rows read as one set.
   return (
     <TouchableOpacity
-      style={styles.banner}
+      style={styles.card}
       activeOpacity={0.7}
       onPress={() => navigation.navigate('FriendRequests')}
+      accessibilityRole="button"
+      accessibilityLabel={`${count} friend request${count === 1 ? '' : 's'}`}
     >
-      <AvatarStack items={items.map(i => ({
-        avatarUrl: i.avatarUrl,
-        displayName: i.displayName,
-        username: i.username,
-      }))} />
+      <GradientBorder borderRadius={CARD_RADIUS} />
+      <RequestersPicture items={items} seed={refreshKey} />
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
-          {count} friend request{count === 1 ? '' : 's'}
+          Friend request{count === 1 ? '' : 's'}
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>{namesPreview}</Text>
       </View>
-      <View style={styles.chevron}>
-        <Icon name="forward" size={24} color={COLORS.purpleLight} />
+      <View style={styles.badge}>
+        <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -186,43 +214,50 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
   }, [myId]);
 
   return (
+    // Livil's own voice in the inbox, so it wears Livil's purple outline rather than the
+    // grey divider the chat rows use. No chevron: the card shape already says "tap me".
     <TouchableOpacity
-      style={styles.banner}
+      style={styles.card}
       activeOpacity={0.7}
       onPress={() => navigation.navigate('ActivityCenter')}
+      accessibilityRole="button"
+      accessibilityLabel={unread > 0 ? `livil Bot, ${unread} new` : 'livil Bot'}
     >
-      <Image source={LIVIL_LOGO} style={styles.activityAvatar} />
+      <GradientBorder borderRadius={CARD_RADIUS} />
+      <LivilBotAvatar size={CARD_AVATAR} />
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>livil Bot</Text>
         <Text style={styles.subtitle} numberOfLines={1}>
           {preview ?? 'Likes, comments & milestones on your tracks'}
         </Text>
       </View>
+      {/* New activity → the count. All caught up → a quiet bell, so the card still says
+          what it is (your notifications) rather than ending in empty space. */}
       {unread > 0 ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
         </View>
       ) : (
-        <View style={styles.chevron}>
-          <Icon name="forward" size={24} color={COLORS.purpleLight} />
-        </View>
+        <Icon name="bell" size={22} color={COLORS.purpleLight} />
       )}
     </TouchableOpacity>
   );
 }
 
+
 const styles = StyleSheet.create({
-  banner: {
+  // No `overflow: 'hidden'` (CLAUDE.md): GradientBorder draws inward, and clipping would
+  // shave the outer edge of the glow.
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    marginHorizontal: 12,
+    marginVertical: 6,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 12,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    borderRadius: CARD_RADIUS,
   },
-  activityAvatar: { width: 44, height: 44, borderRadius: 22 },
   badge: {
     backgroundColor: COLORS.purple,
     borderRadius: 10,
@@ -233,22 +268,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   badgeText: { color: COLORS.white, fontSize: 11, fontWeight: '700' },
-  stack: { width: 52, height: 36, position: 'relative' },
-  stackItem: {
-    position: 'absolute', top: 2,
-    width: 32, height: 32, borderRadius: 16,
-    borderWidth: 2, borderColor: COLORS.bg,
-    overflow: 'hidden',
-  },
-  stackAvatar: { width: '100%', height: '100%' },
-  stackPlaceholder: {
-    width: '100%', height: '100%',
+  single: { width: CARD_AVATAR, height: CARD_AVATAR, borderRadius: CARD_AVATAR / 2 },
+  singlePlaceholder: {
     backgroundColor: COLORS.purpleDim,
     alignItems: 'center', justifyContent: 'center',
   },
-  stackInitial: { color: COLORS.purpleLight, fontWeight: '700', fontSize: 13 },
+  singleInitial: { color: COLORS.purpleLight, fontWeight: '700', fontSize: 17 },
   body: { flex: 1, gap: 2 },
   title: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   subtitle: { color: COLORS.textSecondary, fontSize: 12 },
-  chevron: { marginLeft: 4 },
 });

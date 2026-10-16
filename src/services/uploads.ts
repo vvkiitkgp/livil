@@ -161,8 +161,14 @@ function uploadFileUriWithProgress(
   contentType: string,
   accessToken: string,
   onProgress: UploadProgressCallback,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    // Stopped by the caller before it started (the screen moved on): send nothing.
+    if (signal?.aborted) {
+      reject(new Error('Upload aborted.'));
+      return;
+    }
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${TRACKS_MEDIA_BUCKET}/${path}`, true);
     xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
@@ -186,8 +192,17 @@ function uploadFileUriWithProgress(
     // moved for STALL_MS, which a healthy upload never triggers no matter how slow.
     let stalled = false;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
+    // The caller's stop (a swapped or removed file) ends the request at once, instead of
+    // letting a file nobody wants finish uploading over mobile data before it is deleted.
+    const onCallerAbort = () => xhr.abort();
+    signal?.addEventListener('abort', onCallerAbort);
     const clearWatchdog = () => {
       if (watchdog) { clearTimeout(watchdog); watchdog = undefined; }
+    };
+    // Every way the request ends: the watchdog and the caller's stop both go.
+    const settle = () => {
+      clearWatchdog();
+      signal?.removeEventListener('abort', onCallerAbort);
     };
     const armWatchdog = (ms: number) => {
       clearWatchdog();
@@ -212,7 +227,7 @@ function uploadFileUriWithProgress(
     xhr.upload.onloadend = () => armWatchdog(RESPONSE_TIMEOUT_MS);
 
     xhr.onload = () => {
-      clearWatchdog();
+      settle();
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress(1);
         resolve();
@@ -240,11 +255,11 @@ function uploadFileUriWithProgress(
       reject(new Error(message));
     };
     xhr.onerror = () => {
-      clearWatchdog();
+      settle();
       reject(new Error('Network error during upload.'));
     };
     xhr.onabort = () => {
-      clearWatchdog();
+      settle();
       // Worth distinguishing: "aborted" reads as something the user did, and someone
       // whose signal died would be left wondering what they pressed.
       reject(new Error(
@@ -282,6 +297,8 @@ export async function uploadTrackFile(
   userId: string,
   accessToken: string,
   onProgress: UploadProgressCallback,
+  /** Aborts the upload mid-way (see uploadFileUriWithProgress). */
+  signal?: AbortSignal,
 ): Promise<string> {
   const ext = extensionFromName(file.name, defaultExtensionFor(kind, file.type));
   const path = `${userId}/${trackId}/${kind}.${ext}`;
@@ -293,7 +310,7 @@ export async function uploadTrackFile(
   const contentType = file.type ?? `${isImage ? 'image' : kind}/*`;
   const fileName = file.name ?? `${kind}.${ext}`;
 
-  await uploadFileUriWithProgress(path, kind, readableUri, fileName, contentType, accessToken, onProgress);
+  await uploadFileUriWithProgress(path, kind, readableUri, fileName, contentType, accessToken, onProgress, signal);
 
   const { data } = supabase.storage.from(TRACKS_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;

@@ -10,11 +10,12 @@
  * for printable characters on Android, so the separator is read out of the text itself —
  * which also makes paste behave, since a pasted "lofi, latenight" arrives as one change.
  */
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, type TextInput } from 'react-native';
 
 import FormInput from './FormInput';
 import { Icon } from './Icon';
+import RoundTickButton from './RoundTickButton';
 import { COLORS } from '../theme/colors';
 import {
   MAX_TAGS_PER_TRACK,
@@ -31,19 +32,33 @@ type Props = {
   onChange: (tags: string[]) => void;
   editable?: boolean;
   placeholder?: string;
+  /**
+   * One-tap tags shown under the field, each until it is added. The upload screen passes
+   * EMOTION_TAGS: the moods are offered to tap, not pre-applied to prune.
+   */
+  suggestions?: readonly string[];
+  /** The box just took the keyboard — the screen scrolls it into view. */
+  onFieldFocus?: (field: TextInput | null) => void;
 };
 
 export default function TagInput({
   tags,
   onChange,
   editable = true,
-  placeholder = 'lofi, latenight, tabla',
+  placeholder = 'lofi',
+  suggestions = [],
+  onFieldFocus,
 }: Props) {
   // Held here, not lifted. Lifting the draft to the parent re-renders the screen on every
   // keystroke and remounts the TextInput on Android 15 + Fabric — the keyboard-dismiss bug
   // FormInput exists to prevent.
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // With suggestions on offer, the text box stays tucked away behind a "+ Something else"
+  // chip at the end of them: most artists only tap moods, and an always-open box read as
+  // homework. It opens (keyboard up) on that tap and tucks away again once they are done.
+  const [typing, setTyping] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   const commit = (raw: string) => {
     const result = addTags(tags, raw);
@@ -76,6 +91,18 @@ export default function TagInput({
   };
 
   const full = tags.length >= MAX_TAGS_PER_TRACK;
+  const remaining = suggestions.filter(s => !tags.includes(s));
+  const collapsible = suggestions.length > 0;
+  const showField = !full && (!collapsible || typing);
+
+  // The draft is left alone: tapping a mood mid-word must not throw the word away.
+  const addSuggestion = (tag: string) => {
+    const result = addTags(tags, tag);
+    setError(result.error);
+    if (result.tags.length !== tags.length) {
+      onChange(result.tags);
+    }
+  };
 
   return (
     <View>
@@ -105,15 +132,32 @@ export default function TagInput({
         </View>
       )}
 
-      {!full && (
+      {showField && (
         <FormInput
+          ref={inputRef}
           value={draft}
           onChangeText={handleChange}
           onSubmitEditing={() => commit(draft)}
           // Saves the tag someone typed and then tapped away from, which would otherwise
-          // vanish at publish with nothing on screen having said so.
-          onBlur={() => commit(draft)}
+          // vanish at publish with nothing on screen having said so — and tucks the box
+          // back behind "+ Something else".
+          onBlur={() => {
+            commit(draft);
+            setTyping(false);
+          }}
+          autoFocus={collapsible}
+          onFocus={() => onFieldFocus?.(inputRef.current)}
           placeholder={placeholder}
+          // The "#" is the field's, not the tag's: shown in front, never part of the text,
+          // so it cannot be deleted and is never stored (tags are kept without it).
+          leading={<Text style={styles.hash}>#</Text>}
+          trailing={
+            <RoundTickButton
+              enabled={draft.trim().length > 0}
+              onPress={() => commit(draft)}
+              accessibilityLabel="Add this tag"
+            />
+          }
           editable={editable}
           autoCapitalize="none"
           autoCorrect={false}
@@ -122,6 +166,39 @@ export default function TagInput({
           blurOnSubmit={false}
           maxLength={TAG_MAX_LENGTH * 2}
         />
+      )}
+
+      {editable && !full && (remaining.length > 0 || (collapsible && !typing)) && (
+        <View style={[styles.suggestions, !showField && styles.suggestionsFirst]}>
+          {remaining.map(tag => (
+            <TouchableOpacity
+              key={tag}
+              onPress={() => addSuggestion(tag)}
+              activeOpacity={0.7}
+              style={styles.suggestion}
+              accessibilityRole="button"
+              accessibilityLabel={`Add tag ${tag}`}
+            >
+              <Icon name="add" size={12} color={COLORS.textSecondary} />
+              <Text style={styles.suggestionText} numberOfLines={1}>{formatTag(tag)}</Text>
+            </TouchableOpacity>
+          ))}
+          {collapsible && !typing ? (
+            <TouchableOpacity
+              onPress={() => {
+                setError(null);
+                setTyping(true);
+              }}
+              activeOpacity={0.7}
+              style={[styles.suggestion, styles.somethingElse]}
+              accessibilityRole="button"
+              accessibilityLabel="Add a tag of your own"
+            >
+              <Icon name="add" size={12} color={COLORS.purpleNeon} />
+              <Text style={[styles.suggestionText, styles.somethingElseText]}>Something else</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       )}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -158,6 +235,40 @@ const styles = StyleSheet.create({
   chipRemove: {
     marginLeft: 2,
   },
+  suggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  // Grey outline, not purple: an offer, visibly different from a tag the track carries.
+  suggestion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  suggestionText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  hash: {
+    paddingLeft: 14,
+    paddingRight: 2,
+    color: COLORS.purpleLight,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  // With the box tucked away there is nothing above the offers to space them from.
+  suggestionsFirst: { marginTop: 0 },
+  // The one offer that is an action, not a mood: purple outline and letters, no fill.
+  somethingElse: { borderColor: COLORS.purple },
+  somethingElseText: { color: COLORS.purpleNeon },
   error: {
     marginTop: 6,
     fontSize: 12,

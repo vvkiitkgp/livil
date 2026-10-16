@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  type TextInput,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -32,6 +33,8 @@ import { useGroupFaces } from '../../hooks/useGroupFaces';
 import type { GroupFace } from '../../services/groupFaces';
 import EqualizerBars from '../../components/EqualizerBars';
 import { useListeningNow } from '../../hooks/useListeningNow';
+import FormInput from '../../components/FormInput';
+import { conversationMatches, normalizeInboxQuery } from '../../utils/inboxFilter';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -331,6 +334,19 @@ export default function InboxScreen() {
   );
   const groupFaces = useGroupFaces(groupIds);
 
+  // Search. Every conversation is already loaded (list_my_conversations has no limit), so
+  // this filters on the device — see utils/inboxFilter.ts for what a query matches.
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<TextInput>(null);
+  const normalizedQuery = normalizeInboxQuery(query);
+  const searching = normalizedQuery.length > 0;
+  const shown = useMemo(
+    () => (searching
+      ? conversations.filter(c => conversationMatches(c, normalizedQuery, groupFaces.get(c.id)))
+      : conversations),
+    [conversations, normalizedQuery, searching, groupFaces],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: ConversationSummary }) => (
       <ConversationRow
@@ -358,21 +374,62 @@ export default function InboxScreen() {
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity
           style={styles.composeButton}
-          activeOpacity={0.7}
+          activeOpacity={0.85}
           onPress={() => navigation.navigate('NewConversation')}
           accessibilityLabel="New message"
         >
-          <Icon name="compose" size={22} color={COLORS.purple} />
+          {/* Same round button and glyph size as Home's two-bubble messages button, its pair. */}
+          <Icon name="compose" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
+
+      {/* Outside the list: a realtime refetch or a banner change re-renders the list, and
+          the field must not remount under the keyboard. Only once there is something to
+          search — an empty inbox gets its "No messages yet" call to action instead. */}
+      {!loading && conversations.length > 0 ? (
+        <View style={styles.searchWrap}>
+          <FormInput
+            ref={searchRef}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search chats"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search chats"
+            trailing={
+              query.length > 0 ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setQuery('');
+                    searchRef.current?.focus();
+                  }}
+                  style={styles.clearButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear search"
+                >
+                  <Icon name="clear" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              ) : null
+            }
+          />
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={COLORS.purple} />
         </View>
+      ) : searching && shown.length === 0 ? (
+        // At the TOP, not centred: centred, it lands behind the keyboard.
+        <View style={styles.noMatch}>
+          <Text style={styles.noMatchText}>No chats match "{query.trim()}".</Text>
+        </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={shown}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           keyExtractor={item => item.id}
           renderItem={renderItem}
           refreshing={refreshing}
@@ -381,10 +438,13 @@ export default function InboxScreen() {
             void load(true);
           }}
           ListHeaderComponent={
-            <>
-              <FriendRequestsBanner refreshKey={bannerKey} />
-              <ActivityBanner refreshKey={bannerKey} />
-            </>
+            // Hidden while searching: the results are the chats that match, nothing else.
+            searching ? null : (
+              <>
+                <FriendRequestsBanner refreshKey={bannerKey} />
+                <ActivityBanner refreshKey={bannerKey} />
+              </>
+            )
           }
           contentContainerStyle={
             conversations.length === 0
@@ -407,7 +467,7 @@ export default function InboxScreen() {
             </View>
           }
           ListFooterComponent={
-            conversations.length > 0 ? (
+            conversations.length > 0 && !searching ? (
               <FeedEndMessage
                 title="All your chats, on the same record"
                 subtitle="Every conversation lives here. New messages will tune in at the top."
@@ -438,9 +498,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  composeButton: { padding: 4 },
+  /** Mirrors HomeScreen `inboxButton`: the messages button and the new-message button match. */
+  composeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 24 },
+  searchWrap: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  /** Owns the gap to the field's right edge — FormInput zeroes the input's own padding. */
+  clearButton: { paddingHorizontal: 14, paddingVertical: 12 },
+  noMatch: { alignItems: 'center', paddingTop: 28, paddingHorizontal: 40 },
+  noMatchText: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 },
   emptyContent: { flex: 1 },
   row: {
     flexDirection: 'row',

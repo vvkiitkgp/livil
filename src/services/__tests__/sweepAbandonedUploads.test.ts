@@ -9,6 +9,10 @@
  */
 jest.mock('@react-native-documents/picker', () => ({ keepLocalCopy: jest.fn() }));
 jest.mock('react-native-audio-api', () => ({ decodeAudioData: jest.fn() }));
+// tracks.ts remembers staged uploads in AsyncStorage (#290); its native module is absent here.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 type Filter = [op: string, column: string, value: unknown];
 /** Every select the sweep made, as its filters; and every delete / storage removal. */

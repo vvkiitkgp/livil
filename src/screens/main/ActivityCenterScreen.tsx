@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import ActivityBubble from '../../components/ActivityBubble';
+import { LivilBotAvatar } from '../../components/LivilBotAvatar';
 import ChatTimeSeparator from '../../components/ChatTimeSeparator';
 import SwipeRevealRow from '../../components/SwipeRevealRow';
 import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
@@ -29,7 +29,6 @@ import { Icon } from '../../components/Icon';
 import { respondToCredit } from '../../services/tracks';
 import { useToast } from '../../contexts/ToastContext';
 
-const LIVIL_LOGO = require('../../assets/livil-logo.png');
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -238,7 +237,7 @@ export default function ActivityCenterScreen() {
         >
           <Icon name="back" size={28} color={COLORS.purple} />
         </TouchableOpacity>
-        <Image source={LIVIL_LOGO} style={styles.headerAvatar} />
+        <LivilBotAvatar size={34} />
         <Text style={styles.headerTitle}>livil Bot</Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -249,7 +248,9 @@ export default function ActivityCenterScreen() {
         </View>
       ) : items.length === 0 ? (
         <View style={styles.empty}>
-          <Image source={LIVIL_LOGO} style={styles.emptyLogo} />
+          <View style={styles.emptyLogo}>
+            <LivilBotAvatar size={64} />
+          </View>
           <Text style={styles.emptyTitle}>No activity yet</Text>
           <Text style={styles.emptyBody}>
             Likes, comments, reposts and milestones on your posts show up here.
@@ -295,7 +296,6 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   backButton: { padding: 4 },
-  headerAvatar: { width: 34, height: 34, borderRadius: 17 },
   headerTitle: {
     flex: 1,
     color: COLORS.white,
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingTop: 8 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
-  emptyLogo: { width: 64, height: 64, borderRadius: 32, marginBottom: 4 },
+  emptyLogo: { marginBottom: 4 },
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
   emptyBody: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 },
 });

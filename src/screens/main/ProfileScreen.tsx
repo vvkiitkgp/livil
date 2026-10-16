@@ -701,6 +701,8 @@ export default function ProfileScreen() {
             icon="add"
             variant="primary"
             size="sm"
+            // Home's 38pt "+ Track" (HomeScreen `uploadButton`), so the two read as one control.
+            style={styles.addTrackButton}
             // With Spotify reposts switched on, "+ Track" asks what to add (ADR-0027).
             onPress={() => navigation.navigate(spotify.reposts ? 'AddToLivil' : 'Upload')}
             accessibilityLabel={spotify.reposts ? 'Add a track' : 'Upload a track'}
@@ -989,6 +991,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
+  /** Height only, matching Home's "+ Track": the pill itself is Button's `sm`. */
+  addTrackButton: { height: 38, paddingVertical: 0 },
   headerIconBtn: {
     width: 40,
     height: 40,

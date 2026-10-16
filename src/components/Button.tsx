@@ -14,6 +14,7 @@ import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import { GradientBorder } from './GradientBorder';
 import { Icon, type IconName } from './Icon';
+import { SPOTIFY_GREEN } from './spotifyLogoArtwork';
 
 /**
  * The app's shared button. Use this instead of hand-rolling a TouchableOpacity
@@ -29,6 +30,9 @@ import { Icon, type IconName } from './Icon';
  *   secondary   black bg + neutral border + white label
  *   ghost       bare text link (modal "Cancel")
  *   destructive solid red fill + white label
+ *   spotify     solid Spotify Green fill + black label — ONLY for the action that hands
+ *               the listener to the Spotify app. Spotify's colour, not Livil's, the same
+ *               way "Continue with Google" wears Google's: the button says where you go.
  *
  * `primary` and `selected` intentionally paint the same — a selected tab and a
  * primary CTA are both "the purple one". They stay separate variants so call
@@ -43,7 +47,7 @@ import { Icon, type IconName } from './Icon';
  * under a dark outlined button. Glow is expressed purely via border + tint so
  * both platforms render identically.
  */
-export type ButtonVariant = 'primary' | 'secondary' | 'selected' | 'ghost' | 'destructive';
+export type ButtonVariant = 'primary' | 'secondary' | 'selected' | 'ghost' | 'destructive' | 'spotify';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export type ButtonProps = {
@@ -126,6 +130,16 @@ function paintFor(variant: ButtonVariant, onMedia: boolean) {
         borderWidth: 1,
         label: COLORS.white,
         weight: '600' as const,
+        gradient: false,
+      };
+    case 'spotify':
+      return {
+        bg: SPOTIFY_GREEN,
+        border: 'transparent',
+        borderWidth: 0,
+        // Black, as on Spotify's own green buttons: white on #1ED760 is ~1.9:1.
+        label: '#000000',
+        weight: '700' as const,
         gradient: false,
       };
     case 'destructive':

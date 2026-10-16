@@ -98,7 +98,7 @@ function avatarInitials(author: { displayName: string | null; username: string }
 // Like / comment / repost glyphs. Bigger and white so the three actions read as controls rather
 // than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
 // (styles.likeHit), so changing the size keeps the target the same.
-const ACTION_ICON_SIZE = 26;
+export const ACTION_ICON_SIZE = 26;
 
 const CREDIT_FACES_SHOWN = 4;
 
@@ -1410,6 +1410,13 @@ const styles = StyleSheet.create({
  * branch inside PostCard: PostCard's hooks all assume Livil media, and an early return
  * above them would break the rules of hooks.
  */
+/**
+ * The card's own styles, for `UploadPreviewCard` — the upload screen's "this is how your
+ * post will look" card. Sharing the object rather than copying it is the point: a change
+ * to the real card shows up in the preview, so the two cannot drift apart.
+ */
+export const postCardStyles = styles;
+
 function PostCardSwitch(props: PostCardProps) {
   return props.post.spotifyTrackId ? <SpotifyPostCard {...props} /> : <PostCard {...props} />;
 }

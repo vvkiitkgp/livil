@@ -256,9 +256,12 @@ export async function fetchUploaderAvailableTracks(): Promise<UploaderTrackOptio
   if (taggedErr) { throw new Error(taggedErr.message); }
   const tagged = new Set((taggedRows ?? []).map(r => r.track_id));
 
+  // `posts!inner`: only tracks that were actually posted. Without it the picker also
+  // offered rows that never got a post — an upload abandoned mid-way, or a song still
+  // being staged by the upload screen (titled after its file).
   const { data, error } = await supabase
     .from('tracks')
-    .select('id, title, cover_art_url, duration_seconds, created_at')
+    .select('id, title, cover_art_url, duration_seconds, created_at, posts!inner(id)')
     .eq('uploader_id', me)
     .order('created_at', { ascending: false });
   if (error) { throw new Error(error.message); }

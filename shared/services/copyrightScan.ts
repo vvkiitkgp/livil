@@ -147,6 +147,13 @@ export type RightsDeclaration = {
 /** How long we wait before letting the upload proceed unchecked. */
 export const SCAN_TIMEOUT_MS = 20_000;
 
+/**
+ * The same, for a whole-song check (`fullSong`). The server gives the provider 50 s and
+ * then records `failed`, so this only has to outlast that — and stay at the 60 s an iPhone
+ * waits for a silent HTTP response anyway.
+ */
+export const FULL_SONG_SCAN_TIMEOUT_MS = 60_000;
+
 const FAILED: ScanResult = { status: 'failed', matchFound: null };
 
 /**
@@ -156,14 +163,26 @@ const FAILED: ScanResult = { status: 'failed', matchFound: null };
  * a track still holding its `pending://` placeholder has nothing to scan.
  *
  * Never throws. A caller that wants to know something went wrong reads `status`.
+ *
+ * `fullSong` asks for every 12-second chunk of a song to be checked instead of the
+ * provider's quick one-excerpt check. Billed per chunk and slower — typically seconds,
+ * up to a minute — which the mobile upload absorbs by scanning while the song is staged,
+ * with steps still to fill in. A server without the whole-song path ignores the field and
+ * answers as before; the web dashboard does not ask yet.
  */
-export async function scanUpload(db: ScanClient, trackId: string): Promise<ScanResult> {
+export async function scanUpload(
+  db: ScanClient,
+  trackId: string,
+  opts: { fullSong?: boolean } = {},
+): Promise<ScanResult> {
   if (!trackId) return FAILED;
 
   try {
     const settled = await withTimeout(
-      db.functions.invoke('scan-upload', { body: { trackId } }),
-      SCAN_TIMEOUT_MS,
+      db.functions.invoke('scan-upload', {
+        body: opts.fullSong ? { trackId, fullSong: true } : { trackId },
+      }),
+      opts.fullSong ? FULL_SONG_SCAN_TIMEOUT_MS : SCAN_TIMEOUT_MS,
     );
     if (!settled) return FAILED;
 
