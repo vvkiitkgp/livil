@@ -164,8 +164,10 @@ const ABANDONED_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000;
  * placeholder. Nobody can play or see it, and nothing ever removed it.
  *
  * Safe to delete: the post is inserted only after the placeholder is replaced, so a
- * placeholder row has no post. 24 hours old, so an upload still running on another device
- * is never touched. Owner-only twice over — filtered here, and `tracks_delete_own`.
+ * placeholder row has no post — and each one is checked anyway, because the delete
+ * cascades: a row that broke that rule would take its post, reposts, likes and comments
+ * with it, for good. 24 hours old, so an upload still running on another device is never
+ * touched. Owner-only twice over — filtered here, and `tracks_delete_own`.
  * Once per launch / sign-in, fire-and-forget; never throws.
  */
 export async function sweepAbandonedUploads(userId: string): Promise<void> {
@@ -181,12 +183,21 @@ export async function sweepAbandonedUploads(userId: string): Promise<void> {
         .lt('created_at', cutoff);
     const [audio, video] = await Promise.all([stuck('audio_url'), stuck('video_url')]);
     const ids = [...(audio.data ?? []), ...(video.data ?? [])].map(r => r.id);
+    let removed = 0;
     for (const id of ids) {
+      // Has a post, or cannot tell: left alone. Only a certain "no post" is deleted.
+      const { data: posts, error: postsError } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('track_id', id)
+        .limit(1);
+      if (postsError || !posts || posts.length > 0) { continue; }
       // Same order as createTrack's own rollback.
       await safeDeleteTrack(id);
       await safeRemoveUploadedObjects(userId, id);
+      removed += 1;
     }
-    if (ids.length > 0) { console.log(`[LIVIL][upload] removed ${ids.length} abandoned upload(s)`); }
+    if (removed > 0) { console.log(`[LIVIL][upload] removed ${removed} abandoned upload(s)`); }
   } catch {
     // Best-effort: whatever is left is swept on the next launch.
   }

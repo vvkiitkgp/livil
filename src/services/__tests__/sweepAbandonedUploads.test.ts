@@ -16,11 +16,24 @@ const mockSelects: Filter[][] = [];
 const mockDeleted: string[] = [];
 const mockRemoved: string[][] = [];
 let mockRows: Record<string, { id: string }[]> = {};
+/** Track ids that have a post; `'error'` makes the posts lookup fail for that id. */
+let mockPosts: Record<string, 'post' | 'error'> = {};
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
-    from: () => ({
+    from: (table: string) => ({
       select: () => {
+        if (table === 'posts') {
+          return {
+            eq: (_c: string, trackId: string) => ({
+              limit: () => Promise.resolve(
+                mockPosts[trackId] === 'error'
+                  ? { data: null, error: { message: 'down' } }
+                  : { data: mockPosts[trackId] === 'post' ? [{ id: 'p1' }] : [], error: null },
+              ),
+            }),
+          };
+        }
         const filters: Filter[] = [];
         mockSelects.push(filters);
         const q = {
@@ -54,6 +67,7 @@ beforeEach(() => {
   mockDeleted.length = 0;
   mockRemoved.length = 0;
   mockRows = {};
+  mockPosts = {};
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
@@ -81,6 +95,17 @@ it('asks only for MY rows that still hold the placeholder and are over a day old
     expect(before - cutoff).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000 - 1000);
   }
   expect(mockSelects.map(f => f.find(x => x[0] === 'like')![1]).sort()).toEqual(['audio_url', 'video_url']);
+});
+
+it('never deletes a placeholder row that has a post — the delete would cascade to it', async () => {
+  mockRows = { audio_url: [{ id: 't-posted' }, { id: 't-unknown' }, { id: 't-orphan' }] };
+  mockPosts = { 't-posted': 'post', 't-unknown': 'error' };
+
+  await sweepAbandonedUploads(ME);
+
+  // Has a post: kept. Could not tell: kept. Certainly no post: removed.
+  expect(mockDeleted).toEqual(['t-orphan']);
+  expect(mockRemoved).toEqual([[`${ME}/t-orphan/audio.mp3`]]);
 });
 
 it('deletes nothing when nothing is stuck', async () => {
