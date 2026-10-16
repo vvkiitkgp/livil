@@ -515,14 +515,21 @@ export default function ProfileScreen() {
     // of the screen, often under the user's own thumb.
     haptics.select();
     setRefreshing(true);
-    playback.pauseAll();
+    // Music keeps playing: a pull refreshes what is on screen, not what is in your ears.
     // A pull refreshes the profile: every tab loads afresh the next time it is opened.
     tabCache.clear();
     const isCurrent = tabCache.beginLoad();
-    await refresh(tab, { isCurrent });
+    await Promise.all([
+      refresh(tab, { isCurrent }),
+      // Who can see my reposts — otherwise only re-read when the screen regains focus.
+      supabase.auth.getUser()
+        .then(({ data }) => (data?.user?.id ? getRepostsPublic(data.user.id) : null))
+        .then(value => { if (value !== null) { setRepostsPublic(value); } })
+        .catch(() => {}),
+    ]);
     setRefreshing(false);
     if (isCurrent()) { setLoading(false); }
-  }, [refresh, tab, playback, tabCache]);
+  }, [refresh, tab, tabCache]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) {return;}
