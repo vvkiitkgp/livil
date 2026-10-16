@@ -145,6 +145,11 @@ function spinners(t: TestRenderer.ReactTestRenderer) {
 const titlesInList = (list: TestRenderer.ReactTestInstance) =>
   (list.props.data as { post: { track: { title: string } } }[]).map(r => r.post.track.title);
 
+// The first test mounts the whole SearchScreen cold. On a GitHub runner that alone ran past
+// jest's default 5 s (the file took 8.3 s there; well under 1 s locally), failing a test
+// whose assertions all hold. Nothing here waits on real time — the timers are fake.
+jest.setTimeout(20_000);
+
 beforeEach(() => {
   jest.useFakeTimers();
   mockSearchPosts.mockReset();
