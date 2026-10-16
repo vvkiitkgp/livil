@@ -36,7 +36,10 @@ export default function RoundTickButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !enabled }}
     >
-      <View style={[styles.circle, !enabled && styles.circleIdle]}>
+      {/* collapsable={false}: enabled, this View has no border of its own, so Fabric
+          flattens it away; when it comes back for the idle ring, Android received only the
+          changed props and drew the ring SQUARE (no borderRadius). Never flatten it. */}
+      <View collapsable={false} style={[styles.circle, !enabled && styles.circleIdle]} testID="round-tick-circle">
         {enabled ? <GradientBorder borderRadius={SIZE / 2} /> : null}
         <Icon name="check" size={16} color={enabled ? COLORS.purpleNeon : COLORS.textMuted} weight="bold" />
       </View>
