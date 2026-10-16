@@ -41,6 +41,10 @@ import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlis
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
+import PostGridCard from '../../components/PostGridCard';
+import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
+import { useProfileLayout } from '../../hooks/useProfileLayout';
+import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useStories } from '../../contexts/StoriesContext';
@@ -72,6 +76,8 @@ type ListItem =
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
+  // Reposts / Uploads in the grid layout: two posts a row.
+  | { kind: 'post-row'; a: FeedPost; b: FeedPost | null; key: string }
   // Who can see this person's reposts (ADR-0028), shown above reposts the viewer can see.
   | { kind: 'audience'; key: string }
   | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
@@ -213,6 +219,7 @@ export default function UserProfileScreen() {
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
+  const [layout, setLayout] = useProfileLayout();
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -542,7 +549,13 @@ export default function UserProfileScreen() {
         ? [{ kind: 'audience', key: '__audience__' }]
         : [];
       if (visiblePosts.length > 0) {
-        return [head, ...audience, ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))];
+        return [
+          head,
+          ...audience,
+          ...(layout === 'grid'
+            ? pairs(visiblePosts).map<ListItem>(([a, b]) => ({ kind: 'post-row', a, b, key: `post-row-${a.id}` }))
+            : visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))),
+        ];
       }
       return [head, ...audience, { kind: 'empty', key: '__empty__' }];
     }
@@ -556,7 +569,10 @@ export default function UserProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic, tabCounts.reposts]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blockedView, repostsPublic, tabCounts.reposts, layout]);
+
+  // Each upload's song total plays, for the grid's cards (Uploads only — never on reposts).
+  const uploadPlays = useTrackPlaysTotals(posts, tab === 'uploads' && layout === 'grid');
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -569,7 +585,25 @@ export default function UserProfileScreen() {
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
-        return <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />;
+        return (
+          <ProfileTabBar
+            active={tab}
+            counts={tabCounts}
+            onChange={handleTabChange}
+            trailing={tab === 'reposts' || tab === 'uploads'
+              ? <ProfileLayoutToggle value={layout} onChange={setLayout} />
+              : null}
+          />
+        );
+      }
+      if (item.kind === 'post-row') {
+        const playsFor = (p: FeedPost) => (tab === 'uploads' ? uploadPlays[p.track.id] ?? null : undefined);
+        return (
+          <View style={styles.gridRow}>
+            <PostGridCard post={item.a} plays={playsFor(item.a)} />
+            {item.b ? <PostGridCard post={item.b} plays={playsFor(item.b)} /> : <View style={styles.gridSpacer} />}
+          </View>
+        );
       }
       if (item.kind === 'blocked') {
         return (
@@ -708,7 +742,8 @@ export default function UserProfileScreen() {
         />
       );
     },
-    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic],
+    [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic,
+     layout, setLayout, uploadPlays],
   );
 
   const renderHeader = useCallback(() => {

@@ -60,6 +60,10 @@ import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlis
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
 import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
 import ProfileGridCard from '../../components/ProfileGridCard';
+import PostGridCard from '../../components/PostGridCard';
+import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
+import { useProfileLayout } from '../../hooks/useProfileLayout';
+import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
 import type { RootStackParamList } from '../../navigation/types';
 
 type ProfileRow = {
@@ -95,6 +99,8 @@ type ListItem =
   | { kind: 'empty'; key: string }
   | { kind: 'loading'; key: string }
   | { kind: 'post'; post: FeedPost; key: string }
+  // Reposts / Uploads in the grid layout: two posts a row.
+  | { kind: 'post-row'; a: FeedPost; b: FeedPost | null; key: string }
   // Removed content has no post — a takedown deletes it — so it cannot ride the 'post'
   // branch and needs kinds of its own.
   | { kind: 'blocked'; track: BlockedTrack; key: string }
@@ -199,6 +205,7 @@ export default function ProfileScreen() {
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
+  const [layout, setLayout] = useProfileLayout();
   // Neither of these comes back from a post query: a takedown deletes the post, so the
   // track would otherwise vanish from its own owner's profile with no explanation.
   const [blocked, setBlocked] = useState<BlockedTrack[]>([]);
@@ -501,7 +508,9 @@ export default function ProfileScreen() {
         return [
           ...top,
           ...notices,
-          ...visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id })),
+          ...(layout === 'grid'
+            ? pairs(visiblePosts).map<ListItem>(([a, b]) => ({ kind: 'post-row', a, b, key: `post-row-${a.id}` }))
+            : visiblePosts.map<ListItem>(p => ({ kind: 'post', post: p, key: p.id }))),
         ];
       }
       return [...top, { kind: 'empty', key: '__empty__' }];
@@ -517,7 +526,10 @@ export default function ProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic, layout]);
+
+  // Each upload's song total plays, for the grid's cards (Uploads only — never on reposts).
+  const uploadPlays = useTrackPlaysTotals(posts, tab === 'uploads' && layout === 'grid');
 
   const goToAlbum = useCallback((a: AlbumSummary) => {
     navigation.navigate('AlbumDetail', { albumId: a.id, albumTitle: a.title });
@@ -531,7 +543,23 @@ export default function ProfileScreen() {
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
         return (
-          <ProfileTabBar active={tab} counts={tabCounts} onChange={handleTabChange} />
+          <ProfileTabBar
+            active={tab}
+            counts={tabCounts}
+            onChange={handleTabChange}
+            trailing={tab === 'reposts' || tab === 'uploads'
+              ? <ProfileLayoutToggle value={layout} onChange={setLayout} />
+              : null}
+          />
+        );
+      }
+      if (item.kind === 'post-row') {
+        const playsFor = (p: FeedPost) => (tab === 'uploads' ? uploadPlays[p.track.id] ?? null : undefined);
+        return (
+          <View style={styles.gridRow}>
+            <PostGridCard post={item.a} plays={playsFor(item.a)} />
+            {item.b ? <PostGridCard post={item.b} plays={playsFor(item.b)} /> : <View style={styles.gridSpacer} />}
+          </View>
         );
       }
       if (item.kind === 'blocked') {
@@ -685,7 +713,7 @@ export default function ProfileScreen() {
     // re-rendered after the delete started and the button sat there looking idle while
     // the request was in flight.
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist,
-     removingId, repostsPublic, navigation],
+     removingId, repostsPublic, navigation, layout, setLayout, uploadPlays],
   );
 
   const renderHeader = useCallback(() => {

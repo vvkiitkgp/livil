@@ -61,6 +61,7 @@ import {
   InstagramLogo,
   Lifebuoy,
   LinkSimple,
+  ListBullets,
   Lock,
   MagnifyingGlass,
   MinusCircle,
@@ -87,6 +88,7 @@ import {
   SkipBack,
   Sparkle,
   SkipForward,
+  SquaresFour,
   Star,
   Trash,
   UploadSimple,
@@ -120,6 +122,8 @@ export type IconName =
   | 'musicNote' | 'musicNotes' | 'disc' | 'playlist'
   // visibility
   | 'public' | 'friends' | 'lock'
+  // layout switches (profile Reposts / Uploads: list ↔ grid)
+  | 'layoutList' | 'layoutGrid'
   // role icons
   | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
@@ -154,6 +158,9 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose'>, [PhComponent, Icon
   repeatOnce: [RepeatOnce, 'bold'],
   shuffle: [Shuffle, 'bold'],
   queue: [Queue, 'regular'],
+  // layout
+  layoutList: [ListBullets, 'regular'],
+  layoutGrid: [SquaresFour, 'regular'],
   // engagement
   heart: [Heart, 'regular'],
   comment: [ChatCircle, 'regular'],
