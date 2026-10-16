@@ -39,11 +39,13 @@ import ProfileBadges from '../../components/ProfileBadges';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
-import ProfileTabBar, { initialTabFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import ProfileTabBar, { initialTabFor, visibleTabsFor, type ProfileTab, type TabCounts } from '../../components/ProfileTabBar';
+import Reanimated from 'react-native-reanimated';
+import { useSwitchFade } from '../../hooks/useSwitchFade';
 import ProfileGridCard from '../../components/ProfileGridCard';
 import PostGridCard from '../../components/PostGridCard';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
-import { useProfileLayout } from '../../hooks/useProfileLayout';
+import { useProfileLayout, type ProfileLayout } from '../../hooks/useProfileLayout';
 import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
 import { usePinnedTabsScroll } from '../../hooks/usePinnedTabsScroll';
 import { useRelationships } from '../../contexts/RelationshipContext';
@@ -223,10 +225,19 @@ export default function UserProfileScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
   const [layout, setLayout] = useProfileLayout();
-  const changeLayout = useCallback((next: typeof layout) => {
-    pinned.keepTabsPinned();
-    setLayout(next);
-  }, [pinned, setLayout]);
+  // Home's tab cross-fade for the tab content. The pill / switch show the new choice at
+  // once (`pillTab`, `pendingLayout`); the content swaps once the old rows have faded out.
+  const fade = useSwitchFade();
+  const [pendingLayout, setPendingLayout] = useState<ProfileLayout | null>(null);
+  const changeLayout = useCallback((next: ProfileLayout) => {
+    if (next === (pendingLayout ?? layout)) { return; }
+    setPendingLayout(next);
+    fade.switchTo(next === 'grid' ? 1 : -1, () => {
+      pinned.keepTabsPinned();
+      setPendingLayout(null);
+      setLayout(next);
+    });
+  }, [pendingLayout, layout, fade, pinned, setLayout]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -414,21 +425,31 @@ export default function UserProfileScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [pillTab, setPillTab] = useState<ProfileTab | null>(null);
   const handleTabChange = useCallback(
-    async (next: ProfileTab) => {
-      if (next === tab) { return; }
-      pinned.keepTabsPinned();
+    (next: ProfileTab) => {
+      const shown = pillTab ?? tab;
+      if (next === shown) { return; }
       playback.pauseAll();
-      setTab(next);
-      setPosts([]);
-      setAlbums([]);
-      setPlaylists([]);
-      setEndReached(false);
-      setLoading(true);
-      await refresh(next);
-      setLoading(false);
+      const order = visibleTabsFor(tabCounts).map(t => t.key);
+      setPillTab(next);
+      fade.switchTo(Math.sign(order.indexOf(next) - order.indexOf(shown)) || 1, stillCurrent => {
+        pinned.keepTabsPinned();
+        setPillTab(null);
+        setTab(next);
+        setPosts([]);
+        setAlbums([]);
+        setPlaylists([]);
+        setEndReached(false);
+        setLoading(true);
+        void refresh(next).then(() => {
+          setLoading(false);
+          // The rows replace the loading row: fade them in rather than pop.
+          if (stillCurrent()) { fade.reveal(); }
+        });
+      });
     },
-    [tab, refresh, playback, pinned],
+    [pillTab, tab, tabCounts, refresh, playback, pinned, fade],
   );
 
   const refreshRelationships = rel.refresh;
@@ -592,16 +613,17 @@ export default function UserProfileScreen() {
     navigation.navigate('PlaylistDetail', { playlistId: p.id, playlistName: p.name });
   }, [navigation]);
 
-  const renderItem = useCallback(
+  const renderRow = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'tabs') {
+        const shownTab = pillTab ?? tab;
         return (
           <ProfileTabBar
-            active={tab}
+            active={shownTab}
             counts={tabCounts}
             onChange={handleTabChange}
-            trailing={tab === 'reposts' || tab === 'uploads'
-              ? <ProfileLayoutToggle value={layout} onChange={changeLayout} />
+            trailing={shownTab === 'reposts' || shownTab === 'uploads'
+              ? <ProfileLayoutToggle value={pendingLayout ?? layout} onChange={changeLayout} />
               : null}
           />
         );
@@ -753,7 +775,15 @@ export default function UserProfileScreen() {
       );
     },
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist, profile, repostsPublic,
-     layout, changeLayout, uploadPlays],
+     layout, changeLayout, uploadPlays, pillTab, pendingLayout],
+  );
+
+  // Everything under the tab row fades with a switch; the pinned row itself never does.
+  const renderItem = useCallback(
+    ({ item }: { item: ListItem }) => (item.kind === 'tabs'
+      ? renderRow({ item })
+      : <Reanimated.View style={fade.style}>{renderRow({ item })}</Reanimated.View>),
+    [renderRow, fade.style],
   );
 
   const renderHeader = useCallback(() => {
@@ -966,6 +996,10 @@ export default function UserProfileScreen() {
     }
     return <View style={styles.listFooter} />;
   }, [loadingMore, endReached, posts.length]);
+  const renderFadingFooter = useCallback(
+    () => <Reanimated.View style={fade.style}>{renderFooter()}</Reanimated.View>,
+    [renderFooter, fade.style],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -981,7 +1015,7 @@ export default function UserProfileScreen() {
         // type it remounts the header on every tab switch and flickers the
         // outlined buttons.
         ListHeaderComponent={renderHeader()}
-        ListFooterComponent={renderFooter}
+        ListFooterComponent={renderFadingFooter}
         stickyHeaderIndices={[1]}
         onScrollToIndexFailed={() => { /* item not laid out yet — silently skip */ }}
         refreshControl={
