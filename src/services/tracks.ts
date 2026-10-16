@@ -565,8 +565,8 @@ export async function createTrack(
 /**
  * Everything after the files are in storage: the row's final fields, the copyright scan,
  * credits, the post, the streaming grant. Shared by `createTrack` (all files uploaded at
- * Post) and `publishStagedAudioTrack` (the song was uploaded and checked as soon as it was
- * picked). Throws on failure; the caller owns the rollback.
+ * Post) and `publishStagedTrack` (the song or video was uploaded and checked while the
+ * artist filled in the rest). Throws on failure; the caller owns the rollback.
  */
 async function finishTrack({
   trackId,
@@ -631,8 +631,8 @@ async function finishTrack({
   // After the media has its final URL and before any post exists: earlier there is
   // nothing for the provider to fetch (the row still holds its `pending://`
   // placeholder); later the post row exists, and a post that is published and then
-  // withdrawn has already been seen. A staged song (`stageAudioUpload`) hits the same
-  // moment, just as soon as it was picked rather than at Post.
+  // withdrawn has already been seen. A staged upload (`stageMediaUpload`) hits the same
+  // moment, just earlier — while the rest of the form is being filled in, not at Post.
   //
   // Entirely fail-safe. `scanUpload` resolves rather than throwing, so a provider
   // outage or an undeployed function costs a `failed` row and nothing else — the
@@ -650,8 +650,8 @@ async function finishTrack({
     // Scanned (and answered) when the song was staged.
     declarationToRecord = scan.declaration;
   } else if (scan.kind === 'ask') {
-    // The whole song, as at staging: this is a staged song whose check did not finish, or
-    // a video — checked here, while the uploader waits, because videos are not staged.
+    // The whole song, as at staging: a staged upload whose check did not finish, or one
+    // that was never staged (its early upload failed) — checked while the uploader waits.
     onProgress?.({ stage: 'checking', fraction: 1 });
     const result = await scanUpload(supabase, trackId, { fullSong: true });
     onProgress?.({ stage: 'finalizing', fraction: 1 });
@@ -761,18 +761,19 @@ async function finishTrack({
   };
 }
 
-// ─── Early song upload ("staging") ───────────────────────────────────────────
+// ─── Early upload ("staging") ────────────────────────────────────────────────
 //
-// The song is uploaded and copyright-checked AS SOON AS IT IS PICKED, while the artist is
-// still filling in the details — so a match is raised before they have typed anything,
-// and Post at the end only has the cover and the post to do. Audio only: video is not
-// checked by the provider, and a video is the file that should not upload over a
-// half-finished form on mobile data.
+// The song or video is uploaded and copyright-checked while the artist is still filling in
+// the details — so a match is raised before they have typed anything, and Post at the end
+// only has the pictures and the post to do. A song starts the moment it is picked. A video
+// starts when the artist moves on from its step (the screen decides): it can be hundreds
+// of MB, so it waits for the "yes, this one" of leaving the preview rather than uploading
+// a wrong pick over mobile data — and a swap stops it mid-way (`signal`).
 //
-// A staged song is a `tracks` row with a real `audio_url` and NO post. Nothing lists a
+// A staged upload is a `tracks` row with a real media URL and NO post. Nothing lists a
 // track without its post, so it is invisible until published — but it is a file in the
 // bucket, so every way out of the upload screen has to remove it:
-//   • a different song picked, or the song removed      → the screen discards it
+//   • a different file picked, or the file removed      → the screen discards it
 //   • the screen closed without posting                 → the screen discards it
 //   • the app killed mid-way                            → `sweepStagedUploads` on the next
 //                                                          visit, from the ids remembered
@@ -828,10 +829,12 @@ function forgetStaged(trackId: string): Promise<void> {
   });
 }
 
-export type StagedAudio = {
+export type StagedUpload = {
   trackId: string;
   userId: string;
-  audioUrl: string;
+  mediaKind: 'audio' | 'video';
+  /** The song's `audio_url` or the video's `video_url`. */
+  mediaUrl: string;
   scan: ScanResult;
   /** What the uploader answered at the copyright question; null when nothing matched. */
   declaration: RightsDeclaration | null;
@@ -839,7 +842,7 @@ export type StagedAudio = {
 
 export type StageProgress = { stage: 'uploading' | 'checking'; fraction: number };
 
-/** The screen dropped this song (picked another, removed it, left) before staging finished. */
+/** The screen dropped this file (picked another, removed it, left) before staging finished. */
 export class StagingAbandonedError extends Error {
   constructor() {
     super('Staging abandoned.');
@@ -854,17 +857,20 @@ function provisionalTitle(file: PickedFile): string {
 }
 
 /**
- * Upload the picked song and run the copyright check on it, now. Resolves with the staged
+ * Upload the song or video and run the copyright check on it, now. Resolves with the staged
  * track and its scan; a match is the screen's to ask about (see above). `isAbandoned` is
- * polled between steps: once the screen has moved on, whatever was written is removed and
- * `StagingAbandonedError` thrown. Any other failure also removes what was written and
- * rethrows — the screen then falls back to the classic all-at-Post `createTrack`.
+ * polled between steps and `signal` stops the file upload itself: once the screen has moved
+ * on, whatever was written is removed and `StagingAbandonedError` thrown. Any other failure
+ * also removes what was written and rethrows — the screen then falls back to the classic
+ * all-at-Post `createTrack`.
  */
-export async function stageAudioUpload(
-  audio: PickedFile,
+export async function stageMediaUpload(
+  file: PickedFile,
+  mediaKind: 'audio' | 'video',
   onProgress: (p: StageProgress) => void,
   isAbandoned: () => boolean,
-): Promise<StagedAudio> {
+  signal?: AbortSignal,
+): Promise<StagedUpload> {
   const [
     { data: userData, error: userError },
     { data: sessionData },
@@ -880,9 +886,11 @@ export async function stageAudioUpload(
     .from('tracks')
     .insert({
       uploader_id: user.id,
-      title: provisionalTitle(audio),
-      media_kind: 'audio',
-      audio_url: 'pending://placeholder',
+      title: provisionalTitle(file),
+      media_kind: mediaKind,
+      // `tracks_media_shape_check`: a video row has a video_url and NO audio_url.
+      audio_url: mediaKind === 'audio' ? 'pending://placeholder' : null,
+      video_url: mediaKind === 'video' ? 'pending://placeholder' : null,
     })
     .select('id')
     .single();
@@ -901,17 +909,17 @@ export async function stageAudioUpload(
 
   try {
     onProgress({ stage: 'uploading', fraction: 0 });
-    const audioUrl = await uploadTrackFile(audio, 'audio', trackId, user.id, accessToken, f => {
+    const mediaUrl = await uploadTrackFile(file, mediaKind, trackId, user.id, accessToken, f => {
       onProgress({ stage: 'uploading', fraction: f });
-    });
+    }, signal);
     if (isAbandoned()) { throw new StagingAbandonedError(); }
 
     const { error: updateError } = await supabase
       .from('tracks')
-      .update({ audio_url: audioUrl })
+      .update(mediaKind === 'audio' ? { audio_url: mediaUrl } : { video_url: mediaUrl })
       .eq('id', trackId);
     if (updateError) {
-      throw new Error(`Failed to save the song: ${updateError.message}`);
+      throw new Error(`Failed to save the ${mediaKind === 'audio' ? 'song' : 'video'}: ${updateError.message}`);
     }
 
     onProgress({ stage: 'checking', fraction: 1 });
@@ -920,22 +928,25 @@ export async function stageAudioUpload(
     const scan = await scanUpload(supabase, trackId, { fullSong: true });
     if (isAbandoned()) { throw new StagingAbandonedError(); }
 
-    return { trackId, userId: user.id, audioUrl, scan, declaration: null };
+    return { trackId, userId: user.id, mediaKind, mediaUrl, scan, declaration: null };
   } catch (err) {
     await discard();
+    // A stopped upload rejects with "Upload aborted."; to the caller that is the screen
+    // having moved on, not a failure to fall back from.
+    if (isAbandoned()) { throw new StagingAbandonedError(); }
     throw err;
   }
 }
 
-/** Remove a staged song that will not be posted. Never throws. */
-export async function discardStagedAudio(staged: { trackId: string; userId: string }): Promise<void> {
+/** Remove a staged upload that will not be posted. Never throws. */
+export async function discardStagedUpload(staged: { trackId: string; userId: string }): Promise<void> {
   await safeDeleteTrack(staged.trackId);
   await safeRemoveUploadedObjects(staged.userId, staged.trackId);
   await forgetStaged(staged.trackId);
 }
 
 /**
- * Remove songs this device staged and never posted — the app was killed mid-upload.
+ * Remove uploads this device staged and never posted — the app was killed mid-upload.
  * Run when the upload screen opens. A staged id that DID get its post is only forgotten.
  * Never throws.
  */
@@ -956,7 +967,7 @@ export async function sweepStagedUploads(): Promise<void> {
         .limit(1);
       if (error) { continue; } // unknown → keep it for the next visit
       if (!data || data.length === 0) {
-        await discardStagedAudio(ref);
+        await discardStagedUpload(ref);
       } else {
         await forgetStaged(ref.trackId);
       }
@@ -967,22 +978,26 @@ export async function sweepStagedUploads(): Promise<void> {
 }
 
 /**
- * Publish a staged song: upload the cover, write the final fields, credits and post, and
- * record the copyright answer. A match still unanswered is asked about now (at Post nothing
- * else is on screen); a scan that could not complete at staging is run again, as Post always
- * did. On any failure — a cancelled question included — the staged song is removed too (as
- * `createTrack` removes everything it wrote) and the error rethrown; the screen then falls
- * back to a full `createTrack` on the next tap.
+ * Publish a staged song or video: upload its pictures, write the final fields, credits and
+ * post, and record the copyright answer. A match still unanswered is asked about now (at
+ * Post nothing else is on screen); a scan that could not complete at staging is run again,
+ * as Post always did. On any failure — a cancelled question included — the staged upload is
+ * removed too (as `createTrack` removes everything it wrote) and the error rethrown; the
+ * screen then falls back to a full `createTrack` on the next tap.
  */
-export async function publishStagedAudioTrack(
-  staged: StagedAudio,
-  input: Extract<CreateTrackInput, { mode: 'audio' }>,
+export async function publishStagedTrack(
+  staged: StagedUpload,
+  input: CreateTrackInput,
   onProgress?: CreateTrackProgressCallback,
   onCopyrightMatch?: CopyrightMatchPrompt,
 ): Promise<CreateTrackResult> {
   try {
+    if (input.mode !== staged.mediaKind) { throw new Error('The staged file does not match this post.'); }
     if (!input.title.trim()) { throw new Error('Title is required.'); }
-    if (!input.cover) { throw new Error('Cover image is required for audio posts.'); }
+    if (input.mode === 'audio' && !input.cover) { throw new Error('Cover image is required for audio posts.'); }
+    if (input.mode === 'video' && !input.thumbnail) {
+      throw new Error('Thumbnail image is required for video posts.');
+    }
     if (uploaderRolesOf(input).length === 0) { throw new Error('Choose what you did on this track.'); }
     if (input.streamingGrantAccepted !== true) {
       throw new Error('Tick the box to let Livil stream this recording.');
@@ -1006,17 +1021,40 @@ export async function publishStagedAudioTrack(
       declaration = answer;
     }
 
-    onProgress?.({ stage: 'uploading', fraction: 0 });
-    const coverArtUrl = await uploadTrackFile(input.cover, 'cover', staged.trackId, staged.userId, accessToken, f => {
-      onProgress?.({ stage: 'uploading', fraction: f });
+    // The pictures only: the song or video itself is already up. Progress is shared by size.
+    const pictures: { file: PickedFile; kind: 'cover' | 'thumbnail' }[] =
+      input.mode === 'audio'
+        ? [{ file: input.cover, kind: 'cover' }]
+        : [
+            { file: input.thumbnail, kind: 'thumbnail' },
+            ...(input.cover ? [{ file: input.cover, kind: 'cover' as const }] : []),
+          ];
+    const sizes = pictures.map(p => p.file.size ?? 100_000);
+    const total = sizes.reduce((a, b) => a + b, 0) || 1;
+    const fractions = pictures.map(() => 0);
+    const report = () => onProgress?.({
+      stage: 'uploading',
+      fraction: Math.min(1, fractions.reduce((sum, f, i) => sum + f * sizes[i], 0) / total),
     });
+    onProgress?.({ stage: 'uploading', fraction: 0 });
+    const urls = await Promise.all(pictures.map((p, i) =>
+      uploadTrackFile(p.file, p.kind, staged.trackId, staged.userId, accessToken, f => {
+        fractions[i] = f;
+        report();
+      })));
+    const urlFor = (kind: 'cover' | 'thumbnail') => {
+      const i = pictures.findIndex(p => p.kind === kind);
+      return i >= 0 ? urls[i] : undefined;
+    };
     const result = await finishTrack({
       trackId: staged.trackId,
       userId: staged.userId,
       input,
       description,
       tags,
-      urls: { audioUrl: staged.audioUrl, coverArtUrl },
+      urls: staged.mediaKind === 'audio'
+        ? { audioUrl: staged.mediaUrl, coverArtUrl: urlFor('cover') }
+        : { videoUrl: staged.mediaUrl, coverArtUrl: urlFor('cover'), thumbnailUrl: urlFor('thumbnail') },
       scan:
         staged.scan.status === 'complete' || !onCopyrightMatch
           ? { kind: 'answered', declaration }
@@ -1026,7 +1064,7 @@ export async function publishStagedAudioTrack(
     await forgetStaged(staged.trackId);
     return result;
   } catch (err) {
-    await discardStagedAudio(staged);
+    await discardStagedUpload(staged);
     throw err;
   }
 }

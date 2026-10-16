@@ -28,7 +28,7 @@ import { RESPONSE_TIMEOUT_MS, STALL_TIMEOUT_MS } from '../uploads';
 
 /** The smallest fake that behaves like the parts of XHR the uploader touches. */
 class FakeXHR {
-  static last: FakeXHR;
+  static last: FakeXHR | undefined;
   upload: {
     onprogress?: (e: { lengthComputable: boolean; loaded: number; total: number }) => void;
     onloadend?: () => void;
@@ -53,22 +53,24 @@ class FakeXHR {
 }
 
 describe('upload stall watchdog', () => {
-  let uploadFile: (onProgress: (f: number) => void) => Promise<void>;
+  let uploadFile: (onProgress: (f: number) => void, signal?: AbortSignal) => Promise<void>;
+  const xhr = () => FakeXHR.last!;
 
   beforeEach(() => {
+    FakeXHR.last = undefined;
     jest.useFakeTimers();
     (global as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXHR;
     jest.isolateModules(() => {
       // Required lazily so the fake XHR is in place first.
       const mod = require('../uploads') as typeof import('../uploads');
-      uploadFile = (onProgress) =>
+      uploadFile = (onProgress, signal) =>
         (mod as unknown as {
           __uploadFileUriWithProgressForTest: (
             path: string, kind: string, uri: string, name: string,
-            type: string, token: string, cb: (f: number) => void,
+            type: string, token: string, cb: (f: number) => void, signal?: AbortSignal,
           ) => Promise<void>;
         }).__uploadFileUriWithProgressForTest(
-          'p', 'audio', 'file:///a.mp3', 'a.mp3', 'audio/mpeg', 'tok', onProgress,
+          'p', 'audio', 'file:///a.mp3', 'a.mp3', 'audio/mpeg', 'tok', onProgress, signal,
         );
     });
   });
@@ -82,10 +84,10 @@ describe('upload stall watchdog', () => {
     const p = uploadFile(() => {});
     const failed = p.catch((e: Error) => e.message);
 
-    FakeXHR.last.tick(40);                       // reaches 40%, then the signal dies
+    xhr().tick(40);                       // reaches 40%, then the signal dies
     jest.advanceTimersByTime(STALL_TIMEOUT_MS + 1);
 
-    expect(FakeXHR.last.aborted).toBe(true);
+    expect(xhr().aborted).toBe(true);
     await expect(failed).resolves.toMatch(/connection stalled/i);
   });
 
@@ -98,14 +100,14 @@ describe('upload stall watchdog', () => {
     // limit (`xhr.timeout`) would have killed this; an idle limit must not.
     for (let i = 1; i <= 10; i++) {
       jest.advanceTimersByTime(STALL_TIMEOUT_MS - 1_000);
-      FakeXHR.last.tick(i * 10);
+      xhr().tick(i * 10);
     }
 
-    expect(FakeXHR.last.aborted).toBe(false);
+    expect(xhr().aborted).toBe(false);
     expect(settled).toBe(false);
 
-    FakeXHR.last.upload.onloadend?.();
-    FakeXHR.last.onload?.();
+    xhr().upload.onloadend?.();
+    xhr().onload?.();
     await expect(p).resolves.toBeUndefined();
   });
 
@@ -113,16 +115,16 @@ describe('upload stall watchdog', () => {
     const p = uploadFile(() => {});
     const failed = p.catch((e: Error) => e.message);
 
-    FakeXHR.last.tick(100);
-    FakeXHR.last.upload.onloadend?.();          // body sent; storage now writes the object
+    xhr().tick(100);
+    xhr().upload.onloadend?.();          // body sent; storage now writes the object
 
     // Past the stall window — a large file legitimately takes this long here.
     jest.advanceTimersByTime(STALL_TIMEOUT_MS + 1_000);
-    expect(FakeXHR.last.aborted).toBe(false);
+    expect(xhr().aborted).toBe(false);
 
     // But not forever.
     jest.advanceTimersByTime(RESPONSE_TIMEOUT_MS);
-    expect(FakeXHR.last.aborted).toBe(true);
+    expect(xhr().aborted).toBe(true);
     await expect(failed).resolves.toMatch(/connection stalled/i);
   });
 
@@ -130,19 +132,65 @@ describe('upload stall watchdog', () => {
     const p = uploadFile(() => {});
     const failed = p.catch((e: Error) => e.message);
 
-    FakeXHR.last.tick(20);
-    FakeXHR.last.abort();                        // the user backed out
+    xhr().tick(20);
+    xhr().abort();                        // the user backed out
 
     await expect(failed).resolves.toBe('Upload aborted.');
   });
 
   it('leaves no timer running after a successful upload', async () => {
     const p = uploadFile(() => {});
-    FakeXHR.last.tick(100);
-    FakeXHR.last.upload.onloadend?.();
-    FakeXHR.last.onload?.();
+    xhr().tick(100);
+    xhr().upload.onloadend?.();
+    xhr().onload?.();
     await p;
     // A watchdog that outlives its request would abort the NEXT one.
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+// The upload screen stops an early upload when the artist swaps or removes the file. Without
+// this, a wrong 300 MB video kept uploading to the end before it was deleted.
+describe('stopping an upload from outside', () => {
+  let uploadFile: (signal: AbortSignal) => Promise<void>;
+  const xhr = () => FakeXHR.last!;
+
+  beforeEach(() => {
+    FakeXHR.last = undefined;
+    jest.useFakeTimers();
+    (global as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXHR;
+    jest.isolateModules(() => {
+      const mod = require('../uploads') as {
+        __uploadFileUriWithProgressForTest: (...a: unknown[]) => Promise<void>;
+      };
+      uploadFile = signal => mod.__uploadFileUriWithProgressForTest(
+        'p', 'video', 'file:///v.mov', 'v.mov', 'video/quicktime', 'tok', () => {}, signal,
+      );
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.resetModules();
+  });
+
+  it('ends the request mid-way, reported as a cancel, with nothing left running', async () => {
+    const controller = new AbortController();
+    const failed = uploadFile(controller.signal).catch((e: Error) => e.message);
+
+    xhr().tick(30);
+    controller.abort();
+
+    expect(xhr().aborted).toBe(true);
+    await expect(failed).resolves.toBe('Upload aborted.');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('sends nothing when stopped before it starts', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(uploadFile(controller.signal)).rejects.toThrow('Upload aborted.');
+    expect(FakeXHR.last).toBeUndefined();
   });
 });

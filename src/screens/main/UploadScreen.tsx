@@ -39,16 +39,17 @@ import {
 } from '../../constants/roles';
 import {
   createTrack,
-  discardStagedAudio,
+  discardStagedUpload,
   MAX_UPLOADER_ROLES,
-  publishStagedAudioTrack,
-  stageAudioUpload,
+  publishStagedTrack,
+  stageMediaUpload,
   StagingAbandonedError,
   sweepStagedUploads,
   UploadCancelledError,
+  type CreateTrackInput,
   type CreateTrackStage,
   type PostMode,
-  type StagedAudio,
+  type StagedUpload,
 } from '../../services/tracks';
 import CopyrightMatchModal from '../../components/CopyrightMatchModal';
 import { Choice } from '../../components/Choice';
@@ -107,16 +108,18 @@ const STEP_ORDER: StepKey[] = ['type', 'media', 'cover', 'details', 'role', 'cre
 /** One early-upload attempt: abandoned once the screen moves on; holds its promise and result. */
 type StagingToken = {
   abandoned: boolean;
-  staged: StagedAudio | null;
-  promise: Promise<StagedAudio | null> | null;
+  /** Stops the file upload itself when the attempt is abandoned. */
+  controller: AbortController;
+  staged: StagedUpload | null;
+  promise: Promise<StagedUpload | null> | null;
 };
 
-/** The early song upload + copyright check (audio only) — see the effect that runs it. */
+/** The early upload + copyright check of the song or video — see the effect that runs it. */
 type Staging =
   | { status: 'idle' }
   | { status: 'uploading'; fraction: number }
   | { status: 'checking' }
-  | { status: 'ready'; staged: StagedAudio }
+  | { status: 'ready'; staged: StagedUpload }
   | { status: 'failed' };
 
 /**
@@ -453,7 +456,11 @@ export default function UploadScreen() {
             setError(tooLargeMessage(slot.kind));
             return;
           }
-          if (slot.kind === 'video') {setVideo(picked);}
+          if (slot.kind === 'video') {
+            setVideo(picked);
+            // "Upload cancelled. You can pick a different video." has been acted on.
+            setNotice('');
+          }
           else if (slot.kind === 'thumbnail') {setThumbnail(picked);}
           else {setCover(picked);}
           setError('');
@@ -542,11 +549,13 @@ export default function UploadScreen() {
     [audio, video, cover, thumbnail],
   );
 
-  // ── The early song upload + copyright check ──────────────────────────────────
+  // ── The early upload + copyright check ───────────────────────────────────────
   //
-  // Audio only. The song starts uploading the moment it is picked and the provider check
-  // runs straight after, while the artist fills in the rest — so a match is raised at step
-  // 2, not after the whole form and the whole upload. See `stageAudioUpload`.
+  // The file uploads and the provider check runs straight after, while the artist fills in
+  // the rest — so a match is raised early, not after the whole form and the whole upload.
+  // See `stageMediaUpload`. A song starts the moment it is picked. A video starts once the
+  // artist moves on from its step (`confirmedVideo`): it can be hundreds of MB, and a wrong
+  // pick is caught on the preview before any of it is spent.
   //
   // A match is NOT asked about when the check finishes: the artist answers on their own tap
   // (step 2's card, or the banner on the other steps), and Post asks if they never did. An
@@ -554,34 +563,46 @@ export default function UploadScreen() {
   // album sheet or the full-screen preview, and iOS refuses to present it there — the
   // question would never show, and Post would wait on it forever.
   //
-  // Each attempt gets a token. A newer pick (or a removal, a switch to video, leaving the
-  // screen) marks the old token abandoned, and an abandoned attempt removes whatever it
-  // wrote. The token also carries the attempt's promise and, once done, its staged song —
-  // read at Post, and cleared there once Post has taken it over.
+  // Each attempt gets a token. A newer pick (or a removal, a switch of type, leaving the
+  // screen) marks the old token abandoned, stops its upload, and removes whatever it wrote.
+  // The token also carries the attempt's promise and, once done, its staged upload — read
+  // at Post, and cleared there once Post has taken it over.
   const [staging, setStaging] = useState<Staging>({ status: 'idle' });
   const [stepBarW, setStepBarW] = useState(0);
   const stagingTokenRef = useRef<StagingToken | null>(null);
   const [awaitingStaging, setAwaitingStaging] = useState(false);
 
-  // Songs staged on an earlier visit whose app was killed before they were posted.
+  // Uploads staged on an earlier visit whose app was killed before they were posted.
   useEffect(() => { void sweepStagedUploads(); }, []);
 
+  // The video the artist has moved on from (their "yes, this one"). Compared by identity, so
+  // a newly picked video is unconfirmed until they move on again.
+  const [confirmedVideo, setConfirmedVideo] = useState<PickedFile | null>(null);
+  const stagedFile = mode === 'audio' ? audio : video && confirmedVideo === video ? video : null;
+
   useEffect(() => {
-    if (mode !== 'audio' || !audio) { return; }
-    const token: StagingToken = { abandoned: false, staged: null, promise: null };
+    if (!stagedFile) { return; }
+    const token: StagingToken = {
+      abandoned: false,
+      controller: new AbortController(),
+      staged: null,
+      promise: null,
+    };
     stagingTokenRef.current = token;
     const abandoned = () => token.abandoned;
     setStaging({ status: 'uploading', fraction: 0 });
-    const promise = stageAudioUpload(
-      audio,
+    const promise = stageMediaUpload(
+      stagedFile,
+      mode,
       p => {
         if (abandoned()) { return; }
         setStaging(p.stage === 'checking' ? { status: 'checking' } : { status: 'uploading', fraction: p.fraction });
       },
       abandoned,
+      token.controller.signal,
     )
       .then(staged => {
-        if (abandoned()) { void discardStagedAudio(staged); return null; }
+        if (abandoned()) { void discardStagedUpload(staged); return null; }
         token.staged = staged;
         setStaging({ status: 'ready', staged });
         return staged;
@@ -594,15 +615,17 @@ export default function UploadScreen() {
       });
     token.promise = promise;
     return () => {
-      // A different song, no song, video, or leaving the screen: this attempt is over.
-      // A song Post has taken over is no longer on the token, so it is never removed here.
+      // A different file, no file, the other type, or leaving the screen: this attempt is
+      // over, and an upload still running stops now rather than finishing first. An upload
+      // Post has taken over is no longer on the token, so it is never removed here.
       token.abandoned = true;
+      token.controller.abort();
       const staged = token.staged;
       token.staged = null;
       setStaging({ status: 'idle' });
-      if (staged) { void discardStagedAudio(staged); }
+      if (staged) { void discardStagedUpload(staged); }
     };
-  }, [mode, audio]);
+  }, [mode, stagedFile]);
 
   // The staged song matched a known recording and the artist has not answered yet.
   const needsAnswer =
@@ -619,9 +642,14 @@ export default function UploadScreen() {
     if (answer.acknowledgement === 'cancelled') {
       token.abandoned = true;
       token.staged = null;
-      void discardStagedAudio(staged);
-      setAudio(null);
-      setNotice('Upload cancelled. You can pick a different song.');
+      void discardStagedUpload(staged);
+      if (staged.mediaKind === 'audio') {
+        setAudio(null);
+        setNotice('Upload cancelled. You can pick a different song.');
+      } else {
+        setVideo(null);
+        setNotice('Upload cancelled. You can pick a different video.');
+      }
       return;
     }
     const answered = { ...staged, declaration: answer };
@@ -705,20 +733,28 @@ export default function UploadScreen() {
     setTimeout(() => attempt(3), 300);
   }, []);
 
+  // Moving on from "Your video" (Next, another step, or the Preview) is the artist's "yes,
+  // this one": the video's early upload and check start then (see the staging effect).
+  const confirmVideo = useCallback(() => {
+    if (mode === 'video' && video) { setConfirmedVideo(video); }
+  }, [mode, video]);
+
   const openStep = useCallback((key: StepKey) => {
+    if (key !== 'media') { confirmVideo(); }
     setPreviewPaused(true);
     setReviewing(false);
     setStep(key);
     setError('');
     scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, []);
+  }, [confirmVideo]);
 
   const openPreview = useCallback(() => {
+    confirmVideo();
     setPreviewPaused(true);
     setReviewing(true);
     setError('');
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, []);
+  }, [confirmVideo]);
 
   const goNext = useCallback(() => {
     const i = STEP_ORDER.indexOf(step);
@@ -798,48 +834,20 @@ export default function UploadScreen() {
     };
     try {
       let result: { trackId: string } | null = null;
-      if (mode === 'audio') {
-        const input = {
-          mode: 'audio' as const,
-          title,
-          description,
-          audio: audio!,
-          cover: cover!,
-          uploaderRoles,
-          collaborators,
-          tags,
-          durationSeconds: previewDurationSec,
-          streamingGrantAccepted: grantedStreaming,
-        };
-        // The song may still be uploading or being checked: wait for it rather than start
-        // a second copy. A match raised meanwhile is answered in the same dialog.
-        const token = stagingTokenRef.current;
-        let staged = token && !token.abandoned ? token.staged : null;
-        if (token && !token.abandoned && !staged && token.promise) {
-          setAwaitingStaging(true);
-          staged = await token.promise;
-          setAwaitingStaging(false);
-          if (token.abandoned) { return; } // backed out at the question: the song is gone
-        }
-        if (token && staged) {
-          // Post owns it now: leaving the screen must not remove it mid-publish. The
-          // publish removes it itself if it fails.
-          token.staged = null;
-          token.promise = null;
-          try {
-            result = await publishStagedAudioTrack(staged, input, onProgress, askAboutMatch);
-          } catch (err) {
-            // Removed with everything else by the failed publish — so a retry goes the
-            // classic way, uploading everything at Post.
-            setStaging({ status: 'failed' });
-            throw err;
+      const input: CreateTrackInput = mode === 'audio'
+        ? {
+            mode: 'audio',
+            title,
+            description,
+            audio: audio!,
+            cover: cover!,
+            uploaderRoles,
+            collaborators,
+            tags,
+            durationSeconds: previewDurationSec,
+            streamingGrantAccepted: grantedStreaming,
           }
-        } else {
-          result = await createTrack(input, onProgress, askAboutMatch);
-        }
-      } else {
-        result = await createTrack(
-          {
+        : {
             mode: 'video',
             title,
             description,
@@ -851,10 +859,32 @@ export default function UploadScreen() {
             tags,
             durationSeconds: previewDurationSec,
             streamingGrantAccepted: grantedStreaming,
-          },
-          onProgress,
-          askAboutMatch,
-        );
+          };
+      // The song or video may still be uploading or being checked: wait for it rather than
+      // start a second copy. A match raised meanwhile is answered in the same dialog.
+      const token = stagingTokenRef.current;
+      let staged = token && !token.abandoned ? token.staged : null;
+      if (token && !token.abandoned && !staged && token.promise) {
+        setAwaitingStaging(true);
+        staged = await token.promise;
+        setAwaitingStaging(false);
+        if (token.abandoned) { return; } // backed out at the question: the file is gone
+      }
+      if (token && staged) {
+        // Post owns it now: leaving the screen must not remove it mid-publish. The
+        // publish removes it itself if it fails.
+        token.staged = null;
+        token.promise = null;
+        try {
+          result = await publishStagedTrack(staged, input, onProgress, askAboutMatch);
+        } catch (err) {
+          // Removed with everything else by the failed publish — so a retry goes the
+          // classic way, uploading everything at Post.
+          setStaging({ status: 'failed' });
+          throw err;
+        }
+      } else {
+        result = await createTrack(input, onProgress, askAboutMatch);
       }
       // Tag into the selected album if the user picked one. Fire-and-forget —
       // a failed album tag shouldn't block the success state of the upload.
@@ -951,14 +981,22 @@ export default function UploadScreen() {
     );
   };
 
-  // What the early upload and copyright check are doing, under the picked song.
+  // What the early upload and copyright check are doing: under the picked file, and (for a
+  // video, which starts once they move on) above the later steps.
   const renderStagingStatus = () => {
-    if (mode !== 'audio' || !audio) { return null; }
+    if (!mediaFile) { return null; }
+    const what = mode === 'audio' ? 'song' : 'video';
     let icon: React.ReactNode = <ActivityIndicator size="small" color={COLORS.purpleLight} />;
     let text: string;
     switch (staging.status) {
+      case 'idle':
+        // A picked video waits for Next (see `confirmVideo`); say what Next will do.
+        if (mode !== 'video' || video === confirmedVideo) { return null; }
+        icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
+        text = 'When you tap Next, it uploads and is checked against known recordings.';
+        break;
       case 'uploading':
-        text = `Uploading your song · ${Math.round(staging.fraction * 100)}%`;
+        text = `Uploading your ${what} · ${Math.round(staging.fraction * 100)}%`;
         break;
       case 'checking':
         text = 'Checking it against known recordings…';
@@ -1370,19 +1408,17 @@ export default function UploadScreen() {
   );
 
   const copyrightLine =
-    mode !== 'audio'
-      ? null
-      : staging.status === 'ready'
-        ? staging.staged.declaration
-          ? 'Matched a known recording · your answer is saved'
-          : needsAnswer
-            ? 'Matched a known recording · answer needed'
-            : staging.staged.scan.status === 'complete'
-              ? 'No match with known recordings'
-              : "Couldn't check yet — it's checked again when you post"
-        : staging.status === 'uploading' || staging.status === 'checking'
-          ? 'Still checking — finishes when you post'
-          : 'Checked when you post';
+    staging.status === 'ready'
+      ? staging.staged.declaration
+        ? 'Matched a known recording · your answer is saved'
+        : needsAnswer
+          ? 'Matched a known recording · answer needed'
+          : staging.staged.scan.status === 'complete'
+            ? 'No match with known recordings'
+            : "Couldn't check yet — it's checked again when you post"
+      : staging.status === 'uploading' || staging.status === 'checking'
+        ? 'Still checking — finishes when you post'
+        : 'Checked when you post';
 
   const renderPreview = () => (
     <>
@@ -1515,7 +1551,9 @@ export default function UploadScreen() {
 
   const barPercent = reviewing ? 100 : Math.round((doneCount / STEP_ORDER.length) * 100);
   const progressLabel = awaitingStaging
-    ? 'Uploading your song…'
+    ? staging.status === 'checking'
+      ? 'Checking it against known recordings…'
+      : `Uploading your ${mode === 'audio' ? 'song' : 'video'}…`
     : progressStage === 'preparing'
       ? 'Preparing files…'
       : progressStage === 'checking'
@@ -1579,11 +1617,17 @@ export default function UploadScreen() {
 
         {needsAnswer && !reviewing && step !== 'media' ? (
           <View style={styles.matchCard}>
-            <Text style={styles.matchTitle}>Your song sounds like a known recording</Text>
+            <Text style={styles.matchTitle}>
+              Your {mode === 'audio' ? 'song' : 'video'} sounds like a known recording
+            </Text>
             <Text style={styles.matchBody}>Answer one question about it before you post.</Text>
             <Button label="Answer now" onPress={() => { void answerMatchNow(); }} variant="primary" size="sm" />
           </View>
         ) : null}
+        {/* A video starts uploading as they leave its step, so its progress follows them. */}
+        {mode === 'video' && !needsAnswer && !reviewing && step !== 'media' && staging.status !== 'idle'
+          ? <View style={styles.stagingBanner}>{renderStagingStatus()}</View>
+          : null}
 
         {reviewing ? renderPreview() : renderSteps()}
 
@@ -2058,6 +2102,8 @@ const styles = StyleSheet.create({
   nextWrap: { marginTop: 6, gap: 8 },
   nextWhy: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' },
   stagingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  // The same row above the later steps; its own bottom margin spaces it from the steps.
+  stagingBanner: { paddingHorizontal: 4 },
   stagingText: { flex: 1, color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   typeGroup: { gap: 10, marginBottom: 6 },
   typeCard: {
