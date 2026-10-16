@@ -31,11 +31,13 @@ function formatTime(seconds: number | null): string {
  * NOT a PostCard. A real card plays through the global engine (GlobalAudioPlayer), which
  * would put an unpublished song on the lock screen, in "listening now" for friends, and in
  * play counts. This one only looks the part — its styles ARE PostCard's (`postCardStyles`),
- * so the two cannot drift — and every tap opens the upload screen's own full-screen preview,
- * which plays through the standalone preview player.
+ * so the two cannot drift — and plays through the upload screen's own standalone preview
+ * player.
  *
  * The counters read 0 and the Repost / Share / ⋯ controls are drawn but inert: they are
- * what the post will carry, not things to do to a post that does not exist yet.
+ * what the post will carry, not things to do to a post that does not exist yet. A song's
+ * player can sit in the media slot (`mediaSlot`), so the card plays in place like a feed
+ * post; a video keeps its thumbnail, as in the feed.
  */
 export default function UploadPreviewCard({
   author,
@@ -44,6 +46,8 @@ export default function UploadPreviewCard({
   mediaKind,
   imageUri,
   durationSec,
+  playing = false,
+  mediaSlot,
   onOpen,
 }: {
   author: UploadPreviewAuthor;
@@ -53,6 +57,11 @@ export default function UploadPreviewCard({
   /** The cover (audio) or the feed thumbnail (video). */
   imageUri: string | null;
   durationSec: number | null;
+  /** Shows pause on the card's play button while the preview plays. */
+  playing?: boolean;
+  /** Replaces the static picture — the song's own player, which handles its own taps. */
+  mediaSlot?: React.ReactNode;
+  /** The play button (and the picture, when there is no `mediaSlot`). */
   onOpen: () => void;
 }) {
   const isVideo = mediaKind === 'video';
@@ -99,12 +108,15 @@ export default function UploadPreviewCard({
         <Text style={styles.caption} numberOfLines={4}>{caption.trim()}</Text>
       ) : null}
 
+      {mediaSlot ? (
+        <View style={styles.mediaWrap}>{mediaSlot}</View>
+      ) : (
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={onOpen}
         style={styles.mediaWrap}
         accessibilityRole="button"
-        accessibilityLabel="Open the full-screen preview"
+        accessibilityLabel={playing ? 'Pause the preview' : 'Play the preview'}
       >
         {imageUri ? (
           <Image
@@ -120,12 +132,15 @@ export default function UploadPreviewCard({
             <Text style={styles.videoBadgeText}>VIDEO</Text>
           </View>
         ) : null}
-        <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
-          <View style={styles.videoCenterGlyph}>
-            <Icon name="play" size={24} color="#fff" />
+        {playing ? null : (
+          <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
+            <View style={styles.videoCenterGlyph}>
+              <Icon name="play" size={24} color="#fff" />
+            </View>
           </View>
-        </View>
+        )}
       </TouchableOpacity>
+      )}
 
       <View style={styles.durationBlock}>
         <Text style={styles.seekTime}>{formatTime(durationSec)}</Text>
@@ -136,10 +151,10 @@ export default function UploadPreviewCard({
           style={styles.playButton}
           activeOpacity={0.85}
           onPress={onOpen}
-          accessibilityLabel="Play the preview"
+          accessibilityLabel={playing ? 'Pause the preview' : 'Play the preview'}
         >
           <GradientBorder borderRadius={23} />
-          <Icon name="play" size={16} color={COLORS.purpleNeon} />
+          <Icon name={playing ? 'pause' : 'play'} size={16} color={COLORS.purpleNeon} />
         </TouchableOpacity>
         <View style={styles.statsGroup} importantForAccessibility="no-hide-descendants">
           <View style={styles.statBtn}>

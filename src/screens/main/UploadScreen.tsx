@@ -10,6 +10,9 @@ import {
   Linking,
   Platform,
   BackHandler,
+  Keyboard,
+  Dimensions,
+  type TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
@@ -32,12 +35,12 @@ import {
   ROLES,
   getChipStyle,
   getChipTone,
-  isPresetRole,
   type PendingCollaborator,
 } from '../../constants/roles';
 import {
   createTrack,
   discardStagedAudio,
+  MAX_UPLOADER_ROLES,
   publishStagedAudioTrack,
   stageAudioUpload,
   StagingAbandonedError,
@@ -63,9 +66,10 @@ import type { PickedFile, TrackMediaKind } from '../../services/uploads';
 import { onCollaboratorPicked } from '../../services/uploadEvents';
 import { Icon } from '../../components/Icon';
 import AddToAlbumSheet from '../../components/AddToAlbumSheet';
+import RolePicker from '../../components/RolePicker';
+import FullScreenFrame from '../../components/FullScreenFrame';
 import UploadStep, { type UploadStepState } from '../../components/UploadStep';
 import UploadPreviewCard, { type UploadPreviewAuthor } from '../../components/UploadPreviewCard';
-import UploadPreviewPlayer from '../../components/UploadPreviewPlayer';
 import { GradientFill } from '../../components/GradientFill';
 import { supabase } from '../../../lib/supabase';
 import { getMyProfile } from '../../services/profileService';
@@ -78,8 +82,27 @@ type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
  * a guide, not a lock. Post lives only on the Preview page, which also lists anything still
  * missing with a jump to the step that fixes it.
  */
-type StepKey = 'type' | 'media' | 'cover' | 'details' | 'credits' | 'rights';
-const STEP_ORDER: StepKey[] = ['type', 'media', 'cover', 'details', 'credits', 'rights'];
+/**
+ * The Preview page's "How it looks in full screen" frame (videos): a phone-shaped window at
+ * the screen's own proportions, so the crop it shows is the crop full screen makes.
+ */
+// The rounded purple outline and its thickness. The video fills right up to it.
+const FS_FRAME_RADIUS = 28;
+const FS_FRAME_BORDER = 3;
+const FS_FRAME_W = Math.round(Math.min(230, Dimensions.get('window').width * 0.58));
+// The SCREEN inside the bezel is at the phone's own proportions, so its crop is full screen's.
+const FS_FRAME_H = Math.round(
+  (FS_FRAME_W - FS_FRAME_BORDER * 2) * (Dimensions.get('window').height / Dimensions.get('window').width)
+  + FS_FRAME_BORDER * 2,
+);
+
+/** How far above the keyboard a focused field is kept: the field, then room for Next. */
+const FIELD_CLEARANCE = 120;
+/** The scroll content's top padding — the offset of the view revealFocusedField measures. */
+const SCROLL_PAD_TOP = 16;
+
+type StepKey = 'type' | 'media' | 'cover' | 'details' | 'role' | 'credits' | 'rights';
+const STEP_ORDER: StepKey[] = ['type', 'media', 'cover', 'details', 'role', 'credits', 'rights'];
 
 /** One early-upload attempt: abandoned once the screen moves on; holds its promise and result. */
 type StagingToken = {
@@ -205,7 +228,8 @@ export default function UploadScreen() {
   // Starts EMPTY; the moods are one-tap suggestions under the field (owner's call,
   // 2026-10-15 — they used to arrive pre-applied and had to be pruned).
   const [tags, setTags] = useState<string[]>([]);
-  const [uploaderRole, setUploaderRole] = useState('');
+  // One or more, each saved as its own credit (createTrack); at least one is required.
+  const [uploaderRoles, setUploaderRoles] = useState<string[]>([]);
   // The per-upload streaming grant, ticked beside the post button. Required on every
   // upload, matched or not — `createTrack` records it once the post exists.
   const [grantedStreaming, setGrantedStreaming] = useState(false);
@@ -273,6 +297,8 @@ export default function UploadScreen() {
   // readout, so the player's progress events must not overwrite it.
   const previewScrubbingRef = useRef(false);
 
+  // The previews loop (`repeat`), so this only runs if a platform ends one anyway: back to
+  // the start, ready to play again.
   const handlePreviewEnded = useCallback(() => {
     setPreviewPaused(true);
     setPreviewPositionSec(0);
@@ -617,7 +643,6 @@ export default function UploadScreen() {
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   const [step, setStep] = useState<StepKey>('type');
   const [reviewing, setReviewing] = useState(false);
-  const [fullPreviewOpen, setFullPreviewOpen] = useState(false);
 
   const mediaFile = mode === 'audio' ? audio : video;
   const imageFile = mode === 'audio' ? cover : thumbnail;
@@ -627,7 +652,9 @@ export default function UploadScreen() {
     media: Boolean(mediaFile),
     cover: Boolean(imageFile),
     details: title.trim().length > 0,
-    credits: uploaderRole.trim().length > 0,
+    role: uploaderRoles.length > 0,
+    // Optional: done once they add someone, or once they have moved past it.
+    credits: collaborators.length > 0 || reviewing || STEP_ORDER.indexOf(step) > STEP_ORDER.indexOf('credits'),
     rights: grantedStreaming,
   };
   const doneCount = STEP_ORDER.filter(k => stepDone[k]).length;
@@ -635,6 +662,46 @@ export default function UploadScreen() {
     if (!reviewing && step === key) { return 'current'; }
     return stepDone[key] ? 'done' : 'todo';
   };
+
+  // A box that appears and takes the keyboard in the same moment ("+ Something else") is
+  // missed by the keyboard-aware scroll — its position is not known yet when the keyboard
+  // starts to rise — and that scroll only aims to make a field TOUCH the keyboard (the
+  // iPhone's suggestion strip got in the way even then). And the artist cannot fix it by
+  // hand: dragging closes the keyboard. So once the keyboard is up, measure where the field
+  // and the keyboard actually are and scroll the field to FIELD_CLEARANCE above the keys,
+  // which leaves room for the Next button under it.
+  // Held while two fingers pinch the full-screen frame, so the page does not scroll under them.
+  const [pinching, setPinching] = useState(false);
+  const scrollFrameRef = useRef<View>(null);
+  const scrollInnerRef = useRef<View>(null);
+  const revealFocusedField = useCallback((field: TextInput | null) => {
+    if (!field) { return; }
+    const attempt = (triesLeft: number) => {
+      const kb = Keyboard.metrics();
+      if (!kb) {
+        if (triesLeft > 0) { setTimeout(() => attempt(triesLeft - 1), 200); }
+        return;
+      }
+      const keyboardTop = kb.screenY;
+      field.measureInWindow((_x, fieldTop, _w, fieldH) => {
+        if (fieldTop + fieldH <= keyboardTop - FIELD_CLEARANCE) { return; } // already clear
+        const inner = scrollInnerRef.current;
+        const frame = scrollFrameRef.current;
+        if (!inner || !frame) { return; }
+        field.measureLayout(
+          inner,
+          (_fx, fy, _fw, fh) => {
+            frame.measureInWindow((_sx, frameTop) => {
+              const y = frameTop + SCROLL_PAD_TOP + fy + fh - keyboardTop + FIELD_CLEARANCE;
+              scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+            });
+          },
+          () => {},
+        );
+      });
+    };
+    setTimeout(() => attempt(3), 300);
+  }, []);
 
   const openStep = useCallback((key: StepKey) => {
     setPreviewPaused(true);
@@ -699,16 +766,15 @@ export default function UploadScreen() {
     if (needsAnswer) { out.push({ key: 'media', label: 'an answer to the copyright question' }); }
     if (!imageFile) { out.push({ key: 'cover', label: mode === 'audio' ? 'a cover' : 'a thumbnail' }); }
     if (!title.trim()) { out.push({ key: 'details', label: 'a title' }); }
-    if (!uploaderRole.trim()) { out.push({ key: 'credits', label: 'your role' }); }
+    if (uploaderRoles.length === 0) { out.push({ key: 'role', label: 'your role' }); }
     if (!grantedStreaming) { out.push({ key: 'rights', label: 'streaming permission' }); }
     return out;
-  }, [mediaFile, needsAnswer, imageFile, mode, title, uploaderRole, grantedStreaming]);
+  }, [mediaFile, needsAnswer, imageFile, mode, title, uploaderRoles, grantedStreaming]);
 
   const canSubmit = !submitting && missing.length === 0;
 
   const handleSubmit = useCallback(async () => {
     setPreviewPaused(true);
-    setFullPreviewOpen(false);
     if (missing.length > 0) {
       setError(`Still needed: ${missing.map(m => m.label).join(', ')}.`);
       return;
@@ -737,7 +803,7 @@ export default function UploadScreen() {
           description,
           audio: audio!,
           cover: cover!,
-          uploaderRole,
+          uploaderRoles,
           collaborators,
           tags,
           durationSeconds: previewDurationSec,
@@ -778,7 +844,7 @@ export default function UploadScreen() {
             video: video!,
             cover: cover ?? undefined,
             thumbnail: thumbnail!,
-            uploaderRole,
+            uploaderRoles,
             collaborators,
             tags,
             durationSeconds: previewDurationSec,
@@ -814,7 +880,7 @@ export default function UploadScreen() {
       setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRole, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum]);
+  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum]);
 
   // ── Pieces ───────────────────────────────────────────────────────────────────
 
@@ -944,6 +1010,7 @@ export default function UploadScreen() {
         onEnded={handlePreviewEnded}
         visible
         pauseWhenOffScreen={false}
+        repeat
       />
       {/* Same control the jam room uses: whole track, no clip, swipe to scrub. */}
       {previewDurationSec && previewDurationSec > 0 ? (
@@ -1074,7 +1141,11 @@ export default function UploadScreen() {
         disabled={submitting}
       >
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Title</Text>
+          {/* The one required field here, said as plainly as the "· optional" ones are —
+              amber until it is filled in. */}
+          <Text style={styles.label}>
+            Title <Text style={title.trim() ? null : styles.labelNeeded}>· needed</Text>
+          </Text>
           <FormInput
             value={title}
             onChangeText={setTitle}
@@ -1105,7 +1176,13 @@ export default function UploadScreen() {
             How people find your track. Tap the moods that fit, or add something else —
             genre, language, whatever you'd search for. Listeners never see these.
           </Text>
-          <TagInput tags={tags} onChange={setTags} editable={!submitting} suggestions={EMOTION_TAGS} />
+          <TagInput
+            tags={tags}
+            onChange={setTags}
+            editable={!submitting}
+            suggestions={EMOTION_TAGS}
+            onFieldFocus={revealFocusedField}
+          />
         </View>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Add to album · optional</Text>
@@ -1139,53 +1216,50 @@ export default function UploadScreen() {
             )}
           </TouchableOpacity>
         </View>
-        {renderNext('Next: credits', title.trim().length > 0, 'Add a title to continue.')}
+        {renderNext('Next: your role', title.trim().length > 0, 'Add a title to continue.')}
       </UploadStep>
 
       <UploadStep
         number={5}
+        title="Your role"
+        hint="What did you do on this track? Pick all that apply"
+        summary={uploaderRoles.join(', ')}
+        state={stepState('role')}
+        onOpen={() => openStep('role')}
+        disabled={submitting}
+      >
+        {/* The uploader's own credit, required: a credit list that names the guitarist and
+            the mixer but not the person who made the record is not a credit list. Human roles
+            only — an AI role describes what a TOOL did, and the tool is credited as a
+            collaborator in its own right. */}
+        <Text style={[styles.label, styles.roleLabel]}>
+          Pick everything you did, up to {MAX_UPLOADER_ROLES}{' '}
+          <Text style={uploaderRoles.length > 0 ? null : styles.labelNeeded}>· needed</Text>
+        </Text>
+        <RolePicker
+          roles={uploaderRoles}
+          onChange={setUploaderRoles}
+          presets={ROLES}
+          max={MAX_UPLOADER_ROLES}
+          editable={!submitting}
+          onFieldFocus={revealFocusedField}
+        />
+        {renderNext('Next: credits', uploaderRoles.length > 0, 'Pick what you did on this track to continue.')}
+      </UploadStep>
+
+      <UploadStep
+        number={6}
         title="Credits"
-        hint="What you did, and who helped"
-        summary={`You · ${uploaderRole.trim()}${collabLine}`}
+        hint="Who else worked on it · optional"
+        summary={
+          collaborators.length > 0
+            ? `${collaborators.length} collaborator${collaborators.length === 1 ? '' : 's'}`
+            : 'Just you'
+        }
         state={stepState('credits')}
         onOpen={() => openStep('credits')}
         disabled={submitting}
       >
-        {/* The uploader's own credit, required: a credit list that names the guitarist
-            and the mixer but not the person who made the record is not a credit list. */}
-        <Text style={styles.label}>Your role</Text>
-        <View style={styles.ownRoleWrap}>
-          {/* Human roles only. An AI role describes what a TOOL did, and the tool gets
-              credited as a collaborator in its own right. */}
-          {ROLES.map(r => {
-            const active = uploaderRole === r;
-            return (
-              <TouchableOpacity
-                key={r}
-                activeOpacity={0.85}
-                disabled={submitting}
-                onPress={() => setUploaderRole(active ? '' : r)}
-                style={[styles.roleChip, active && styles.roleChipActive]}
-              >
-                {active ? <GradientBorder borderRadius={999} /> : null}
-                <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
-                  {r}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        {/* The list will always be missing somebody's instrument. A closed list here
-            would mean the wrong credit or, since this field is required, no upload. */}
-        <FormInput
-          value={isPresetRole(uploaderRole) ? '' : uploaderRole}
-          onChangeText={setUploaderRole}
-          placeholder="Or type your own — e.g. Tabla, Additional production"
-          maxLength={40}
-          autoCapitalize="words"
-          editable={!submitting}
-        />
-
         <View style={styles.collabHeader}>
           <Text style={styles.label}>Collaborators · optional</Text>
           <TouchableOpacity
@@ -1249,11 +1323,11 @@ export default function UploadScreen() {
             </View>
           </>
         )}
-        {renderNext('Next: rights', uploaderRole.trim().length > 0, 'Choose what you did on this track to continue.')}
+        {renderNext('Next: rights', true, '')}
       </UploadStep>
 
       <UploadStep
-        number={6}
+        number={7}
         title="Rights"
         hint="Let Livil stream it"
         summary="Streaming allowed"
@@ -1318,9 +1392,58 @@ export default function UploadScreen() {
         mediaKind={mode}
         imageUri={imageFile?.uri ?? null}
         durationSec={previewDurationSec}
-        onOpen={() => setFullPreviewOpen(true)}
+        playing={!previewPaused}
+        // A song plays in the card itself, like a feed post; a video keeps its thumbnail
+        // and plays in the full-screen frame below.
+        mediaSlot={mode === 'audio' && previewMedia ? (
+          <MediaPlayer
+            postId="upload_preview"
+            media={previewMedia}
+            paused={previewPaused}
+            onTogglePaused={() => setPreviewPaused(p => !p)}
+            onProgress={handlePreviewProgress}
+            onLoaded={s => setPreviewDurationSec(prev => prev ?? s)}
+            onEnded={handlePreviewEnded}
+            visible
+            pauseWhenOffScreen={false}
+            repeat
+            ref={previewRef}
+            style={styles.cardPlayer}
+          />
+        ) : undefined}
+        onOpen={() => setPreviewPaused(p => !p)}
       />
-      <Text style={styles.previewHint}>Tap the post to play it full screen.</Text>
+      {mode === 'video' && previewMedia ? (
+        // Videos only: what full screen does to the picture. The player fills the screen
+        // with the video and crops the edges, and listeners tap and pinch to zoom out to
+        // the whole frame — worth seeing before posting. A song's full screen is just its
+        // cover, which the card above already shows.
+        <View style={styles.fsSection}>
+          <Text style={styles.fsTitle}>How it looks in full screen</Text>
+          <FullScreenFrame
+            media={previewMedia as Extract<MediaShape, { kind: 'video' }>}
+            width={FS_FRAME_W}
+            height={FS_FRAME_H}
+            radius={FS_FRAME_RADIUS}
+            border={FS_FRAME_BORDER}
+            paused={previewPaused}
+            onTogglePaused={() => setPreviewPaused(p => !p)}
+            onProgress={handlePreviewProgress}
+            onLoaded={s => setPreviewDurationSec(prev => prev ?? s)}
+            onEnded={handlePreviewEnded}
+            onPinchingChange={setPinching}
+            playerRef={previewRef}
+          />
+          {/* Icons beside the text, never inside it — they are SVGs (CLAUDE.md). */}
+          <View style={styles.fsCaptionRow}>
+            <Icon name="handTap" size={16} color={COLORS.purpleLight} />
+            <Icon name="zoomOut" size={16} color={COLORS.purpleLight} />
+            <Text style={styles.fsCaption}>
+              Listeners can tap and pinch to zoom out and see the whole video.
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.summaryList}>
         <TouchableOpacity style={styles.summaryRow} onPress={() => openStep('details')} disabled={submitting}>
@@ -1332,11 +1455,11 @@ export default function UploadScreen() {
           </View>
           <Text style={styles.summaryEdit}>Edit</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.summaryRow} onPress={() => openStep('credits')} disabled={submitting}>
+        <TouchableOpacity style={styles.summaryRow} onPress={() => openStep(uploaderRoles.length > 0 ? 'credits' : 'role')} disabled={submitting}>
           <View style={styles.summaryText}>
             <Text style={styles.summaryLabel}>Credits</Text>
             <Text style={styles.summaryValue} numberOfLines={2}>
-              {uploaderRole.trim() ? `You · ${uploaderRole.trim()}${collabLine}` : 'Your role is still needed'}
+              {uploaderRoles.length > 0 ? `You · ${uploaderRoles.join(', ')}${collabLine}` : 'Your role is still needed'}
             </Text>
           </View>
           <Text style={styles.summaryEdit}>Edit</Text>
@@ -1424,13 +1547,21 @@ export default function UploadScreen() {
         </View>
       </View>
 
+      <View ref={scrollFrameRef} style={styles.flex} collapsable={false}>
       <KeyboardAwareScrollView
         ref={scrollRef}
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        // As on Search and New message: dragging the page puts the keyboard away.
+        keyboardDismissMode="on-drag"
+        scrollEnabled={!pinching}
+        // Room between a focused field and the keyboard — the Next button under it included.
+        bottomOffset={FIELD_CLEARANCE}
         showsVerticalScrollIndicator={false}
       >
+        {/* Measured by revealFocusedField; collapsable={false} keeps it a real native view. */}
+        <View ref={scrollInnerRef} collapsable={false}>
         {error ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
@@ -1453,7 +1584,9 @@ export default function UploadScreen() {
         {reviewing ? renderPreview() : renderSteps()}
 
         <View style={styles.scrollSpacer} />
+        </View>
       </KeyboardAwareScrollView>
+      </View>
 
       {reviewing ? (
         <View style={styles.footer}>
@@ -1496,15 +1629,6 @@ export default function UploadScreen() {
           )}
         </View>
       ) : null}
-
-      <UploadPreviewPlayer
-        visible={fullPreviewOpen}
-        media={previewMedia}
-        title={title}
-        artistLine={`${author.name}${uploaderRole.trim() ? ` · ${uploaderRole.trim()}` : ''}`}
-        onClose={() => setFullPreviewOpen(false)}
-        onDuration={s => setPreviewDurationSec(prev => prev ?? s)}
-      />
 
       <Modal
         visible={showSuccess}
@@ -1615,7 +1739,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: SCROLL_PAD_TOP,
     paddingBottom: 24,
   },
   errorBox: {
@@ -1721,19 +1845,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
   },
-  ownRoleWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 4 },
-  roleChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  // Selected state is the gradient outline; no fill — same as the collaborator picker.
-  roleChipActive: { borderColor: 'transparent' },
-  roleChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-  roleChipTextActive: { color: COLORS.purpleNeon, fontWeight: '700' },
   addCollabButton: {
     borderRadius: 999,
     paddingHorizontal: 14,
@@ -1989,6 +2100,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
+  labelNeeded: { color: COLORS.warning },
+  roleLabel: { marginBottom: 10 },
   matchCard: {
     padding: 14,
     borderRadius: 14,
@@ -2003,6 +2116,19 @@ const styles = StyleSheet.create({
   matchBody: { color: COLORS.white, fontSize: 13, lineHeight: 18 },
 
   // ── Preview page ──
+  cardPlayer: { width: '100%', aspectRatio: 1 },
+  fsSection: { alignItems: 'center', marginBottom: 22 },
+  fsTitle: {
+    alignSelf: 'flex-start',
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  fsCaptionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 8 },
+  fsCaption: { flexShrink: 1, color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   previewIntro: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 12 },
   previewHint: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 8, marginBottom: 18 },
   summaryList: {

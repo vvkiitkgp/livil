@@ -47,6 +47,7 @@ const mockDb = {
   deletedTracks: [] as string[],
   removedPaths: [] as string[][],
   updates: [] as Array<Record<string, unknown>>,
+  credits: [] as Array<Record<string, unknown>>,
   postsForTrack: {} as Record<string, string[]>,
   failPostInsert: false,
 };
@@ -58,7 +59,8 @@ jest.mock('../../../lib/supabase', () => ({
       getSession: async () => ({ data: { session: { access_token: 'token' } } }),
     },
     from: (table: string) => ({
-      insert: (_row: unknown) => {
+      insert: (row: unknown) => {
+        if (table === 'track_collaborators') { mockDb.credits.push(...(row as Array<Record<string, unknown>>)); }
         const single = async () => {
           if (table === 'posts' && mockDb.failPostInsert) {
             return { data: null, error: { message: 'posts insert exploded' } };
@@ -110,6 +112,7 @@ beforeEach(async () => {
   mockDb.deletedTracks = [];
   mockDb.removedPaths = [];
   mockDb.updates = [];
+  mockDb.credits = [];
   mockDb.postsForTrack = {};
   mockDb.failPostInsert = false;
   mockUpload.mockReset().mockImplementation(async (_f: unknown, kind: string) => `https://cdn/me/t1/${kind}`);
@@ -177,7 +180,7 @@ describe('publishStagedAudioTrack', () => {
     description: 'Recorded in the rain',
     audio: SONG,
     cover: COVER,
-    uploaderRole: 'Vocals',
+    uploaderRoles: ['Vocals'],
     collaborators: [],
     tags: ['chill'],
     durationSeconds: 222,
@@ -201,6 +204,20 @@ describe('publishStagedAudioTrack', () => {
       duration_seconds: 222,
     }));
     expect(mockDb.deletedTracks).toEqual([]);
+  });
+
+  it('saves each of the uploader\'s roles as its own credit, once each', async () => {
+    await publishStagedAudioTrack(staged, { ...input, uploaderRoles: ['Vocals', ' vocals ', 'Producer', ''] }, undefined, jest.fn());
+
+    expect(mockDb.credits.filter(c => c.user_id === 'me').map(c => c.role)).toEqual(['Vocals', 'Producer']);
+    expect(mockDb.credits.every(c => c.user_id !== 'me' || c.status === 'accepted')).toBe(true);
+  });
+
+  it('refuses to publish without any role, and removes the staged song', async () => {
+    await expect(publishStagedAudioTrack(staged, { ...input, uploaderRoles: ['  '] }, undefined, jest.fn()))
+      .rejects.toThrow('Choose what you did on this track.');
+
+    expect(mockDb.deletedTracks).toEqual(['t1']);
   });
 
   it('asks an unanswered match at Post, and records the answer', async () => {

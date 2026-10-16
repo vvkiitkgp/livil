@@ -31,8 +31,11 @@ export type CreateTrackInput =
       description?: string;
       audio: PickedFile;
       cover: PickedFile;
-      /** What the uploader did on their own track. Required — see the insert below. */
-      uploaderRole: string;
+      /**
+       * What the uploader did on their own track — one or more (up to MAX_UPLOADER_ROLES),
+       * each saved as its own credit, the way a collaborator with two jobs gets two.
+       */
+      uploaderRoles: string[];
       collaborators: PendingCollaborator[];
       /** Tags. Normalized on the way in by `shared/constants/tags.ts` — see the insert. */
       tags?: string[];
@@ -51,8 +54,11 @@ export type CreateTrackInput =
       mode: 'video';
       title: string;
       description?: string;
-      /** What the uploader did on their own track. Required — see the insert below. */
-      uploaderRole: string;
+      /**
+       * What the uploader did on their own track — one or more (up to MAX_UPLOADER_ROLES),
+       * each saved as its own credit, the way a collaborator with two jobs gets two.
+       */
+      uploaderRoles: string[];
       video: PickedFile;
       cover?: PickedFile;
       /** Required for video uploads — the thumbnail shown in the feed PostCard
@@ -360,6 +366,27 @@ function kickoffWaveformAnalysisFromLocalFile(trackId: string, file: PickedFile 
 // Re-export so callers (e.g. a future re-analysis flow) can compare versions.
 export { WAVEFORM_VERSION };
 
+/** How many roles an uploader can give themselves on one track. */
+export const MAX_UPLOADER_ROLES = 5;
+
+/**
+ * The uploader's roles as they will be saved: trimmed, empty ones dropped, duplicates
+ * (ignoring case) dropped, at most MAX_UPLOADER_ROLES. `track_collaborators_role_check`
+ * allows 1–40 characters, and the screen caps the field at 40.
+ */
+function uploaderRolesOf(input: CreateTrackInput): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of input.uploaderRoles) {
+    const role = raw.trim().slice(0, 40);
+    const key = role.toLowerCase();
+    if (!role || seen.has(key)) { continue; }
+    seen.add(key);
+    out.push(role);
+  }
+  return out.slice(0, MAX_UPLOADER_ROLES);
+}
+
 type UploadPlan = {
   audio?: PickedFile;
   video?: PickedFile;
@@ -412,6 +439,10 @@ export async function createTrack(
   } else {
     if (!input.video) {throw new Error('Video file is required.');}
     if (!input.thumbnail) {throw new Error('Thumbnail image is required for video posts.');}
+  }
+
+  if (uploaderRolesOf(input).length === 0) {
+    throw new Error('Choose what you did on this track.');
   }
 
   // The screen disables its button until this is ticked; checked again here so a future
@@ -648,13 +679,13 @@ async function finishTrack({
   // self-declared — nobody confirms what you say you did on your own record, and the
   // notification trigger skips self-credits anyway.
   const collabRows = [
-    {
+    ...uploaderRolesOf(input).map(role => ({
       track_id: trackId,
       user_id: userId,
       custom_name: null,
-      role: input.uploaderRole.trim(),
+      role,
       status: 'accepted',
-    },
+    })),
     ...input.collaborators.map(c => ({
       track_id: trackId,
       user_id: c.kind === 'user' ? c.userId ?? null : null,
@@ -946,6 +977,7 @@ export async function publishStagedAudioTrack(
   try {
     if (!input.title.trim()) { throw new Error('Title is required.'); }
     if (!input.cover) { throw new Error('Cover image is required for audio posts.'); }
+    if (uploaderRolesOf(input).length === 0) { throw new Error('Choose what you did on this track.'); }
     if (input.streamingGrantAccepted !== true) {
       throw new Error('Tick the box to let Livil stream this recording.');
     }

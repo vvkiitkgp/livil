@@ -84,6 +84,17 @@ export type MediaPlayerProps = {
   viewType?: ViewType;
   /** Override the container style — e.g. pass StyleSheet.absoluteFill for full-screen use. */
   style?: StyleProp<ViewStyle>;
+  /**
+   * Loop the media natively (react-native-video's `repeat`), e.g. the upload previews. When
+   * set, `onEnded` does not fire — the player restarts on its own.
+   */
+  repeat?: boolean;
+  /**
+   * Draw the play glyph / loading / buffering / error overlays (default). Off when the
+   * player sits inside a scaled view (the upload's full-screen frame): the overlays would
+   * scale with the video, so the parent draws its own, unscaled.
+   */
+  overlays?: boolean;
 };
 
 /**
@@ -112,6 +123,8 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
     pauseWhenOffScreen = true,
     muted = false,
     viewType,
+    repeat = false,
+    overlays = true,
     style,
   },
   ref,
@@ -307,6 +320,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         muted={muted}
         volume={muted ? 0 : 1.0}
         {...(viewType !== undefined ? { viewType } : {})}
+        repeat={repeat}
       />
 
       {/* For audio posts we layer the cover (or fallback art) on top of the
@@ -353,7 +367,7 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
       )}
 
       {/* Center play-glyph overlay shown when paused or before first play. */}
-      {effectivePaused ? (
+      {overlays && effectivePaused ? (
         <View pointerEvents="none" style={styles.playGlyphWrap}>
           <View style={styles.playGlyph}>
             <View style={styles.playIconNudge}>
@@ -363,20 +377,20 @@ const MediaPlayer = forwardRef<MediaPlayerHandle, MediaPlayerProps>(function Med
         </View>
       ) : null}
 
-      {errored ? (
+      {overlays && errored ? (
         <View style={styles.errorOverlay} pointerEvents="none">
           <Text style={styles.errorText}>Couldn't load this media</Text>
         </View>
       ) : null}
 
-      {!loaded && !errored ? (
+      {overlays && !loaded && !errored ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="small" color={COLORS.purpleLight} />
         </View>
       ) : null}
 
       {/* Mid-stream rebuffer indicator — only after initial load, during playback */}
-      {loaded && buffering && !effectivePaused ? (
+      {overlays && loaded && buffering && !effectivePaused ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="small" color={COLORS.purpleLight} />
         </View>

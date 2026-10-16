@@ -10,11 +10,12 @@
  * for printable characters on Android, so the separator is read out of the text itself —
  * which also makes paste behave, since a pasted "lofi, latenight" arrives as one change.
  */
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, type TextInput } from 'react-native';
 
 import FormInput from './FormInput';
 import { Icon } from './Icon';
+import RoundTickButton from './RoundTickButton';
 import { COLORS } from '../theme/colors';
 import {
   MAX_TAGS_PER_TRACK,
@@ -36,14 +37,17 @@ type Props = {
    * EMOTION_TAGS: the moods are offered to tap, not pre-applied to prune.
    */
   suggestions?: readonly string[];
+  /** The box just took the keyboard — the screen scrolls it into view. */
+  onFieldFocus?: (field: TextInput | null) => void;
 };
 
 export default function TagInput({
   tags,
   onChange,
   editable = true,
-  placeholder = 'lofi, latenight, tabla',
+  placeholder = 'lofi',
   suggestions = [],
+  onFieldFocus,
 }: Props) {
   // Held here, not lifted. Lifting the draft to the parent re-renders the screen on every
   // keystroke and remounts the TextInput on Android 15 + Fabric — the keyboard-dismiss bug
@@ -54,6 +58,7 @@ export default function TagInput({
   // chip at the end of them: most artists only tap moods, and an always-open box read as
   // homework. It opens (keyboard up) on that tap and tucks away again once they are done.
   const [typing, setTyping] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   const commit = (raw: string) => {
     const result = addTags(tags, raw);
@@ -129,6 +134,7 @@ export default function TagInput({
 
       {showField && (
         <FormInput
+          ref={inputRef}
           value={draft}
           onChangeText={handleChange}
           onSubmitEditing={() => commit(draft)}
@@ -140,7 +146,18 @@ export default function TagInput({
             setTyping(false);
           }}
           autoFocus={collapsible}
+          onFocus={() => onFieldFocus?.(inputRef.current)}
           placeholder={placeholder}
+          // The "#" is the field's, not the tag's: shown in front, never part of the text,
+          // so it cannot be deleted and is never stored (tags are kept without it).
+          leading={<Text style={styles.hash}>#</Text>}
+          trailing={
+            <RoundTickButton
+              enabled={draft.trim().length > 0}
+              onPress={() => commit(draft)}
+              accessibilityLabel="Add this tag"
+            />
+          }
           editable={editable}
           autoCapitalize="none"
           autoCorrect={false}
@@ -239,6 +256,13 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  hash: {
+    paddingLeft: 14,
+    paddingRight: 2,
+    color: COLORS.purpleLight,
+    fontSize: 15,
+    fontWeight: '700',
   },
   // With the box tucked away there is nothing above the offers to space them from.
   suggestionsFirst: { marginTop: 0 },

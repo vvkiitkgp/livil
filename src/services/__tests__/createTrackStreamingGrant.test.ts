@@ -37,7 +37,7 @@ const audioInput = (streamingGrantAccepted: boolean): CreateTrackInput => ({
   title: 'Monsoon Letters',
   audio: FILE,
   cover: FILE,
-  uploaderRole: 'Vocals',
+  uploaderRoles: ['Vocals'],
   collaborators: [],
   streamingGrantAccepted,
 });
