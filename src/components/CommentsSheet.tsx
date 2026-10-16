@@ -26,6 +26,7 @@ import MentionSuggestions from './MentionSuggestions';
 import { GradientBorder } from './GradientBorder';
 import { SpotifyLogo } from './SpotifyLogo';
 import { MusicToggleIcon, SongSearchPanel, type PickedSong } from './ChatSongPicker';
+import { GifSearchPanel } from './GifPicker';
 import { primeCommentSongPost } from './CommentSongCard';
 import { OnboardingNoticeHost } from './OnboardingNotice';
 import RoundTickButton, { ROUND_TICK_SIZE } from './RoundTickButton';
@@ -35,16 +36,20 @@ import type { RootStackParamList } from '../navigation/types';
 import {
   composeCommentBody,
   createComment,
+  GIF_LABEL,
   deleteComment,
   fetchPostComments,
+  gifCommentsSupported,
   songLabelFor,
   subscribeToPostComments,
   toggleCommentLike,
   unsubscribeFromPostComments,
+  type CommentGif,
   type CommentNode,
   type CommentSong,
   type MentionProfile,
 } from '../services/comments';
+import { MAX_GIF_QUERY_LENGTH, prefetchGifs, rememberGif, useGifsEnabled, type Gif } from '../services/gifs';
 import { fetchPostById, isPlayableInLivil, type FeedPost } from '../services/posts';
 import { toShareablePost } from '../services/share';
 import { artistLine, rememberSpotifyTrack, useSpotifyAvailability } from '../services/spotify';
@@ -70,14 +75,27 @@ type Props = {
   highlightCommentId?: string | null;
 };
 
-/** The song attached to the comment being written, as the chip under the box shows it. */
-type SongAttachment = {
-  song: CommentSong;
-  label: string;
-  title: string;
-  artist: string;
-  artUrl: string | null;
-};
+/**
+ * What is attached to the comment being written — one song or one GIF, never both — as the
+ * chip under the box shows it.
+ */
+type Attachment =
+  | {
+      kind: 'song';
+      song: CommentSong;
+      label: string;
+      title: string;
+      artist: string;
+      artUrl: string | null;
+    }
+  | { kind: 'gif'; gif: Gif };
+
+/** The box is a comment, or a search for something to attach. */
+type SearchMode = 'song' | 'gif' | null;
+
+function commentGifOf(gif: Gif): CommentGif {
+  return { provider: gif.provider, id: gif.id, width: gif.width, height: gif.height };
+}
 
 type FlatRow =
   | { kind: 'comment'; key: string; node: CommentNode; depth: number }
@@ -131,6 +149,14 @@ function withComposerRow(rows: FlatRow[], replyingTo: CommentNode | null): FlatR
         depth: r.depth + 1,
       });
     }
+  }
+  return out;
+}
+
+function gifIdsIn(nodes: CommentNode[], out: string[] = []): string[] {
+  for (const n of nodes) {
+    if (n.gif) { out.push(n.gif.id); }
+    gifIdsIn(n.replies, out);
   }
   return out;
 }
@@ -231,15 +257,26 @@ export default function CommentsSheet({
   const [confirmDelete, setConfirmDelete] = useState<CommentNode | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [sending, setSending] = useState(false);
-  // 🎵 song search in the comment box (as in chat, ADR-0027). Its own query, so what was
-  // typed is still there after picking a song; a pick ATTACHES the song (chip under the box)
-  // and the comment goes when Send is tapped, words or not.
-  const [songMode, setSongMode] = useState(false);
+  // 🎵 song search and GIF search in the comment box (ADR-0027, ADR-0031). Each has its own
+  // query, so what was typed is still there after picking; a pick ATTACHES (chip under the
+  // box) and the comment goes when Send is tapped, words or not. One attachment at a time:
+  // picking a GIF replaces a song, and the other way round.
+  const [searchMode, setSearchMode] = useState<SearchMode>(null);
+  const songMode = searchMode === 'song';
+  const gifMode = searchMode === 'gif';
   const [songQuery, setSongQuery] = useState('');
-  const [attachment, setAttachment] = useState<SongAttachment | null>(null);
+  const [gifQuery, setGifQuery] = useState('');
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
   // A Livil pick may need a lookup first (a repost is attached as its original upload).
   const [attaching, setAttaching] = useState(false);
   const { search: spotifySearchOn } = useSpotifyAvailability();
+  // No GIF button until the `gifs` function answers that search is configured, nor once
+  // this backend has shown it cannot store a GIF.
+  const gifsOn = useGifsEnabled() && gifCommentsSupported();
+  // Bumped by every pick, ✕ and close: a Livil song still being looked up attaches only if
+  // nothing happened since — otherwise it would replace a GIF picked after it, or turn up
+  // attached the next time the sheet opens.
+  const pickSeqRef = useRef(0);
 
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Remembers the deep-link highlight id we've already handled for the current
@@ -272,6 +309,8 @@ export default function CommentsSheet({
       try {
         const tree = await fetchPostComments(postId, 100);
         if (!cancelled) {
+          // Every GIF in the sheet in one lookup, before the rows mount in batches.
+          prefetchGifs(gifIdsIn(tree));
           setNodes(tree);
         }
       } catch (e) {
@@ -320,8 +359,10 @@ export default function CommentsSheet({
     setComposer('');
     setCaret(0);
     setReplyingTo(null);
-    setSongMode(false);
+    setSearchMode(null);
     setSongQuery('');
+    setGifQuery('');
+    pickSeqRef.current += 1;
     setAttachment(null);
     setHighlightIds(new Set());
     setEntered(false);
@@ -406,16 +447,18 @@ export default function CommentsSheet({
     const trimmed = composer.trim();
     if ((!trimmed && !attachment) || sending || attaching) { return; }
     const parentId = replyingTo?.id ?? null;
-    const song = attachment ? { song: attachment.song, label: attachment.label } : null;
+    const song = attachment?.kind === 'song' ? { song: attachment.song, label: attachment.label } : null;
+    const gif = attachment?.kind === 'gif' ? commentGifOf(attachment.gif) : null;
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: CommentNode = {
       id: tempId,
       postId,
       authorId: viewerId,
       author: { id: viewerId, username: 'you', displayName: 'You', avatarUrl: null },
-      body: composeCommentBody(trimmed, song?.label ?? null),
+      body: composeCommentBody(trimmed, song?.label ?? (gif ? GIF_LABEL : null)),
       song: song?.song ?? null,
       songLabel: song?.label ?? null,
+      gif,
       parentCommentId: parentId,
       createdAt: new Date().toISOString(),
       likeCount: 0,
@@ -429,7 +472,7 @@ export default function CommentsSheet({
     setSending(true);
     onCommentsCountChange?.(1);
     try {
-      const saved = await createComment(postId, trimmed, parentId, song);
+      const saved = await createComment(postId, trimmed, parentId, song, gif);
       setNodes(prev => replaceNode(prev, tempId, saved));
     } catch (e) {
       // Revert optimistic insert
@@ -444,11 +487,33 @@ export default function CommentsSheet({
   /** 🎵 on: the box becomes a song search, starting from "Recently played". */
   const openSongSearch = useCallback(() => {
     setSongQuery('');
-    setSongMode(true);
+    setSearchMode('song');
     composerInputRef.current?.focus();
   }, []);
 
-  const closeSongSearch = useCallback(() => setSongMode(false), []);
+  /** GIF on: the box becomes a GIF search, starting from what is trending. */
+  const openGifSearch = useCallback(() => {
+    setGifQuery('');
+    setSearchMode('gif');
+    composerInputRef.current?.focus();
+  }, []);
+
+  const closeSearch = useCallback(() => setSearchMode(null), []);
+
+  const removeAttachment = useCallback(() => {
+    pickSeqRef.current += 1;
+    setAttachment(null);
+  }, []);
+
+  /** A GIF tapped in the search → attached, and the box goes back to the comment. */
+  const handlePickGif = useCallback((gif: Gif) => {
+    pickSeqRef.current += 1;
+    setAttaching(false);
+    setSearchMode(null);
+    // Its own comment then draws at once, without a lookup.
+    rememberGif(gif);
+    setAttachment({ kind: 'gif', gif });
+  }, []);
 
   /**
    * A song tapped in the search → attached, and the box goes back to the comment.
@@ -458,11 +523,13 @@ export default function CommentsSheet({
    *   Spotify → by its track id; its details are kept for the card (rememberSpotifyTrack).
    */
   const handlePickSong = useCallback(async (picked: PickedSong) => {
-    setSongMode(false);
+    const seq = ++pickSeqRef.current;
+    setSearchMode(null);
     if (picked.kind === 'spotify') {
       rememberSpotifyTrack(picked.track);
       const artist = artistLine(picked.track);
       setAttachment({
+        kind: 'song',
         song: { kind: 'spotify', trackId: picked.track.id },
         label: songLabelFor(picked.track.title, artist),
         title: picked.track.title,
@@ -477,6 +544,7 @@ export default function CommentsSheet({
       if (post && post.kind === 'repost' && post.originalPostId) {
         post = (await fetchPostById(post.originalPostId)) ?? post;
       }
+      if (seq !== pickSeqRef.current) { return; }
       // Still a repost = its original is gone or hidden from us; never attach that.
       if (!post || post.kind === 'repost' || !isPlayableInLivil(post)) {
         showToast('That song is no longer available', { kind: 'info' });
@@ -485,6 +553,7 @@ export default function CommentsSheet({
       const shareable = toShareablePost(post);
       primeCommentSongPost(post);
       setAttachment({
+        kind: 'song',
         song: { kind: 'livil', postId: post.id },
         label: songLabelFor(shareable.title, shareable.artistName),
         title: shareable.title,
@@ -492,9 +561,11 @@ export default function CommentsSheet({
         artUrl: shareable.coverArtUrl,
       });
     } catch (e) {
-      showToast(friendlyErrorMessage(e, "Couldn't add that song. Please try again."), { kind: 'error' });
+      if (seq === pickSeqRef.current) {
+        showToast(friendlyErrorMessage(e, "Couldn't add that song. Please try again."), { kind: 'error' });
+      }
     } finally {
-      setAttaching(false);
+      if (seq === pickSeqRef.current) { setAttaching(false); }
     }
   }, [showToast]);
 
@@ -609,6 +680,8 @@ export default function CommentsSheet({
       // or right under the comment being replied to.
       const isReply = item.parentId !== null;
       const indent = Math.min(item.depth, MAX_INDENT_DEPTH) * 14;
+      // The chip sits under the box, clear of the 🎵 (and GIF) buttons: their width + gap.
+      const leadingWidth = (gifsOn ? 2 : 1) * (COMPOSER_ROW_H + 8);
       const onSendPressed = () => {
         handleSend().catch(() => {/* errors already toasted */});
         // After send, the FlatList list will reflow; scroll to the new row's
@@ -637,7 +710,7 @@ export default function CommentsSheet({
             <TouchableOpacity
               style={[styles.musicBtn, songMode && styles.musicBtnActive]}
               activeOpacity={0.7}
-              onPress={songMode ? closeSongSearch : openSongSearch}
+              onPress={songMode ? closeSearch : openSongSearch}
               accessibilityRole="button"
               accessibilityLabel={songMode ? 'Back to your comment' : 'Add a song'}
               accessibilityState={{ selected: songMode }}
@@ -645,37 +718,60 @@ export default function CommentsSheet({
               {songMode ? <GradientBorder borderRadius={COMPOSER_ROW_H / 2} /> : null}
               <MusicToggleIcon active={songMode} color={songMode ? COLORS.purpleNeon : COLORS.textSecondary} />
             </TouchableOpacity>
+            {/* GIF does the same with GIPHY — only once the `gifs` function says it is on. */}
+            {gifsOn ? (
+              <TouchableOpacity
+                style={[styles.musicBtn, gifMode && styles.musicBtnActive]}
+                activeOpacity={0.7}
+                onPress={gifMode ? closeSearch : openGifSearch}
+                accessibilityRole="button"
+                accessibilityLabel={gifMode ? 'Back to your comment' : 'Add a GIF'}
+                accessibilityState={{ selected: gifMode }}
+                testID="comment-gif-button"
+              >
+                {gifMode ? <GradientBorder borderRadius={COMPOSER_ROW_H / 2} /> : null}
+                <Icon name="gif" size={22} color={gifMode ? COLORS.purpleNeon : COLORS.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
             <FormInput
               ref={composerInputRef}
-              value={songMode ? songQuery : composer}
+              value={songMode ? songQuery : gifMode ? gifQuery : composer}
               // A search is one line: a pasted newline becomes a space.
-              onChangeText={songMode ? t => setSongQuery(t.replace(/\n/g, ' ').slice(0, 100)) : handleComposerChange}
-              onSelectionChange={songMode ? undefined : handleSelectionChange}
+              onChangeText={
+                songMode
+                  ? t => setSongQuery(t.replace(/\n/g, ' ').slice(0, 100))
+                  : gifMode
+                    ? t => setGifQuery(t.replace(/\n/g, ' ').slice(0, MAX_GIF_QUERY_LENGTH))
+                    : handleComposerChange
+              }
+              onSelectionChange={searchMode ? undefined : handleSelectionChange}
               placeholder={
                 songMode
                   ? (spotifySearchOn ? 'Search a song on Livil or Spotify…' : 'Search a song on Livil…')
-                  : isReply ? 'Write a reply…' : 'Add a comment…'
+                  : gifMode
+                    ? 'Search GIPHY…'
+                    : isReply ? 'Write a reply…' : 'Add a comment…'
               }
               // ALWAYS multiline: on iOS it picks the native view, and swapping it with 🎵
-              // dropped the keyboard (as in chat). Song mode is one line via submitBehavior.
+              // dropped the keyboard (as in chat). A search is one line via submitBehavior.
               multiline
-              submitBehavior={songMode ? 'blurAndSubmit' : 'newline'}
-              autoCorrect={!songMode}
-              returnKeyType={songMode ? 'search' : 'default'}
+              submitBehavior={searchMode ? 'blurAndSubmit' : 'newline'}
+              autoCorrect={!searchMode}
+              returnKeyType={searchMode ? 'search' : 'default'}
               editable={!sending}
               wrapperStyle={styles.composerInputWrap}
               style={styles.composerInput}
               // Send is the round ✓ inside the box, as on Upload's "+ Something else" fields.
-              // Song search swaps it for a ✕ of the same size, so the box never changes width.
+              // A search swaps it for a ✕ of the same size, so the box never changes width.
               trailing={
-                songMode ? (
+                searchMode ? (
                   <TouchableOpacity
-                    onPress={closeSongSearch}
+                    onPress={closeSearch}
                     activeOpacity={0.7}
                     style={styles.trailingHit}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel="Close song search"
+                    accessibilityLabel={gifMode ? 'Close GIF search' : 'Close song search'}
                   >
                     <View style={styles.trailingCircle}>
                       <Icon name="close" size={14} color={COLORS.textSecondary} weight="bold" />
@@ -702,10 +798,32 @@ export default function CommentsSheet({
                 scrollable={false}
               />
             </View>
+          ) : gifMode ? (
+            <View style={styles.songPanel}>
+              <GifSearchPanel query={gifQuery} onPick={handlePickGif} />
+            </View>
           ) : (
             <>
-              {attaching || attachment ? (
-                <View style={styles.attachment} testID="comment-song-attachment">
+              {attachment?.kind === 'gif' ? (
+                <View style={[styles.attachment, { marginLeft: leadingWidth }]} testID="comment-gif-attachment">
+                  <Image source={{ uri: attachment.gif.previewUrl }} style={styles.attachmentGif} />
+                  <View style={styles.attachmentText}>
+                    <Text style={styles.attachmentTitle} numberOfLines={1}>GIF</Text>
+                    <Text style={styles.attachmentArtist} numberOfLines={1}>
+                      {attachment.gif.title || 'From GIPHY'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={removeAttachment}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove the GIF"
+                  >
+                    <Icon name="close" size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              ) : attaching || attachment ? (
+                <View style={[styles.attachment, { marginLeft: leadingWidth }]} testID="comment-song-attachment">
                   {attachment?.artUrl ? (
                     <Image source={{ uri: attachment.artUrl }} style={styles.attachmentArt} />
                   ) : (
@@ -726,7 +844,7 @@ export default function CommentsSheet({
                   {attachment?.song.kind === 'spotify' ? <SpotifyLogo size="xs" /> : null}
                   {attachment ? (
                     <TouchableOpacity
-                      onPress={() => setAttachment(null)}
+                      onPress={removeAttachment}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${attachment.title}`}
@@ -758,14 +876,21 @@ export default function CommentsSheet({
       sending,
       replyingTo,
       handleSend,
+      searchMode,
       songMode,
+      gifMode,
       songQuery,
+      gifQuery,
       attachment,
       attaching,
       spotifySearchOn,
+      gifsOn,
       openSongSearch,
-      closeSongSearch,
+      openGifSearch,
+      closeSearch,
       handlePickSong,
+      handlePickGif,
+      removeAttachment,
       handleComposerChange,
       handleSelectionChange,
       mentionTrigger,
@@ -975,8 +1100,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 8,
-    // Under the box, clear of the 🎵 button (its width + the row's gap).
-    marginLeft: COMPOSER_ROW_H + 8,
+    // marginLeft is set inline: under the box, clear of the buttons beside it.
     padding: 6,
     paddingRight: 10,
     borderRadius: 12,
@@ -987,6 +1111,7 @@ const styles = StyleSheet.create({
   // Spotify's rule for its artwork: corners of 4 px at most, nothing drawn on it.
   attachmentArt: { width: 36, height: 36, borderRadius: 4, backgroundColor: COLORS.card },
   attachmentArtEmpty: { alignItems: 'center', justifyContent: 'center' },
+  attachmentGif: { width: 36, height: 36, borderRadius: 6, backgroundColor: COLORS.card },
   attachmentText: { flex: 1, minWidth: 0 },
   attachmentTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   attachmentArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },

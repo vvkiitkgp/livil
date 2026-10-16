@@ -12,6 +12,7 @@ import UsernameBadges from './UsernameBadges';
 import { Icon } from './Icon';
 import SheetModal, { SheetScrollView } from './SheetModal';
 import CommentSongCard from './CommentSongCard';
+import CommentGifCard from './CommentGifCard';
 import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
 import { commentDisplayText, type CommentNode } from '../services/comments';
@@ -72,8 +73,8 @@ export default function CommentItem(props: Props) {
   const indent = Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX;
   const isOwn = node.authorId === viewerId;
   const displayName = node.author.displayName || node.author.username;
-  // With a song, the body's last line is the song's label (for apps that cannot draw the
-  // card); the card replaces it here.
+  // With a song or a GIF, the body's last line is its label (for apps that cannot draw
+  // it); the card or the GIF replaces it here.
   const text = commentDisplayText(node);
 
   return (
@@ -115,6 +116,7 @@ export default function CommentItem(props: Props) {
           </Text>
         ) : null}
         {node.song ? <CommentSongCard song={node.song} label={node.songLabel} /> : null}
+        {node.gif ? <CommentGifCard gif={node.gif} /> : null}
 
         <View style={styles.actions}>
           <TouchableOpacity
