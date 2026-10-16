@@ -650,7 +650,9 @@ async function finishTrack({
     // Scanned (and answered) when the song was staged.
     declarationToRecord = scan.declaration;
   } else if (scan.kind === 'ask') {
-    const result = await scanUpload(supabase, trackId);
+    // The whole song, as at staging: this is a staged song whose check did not finish, or
+    // a video (which the server skips regardless).
+    const result = await scanUpload(supabase, trackId, { fullSong: true });
     if (needsAcknowledgement(result)) {
       const answer = await scan.onCopyrightMatch(result);
       if (answer.acknowledgement === 'cancelled') {
@@ -911,7 +913,9 @@ export async function stageAudioUpload(
     }
 
     onProgress({ stage: 'checking', fraction: 1 });
-    const scan = await scanUpload(supabase, trackId);
+    // Every 12-second chunk, not one excerpt: the screen is still collecting the cover,
+    // details and credits, so the extra seconds are hidden behind them.
+    const scan = await scanUpload(supabase, trackId, { fullSong: true });
     if (isAbandoned()) { throw new StagingAbandonedError(); }
 
     return { trackId, userId: user.id, audioUrl, scan, declaration: null };

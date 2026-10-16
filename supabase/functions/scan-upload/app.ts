@@ -45,7 +45,8 @@
 // recording, and a cover is a different recording. Livil supports covers as
 // first-class uploads, so this is the desired behaviour, not a gap.
 //
-// SECRETS (custom): AUDD_API_TOKEN, and optionally AUDD_ENTERPRISE_ENABLED.
+// SECRETS (custom): AUDD_API_TOKEN, and optionally AUDD_ENTERPRISE_ENABLED (video) and
+// AUDD_FULL_SONG_ENABLED (whole-song audio, for clients that ask for it).
 // Platform-injected: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 // ============================================================================
 
@@ -79,9 +80,18 @@ export type ScanOutcome =
 
 export type MediaKind = 'audio' | 'video';
 
+export type ScanOptions = {
+  /**
+   * The client asked for the whole song rather than the provider's quick check. A REQUEST,
+   * not a setting: only clients that know how long a whole-song answer takes send it, so
+   * an app already in the stores (which gives up after 20 s) keeps the quick check.
+   */
+  fullSong?: boolean;
+};
+
 export interface CopyrightDetectionProvider {
   readonly name: string;
-  scan(mediaUrl: string, kind: MediaKind): Promise<ScanOutcome>;
+  scan(mediaUrl: string, kind: MediaKind, opts?: ScanOptions): Promise<ScanOutcome>;
 }
 
 // ── AudD ────────────────────────────────────────────────────────────────────
@@ -99,17 +109,41 @@ export interface CopyrightDetectionProvider {
 // on a request we did not actually make.
 
 const AUDD_STANDARD = 'https://api.audd.io/';
-const AUDD_ENTERPRISE = 'https://enterprise.audd.io/recognize';
+const AUDD_ENTERPRISE = 'https://enterprise.audd.io/';
+
+// ── Whole-song audio ──
+//
+// The standard endpoint identifies ONE short excerpt and refuses long or large files (a
+// 10 MB WAV came back "audio is too large ... use the enterprise endpoint"), so a song
+// whose commercial recording starts after its intro, or that is simply a big file, was
+// never really checked. The enterprise endpoint walks the file in 12-second chunks on the
+// provider's servers; `skip=0` + `every=1` asks for every chunk, so a 2-minute song is 10
+// chunks and 10 billed requests.
+//
+// Two gates, both required: the client asks (`fullSong`, see ScanOptions) and the switch
+// is on (`AUDD_FULL_SONG_ENABLED`). The switch is the spend lever — unset, every scan is
+// the quick one again, with no app release.
+
+/** Spend ceiling per scan: 100 chunks is 20 minutes of audio, $0.20 at $2 / 1,000. */
+export const FULL_SONG_CHUNK_LIMIT = 100;
+
+/**
+ * How long we wait for a whole-song answer before recording `failed`. Under the 60 s an
+ * iPhone waits for a silent HTTP response, so the app always hears the verdict this
+ * function records instead of timing out first. The provider's own example — an hour-long
+ * mix, 63 chunks — took 38 s; a 4-minute song is 20.
+ */
+export const FULL_SONG_PROVIDER_TIMEOUT_MS = 50_000;
 
 export function createAuddProvider(
   token: string,
-  opts: { enterpriseEnabled?: boolean; fetchImpl?: typeof fetch } = {},
+  opts: { enterpriseEnabled?: boolean; fullSongEnabled?: boolean; fetchImpl?: typeof fetch } = {},
 ): CopyrightDetectionProvider {
   const doFetch = opts.fetchImpl ?? fetch;
 
   return {
     name: 'audd',
-    async scan(mediaUrl, kind) {
+    async scan(mediaUrl, kind, scanOpts = {}) {
       if (kind === 'video' && !opts.enterpriseEnabled) {
         return {
           status: 'skipped',
@@ -117,6 +151,22 @@ export function createAuddProvider(
             'video scanning is not enabled: the enterprise endpoint accepts long files, '
             + 'but its handling of video containers is unconfirmed with the vendor',
         };
+      }
+
+      const fullSong = kind === 'audio' && scanOpts.fullSong === true && opts.fullSongEnabled === true;
+      if (fullSong) {
+        // The enterprise response carries `isrc` on each song itself (no `return` param).
+        return send(
+          AUDD_ENTERPRISE,
+          new URLSearchParams({
+            api_token: token,
+            url: mediaUrl,
+            skip: '0',
+            every: '1',
+            limit: String(FULL_SONG_CHUNK_LIMIT),
+          }),
+          FULL_SONG_PROVIDER_TIMEOUT_MS,
+        );
       }
 
       const endpoint = kind === 'video' ? AUDD_ENTERPRISE : AUDD_STANDARD;
@@ -135,31 +185,39 @@ export function createAuddProvider(
         body.set('every', '3');
       }
 
-      let res: Response;
-      try {
-        res = await doFetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-        });
-      } catch (e) {
-        return { status: 'failed', reason: `network error: ${errText(e)}` };
-      }
-
-      if (!res.ok) {
-        return { status: 'failed', reason: `provider returned HTTP ${res.status}` };
-      }
-
-      let payload: AuddResponse;
-      try {
-        payload = (await res.json()) as AuddResponse;
-      } catch (e) {
-        return { status: 'failed', reason: `unparseable provider response: ${errText(e)}` };
-      }
-
-      return normalizeAudd(payload);
+      return send(endpoint, body);
     },
   };
+
+  async function send(endpoint: string, body: URLSearchParams, timeoutMs?: number): Promise<ScanOutcome> {
+    let res: Response;
+    try {
+      res = await doFetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'TimeoutError') {
+        return { status: 'failed', reason: `provider took longer than ${timeoutMs! / 1000} s` };
+      }
+      return { status: 'failed', reason: `network error: ${errText(e)}` };
+    }
+
+    if (!res.ok) {
+      return { status: 'failed', reason: `provider returned HTTP ${res.status}` };
+    }
+
+    let payload: AuddResponse;
+    try {
+      payload = (await res.json()) as AuddResponse;
+    } catch (e) {
+      return { status: 'failed', reason: `unparseable provider response: ${errText(e)}` };
+    }
+
+    return normalizeAudd(payload);
+  }
 }
 
 type AuddResult = {
@@ -169,6 +227,10 @@ type AuddResult = {
   label?: string | null;
   release_date?: string | null;
   song_link?: string | null;
+  /** Enterprise only: how sure it is, 0–100. */
+  score?: number | null;
+  /** Enterprise only, on the song itself (standard puts it under the linked services). */
+  isrc?: string | null;
   apple_music?: { isrc?: string | null } | null;
   spotify?: { external_ids?: { isrc?: string | null } | null } | null;
 };
@@ -203,12 +265,13 @@ export function normalizeAudd(payload: AuddResponse): ScanOutcome {
   return {
     status: 'complete',
     matchFound: true,
-    // AudD does not return a score. Recording null is honest; inventing 1.0 would put
-    // a number in front of an operator that nothing produced.
-    confidence: null,
+    // The standard endpoint returns no score, so there it stays null: inventing 1.0 would
+    // put a number in front of an operator that nothing produced. The enterprise one
+    // scores 0–100; the column holds 0–1.
+    confidence: scoreToConfidence(first.score),
     title: first.title ?? null,
     artist: first.artist ?? null,
-    isrc: first.apple_music?.isrc ?? first.spotify?.external_ids?.isrc ?? null,
+    isrc: first.isrc ?? first.apple_music?.isrc ?? first.spotify?.external_ids?.isrc ?? null,
     raw: first,
   };
 }
@@ -224,6 +287,11 @@ function firstResult(result: AuddResponse['result']): AuddResult | null {
     return null;
   }
   return result.title || result.artist ? result : null;
+}
+
+function scoreToConfidence(score: unknown): number | null {
+  if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 100) return null;
+  return score / 100;
 }
 
 function errText(e: unknown): string {
@@ -299,9 +367,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
 
   // 2. INPUT.
   let trackId = '';
+  let fullSong = false;
   try {
     const body = await req.json();
     trackId = typeof body?.trackId === 'string' ? body.trackId : '';
+    fullSong = body?.fullSong === true;
   } catch {
     return json(400, { error: 'body must be JSON' });
   }
@@ -361,7 +431,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   }
 
   // 5. ASK.
-  const outcome = await deps.provider.scan(mediaUrl, kind);
+  const outcome = await deps.provider.scan(mediaUrl, kind, { fullSong });
 
   // 6. RECORD. Upsert on (track_id, provider) so a retry or a duplicate delivery
   //    updates the one row rather than adding a second verdict for the same track.
@@ -487,6 +557,7 @@ export const handler = async (req: Request): Promise<Response> => {
     adminClient: () => createClient(url, serviceKey, { auth: { persistSession: false } }),
     provider: createAuddProvider(token, {
       enterpriseEnabled: Deno.env.get('AUDD_ENTERPRISE_ENABLED') === 'true',
+      fullSongEnabled: Deno.env.get('AUDD_FULL_SONG_ENABLED') === 'true',
     }),
   });
 };

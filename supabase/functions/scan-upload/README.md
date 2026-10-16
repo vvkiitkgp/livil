@@ -1,10 +1,10 @@
 # scan-upload — deploy & review checklist
 
-**Status: PROPOSAL — not deployed.** The client half calls it through
-`shared/services/copyrightScan.ts`; that call is fail-safe, so until this is deployed
-every upload records a `failed` scan and publishes normally. Nothing breaks while this
-is absent — but nothing is checked either, and the `failed` rows are the evidence of
-that rather than a silence.
+**Status: deployed** (`fqzrmqnlgjeuxzinbqvs`). The client half calls it through
+`shared/services/copyrightScan.ts`; that call is fail-safe, so if this is ever absent
+every upload records a `failed` scan and publishes normally. Nothing breaks — but
+nothing is checked either, and the `failed` rows are the evidence of that rather than a
+silence.
 
 ## Why this can't be an agent-autonomous change
 
@@ -47,7 +47,10 @@ that rather than a silence.
    That is the only bound: there is still no per-user upload quota anywhere in Livil and
    no rate limit in front of this function. Note the enterprise path bills per unit of
    AUDIO DURATION, not per request, so one long file is one request and a large bill —
-   keep `AUDD_ENTERPRISE_ENABLED` unset until you are comfortable with that.
+   keep `AUDD_ENTERPRISE_ENABLED` unset until you are comfortable with that. The
+   whole-song audio path (below) is bounded per scan by `FULL_SONG_CHUNK_LIMIT` (100
+   chunks = 20 min of audio, $0.20), so the worst case for one account is 50 × $0.20 a
+   day.
 8. **The uploader chooses what gets scanned — check both defences are present.** A
    security review killed the first draft over this: `tracks_update_own` constrains which
    rows, never which columns, so an uploader could scan a harmless file and then swap in
@@ -74,6 +77,28 @@ supabase functions deploy scan-upload --project-ref fqzrmqnlgjeuxzinbqvs
 # 3. Verify auth is enforced (must be 401, NOT 200):
 curl -s -o /dev/null -w '%{http_code}\n' -X POST \
   "$SUPABASE_URL/functions/v1/scan-upload" -d '{"trackId":"11111111-2222-3333-4444-555555555555"}'
+```
+
+## Whole-song audio (`AUDD_FULL_SONG_ENABLED`)
+
+The standard endpoint identifies one short excerpt and refuses long or large files (a
+10 MB WAV failed with "audio is too large … use the enterprise endpoint"). With
+`AUDD_FULL_SONG_ENABLED=true`, an AUDIO scan whose request carries `"fullSong": true` goes
+to the enterprise endpoint with `skip=0`, `every=1`, `limit=100` — every 12-second chunk,
+one billed request each (a 2-minute song is 10).
+
+- **Both gates are required.** The switch alone changes nothing for clients that do not
+  ask, and the app in the stores before this change never asks — it gives up after 20 s,
+  which a whole-song answer can exceed, so it keeps the quick check. The mobile app asks
+  from the version that scans while the song is staged (`stageAudioUpload`).
+- **Bounded in time.** The provider gets `FULL_SONG_PROVIDER_TIMEOUT_MS` (50 s), then the
+  scan records `failed` with the reason. That is under the 60 s an iPhone waits for a
+  silent response, so the app reads the recorded verdict rather than timing out first.
+- **Video is unaffected** — it still needs `AUDD_ENTERPRISE_ENABLED` (see below).
+- **Off switch:** unset the secret. Every scan is the quick one again, no app release.
+
+```bash
+supabase secrets set AUDD_FULL_SONG_ENABLED=true --project-ref fqzrmqnlgjeuxzinbqvs
 ```
 
 ## Before deploying, confirm with the vendor

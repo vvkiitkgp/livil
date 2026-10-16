@@ -9,10 +9,14 @@
 import { assertEquals, assertNotEquals } from 'jsr:@std/assert@1';
 import {
   createAuddProvider,
+  type Deps,
+  FULL_SONG_CHUNK_LIMIT,
+  handle,
   isOwnPublicMedia,
   normalizeAudd,
   publicShape,
   rowFor,
+  type ScanOptions,
   type ScanOutcome,
 } from './app.ts';
 
@@ -152,6 +156,157 @@ Deno.test('a network throw is failed, not a negative', async () => {
     fetchImpl: () => Promise.reject(new Error('ECONNRESET')),
   });
   assertEquals((await p.scan('https://example.test/a.mp3', 'audio')).status, 'failed');
+});
+
+// ── whole-song audio ────────────────────────────────────────────────────────
+
+/** Records what the provider was sent; answers "no match". */
+function recordingFetch() {
+  const seen = { url: '', body: new URLSearchParams(), signal: null as AbortSignal | null };
+  const fetchImpl: typeof fetch = (input, init) => {
+    seen.url = String(input);
+    seen.body = new URLSearchParams(String(init?.body ?? ''));
+    seen.signal = init?.signal ?? null;
+    return Promise.resolve(
+      new Response(JSON.stringify({ status: 'success', result: [] }), { status: 200 }),
+    );
+  };
+  return { seen, fetchImpl };
+}
+
+Deno.test('a whole-song request checks every chunk on the enterprise endpoint', async () => {
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: true, fetchImpl });
+  const out = await p.scan('https://example.test/a.wav', 'audio', { fullSong: true });
+  assertEquals(seen.url, 'https://enterprise.audd.io/');
+  assertEquals(seen.body.get('url'), 'https://example.test/a.wav');
+  // Every 12-second chunk, none skipped — the whole point of the request.
+  assertEquals(seen.body.get('skip'), '0');
+  assertEquals(seen.body.get('every'), '1');
+  // The spend ceiling travels with the request; the provider stops there.
+  assertEquals(seen.body.get('limit'), String(FULL_SONG_CHUNK_LIMIT));
+  // Bounded, so a slow provider becomes a recorded `failed`, not a client-side timeout.
+  assertEquals(seen.signal instanceof AbortSignal, true);
+  // An empty segment list is a real negative.
+  assertEquals(out, { status: 'complete', matchFound: false });
+});
+
+Deno.test('a whole-song request with the switch off gets the quick check', async () => {
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: false, fetchImpl });
+  await p.scan('https://example.test/a.mp3', 'audio', { fullSong: true });
+  assertEquals(seen.url, 'https://api.audd.io/');
+  assertEquals(seen.body.get('skip'), null);
+});
+
+Deno.test('a client that does not ask gets the quick check even with the switch on', async () => {
+  // The app already in the stores: it never sends `fullSong`, and gives up after 20 s.
+  const { seen, fetchImpl } = recordingFetch();
+  const p = createAuddProvider('tok', { fullSongEnabled: true, fetchImpl });
+  await p.scan('https://example.test/a.mp3', 'audio');
+  assertEquals(seen.url, 'https://api.audd.io/');
+});
+
+Deno.test('a whole-song request does not open the video path', async () => {
+  const p = createAuddProvider('tok', {
+    fullSongEnabled: true,
+    enterpriseEnabled: false,
+    fetchImpl: () => {
+      throw new Error('must not call the provider');
+    },
+  });
+  const out = await p.scan('https://example.test/a.mp4', 'video', { fullSong: true });
+  assertEquals(out.status, 'skipped');
+});
+
+Deno.test('a whole-song request that runs out of time is failed, not a negative', async () => {
+  const p = createAuddProvider('tok', {
+    fullSongEnabled: true,
+    fetchImpl: () => Promise.reject(new DOMException('signal timed out', 'TimeoutError')),
+  });
+  const out = await p.scan('https://example.test/a.wav', 'audio', { fullSong: true });
+  assertEquals(out.status, 'failed');
+  assertEquals(out.status === 'failed' && out.reason.includes('longer than'), true);
+});
+
+Deno.test('an enterprise match reads the isrc and score off the song itself', () => {
+  const out = normalizeAudd({
+    status: 'success',
+    result: [
+      { songs: [] },
+      { songs: [{ title: 'Kesariya', artist: 'Arijit Singh', isrc: 'INS182200001', score: 97 }] },
+    ],
+  });
+  assertEquals(out.status === 'complete' && out.matchFound && out.isrc, 'INS182200001');
+  // 0–100 from the provider, 0–1 in the column (its check constraint).
+  assertEquals(out.status === 'complete' && out.matchFound && out.confidence, 0.97);
+});
+
+Deno.test('a score outside 0–100 is recorded as no score, not clamped', () => {
+  const out = normalizeAudd({
+    status: 'success',
+    result: [{ songs: [{ title: 'x', artist: 'y', score: 140 }] }],
+  });
+  assertEquals(out.status === 'complete' && out.matchFound && out.confidence, null);
+});
+
+// ── the handler passes the request on ───────────────────────────────────────
+
+const OWNER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const SUPA = 'https://p.supabase.co';
+
+/** Just enough of the two clients for `handle` to reach the provider and record. */
+function handlerDeps(seenOpts: Array<ScanOptions | undefined>): Deps {
+  const track = {
+    id: TRACK,
+    uploader_id: OWNER,
+    media_kind: 'audio',
+    audio_url: `${SUPA}/storage/v1/object/public/tracks-media/${OWNER}/${TRACK}/audio.wav`,
+    video_url: null,
+  };
+  const userClient = {
+    auth: { getUser: () => Promise.resolve({ data: { user: { id: OWNER } }, error: null }) },
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: track, error: null }) }) }),
+    }),
+  };
+  const adminClient = {
+    from: () => ({
+      select: () => ({ eq: () => ({ gte: () => Promise.resolve({ count: 0, error: null }) }) }),
+      upsert: () => Promise.resolve({ error: null }),
+    }),
+  };
+  return {
+    supabaseUrl: SUPA,
+    userClient: () => userClient as unknown as ReturnType<Deps['userClient']>,
+    adminClient: () => adminClient as unknown as ReturnType<Deps['adminClient']>,
+    provider: {
+      name: 'fake',
+      scan: (_url, _kind, opts) => {
+        seenOpts.push(opts);
+        return Promise.resolve({ status: 'complete', matchFound: false });
+      },
+    },
+  };
+}
+
+function post(body: unknown): Request {
+  return new Request('https://fn.test/scan-upload', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer jwt', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+Deno.test('the handler asks for the whole song only when the client says exactly true', async () => {
+  const seen: Array<ScanOptions | undefined> = [];
+  const deps = handlerDeps(seen);
+  assertEquals((await handle(post({ trackId: TRACK, fullSong: true }), deps)).status, 200);
+  // Today's apps send only the id.
+  assertEquals((await handle(post({ trackId: TRACK }), deps)).status, 200);
+  // Not a boolean: treated as not asked.
+  assertEquals((await handle(post({ trackId: TRACK, fullSong: 'yes' }), deps)).status, 200);
+  assertEquals(seen.map(o => o?.fullSong), [true, false, false]);
 });
 
 // ── publicShape ─────────────────────────────────────────────────────────────

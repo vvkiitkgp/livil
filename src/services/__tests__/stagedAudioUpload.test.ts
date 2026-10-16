@@ -131,6 +131,8 @@ describe('stageAudioUpload', () => {
     expect(staged).toMatchObject({ trackId: 't1', userId: 'me', audioUrl: 'https://cdn/me/t1/audio', declaration: null });
     expect(mockDb.updates).toContainEqual({ audio_url: 'https://cdn/me/t1/audio' });
     expect(mockScan).toHaveBeenCalledTimes(1);
+    // The whole song, not one excerpt: the check runs behind the remaining steps.
+    expect(mockScan).toHaveBeenCalledWith(expect.anything(), 't1', { fullSong: true });
     expect(progress[0]).toBe('uploading');
     expect(progress[progress.length - 1]).toBe('checking');
     expect(mockDb.deletedTracks).toEqual([]);
@@ -244,6 +246,7 @@ describe('publishStagedAudioTrack', () => {
     await publishStagedAudioTrack({ ...staged, scan: { status: 'failed', matchFound: null }, declaration: null }, input, undefined, ask);
 
     expect(mockScan).toHaveBeenCalledTimes(1);
+    expect(mockScan).toHaveBeenCalledWith(expect.anything(), 't1', { fullSong: true });
     expect(ask).not.toHaveBeenCalled(); // the re-check found nothing
   });
 
