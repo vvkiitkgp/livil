@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-356 TypeScript file(s) under `src/`, 82,525 lines.
+369 TypeScript file(s) under `src/`, 83,841 lines.
 
 ## Size hotspots
 
@@ -31,9 +31,9 @@ reading alone (Constitution P28).
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/HomeScreen.tsx` | 1617 |
+| `src/screens/main/UserProfileScreen.tsx` | 1463 |
 | `src/components/PostCard.tsx` | 1425 |
-| `src/screens/main/UserProfileScreen.tsx` | 1329 |
-| `src/screens/main/ProfileScreen.tsx` | 1285 |
+| `src/screens/main/ProfileScreen.tsx` | 1413 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
@@ -48,7 +48,7 @@ reading alone (Constitution P28).
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 
-> 21 file(s) over the threshold against **18 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 21 file(s) over the threshold against **27 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-49 file(s), 26,841 lines.
+49 file(s), 27,103 lines.
 
 | File | Lines |
 |---|---:|
@@ -113,8 +113,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ConversationScreen.tsx` | 2074 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1672 |
 | `src/screens/main/HomeScreen.tsx` | 1617 |
-| `src/screens/main/UserProfileScreen.tsx` | 1329 |
-| `src/screens/main/ProfileScreen.tsx` | 1285 |
+| `src/screens/main/UserProfileScreen.tsx` | 1463 |
+| `src/screens/main/ProfileScreen.tsx` | 1413 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
 | `src/screens/main/RepostScreen.tsx` | 959 |
@@ -161,7 +161,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-134 file(s), 28,804 lines.
+137 file(s), 29,294 lines.
 
 | File | Lines |
 |---|---:|
@@ -184,10 +184,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SpotifyPostCard.tsx` | 371 |
 | `src/components/ChatSongPicker.tsx` | 360 |
 | `src/components/PostLikersSheet.tsx` | 330 |
+| `src/components/Icon.tsx` | 325 |
 | `src/components/ActivityBubble.tsx` | 319 |
 | `src/components/guide/primitives.tsx` | 319 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
-| `src/components/Icon.tsx` | 302 |
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/InboxBanner.tsx` | 281 |
 | `src/components/CommentItem.tsx` | 278 |
@@ -199,6 +199,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/StoryReportModal.tsx` | 239 |
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
+| `src/components/PostGridCard.tsx` | 229 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 216 |
 | `src/components/ExitFeedbackModal.tsx` | 214 |
@@ -223,12 +224,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 173 |
 | `src/components/RolePicker.tsx` | 172 |
 | `src/components/GroupAvatarCluster.tsx` | 170 |
+| `src/components/ProfileTabBar.tsx` | 167 |
 | `src/components/FullScreenFrame.tsx` | 166 |
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/guide/cards.ts` | 159 |
-| `src/components/ProfileTabBar.tsx` | 158 |
+| `src/components/__tests__/PostGridCard.test.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 153 |
@@ -274,6 +276,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SwipeRevealRow.tsx` | 74 |
 | `src/components/FeedEndMessage.tsx` | 73 |
 | `src/components/ScrubTimeLabel.tsx` | 73 |
+| `src/components/ProfileLayoutToggle.tsx` | 71 |
 | `src/components/onboarding/StripedFill.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
@@ -302,12 +305,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-75 file(s), 15,739 lines.
+76 file(s), 15,815 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/tracks.ts` | 1466 |
-| `src/services/posts.ts` | 1257 |
+| `src/services/posts.ts` | 1281 |
 | `src/services/pushNotifications.ts` | 807 |
 | `src/services/albums.ts` | 521 |
 | `src/services/activity.ts` | 516 |
@@ -374,6 +377,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/__tests__/scanUploadRequest.test.ts` | 56 |
 | `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
+| `src/services/__tests__/trackPlaysTotals.test.ts` | 52 |
 | `src/services/pushDispatch.ts` | 48 |
 | `src/services/__tests__/activeConversation.test.ts` | 44 |
 | `src/services/jamHeartbeat.ts` | 42 |
@@ -406,7 +410,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-18 file(s), 1,303 lines.
+27 file(s), 1,791 lines.
 
 | File | Lines |
 |---|---:|
@@ -418,15 +422,24 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useGroupFaces.ts` | 83 |
 | `src/hooks/useNewOnLivilDot.ts` | 81 |
 | `src/hooks/usePlayFullScreen.ts` | 80 |
+| `src/hooks/useSwitchFade.ts` | 80 |
 | `src/hooks/__tests__/useNewOnLivilDot.test.tsx` | 78 |
+| `src/hooks/__tests__/useProfileTabCache.test.tsx` | 63 |
+| `src/hooks/__tests__/useSwitchFade.test.tsx` | 63 |
+| `src/hooks/useProfileTabCache.ts` | 63 |
+| `src/hooks/usePinnedTabsScroll.ts` | 61 |
 | `src/hooks/useRecentSearchOpens.ts` | 60 |
 | `src/hooks/useCommentsCountDeltas.ts` | 55 |
 | `src/hooks/useTrackWaveform.ts` | 52 |
 | `src/hooks/useRunAfterDismiss.ts` | 50 |
 | `src/hooks/usePostLike.ts` | 49 |
+| `src/hooks/__tests__/usePinnedTabsScroll.test.tsx` | 48 |
 | `src/hooks/usePlayRecentlyPlayed.ts` | 47 |
+| `src/hooks/__tests__/useProfileLayout.test.tsx` | 45 |
 | `src/hooks/useOpenInSpotify.ts` | 39 |
 | `src/hooks/useImageAspect.ts` | 37 |
+| `src/hooks/useProfileLayout.ts` | 35 |
+| `src/hooks/useTrackPlaysTotals.ts` | 30 |
 | `src/hooks/useMyRepostsPublic.ts` | 28 |
 
 ## Utilities
