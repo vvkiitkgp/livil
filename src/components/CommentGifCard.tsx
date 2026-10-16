@@ -10,17 +10,22 @@ const MAX_H = 220;
 const MIN_SIDE = 48;
 
 /**
- * The on-screen box for a GIF of this size: aspect ratio kept, at most MAX_W × MAX_H.
- * Known before the lookup answers (the comment stores the size), so the comment never
- * jumps when the GIF arrives.
+ * The on-screen box for a GIF of this size: aspect ratio kept, at most maxW × maxH
+ * (a comment's size by default). Known before the lookup answers (the comment stores the
+ * size), so the comment never jumps when the GIF arrives.
  */
-export function gifBox(width: number, height: number): { width: number; height: number } {
-  if (!(width > 0) || !(height > 0)) { return { width: MAX_W, height: Math.round(MAX_W * 0.75) }; }
+export function gifBox(
+  width: number,
+  height: number,
+  maxW = MAX_W,
+  maxH = MAX_H,
+): { width: number; height: number } {
+  if (!(width > 0) || !(height > 0)) { return { width: maxW, height: Math.round(maxW * 0.75) }; }
   const ratio = height / width;
-  let w = MAX_W;
+  let w = maxW;
   let h = w * ratio;
-  if (h > MAX_H) {
-    h = MAX_H;
+  if (h > maxH) {
+    h = maxH;
     w = h / ratio;
   }
   return { width: Math.max(Math.round(w), MIN_SIDE), height: Math.max(Math.round(h), MIN_SIDE) };

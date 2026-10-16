@@ -16,13 +16,19 @@ import CommentGifCard from './CommentGifCard';
 import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
 import { commentDisplayText, type CommentNode } from '../services/comments';
-
-const INDENT_PX = 14;
-const MAX_INDENT_DEPTH = 4;
+import {
+  ELBOW_RADIUS,
+  indentFor,
+  LINE_WIDTH,
+  ROW_PAD_LEFT,
+  threadSegments,
+  type ThreadPosition,
+} from '../utils/commentThread';
 
 type Props = {
   node: CommentNode;
-  depth: number;
+  /** Where this comment sits in its thread: its depth and the lines that cross its row. */
+  thread: ThreadPosition;
   viewerId: string;
   onReply: (node: CommentNode) => void;
   onDelete: (node: CommentNode) => void;
@@ -64,13 +70,13 @@ function formatCount(n: number): string {
 }
 
 export default function CommentItem(props: Props) {
-  const { node, depth, viewerId, highlighted } = props;
+  const { node, thread, viewerId, highlighted } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
   // Delete and Report open a modal of the comments sheet's; on iOS it must wait until this
   // menu has closed (see useRunAfterDismiss).
   const { runAfterDismiss, onDismiss } = useRunAfterDismiss();
-  const indent = Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX;
+  const indent = indentFor(thread.depth);
   const isOwn = node.authorId === viewerId;
   const displayName = node.author.displayName || node.author.username;
   // With a song or a GIF, the body's last line is its label (for apps that cannot draw
@@ -78,10 +84,26 @@ export default function CommentItem(props: Props) {
   const text = commentDisplayText(node);
 
   return (
-    <View style={[styles.row, { paddingLeft: 16 + indent }, highlighted && styles.highlighted]}>
-      {depth > 0 ? (
-        <View style={[styles.guide, { left: indent + 16 - 7 }]} />
-      ) : null}
+    <View style={[styles.row, { paddingLeft: ROW_PAD_LEFT + indent }, highlighted && styles.highlighted]}>
+      {/* The thread: from under a comment's avatar, curving into each reply's. Drawn
+          first, so avatars sit on top of it. */}
+      {threadSegments(thread).map((seg, i) => (
+        seg.kind === 'elbow' ? (
+          <View
+            key={i}
+            style={[styles.elbow, { left: seg.left, top: seg.top, width: seg.width, height: seg.height }]}
+          />
+        ) : (
+          <View
+            key={i}
+            style={[
+              styles.line,
+              { left: seg.left, top: seg.top },
+              seg.height === null ? styles.lineToBottom : { height: seg.height },
+            ]}
+          />
+        )
+      ))}
 
       <TouchableOpacity onPress={() => props.onAvatarPress(node.authorId)} activeOpacity={0.7}>
         {node.author.avatarUrl ? (
@@ -194,12 +216,18 @@ const styles = StyleSheet.create({
   highlighted: {
     backgroundColor: COLORS.purpleDim,
   },
-  guide: {
+  line: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
+    width: LINE_WIDTH,
     backgroundColor: COLORS.border,
+  },
+  lineToBottom: { bottom: 0 },
+  elbow: {
+    position: 'absolute',
+    borderLeftWidth: LINE_WIDTH,
+    borderBottomWidth: LINE_WIDTH,
+    borderColor: COLORS.border,
+    borderBottomLeftRadius: ELBOW_RADIUS,
   },
   avatar: {
     width: 32,

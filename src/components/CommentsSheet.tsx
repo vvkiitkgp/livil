@@ -28,6 +28,7 @@ import { SpotifyLogo } from './SpotifyLogo';
 import { MusicToggleIcon, SongSearchPanel, type PickedSong } from './ChatSongPicker';
 import { GifSearchPanel } from './GifPicker';
 import { primeCommentSongPost } from './CommentSongCard';
+import { gifBox } from './CommentGifCard';
 import { OnboardingNoticeHost } from './OnboardingNotice';
 import RoundTickButton, { ROUND_TICK_SIZE } from './RoundTickButton';
 import { useToast } from '../contexts/ToastContext';
@@ -54,6 +55,7 @@ import { fetchPostById, isPlayableInLivil, type FeedPost } from '../services/pos
 import { toShareablePost } from '../services/share';
 import { artistLine, rememberSpotifyTrack, useSpotifyAvailability } from '../services/spotify';
 import { detectMentionTrigger } from '../utils/mentions';
+import { flattenThread, indentFor, type ThreadPosition } from '../utils/commentThread';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 
 type Props = {
@@ -98,12 +100,11 @@ function commentGifOf(gif: Gif): CommentGif {
 }
 
 type FlatRow =
-  | { kind: 'comment'; key: string; node: CommentNode; depth: number }
+  | { kind: 'comment'; key: string; node: CommentNode; depth: number; thread: ThreadPosition }
   | { kind: 'composer'; key: string; parentId: string | null; depth: number };
 
 const HIGHLIGHT_MS = 1500;
 const COMPOSER_KEY = '__composer__';
-const MAX_INDENT_DEPTH = 4;
 /**
  * One height for the comment row — the 🎵 button and the box (one line) — so they sit on one
  * centre line. A longer comment grows the box; 🎵 and the ✓ inside it stay at its bottom.
@@ -111,20 +112,22 @@ const MAX_INDENT_DEPTH = 4;
 const COMPOSER_ROW_H = 44;
 /** FormInput's border, top + bottom. */
 const INPUT_BORDER = 3;
+/** The attached GIF, inside the box above the words: at most this big. */
+const BOX_GIF_MAX = 120;
 /**
  * The ✓ / ✕ inside the box: padded to exactly the box's inner height, so on one line it is
  * centred and, as the box grows, it rides the bottom edge (alignSelf: 'flex-end').
  */
 const TRAILING_PAD_V = (COMPOSER_ROW_H - INPUT_BORDER - ROUND_TICK_SIZE) / 2;
 
-function flattenTree(nodes: CommentNode[], depth = 0, out: FlatRow[] = []): FlatRow[] {
-  for (const n of nodes) {
-    out.push({ kind: 'comment', key: n.id, node: n, depth });
-    if (n.replies.length > 0) {
-      flattenTree(n.replies, depth + 1, out);
-    }
-  }
-  return out;
+function flattenTree(nodes: CommentNode[]): FlatRow[] {
+  return flattenThread(nodes).map(({ node, position }) => ({
+    kind: 'comment',
+    key: node.id,
+    node,
+    depth: position.depth,
+    thread: position,
+  }));
 }
 
 /**
@@ -664,7 +667,7 @@ export default function CommentsSheet({
         return (
           <CommentItem
             node={item.node}
-            depth={item.depth}
+            thread={item.thread}
             viewerId={viewerId}
             highlighted={highlightIds.has(item.node.id)}
             onReply={setReplyingTo}
@@ -679,9 +682,11 @@ export default function CommentsSheet({
       // Composer row — inline either at the top of the list (parentId === null)
       // or right under the comment being replied to.
       const isReply = item.parentId !== null;
-      const indent = Math.min(item.depth, MAX_INDENT_DEPTH) * 14;
+      const indent = indentFor(item.depth);
       // The chip sits under the box, clear of the 🎵 (and GIF) buttons: their width + gap.
       const leadingWidth = (gifsOn ? 2 : 1) * (COMPOSER_ROW_H + 8);
+      // A song is a chip under the box; a GIF is drawn inside it (`above`).
+      const songChip = attachment?.kind === 'song' ? attachment : null;
       const onSendPressed = () => {
         handleSend().catch(() => {/* errors already toasted */});
         // After send, the FlatList list will reflow; scroll to the new row's
@@ -761,6 +766,29 @@ export default function CommentsSheet({
               editable={!sending}
               wrapperStyle={styles.composerInputWrap}
               style={styles.composerInput}
+              // The attached GIF, playing, inside the box above the words. Always passed —
+              // null when there is none — so the field never changes shape (see FormInput).
+              above={
+                attachment?.kind === 'gif' && !searchMode ? (
+                  <View style={styles.boxGifRow}>
+                    <View
+                      style={[styles.boxGif, gifBox(attachment.gif.width, attachment.gif.height, BOX_GIF_MAX, BOX_GIF_MAX)]}
+                      testID="comment-gif-attachment"
+                    >
+                      <Image source={{ uri: attachment.gif.url }} style={styles.boxGifImage} resizeMode="cover" />
+                      <TouchableOpacity
+                        onPress={removeAttachment}
+                        style={styles.boxGifRemove}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove the GIF"
+                      >
+                        <Icon name="close" size={12} color={COLORS.white} weight="bold" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null
+              }
               // Send is the round ✓ inside the box, as on Upload's "+ Something else" fields.
               // A search swaps it for a ✕ of the same size, so the box never changes width.
               trailing={
@@ -804,28 +832,10 @@ export default function CommentsSheet({
             </View>
           ) : (
             <>
-              {attachment?.kind === 'gif' ? (
-                <View style={[styles.attachment, { marginLeft: leadingWidth }]} testID="comment-gif-attachment">
-                  <Image source={{ uri: attachment.gif.previewUrl }} style={styles.attachmentGif} />
-                  <View style={styles.attachmentText}>
-                    <Text style={styles.attachmentTitle} numberOfLines={1}>GIF</Text>
-                    <Text style={styles.attachmentArtist} numberOfLines={1}>
-                      {attachment.gif.title || 'From GIPHY'}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={removeAttachment}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove the GIF"
-                  >
-                    <Icon name="close" size={18} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-              ) : attaching || attachment ? (
+              {attaching || songChip ? (
                 <View style={[styles.attachment, { marginLeft: leadingWidth }]} testID="comment-song-attachment">
-                  {attachment?.artUrl ? (
-                    <Image source={{ uri: attachment.artUrl }} style={styles.attachmentArt} />
+                  {songChip?.artUrl ? (
+                    <Image source={{ uri: songChip.artUrl }} style={styles.attachmentArt} />
                   ) : (
                     <View style={[styles.attachmentArt, styles.attachmentArtEmpty]}>
                       {attaching
@@ -835,19 +845,19 @@ export default function CommentsSheet({
                   )}
                   <View style={styles.attachmentText}>
                     <Text style={styles.attachmentTitle} numberOfLines={1}>
-                      {attachment?.title ?? 'Adding the song…'}
+                      {songChip?.title ?? 'Adding the song…'}
                     </Text>
-                    {attachment ? (
-                      <Text style={styles.attachmentArtist} numberOfLines={1}>{attachment.artist}</Text>
+                    {songChip ? (
+                      <Text style={styles.attachmentArtist} numberOfLines={1}>{songChip.artist}</Text>
                     ) : null}
                   </View>
-                  {attachment?.song.kind === 'spotify' ? <SpotifyLogo size="xs" /> : null}
-                  {attachment ? (
+                  {songChip?.song.kind === 'spotify' ? <SpotifyLogo size="xs" /> : null}
+                  {songChip ? (
                     <TouchableOpacity
                       onPress={removeAttachment}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Remove ${attachment.title}`}
+                      accessibilityLabel={`Remove ${songChip.title}`}
                     >
                       <Icon name="close" size={18} color={COLORS.textSecondary} />
                     </TouchableOpacity>
@@ -1111,7 +1121,22 @@ const styles = StyleSheet.create({
   // Spotify's rule for its artwork: corners of 4 px at most, nothing drawn on it.
   attachmentArt: { width: 36, height: 36, borderRadius: 4, backgroundColor: COLORS.card },
   attachmentArtEmpty: { alignItems: 'center', justifyContent: 'center' },
-  attachmentGif: { width: 36, height: 36, borderRadius: 6, backgroundColor: COLORS.card },
+  boxGifRow: { paddingTop: 8, paddingHorizontal: 8 },
+  boxGif: { borderRadius: 8, overflow: 'hidden', backgroundColor: COLORS.card },
+  boxGifImage: { width: '100%', height: '100%' },
+  // On the GIF's own corner, over whatever it shows: the app's black at ~70%, so the ✕
+  // reads on a light GIF as well as a dark one.
+  boxGifRemove: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(10, 10, 15, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   attachmentText: { flex: 1, minWidth: 0 },
   attachmentTitle: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   attachmentArtist: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },

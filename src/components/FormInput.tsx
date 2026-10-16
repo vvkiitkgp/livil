@@ -13,17 +13,24 @@ type Props = TextInputProps & {
   /** Fixed content before the text, outside the editable value (e.g. the tag field's "#"). */
   leading?: ReactNode;
   trailing?: ReactNode;
+  /**
+   * Content inside the box, above the text (the comment box's attached GIF). Passing the
+   * prop at all — `null` included — switches the box to a stacked layout, so a caller
+   * that sometimes has something to show must pass `null`, not omit it: changing the
+   * layout while focused remounts the TextInput, and a remount drops the keyboard.
+   */
+  above?: ReactNode;
   wrapperStyle?: StyleProp<ViewStyle>;
 };
 
 const FormInput = forwardRef<TextInput, Props>(function FormInputInner(
-  { leading, trailing, wrapperStyle, style, onFocus, onBlur, ...rest },
+  { leading, trailing, above, wrapperStyle, style, onFocus, onBlur, ...rest },
   ref,
 ) {
   const [focused, setFocused] = useState(false);
 
-  return (
-    <View style={[styles.wrapper, focused && styles.wrapperFocused, wrapperStyle]}>
+  const field = (
+    <>
       {leading}
       <TextInput
         ref={ref}
@@ -45,6 +52,16 @@ const FormInput = forwardRef<TextInput, Props>(function FormInputInner(
         }}
       />
       {trailing}
+    </>
+  );
+
+  if (above === undefined) {
+    return <View style={[styles.wrapper, focused && styles.wrapperFocused, wrapperStyle]}>{field}</View>;
+  }
+  return (
+    <View style={[styles.wrapper, styles.wrapperStacked, focused && styles.wrapperFocused, wrapperStyle]}>
+      {above}
+      <View style={styles.row}>{field}</View>
     </View>
   );
 });
@@ -62,6 +79,15 @@ const styles = StyleSheet.create({
   },
   wrapperFocused: {
     borderColor: COLORS.purple,
+  },
+  wrapperStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  row: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   input: {
     flex: 1,
