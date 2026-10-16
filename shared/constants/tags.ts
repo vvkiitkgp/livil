@@ -40,36 +40,33 @@ export const TAG_MAX_LENGTH = 30;
  * keyword-stuffing surface — a hundred tags on a track is not description, it is an attempt
  * to appear in a hundred searches.
  *
- * Twenty, with `EMOTION_TAGS` pre-applied taking half of it. That ratio is the reason the
- * number is not smaller: an artist who prunes the emotions down to two still has room for a
- * genre, a language, a mood and a scene without meeting a limit they did not cause.
+ * Twenty: an artist who taps every one of the ten `EMOTION_TAGS` suggestions still has room
+ * for a genre, a language, a mood and a scene without meeting a limit they did not cause.
  */
 export const MAX_TAGS_PER_TRACK = 20;
 
 /**
- * The emotion tags every new upload starts with.
+ * The emotion tags offered on every upload.
  *
- * PRE-APPLIED, not suggested — a new upload carries all of these until the artist removes
- * the ones that do not fit. Product decision, made deliberately with its cost understood:
- * the point is that an artist cannot upload without SEEING that emotion is a thing this
- * platform files music by, and a row of chips that must be pruned achieves that where an
- * empty field with a hint does not.
+ * SUGGESTED, one tap / click each, under the tag field on both upload screens (app
+ * `TagInput`, web `TagField`, `suggestions` prop). An artist still SEES that this platform
+ * files music by feeling — the reason the list exists — without pruning ten tags first.
  *
- * The cost, recorded here so whoever reads this later does not have to rediscover it: a
- * track whose artist ignored the field carries every emotion at once, and nothing in the
- * data distinguishes that from a deliberate choice. Any consumer of these tags — the
- * suggestion engine this exists to feed, above all — has to treat "carries most of
- * EMOTION_TAGS" as ABSENCE of signal rather than as a song that is somehow all of them.
- * That check is cheap and this list is what makes it possible; nothing else needs to change.
+ * Until 2026-10-15 they were PRE-APPLIED instead: every new upload carried all ten until the
+ * artist removed the ones that did not fit. The owner reversed that on 2026-10-15. Tracks
+ * uploaded before then still carry the old cost, recorded here so nobody has to rediscover
+ * it: a track whose artist ignored the field carries every emotion at once, and nothing in
+ * the row distinguishes that from a deliberate choice. Any consumer of these tags — the
+ * suggestion engine this exists to feed, above all — must treat "an older track carrying
+ * most of EMOTION_TAGS" as ABSENCE of signal (compare `tracks.created_at` to 2026-10-15).
  *
  * Not a closed vocabulary. Tags can be emotions, and most tags are not — an artist typing
- * `qawwali` or `2am` is using the same field, and these are simply the ten that arrive
- * already typed. 'gym' and 'focus' are listening CONTEXTS rather than feelings, and they
+ * `qawwali` or `2am` is using the same field, and these are simply the ten on offer. 'gym' and 'focus' are listening CONTEXTS rather than feelings, and they
  * are here for the same reason a listener reaches for them: what a song is for is as
  * strong a signal as what it feels like.
  *
- * Deliberately ten. Longer means more pruning per upload, which is the work that has to
- * stay small for any of this to survive contact with a twelve-track album.
+ * Deliberately ten: a short row an artist can read at a glance under every track of a
+ * twelve-track album.
  */
 export const EMOTION_TAGS: readonly string[] = [
   'happy',

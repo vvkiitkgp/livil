@@ -19,7 +19,6 @@ import {
 } from '@shared/services/copyrightScan';
 import { readMediaMeta, startPublish } from './publish';
 import type { PendingCollaborator } from '@shared/constants/roles';
-import { EMOTION_TAGS } from '@shared/constants/tags';
 import { embeddedCoverFrom } from './embeddedArt';
 import type { PairedItem } from './files';
 import { MIN_TRACK_SECONDS, tooShortMessage } from '@shared/constants/media';
@@ -114,7 +113,7 @@ export type QueueItem = {
   collaborators: PendingCollaborator[];
   /**
    * Already-normalized tags — `TagField` normalizes at commit, so this is what gets stored.
-   * Seeded with `EMOTION_TAGS`, which the artist prunes rather than opts into.
+   * Starts empty; `EMOTION_TAGS` are offered as one-click suggestions on the Tags step.
    */
   tags: string[];
   /** True when the cover came out of the file's own tag rather than the folder. */
@@ -151,10 +150,10 @@ export function itemsFromPaired(paired: PairedItem[]): QueueItem[] {
     height: null,
     uploaderRole: '',
     collaborators: [],
-    // Pre-applied, not suggested: the artist removes the emotions this track is not. A fresh
-    // copy per row — one shared array would make removing a tag from one file remove it from
-    // every file in the batch.
-    tags: [...EMOTION_TAGS],
+    // Empty: the moods are one-click suggestions now (owner's call, 2026-10-15), no longer
+    // pre-applied for the artist to prune. A fresh array per row — one shared array would
+    // make a tag added to one file appear on every file in the batch.
+    tags: [],
     artFromTag: false,
   }));
 }

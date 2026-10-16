@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-14
+last_verified: 2026-10-16
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 150 migration(s) in `supabase/migrations/`.
+Reconstructed from 151 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-60 table(s).
+61 table(s).
 
 ### `account_exit_feedback`
 
@@ -246,6 +246,22 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `trg_conversations_freeze_derived` — before update (`20260722180000_fix_comment_like_counts_and_conversation_drift.sql`)
+
+### `copyright_scan_attempts`
+
+RLS enabled · defined in `20261028000000_copyright_scan_attempts.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `bigint generated always as identity primary key` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `track_id` | `uuid not null` |
+| `full_song` | `boolean not null default false` |
+| `created_at` | `timestamptz not null default now()` |
+
+**Indexes**
+
+- `copyright_scan_attempts_user_created_idx` `(user_id, created_at desc)`
 
 ### `deleted_accounts`
 

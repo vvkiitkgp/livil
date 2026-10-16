@@ -22,7 +22,7 @@ import {
 import type { Acknowledgement } from '@shared/services/copyrightScan';
 import { Choice, RightsDeclarationForm } from '../components/RightsDeclarationForm';
 import { ROLES, getChipTone, isPresetRole } from '@shared/constants/roles';
-import { mergeTags } from '@shared/constants/tags';
+import { EMOTION_TAGS, mergeTags } from '@shared/constants/tags';
 import { ROLE_MAX_LENGTH } from '@shared/services/publishTrack';
 
 /** Sentinel for the dropdown's "type your own" entry — never a stored role. */
@@ -640,8 +640,8 @@ export function Upload() {
   const tagsStep = (
     <>
       <StepIntro title="How people find it">
-        Take off the moods a track isn't with ×, and type your own into the box — press space
-        or Enter after each one. Listeners never see these — they feed search.
+        Click the moods that fit, and type your own into the box — press space or Enter after
+        each one. Listeners never see these — they feed search.
       </StepIntro>
 
       {/* Tags for the whole batch. Appends on every commit, like "credits for all" and for
@@ -665,6 +665,7 @@ export function Upload() {
             }}
             label={`Tags applied to all ${pending.length} queued tracks`}
             placeholder="lofi, latenight — press space or enter"
+            suggestions={EMOTION_TAGS}
           />
         </div>
       )}
@@ -687,6 +688,7 @@ export function Upload() {
                     disabled={locked}
                     label="Tags for this track"
                     placeholder="lofi, latenight — press space or enter"
+                    suggestions={EMOTION_TAGS}
                   />
                 </div>
                 <LockedNote item={item} />

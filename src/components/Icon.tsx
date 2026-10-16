@@ -4,7 +4,8 @@
  * Call-sites use a Livil-semantic `name` and never import phosphor/lucide
  * directly, so swapping a glyph (or the whole library) is a one-file change.
  * Backed by Phosphor (`phosphor-react-native`) for everything, plus Lucide
- * (`lucide-react-native`) for the one `drum` icon Phosphor lacks. Both are
+ * (`lucide-react-native`) for the one `drum` icon Phosphor lacks, and one glyph
+ * composed from Phosphor's own paths (`compose`, see CHAT_CIRCLE_PLUS). All are
  * pure-JS SVG renderers riding the already-installed `react-native-svg` — no
  * native module, no rebuild.
  *
@@ -32,6 +33,7 @@ import {
   CaretLineRight,
   CaretRight,
   ChatCircle,
+  ChatsCircle,
   Check,
   CheckCircle,
   Crown,
@@ -66,7 +68,6 @@ import {
   MusicNote,
   MusicNotes,
   Note,
-  NotePencil,
   PaperPlaneTilt,
   Pause,
   PencilSimple,
@@ -97,6 +98,7 @@ import {
   XCircle,
 } from 'phosphor-react-native';
 import { Drum as LucideDrum } from 'lucide-react-native';
+import Svg, { Path } from 'react-native-svg';
 import { COLORS } from '../theme/colors';
 
 export type IconName =
@@ -106,7 +108,7 @@ export type IconName =
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
   | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
   // navigation & chrome
-  | 'back' | 'backArrow' | 'forward' | 'send' | 'arrowRight' | 'arrowUp' | 'arrowDown'
+  | 'back' | 'backArrow' | 'forward' | 'send' | 'messages' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle' | 'upload'
   | 'clipStart' | 'clipEnd' | 'minusCircle' | 'settings' | 'disclosure'
   // status & feedback
@@ -127,8 +129,22 @@ export type IconName =
 
 type PhComponent = React.ComponentType<PhProps>;
 
-/** name → [Phosphor component, default weight]. `drum` is handled separately (Lucide). */
-const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
+/**
+ * "New message": a speech bubble with a plus. Phosphor has no such icon, so it is Phosphor's
+ * own ChatCircle (regular) with PlusCircle's (regular) plus set inside it — same 256 grid,
+ * same stroke weight, so it sits beside the rest of the set (and the `messages` two-bubble
+ * icon) unnoticed. Regular weight only. Owner's pick, 2026-10-15.
+ */
+const CHAT_CIRCLE_PLUS =
+  'M128 24a104 104 0 0 0-91.82 152.88l-11.35 34.05a16 16 0 0 0 20.24 20.24l34.05-11.35A104 104 0 1 0 128 24' +
+  'm0 192a87.87 87.87 0 0 1-44.06-11.81 8 8 0 0 0-6.54-.67L40 216l12.47-37.4a8 8 0 0 0-.66-6.54A88 88 0 1 1 128 216' +
+  'M176 128a8 8 0 0 1-8 8h-32v32a8 8 0 0 1-16 0v-32H88a8 8 0 0 1 0-16h32V88a8 8 0 0 1 16 0v32h32a8 8 0 0 1 8 8';
+
+/**
+ * name → [Phosphor component, default weight]. Handled separately: `drum` (Lucide) and
+ * `compose` (CHAT_CIRCLE_PLUS).
+ */
+const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose'>, [PhComponent, IconWeight]> = {
   // playback
   play: [Play, 'fill'],
   pause: [Pause, 'fill'],
@@ -166,6 +182,10 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   backArrow: [ArrowLeft, 'bold'],
   forward: [CaretRight, 'bold'],
   send: [PaperPlaneTilt, 'fill'],
+  // Home's "open your messages" button. Two bubbles — a conversation — not the paper plane,
+  // which is already `share` on every post card, and not one bubble, which is `comment`.
+  // Owner's pick, 2026-10-15.
+  messages: [ChatsCircle, 'regular'],
   arrowRight: [ArrowRight, 'bold'],
   arrowUp: [ArrowUp, 'bold'],
   arrowDown: [ArrowDown, 'bold'],
@@ -173,7 +193,6 @@ const REGISTRY: Record<Exclude<IconName, 'drum'>, [PhComponent, IconWeight]> = {
   close: [X, 'bold'],
   clear: [XCircle, 'fill'],
   add: [Plus, 'bold'],
-  compose: [NotePencil, 'regular'],
   edit: [PencilSimple, 'fill'],
   dragHandle: [DotsSixVertical, 'fill'],
   clipStart: [CaretLineRight, 'bold'],
@@ -259,7 +278,7 @@ export interface IconProps {
   size?: number;
   /** Default `COLORS.textSecondary`. */
   color?: string;
-  /** Phosphor weight override; ignored by `drum` (Lucide). Falls back to the per-icon default. */
+  /** Phosphor weight override; ignored by `drum` and `compose`. Falls back to the per-icon default. */
   weight?: IconWeight;
 }
 
@@ -267,6 +286,13 @@ export function Icon({ name, size = 20, color = COLORS.textSecondary, weight }: 
   if (name === 'drum') {
     // Lucide: stroke icon, no weight concept — approximate "fill" with a heavier stroke.
     return <LucideDrum size={size} color={color} strokeWidth={weight === 'fill' || weight === 'bold' ? 2.5 : 2} />;
+  }
+  if (name === 'compose') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 256 256" fill={color}>
+        <Path d={CHAT_CIRCLE_PLUS} />
+      </Svg>
+    );
   }
   const [Cmp, defaultWeight] = REGISTRY[name];
   return <Cmp size={size} color={color} weight={weight ?? defaultWeight} />;

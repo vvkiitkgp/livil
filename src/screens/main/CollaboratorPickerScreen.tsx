@@ -187,6 +187,8 @@ export default function CollaboratorPickerScreen() {
         style={styles.flex}
         contentContainerStyle={styles.pageContent}
         keyboardShouldPersistTaps="handled"
+        // Dragging the page puts the keyboard away, as on every other input screen.
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.modeToggle}>
