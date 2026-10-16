@@ -158,7 +158,8 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
       try {
         const [count, items] = await Promise.all([
           getActivityUnreadCount(),
-          listActivity(),
+          // Only the preview TEXT is shown here, so skip the per-post lookup.
+          listActivity(undefined, { postDetails: false }),
         ]);
         if (!cancelled) {
           setUnread(count);

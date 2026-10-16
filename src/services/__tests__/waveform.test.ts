@@ -24,9 +24,12 @@
 jest.mock('react-native-audio-api', () => ({ decodeAudioData: jest.fn() }));
 jest.mock('fft.js', () => jest.fn());
 
+import { decodeAudioData } from 'react-native-audio-api';
 import {
+  analyzeWaveformPeaks,
   sampleFeatures,
   sampleEnvelope,
+  toDecoderSource,
   WAVEFORM_VERSION,
   WAVEFORM_HZ,
   type WaveformData,
@@ -168,5 +171,41 @@ describe('analyzer constants', () => {
     // Bumping WAVEFORM_VERSION is what triggers re-analysis, so the two move together.
     expect(WAVEFORM_VERSION).toBe(2);
     expect(WAVEFORM_HZ).toBe(15);
+  });
+});
+
+describe('toDecoderSource — the picker hands back percent-encoded file URIs', () => {
+  // The upload-time decode failed with miniaudio's "Resource does not exist" for any
+  // filename with a space: the library strips `file://` but never percent-decodes, so
+  // fopen looked for a file literally named "My%20Song.mp3".
+  it.each([
+    ['a space', 'file:///var/mobile/Caches/A1/My%20Song.mp3', 'file:///var/mobile/Caches/A1/My Song.mp3'],
+    ['a non-ASCII name', 'file:///c/%E0%A4%97%E0%A4%BE%E0%A4%A8%E0%A4%BE.wav', 'file:///c/गाना.wav'],
+    ['a literal percent', 'file:///c/100%25%20Love.mp3', 'file:///c/100% Love.mp3'],
+    ['nothing to decode', 'file:///c/plain.mp3', 'file:///c/plain.mp3'],
+  ])('decodes %s and keeps the file:// prefix', (_label, input, expected) => {
+    // The prefix must survive: on an Android release build the library reads a
+    // scheme-less path as a bundled asset.
+    expect(toDecoderSource(input)).toBe(expected);
+  });
+
+  it('returns a malformed escape unchanged instead of throwing', () => {
+    expect(toDecoderSource('file:///c/bad%E0%A4.mp3')).toBe('file:///c/bad%E0%A4.mp3');
+  });
+
+  it('leaves remote URLs encoded — fetch needs them that way', () => {
+    const url = 'https://media.example.com/tracks/a%20b.mp3';
+    expect(toDecoderSource(url)).toBe(url);
+  });
+});
+
+describe('analyzeWaveformPeaks — decoder hand-off', () => {
+  const decode = decodeAudioData as jest.Mock;
+  beforeEach(() => decode.mockReset());
+
+  it('passes the decoded path to the decoder, and resolves null when the decode fails', async () => {
+    decode.mockRejectedValue(new Error('Resource does not exist'));
+    await expect(analyzeWaveformPeaks('file:///x/My%20Song.mp3')).resolves.toBeNull();
+    expect(decode).toHaveBeenCalledWith('file:///x/My Song.mp3', expect.any(Number));
   });
 });

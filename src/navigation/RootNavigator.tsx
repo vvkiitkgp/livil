@@ -14,6 +14,7 @@ import AppNavigator from './AppNavigator';
 import ChooseUsernameScreen from '../screens/auth/ChooseUsernameScreen';
 import TermsAcceptScreen from '../screens/auth/TermsAcceptScreen';
 import { hasAcceptedCurrentTerms } from '../services/terms';
+import { sweepAbandonedUploads } from '../services/tracks';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
 import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
@@ -484,6 +485,7 @@ export default function RootNavigator() {
         if (s?.user?.id) {
           pushUserIdRef.current = s.user.id;
           void registerDeviceForUser(s.user.id);
+          void sweepAbandonedUploads(s.user.id);
           // Resolve onboarding state before clearing the splash so a new OAuth
           // user never sees a flash of the home screen before the username gate.
           try {
@@ -557,6 +559,7 @@ export default function RootNavigator() {
           // The id guard skips re-checks on resume/token-refresh SIGNED_IN events.
           pushUserIdRef.current = s.user.id;
           void registerDeviceForUser(s.user.id);
+          void sweepAbandonedUploads(s.user.id);
           setNeedsUsername(null);
           setNeedsTerms(null);
           setNeedsGuide(null);

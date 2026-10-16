@@ -29,10 +29,12 @@ export type ViewerRelationships = {
 /**
  * Loads my full outgoing relationships set in one round-trip so the client
  * can answer `status(userId)` synchronously for every render of a user row.
+ *
+ * Pass `meId` when the caller already resolved it: a second getUser() is another network
+ * call, and one that fails returns no user — which would come back as "no relationships".
  */
-export async function loadViewerRelationships(): Promise<ViewerRelationships> {
-  const { data: userData } = await supabase.auth.getUser();
-  const me = userData?.user?.id;
+export async function loadViewerRelationships(meId?: string): Promise<ViewerRelationships> {
+  const me = meId ?? (await supabase.auth.getUser()).data?.user?.id;
   if (!me) {
     return { friends: [], stars: [], pendingOutgoing: [], pendingIncoming: [], blocked: [] };
   }

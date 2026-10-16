@@ -188,7 +188,7 @@ export default function ActivityBubble({
                       {post.title || 'Your post'}
                     </Text>
                     <Text style={styles.trackCardArtist} numberOfLines={1}>
-                      Tap to view
+                      {post.artistName ?? 'Tap to view'}
                     </Text>
                   </View>
                 </>

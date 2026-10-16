@@ -435,15 +435,19 @@ export default function UserProfileScreen() {
     [tab, refresh, playback],
   );
 
+  const refreshRelationships = rel.refresh;
   const handleRefresh = useCallback(async () => {
     // Acknowledge the pull the moment it fires — the spinner is at the top
     // of the screen, often under the user's own thumb.
     haptics.select();
     setRefreshing(true);
     playback.pauseAll();
-    await refresh(tab);
+    // The friend button reads the app-wide relationship cache, not this screen's
+    // profile fetch — without refreshing it too, pulling down after someone accepted
+    // your request left the button on "Requested".
+    await Promise.all([refresh(tab), refreshRelationships()]);
     setRefreshing(false);
-  }, [refresh, tab, playback]);
+  }, [refresh, tab, playback, refreshRelationships]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) { return; }

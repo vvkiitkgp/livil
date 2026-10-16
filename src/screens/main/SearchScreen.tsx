@@ -184,6 +184,13 @@ export default function SearchScreen() {
   const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
   const [albums, setAlbums] = useState<AlbumSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  /**
+   * The query the rows on screen ANSWER — not the one being typed. The previous rows stay
+   * up while the next search loads, so the list can still be scrolled; ranking them by the
+   * live text would reshuffle them under the finger on every keystroke.
+   */
+  const [resultsQuery, setResultsQuery] = useState('');
+  const resultsListRef = useRef<FlatList<SearchResult>>(null);
   const [error, setError] = useState('');
   const [meId, setMeId] = useState<string | null>(null);
   /** Bumped on every tab tap purely to remount the pills and replay their entrance. */
@@ -205,6 +212,8 @@ export default function SearchScreen() {
   const spotify = useSpotifyAvailability();
   const openSpotify = useOpenInSpotify('search');
   const [spotifyResults, setSpotifyResults] = useState<SpotifyTrack[]>([]);
+  /** The query `spotifyResults` answer — kept rows outlive the query that fetched them. */
+  const [spotifyResultsQuery, setSpotifyResultsQuery] = useState('');
   /**
    * A Spotify search for the CURRENT query is waiting on its debounce or its answer. It
    * starts later than the Livil one (450ms vs 200ms), so without this the screen said
@@ -259,6 +268,7 @@ export default function SearchScreen() {
       setPosts([]);
       setProfiles([]);
       setAlbums([]);
+      setResultsQuery('');
       setError('');
       setLoading(false);
       return;
@@ -281,6 +291,7 @@ export default function SearchScreen() {
       setPosts(postsRes.status === 'fulfilled' ? postsRes.value : []);
       setProfiles(profilesRes.status === 'fulfilled' ? profilesRes.value : []);
       setAlbums(albumsRes.status === 'fulfilled' ? albumsRes.value : []);
+      setResultsQuery(trimmed);
 
       const failures = [postsRes, profilesRes, albumsRes].filter(r => r.status === 'rejected');
       // Only worth saying when everything failed. One rejected service alongside results is a
@@ -384,18 +395,27 @@ export default function SearchScreen() {
   }, [recentItems, discover]);
 
   const results = useMemo(
-    () => rankSearchResults({ posts, profiles, albums, query, taps }),
-    [posts, profiles, albums, query, taps],
+    () => rankSearchResults({ posts, profiles, albums, query: resultsQuery, taps }),
+    [posts, profiles, albums, resultsQuery, taps],
   );
+
+  // A new answer starts at its top. Only on a new query's rows — not on the popularity
+  // re-rank or the Spotify section arriving, which land while someone may be mid-scroll.
+  useEffect(() => {
+    resultsListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [resultsQuery]);
 
   // Keyed on the TRIMMED query: a trailing space is not a new search, so it must not clear
   // the section and fetch the same results again.
   const spotifyQuery = query.trim();
   useEffect(() => {
-    // Cleared on EVERY change, not just when empty: the previous query's Spotify rows must
-    // not sit under this query's Livil results while the new Spotify call is in flight.
-    setSpotifyResults([]);
+    // Kept while the next Spotify call is in flight, like the Livil rows: clearing them on
+    // every keystroke unmounted the list when Spotify was all there was to show. Whether
+    // stale ones are SHOWN is decided below (`visibleSpotify`). Cleared only when this
+    // query will not search Spotify at all.
     if (!spotify.search || spotifyQuery.length < 2 || spotifyQuery.startsWith('#')) {
+      setSpotifyResults([]);
+      setSpotifyResultsQuery('');
       setSpotifyPending(false);
       return;
     }
@@ -405,6 +425,7 @@ export default function SearchScreen() {
       const found = await searchSpotify(spotifyQuery, SPOTIFY_RESULTS).catch(() => [] as SpotifyTrack[]);
       if (cancelled) { return; }
       setSpotifyResults(found);
+      setSpotifyResultsQuery(spotifyQuery);
       setSpotifyPending(false);
     }, SPOTIFY_DEBOUNCE_MS);
     return () => {
@@ -644,15 +665,24 @@ export default function SearchScreen() {
   );
 
   const trimmedQuery = query.trim();
+  const searching = loading || spotifyPending;
+  /**
+   * Spotify rows that answer a different query than the Livil rows are hidden — the previous
+   * query's songs must not sit under this query's results — EXCEPT when they are all there
+   * is: then they hold the list on screen until their replacement lands.
+   */
+  const visibleSpotify =
+    spotifyResultsQuery === resultsQuery || results.length === 0 ? spotifyResults : [];
+  const hasRows = results.length > 0 || visibleSpotify.length > 0;
 
   // An ELEMENT (not a function), for the same remount reason as the list header below.
-  const spotifySection = spotifyResults.length > 0 ? (
+  const spotifySection = visibleSpotify.length > 0 ? (
     <View>
       <View style={[styles.sectionHeading, styles.spotifyHeading]}>
         <Text style={[styles.recentHeading, styles.spotifyHeadingText]}>On Spotify</Text>
         <SpotifyLogo size="xs" />
       </View>
-      {spotifyResults.map(track => (
+      {visibleSpotify.map(track => (
         <Pressable
           key={track.id}
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -755,20 +785,29 @@ export default function SearchScreen() {
           onSubmitEditing={() => { remember(query); Keyboard.dismiss(); }}
           trailing={
             query.length > 0 ? (
-              // `FormInput` sets paddingRight:0 on the input whenever a trailing element is
-              // present, which means the trailing element owns that gap. Without this the
-              // icon sits flat against the field's right edge.
-              <TouchableOpacity
-                onPress={() => {
-                  setQuery('');
-                  inputRef.current?.focus();
-                }}
-                style={styles.clearButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                accessibilityLabel="Clear search"
-              >
-                <Icon name="clear" size={16} color={COLORS.textMuted} />
-              </TouchableOpacity>
+              <View style={styles.trailingRow}>
+                {/* The previous rows stay up while the next search loads, so the "still
+                    searching" cue lives here, in a fixed slot that never moves the list. */}
+                <View style={styles.refreshing}>
+                  {searching && hasRows ? (
+                    <ActivityIndicator size="small" color={COLORS.purpleLight} />
+                  ) : null}
+                </View>
+                {/* `FormInput` sets paddingRight:0 on the input whenever a trailing element
+                    is present, which means the trailing element owns that gap. Without this
+                    the icon sits flat against the field's right edge. */}
+                <TouchableOpacity
+                  onPress={() => {
+                    setQuery('');
+                    inputRef.current?.focus();
+                  }}
+                  style={styles.clearButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear search"
+                >
+                  <Icon name="clear" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              </View>
             ) : null
           }
         />
@@ -780,14 +819,19 @@ export default function SearchScreen() {
         <View style={styles.topState}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : loading || (spotifyPending && results.length === 0) ? (
-        // Still loading while Spotify is pending with no Livil results to show: "Nothing
-        // matches" now would be contradicted a moment later by an "On Spotify" section.
+      ) : searching && !hasRows ? (
+        // Only when there is nothing to show. Swapping a list that HAS rows for this spinner
+        // unmounted it on every keystroke, so it could not be scrolled while a search ran.
+        // And while Spotify is pending, "Nothing matches" would be contradicted a moment
+        // later by an "On Spotify" section.
         <View style={styles.topState}>
           <ActivityIndicator color={COLORS.purpleLight} />
         </View>
       ) : trimmedQuery.length === 0 && (recents.length > 0 || discoverItems.length > 0) ? (
         <FlatList
+          // Distinct keys: same component type in the same slot, so without them clearing
+          // the box reused the results list and the suggestions opened scrolled partway down.
+          key="discover"
           data={discoverItems}
           keyExtractor={item => `${item.kind}:${item.id}`}
           renderItem={renderItem}
@@ -802,11 +846,11 @@ export default function SearchScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         />
-      ) : results.length === 0 && spotifyResults.length === 0 && trimmedQuery.length > 0 ? (
+      ) : !hasRows && trimmedQuery.length > 0 ? (
         <View style={styles.topState}>
           <Text style={styles.emptyText}>Nothing matches "{trimmedQuery}".</Text>
         </View>
-      ) : results.length === 0 && spotifyResults.length === 0 ? (
+      ) : !hasRows ? (
         <View style={styles.centerState}>
           {trimmedQuery.length === 0 ? (
             <>
@@ -819,6 +863,8 @@ export default function SearchScreen() {
         </View>
       ) : (
         <FlatList
+          key="results"
+          ref={resultsListRef}
           data={results}
           keyExtractor={item => `${item.kind}:${item.id}`}
           renderItem={renderItem}
@@ -928,6 +974,9 @@ const styles = StyleSheet.create({
 
   duration: { color: COLORS.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] },
 
+  trailingRow: { flexDirection: 'row', alignItems: 'center' },
+  /** Fixed size whether or not it spins, so the field's text never shifts. */
+  refreshing: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   /** Owns the gap to the field's right edge — FormInput zeroes the input's own padding. */
   clearButton: { paddingHorizontal: 14, paddingVertical: 12 },
 

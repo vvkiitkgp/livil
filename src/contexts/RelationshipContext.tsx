@@ -7,6 +7,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
+import { isAuthSessionMissingError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import * as svc from '../services/relationships';
 
@@ -52,6 +54,12 @@ type RelationshipContextValue = {
 
 const RelationshipContext = createContext<RelationshipContextValue | null>(null);
 
+const SET_KEYS = ['friends', 'stars', 'pendingOutgoing', 'pendingIncoming', 'blocked'] as const;
+
+function sameSets(a: Sets, b: Sets): boolean {
+  return SET_KEYS.every(k => a[k].size === b[k].size && [...a[k]].every(id => b[k].has(id)));
+}
+
 function emptySets(): Sets {
   return {
     friends: new Set(),
@@ -69,13 +77,21 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
   const setsRef = useRef<Sets>(sets);
   setsRef.current = sets;
 
+  // A refetch that returns what we already have keeps the SAME object. `status` changes
+  // identity with `sets`, so swapping in an equal copy would re-render every consumer —
+  // and InboxScreen refreshes on focus with the context in its deps, so it would loop.
   const applySets = useCallback((next: Sets) => {
-    setSets(next);
+    setSets(prev => (sameSets(prev, next) ? prev : next));
   }, []);
 
   const refresh = useCallback(async () => {
     try {
-      const { data } = await supabase.auth.getUser();
+      const { data, error } = await supabase.auth.getUser();
+      // getUser() RETURNS a failed request (offline, a token refresh not through yet —
+      // both likely right as the app resumes) rather than throwing. Only a missing session
+      // means signed out, and SIGNED_OUT clears on its own. Reading a blip as a sign-out
+      // showed "Add" on every friend and tore down the listeners that would retry.
+      if (error && !isAuthSessionMissingError(error)) { return; }
       const me = data?.user?.id ?? null;
       setMeId(me);
       if (!me) {
@@ -83,7 +99,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
         setReady(true);
         return;
       }
-      const r = await svc.loadViewerRelationships();
+      const r = await svc.loadViewerRelationships(me);
       applySets({
         friends: new Set(r.friends),
         stars: new Set(r.stars),
@@ -133,11 +149,29 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
     return () => { void supabase.removeChannel(channel); };
   }, [meId, refresh]);
 
+  // RealtimeConnectionGate closes the socket while the app is backgrounded, and realtime
+  // does not replay what it missed. A friend accepting your request while your phone was
+  // locked therefore never reached the subscription above: their profile kept saying
+  // "Requested" until the app restarted. Refetch on return instead. Background → active
+  // only: iOS reports 'inactive' for the app switcher and notification shade.
+  useEffect(() => {
+    if (!meId) { return; }
+    let last: AppStateStatus = AppState.currentState;
+    const sub = AppState.addEventListener('change', next => {
+      if (next === 'active' && last === 'background') { void refresh(); }
+      last = next;
+    });
+    return () => sub.remove();
+  }, [meId, refresh]);
+
+  // Reads `sets`, not `setsRef`, and depends on it: this callback is how the context value
+  // changes identity when a relationship changes. Reading the ref left the value
+  // unchanged on a request → friend flip, so an open profile kept rendering "Requested".
   const status = useCallback(
     (userId: string): RelationshipStatus => {
       if (!userId) { return 'none'; }
       if (meId && userId === meId) { return 'me'; }
-      const s = setsRef.current;
+      const s = sets;
       // Checked first: a block overrides every other relationship. block_user()
       // clears the others server-side, so this should be redundant — but the UI
       // must not depend on that ordering to render the right control.
@@ -148,7 +182,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
       if (s.stars.has(userId)) { return 'star'; }
       return 'none';
     },
-    [meId],
+    [meId, sets],
   );
 
   const mutate = useCallback(

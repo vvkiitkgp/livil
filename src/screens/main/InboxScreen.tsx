@@ -221,11 +221,14 @@ export default function InboxScreen() {
     }
   }, []);
 
+  // Depend on `refresh`, not `rel`: the context value changes identity whenever a
+  // relationship does, so `[rel]` would re-run this on every refresh it triggers.
+  const refreshRelationships = rel.refresh;
   useFocusEffect(useCallback(() => {
     void load();
-    void rel.refresh();
+    void refreshRelationships();
     setBannerKey(k => k + 1);
-  }, [load, rel]));
+  }, [load, refreshRelationships]));
 
   // Live inbox: a single channel listens to two tables so the unread badge,
   // preview text, last_message_at ordering, and "Seen by me" propagation all
