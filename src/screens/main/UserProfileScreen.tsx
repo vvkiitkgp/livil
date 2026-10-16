@@ -490,17 +490,25 @@ export default function UserProfileScreen() {
     // of the screen, often under the user's own thumb.
     haptics.select();
     setRefreshing(true);
-    playback.pauseAll();
-    // The friend button reads the app-wide relationship cache, not this screen's
-    // profile fetch — without refreshing it too, pulling down after someone accepted
-    // your request left the button on "Requested".
+    // Music keeps playing: a pull refreshes what is on screen, not what is in your ears.
     // A pull refreshes the profile: every tab loads afresh the next time it is opened.
     tabCache.clear();
     const isCurrent = tabCache.beginLoad();
-    await Promise.all([refresh(tab, isCurrent), refreshRelationships()]);
+    await Promise.all([
+      refresh(tab, isCurrent),
+      // The friend button reads the app-wide relationship cache, not this screen's
+      // profile fetch — without refreshing it too, pulling down after someone accepted
+      // your request left the button on "Requested".
+      refreshRelationships(),
+      // Friends in common and who can see their reposts were loaded once per profile.
+      isOwnProfile || blockedView
+        ? Promise.resolve()
+        : fetchProfileMutuals(userId).then(setMutuals),
+      getRepostsPublic(userId).then(setRepostsPublic).catch(() => {}),
+    ]);
     setRefreshing(false);
     if (isCurrent()) { setLoading(false); }
-  }, [refresh, tab, playback, refreshRelationships, tabCache]);
+  }, [refresh, tab, refreshRelationships, tabCache, isOwnProfile, blockedView, userId]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) { return; }
