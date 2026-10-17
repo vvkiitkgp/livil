@@ -17,6 +17,10 @@
       "destination": "/get.html"
     },
     {
+      "source": "/score",
+      "destination": "/score.html"
+    },
+    {
       "source": "/studio/:path*",
       "destination": "/studio/index.html"
     }
