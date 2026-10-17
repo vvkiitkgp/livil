@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-16
+last_verified: 2026-10-17
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 151 migration(s) in `supabase/migrations/`.
+Reconstructed from 157 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -654,6 +654,7 @@ RLS enabled · realtime · defined in `20260607000004_post_comments_likes_report
 **Triggers**
 
 - `trg_post_comment_likes_count` — after insert or delete (`20260607000004_post_comments_likes_reports.sql`)
+- `trg_post_comment_likes_activity_removed` — after delete (`20261031000000_comment_notifications.sql`)
 
 ### `post_comment_reports`
 
@@ -674,11 +675,19 @@ RLS enabled · defined in `20260607000004_post_comments_likes_reports.sql`
 |---|---|---|
 | `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
 | `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+| `reported_user_id` | `uuid references public.profiles(id) on delete cascade` | `20261102000000_comment_reports_survive_delete.sql` |
+| `comment_excerpt` | `text` | `20261102000000_comment_reports_survive_delete.sql` |
+| `comment_post_id` | `uuid references public.posts(id) on delete set null` | `20261102000000_comment_reports_survive_delete.sql` |
 
 **Indexes**
 
 - `post_comment_reports_reporter_idx` `(reporter_id)`
 - `post_comment_reports_open_idx` `(created_at desc) where reviewed_at is null`
+- `post_comment_reports_reported_idx` `(reported_user_id)`
+
+**Triggers**
+
+- `trg_post_comment_reports_snapshot` — before insert (`20261102000000_comment_reports_survive_delete.sql`)
 
 ### `post_comments`
 
@@ -703,17 +712,29 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 | Column | Definition | Migration |
 |---|---|---|
 | `like_count` | `int not null default 0` | `20260607000004_post_comments_likes_reports.sql` |
+| `song_post_id` | `uuid references public.posts(id) on delete set null` | `20261029000000_comment_songs.sql` |
+| `song_spotify_track_id` | `text` | `20261029000000_comment_songs.sql` |
+| `song_label` | `text` | `20261029000000_comment_songs.sql` |
+| `gif_provider` | `text` | `20261030000000_comment_gifs.sql` |
+| `gif_id` | `text` | `20261030000000_comment_gifs.sql` |
+| `gif_width` | `smallint` | `20261030000000_comment_gifs.sql` |
+| `gif_height` | `smallint` | `20261030000000_comment_gifs.sql` |
 
 **Indexes**
 
 - `post_comments_post_id_idx` `(post_id, created_at)`
 - `post_comments_top_sort_idx` `(post_id, parent_comment_id, like_count desc, created_at desc)`
 - `post_comments_parent_idx` `(parent_comment_id)`
+- `post_comments_song_post_id_idx` `(song_post_id) where song_post_id is not null`
 
 **Triggers**
 
 - `trg_post_comments_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 - `trg_post_comments_freeze_post_id` — before update (`20260722140000_freeze_counter_identity_columns.sql`)
+- `trg_post_comments_freeze_parent` — before update of parent_comment_id (`20261031000000_comment_notifications.sql`)
+- `trg_post_comments_activity_deleted` — after delete (`20261031000000_comment_notifications.sql`)
+- `trg_post_comments_lock_content` — before update of id, created_at, body, song_label, song_spotify_track_id, song_post_id, gif_provider, gif_id, gif_width, gif_height (`20261103000000_comment_text_locked.sql`)
+- `trg_post_comments_clamp_on_insert` — before insert (`20261103000000_comment_text_locked.sql`)
 
 ### `post_impressions`
 
@@ -1546,8 +1567,14 @@ same row-level security policies that gate ordinary reads.
 | `trg_moderation_actions_pin` | `moderation_actions` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
 | `trg_playlist_posts_reject_spotify` | `playlist_posts` | before insert or update of post_id | `20261013000000_spotify_reposts.sql` |
 | `trg_post_comment_likes_count` | `post_comment_likes` | after insert or delete | `20260607000004_post_comments_likes_reports.sql` |
+| `trg_post_comment_likes_activity_removed` | `post_comment_likes` | after delete | `20261031000000_comment_notifications.sql` |
+| `trg_post_comment_reports_snapshot` | `post_comment_reports` | before insert | `20261102000000_comment_reports_survive_delete.sql` |
 | `trg_post_comments_count` | `post_comments` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_comments_freeze_post_id` | `post_comments` | before update | `20260722140000_freeze_counter_identity_columns.sql` |
+| `trg_post_comments_freeze_parent` | `post_comments` | before update of parent_comment_id | `20261031000000_comment_notifications.sql` |
+| `trg_post_comments_activity_deleted` | `post_comments` | after delete | `20261031000000_comment_notifications.sql` |
+| `trg_post_comments_lock_content` | `post_comments` | before update of id, created_at, body, song_label, song_spotify_track_id, song_post_id, gif_provider, gif_id, gif_width, gif_height | `20261103000000_comment_text_locked.sql` |
+| `trg_post_comments_clamp_on_insert` | `post_comments` | before insert | `20261103000000_comment_text_locked.sql` |
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
