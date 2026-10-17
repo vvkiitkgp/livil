@@ -36,6 +36,26 @@ tooling — explain those parts as if I have never seen them before.
 and it does not apply to code comments, commit messages, PR bodies, or `kb/` documents —
 those stay precise and technical.**
 
+### Keep it SHORT — this beats every other rule in this section
+
+Replies have been too long to read every time. Default to brief:
+
+- **A routine update is ≤ 8 lines** (a fix done, a check passed, a question answered).
+  Most replies should fit on a phone screen without scrolling.
+- **Answer in 1–2 sentences, then stop.** Add detail only if I can't act without it —
+  I'll ask if I want more.
+- **Don't narrate the work.** No lists of files touched, checks run or steps taken.
+  "Tested ✅" is enough; spell out only what failed or what I must decide.
+- **Say each thing once.** Never repeat a point in the body and again in the to-do list.
+- **Backend before → after: one or two rows**, and only when users would notice or I
+  must approve it. Production-safety verdict: one short clause.
+- **Skip sections with nothing real in them** — no "what could break" or "what you'll
+  see" unless there is something to say.
+- **Designs, plans, long lists: link + at most 3 bullets.** The detail lives in the
+  design or doc, not in chat.
+- **✅ Your turn: only what I must do, one line each.** Leave out *(optional)* items
+  unless they matter.
+
 ### Rules for your replies to me
 
 1. **Lead with the plain-English answer.** First 1–3 sentences: what happened / what you

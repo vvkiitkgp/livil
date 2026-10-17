@@ -24,6 +24,8 @@ import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
+import VibeTag from '../../components/VibeTag';
+import { useChatVibes } from '../../services/chatVibes';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
@@ -65,11 +67,14 @@ function initials(name: string | null, username: string | null): string {
 function ConversationRow({
   item,
   listening,
+  vibe,
   groupFaces,
   visitSeed,
   onPress,
 }: {
   item: ConversationSummary;
+  /** This chat's vibe (DMs only; 0 hides it). */
+  vibe: number;
   /** The other person is playing music in Livil right now. DMs only. */
   listening: boolean;
   /** Groups only: members most-recent-speaker first, for the group picture. */
@@ -132,6 +137,7 @@ function ConversationRow({
             {/* DM only: a group has no single owner to badge. Badges go with the name;
                 AddBadge is an action and stays last. */}
             {isDm && item.otherUserId ? <UsernameBadges userId={item.otherUserId} size={15} /> : null}
+            {isDm ? <VibeTag vibe={vibe} /> : null}
           </View>
           {isDm && item.otherUserId ? <AddBadge userId={item.otherUserId} size="sm" /> : null}
           <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
@@ -317,6 +323,7 @@ export default function InboxScreen() {
     [conversations],
   );
   const listening = useListeningNow(dmUserIds);
+  const vibes = useChatVibes(conversations);
 
   // The group picture reshuffles once per VISIT (not per render): a new random
   // arrangement each time this screen gains focus, still while you look at it.
@@ -352,12 +359,13 @@ export default function InboxScreen() {
       <ConversationRow
         item={item}
         listening={item.kind === 'dm' && !!item.otherUserId && listening.has(item.otherUserId)}
+        vibe={vibes.get(item.id) ?? 0}
         groupFaces={item.kind === 'group' ? groupFaces.get(item.id) : undefined}
         visitSeed={visitSeed}
         onPress={() => openConversation(item)}
       />
     ),
-    [openConversation, listening, groupFaces, visitSeed],
+    [openConversation, listening, vibes, groupFaces, visitSeed],
   );
 
   return (

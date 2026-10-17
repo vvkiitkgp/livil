@@ -36,6 +36,8 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import MusicScoreTag from '../../components/MusicScoreTag';
+import { useMusicScore } from '../../services/musicScore';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
@@ -213,6 +215,7 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   }, [userId]);
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
+  const musicScore = useMusicScore(userId);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
@@ -916,6 +919,7 @@ export default function UserProfileScreen() {
                 <ProfileBadges badges={badges} size={20} />
               </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+              <MusicScoreTag score={musicScore} />
             </>
           )}
           {profile?.bio ? (
@@ -1033,7 +1037,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
+  }, [profile, stats, followCounts, badges, musicScore, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -1370,19 +1374,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // ~93% of its original size, as on your own profile (owner, 2026-10-18).
   socialPills: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.surface, borderRadius: 16,
+    alignSelf: 'center', width: '93%',
+    backgroundColor: COLORS.surface, borderRadius: 15,
     borderWidth: 1, borderColor: COLORS.border,
-    marginHorizontal: 4, marginBottom: 12, paddingVertical: 12,
+    marginBottom: 12, paddingVertical: 11,
   },
   socialPill: { flex: 1, alignItems: 'center' },
-  socialPillValue: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
-  socialPillLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 2 },
-  socialPillDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+  socialPillValue: { color: COLORS.white, fontSize: 16.5, fontWeight: '800' },
+  socialPillLabel: { color: COLORS.textMuted, fontSize: 10.25, fontWeight: '600', marginTop: 2 },
+  socialPillDivider: { width: 1, height: 30, backgroundColor: COLORS.border },
 
   contentStats: { alignItems: 'center', marginBottom: 8 },
-  contentStatsText: { color: COLORS.textSecondary, fontSize: 13 },
+  contentStatsText: { color: COLORS.textSecondary, fontSize: 15 },
   contentStatsValue: { color: COLORS.white, fontWeight: '700' },
   contentStatsDivider: { color: COLORS.border },
 

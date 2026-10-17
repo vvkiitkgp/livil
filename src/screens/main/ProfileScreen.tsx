@@ -54,6 +54,8 @@ import { getRepostsPublic } from '../../services/profileService';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import MusicScoreTag from '../../components/MusicScoreTag';
+import { useMusicScore } from '../../services/musicScore';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import ShareProfileSheet from '../../components/ShareProfileSheet';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
@@ -192,6 +194,7 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
+  const musicScore = useMusicScore(profile?.id);
 
   // Instagram-style story ring on MY OWN avatar: my active stories are in the
   // story feed (stories_select includes self), so if I have a cluster the ring
@@ -891,6 +894,7 @@ export default function ProfileScreen() {
                 <ProfileBadges badges={badges} size={22} />
               </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+              <MusicScoreTag score={musicScore} />
             </>
           )}
           {profile?.bio ? (
@@ -997,7 +1001,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts, pinned.onHeaderLayout]);
+  }, [profile, stats, followCounts, badges, musicScore, error, loading, navigation, spotify.reposts, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -1246,15 +1250,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  // The whole card at ~93% of its original size (owner, 2026-10-18: scaled down to 85%,
+  // then back up halfway): narrower, less padding, numbers and labels scaled with it.
   socialPills: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'center',
+    width: '93%',
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    borderRadius: 18.5,
+    paddingVertical: 13,
+    paddingHorizontal: 7.5,
     marginBottom: 12,
   },
   socialPill: {
@@ -1263,21 +1271,21 @@ const styles = StyleSheet.create({
   },
   socialPillValue: {
     color: COLORS.white,
-    fontSize: 20,
+    fontSize: 18.5,
     fontWeight: '900',
-    letterSpacing: -0.4,
+    letterSpacing: -0.35,
   },
   socialPillLabel: {
     color: COLORS.textMuted,
-    fontSize: 11,
+    fontSize: 10.25,
     marginTop: 2,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.9,
   },
   socialPillDivider: {
     width: StyleSheet.hairlineWidth,
-    height: 28,
+    height: 26,
     backgroundColor: COLORS.border,
   },
   contentStats: {
@@ -1286,7 +1294,7 @@ const styles = StyleSheet.create({
   },
   contentStatsText: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 15,
   },
   contentStatsValue: {
     color: COLORS.white,
