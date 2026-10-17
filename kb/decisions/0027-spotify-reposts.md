@@ -85,8 +85,14 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
   API for `Retry-After` when Spotify answers 429 (cards fall back to oEmbed meanwhile).
   Transient failures are left out of `tracks` responses so the app retries rather than
   caching "unavailable".
-- Ops has no tool to remove a Spotify repost yet (`ops_take_down_track` acts on a track).
-  Reports on one reach the queue; removal is by SQL until an ops action exists.
+- Ops removes a reported Spotify repost with `ops_remove_spotify_repost`
+  (`20261104000000`), since `ops_take_down_track` acts on a track and a Spotify repost has
+  none. It deletes the one post, records a `remove_post` row in `moderation_actions` (with
+  the reports, which the cascade deletes), and sends `content_removed` with kind
+  `spotify_repost` and no title. It is not a rights strike, and it has no restore: the
+  author can repost. The queue shows the song (title, artists, artwork) through the
+  `spotify` edge function. Until that migration was written, removal was by SQL; the first
+  report (2026-10-17) was handled by switching the author's reposts to friends-only.
 - Spotify's logo must be its official file. `SpotifyLogo` is a placeholder wordmark to be
   replaced before public release (same lesson as Sign in with Apple).
 

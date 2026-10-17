@@ -16,10 +16,16 @@ import {
   type PlayDay,
   type PlaySummary,
   type RecentPlay,
+  type SpotifyTrackInfo,
   type TopPlayed,
 } from '../data/opsPlays';
 import { BarChart } from '../components/BarChart';
-import { fetchOpsReports, markReportReviewed, type OpsReport } from '../data/opsReports';
+import {
+  fetchOpsReports,
+  markReportReviewed,
+  removeSpotifyRepost,
+  type OpsReport,
+} from '../data/opsReports';
 import { TakedownDialog } from '../components/TakedownDialog';
 import { OpsNotifications } from './OpsNotifications';
 import {
@@ -59,15 +65,16 @@ import {
  * URL sees an empty table rather than data. That is why there is no route guard.
  */
 /**
- * A takedown or restore that has been started but not yet confirmed.
+ * A takedown, restore or post removal that has been started but not yet confirmed.
  *
  * `resultKey` is the row the outcome gets written back to, and it is NOT the track id:
  * the same track can appear in the copyright queue and the report queue at once, and the
  * operator needs the answer under the row they actually clicked.
  */
 type PendingAction = {
-  mode: 'takedown' | 'restore';
-  trackId: string;
+  mode: 'takedown' | 'restore' | 'remove';
+  /** The track for a takedown or restore; the POST for a remove — a Spotify repost has no track. */
+  targetId: string;
   title: string;
   idShort: string;
   resultKey: string;
@@ -109,6 +116,40 @@ const CONCERNS_WANTING_A_HUMAN = new Set<Concern>([
   'reference_mismatch',
   'weak_claim',
 ]);
+
+/**
+ * What a reported Spotify repost is (ADR-0027): artwork, title and artists, and a way to
+ * listen in Spotify — Livil cannot play it. The artwork is usually what gets reported.
+ * `song` is looked up live and may be missing; the row still says what kind of post it is.
+ */
+function SpotifyRepostMedia({
+  trackId,
+  song,
+  isComment,
+}: {
+  trackId: string;
+  song: SpotifyTrackInfo | null | undefined;
+  isComment: boolean;
+}) {
+  return (
+    <div className="msg__media">
+      {song?.imageUrl && <img src={song.imageUrl} alt="" />}
+      <div className="msg__mediatext">
+        <span className="hint">
+          {song ? `${song.title} — ${song.artists}` : 'Spotify song'}
+          {isComment ? ' — the Spotify repost this comment is on' : ' · Spotify repost'}
+        </span>
+        <a
+          href={`https://open.spotify.com/track/${encodeURIComponent(trackId)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open in Spotify
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export function Ops() {
   // The tab lives in the URL, not in state, so a reload and the back button out of
@@ -159,6 +200,13 @@ export function Ops() {
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [showReviewed, setShowReviewed] = useState(false);
   const [reportBusyId, setReportBusyId] = useState<string | null>(null);
+  // Title, artists and artwork for reported Spotify reposts, by Spotify track id. Looked up
+  // live, never stored (ADR-0027); a missing entry just shows "Spotify song".
+  const [reportSpotify, setReportSpotify] = useState<Record<string, SpotifyTrackInfo | null>>({});
+  // Reports whose post was removed from this screen. The report row is deleted WITH the
+  // post, so these are kept on screen until the next load rather than reloaded away — the
+  // operator must see the outcome under the row they clicked.
+  const [removedReports, setRemovedReports] = useState<Set<string>>(() => new Set());
   const [holders, setHolders] = useState<Record<string, Set<string>> | null>(null);
   const [statuses, setStatuses] = useState<Record<string, BadgeStatus | null>>({});
   /** `${userId}:${badge}` — so one row's two buttons spin independently. */
@@ -205,7 +253,16 @@ export function Ops() {
   const loadReports = useCallback(() => {
     setReportsError(null);
     fetchOpsReports(showReviewed)
-      .then(setReports)
+      .then(rows => {
+        setReports(rows);
+        setRemovedReports(new Set());
+        const ids = rows.flatMap(r => (r.spotifyTrackId ? [r.spotifyTrackId] : []));
+        if (ids.length > 0) {
+          void resolveSpotifyTitles(ids).then(found =>
+            setReportSpotify(prev => ({ ...prev, ...found })),
+          );
+        }
+      })
       .catch(e => {
         setReports([]);
         setReportsError(e?.message ?? 'Could not load reports.');
@@ -237,7 +294,7 @@ export function Ops() {
     const live = row.liveUploads + row.liveReposts;
     setPending({
       mode: 'takedown',
-      trackId: row.trackId,
+      targetId: row.trackId,
       title: row.trackTitle,
       idShort: shortId(row.trackId),
       resultKey: row.id,
@@ -265,7 +322,7 @@ export function Ops() {
   const onRestore = useCallback((row: OpsCopyrightScan) => {
     setPending({
       mode: 'restore',
-      trackId: row.trackId,
+      targetId: row.trackId,
       title: row.trackTitle,
       idShort: shortId(row.trackId),
       resultKey: row.id,
@@ -282,7 +339,7 @@ export function Ops() {
     const down = r.trackTakenDownAt !== null;
     setPending({
       mode: down ? 'restore' : 'takedown',
-      trackId: r.trackId,
+      targetId: r.trackId,
       title: r.trackTitle ?? '(untitled)',
       idShort: shortId(r.trackId),
       resultKey: `${r.kind}-${r.id}`,
@@ -299,6 +356,28 @@ export function Ops() {
   }, []);
 
   /**
+   * Remove the Spotify repost behind a POST report (ADR-0027). A takedown cannot reach it:
+   * there is no Livil track. Post reports only — a comment report on a Spotify repost is
+   * about the comment, and its row carries no post id to act on.
+   */
+  const onRemoveSpotifyRepost = useCallback((r: OpsReport) => {
+    if (r.kind !== 'post' || !r.targetId || !r.spotifyTrackId) return;
+    const song = reportSpotify[r.spotifyTrackId];
+    const who = r.reportedUsername ? `@${r.reportedUsername}` : 'the poster';
+    setPending({
+      mode: 'remove',
+      targetId: r.targetId,
+      title: song ? `${song.title} — ${song.artists}` : 'Spotify repost',
+      idShort: shortId(r.targetId),
+      resultKey: `${r.kind}-${r.id}`,
+      source: 'report',
+      impact: `Reported as “${r.reason}”. Removing it deletes ${who}'s repost from every feed `
+        + 'and tells them why. This report closes with it; the report and your decision '
+        + 'are kept in the moderation ledger.',
+    });
+  }, [reportSpotify]);
+
+  /**
    * Runs whichever question the dialog was asking.
    *
    * The outcome is written per ROW rather than into a page-level banner: the first version
@@ -311,7 +390,7 @@ export function Ops() {
       setActingId(pending.resultKey);
       try {
         if (pending.mode === 'takedown') {
-          const removed = await takeDownTrack(pending.trackId, reason);
+          const removed = await takeDownTrack(pending.targetId, reason);
           setRowResult(r => ({
             ...r,
             [pending.resultKey]:
@@ -319,12 +398,23 @@ export function Ops() {
                 ? 'Marked down. Nothing was published, so nothing was removed.'
                 : `Taken down — ${removed} post${removed === 1 ? '' : 's'} removed.`,
           }));
-        } else {
-          await restoreTrack(pending.trackId, reason);
+        } else if (pending.mode === 'restore') {
+          await restoreTrack(pending.targetId, reason);
           setRowResult(r => ({
             ...r,
             [pending.resultKey]: "Restored — the uploader's post is back.",
           }));
+        } else {
+          await removeSpotifyRepost(pending.targetId, reason);
+          setRowResult(r => ({
+            ...r,
+            [pending.resultKey]: 'Removed — the post is gone and its author was told why.',
+          }));
+          // NOT reloaded: the report row was deleted with the post, so a reload would take
+          // this answer away with it. The next load drops the row.
+          setRemovedReports(prev => new Set(prev).add(pending.resultKey));
+          setPending(null);
+          return;
         }
         setPending(null);
         // Both queues can show the same track, so both are refreshed whichever one the
@@ -604,6 +694,9 @@ export function Ops() {
                     its 24 hours — while the report and the reported USER remain. Say
                     so rather than dropping the row. */}
                 {!r.targetExists && <span className="badge">content gone</span>}
+                {removedReports.has(`${r.kind}-${r.id}`) && (
+                  <span className="badge">removed</span>
+                )}
                 <span className="hint msg__when">{formatDate(r.createdAt)}</span>
               </div>
 
@@ -635,6 +728,18 @@ export function Ops() {
                 </div>
               )}
 
+              {/* A SPOTIFY REPOST (ADR-0027) has no Livil media to play, so the track
+                  fields above are all null. Show what it is — the artwork is usually what
+                  gets reported — and hand off to Spotify to listen. Title and artwork are
+                  looked up live; without them the row still says what kind of post it is. */}
+              {r.spotifyTrackId && !removedReports.has(`${r.kind}-${r.id}`) && (
+                <SpotifyRepostMedia
+                  trackId={r.spotifyTrackId}
+                  song={reportSpotify[r.spotifyTrackId]}
+                  isComment={r.kind === 'comment'}
+                />
+              )}
+
               <div className="msg__head">
                 <span className="hint">
                   reported by {r.reporterUsername ? `@${r.reporterUsername}` : 'a deleted account'}
@@ -645,34 +750,50 @@ export function Ops() {
                     {r.reviewerUsername ? ` by @${r.reviewerUsername}` : ''}
                   </span>
                 )}
-                <div className="filters filters--end">
-                  {/* Only when there is a track to act on. A comment report offers this
-                      too — a comment can be reported ON an upload that is itself the
-                      problem — but the button says what it actually does, because taking
-                      down the track does NOT delete the comment. */}
-                  {r.trackId && (
+                {/* Nothing left to act on once the post is removed: the report row went with
+                    it, so "Mark reviewed" would only fail. */}
+                {!removedReports.has(`${r.kind}-${r.id}`) && (
+                  <div className="filters filters--end">
+                    {/* Only when there is a track to act on. A comment report offers this
+                        too — a comment can be reported ON an upload that is itself the
+                        problem — but the button says what it actually does, because taking
+                        down the track does NOT delete the comment. */}
+                    {r.trackId && (
+                      <Button
+                        variant={r.trackTakenDownAt ? 'secondary' : 'destructive'}
+                        size="sm"
+                        busy={actingId === `${r.kind}-${r.id}`}
+                        onClick={() => onReportAction(r)}
+                      >
+                        {r.trackTakenDownAt
+                          ? 'Restore track'
+                          : r.kind === 'comment'
+                            ? 'Take down the track'
+                            : 'Take down'}
+                      </Button>
+                    )}
+                    {/* A Spotify repost has no track to take down. Post reports only: a
+                        comment report is about the comment, not the post it sits under. */}
+                    {r.kind === 'post' && r.spotifyTrackId && r.targetExists && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        busy={actingId === `${r.kind}-${r.id}`}
+                        onClick={() => onRemoveSpotifyRepost(r)}
+                      >
+                        Remove post
+                      </Button>
+                    )}
                     <Button
-                      variant={r.trackTakenDownAt ? 'secondary' : 'destructive'}
+                      variant={r.reviewedAt ? 'secondary' : 'primary'}
                       size="sm"
-                      busy={actingId === `${r.kind}-${r.id}`}
-                      onClick={() => onReportAction(r)}
+                      disabled={reportBusyId === r.id}
+                      onClick={() => handleReviewed(r)}
                     >
-                      {r.trackTakenDownAt
-                        ? 'Restore track'
-                        : r.kind === 'comment'
-                          ? 'Take down the track'
-                          : 'Take down'}
+                      {r.reviewedAt ? 'Reopen' : 'Mark reviewed'}
                     </Button>
-                  )}
-                  <Button
-                    variant={r.reviewedAt ? 'secondary' : 'primary'}
-                    size="sm"
-                    disabled={reportBusyId === r.id}
-                    onClick={() => handleReviewed(r)}
-                  >
-                    {r.reviewedAt ? 'Reopen' : 'Mark reviewed'}
-                  </Button>
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Per row, not a page-level banner: an operator working down a list never
