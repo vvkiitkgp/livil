@@ -32,10 +32,12 @@ export default function MusicScoreTag({ score }: { score: number | null }) {
 let gradientCounter = 0;
 
 /** The badge's diameter, and how far the pulse's flat ends run past it on each side. */
-const BADGE = 34;
-const OVERHANG = 9;
+const BADGE = 26;
+const OVERHANG = 7;
 const MARK_W = BADGE + OVERHANG * 2;
-const PULSE_H = 18;
+const PULSE_H = 14;
+/** The spike below is drawn at 18px; this scales it to PULSE_H. */
+const K = PULSE_H / 18;
 
 /**
  * Phosphor's Pulse spike (bold), with its flat ends stretched to MARK_W so they cross the
@@ -45,10 +47,12 @@ const PULSE_H = 18;
  */
 function GradientPulse() {
   const [id] = React.useState(() => `lvpulse_${++gradientCounter}`);
-  // The spike keeps Pulse's proportions at 18px (x 56..200 of 256, y 40..216), centred.
+  // The spike keeps Pulse's proportions (x 56..200 of 256, y 40..216), centred.
   const c = MARK_W / 2;
+  const mid = PULSE_H / 2;
   const points = [
-    [1, 9], [c - 5.06, 9], [c - 2.25, 2.8], [c + 2.25, 15.2], [c + 5.06, 9], [MARK_W - 1, 9],
+    [1, mid], [c - 5.06 * K, mid], [c - 2.25 * K, 2.8 * K], [c + 2.25 * K, 15.2 * K],
+    [c + 5.06 * K, mid], [MARK_W - 1, mid],
   ].map(([x, y]) => `${x} ${y}`).join(' ');
   return (
     <Svg width={MARK_W} height={PULSE_H} viewBox={`0 0 ${MARK_W} ${PULSE_H}`} style={styles.pulse}>
@@ -64,7 +68,7 @@ function GradientPulse() {
         points={points}
         fill="none"
         stroke={`url(#${id})`}
-        strokeWidth={1.7}
+        strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -81,7 +85,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: 6,
+    gap: 5,
     marginTop: 8,
   },
   mark: {
@@ -103,7 +107,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: COLORS.white,
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '800',
   },
 });
