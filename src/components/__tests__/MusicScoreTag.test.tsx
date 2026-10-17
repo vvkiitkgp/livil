@@ -5,7 +5,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
-jest.mock('../Icon', () => ({ Icon: () => null }));
 jest.mock('../GradientBorder', () => ({ GradientBorder: () => null }));
 
 let mockResult: { data: unknown; error: unknown } | Error = { data: { score: 1284 }, error: null };
