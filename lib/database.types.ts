@@ -2616,6 +2616,10 @@ export type Database = {
           username: string
         }[]
       }
+      ops_remove_spotify_repost: {
+        Args: { p_post_id: string; p_reason: string }
+        Returns: undefined
+      }
       ops_reports_overview: {
         Args: { p_include_reviewed?: boolean }
         Returns: {
@@ -2634,6 +2638,7 @@ export type Database = {
           reviewed_at: string
           reviewed_by: string
           reviewer_username: string
+          spotify_track_id: string
           target_excerpt: string
           target_exists: boolean
           target_id: string

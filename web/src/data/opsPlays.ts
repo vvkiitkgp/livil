@@ -95,13 +95,15 @@ export async function fetchRecentPlays(limit = 25): Promise<RecentPlay[]> {
   }));
 }
 
+export type SpotifyTrackInfo = { title: string; artists: string; imageUrl: string | null };
+
 /**
- * Title + artists for Spotify track ids, via the `spotify` edge function. Fail-safe: any
- * failure leaves ids untitled, and the dashboard shows the id instead.
+ * Title, artists and artwork for Spotify track ids, via the `spotify` edge function.
+ * Fail-safe: any failure leaves ids untitled, and the dashboard shows the id instead.
  */
 export async function resolveSpotifyTitles(
   ids: string[],
-): Promise<Record<string, { title: string; artists: string } | null>> {
+): Promise<Record<string, SpotifyTrackInfo | null>> {
   const unique = [...new Set(ids)].slice(0, 20);
   if (unique.length === 0) return {};
   try {
@@ -109,9 +111,12 @@ export async function resolveSpotifyTitles(
       body: { action: 'tracks', ids: unique },
     });
     if (error || !data?.tracks) return {};
-    const out: Record<string, { title: string; artists: string } | null> = {};
-    for (const [id, t] of Object.entries(data.tracks as Record<string, { title: string; artists: string[] } | null>)) {
-      out[id] = t ? { title: t.title, artists: t.artists?.join(', ') || 'Spotify' } : null;
+    const out: Record<string, SpotifyTrackInfo | null> = {};
+    type Raw = { title: string; artists: string[]; imageUrl?: string | null } | null;
+    for (const [id, t] of Object.entries(data.tracks as Record<string, Raw>)) {
+      out[id] = t
+        ? { title: t.title, artists: t.artists?.join(', ') || 'Spotify', imageUrl: t.imageUrl ?? null }
+        : null;
     }
     return out;
   } catch {

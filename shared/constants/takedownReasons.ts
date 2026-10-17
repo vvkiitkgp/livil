@@ -110,6 +110,51 @@ export const TAKEDOWN_REASONS: TakedownReason[] = [
 ];
 
 /**
+ * The same question for removing a Spotify repost (ADR-0027), which is a POST, not an
+ * upload: the person shared somebody else's song from Spotify, so "This upload…" would
+ * tell them something false. Only the categories that can apply to a share — copyright,
+ * impersonation and off-topic are about the uploaded work, and Livil hosts none of it.
+ */
+export const POST_REMOVAL_REASONS: TakedownReason[] = [
+  {
+    id: 'explicit',
+    label: 'Sexual or graphic content',
+    sentence:
+      'This post showed sexual or graphic material, which Livil does not host. That '
+      + 'includes the cover art of a song you share.',
+  },
+  {
+    id: 'hate',
+    label: 'Hate speech or harassment',
+    sentence:
+      'This post targeted a person or group with hateful or harassing content, which '
+      + 'Livil does not host.',
+  },
+  {
+    id: 'violence',
+    label: 'Violence or dangerous content',
+    sentence:
+      'This post depicted or encouraged violence or serious harm, which Livil does not '
+      + 'host.',
+  },
+  {
+    id: 'spam',
+    label: 'Spam',
+    sentence: 'This post was spam — repeated or misleading posting.',
+  },
+  {
+    id: 'illegal',
+    label: 'Illegal content',
+    sentence: 'This post shared content that is unlawful to distribute.',
+  },
+  {
+    id: 'other',
+    label: 'Something else (write it below)',
+    sentence: '',
+  },
+];
+
+/**
  * The text that actually gets stored and shown.
  *
  * A preset plus a note reads as the standard sentence followed by the operator's own —
@@ -119,8 +164,9 @@ export const TAKEDOWN_REASONS: TakedownReason[] = [
 export function composeTakedownReason(
   id: TakedownReasonId | null,
   note: string,
+  reasons: TakedownReason[] = TAKEDOWN_REASONS,
 ): string {
-  const preset = TAKEDOWN_REASONS.find(r => r.id === id);
+  const preset = reasons.find(r => r.id === id);
   const extra = note.trim();
   if (!preset || preset.id === 'other') return extra;
   return extra ? `${preset.sentence}\n\n${extra}` : preset.sentence;

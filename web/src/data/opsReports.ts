@@ -51,6 +51,12 @@ export type OpsReport = {
   /** Set when this track is ALREADY down — the action button says "Restore" instead. */
   trackTakenDownAt: string | null;
   /**
+   * A Spotify repost (ADR-0027) has no Livil track, so every track field above is null
+   * and the queue would otherwise call it "unavailable". The id only — title and artwork
+   * are resolved live, never stored. For a comment report it is the post the comment is on.
+   */
+  spotifyTrackId: string | null;
+  /**
    * False when the reported thing is gone: a deleted post, or a story past its 24 hours.
    * The report is still actionable — the reported USER is still there — so this drives a
    * label rather than hiding the row.
@@ -85,6 +91,9 @@ export async function fetchOpsReports(includeReviewed = false): Promise<OpsRepor
     mediaUrl: r.media_url,
     coverUrl: r.cover_url,
     trackTakenDownAt: r.track_taken_down_at,
+    // `?? null`, not a straight copy: before 20261104000000 is applied the column is not
+    // returned at all, and the queue must read as it did rather than break.
+    spotifyTrackId: r.spotify_track_id ?? null,
     targetExists: Boolean(r.target_exists),
     reviewedAt: r.reviewed_at,
     reviewedBy: r.reviewed_by,
@@ -105,6 +114,22 @@ export async function markReportReviewed(
     p_kind: kind,
     p_id: id,
     p_reviewed: reviewed,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Removes a reported Spotify repost — the one kind of post a track takedown cannot reach
+ * (ADR-0027). The database deletes it, records the decision with the reports that led to
+ * it, and tells the author `reason` verbatim. Not reversible; the author can repost.
+ *
+ * Raises rather than no-ops, like every ops write: for a non-operator, a blank reason, a
+ * Livil post (that is a takedown), or a post that is already gone.
+ */
+export async function removeSpotifyRepost(postId: string, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('ops_remove_spotify_repost', {
+    p_post_id: postId,
+    p_reason: reason,
   });
   if (error) throw new Error(error.message);
 }
