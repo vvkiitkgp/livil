@@ -2564,6 +2564,13 @@ export type Database = {
         Returns: string
       }
       moderating_now: { Args: never; Returns: boolean }
+      my_chat_vibes: {
+        Args: never
+        Returns: {
+          conversation_id: string
+          vibe: number
+        }[]
+      }
       notify_badge_granted: {
         Args: { p_badge: string; p_user_id: string }
         Returns: undefined
