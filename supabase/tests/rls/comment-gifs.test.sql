@@ -146,7 +146,7 @@ select pg_temp.assert('a GIF with a leftover song label is refused', pg_temp.acc
 select pg_temp.assert('an author cannot add a song to their GIF comment afterwards', pg_temp.accepts($$
   update post_comments
      set song_spotify_track_id = '4uLU6hMCjMI75M1A2tKUQC', song_label = '🎵 Song — Artist'
-   where id = 'd6666666-0000-0000-0000-000000000002'$$), false);
+   where post_id = 'c6666666-0000-0000-0000-000000000001' and gif_id is not null$$), false);
 
 reset role;
 
@@ -154,6 +154,6 @@ select pg_temp.assert_count('only the plain comment and the whole GIF were store
   (select count(*) from post_comments where post_id = 'c6666666-0000-0000-0000-000000000001'), 2);
 select pg_temp.assert('the GIF comment still has no song',
   (select song_spotify_track_id is null and song_label is null
-     from post_comments where id = 'd6666666-0000-0000-0000-000000000002'), true);
+     from post_comments where post_id = 'c6666666-0000-0000-0000-000000000001' and gif_id is not null), true);
 
 rollback;
