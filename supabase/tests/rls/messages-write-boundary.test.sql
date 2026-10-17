@@ -188,26 +188,35 @@ rollback to savepoint step2;
 -- ============================================================================
 -- Step 3 — the intended use MUST still work
 -- ============================================================================
--- The point of this fix is to narrow the perimeter, not to close the table. An
--- author editing their own message body in place is the write `msg_update` exists
--- to permit. If this goes red the fix has overshot, and a green step 1/2 would be
+-- The point of this fix is to narrow the perimeter, not to close the table. The write
+-- every build sends is the author soft-deleting their own message (deleted_at), and it
+-- must still work. If this goes red the fix has overshot, and a green step 1/2 would be
 -- passing for the wrong reason.
+--
+-- Editing the body in place USED to be the intended write here. Since 20261107000000 a
+-- sent message's content is fixed (owner's decision, 2026-10-18, as for comments) — no
+-- app ever offered an edit — so that half of the step now asserts the refusal.
 savepoint step3;
 select pg_temp.set_user('dddddddd-0000-0000-0000-000000000001');
 set local role authenticated;
 
 select pg_temp.assert(
-  'step 3: the author editing their own message body IN PLACE is ALLOWED',
-  pg_temp.allows($$update messages set body = 'edited by the author'
+  'step 3: the author deleting their own message is ALLOWED',
+  pg_temp.allows($$update messages set deleted_at = now()
                     where id = 'ffffffff-0000-0000-0000-000000000003'$$),
   true);
+select pg_temp.assert(
+  'step 3: the author editing their own message body in place is REFUSED (20261107000000)',
+  pg_temp.allows($$update messages set body = 'edited by the author'
+                    where id = 'ffffffff-0000-0000-0000-000000000003'$$),
+  false);
 
 reset role;
 -- "Allowed" is not "happened": a USING clause that filtered the row out would
 -- also raise nothing. Assert the stored value.
 select pg_temp.assert(
-  'step 3: the edit actually persisted',
-  (select body = 'edited by the author'
+  'step 3: the delete actually persisted, and the words did not change',
+  (select deleted_at is not null and body is distinct from 'edited by the author'
      from messages where id = 'ffffffff-0000-0000-0000-000000000003'),
   true);
 rollback to savepoint step3;
