@@ -800,6 +800,32 @@ export type Database = {
         }
         Relationships: []
       }
+      music_scores: {
+        Row: {
+          computed_at: string
+          score: number
+          user_id: string
+        }
+        Insert: {
+          computed_at?: string
+          score?: number
+          user_id: string
+        }
+        Update: {
+          computed_at?: string
+          score?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "music_scores_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           activity: boolean

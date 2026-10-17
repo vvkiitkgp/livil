@@ -36,6 +36,8 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import MusicScoreTag from '../../components/MusicScoreTag';
+import { useMusicScore } from '../../services/musicScore';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
@@ -213,6 +215,7 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   }, [userId]);
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
+  const musicScore = useMusicScore(userId);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
@@ -916,6 +919,7 @@ export default function UserProfileScreen() {
                 <ProfileBadges badges={badges} size={20} />
               </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+              <MusicScoreTag score={musicScore} />
             </>
           )}
           {profile?.bio ? (
@@ -1033,7 +1037,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
+  }, [profile, stats, followCounts, badges, musicScore, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <meta name="robots" content="index,follow" />
+    <title>Music score · Livil</title>
+    <meta name="description" content="How your Livil music score grows." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --bg: #0a0a0f;
+        --surface: #14141c;
+        --border: #232330;
+        --text: #f5f5fa;
+        --text-secondary: #b8b8c8;
+        --text-muted: #7a7a8c;
+        --purple: #7c3aed;
+        --purple-light: #a78bfa;
+        --purple-glow: rgba(124, 58, 237, 0.35);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        top: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        height: 800px;
+        background: radial-gradient(circle at center, var(--purple-glow) 0%, transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      .wrap { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; padding: 48px 20px 80px; }
+      header { text-align: center; margin-bottom: 32px; }
+      .logo {
+        display: inline-flex; align-items: center; gap: 10px;
+        padding: 8px 18px 8px 14px; margin-bottom: 28px;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+        color: var(--text); text-decoration: none;
+      }
+      .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--purple); box-shadow: 0 0 12px var(--purple-glow); }
+      .logo-name { font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+      h1 {
+        font-size: 40px; font-weight: 800; letter-spacing: -1px; margin: 0 0 8px;
+        background: linear-gradient(135deg, #fff 0%, #c4b5fd 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      }
+      .tagline { color: var(--text-secondary); font-size: 16px; margin: 0; }
+      ul { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+      li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--border); }
+      li:first-child { border-top: none; }
+      .pts { font-weight: 800; color: var(--purple-light); white-space: nowrap; }
+      .note { color: var(--text-muted); font-size: 14px; text-align: center; margin: 18px 0 0; }
+      footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 13px; }
+      footer a { color: var(--purple-light); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="logo" href="/"><span class="logo-dot"></span><span class="logo-name">Livil</span></a>
+        <h1>Music score</h1>
+        <p class="tagline">The number on your profile. It grows as you use Livil.</p>
+      </header>
+
+      <ul>
+        <li><span>Listen to a song</span><span class="pts">+1</span></li>
+        <li><span>Like a post</span><span class="pts">+1</span></li>
+        <li><span>Comment</span><span class="pts">+2</span></li>
+        <li><span>Share a song in chat</span><span class="pts">+2</span></li>
+        <li><span>Repost a song</span><span class="pts">+5</span></li>
+        <li><span>Host a Jam</span><span class="pts">+5</span></li>
+        <li><span>Upload your own song</span><span class="pts">+25</span></li>
+        <li><span>Someone plays your upload</span><span class="pts">+1</span></li>
+      </ul>
+      <p class="note">Updates every night. Daily limits keep it fair.</p>
+
+      <footer>
+        <a href="/">livil-music.com</a> · © 2026 Livil
+      </footer>
+    </div>
+  </body>
+</html>

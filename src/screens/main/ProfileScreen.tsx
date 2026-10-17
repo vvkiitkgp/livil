@@ -54,6 +54,8 @@ import { getRepostsPublic } from '../../services/profileService';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import MusicScoreTag from '../../components/MusicScoreTag';
+import { useMusicScore } from '../../services/musicScore';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import ShareProfileSheet from '../../components/ShareProfileSheet';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
@@ -192,6 +194,7 @@ export default function ProfileScreen() {
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
+  const musicScore = useMusicScore(profile?.id);
 
   // Instagram-style story ring on MY OWN avatar: my active stories are in the
   // story feed (stories_select includes self), so if I have a cluster the ring
@@ -891,6 +894,7 @@ export default function ProfileScreen() {
                 <ProfileBadges badges={badges} size={22} />
               </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+              <MusicScoreTag score={musicScore} />
             </>
           )}
           {profile?.bio ? (
@@ -997,7 +1001,7 @@ export default function ProfileScreen() {
     // `openLink` is omitted deliberately; adding it rebuilds the header on every
     // render. Unverified without tests — see debt register.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, stats, followCounts, badges, error, loading, navigation, spotify.reposts, pinned.onHeaderLayout]);
+  }, [profile, stats, followCounts, badges, musicScore, error, loading, navigation, spotify.reposts, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {

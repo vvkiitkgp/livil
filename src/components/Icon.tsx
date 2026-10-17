@@ -79,6 +79,7 @@ import {
   Playlist as PhPlaylist,
   Plus,
   Prohibit,
+  Pulse,
   Queue,
   Repeat,
   RepeatOnce,
@@ -132,7 +133,9 @@ export type IconName =
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
-  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
+  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut'
+  // the music score tag on profiles (ADR-0032)
+  | 'musicScore';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -291,6 +294,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   signOut: [SignOut, 'regular'],
   // "Upload a track" on the Add-to-Livil chooser (ADR-0027).
   upload: [UploadSimple, 'bold'],
+  // The music score tag beside a profile's @name (ADR-0032). `bold`: it sits at 12px.
+  musicScore: [Pulse, 'bold'],
 };
 
 export interface IconProps {
