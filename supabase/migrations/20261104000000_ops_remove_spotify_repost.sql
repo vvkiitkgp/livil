@@ -36,8 +36,16 @@
 -- ── THE REPORT ROWS GO WITH THE POST ───────────────────────────────────────
 --
 -- `post_reports.post_id` is ON DELETE CASCADE, as it already is for a takedown. The
--- reports are therefore copied into the ledger snapshot first, so "who reported it and
--- why" survives the decision it led to.
+-- reports are therefore summarised into the ledger snapshot first, so "how many people
+-- reported it, under which category, and when" survives the decision it led to.
+--
+-- The CATEGORY only (a fixed vocabulary), never `reporter_id` or the free-text `details`.
+-- The ledger has no foreign keys and is append-only even for the table owner, so anything
+-- copied into it outlives the reporter's account — and today deleting that account erases
+-- what they wrote (`post_reports.reporter_id` is ON DELETE CASCADE). Bounded as well:
+-- anyone can file any number of reports with unbounded `details`, and an unbounded
+-- `jsonb_agg` of them could make the post impossible to remove (security review,
+-- 2026-10-17). The operator's own reason, which is what the author is told, is kept whole.
 --
 -- ── NO post_removals ROW ───────────────────────────────────────────────────
 --
@@ -228,6 +236,7 @@ declare
   v_posted  timestamptz;
   v_reason  text;
   v_reports jsonb;
+  v_report_count integer;
 begin
   -- FIRST, before the parameters are read (Constitution P17).
   if not public.is_ops() then
@@ -261,18 +270,24 @@ begin
     raise exception 'not a Spotify repost: take down its track instead' using errcode = '22023';
   end if;
 
-  -- Before the delete: the cascade takes the report rows with the post.
+  -- Before the delete: the cascade takes the report rows with the post. Category and time
+  -- only, newest 200 — see the header for why neither who nor their words.
+  select count(*) into v_report_count
+    from public.post_reports
+   where post_id = p_post_id;
+
   select jsonb_agg(jsonb_build_object(
            'report_id',   r.id,
-           'reporter_id', r.reporter_id,
            'reason',      r.reason,
-           'details',     r.details,
            'reported_at', r.created_at,
            'reviewed_at', r.reviewed_at)
-         order by r.created_at)
+         order by r.created_at desc)
     into v_reports
-    from public.post_reports r
-   where r.post_id = p_post_id;
+    from (select id, reason, created_at, reviewed_at
+            from public.post_reports
+           where post_id = p_post_id
+           order by created_at desc
+           limit 200) r;
 
   delete from public.posts where id = p_post_id;
 
@@ -289,6 +304,7 @@ begin
       'spotify_track_id', v_spotify,
       'caption',          v_caption,
       'posted_at',        v_posted,
+      'report_count',     v_report_count,
       'reports',          coalesce(v_reports, '[]'::jsonb))
   );
 

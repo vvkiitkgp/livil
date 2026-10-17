@@ -88,7 +88,8 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
 - Ops removes a reported Spotify repost with `ops_remove_spotify_repost`
   (`20261104000000`), since `ops_take_down_track` acts on a track and a Spotify repost has
   none. It deletes the one post, records a `remove_post` row in `moderation_actions` (with
-  the reports, which the cascade deletes), and sends `content_removed` with kind
+  the count and categories of the reports the cascade deletes, never who filed them or
+  their words), and sends `content_removed` with kind
   `spotify_repost` and no title. It is not a rights strike, and it has no restore: the
   author can repost. The queue shows the song (title, artists, artwork) through the
   `spotify` edge function. Until that migration was written, removal was by SQL; the first

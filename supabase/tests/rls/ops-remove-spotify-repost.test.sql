@@ -83,6 +83,20 @@ insert into public.post_reports (id, post_id, reporter_id, reason, details) valu
    '5a000000-0000-0000-0000-000000000002', 'other', 'Cover photo is not appropriate')
 on conflict (id) do nothing;
 
+-- What a real reported post carries into the cascade: a like, a comment, and a report of
+-- that comment — which must SURVIVE the post (20261102000000).
+insert into public.post_likes (post_id, user_id) values
+  ('5c000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000002')
+on conflict do nothing;
+insert into public.post_comments (id, post_id, author_id, body) values
+  ('5e000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000001',
+   '5a000000-0000-0000-0000-000000000002', 'that cover though')
+on conflict (id) do nothing;
+insert into public.post_comment_reports (id, comment_id, reporter_id, reason) values
+  ('5f000000-0000-0000-0000-000000000001', '5e000000-0000-0000-0000-000000000001',
+   '5a000000-0000-0000-0000-000000000001', 'harassment')
+on conflict (id) do nothing;
+
 set local role authenticated;
 
 -- ── 1. The queue names a Spotify repost ─────────────────────────────────────
@@ -182,16 +196,36 @@ select pg_temp.assert(
      from public.moderation_actions where action = 'remove_post'),
   true);
 select pg_temp.assert(
-  '4f  the ledger kept the report the cascade deleted',
-  (select jsonb_array_length(snapshot->'reports') = 1
-      and snapshot->'reports'->0->>'details' = 'Cover photo is not appropriate'
-      and snapshot->'reports'->0->>'reporter_id' = '5a000000-0000-0000-0000-000000000002'
+  '4f  the ledger kept the report the cascade deleted — its count and category',
+  (select (snapshot->>'report_count')::int = 1
+      and jsonb_array_length(snapshot->'reports') = 1
+      and snapshot->'reports'->0->>'reason' = 'other'
+     from public.moderation_actions where action = 'remove_post'),
+  true);
+-- The ledger outlives every account and cannot be edited, and deleting a reporter's
+-- account erases their report today. Copying who or their words would end that.
+select pg_temp.assert(
+  '4f2 … but not who reported it, or their words',
+  (select not (snapshot->'reports'->0 ? 'reporter_id')
+      and not (snapshot->'reports'->0 ? 'details')
+      and position('Cover photo' in snapshot::text) = 0
      from public.moderation_actions where action = 'remove_post'),
   true);
 select pg_temp.assert(
   '4g  the report row itself went with the post',
   exists (select 1 from public.post_reports where id = '5d000000-0000-0000-0000-000000000001'),
   false);
+
+select pg_temp.assert(
+  '4g2 the like and the comment went with the post',
+  exists (select 1 from public.post_likes where post_id = '5c000000-0000-0000-0000-000000000001')
+    or exists (select 1 from public.post_comments where id = '5e000000-0000-0000-0000-000000000001'),
+  false);
+select pg_temp.assert(
+  '4g3 the report of that comment survives, still saying what was written',
+  (select comment_id is null and comment_excerpt = 'that cover though'
+     from public.post_comment_reports where id = '5f000000-0000-0000-0000-000000000001'),
+  true);
 
 -- 2.1.x reads any kind but 'repost' as an upload and a null title as "one of your posts".
 select pg_temp.assert(
