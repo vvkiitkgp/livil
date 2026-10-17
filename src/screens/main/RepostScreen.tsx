@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -196,6 +196,13 @@ export default function RepostScreen() {
   const loopGuardUntilRef = useRef(0);
 
   const [text, setText] = useState('');
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  // The caption sits at the bottom of a tall page; once the keyboard is fully up, make sure
+  // the whole box is above it (it opened with only its first line showing). ~350 ms is the
+  // keyboard's rise, as for revealFocusedField on Upload.
+  const revealCaption = useCallback(() => {
+    setTimeout(() => { void scrollRef.current?.assureFocusedInputVisible(); }, 350);
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -441,11 +448,14 @@ export default function RepostScreen() {
       </View>
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         // Dragging the page puts the keyboard away, as on Upload, Search and New message.
         keyboardDismissMode="on-drag"
+        // Room between the focused caption and the keyboard.
+        bottomOffset={24}
         showsVerticalScrollIndicator={false}
       >
           {/* Loading / error state */}
@@ -625,6 +635,7 @@ export default function RepostScreen() {
                 multiline
                 maxLength={2000}
                 editable={!submitting}
+                onFocus={revealCaption}
                 wrapperStyle={styles.textAreaWrapper}
                 style={styles.textArea}
               />
