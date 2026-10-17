@@ -73,6 +73,7 @@ import { discardImpressions } from '../services/feedImpressions';
 import {
   initPush,
   registerDeviceForUser,
+  registerIfNewlyAllowed,
   unregisterDevice,
   shouldShowPushPrompt,
   requestPushPermissionInteractive,
@@ -385,6 +386,9 @@ export default function RootNavigator() {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         void updatePresenceHeartbeat();
+        // Notifications switched on in Settings while the app was away start working
+        // now, not at the next sign-in. No-op once this install is registered.
+        if (session?.user?.id) { void registerIfNewlyAllowed(session.user.id); }
         if (!heartbeatRef.current) {
           heartbeatRef.current = setInterval(() => { void updatePresenceHeartbeat(); }, LAST_SEEN_HEARTBEAT_MS);
         }

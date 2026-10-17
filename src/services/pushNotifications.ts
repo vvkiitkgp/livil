@@ -725,10 +725,9 @@ async function registerTokenAndListen(userId: string): Promise<void> {
  * Called on sign-in. Does NOT trigger the system permission prompt — that's
  * gated on the pre-prompt modal so users see context before the OS dialog.
  *
- * - 'denied': previously refused, don't bother them
- * - 'shown': they tapped "Maybe later" earlier this session/install
- * - 'pending': brand new — modal will show and call requestPushPermissionInteractive
  * - 'accepted': just register the token
+ * - anything else ('pending', 'shown' = "Maybe later", 'denied'): register only if the OS
+ *   permission is granted now — e.g. switched on in Settings after saying no
  *
  * Edge case: if a prior build (Slice 1) auto-prompted and the user accepted,
  * status will still be 'pending' on first launch of this build but the OS
@@ -738,17 +737,34 @@ async function registerTokenAndListen(userId: string): Promise<void> {
 export async function registerDeviceForUser(userId: string): Promise<void> {
   try {
     const status = await getPushPromptStatus();
-    if (status === 'denied') return;
-
-    if (status === 'pending' || status === 'shown') {
-      const alreadyGranted = await checkOsNotificationPermission();
-      if (!alreadyGranted) return;
+    // The OS permission is the truth, whatever was answered in the app before. 'denied'
+    // used to return here unconditionally — so someone who said no and later switched
+    // notifications ON in Settings was never registered, and no push could reach them
+    // (found 2026-10-18: a friend with zero device tokens).
+    if (status !== 'accepted') {
+      const granted = await checkOsNotificationPermission();
+      if (!granted) return;
       await setPushPromptStatus('accepted');
     }
 
     await registerTokenAndListen(userId);
   } catch (e) {
     console.warn('[push] registerDeviceForUser failed', e);
+  }
+}
+
+/**
+ * On returning to the app: register if notifications were switched on in Settings since
+ * the last check. Cheap when there is nothing to do — once this install is registered
+ * ('accepted'), it returns without touching the network; token changes after that arrive
+ * through onTokenRefresh.
+ */
+export async function registerIfNewlyAllowed(userId: string): Promise<void> {
+  try {
+    if ((await getPushPromptStatus()) === 'accepted') return;
+    await registerDeviceForUser(userId);
+  } catch (e) {
+    console.warn('[push] registerIfNewlyAllowed failed', e);
   }
 }
 
