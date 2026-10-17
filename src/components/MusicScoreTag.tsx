@@ -16,9 +16,13 @@ export default function MusicScoreTag({ score }: { score: number | null }) {
   const text = formatMusicScore(score);
   return (
     <View style={styles.row} accessibilityLabel={`Music score ${text}`} testID="music-score-tag">
-      <View style={styles.badge}>
-        <GradientBorder borderRadius={BADGE / 2} />
-        <GradientPulse size={18} />
+      {/* The pulse runs THROUGH the badge and out both sides, so the wrapper is as wide as
+          the pulse: a child drawn past its parent's edge is clipped on Android. */}
+      <View style={styles.mark}>
+        <View style={styles.badge}>
+          <GradientBorder borderRadius={BADGE / 2} />
+        </View>
+        <GradientPulse />
       </View>
       <Text style={styles.text}>{text}</Text>
     </View>
@@ -27,15 +31,27 @@ export default function MusicScoreTag({ score }: { score: number | null }) {
 
 let gradientCounter = 0;
 
+/** The badge's diameter, and how far the pulse's flat ends run past it on each side. */
+const BADGE = 34;
+const OVERHANG = 9;
+const MARK_W = BADGE + OVERHANG * 2;
+const PULSE_H = 18;
+
 /**
- * The pulse (Phosphor's Pulse, bold) stroked with the SAME purple ramp as GradientBorder,
- * so glyph and outline read as one piece. Drawn here rather than through Icon because
- * Icon takes one flat colour. A unique gradient id per instance, as GradientBorder does.
+ * Phosphor's Pulse spike (bold), with its flat ends stretched to MARK_W so they cross the
+ * badge's edge, stroked with the SAME purple ramp as GradientBorder. Drawn here rather than
+ * through Icon because Icon takes one flat colour and a square box. Unique gradient id per
+ * instance, as GradientBorder does.
  */
-function GradientPulse({ size }: { size: number }) {
+function GradientPulse() {
   const [id] = React.useState(() => `lvpulse_${++gradientCounter}`);
+  // The spike keeps Pulse's proportions at 18px (x 56..200 of 256, y 40..216), centred.
+  const c = MARK_W / 2;
+  const points = [
+    [1, 9], [c - 5.06, 9], [c - 2.25, 2.8], [c + 2.25, 15.2], [c + 5.06, 9], [MARK_W - 1, 9],
+  ].map(([x, y]) => `${x} ${y}`).join(' ');
   return (
-    <Svg width={size} height={size} viewBox="0 0 256 256">
+    <Svg width={MARK_W} height={PULSE_H} viewBox={`0 0 ${MARK_W} ${PULSE_H}`} style={styles.pulse}>
       <Defs>
         <LinearGradient id={id} x1="0" y1="0" x2="1" y2="1">
           <Stop offset="0" stopColor={COLORS.purpleRoyal} stopOpacity="1" />
@@ -45,10 +61,10 @@ function GradientPulse({ size }: { size: number }) {
         </LinearGradient>
       </Defs>
       <Polyline
-        points="24 128 56 128 96 40 160 216 200 128 232 128"
+        points={points}
         fill="none"
         stroke={`url(#${id})`}
-        strokeWidth={24}
+        strokeWidth={1.7}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -56,26 +72,34 @@ function GradientPulse({ size }: { size: number }) {
   );
 }
 
-/** The round badge's diameter. */
-const BADGE = 34;
-
-// A round badge — the gradient pulse inside the primary gradient border, no fill — with the
-// number beside it, outside (owner, 2026-10-18). No overflow: 'hidden' on the badge:
-// GradientBorder draws inside the bounds, and clipping would shave the glow.
+// A round badge — the primary gradient border, no fill — crossed by the gradient pulse,
+// whose flat ends run out past the circle; the number sits beside it (owner, 2026-10-18).
+// No overflow: 'hidden' on the badge: GradientBorder draws inside the bounds, and
+// clipping would shave the glow.
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: 8,
+    gap: 6,
     marginTop: 8,
   },
+  mark: {
+    width: MARK_W,
+    height: BADGE,
+  },
   badge: {
+    position: 'absolute',
+    left: OVERHANG,
+    top: 0,
     width: BADGE,
     height: BADGE,
     borderRadius: BADGE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  },
+  pulse: {
+    position: 'absolute',
+    left: 0,
+    top: (BADGE - PULSE_H) / 2,
   },
   text: {
     color: COLORS.white,
