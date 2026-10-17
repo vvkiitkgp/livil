@@ -444,6 +444,8 @@ export default function RepostScreen() {
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        // Dragging the page puts the keyboard away, as on Upload, Search and New message.
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
           {/* Loading / error state */}
