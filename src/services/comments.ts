@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { notifyPostActivity } from './activity';
+import { notifyCommentActivity, notifyPostActivity } from './activity';
 import { GIF_ID_RE } from '../utils/gifIds';
 
 export type CommentAuthor = {
@@ -358,13 +358,19 @@ export async function createComment(
   if (error || !data) {
     throw new Error(error?.message ?? 'Failed to create comment.');
   }
-  // Fan out an activity notification to the post author (self-comment is
-  // filtered server-side). Fire-and-forget — never block the comment.
+  // Fan out activity notifications (self-notification is filtered server-side).
+  // Fire-and-forget — never block the comment. A reply tells the parent comment's author
+  // first; when that is ALSO the post's author they have been told, so the post's own
+  // "commented on your post" is skipped — one notification, not two.
   const created = data as unknown as RawCommentRow;
-  void notifyPostActivity(postId, 'comment', {
-    commentText: trimmed,
-    commentId: created.id,
-  });
+  void (async () => {
+    const reply = parentCommentId ? await notifyCommentActivity(created.id, 'comment_reply') : null;
+    if (reply?.recipientIsPostAuthor) { return; }
+    await notifyPostActivity(postId, 'comment', {
+      commentText: trimmed,
+      commentId: created.id,
+    });
+  })();
   return rowToNode(created, false);
 }
 
@@ -417,6 +423,8 @@ export async function toggleCommentLike(commentId: string): Promise<boolean> {
   if (insError) {
     throw new Error(insError.message);
   }
+  // "Liked your comment" — fire-and-forget, never blocks the like.
+  void notifyCommentActivity(commentId, 'comment_like');
   return true;
 }
 

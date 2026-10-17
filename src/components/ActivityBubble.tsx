@@ -30,7 +30,7 @@ const ACTOR_AVATAR_SIZE = 24;
 
 type RenderFormat =
   | { format: 'text'; icon: IconName }           // new_fan, friend outcomes
-  | { format: 'post'; post: ActivityPostRef }   // like, comment, repost, milestone
+  | { format: 'post'; post: ActivityPostRef }   // like, comment, repost, milestone, comment_*
   | { format: 'track'; post: ActivityPostRef }  // reserved for a future music card
   // A credit ASKS something, which no other activity does. `answered` is null while the
   // question stands and the answer afterwards, so the bubble never offers buttons on a
@@ -49,6 +49,8 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
     case 'comment':
     case 'repost':
     case 'play_milestone':
+    case 'comment_like':
+    case 'comment_reply':
       return { format: 'post', post: item.post };
     // Text, not 'post': there is no track behind a badge. The icon is the generic award
     // mark rather than the badge artwork — the bubble is a 20px monochrome slot and the
@@ -107,6 +109,8 @@ export default function ActivityBubble({
       : null;
   const parts = activityBubbleParts(item);
   const actor = parts.actor;
+  // A comment of yours can sit on anyone's post: there the post is not "yours".
+  const someoneElsesPost = item.type === 'comment_like' || item.type === 'comment_reply';
   const name = actor ? (actor.displayName?.trim() || `@${actor.username}`) : null;
 
   return (
@@ -173,7 +177,7 @@ export default function ActivityBubble({
               disabled={!post.postId}
             >
               {post.spotifyTrackId ? (
-                <SpotifyCardBody spotifyTrackId={post.spotifyTrackId} />
+                <SpotifyCardBody spotifyTrackId={post.spotifyTrackId} yours={!someoneElsesPost} />
               ) : (
                 <>
                   {post.coverArtUrl ? (
@@ -185,7 +189,7 @@ export default function ActivityBubble({
                   )}
                   <View style={styles.trackCardInfo}>
                     <Text style={styles.trackCardTitle} numberOfLines={1}>
-                      {post.title || 'Your post'}
+                      {post.title || (someoneElsesPost ? 'A post' : 'Your post')}
                     </Text>
                     <Text style={styles.trackCardArtist} numberOfLines={1}>
                       {post.artistName ?? 'Tap to view'}
@@ -228,7 +232,7 @@ export default function ActivityBubble({
  * the chat song row: artwork as given (corners ≤ 4px, nothing drawn over it) and the
  * Spotify mark beside the details it supplied.
  */
-function SpotifyCardBody({ spotifyTrackId }: { spotifyTrackId: string }) {
+function SpotifyCardBody({ spotifyTrackId, yours }: { spotifyTrackId: string; yours: boolean }) {
   const meta = useSpotifyTrack(spotifyTrackId);
   const track = meta.status === 'ready' ? meta.track : null;
   return (
@@ -242,7 +246,7 @@ function SpotifyCardBody({ spotifyTrackId }: { spotifyTrackId: string }) {
       )}
       <View style={styles.trackCardInfo}>
         <Text style={styles.trackCardTitle} numberOfLines={1}>
-          {track?.title ?? (meta.status === 'loading' ? ' ' : 'Your Spotify repost')}
+          {track?.title ?? (meta.status === 'loading' ? ' ' : yours ? 'Your Spotify repost' : 'A Spotify repost')}
         </Text>
         <Text style={styles.trackCardArtist} numberOfLines={1}>
           {track ? artistLine(track) : 'Tap to view'}

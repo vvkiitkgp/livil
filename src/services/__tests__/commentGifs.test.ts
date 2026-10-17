@@ -9,7 +9,10 @@
  *  - Before the migration is applied, comment sheets still load, and a GIF comment is
  *    refused with a message rather than posted as a bare '🎞 GIF'.
  */
-jest.mock('../activity', () => ({ notifyPostActivity: jest.fn(async () => undefined) }));
+jest.mock('../activity', () => ({
+  notifyPostActivity: jest.fn(async () => undefined),
+  notifyCommentActivity: jest.fn(async () => null),
+}));
 
 type Result = { data: unknown; error: { code?: string; message: string } | null };
 

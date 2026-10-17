@@ -8,7 +8,10 @@
  *    request retry without the song columns — never an empty comment sheet, never a
  *    comment that fails to post.
  */
-jest.mock('../activity', () => ({ notifyPostActivity: jest.fn(async () => undefined) }));
+jest.mock('../activity', () => ({
+  notifyPostActivity: jest.fn(async () => undefined),
+  notifyCommentActivity: jest.fn(async () => null),
+}));
 
 type Result = { data: unknown; error: { code?: string; message: string } | null };
 

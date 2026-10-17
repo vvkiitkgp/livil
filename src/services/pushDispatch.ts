@@ -14,7 +14,9 @@ export type PushKind =
   | 'activity_like'
   | 'activity_comment'
   | 'activity_repost'
-  | 'activity_milestone';
+  | 'activity_milestone'
+  | 'activity_comment_like'
+  | 'activity_comment_reply';
 
 export type PushArgs = {
   recipientUserId: string;
