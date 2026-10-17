@@ -8,6 +8,7 @@ import {
   MAX_INDENT_DEPTH,
   ROW_PAD_LEFT,
   ROW_PAD_TOP,
+  sameThreadPosition,
   threadSegments,
 } from '../commentThread';
 
@@ -89,5 +90,21 @@ describe('threadSegments', () => {
   it('each level moves right by the indent step, then stops', () => {
     expect(indentFor(1)).toBe(INDENT_STEP);
     expect(indentFor(MAX_INDENT_DEPTH + 3)).toBe(MAX_INDENT_DEPTH * INDENT_STEP);
+  });
+});
+
+describe('sameThreadPosition (comment rows skip redraws only when nothing changed)', () => {
+  const pos = (depth: number, continues: boolean[], hasReplies: boolean) => ({ depth, continues, hasReplies });
+
+  it('a rebuilt position with the same values is the same', () => {
+    expect(sameThreadPosition(pos(2, [true, false], true), pos(2, [true, false], true))).toBe(true);
+  });
+
+  it('any change in depth, lines or replies is different', () => {
+    const base = pos(2, [true, false], true);
+    expect(sameThreadPosition(base, pos(1, [true, false], true))).toBe(false);
+    expect(sameThreadPosition(base, pos(2, [false, false], true))).toBe(false);
+    expect(sameThreadPosition(base, pos(2, [true], true))).toBe(false);
+    expect(sameThreadPosition(base, pos(2, [true, false], false))).toBe(false);
   });
 });
