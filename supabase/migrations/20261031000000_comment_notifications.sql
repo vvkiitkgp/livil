@@ -327,7 +327,9 @@ create or replace function public.activity_list(
 $$;
 
 -- New apps: every type, minus anything from someone the viewer is blocked with (a row
--- written before the block, or a like's actor re-pointed by an unlike).
+-- written before the block, or a like's actor re-pointed by an unlike). EXCEPT a credit:
+-- its row is the only place to decline it, and a pending credit names you on the track in
+-- public — blocking the uploader must never take away the way to remove your name.
 create or replace function public.activity_list_v2(
   p_limit int default 50,
   p_before timestamptz default null
@@ -359,7 +361,8 @@ create or replace function public.activity_list_v2(
   where n.recipient_id = auth.uid()
     and (p_before is null or n.updated_at < p_before)
     and not (n.type in ('like','comment_like') and n.agg_count <= 0)
-    and (n.actor_id is null or not is_blocked_between(n.actor_id, n.recipient_id))
+    and (n.actor_id is null or n.type = 'credited'
+         or not is_blocked_between(n.actor_id, n.recipient_id))
   order by n.updated_at desc
   limit greatest(1, least(p_limit, 100));
 $$;

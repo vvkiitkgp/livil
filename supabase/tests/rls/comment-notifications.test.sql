@@ -313,6 +313,15 @@ select pg_temp.set_user('e1111111-0000-0000-0000-000000000004');
 set role authenticated;
 select pg_temp.assert_int('#23 activity_list_v2 leaves out a blocked actor''s row',
   (select count(*) from activity_list_v2(50, null) where actor_id = 'e1111111-0000-0000-0000-000000000002'), 0);
+-- …except a credit: it is the only place to decline it, and it names BLOCK on Sam's track.
+reset role;
+insert into activity_notifications (recipient_id, type, actor_id, post_id, payload)
+values ('e1111111-0000-0000-0000-000000000004', 'credited', 'e1111111-0000-0000-0000-000000000002',
+        'e3333333-0000-0000-0000-000000000001', '{"role":"Mixing"}');
+select pg_temp.set_user('e1111111-0000-0000-0000-000000000004');
+set role authenticated;
+select pg_temp.assert_int('#23 a credit from someone you blocked is still there to decline',
+  (select count(*) from activity_list_v2(50, null) where type = 'credited'), 1);
 
 -- The post author's bar holds for a reply written before it. OWNER turns on
 -- "comments from friends only"; Sam is not a friend, and his reply is from before.
