@@ -35,9 +35,10 @@ let gradientCounter = 0;
 const BADGE = 26;
 const OVERHANG = 7;
 const MARK_W = BADGE + OVERHANG * 2;
-const PULSE_H = 14;
-/** The spike below is drawn at 18px; this scales it to PULSE_H. */
-const K = PULSE_H / 18;
+/** The pulse spans the badge's full height so its spike just touches the border. */
+const PULSE_H = BADGE;
+/** How far in from the badge's top/bottom edge the spike's tips stop: on the stroke. */
+const TIP_INSET = 2;
 
 /**
  * Phosphor's Pulse spike (bold), with its flat ends stretched to MARK_W so they cross the
@@ -47,12 +48,13 @@ const K = PULSE_H / 18;
  */
 function GradientPulse() {
   const [id] = React.useState(() => `lvpulse_${++gradientCounter}`);
-  // The spike keeps Pulse's proportions (x 56..200 of 256, y 40..216), centred.
+  // Pulse's spike, centred, stretched so its tips just touch the round border (owner,
+  // 2026-10-18): up to TIP_INSET from the top, down to TIP_INSET from the bottom.
   const c = MARK_W / 2;
   const mid = PULSE_H / 2;
   const points = [
-    [1, mid], [c - 5.06 * K, mid], [c - 2.25 * K, 2.8 * K], [c + 2.25 * K, 15.2 * K],
-    [c + 5.06 * K, mid], [MARK_W - 1, mid],
+    [1, mid], [c - 5.5, mid], [c - 2.4, TIP_INSET], [c + 2.4, PULSE_H - TIP_INSET],
+    [c + 5.5, mid], [MARK_W - 1, mid],
   ].map(([x, y]) => `${x} ${y}`).join(' ');
   return (
     <Svg width={MARK_W} height={PULSE_H} viewBox={`0 0 ${MARK_W} ${PULSE_H}`} style={styles.pulse}>
