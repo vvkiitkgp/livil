@@ -38,9 +38,9 @@ and every loop counts again, so a raw play count is trivially farmed.
 ## Decision
 
 - **One number per person, shown to every signed-in user, and the app says nothing about
-  it.** It is a small tag under the @name, marked with the Livil logo, with no label and nothing to
-  tap. (The logo is our own mark; a stock icon such as Phosphor's Pulse cannot be owned —
-  owner, 2026-10-18.) How it grows is
+  it.** It is a small tag under the @name — a round gradient badge holding the pulse, with the
+  number beside it — with no label and nothing to tap. (The pulse is Phosphor's free icon:
+  usable, not ownable; a trademarkable mark is a separate task — owner, 2026-10-18.) How it grows is
   explained at livil-music.com/score, not in the app.
 - **Recomputed from scratch every night** (`refresh_music_scores()`, pg_cron 22:00 UTC).
   `music_score_points()` sums each person's whole history, using IST calendar days and daily
