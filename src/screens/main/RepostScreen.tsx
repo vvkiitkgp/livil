@@ -439,7 +439,11 @@ export default function RepostScreen() {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
           disabled={submitting}
-          style={styles.headerSide}
+          style={[styles.headerSide, styles.headerCancelTouch]}
+          // Out to the screen edge on the left; the padding below grows it up, down and right.
+          hitSlop={{ top: 8, bottom: 8, left: 20, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
         >
           <Text style={[styles.headerCancel, submitting && styles.disabledText]}>Cancel</Text>
         </TouchableOpacity>
@@ -713,6 +717,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   headerSide: { minWidth: 64 },
+  // A bigger target for Cancel without moving the header: padding grows the touch area,
+  // the matching negative margin gives the space back to the layout.
+  headerCancelTouch: { paddingVertical: 12, marginVertical: -12, paddingRight: 16, marginRight: -16 },
   headerCancel: {
     color: COLORS.textSecondary,
     fontSize: 15,
