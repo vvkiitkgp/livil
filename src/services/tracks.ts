@@ -339,6 +339,21 @@ const waveformCache = new Map<string, WaveformData>();
 const waveformInFlight = new Map<string, Promise<WaveformData | null>>();
 
 /**
+ * Lossless masters (WAV / AIFF / FLAC) are never decoded from the NETWORK.
+ *
+ * Remote `decodeAudioData` pulls the whole file into memory through RN networking — the
+ * reason video is never analyzed. Uncompressed audio is ~10 MB a minute and the mobile cap
+ * is 500 MB, so a long master is the same OutOfMemoryError → killed process, on a
+ * LISTENER's phone, and failures are not cached, so it would repeat on every play.
+ * Their envelope comes from the uploader's LOCAL decode at publish
+ * (`kickoffWaveformAnalysisFromLocalFile`); if that failed, the wave stays decorative.
+ * Keyed on the storage path's extension, which `uploadTrackFile` takes from the file name.
+ */
+function isLosslessUrl(url: string): boolean {
+  return /\.(wav|aiff?|aifc|flac)(?:[?#]|$)/i.test(url);
+}
+
+/**
  * Resolve the envelope for the currently-active track: cache → DB → (if still
  * unanalyzed) decode the remote URL on-device, persist, and cache. Returns null
  * when nothing is usable yet (the wave then stays decorative). Never throws.
@@ -364,9 +379,10 @@ export async function getOrAnalyzeWaveform(
     // Current-version row → use as-is. A STALE row (older analyzer version) or a
     // null row falls through to re-analysis below so old tracks upgrade on play.
     if (stored && stored.version >= WAVEFORM_VERSION) { waveformCache.set(trackId, stored); return stored; }
-    if (!url) {
+    if (!url || isLosslessUrl(url)) {
       // Nothing to re-analyze from — fall back to a stale row if we have one
-      // (the old wave) rather than nothing.
+      // (the old wave) rather than nothing. Lossless masters land here too: see
+      // `isLosslessUrl`.
       if (stored) { waveformCache.set(trackId, stored); return stored; }
       return null;
     }

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-395 TypeScript file(s) under `src/`, 87,521 lines.
+398 TypeScript file(s) under `src/`, 88,038 lines.
 
 ## Size hotspots
 
@@ -34,11 +34,11 @@ reading alone (Constitution P28).
 | `src/screens/main/UserProfileScreen.tsx` | 1480 |
 | `src/screens/main/ProfileScreen.tsx` | 1431 |
 | `src/components/PostCard.tsx` | 1425 |
-| `src/components/CommentsSheet.tsx` | 1163 |
+| `src/components/CommentsSheet.tsx` | 1179 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
-| `src/screens/main/RepostScreen.tsx` | 959 |
+| `src/screens/main/RepostScreen.tsx` | 981 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 807 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-49 file(s), 27,154 lines.
+49 file(s), 27,184 lines.
 
 | File | Lines |
 |---|---:|
@@ -117,7 +117,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ProfileScreen.tsx` | 1431 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
-| `src/screens/main/RepostScreen.tsx` | 959 |
+| `src/screens/main/RepostScreen.tsx` | 981 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 807 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 632 |
@@ -125,7 +125,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/GroupInfoScreen.tsx` | 604 |
 | `src/screens/main/InboxScreen.tsx` | 588 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 471 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 479 |
 | `src/screens/auth/SignUpScreen.tsx` | 470 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 404 |
@@ -161,13 +161,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-149 file(s), 31,032 lines.
+149 file(s), 31,065 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2521 |
 | `src/components/PostCard.tsx` | 1425 |
-| `src/components/CommentsSheet.tsx` | 1163 |
+| `src/components/CommentsSheet.tsx` | 1179 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/guide/cardsPeople.tsx` | 640 |
@@ -186,8 +186,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Icon.tsx` | 336 |
 | `src/components/PostLikersSheet.tsx` | 330 |
 | `src/components/ActivityBubble.tsx` | 323 |
+| `src/components/CommentItem.tsx` | 321 |
 | `src/components/guide/primitives.tsx` | 319 |
-| `src/components/CommentItem.tsx` | 304 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/InboxBanner.tsx` | 281 |
@@ -317,13 +317,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-84 file(s), 17,422 lines.
+87 file(s), 17,847 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/tracks.ts` | 1466 |
+| `src/services/tracks.ts` | 1482 |
 | `src/services/posts.ts` | 1281 |
-| `src/services/pushNotifications.ts` | 810 |
+| `src/services/pushNotifications.ts` | 826 |
 | `src/services/activity.ts` | 647 |
 | `src/services/comments.ts` | 588 |
 | `src/services/albums.ts` | 521 |
@@ -334,7 +334,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/messages.ts` | 381 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/spotify.ts` | 347 |
-| `src/services/uploads.ts` | 318 |
+| `src/services/uploads.ts` | 344 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/conversations.ts` | 249 |
@@ -343,6 +343,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/commentSongs.test.ts` | 230 |
 | `src/services/__tests__/pushScheduled.test.ts` | 230 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
+| `src/services/__tests__/uploadContentType.test.ts` | 227 |
 | `src/services/listeningStatus.ts` | 223 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/stories.ts` | 215 |
@@ -382,6 +383,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/pushOpenChat.test.ts` | 87 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
+| `src/services/__tests__/pushRegistration.test.ts` | 81 |
 | `src/services/__tests__/submitExitFeedback.test.ts` | 81 |
 | `src/services/googleAuth.ts` | 79 |
 | `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
@@ -392,6 +394,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/createTrackStreamingGrant.test.ts` | 67 |
 | `src/services/mutuals.ts` | 66 |
 | `src/services/activeConversation.ts` | 62 |
+| `src/services/__tests__/waveformLosslessGuard.test.ts` | 59 |
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/__tests__/scanUploadRequest.test.ts` | 56 |
 | `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
@@ -465,7 +468,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-54 file(s), 4,573 lines.
+54 file(s), 4,598 lines.
 
 | File | Lines |
 |---|---:|
@@ -483,16 +486,16 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/groupStoriesByAuthor.ts` | 125 |
 | `src/utils/__tests__/groupFaces.test.ts` | 124 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
+| `src/utils/__tests__/commentThread.test.ts` | 111 |
 | `src/utils/mentions.ts` | 105 |
 | `src/utils/__tests__/haptics.test.ts` | 101 |
 | `src/utils/listeningStatus.ts` | 100 |
 | `src/utils/storyPlayback.ts` | 98 |
-| `src/utils/__tests__/commentThread.test.ts` | 94 |
+| `src/utils/commentThread.ts` | 91 |
 | `src/utils/playTracker.ts` | 90 |
 | `src/utils/__tests__/listeningStatus.test.ts` | 88 |
 | `src/utils/spotifyLinks.ts` | 86 |
 | `src/utils/__tests__/spotifyLinks.test.ts` | 84 |
-| `src/utils/commentThread.ts` | 83 |
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/__tests__/recentSearches.test.ts` | 78 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |

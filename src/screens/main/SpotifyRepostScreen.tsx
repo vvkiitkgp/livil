@@ -66,6 +66,8 @@ export default function SpotifyRepostScreen() {
   const [pickedId, setPickedId] = useState<string | null>(route.params?.spotifyTrackId ?? null);
 
   const [query, setQuery] = useState('');
+  /** The scroll view's height, so the page can be kept 1px taller than it (see below). */
+  const [frameHeight, setFrameHeight] = useState(0);
   const [results, setResults] = useState<SpotifyTrack[]>([]);
   const [searching, setSearching] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -199,8 +201,14 @@ export default function SpotifyRepostScreen() {
 
       <KeyboardAwareScrollView
         style={styles.flex}
-        contentContainerStyle={styles.scrollContent}
+        // At least 1px taller than the screen: this page is often short (a search box and a
+        // few results), and a page with nothing to scroll ignores a drag on Android — so
+        // "on-drag" never fired and the keyboard stayed up.
+        contentContainerStyle={[styles.scrollContent, frameHeight > 0 && { minHeight: frameHeight + 1 }]}
+        onLayout={e => setFrameHeight(Math.floor(e.nativeEvent.layout.height))}
         keyboardShouldPersistTaps="handled"
+        // Dragging the page puts the keyboard away, as on Upload, Search and New message.
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {!pickedId ? (
