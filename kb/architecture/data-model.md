@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 157 migration(s) in `supabase/migrations/`.
+Reconstructed from 160 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-61 table(s).
+62 table(s).
 
 ### `account_exit_feedback`
 
@@ -429,6 +429,7 @@ RLS enabled · defined in `20260528000000_chat_jam.sql`
 
 - `trg_jam_rooms_clear_suggestions` — after update of status (`20260930000000_jam_suggestions.sql`)
 - `trg_jam_rooms_guard` — before update (`20260930000000_jam_suggestions.sql`)
+- `trg_jam_rooms_server_time` — before insert or update of ended_at (`20261105000000_server_time_on_writes.sql`)
 
 ### `jam_suggestions`
 
@@ -524,6 +525,7 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 - `after_message_insert` — after insert (`20260528000000_chat_jam.sql`)
 - `trg_messages_freeze_identity` — before update (`20260729000000_liv78_msg_update_with_check.sql`)
 - `after_message_delete` — after delete (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
+- `trg_messages_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
 
 ### `moderation_actions`
 
@@ -549,6 +551,16 @@ RLS enabled · defined in `20260923010000_track_takedown.sql`
 
 - `trg_moderation_actions_append_only` — BEFORE UPDATE OR DELETE (`20260923010000_track_takedown.sql`)
 - `trg_moderation_actions_pin` — BEFORE INSERT (`20260923010000_track_takedown.sql`)
+
+### `music_scores`
+
+RLS enabled · defined in `20261104000000_music_score.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid primary key references public.profiles(id) on delete cascade` |
+| `score` | `integer not null default 0 check (score >= 0)` |
+| `computed_at` | `timestamptz not null default now()` |
 
 ### `notification_preferences`
 
@@ -777,6 +789,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 - `trg_post_likes_count` — after insert or delete (`20260722120000_capture_counter_triggers.sql`)
 - `trg_post_likes_activity_removed` — after delete (`20260929010000_like_notifications_follow_real_likes.sql`)
+- `trg_post_likes_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
 
 ### `post_removals`
 
@@ -917,6 +930,8 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `notify_track_credits` — after insert (`20260806130000_credit_accept_decline.sql`)
 - `trg_posts_block_taken_down` — BEFORE INSERT (`20260923010000_track_takedown.sql`)
 - `trg_posts_spotify_switch_guard` — before insert (`20261013000000_spotify_reposts.sql`)
+- `trg_posts_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
+- `trg_posts_keep_created_at` — before update of created_at (`20261105000000_server_time_on_writes.sql`)
 
 ### `profile_badges`
 
@@ -1480,6 +1495,8 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_tracks_freeze_takedown` — BEFORE UPDATE (`20260923010000_track_takedown.sql`)
 - `trg_tracks_block_taken_down_delete` — BEFORE DELETE (`20260923010000_track_takedown.sql`)
 - `trg_track_scans_drop_unanswered` — AFTER DELETE (`20260923090000_an_unanswered_scan_is_not_a_record.sql`)
+- `trg_tracks_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
+- `trg_tracks_keep_created_at` — before update of created_at (`20261105000000_server_time_on_writes.sql`)
 
 ### `user_last_seen`
 
@@ -1557,12 +1574,14 @@ same row-level security policies that gate ordinary reads.
 | `trg_jam_room_members_insert_guard` | `jam_room_members` | before insert | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_rooms_clear_suggestions` | `jam_rooms` | after update of status | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_rooms_guard` | `jam_rooms` | before update | `20260930000000_jam_suggestions.sql` |
+| `trg_jam_rooms_server_time` | `jam_rooms` | before insert or update of ended_at | `20261105000000_server_time_on_writes.sql` |
 | `trg_jam_suggestions_guard` | `jam_suggestions` | before insert or update | `20260930000000_jam_suggestions.sql` |
 | `trg_jam_suggestions_reject_spotify` | `jam_suggestions` | before insert or update of post_id | `20261013000000_spotify_reposts.sql` |
 | `listen_sessions_stamp` | `listen_sessions` | before insert or update | `20260925000000_listening_now.sql` |
 | `after_message_insert` | `messages` | after insert | `20260528000000_chat_jam.sql` |
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
 | `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
+| `trg_messages_stamp_created_at` | `messages` | before insert | `20261105000000_server_time_on_writes.sql` |
 | `trg_moderation_actions_append_only` | `moderation_actions` | BEFORE UPDATE OR DELETE | `20260923010000_track_takedown.sql` |
 | `trg_moderation_actions_pin` | `moderation_actions` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
 | `trg_playlist_posts_reject_spotify` | `playlist_posts` | before insert or update of post_id | `20261013000000_spotify_reposts.sql` |
@@ -1577,6 +1596,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_comments_clamp_on_insert` | `post_comments` | before insert | `20261103000000_comment_text_locked.sql` |
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
+| `trg_post_likes_stamp_created_at` | `post_likes` | before insert | `20261105000000_server_time_on_writes.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_views_recent_tracks` | `post_views` | after insert | `20260929000000_recently_played_is_recorded.sql` |
 | `trg_post_views_reject_spotify` | `post_views` | before insert | `20261013000000_spotify_reposts.sql` |
@@ -1586,6 +1606,8 @@ same row-level security policies that gate ordinary reads.
 | `notify_track_credits` | `posts` | after insert | `20260806130000_credit_accept_decline.sql` |
 | `trg_posts_block_taken_down` | `posts` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
 | `trg_posts_spotify_switch_guard` | `posts` | before insert | `20261013000000_spotify_reposts.sql` |
+| `trg_posts_stamp_created_at` | `posts` | before insert | `20261105000000_server_time_on_writes.sql` |
+| `trg_posts_keep_created_at` | `posts` | before update of created_at | `20261105000000_server_time_on_writes.sql` |
 | `trg_profile_badges_no_orphan_revoke` | `profile_badges` | before update | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_orphan_delete` | `profile_badges` | before delete | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_truncate` | `profile_badges` | before truncate | `20260920000000_badge_slot_reclaim_split.sql` |
@@ -1608,6 +1630,8 @@ same row-level security policies that gate ordinary reads.
 | `trg_tracks_freeze_takedown` | `tracks` | BEFORE UPDATE | `20260923010000_track_takedown.sql` |
 | `trg_tracks_block_taken_down_delete` | `tracks` | BEFORE DELETE | `20260923010000_track_takedown.sql` |
 | `trg_track_scans_drop_unanswered` | `tracks` | AFTER DELETE | `20260923090000_an_unanswered_scan_is_not_a_record.sql` |
+| `trg_tracks_stamp_created_at` | `tracks` | before insert | `20261105000000_server_time_on_writes.sql` |
+| `trg_tracks_keep_created_at` | `tracks` | before update of created_at | `20261105000000_server_time_on_writes.sql` |
 
 ## Related
 
