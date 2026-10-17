@@ -5,7 +5,8 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
-jest.mock('../GradientBorder', () => ({ GradientBorder: () => null }));
+jest.mock('../Icon', () => ({ Icon: () => null }));
+
 
 let mockResult: { data: unknown; error: unknown } | Error = { data: { score: 1284 }, error: null };
 jest.mock('../../../lib/supabase', () => ({

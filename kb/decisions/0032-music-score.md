@@ -38,8 +38,9 @@ and every loop counts again, so a raw play count is trivially farmed.
 ## Decision
 
 - **One number per person, shown to every signed-in user, and the app says nothing about
-  it.** It is a small tag under the @name — a round gradient badge holding the pulse, with the
-  number beside it — with no label and nothing to tap. (The pulse is Phosphor's free icon:
+  it.** It is a small purple pill under the @name — the pulse and the number — with no label and
+  nothing to tap (owner kept this first design after trying a logo, a gradient outline and a
+  round badge, 2026-10-18). (The pulse is Phosphor's free icon:
   usable, not ownable; a trademarkable mark is a separate task — owner, 2026-10-18.) How it grows is
   explained at livil-music.com/score, not in the app.
 - **Recomputed from scratch every night** (`refresh_music_scores()`, pg_cron 22:00 UTC).
