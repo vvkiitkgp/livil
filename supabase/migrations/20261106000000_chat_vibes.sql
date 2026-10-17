@@ -10,15 +10,18 @@
 -- Points, all between the two of you:
 --   a message (either of you; not system messages, not deleted)        1
 --   a shared song (Livil track or Spotify link) — instead of the 1     3
---   the other person played the song you shared (Livil play after the
---   share, or opening the Spotify song after the share)                 3 per shared song
---   a reaction to the other's message                                    1
+--   a reaction by one of you to the other's message                     1
 --   a Jam in this chat that played 5+ minutes (host heartbeat)          10
 --   a like or a comment on the other's post                              1
 --
--- my_chat_vibes() answers only for the caller's own one-to-one chats, and nothing across
--- a block. "They played the song you shared" tells the sharer something about the other
--- person's listening — that is the feature, and it stays inside the pair.
+-- my_chat_vibes() answers only for the caller's own one-to-one chats (exactly two
+-- members), and nothing across a block.
+--
+-- NOT counted, on purpose: "the other person played the song you shared". It needs the
+-- friend's play history (post_views) and Spotify opens, which no one else may read, and a
+-- sender can rewrite an old message into a share of any song — so the number became a
+-- lookup of what the friend had played, ignoring their "keep my listening private" switch
+-- (security review, 2026-10-18). Nothing here reads anyone's listening.
 --
 -- ADDITIVE: one new function no shipped app calls. The new app hides the vibe when it is
 -- missing.
@@ -39,52 +42,32 @@ as $$
       join conversation_members them
         on them.conversation_id = c.id and them.user_id <> (select auth.uid())
      where c.kind = 'dm'
+       and (select count(*) from conversation_members x where x.conversation_id = c.id) = 2
        and not public.is_blocked_between((select auth.uid()), them.user_id)
   ),
-  msgs as (
-    select m.id, m.conversation_id, m.sender_id, m.kind, m.body, m.metadata, m.created_at,
-           public.message_preview(m.kind, m.body) = '🎵 Shared a song' as is_song
+  pts as (
+    -- every message 1, a shared song 3. message_preview decides what a shared song is;
+    -- the LIKE only spares it the text messages that cannot be one.
+    select m.conversation_id,
+           case when m.kind = 'track_share'
+                  or (m.kind = 'text' and m.body like '%spotify%'
+                      and public.message_preview(m.kind, m.body) = '🎵 Shared a song')
+                then 3 else 1 end as p
       from messages m
       join mine on mine.conversation_id = m.conversation_id
      where m.deleted_at is null
        and m.kind <> 'system'
-  ),
-  pts as (
-    -- every message 1, a shared song 3
-    select g.conversation_id, case when g.is_song then 3 else 1 end as p
-      from msgs g
 
     union all
-    -- the other person played the Livil song you shared, after you shared it
-    select g.conversation_id, 3
-      from msgs g
-     where g.kind = 'track_share'
-       and exists (select 1 from post_views v
-                    where v.post_id::text = g.metadata->>'post_id'
-                      and v.user_id <> g.sender_id
-                      and v.user_id in (select cm.user_id from conversation_members cm
-                                         where cm.conversation_id = g.conversation_id)
-                      and v.played_at >= g.created_at)
-
-    union all
-    -- …or opened the Spotify song you shared, after you shared it
-    select g.conversation_id, 3
-      from msgs g
-     where g.kind = 'text'
-       and g.is_song
-       and exists (select 1 from spotify_opens o
-                    where o.spotify_track_id = substring(g.body from 'track[/:]([A-Za-z0-9]{22})')
-                      and o.user_id <> g.sender_id
-                      and o.user_id in (select cm.user_id from conversation_members cm
-                                         where cm.conversation_id = g.conversation_id)
-                      and o.created_at >= g.created_at)
-
-    union all
-    -- a reaction to the other person's message
-    select g.conversation_id, 1
-      from msgs g
-      join message_reactions r on r.message_id = g.id
-     where r.user_id <> g.sender_id
+    -- a reaction by one of the two to the other's message
+    select m.conversation_id, 1
+      from messages m
+      join mine on mine.conversation_id = m.conversation_id
+      join message_reactions r on r.message_id = m.id
+     where m.deleted_at is null
+       and m.kind <> 'system'
+       and r.user_id in ((select auth.uid()), mine.friend_id)
+       and r.user_id <> m.sender_id
 
     union all
     -- a Jam in this chat that played 5+ minutes
@@ -120,6 +103,6 @@ revoke execute on function public.my_chat_vibes() from public, anon;
 grant execute on function public.my_chat_vibes() to authenticated;
 
 comment on function public.my_chat_vibes() is
-  'The caller''s one-to-one chats and the vibe of each: messages, shared songs (and the other '
-  'person playing them), reactions, Jams, and likes/comments on each other''s posts. Nothing '
-  'across a block, nothing for groups.';
+  'The caller''s one-to-one chats and the vibe of each: messages, shared songs, reactions, '
+  'Jams, and likes/comments on each other''s posts. Reads no one''s listening. Nothing across '
+  'a block, nothing for groups.';
