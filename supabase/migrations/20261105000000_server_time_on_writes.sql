@@ -79,7 +79,7 @@ create trigger trg_tracks_keep_created_at
 
 -- ── 3. Jams: started now, ended now ─────────────────────────────────────────
 -- started_at can already not change after creation (jam_room_identity_is_immutable,
--- 20260930000000); this sets it at creation and stamps ended_at when a Jam ends.
+-- 20260930000000); this sets it at creation, stamps ended_at when a Jam ends, and keeps it.
 create or replace function public.jam_rooms_server_time()
 returns trigger
 language plpgsql
@@ -90,8 +90,11 @@ begin
     if tg_op = 'INSERT' then
       new.started_at := now();
       new.ended_at := null;
-    elsif new.ended_at is not null and new.ended_at is distinct from old.ended_at then
-      -- Ending stamps the server's time; clearing or keeping it is left alone.
+    elsif old.ended_at is not null then
+      -- Ended is final, like the 'ended' status: not moved later, not cleared.
+      new.ended_at := old.ended_at;
+    elsif new.ended_at is not null then
+      -- Ending stamps the server's time.
       new.ended_at := now();
     end if;
   end if;

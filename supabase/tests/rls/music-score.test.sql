@@ -74,13 +74,20 @@ insert into tracks (id, uploader_id, title, media_kind, audio_url, created_at, t
   ('ca000000-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000002',
    'Full Moon', 'audio', 'https://example.invalid/1.mp3', '2026-10-10 06:00+00', null),
   ('ca000000-0000-0000-0000-000000000002', 'c9000000-0000-0000-0000-000000000002',
-   'Taken down', 'audio', 'https://example.invalid/2.mp3', '2026-10-10 06:00+00', null);
+   'Taken down', 'audio', 'https://example.invalid/2.mp3', '2026-10-10 06:00+00', null),
+  -- Never posted, and never finished uploading: neither is "uploading a song".
+  ('ca000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000002',
+   'Bare row', 'audio', 'https://example.invalid/3.mp3', '2026-10-10 06:00+00', null),
+  ('ca000000-0000-0000-0000-000000000004', 'c9000000-0000-0000-0000-000000000002',
+   'Still uploading', 'audio', 'pending://placeholder', '2026-10-10 06:00+00', null);
 
 insert into posts (id, author_id, kind, track_id, created_at) values
   ('cb000000-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000002', 'upload',
    'ca000000-0000-0000-0000-000000000001', '2026-10-10 06:00+00'),
   ('cb000000-0000-0000-0000-000000000002', 'c9000000-0000-0000-0000-000000000002', 'upload',
-   'ca000000-0000-0000-0000-000000000002', '2026-10-10 06:00+00');
+   'ca000000-0000-0000-0000-000000000002', '2026-10-10 06:00+00'),
+  ('cb000000-0000-0000-0000-000000000006', 'c9000000-0000-0000-0000-000000000002', 'upload',
+   'ca000000-0000-0000-0000-000000000004', '2026-10-10 06:00+00');
 insert into posts (id, author_id, kind, spotify_track_id, created_at) values
   -- Omar's Spotify repost, and Lena's two reposts of the SAME Spotify song on two days.
   ('cb000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000003', 'repost',
@@ -149,12 +156,18 @@ insert into messages (conversation_id, sender_id, kind, body, created_at, delete
   ('cd000000-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000001', 'text', 'hello', '2026-10-10 06:02+00', null),
   ('cd000000-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000001', 'track_share', '', '2026-10-10 06:03+00', '2026-10-10 06:04+00');
 
--- Jams: Uday hosts one for 10 minutes and one for 2.
-insert into jam_rooms (conversation_id, host_id, status, started_at, ended_at) values
+-- Jams: Uday hosts one that played for 10 minutes, one for 2, and one that never played
+-- (ended an hour later — but nothing ever played). Only the server's heartbeat
+-- (last_played_at) measures play; the guard that keeps clients off it is set aside here.
+set local session_replication_role = replica;
+insert into jam_rooms (conversation_id, host_id, status, started_at, ended_at, last_played_at) values
   ('cd000000-0000-0000-0000-000000000002', 'c9000000-0000-0000-0000-000000000002', 'ended',
-   '2026-10-10 06:00+00', '2026-10-10 06:10+00'),
+   '2026-10-10 06:00+00', '2026-10-10 06:10+00', '2026-10-10 06:10+00'),
   ('cd000000-0000-0000-0000-000000000002', 'c9000000-0000-0000-0000-000000000002', 'ended',
-   '2026-10-10 07:00+00', '2026-10-10 07:02+00');
+   '2026-10-10 07:00+00', '2026-10-10 07:02+00', '2026-10-10 07:02+00'),
+  ('cd000000-0000-0000-0000-000000000002', 'c9000000-0000-0000-0000-000000000002', 'ended',
+   '2026-10-10 08:00+00', '2026-10-10 09:00+00', null);
+set local session_replication_role = origin;
 
 -- ── Each rule ───────────────────────────────────────────────────────────────
 select pg_temp.assert_eq('#1 listening: Livil plays + Spotify opens, one per song a day, 50 a day',
@@ -173,11 +186,11 @@ select pg_temp.assert_eq('#5 reposting the same song twice counts once',
   pg_temp.pts('c9000000-0000-0000-0000-000000000001', 'repost'), 5);
 select pg_temp.assert_eq('#5b reposting: 10 songs a day',
   pg_temp.pts('c9000000-0000-0000-0000-000000000003', 'repost'), (1 + 10) * 5);
-select pg_temp.assert_eq('#6 uploading: 25, a taken-down track counts nothing',
+select pg_temp.assert_eq('#6 uploading: 25 for a published song; taken-down, unposted or unfinished count nothing',
   pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'upload'), 25);
 select pg_temp.assert_eq('#7 plays of your upload: one per listener per song a day, never your own',
   pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'played_by_others'), 3);
-select pg_temp.assert_eq('#8 hosting a Jam of 5+ minutes',
+select pg_temp.assert_eq('#8 hosting a Jam that played 5+ minutes (by the server''s heartbeat)',
   pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'jam'), 5);
 
 -- ── The nightly refresh ─────────────────────────────────────────────────────

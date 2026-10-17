@@ -96,4 +96,13 @@ select pg_temp.assert('#8 a Jam ends at the server''s now, whatever the phone sa
   (select started_at = now() and ended_at = now() and status = 'ended'
      from jam_rooms where id = 'd3000000-0000-0000-0000-000000000001'), true);
 
+-- Ended is final: ending again cannot move it later, and it cannot be cleared.
+select pg_temp.set_user('ce000000-0000-0000-0000-000000000001');
+set local role authenticated;
+update jam_rooms set ended_at = '2099-01-01 00:00+00' where id = 'd3000000-0000-0000-0000-000000000001';
+update jam_rooms set ended_at = null where id = 'd3000000-0000-0000-0000-000000000001';
+reset role;
+select pg_temp.assert('#9 a Jam''s end, once set, stays put',
+  (select ended_at = now() from jam_rooms where id = 'd3000000-0000-0000-0000-000000000001'), true);
+
 rollback;

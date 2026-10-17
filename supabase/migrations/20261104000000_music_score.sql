@@ -21,9 +21,9 @@
 --   comment                         2   20 a day
 --   share a song in chat            2   10 a day (a Livil track or a Spotify track link)
 --   repost a song                   5   once per song, 10 a day
---   upload a song                  25   3 a day; a taken-down track counts nothing
+--   upload a song                  25   3 a day; only a published song, not taken down
 --   someone plays your upload       1   once per listener per song a day
---   host a Jam (5+ minutes)         5   3 a day
+--   host a Jam (played 5+ minutes)  5   3 a day; measured by the server's heartbeat
 --
 -- ADDITIVE: a new table no shipped app reads, two functions no app calls, and a nightly
 -- job. The new app reads music_scores and hides the tag when the table is missing.
@@ -132,11 +132,16 @@ as $$
    group by 1
 
   union all
-  -- upload: 25 each, 3 a day; a taken-down track counts nothing
+  -- upload: 25 each, 3 a day — only a finished, published song: its media arrived (not the
+  -- `pending://` placeholder) and it has an upload post. A bare track row costs nothing to
+  -- create, so on its own it earns nothing (security review, 2026-10-17). A taken-down
+  -- track counts nothing.
   select x.uploader_id, 'upload', sum(least(x.n, 3)) * 25
     from (select t.uploader_id, (t.created_at at time zone 'Asia/Kolkata')::date as d, count(*) as n
             from tracks t
            where t.taken_down_at is null
+             and coalesce(t.audio_url, t.video_url) not like 'pending://%'
+             and exists (select 1 from posts p where p.track_id = t.id and p.kind = 'upload')
            group by 1, 2) x
    group by 1
 
@@ -153,11 +158,13 @@ as $$
    group by 1
 
   union all
-  -- host a Jam that ran 5+ minutes: 5 each, 3 a day
+  -- host a Jam that played 5+ minutes: 5 each, 3 a day. Measured from the host heartbeat
+  -- (last_played_at / host_clock_at), which only jam_host_heartbeat writes — not from
+  -- ended_at, which the host's own update sets, so a Jam that never played earns nothing.
   select x.host_id, 'jam', sum(least(x.n, 3)) * 5
     from (select j.host_id, (j.started_at at time zone 'Asia/Kolkata')::date as d, count(*) as n
             from jam_rooms j
-           where coalesce(j.ended_at, now()) - j.started_at >= interval '5 minutes'
+           where coalesce(j.last_played_at, j.host_clock_at) - j.started_at >= interval '5 minutes'
            group by 1, 2) x
    group by 1
 $$;
