@@ -1,37 +1,47 @@
 -- ============================================================================
--- A reported Spotify repost can be seen, and removed, from the moderation queue
+-- A reported repost — Spotify or Livil — can be seen, and removed on its own
 -- ============================================================================
 --
--- ADR-0027 shipped Spotify reposts with a known gap: "Ops has no tool to remove a Spotify
--- repost yet (`ops_take_down_track` acts on a track). Reports on one reach the queue;
--- removal is by SQL until an ops action exists." The first report arrived on 2026-10-17
--- — a cover-art complaint against a Spotify repost — and the queue showed it as
--- "(track unavailable)" with only "Mark reviewed" to press. Two things were missing:
+-- The first report on a Spotify repost (2026-10-17, a cover-art complaint) exposed two
+-- gaps in the moderation queue, and fixing the second exposed a third:
 --
 --   * WHAT was reported. `ops_reports_overview` joins posts → tracks, and a Spotify repost
---     has no track, so every track column came back null and the operator could not tell
---     a Spotify repost from a broken row. It now also returns `spotify_track_id`, and the
---     web console resolves title, artists and artwork live through the `spotify` edge
---     function — never stored here (Spotify's Developer Terms; ADR-0027).
+--     (ADR-0027) has no track, so every track column came back null and the queue called
+--     it "(track unavailable)". It now also returns `spotify_track_id`, which the web
+--     console resolves to title, artists and artwork live through the `spotify` edge
+--     function — never stored here (Spotify's Developer Terms; ADR-0027) — `post_kind`,
+--     so the console can tell a repost from an upload, and `post_caption`: a repost is
+--     usually reported for what its reposter WROTE, and the queue showed only the song.
 --
---   * A way to ACT. `ops_remove_spotify_repost` deletes the post, records the decision in
---     `moderation_actions`, and tells the author why — the same three things a track
---     takedown does, scoped to the one kind of post a takedown cannot reach.
+--   * No way to act on a Spotify repost. ADR-0027 recorded it: "Ops has no tool to remove a
+--     Spotify repost yet (`ops_take_down_track` acts on a track) … removal is by SQL".
+--
+--   * No PROPORTIONATE way to act on a Livil repost. Its only button was the track
+--     takedown, which removes the uploader's post and every other repost too. A repost is
+--     reported for what its reposter added — usually the caption — and the takedown
+--     punished the uploader and every other reposter for it.
+--
+-- `ops_remove_repost` deletes ONE repost of either kind, records the decision in
+-- `moderation_actions`, and tells its author why. The original upload, and everyone else's
+-- reposts, stay.
 --
 -- ── WHY A NEW FUNCTION, NOT A WIDER `ops_take_down_track` ──────────────────
 --
 -- A takedown acts on a TRACK: it tombstones it, removes every post serving it, and can be
--- restored. A Spotify repost has no Livil track, no other post serving the same thing, and
--- nothing to restore from. Folding it in would give the takedown a second, unrelated
--- meaning keyed on which argument happened to be null. Livil posts keep going through the
--- takedown, which this function refuses to stand in for.
+-- restored. This acts on one POST. Folding it in would give the takedown a second meaning
+-- keyed on which argument happened to be passed. It refuses uploads for the same reason:
+-- removing an upload's post alone would leave the track serving through every repost of
+-- it, which is exactly what the takedown exists to prevent.
+--
+-- Nothing depends on a repost: the app only ever reposts an UPLOAD (`original_post_id`
+-- always names one), so deleting a repost cannot orphan anybody else's post.
 --
 -- ── WHY THE DELETE IS NOT REVERSIBLE ───────────────────────────────────────
 --
 -- Same posture as ADR-0017 §C: posts are deleted, not hidden, so no privileged reader can
--- leak them. A Spotify repost is one row with a caption and a 22-character id; the author
--- can repost the song in seconds if the removal was wrong. The ledger keeps the caption
--- and id, so the operator can tell them exactly what came down.
+-- leak them. A repost is one row — a caption, a clip, a pointer — and its author can
+-- repost again in seconds if the removal was wrong. The ledger keeps the caption, so the
+-- operator can tell them exactly what came down.
 --
 -- ── THE REPORT ROWS GO WITH THE POST ───────────────────────────────────────
 --
@@ -49,34 +59,42 @@
 --
 -- ── NO post_removals ROW ───────────────────────────────────────────────────
 --
--- `post_removals.track_id` is NOT NULL and the shipped app reads it as a string. The
--- author is told through the `content_removed` notification instead.
+-- The shipped app's card for a removed repost says "The original track is no longer
+-- available on Livil, so your repost of it was removed too" — false for both kinds here —
+-- and `post_removals.track_id` is NOT NULL, which a Spotify repost cannot fill. The author
+-- is told through the `content_removed` notification instead.
 --
 -- ── Old app versions (production compatibility) ─────────────────────────────
 --
--- ADDITIVE. A new column on an ops-only function the mobile app never calls, a wider
+-- ADDITIVE. Two new columns on an ops-only function the mobile app never calls, a wider
 -- CHECK on an ops-only ledger, and a new ops-only function. The one thing a shipped app
--- reads is the `content_removed` notification, sent with kind 'spotify_repost' and no
--- title: 2.1.x reads any kind other than 'repost' as an upload and a null title as "one
--- of your posts", so it says "one of your posts was removed from Livil." followed by the
--- operator's reason — which is accurate. ('repost' would have been wrong: that copy says
--- "the original is no longer on Livil", and the original is on Spotify.)
+-- reads is the `content_removed` notification. 2.1.x words it from `kind` and
+-- `track_title`, and only one combination is true here:
+--
+--   kind 'repost'          → "Your repost of … was removed — the original is no longer on
+--                             Livil"   FALSE: the original is still there (or on Spotify)
+--   a title, other kind    → "“<title>” was removed from Livil"   FALSE: reads as the song
+--   NO title, other kind   → "one of your posts was removed from Livil."   TRUE
+--
+-- So the notice carries no title and kind 'spotify_repost' or 'livil_repost', followed by
+-- the operator's reason. A later app can word those two kinds more specifically.
 -- ============================================================================
 
 -- ── 1. The ledger learns a fourth action ────────────────────────────────────
 -- Wider, not tighter: every existing row still satisfies it. Strikes are untouched —
--- `ops_takedown_counts` counts 'takedown' minus 'restore' only, and a removed Spotify
--- repost is not a rights strike against the person who shared it.
+-- `ops_takedown_counts` counts 'takedown' minus 'restore' only, and a removed repost is
+-- not a rights strike against the person who shared it.
 alter table public.moderation_actions
   drop constraint if exists moderation_actions_action_check;
 alter table public.moderation_actions
   add constraint moderation_actions_action_check
   check (action in ('takedown', 'restore', 'purge_media', 'remove_post'));
 
--- ── 2. The queue says when a report is about a Spotify repost ──────────────
--- Body as in 20261102000000 plus `spotify_track_id` (posts, and the post a comment sits
--- under) and an excerpt that names a Spotify repost rather than calling it unavailable.
--- `drop` first because the return type changes.
+-- ── 2. The queue says what kind of post was reported ────────────────────────
+-- Body as in 20261102000000 plus `spotify_track_id` and `post_kind` (posts, and the post a
+-- comment sits under), `post_caption` (reported posts only) and an excerpt that names a
+-- Spotify repost rather than calling it unavailable. `drop` first because the return type
+-- changes.
 drop function if exists public.ops_reports_overview(boolean);
 
 create or replace function public.ops_reports_overview(p_include_reviewed boolean default false)
@@ -102,6 +120,12 @@ returns table (
   -- ── new: the Spotify track behind a Spotify repost (ADR-0027). The id only; the
   -- console resolves title and artwork live.
   spotify_track_id    text,
+  -- ── new: 'upload' or 'repost', so the console offers "Remove repost" only where it
+  -- applies. Null when the post is gone, and for stories.
+  post_kind           text,
+  -- ── new: the reported post's own caption. Post reports only — for a comment report the
+  -- excerpt already is the reported words.
+  post_caption        text,
   reviewed_at       timestamptz,
   reviewed_by       uuid,
   reviewer_username text
@@ -135,6 +159,8 @@ begin
       coalesce(t.cover_art_url, t.thumbnail_url),
       t.taken_down_at,
       po.spotify_track_id,
+      po.kind,
+      nullif(btrim(po.caption), ''),
       r.reviewed_at, r.reviewed_by, rv.username
     from public.post_reports r
     left join public.profiles rep    on rep.id = r.reporter_id
@@ -163,6 +189,8 @@ begin
       coalesce(ct.cover_art_url, ct.thumbnail_url),
       ct.taken_down_at,
       cpo.spotify_track_id,
+      cpo.kind,
+      null::text,
       r.reviewed_at, r.reviewed_by, rv.username
     from public.post_comment_reports r
     left join public.profiles rep     on rep.id = r.reporter_id
@@ -179,7 +207,8 @@ begin
 
     -- ── Stories ──
     -- reported_user_id comes off the REPORT, not the story: the story may be gone. A story
-    -- cannot carry a Spotify track (ADR-0027), so that column is always null here.
+    -- cannot carry a Spotify track (ADR-0027) and is not a post, so the three new columns
+    -- are null here.
     select
       'story'::text,
       r.id, r.created_at, r.reason, r.details,
@@ -196,6 +225,8 @@ begin
       coalesce(t.cover_art_url, t.thumbnail_url),
       t.taken_down_at,
       null::text,
+      null::text,
+      null::text,
       r.reviewed_at, r.reviewed_by, rv.username
     from public.story_reports r
     left join public.profiles rep    on rep.id = r.reporter_id
@@ -211,7 +242,8 @@ $function$;
 
 comment on function public.ops_reports_overview(boolean) is
   'The moderation queue. Returns the reported TRACK (or, for a Spotify repost, its Spotify '
-  'track id) as well as the report, so an operator can see what was reported before deciding.';
+  'track id) and the kind of post as well as the report, so an operator can see what was '
+  'reported before deciding.';
 
 revoke all on function public.ops_reports_overview(boolean) from public;
 revoke execute on function public.ops_reports_overview(boolean) from anon;
@@ -220,7 +252,7 @@ grant execute on function public.ops_reports_overview(boolean) to authenticated;
 -- ── 3. Removing one ─────────────────────────────────────────────────────────
 -- RAISES for a non-operator, like every ops WRITE: a silent no-op would tell the operator
 -- the post was gone while it was still in feeds.
-create or replace function public.ops_remove_spotify_repost(
+create or replace function public.ops_remove_repost(
   p_post_id uuid,
   p_reason  text
 )
@@ -231,9 +263,12 @@ set search_path = public, pg_temp
 as $function$
 declare
   v_author  uuid;
+  v_kind    text;
+  v_track   uuid;
   v_spotify text;
   v_caption text;
   v_posted  timestamptz;
+  v_what    text;
   v_reason  text;
   v_reports jsonb;
   v_report_count integer;
@@ -256,19 +291,21 @@ begin
   end if;
 
   -- FOR UPDATE: two operators on the same report must not both record a removal.
-  select author_id, spotify_track_id, caption, created_at
-    into v_author, v_spotify, v_caption, v_posted
+  select author_id, kind, track_id, spotify_track_id, caption, created_at
+    into v_author, v_kind, v_track, v_spotify, v_caption, v_posted
     from public.posts
    where id = p_post_id
      for update;
   if not found then
     raise exception 'that post is already gone' using errcode = 'P0002';
   end if;
-  -- A Livil post goes through `ops_take_down_track`, which also removes every repost of
-  -- the track and can be restored. Removing only this row would leave the rest serving.
-  if v_spotify is null then
-    raise exception 'not a Spotify repost: take down its track instead' using errcode = '22023';
+  -- An upload goes through `ops_take_down_track`, which also removes every repost of the
+  -- track and can be restored. Removing only the upload's post would leave the reposts
+  -- serving the track.
+  if v_kind <> 'repost' then
+    raise exception 'this is an upload: take down its track instead' using errcode = '22023';
   end if;
+  v_what := case when v_spotify is not null then 'spotify_repost' else 'livil_repost' end;
 
   -- Before the delete: the cascade takes the report rows with the post. Category and time
   -- only, newest 200 — see the header for why neither who nor their words.
@@ -291,7 +328,10 @@ begin
 
   delete from public.posts where id = p_post_id;
 
-  -- actor_id and created_at are pinned by `moderation_actions_pin`.
+  -- actor_id and created_at are pinned by `moderation_actions_pin`. `track_id` stays null
+  -- even for a Livil repost: that column is "an action on this track" — what
+  -- `ops_moderation_history` lists — and the track and its uploader were not acted on.
+  -- The snapshot names it instead.
   insert into public.moderation_actions (action, track_id, target_owner_id, reason, snapshot)
   values (
     'remove_post',
@@ -300,7 +340,8 @@ begin
     v_reason,
     jsonb_build_object(
       'post_id',          p_post_id,
-      'post_kind',        'spotify_repost',
+      'post_kind',        v_what,
+      'track_id',         v_track,
       'spotify_track_id', v_spotify,
       'caption',          v_caption,
       'posted_at',        v_posted,
@@ -308,36 +349,38 @@ begin
       'reports',          coalesce(v_reports, '[]'::jsonb))
   );
 
-  -- No title: Spotify metadata is never stored (ADR-0027). Swallows its own errors — the
-  -- removal is the obligation, the notice is a courtesy that must not block it.
-  perform public.notify_content_removed(v_author, null, 'spotify_repost', v_reason);
+  -- No title and never kind 'repost' — see the header for what 2.1.x would say otherwise.
+  -- (A Spotify title could not be sent anyway: it is never stored, ADR-0027.) Swallows its
+  -- own errors — the removal is the obligation, the notice a courtesy that must not block it.
+  perform public.notify_content_removed(v_author, null, v_what, v_reason);
 end;
 $function$;
 
-comment on function public.ops_remove_spotify_repost(uuid, text) is
-  'Deletes one Spotify repost (ADR-0027), records it in moderation_actions with the reports '
-  'that led to it, and tells the author why. Livil posts go through ops_take_down_track.';
+comment on function public.ops_remove_repost(uuid, text) is
+  'Deletes ONE repost — Spotify (ADR-0027) or Livil — records it in moderation_actions with '
+  'a summary of the reports that led to it, and tells its author why. The original upload '
+  'and other reposts stay. Uploads go through ops_take_down_track.';
 
-revoke all on function public.ops_remove_spotify_repost(uuid, text) from public;
-revoke execute on function public.ops_remove_spotify_repost(uuid, text) from anon;
-grant execute on function public.ops_remove_spotify_repost(uuid, text) to authenticated;
+revoke all on function public.ops_remove_repost(uuid, text) from public;
+revoke execute on function public.ops_remove_repost(uuid, text) from anon;
+grant execute on function public.ops_remove_repost(uuid, text) to authenticated;
 
 -- ── 4. Verify ───────────────────────────────────────────────────────────────
 do $verify$
 begin
-  if has_function_privilege('anon', 'public.ops_remove_spotify_repost(uuid, text)', 'execute') then
-    raise exception 'anon can execute ops_remove_spotify_repost';
+  if has_function_privilege('anon', 'public.ops_remove_repost(uuid, text)', 'execute') then
+    raise exception 'anon can execute ops_remove_repost';
   end if;
   if has_function_privilege('anon', 'public.ops_reports_overview(boolean)', 'execute') then
     raise exception 'anon can execute ops_reports_overview';
   end if;
   if not exists (
     select 1 from pg_proc p
-     where p.oid = 'public.ops_remove_spotify_repost(uuid, text)'::regprocedure
+     where p.oid = 'public.ops_remove_repost(uuid, text)'::regprocedure
        and p.prosecdef
        and p.proconfig @> array['search_path=public, pg_temp']
   ) then
-    raise exception 'ops_remove_spotify_repost must be SECURITY DEFINER with a pinned search_path';
+    raise exception 'ops_remove_repost must be SECURITY DEFINER with a pinned search_path';
   end if;
 end
 $verify$;

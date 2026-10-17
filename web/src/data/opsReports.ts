@@ -57,6 +57,17 @@ export type OpsReport = {
    */
   spotifyTrackId: string | null;
   /**
+   * 'upload' or 'repost' — the reported post, or for a comment report the post it is on.
+   * A repost can be removed on its own; an upload only through a track takedown. Null
+   * when the post is gone, for stories, and before 20261104000000 is applied.
+   */
+  postKind: 'upload' | 'repost' | null;
+  /**
+   * The reported post's own caption — usually what a repost is reported for, since the
+   * song is somebody else's. Post reports only; null when there is none.
+   */
+  postCaption: string | null;
+  /**
    * False when the reported thing is gone: a deleted post, or a story past its 24 hours.
    * The report is still actionable — the reported USER is still there — so this drives a
    * label rather than hiding the row.
@@ -94,6 +105,8 @@ export async function fetchOpsReports(includeReviewed = false): Promise<OpsRepor
     // `?? null`, not a straight copy: before 20261104000000 is applied the column is not
     // returned at all, and the queue must read as it did rather than break.
     spotifyTrackId: r.spotify_track_id ?? null,
+    postKind: r.post_kind === 'upload' || r.post_kind === 'repost' ? r.post_kind : null,
+    postCaption: r.post_caption ?? null,
     targetExists: Boolean(r.target_exists),
     reviewedAt: r.reviewed_at,
     reviewedBy: r.reviewed_by,
@@ -119,15 +132,17 @@ export async function markReportReviewed(
 }
 
 /**
- * Removes a reported Spotify repost — the one kind of post a track takedown cannot reach
- * (ADR-0027). The database deletes it, records the decision with the reports that led to
- * it, and tells the author `reason` verbatim. Not reversible; the author can repost.
+ * Removes ONE reported repost — Spotify (ADR-0027) or Livil. A track takedown cannot reach
+ * a Spotify repost at all, and for a Livil repost it would also remove the uploader's post
+ * and every other repost. The database deletes just this post, records the decision with
+ * a summary of its reports, and tells its author `reason` verbatim. Not reversible; the
+ * author can repost.
  *
- * Raises rather than no-ops, like every ops write: for a non-operator, a blank reason, a
- * Livil post (that is a takedown), or a post that is already gone.
+ * Raises rather than no-ops, like every ops write: for a non-operator, a blank reason, an
+ * upload (that is a takedown), or a post that is already gone.
  */
-export async function removeSpotifyRepost(postId: string, reason: string): Promise<void> {
-  const { error } = await supabase.rpc('ops_remove_spotify_repost', {
+export async function removeRepost(postId: string, reason: string): Promise<void> {
+  const { error } = await supabase.rpc('ops_remove_repost', {
     p_post_id: postId,
     p_reason: reason,
   });

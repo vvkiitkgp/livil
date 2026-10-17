@@ -1,11 +1,12 @@
--- Removing a reported Spotify repost from the moderation queue (ADR-0027's ops gap).
+-- Removing ONE reported repost — Spotify (ADR-0027) or Livil — from the moderation queue.
 --
---     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/ops-remove-spotify-repost.test.sql
+--     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/ops-remove-repost.test.sql
 --
--- What these pin: only an operator can remove one; it removes exactly that post and never
--- stands in for a track takedown; the decision lands in the ledger WITH the reports the
--- cascade is about to delete; the author is told, in words 2.1.x renders correctly; and
--- the queue says which reports are about a Spotify repost.
+-- What these pin: only an operator can remove one; it removes exactly that post — never
+-- the original upload or anybody else's repost — and never stands in for a track takedown;
+-- the decision lands in the ledger with a summary of the reports the cascade is about to
+-- delete; the author is told, in words 2.1.x renders truthfully; and the queue says what
+-- kind of post each report is about.
 --
 -- CI grants every table privilege to `authenticated` before these run, so a refusal here
 -- cannot be a missing GRANT in disguise.
@@ -83,6 +84,21 @@ insert into public.post_reports (id, post_id, reporter_id, reason, details) valu
    '5a000000-0000-0000-0000-000000000002', 'other', 'Cover photo is not appropriate')
 on conflict (id) do nothing;
 
+-- A Livil repost of that upload by the reporter, with a caption of their own, and a second
+-- repost by somebody else. The first is reported; removing it must touch nothing else.
+insert into public.posts (id, author_id, kind, track_id, original_post_id, caption) values
+  ('5c000000-0000-0000-0000-000000000003', '5a000000-0000-0000-0000-000000000002',
+   'repost', '5b000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000002',
+   'a rude caption'),
+  ('5c000000-0000-0000-0000-000000000004', '5a000000-0000-0000-0000-000000000003',
+   'repost', '5b000000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000002',
+   null)
+on conflict (id) do nothing;
+insert into public.post_reports (id, post_id, reporter_id, reason) values
+  ('5d000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000003',
+   '5a000000-0000-0000-0000-000000000001', 'harassment')
+on conflict (id) do nothing;
+
 -- What a real reported post carries into the cascade: a like, a comment, and a report of
 -- that comment — which must SURVIVE the post (20261102000000).
 insert into public.post_likes (post_id, user_id) values
@@ -114,16 +130,24 @@ select pg_temp.assert(
     where id = '5d000000-0000-0000-0000-000000000001'),
   true);
 
+select pg_temp.assert(
+  '1c  the queue says a Livil repost is a repost, names its track, and shows its caption',
+  (select post_kind = 'repost' and track_id = '5b000000-0000-0000-0000-000000000001'
+      and spotify_track_id is null and post_caption = 'a rude caption'
+     from public.ops_reports_overview(false)
+    where id = '5d000000-0000-0000-0000-000000000002'),
+  true);
+
 select pg_temp.set_user('5a000000-0000-0000-0000-000000000002');
 select pg_temp.assert(
-  '1c  a non-operator still reads an empty queue',
+  '1d  a non-operator still reads an empty queue',
   exists (select 1 from public.ops_reports_overview(true)),
   false);
 
 -- ── 2. The gate ─────────────────────────────────────────────────────────────
 select pg_temp.assert(
-  '2a  a non-operator cannot remove a Spotify repost (42501)',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  '2a  a non-operator cannot remove a repost (42501)',
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-000000000001'::uuid, 'no') $$) = '42501',
   true);
 
@@ -131,22 +155,22 @@ select pg_temp.assert(
 select pg_temp.set_user('5a000000-0000-0000-0000-000000000003');
 select pg_temp.assert(
   '3a  a blank reason is refused — the author is shown it',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-000000000001'::uuid, '   ') $$) = '22023',
   true);
 select pg_temp.assert(
   '3b  a reason the ledger cannot hold is refused before anything is deleted',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-000000000001'::uuid, repeat('x', 1001)) $$) = '22023',
   true);
 select pg_temp.assert(
-  '3c  a Livil post is refused — that is a track takedown',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  '3c  an UPLOAD is refused — that is a track takedown',
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-000000000002'::uuid, 'wrong tool') $$) = '22023',
   true);
 select pg_temp.assert(
   '3d  a post that does not exist says so',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-0000000000ff'::uuid, 'gone') $$) = 'P0002',
   true);
 
@@ -166,7 +190,7 @@ set local role authenticated;
 select pg_temp.set_user('5a000000-0000-0000-0000-000000000003');
 select pg_temp.assert(
   '4a  an operator can remove a Spotify repost',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-000000000001'::uuid,
     '  This post showed sexual or graphic material.  ') $$) = 'ok',
   true);
@@ -229,7 +253,7 @@ select pg_temp.assert(
 
 -- 2.1.x reads any kind but 'repost' as an upload and a null title as "one of your posts".
 select pg_temp.assert(
-  '4h  the author is told, with no title and a kind 2.1.x words correctly',
+  '4h  the author is told, with no title and a kind 2.1.x words truthfully',
   (select payload->>'kind' = 'spotify_repost'
       and payload->'track_title' = 'null'::jsonb
       and payload->>'reason' = 'This post showed sexual or graphic material.'
@@ -244,7 +268,7 @@ set local role authenticated;
 select pg_temp.set_user('5a000000-0000-0000-0000-000000000003');
 select pg_temp.assert(
   '5a  a second removal of the same post says it is already gone',
-  pg_temp.outcome($$ select public.ops_remove_spotify_repost(
+  pg_temp.outcome($$ select public.ops_remove_repost(
     '5c000000-0000-0000-0000-000000000001'::uuid, 'again') $$) = 'P0002',
   true);
 reset role;
@@ -258,6 +282,67 @@ select pg_temp.assert(
   '5c  a removal is not a rights strike',
   exists (select 1 from public.ops_takedown_counts()
            where uploader_id = '5a000000-0000-0000-0000-000000000001'),
+  false);
+
+-- ── 6. A Livil repost: only that repost goes ───────────────────────────────
+select pg_temp.assert(
+  '6a  an operator can remove a Livil repost',
+  pg_temp.outcome($$ select public.ops_remove_repost(
+    '5c000000-0000-0000-0000-000000000003'::uuid, 'This post targeted a person.') $$) = 'ok',
+  true);
+
+reset role;
+select pg_temp.assert(
+  '6b  the reported repost is gone',
+  exists (select 1 from public.posts where id = '5c000000-0000-0000-0000-000000000003'),
+  false);
+select pg_temp.assert(
+  '6c  the original upload stays, still counting the repost that remains',
+  (select reposts_count = 1 from public.posts where id = '5c000000-0000-0000-0000-000000000002'),
+  true);
+select pg_temp.assert(
+  '6d  somebody else''s repost of the same song stays',
+  exists (select 1 from public.posts where id = '5c000000-0000-0000-0000-000000000004'),
+  true);
+select pg_temp.assert(
+  '6e  the song is not taken down',
+  (select taken_down_at is null from public.tracks where id = '5b000000-0000-0000-0000-000000000001'),
+  true);
+select pg_temp.assert(
+  '6f  the ledger records a Livil repost, naming its track only in the snapshot',
+  (select track_id is null
+      and target_owner_id = '5a000000-0000-0000-0000-000000000002'
+      and snapshot->>'post_kind' = 'livil_repost'
+      and snapshot->>'track_id' = '5b000000-0000-0000-0000-000000000001'
+      and snapshot->>'caption' = 'a rude caption'
+      and (snapshot->>'report_count')::int = 1
+     from public.moderation_actions
+    where action = 'remove_post' and target_owner_id = '5a000000-0000-0000-0000-000000000002'),
+  true);
+-- Never kind 'repost' (2.1.x would say "the original is no longer on Livil") and never a
+-- title (it would read "“A Livil upload” was removed from Livil").
+select pg_temp.assert(
+  '6g  the reposter is told, with no title and a kind 2.1.x words truthfully',
+  (select payload->>'kind' = 'livil_repost'
+      and payload->'track_title' = 'null'::jsonb
+      and payload->>'reason' = 'This post targeted a person.'
+     from public.activity_notifications
+    where recipient_id = '5a000000-0000-0000-0000-000000000002'
+      and type = 'content_removed'),
+  true);
+select pg_temp.assert(
+  '6h  the uploader is told nothing — nothing of theirs was removed',
+  exists (select 1 from public.activity_notifications
+           where recipient_id = '5a000000-0000-0000-0000-000000000001'
+             and type = 'content_removed'
+             and payload->>'kind' = 'livil_repost'),
+  false);
+
+set local role authenticated;
+select pg_temp.set_user('5a000000-0000-0000-0000-000000000003');
+select pg_temp.assert(
+  '6i  the song''s takedown history does not list it — the track was not acted on',
+  exists (select 1 from public.ops_moderation_history('5b000000-0000-0000-0000-000000000001')),
   false);
 
 rollback;

@@ -2616,7 +2616,7 @@ export type Database = {
           username: string
         }[]
       }
-      ops_remove_spotify_repost: {
+      ops_remove_repost: {
         Args: { p_post_id: string; p_reason: string }
         Returns: undefined
       }
@@ -2630,6 +2630,8 @@ export type Database = {
           kind: string
           media_kind: string
           media_url: string
+          post_caption: string
+          post_kind: string
           reason: string
           reported_user_id: string
           reported_username: string

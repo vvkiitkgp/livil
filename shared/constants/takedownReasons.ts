@@ -110,10 +110,10 @@ export const TAKEDOWN_REASONS: TakedownReason[] = [
 ];
 
 /**
- * The same question for removing a Spotify repost (ADR-0027), which is a POST, not an
- * upload: the person shared somebody else's song from Spotify, so "This upload…" would
+ * The same question for removing ONE repost — Spotify (ADR-0027) or Livil — which is a
+ * POST, not an upload: the person shared somebody else's song, so "This upload…" would
  * tell them something false. Only the categories that can apply to a share — copyright,
- * impersonation and off-topic are about the uploaded work, and Livil hosts none of it.
+ * impersonation and off-topic are about the uploaded work, which a takedown handles.
  */
 export const POST_REMOVAL_REASONS: TakedownReason[] = [
   {

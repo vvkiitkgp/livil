@@ -23,7 +23,7 @@ import { BarChart } from '../components/BarChart';
 import {
   fetchOpsReports,
   markReportReviewed,
-  removeSpotifyRepost,
+  removeRepost,
   type OpsReport,
 } from '../data/opsReports';
 import { TakedownDialog } from '../components/TakedownDialog';
@@ -73,7 +73,7 @@ import {
  */
 type PendingAction = {
   mode: 'takedown' | 'restore' | 'remove';
-  /** The track for a takedown or restore; the POST for a remove — a Spotify repost has no track. */
+  /** The track for a takedown or restore; the POST for a remove — it removes one repost. */
   targetId: string;
   title: string;
   idShort: string;
@@ -356,24 +356,29 @@ export function Ops() {
   }, []);
 
   /**
-   * Remove the Spotify repost behind a POST report (ADR-0027). A takedown cannot reach it:
-   * there is no Livil track. Post reports only — a comment report on a Spotify repost is
-   * about the comment, and its row carries no post id to act on.
+   * Remove just the reported REPOST — Spotify or Livil. A takedown cannot reach a Spotify
+   * repost (ADR-0027), and for a Livil one it would also remove the uploader's post and
+   * every other repost, when what was reported is usually this reposter's caption. Post
+   * reports only — a comment report is about the comment, and its row carries no post id.
    */
-  const onRemoveSpotifyRepost = useCallback((r: OpsReport) => {
-    if (r.kind !== 'post' || !r.targetId || !r.spotifyTrackId) return;
-    const song = reportSpotify[r.spotifyTrackId];
+  const onRemoveRepost = useCallback((r: OpsReport) => {
+    if (r.kind !== 'post' || !r.targetId || r.postKind !== 'repost') return;
+    const song = r.spotifyTrackId ? reportSpotify[r.spotifyTrackId] : null;
     const who = r.reportedUsername ? `@${r.reportedUsername}` : 'the poster';
     setPending({
       mode: 'remove',
       targetId: r.targetId,
-      title: song ? `${song.title} — ${song.artists}` : 'Spotify repost',
+      title: r.spotifyTrackId
+        ? song ? `${song.title} — ${song.artists}` : 'Spotify repost'
+        : r.trackTitle ?? '(untitled)',
       idShort: shortId(r.targetId),
       resultKey: `${r.kind}-${r.id}`,
       source: 'report',
-      impact: `Reported as “${r.reason}”. Removing it deletes ${who}'s repost from every feed `
-        + 'and tells them why. This report closes with it; the report and your decision '
-        + 'are kept in the moderation ledger.',
+      impact: `Reported as “${r.reason}”. Removing it deletes only ${who}'s repost and tells `
+        + 'them why'
+        + (r.spotifyTrackId ? '. ' : " — the original upload and everyone else's reposts stay. ")
+        + 'This report closes with it; the report and your decision are kept in the '
+        + 'moderation ledger.',
     });
   }, [reportSpotify]);
 
@@ -405,14 +410,18 @@ export function Ops() {
             [pending.resultKey]: "Restored — the uploader's post is back.",
           }));
         } else {
-          await removeSpotifyRepost(pending.targetId, reason);
+          await removeRepost(pending.targetId, reason);
           setRowResult(r => ({
             ...r,
-            [pending.resultKey]: 'Removed — the post is gone and its author was told why.',
+            [pending.resultKey]: 'Removed — the repost is gone and its author was told why.',
           }));
-          // NOT reloaded: the report row was deleted with the post, so a reload would take
-          // this answer away with it. The next load drops the row.
-          setRemovedReports(prev => new Set(prev).add(pending.resultKey));
+          // NOT reloaded: the report rows were deleted with the post, so a reload would take
+          // this answer away with it. Every report of that post is marked; the next load
+          // drops them.
+          const gone = (reports ?? [])
+            .filter(x => x.kind === 'post' && x.targetId === pending.targetId)
+            .map(x => `${x.kind}-${x.id}`);
+          setRemovedReports(prev => new Set([...prev, pending.resultKey, ...gone]));
           setPending(null);
           return;
         }
@@ -431,7 +440,7 @@ export function Ops() {
         setActingId(null);
       }
     },
-    [pending, loadScans, loadReports],
+    [pending, reports, loadScans, loadReports],
   );
 
   // Loaded independently of every other section: one failing read must not blank the rest
@@ -703,6 +712,9 @@ export function Ops() {
               <p className="msg__body">
                 {r.targetExcerpt || '(nothing to show)'}
               </p>
+              {/* What the poster wrote. For a repost this is usually what was reported:
+                  the song is somebody else's. */}
+              {r.postCaption && <p className="msg__body">“{r.postCaption}”</p>}
 
               {/* THE REPORTED THING, PLAYABLE. Without this the queue was an accusation
                   and a username, and the only honest action was "I looked at some text".
@@ -710,13 +722,14 @@ export function Ops() {
                   connection per row on load. A comment report plays the track the comment
                   sits under — the remark is what was reported, but the remark is not
                   judgeable on its own. */}
-              {r.mediaUrl && (
+              {r.mediaUrl && !removedReports.has(`${r.kind}-${r.id}`) && (
                 <div className="msg__media">
                   {r.coverUrl && <img src={r.coverUrl} alt="" />}
                   <div className="msg__mediatext">
                     <span className="hint">
                       {r.trackTitle ?? '(untitled)'}
                       {r.kind === 'comment' && ' — the post this comment is on'}
+                      {r.kind === 'post' && r.postKind === 'repost' && ' · repost'}
                       {r.trackTakenDownAt && ' · already taken down'}
                     </span>
                     {r.mediaKind === 'video' ? (
@@ -754,34 +767,40 @@ export function Ops() {
                     it, so "Mark reviewed" would only fail. */}
                 {!removedReports.has(`${r.kind}-${r.id}`) && (
                   <div className="filters filters--end">
+                    {/* Just this repost. First and the red one on a repost report: what
+                        was reported is usually this reposter's own caption, and the
+                        takedown beside it would remove the uploader's post and every other
+                        repost too. Post reports only: a comment report is about the
+                        comment, not the post it sits under. */}
+                    {r.kind === 'post' && r.postKind === 'repost' && r.targetExists && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        busy={actingId === `${r.kind}-${r.id}`}
+                        onClick={() => onRemoveRepost(r)}
+                      >
+                        Remove repost
+                      </Button>
+                    )}
                     {/* Only when there is a track to act on. A comment report offers this
                         too — a comment can be reported ON an upload that is itself the
-                        problem — but the button says what it actually does, because taking
-                        down the track does NOT delete the comment. */}
+                        problem. On a comment or a repost the label says the WHOLE track,
+                        because that is what comes down — the upload and every repost — and
+                        not the comment or the repost that was reported. */}
                     {r.trackId && (
                       <Button
-                        variant={r.trackTakenDownAt ? 'secondary' : 'destructive'}
+                        variant={
+                          r.trackTakenDownAt || r.postKind === 'repost' ? 'secondary' : 'destructive'
+                        }
                         size="sm"
                         busy={actingId === `${r.kind}-${r.id}`}
                         onClick={() => onReportAction(r)}
                       >
                         {r.trackTakenDownAt
                           ? 'Restore track'
-                          : r.kind === 'comment'
+                          : r.kind === 'comment' || r.postKind === 'repost'
                             ? 'Take down the track'
                             : 'Take down'}
-                      </Button>
-                    )}
-                    {/* A Spotify repost has no track to take down. Post reports only: a
-                        comment report is about the comment, not the post it sits under. */}
-                    {r.kind === 'post' && r.spotifyTrackId && r.targetExists && (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        busy={actingId === `${r.kind}-${r.id}`}
-                        onClick={() => onRemoveSpotifyRepost(r)}
-                      >
-                        Remove post
                       </Button>
                     )}
                     <Button
