@@ -15,6 +15,7 @@ import CommentSongCard from './CommentSongCard';
 import CommentGifCard from './CommentGifCard';
 import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
+import { relativeTime } from '../utils/commentTime';
 import { commentDisplayText, type CommentNode } from '../services/comments';
 import {
   ELBOW_RADIUS,
@@ -39,23 +40,6 @@ type Props = {
   highlighted: boolean;
 };
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) { return ''; }
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) { return `${diffSec}s`; }
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) { return `${m}m`; }
-  const h = Math.floor(m / 60);
-  if (h < 24) { return `${h}h`; }
-  const d = Math.floor(h / 24);
-  if (d < 7) { return `${d}d`; }
-  const w = Math.floor(d / 7);
-  if (w < 4) { return `${w}w`; }
-  const mo = Math.floor(d / 30);
-  if (mo < 12) { return `${mo}mo`; }
-  return `${Math.floor(d / 365)}y`;
-}
 
 function avatarInitial(author: CommentNode['author']): string {
   const name = author.displayName?.trim() || author.username;
