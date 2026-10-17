@@ -134,8 +134,8 @@ export type IconName =
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
   | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut'
-  // the music score tag on profiles (ADR-0032)
-  | 'musicScore';
+  // the chat vibe tag in the inbox
+  | 'pulse';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -294,8 +294,9 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   signOut: [SignOut, 'regular'],
   // "Upload a track" on the Add-to-Livil chooser (ADR-0027).
   upload: [UploadSimple, 'bold'],
-  // The music score tag beside a profile's @name (ADR-0032). `bold`: it sits at 12px.
-  musicScore: [Pulse, 'bold'],
+  // The chat vibe tag beside a friend's name in the inbox. `bold`: it sits at 11px.
+  // (The music score uses the Livil logo itself — see MusicScoreTag.)
+  pulse: [Pulse, 'bold'],
 };
 
 export interface IconProps {

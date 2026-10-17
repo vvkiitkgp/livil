@@ -5,7 +5,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
-jest.mock('../Icon', () => ({ Icon: () => null }));
+jest.mock('../Logo', () => ({ Logo: () => null }));
 
 let mockResult: { data: unknown; error: unknown } | Error = { data: { score: 1284 }, error: null };
 jest.mock('../../../lib/supabase', () => ({

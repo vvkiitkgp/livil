@@ -4,7 +4,7 @@
 
 ## Livil music score
 
-The Livil music score is the number shown under a person's @name on their Livil profile. On Livil, "music score" means this activity score, not sheet music. It is recalculated every night from everything the person has done on Livil, with daily limits.
+The Livil music score is the number shown under a person's @name on their Livil profile, marked with the Livil logo. On Livil, "music score" means this activity score, not sheet music. It is recalculated every night from everything the person has done on Livil, with daily limits.
 
 How the Livil music score is calculated (points per action):
 

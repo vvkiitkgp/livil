@@ -13,7 +13,7 @@ export default function VibeTag({ vibe }: { vibe: number }) {
   const text = formatMusicScore(vibe);
   return (
     <View style={styles.tag} accessibilityLabel={`Vibe ${text}`} testID="vibe-tag">
-      <Icon name="musicScore" size={11} color={COLORS.purpleNeon} />
+      <Icon name="pulse" size={11} color={COLORS.purpleNeon} />
       <Text style={styles.text}>{text}</Text>
     </View>
   );
