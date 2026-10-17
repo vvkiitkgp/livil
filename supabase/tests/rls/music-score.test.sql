@@ -141,6 +141,16 @@ select 'cb000000-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-00000000
        'nice ' || g, '2026-10-10 06:00+00'
   from generate_series(1, 25) g;
 
+-- Omar's repost gets likes and comments: Lena likes it (above) and Omar likes his own;
+-- Lena comments twice, Uday once, Omar once on his own.
+insert into post_likes (post_id, user_id) values
+  ('cb000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000003');
+insert into post_comments (post_id, author_id, body, created_at) values
+  ('cb000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000001', 'love this', '2026-10-10 06:00+00'),
+  ('cb000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000001', 'again!', '2026-10-10 06:01+00'),
+  ('cb000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000002', 'tune', '2026-10-10 06:02+00'),
+  ('cb000000-0000-0000-0000-000000000003', 'c9000000-0000-0000-0000-000000000003', 'thanks', '2026-10-10 06:03+00');
+
 -- Chat: Lena shares a Livil song and a Spotify link; plain text and a deleted share earn nothing.
 insert into conversations (id, kind) values
   ('cd000000-0000-0000-0000-000000000001', 'dm'), ('cd000000-0000-0000-0000-000000000002', 'dm');
@@ -190,13 +200,20 @@ select pg_temp.assert_eq('#6 uploading: 25 for a published song; taken-down, unp
   pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'upload'), 25);
 select pg_temp.assert_eq('#7 plays of your upload: one per listener per song a day, never your own',
   pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'played_by_others'), 3);
+select pg_temp.assert_eq('#7b your repost liked: 1 per like, never your own',
+  pg_temp.pts('c9000000-0000-0000-0000-000000000003', 'repost_liked'), 1);
+select pg_temp.assert_eq('#7c your repost commented on: 2 per person, never your own',
+  pg_temp.pts('c9000000-0000-0000-0000-000000000003', 'repost_commented'), 4);
+select pg_temp.assert_eq('#7d likes and comments on an upload are not repost points',
+  pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'repost_liked')
+  + pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'repost_commented'), 0);
 select pg_temp.assert_eq('#8 hosting a Jam that played 5+ minutes (by the server''s heartbeat)',
   pg_temp.pts('c9000000-0000-0000-0000-000000000002', 'jam'), 5);
 
 -- ── The nightly refresh ─────────────────────────────────────────────────────
 select public.refresh_music_scores();
 select pg_temp.assert_eq('#9 Lena''s score is the sum', pg_temp.score('c9000000-0000-0000-0000-000000000001'), 52 + 2 + 40 + 4 + 5);
-select pg_temp.assert_eq('#9 Uday''s score is the sum', pg_temp.score('c9000000-0000-0000-0000-000000000002'), 25 + 3 + 5);
+select pg_temp.assert_eq('#9 Uday''s score is the sum', pg_temp.score('c9000000-0000-0000-0000-000000000002'), 25 + 3 + 5 + 2);
 select pg_temp.assert_eq('#9 someone who did nothing has 0', pg_temp.score('c9000000-0000-0000-0000-000000000004'), 0);
 
 -- Undo: Lena unlikes a post, Uday's song is taken down. The next refresh takes it back.
@@ -206,7 +223,7 @@ update tracks set taken_down_at = now() where id = 'ca000000-0000-0000-0000-0000
 set local session_replication_role = origin;
 select public.refresh_music_scores();
 select pg_temp.assert_eq('#10 an unlike takes its point back', pg_temp.score('c9000000-0000-0000-0000-000000000001'), 102);
-select pg_temp.assert_eq('#10 a take-down takes the upload and its plays back', pg_temp.score('c9000000-0000-0000-0000-000000000002'), 5);
+select pg_temp.assert_eq('#10 a take-down takes the upload and its plays back', pg_temp.score('c9000000-0000-0000-0000-000000000002'), 5 + 2);
 
 -- ── Readable by the app, never writable ─────────────────────────────────────
 select pg_temp.set_user('c9000000-0000-0000-0000-000000000004');

@@ -66,6 +66,12 @@ insert into jam_rooms (id, conversation_id, host_id, status, started_at, ended_a
   ('d3000000-0000-0000-0000-000000000001', 'cf000000-0000-0000-0000-000000000001',
    'ce000000-0000-0000-0000-000000000001', 'active', '2001-01-01 00:00+00', '2001-01-01 00:10+00');
 reset role;
+-- Riya likes Sam's post, claiming it was 2001.
+select pg_temp.set_user('ce000000-0000-0000-0000-000000000002');
+set local role authenticated;
+insert into post_likes (post_id, user_id, created_at) values
+  ('d0000000-0000-0000-0000-000000000001', 'ce000000-0000-0000-0000-000000000002', '2001-01-01 00:00+00');
+reset role;
 
 select pg_temp.assert('#1 a backdated post is dated now',
   (select created_at = now() from posts where id = 'd0000000-0000-0000-0000-000000000001'), true);
@@ -75,6 +81,9 @@ select pg_temp.assert('#3 a backdated track is dated now',
   (select created_at = now() from tracks where id = 'd1000000-0000-0000-0000-000000000001'), true);
 select pg_temp.assert('#4 a backdated message is dated now',
   (select created_at = now() from messages where id = 'd2000000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#4b a backdated like is dated now',
+  (select created_at = now() from post_likes
+    where post_id = 'd0000000-0000-0000-0000-000000000001' and user_id = 'ce000000-0000-0000-0000-000000000002'), true);
 select pg_temp.assert('#5 a Jam starts now, and not already ended',
   (select started_at = now() and ended_at is null from jam_rooms where id = 'd3000000-0000-0000-0000-000000000001'), true);
 

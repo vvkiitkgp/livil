@@ -1,5 +1,5 @@
 -- ============================================================================
--- The server's clock, not the client's, dates posts, tracks, messages and Jams
+-- The server's clock, not the client's, dates posts, tracks, messages, likes and Jams
 -- ============================================================================
 --
 -- posts.created_at, tracks.created_at, messages.created_at and jam_rooms.started_at /
@@ -49,6 +49,13 @@ create trigger trg_tracks_stamp_created_at
 drop trigger if exists trg_messages_stamp_created_at on public.messages;
 create trigger trg_messages_stamp_created_at
   before insert on public.messages
+  for each row execute function public.stamp_created_at_now();
+
+-- Likes: "someone likes your repost" is capped per day too (no update policy exists, so
+-- a like's date cannot be edited afterwards).
+drop trigger if exists trg_post_likes_stamp_created_at on public.post_likes;
+create trigger trg_post_likes_stamp_created_at
+  before insert on public.post_likes
   for each row execute function public.stamp_created_at_now();
 
 -- ── 2. …and keep that date (messages already freeze it: 20260729000000) ──────

@@ -52,12 +52,15 @@ and every loop counts again, so a raw play count is trivially farmed.
   - upload: 25, up to 3 a day; only a published song (an upload post exists, media not
     `pending://`)
   - someone else plays your upload: 1 per listener per song per day
+  - someone likes your repost: 1 per like, up to 50 a day (not your own)
+  - someone comments on your repost: 2 per person per repost, up to 25 people a day (not your
+    own)
   - host a Jam that played 5+ minutes by the server heartbeat (`last_played_at` /
     `host_clock_at`): 5, up to 3 a day
 - **The table is read-only to the app.** RLS lets signed-in users select, except across a
   block, and nobody write. Only the definer refresh writes.
 - **Days come from the server's clock.** 20261105000000 stamps `created_at` on posts,
-  tracks and messages, and Jam start/end times, for API callers, and keeps them fixed.
+  tracks, messages and likes, and Jam start/end times, for API callers, and keeps them fixed.
   Otherwise backdating rows walks around every daily cap.
 
 ## Alternatives considered

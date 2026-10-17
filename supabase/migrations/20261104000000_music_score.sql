@@ -23,6 +23,8 @@
 --   repost a song                   5   once per song, 10 a day
 --   upload a song                  25   3 a day; only a published song, not taken down
 --   someone plays your upload       1   once per listener per song a day
+--   someone likes your repost       1   50 a day; not your own likes
+--   someone comments on your repost 2   once per person per repost, 25 people a day
 --   host a Jam (played 5+ minutes)  5   3 a day; measured by the server's heartbeat
 --
 -- ADDITIVE: a new table no shipped app reads, two functions no app calls, and a nightly
@@ -155,6 +157,32 @@ as $$
             join tracks t on t.id = p.track_id
            where t.uploader_id <> v.user_id
              and t.taken_down_at is null) x
+   group by 1
+
+  union all
+  -- someone likes your repost: 1 per like, 50 a day; your own likes earn nothing
+  select x.author_id, 'repost_liked', sum(least(x.n, 50))
+    from (select p.author_id, (l.created_at at time zone 'Asia/Kolkata')::date as d, count(*) as n
+            from post_likes l
+            join posts p on p.id = l.post_id
+           where p.kind = 'repost'
+             and l.user_id <> p.author_id
+           group by 1, 2) x
+   group by 1
+
+  union all
+  -- someone comments on your repost: 2 per person per repost (on the day of their first
+  -- comment), 25 people a day; your own comments earn nothing
+  select x.owner_id, 'repost_commented', sum(least(x.n, 25)) * 2
+    from (select f.owner_id, f.d, count(*) as n
+            from (select p.author_id as owner_id, c.post_id, c.author_id as commenter_id,
+                         min((c.created_at at time zone 'Asia/Kolkata')::date) as d
+                    from post_comments c
+                    join posts p on p.id = c.post_id
+                   where p.kind = 'repost'
+                     and c.author_id <> p.author_id
+                   group by 1, 2, 3) f
+           group by 1, 2) x
    group by 1
 
   union all
