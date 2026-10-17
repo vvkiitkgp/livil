@@ -1250,19 +1250,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  // The whole card at ~85% of its old size (owner, 2026-10-18): narrower, less padding,
-  // and the numbers and labels scaled with it.
+  // The whole card at ~93% of its original size (owner, 2026-10-18: scaled down to 85%,
+  // then back up halfway): narrower, less padding, numbers and labels scaled with it.
   socialPills: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    width: '86%',
+    width: '93%',
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 17,
-    paddingVertical: 12,
-    paddingHorizontal: 7,
+    borderRadius: 18.5,
+    paddingVertical: 13,
+    paddingHorizontal: 7.5,
     marginBottom: 12,
   },
   socialPill: {
@@ -1271,21 +1271,21 @@ const styles = StyleSheet.create({
   },
   socialPillValue: {
     color: COLORS.white,
-    fontSize: 17,
+    fontSize: 18.5,
     fontWeight: '900',
-    letterSpacing: -0.3,
+    letterSpacing: -0.35,
   },
   socialPillLabel: {
     color: COLORS.textMuted,
-    fontSize: 9.5,
+    fontSize: 10.25,
     marginTop: 2,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.85,
+    letterSpacing: 0.9,
   },
   socialPillDivider: {
     width: StyleSheet.hairlineWidth,
-    height: 24,
+    height: 26,
     backgroundColor: COLORS.border,
   },
   contentStats: {

@@ -1374,18 +1374,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // ~85% of its old size, as on your own profile (owner, 2026-10-18).
+  // ~93% of its original size, as on your own profile (owner, 2026-10-18).
   socialPills: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    alignSelf: 'center', width: '86%',
-    backgroundColor: COLORS.surface, borderRadius: 14,
+    alignSelf: 'center', width: '93%',
+    backgroundColor: COLORS.surface, borderRadius: 15,
     borderWidth: 1, borderColor: COLORS.border,
-    marginBottom: 12, paddingVertical: 10,
+    marginBottom: 12, paddingVertical: 11,
   },
   socialPill: { flex: 1, alignItems: 'center' },
-  socialPillValue: { color: COLORS.white, fontSize: 15, fontWeight: '800' },
-  socialPillLabel: { color: COLORS.textMuted, fontSize: 9.5, fontWeight: '600', marginTop: 2 },
-  socialPillDivider: { width: 1, height: 27, backgroundColor: COLORS.border },
+  socialPillValue: { color: COLORS.white, fontSize: 16.5, fontWeight: '800' },
+  socialPillLabel: { color: COLORS.textMuted, fontSize: 10.25, fontWeight: '600', marginTop: 2 },
+  socialPillDivider: { width: 1, height: 30, backgroundColor: COLORS.border },
 
   contentStats: { alignItems: 'center', marginBottom: 8 },
   contentStatsText: { color: COLORS.textSecondary, fontSize: 15 },
