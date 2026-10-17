@@ -16,7 +16,7 @@ export default function MusicScoreTag({ score }: { score: number | null }) {
   const text = formatMusicScore(score);
   return (
     <View style={styles.tag} accessibilityLabel={`Music score ${text}`} testID="music-score-tag">
-      <Icon name="pulse" size={16} color={COLORS.purpleNeon} />
+      <Icon name="pulse" size={13} color={COLORS.purpleNeon} />
       <Text style={styles.text}>{text}</Text>
     </View>
   );
@@ -27,16 +27,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: 5,
+    gap: 4,
     marginTop: 8,
-    paddingHorizontal: 11,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: 999,
     backgroundColor: COLORS.purpleDim,
   },
   text: {
     color: COLORS.purpleLight,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
   },
 });
