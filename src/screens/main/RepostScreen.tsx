@@ -454,8 +454,10 @@ export default function RepostScreen() {
         keyboardShouldPersistTaps="handled"
         // Dragging the page puts the keyboard away, as on Upload, Search and New message.
         keyboardDismissMode="on-drag"
-        // Room between the focused caption and the keyboard.
-        bottomOffset={24}
+        // Room under the caret for the rest of the caption box: a multiline field is
+        // scrolled by its caret line, so a small offset left the box's lower part (it is
+        // 100pt tall) under the keyboard. Same clearance as Upload's fields.
+        bottomOffset={120}
         showsVerticalScrollIndicator={false}
       >
           {/* Loading / error state */}
