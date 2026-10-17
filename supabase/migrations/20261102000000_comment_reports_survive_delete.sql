@@ -14,19 +14,52 @@
 --     at insert time by a trigger, from the stored comment — never from the client, which
 --     could otherwise file a report against anyone (ADR-0008) — so "who wrote what, under
 --     which post" is still known once the comment is gone;
---   * ops_reports_overview falls back to the snapshot, so the queue shows the words.
+--   * ops_reports_overview shows the snapshot — the words as reported — so neither
+--     deleting nor changing the comment afterwards hides them;
+--   * a report always starts unreviewed and dated now, whatever the client sent.
 --
 -- ADDITIVE for shipped apps: their insert is still {comment_id, reporter_id, reason,
 -- details}; the trigger fills the rest. Existing reports are backfilled (production had
 -- none when this was written).
 -- ============================================================================
 
--- ── 1. The snapshot columns ─────────────────────────────────────────────────
+-- ── 1. The snapshot columns, and the trigger that fills them ───────────────
+-- The trigger exists BEFORE reported_user_id becomes NOT NULL, so a report filed by a
+-- shipped app while this runs is filled in rather than refused.
 alter table public.post_comment_reports
   add column if not exists reported_user_id uuid references public.profiles(id) on delete cascade,
   add column if not exists comment_excerpt text,
   add column if not exists comment_post_id uuid references public.posts(id) on delete set null;
 
+create or replace function public.post_comment_reports_snapshot()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  -- Overwrites anything the client sent: the report is about the stored comment's author.
+  select c.author_id, left(c.body, 500), c.post_id
+    into new.reported_user_id, new.comment_excerpt, new.comment_post_id
+    from post_comments c
+   where c.id = new.comment_id;
+  -- A report starts unreviewed and is dated now — a reporter cannot file one pre-marked
+  -- "reviewed by" an operator, or backdated out of the open queue.
+  new.reviewed_at := null;
+  new.reviewed_by := null;
+  new.created_at  := now();
+  return new;
+end;
+$$;
+
+revoke execute on function public.post_comment_reports_snapshot() from public, anon, authenticated;
+
+drop trigger if exists trg_post_comment_reports_snapshot on public.post_comment_reports;
+create trigger trg_post_comment_reports_snapshot
+  before insert on public.post_comment_reports
+  for each row execute function public.post_comment_reports_snapshot();
+
+-- ── 2. Existing reports, and the rule that every report names someone ──────
 update public.post_comment_reports r
    set reported_user_id = c.author_id,
        comment_excerpt  = left(c.body, 500),
@@ -42,30 +75,6 @@ alter table public.post_comment_reports
 
 create index if not exists post_comment_reports_reported_idx
   on public.post_comment_reports (reported_user_id);
-
--- ── 2. Filled by the server, never by the client ────────────────────────────
-create or replace function public.post_comment_reports_snapshot()
-returns trigger
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  -- Overwrites anything the client sent: the report is about the stored comment's author.
-  select c.author_id, left(c.body, 500), c.post_id
-    into new.reported_user_id, new.comment_excerpt, new.comment_post_id
-    from post_comments c
-   where c.id = new.comment_id;
-  return new;
-end;
-$$;
-
-revoke execute on function public.post_comment_reports_snapshot() from public, anon, authenticated;
-
-drop trigger if exists trg_post_comment_reports_snapshot on public.post_comment_reports;
-create trigger trg_post_comment_reports_snapshot
-  before insert on public.post_comment_reports
-  for each row execute function public.post_comment_reports_snapshot();
 
 -- ── 3. The report outlives the comment ──────────────────────────────────────
 alter table public.post_comment_reports
@@ -142,14 +151,16 @@ begin
     union all
 
     -- ── Comments ──
-    -- Who and what come off the REPORT's snapshot when the comment has been deleted.
+    -- What was REPORTED: the words as they were at report time (the snapshot), so neither
+    -- deleting nor changing the comment afterwards hides them. The live body only for a
+    -- report filed before snapshots existed.
     select
       'comment'::text,
       r.id, r.created_at, r.reason, r.details,
       r.reporter_id, rep.username,
       coalesce(c.author_id, r.reported_user_id), auth_p.username,
       r.comment_id,
-      coalesce(left(c.body, 140), left(r.comment_excerpt, 140), '(comment deleted)')::text,
+      coalesce(left(r.comment_excerpt, 140), left(c.body, 140), '(comment deleted)')::text,
       (c.id is not null),
       ct.id, ct.title, ct.media_kind,
       case when ct.media_kind = 'video' then ct.video_url else ct.audio_url end,

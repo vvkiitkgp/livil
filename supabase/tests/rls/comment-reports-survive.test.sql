@@ -74,11 +74,14 @@ set local role authenticated;
 insert into post_comment_reports (id, comment_id, reporter_id, reason, details) values
   ('acccccc1-0000-0000-0000-000000000001', 'abbbbbb1-0000-0000-0000-000000000001',
    'a8888888-0000-0000-0000-000000000003', 'harassment', null);
--- A second report that names someone else as the reported user and fakes the words.
-insert into post_comment_reports (id, comment_id, reporter_id, reason, reported_user_id, comment_excerpt, comment_post_id)
+-- A second report that names someone else as the reported user, fakes the words, and
+-- arrives pre-marked "reviewed by" the operator and backdated out of the open queue.
+insert into post_comment_reports (id, comment_id, reporter_id, reason, reported_user_id, comment_excerpt,
+                                  comment_post_id, reviewed_at, reviewed_by, created_at)
 values ('acccccc1-0000-0000-0000-000000000002', 'abbbbbb1-0000-0000-0000-000000000001',
         'a8888888-0000-0000-0000-000000000003', 'spam',
-        'a8888888-0000-0000-0000-000000000001', 'Omar said this', null);
+        'a8888888-0000-0000-0000-000000000001', 'Omar said this', null,
+        now(), 'a8888888-0000-0000-0000-000000000004', '2020-01-01');
 select pg_temp.assert('#1 a report of no comment is refused',
   pg_temp.accepts($$
     insert into post_comment_reports (comment_id, reporter_id, reason)
@@ -90,11 +93,27 @@ select pg_temp.assert('#2 the shipped app''s report gets the server''s snapshot'
       and comment_excerpt = 'something abusive'
       and comment_post_id = 'aaaaaaa1-0000-0000-0000-000000000001'
      from post_comment_reports where id = 'acccccc1-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#3b and it starts unreviewed and dated now',
+  (select reviewed_at is null and reviewed_by is null and created_at > now() - interval '1 minute'
+     from post_comment_reports where id = 'acccccc1-0000-0000-0000-000000000002'), true);
 select pg_temp.assert('#3 what the client claims is overwritten by the stored comment',
   (select reported_user_id = 'a8888888-0000-0000-0000-000000000002'
       and comment_excerpt = 'something abusive'
       and comment_post_id = 'aaaaaaa1-0000-0000-0000-000000000001'
      from post_comment_reports where id = 'acccccc1-0000-0000-0000-000000000002'), true);
+
+-- ── The queue shows the words AS REPORTED, even if the comment changed since ─
+-- (Comments are locked by 20261103000000; the lock is lifted here only to prove the
+-- queue does not depend on it.)
+alter table post_comments disable trigger trg_post_comments_lock_content;
+update post_comments set body = 'great song!' where id = 'abbbbbb1-0000-0000-0000-000000000001';
+alter table post_comments enable trigger trg_post_comments_lock_content;
+select pg_temp.set_user('a8888888-0000-0000-0000-000000000004');
+set local role authenticated;
+select pg_temp.assert('#3c ops sees what was reported, not a later edit',
+  (select target_excerpt = 'something abusive'
+     from ops_reports_overview(false) where id = 'acccccc1-0000-0000-0000-000000000001'), true);
+reset role;
 
 -- ── Omar, the post's owner, deletes the comment ─────────────────────────────
 select pg_temp.set_user('a8888888-0000-0000-0000-000000000001');
