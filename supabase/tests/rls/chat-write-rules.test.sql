@@ -2,7 +2,8 @@
 --
 --   * a sent message's words, kind, attachment and quoted message cannot be rewritten —
 --     soft delete still works, and deleting a quoted message still clears the quote;
---   * only a member of the chat can react; a reaction can be changed to another emoji;
+--   * only someone who may write in the chat can react (a member; in a one-to-one chat,
+--     not across a block) and a reaction can be changed to another emoji;
 --   * nobody can change someone else's reaction or move theirs into a chat they're not in.
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/chat-write-rules.test.sql
@@ -78,6 +79,8 @@ select pg_temp.assert('#3 nor the attachment', pg_temp.allows($$
 select pg_temp.assert('#4 nor the quoted message re-pointed', pg_temp.allows($$
   update messages set reply_to_id = 'f6000000-0000-0000-0000-000000000001'
    where id = 'f6000000-0000-0000-0000-000000000004'$$), false);
+select pg_temp.assert('#4b nor the quote removed from a reply', pg_temp.allows($$
+  update messages set reply_to_id = null where id = 'f6000000-0000-0000-0000-000000000004'$$), false);
 select pg_temp.assert('#5 deleting your message still works (what every build sends)', pg_temp.allows($$
   update messages set deleted_at = now() where id = 'f6000000-0000-0000-0000-000000000002'$$), true);
 reset role;
@@ -121,5 +124,46 @@ reset role;
 select pg_temp.assert('#10 nor change someone else''s reaction',
   (select emoji = '😂' from message_reactions
     where message_id = 'f6000000-0000-0000-0000-000000000004' and user_id = 'f4000000-0000-0000-0000-000000000002'), true);
+
+-- ── A one-to-one chat: reactions follow the same rule as sending ─────────────
+-- Anu and Ben are friends with a DM; Ben reacts. Then Anu blocks Ben: he can no longer
+-- send there (msg_insert), and now no longer react or change his reaction either.
+insert into friendships (user_a_id, user_b_id, status, requested_by) values
+  ('f4000000-0000-0000-0000-000000000001', 'f4000000-0000-0000-0000-000000000002', 'accepted',
+   'f4000000-0000-0000-0000-000000000001');
+insert into conversations (id, kind) values ('f5000000-0000-0000-0000-000000000003', 'dm');
+insert into conversation_members (conversation_id, user_id, role) values
+  ('f5000000-0000-0000-0000-000000000003', 'f4000000-0000-0000-0000-000000000001', 'member'),
+  ('f5000000-0000-0000-0000-000000000003', 'f4000000-0000-0000-0000-000000000002', 'member');
+insert into messages (id, conversation_id, sender_id, kind, body) values
+  ('f6000000-0000-0000-0000-000000000005', 'f5000000-0000-0000-0000-000000000003',
+   'f4000000-0000-0000-0000-000000000001', 'text', 'hey ben'),
+  ('f6000000-0000-0000-0000-000000000006', 'f5000000-0000-0000-0000-000000000003',
+   'f4000000-0000-0000-0000-000000000001', 'text', 'you there?');
+
+select pg_temp.set_user('f4000000-0000-0000-0000-000000000002');
+set local role authenticated;
+select pg_temp.assert('#11 a friend reacts in a one-to-one chat', pg_temp.allows($$
+  insert into message_reactions (message_id, user_id, emoji)
+  values ('f6000000-0000-0000-0000-000000000005', 'f4000000-0000-0000-0000-000000000002', '👋')
+  on conflict (message_id, user_id) do update set emoji = excluded.emoji$$), true);
+reset role;
+
+insert into blocked_users (blocker_id, blocked_id) values
+  ('f4000000-0000-0000-0000-000000000001', 'f4000000-0000-0000-0000-000000000002');
+
+select pg_temp.set_user('f4000000-0000-0000-0000-000000000002');
+set local role authenticated;
+select pg_temp.assert('#12 once blocked, he cannot react', pg_temp.allows($$
+  insert into message_reactions (message_id, user_id, emoji)
+  values ('f6000000-0000-0000-0000-000000000006', 'f4000000-0000-0000-0000-000000000002', '😡')$$), false);
+select pg_temp.assert('#13 nor change the reaction he left', pg_temp.allows($$
+  insert into message_reactions (message_id, user_id, emoji)
+  values ('f6000000-0000-0000-0000-000000000005', 'f4000000-0000-0000-0000-000000000002', '😡')
+  on conflict (message_id, user_id) do update set emoji = excluded.emoji$$), false);
+reset role;
+select pg_temp.assert('#13 his old reaction is unchanged',
+  (select emoji = '👋' from message_reactions
+    where message_id = 'f6000000-0000-0000-0000-000000000005' and user_id = 'f4000000-0000-0000-0000-000000000002'), true);
 
 rollback;
