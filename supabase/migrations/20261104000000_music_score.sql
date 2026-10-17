@@ -50,12 +50,15 @@ comment on table public.music_scores is
 
 alter table public.music_scores enable row level security;
 
--- Everyone signed in may read every score (the tag is public). Nobody may write one: no
+-- Everyone signed in may read every score (the tag is public) — except across a block, as
+-- with profiles, posts and tracks: a score read nightly would tell a blocked person whether
+-- the blocker was active yesterday (security review, 2026-10-17). Nobody may write one: no
 -- insert/update/delete policy exists, and the grants are taken away as well.
 drop policy if exists music_scores_select_authenticated on public.music_scores;
 create policy music_scores_select_authenticated
   on public.music_scores for select to authenticated
-  using (true);
+  using (user_id = (select auth.uid())
+         or not public.is_blocked_between((select auth.uid()), user_id));
 
 revoke all on public.music_scores from anon;
 revoke insert, update, delete, truncate on public.music_scores from authenticated;

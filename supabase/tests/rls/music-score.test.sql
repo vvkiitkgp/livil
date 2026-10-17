@@ -200,6 +200,21 @@ select pg_temp.set_user('c9000000-0000-0000-0000-000000000004');
 set local role authenticated;
 select pg_temp.assert('#11 a signed-in user can read anyone''s score',
   (select score = 102 from music_scores where user_id = 'c9000000-0000-0000-0000-000000000001'), true);
+reset role;
+
+-- Across a block, a score is invisible (as the profile is): Lena blocks Omar.
+insert into blocked_users (blocker_id, blocked_id) values
+  ('c9000000-0000-0000-0000-000000000001', 'c9000000-0000-0000-0000-000000000003');
+select pg_temp.set_user('c9000000-0000-0000-0000-000000000003');
+set local role authenticated;
+select pg_temp.assert('#11b someone Lena blocked cannot see her score',
+  exists (select 1 from music_scores where user_id = 'c9000000-0000-0000-0000-000000000001'), false);
+select pg_temp.assert('#11c but still sees everyone else''s, and their own',
+  (select count(*) = 2 from music_scores
+    where user_id in ('c9000000-0000-0000-0000-000000000002', 'c9000000-0000-0000-0000-000000000003')), true);
+reset role;
+select pg_temp.set_user('c9000000-0000-0000-0000-000000000004');
+set local role authenticated;
 select pg_temp.assert('#12 and cannot give themselves one', pg_temp.allows($$
   insert into music_scores (user_id, score) values ('c9000000-0000-0000-0000-000000000004', 9999)
   on conflict (user_id) do update set score = 9999$$), false);
