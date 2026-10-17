@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Logo } from './Logo';
+import { GradientBorder } from './GradientBorder';
 import { COLORS } from '../theme/colors';
 import { formatMusicScore } from '../services/musicScore';
 
@@ -15,27 +16,32 @@ export default function MusicScoreTag({ score }: { score: number | null }) {
   const text = formatMusicScore(score);
   return (
     <View style={styles.tag} accessibilityLabel={`Music score ${text}`} testID="music-score-tag">
-      <Logo size={22} color={COLORS.purpleNeon} />
+      <GradientBorder borderRadius={RADIUS} />
+      <Logo size={30} color={COLORS.white} />
       <Text style={styles.text}>{text}</Text>
     </View>
   );
 }
 
+const RADIUS = 999;
+
+// The Livil outline (the primary button's gradient border) around a white logo and number —
+// no fill (owner, 2026-10-18). No overflow: 'hidden' here: GradientBorder draws inside
+// the bounds, and clipping would shave the glow (see CLAUDE.md, GradientBorder).
 const styles = StyleSheet.create({
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: 5,
-    marginTop: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: COLORS.purpleDim,
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: RADIUS,
   },
   text: {
-    color: COLORS.purpleLight,
-    fontSize: 12,
+    color: COLORS.white,
+    fontSize: 15,
     fontWeight: '800',
   },
 });
