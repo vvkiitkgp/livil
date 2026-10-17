@@ -572,6 +572,7 @@ export async function displayPushNotification(
  * its own. send-push names it in `collapseId` (iOS honours the same value as
  * apns-collapse-id):
  *   • activity_like   `like:<post uuid>` — one card per liked post
+ *   • activity_comment_like `comment_like:<comment uuid>` — one card per liked comment
  *   • mood_nudge      `mood`             — the evening nudge replaces the morning one
  *   • repost_digest   `digest`           — the 6 PM digest replaces the 11 AM one
  *   • new_drop        `drop`             — a friend's new song replaces an unread earlier one
@@ -582,6 +583,8 @@ function cardIdFor(kind: string, collapseId: string | undefined): string | null 
   if (!collapseId) return null;
   const ok =
     (kind === 'activity_like' && collapseId.startsWith('like:') && UUID_RE.test(collapseId.slice(5)))
+    || (kind === 'activity_comment_like' && collapseId.startsWith('comment_like:')
+      && UUID_RE.test(collapseId.slice('comment_like:'.length)))
     || (kind === 'mood_nudge' && collapseId === 'mood')
     || (kind === 'repost_digest' && collapseId === 'digest')
     || (kind === 'new_drop' && collapseId === 'drop')

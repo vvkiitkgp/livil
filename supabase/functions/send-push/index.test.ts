@@ -331,6 +331,8 @@ Deno.test('activity_*: being an author is no longer enough', async () => {
   assertEquals(await allows(author, 'activity_like', A, B), false);
   assertEquals(await allows(author, 'activity_comment', A, B), false);
   assertEquals(await allows(author, 'activity_repost', A, B), false);
+  assertEquals(await allows(author, 'activity_comment_like', A, B), false);
+  assertEquals(await allows(author, 'activity_comment_reply', A, B), false);
 });
 
 const NOW = () => new Date().toISOString();
@@ -345,6 +347,7 @@ const activityAdmin = (
   rows: Array<Record<string, unknown>>,
   plays: Array<{ post_id: string; played_at: string }> = [],
   likes: Array<[string, string]> = [],
+  commentLikes: Array<[string, string]> = [],
 ) =>
   fakeAdmin((table, f) => {
     if (table === 'activity_notifications') {
@@ -369,6 +372,9 @@ const activityAdmin = (
     }
     if (table === 'post_likes') {
       return { count: likes.filter(([post, user]) => post === f.post_id && user === f.user_id).length };
+    }
+    if (table === 'post_comment_likes') {
+      return { count: commentLikes.filter(([c, user]) => c === f.comment_id && user === f.user_id).length };
     }
     return { count: 0 };
   });
@@ -435,11 +441,126 @@ Deno.test('activity_repost: allowed by a repost row from this actor', async () =
   assertEquals(await allows(admin, 'activity_repost', C, B), false);
 });
 
+// ── activity_comment_like / activity_comment_reply (20261031000000) ─────────
+const COMMENT = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+Deno.test('activity_comment_like: allowed by the row naming this actor, with its count and snippet', async () => {
+  const admin = activityAdmin([{
+    recipient_id: B, type: 'comment_like', actor_id: A, agg_count: 2, post_id: POST,
+    payload: { comment_id: COMMENT, comment_text: 'this slaps', notified: [C, A] },
+  }]);
+  const grant = await authorize(admin, 'activity_comment_like', A, B);
+  assertEquals(grant?.activity, { aggCount: 2, commentText: 'this slaps', postId: POST, commentId: COMMENT });
+});
+
+Deno.test('activity_comment_like: via notified only while the like still stands', async () => {
+  const row = {
+    recipient_id: B, type: 'comment_like', actor_id: C, agg_count: 2, post_id: POST,
+    payload: { comment_id: COMMENT, notified: [A, C] },
+  };
+  assertEquals(await allows(activityAdmin([row], [], [], [[COMMENT, A]]), 'activity_comment_like', A, B), true);
+  // Liked, unliked: still in notified, gone from post_comment_likes.
+  assertEquals(await allows(activityAdmin([row], [], [], []), 'activity_comment_like', A, B), false);
+  // A post like is not a comment like.
+  assertEquals(await allows(activityAdmin([row], [], [[POST, A]], []), 'activity_comment_like', A, B), false);
+});
+
+Deno.test('activity_comment_like: refused for someone else\'s row, a stale one, or no likes left', async () => {
+  assertEquals(await allows(activityAdmin([
+    { recipient_id: B, type: 'comment_like', actor_id: C, agg_count: 1, payload: { comment_id: COMMENT, notified: [C] } },
+  ]), 'activity_comment_like', A, B), false);
+  assertEquals(await allows(activityAdmin([
+    { recipient_id: B, type: 'comment_like', actor_id: A, agg_count: 1, payload: {}, updated_at: MINUTES_AGO(11) },
+  ]), 'activity_comment_like', A, B), false);
+  assertEquals(await allows(activityAdmin([
+    { recipient_id: B, type: 'comment_like', actor_id: A, agg_count: 0, payload: {} },
+  ]), 'activity_comment_like', A, B), false);
+  // A post-like row is not evidence of a comment like, nor the other way round.
+  const postLike = activityAdmin([{ recipient_id: B, type: 'like', actor_id: A, agg_count: 1, payload: {} }]);
+  assertEquals(await allows(postLike, 'activity_comment_like', A, B), false);
+  const commentLike = activityAdmin([{ recipient_id: B, type: 'comment_like', actor_id: A, agg_count: 1, payload: {} }]);
+  assertEquals(await allows(commentLike, 'activity_like', A, B), false);
+});
+
+Deno.test('activity_comment_like: the comment the app names is the one quoted', async () => {
+  const OTHER = 'abababab-abab-abab-abab-abababababab';
+  // Riya liked two of Sam's comments a moment apart; the newer row is OTHER's.
+  const admin = activityAdmin([
+    { recipient_id: B, type: 'comment_like', actor_id: A, agg_count: 1, payload: { comment_id: OTHER, comment_text: 'second' }, updated_at: NOW() },
+    { recipient_id: B, type: 'comment_like', actor_id: A, agg_count: 1, payload: { comment_id: COMMENT, comment_text: 'first' }, updated_at: MINUTES_AGO(1) },
+  ]);
+  assertEquals((await authorize(admin, 'activity_comment_like', A, B, { commentId: COMMENT }))?.activity?.commentText, 'first');
+  assertEquals((await authorize(admin, 'activity_comment_like', A, B, { commentId: COMMENT }))?.activity?.commentId, COMMENT);
+  // No claim (an older app): the newest, as before.
+  assertEquals((await authorize(admin, 'activity_comment_like', A, B))?.activity?.commentText, 'second');
+  // A claim naming a comment with no row for this actor proves nothing.
+  assertEquals(await allows(admin, 'activity_comment_like', A, B, { commentId: POST }), false);
+});
+
+Deno.test('buildPush: likes on one comment share one card', () => {
+  const grant: Grant = { activity: { aggCount: 2, commentText: null, postId: POST, commentId: COMMENT } };
+  assertEquals(buildPush('activity_comment_like', A, grant, riya, {} as never).data.collapseId, `comment_like:${COMMENT}`);
+  // Never a sound-off: that window is for post likes.
+  assertEquals(buildPush('activity_comment_like', A, grant, riya, {} as never, { quiet: true }).data.quiet, undefined);
+  // A reply keeps a card of its own.
+  assertEquals(buildPush('activity_comment_reply', A, grant, riya, {} as never).data.collapseId, undefined);
+});
+
+Deno.test('activity_comment_reply: allowed by a reply row from this actor; snippet from the row', async () => {
+  const admin = activityAdmin([
+    { recipient_id: B, type: 'comment_reply', actor_id: A, post_id: POST, payload: { comment_text: 'haha true' } },
+  ]);
+  const grant = await authorize(admin, 'activity_comment_reply', A, B);
+  assertEquals(grant?.activity, { aggCount: 1, commentText: 'haha true', postId: POST });
+  assertEquals(await allows(admin, 'activity_comment_reply', C, B), false);
+  // A reply row is not a comment-on-your-post row, and vice versa.
+  assertEquals(await allows(admin, 'activity_comment', A, B), false);
+  const comment = activityAdmin([{ recipient_id: B, type: 'comment', actor_id: A, payload: {} }]);
+  assertEquals(await allows(comment, 'activity_comment_reply', A, B), false);
+  // Time-bounded like every other.
+  assertEquals(await allows(activityAdmin([
+    { recipient_id: B, type: 'comment_reply', actor_id: A, payload: {}, created_at: MINUTES_AGO(11) },
+  ]), 'activity_comment_reply', A, B), false);
+});
+
+Deno.test('composeContent: comment likes and replies name the comment, not the song', () => {
+  const one: Grant = { activity: { aggCount: 1, commentText: 'this slaps', postId: POST } };
+  assertEquals(composeContent('activity_comment_like', one, riya, {}),
+    { title: 'Riya', body: 'liked your comment: “this slaps”' });
+  const three: Grant = { activity: { aggCount: 3, commentText: null, postId: POST }, post: { kind: 'upload', title: 'Kesariya' } };
+  assertEquals(composeContent('activity_comment_like', three, riya, {}),
+    { title: 'Riya and 2 others', body: 'liked your comment' });
+  assertEquals(composeContent('activity_comment_reply', { activity: { aggCount: 1, commentText: 'haha true', postId: POST } }, riya, {}),
+    { title: 'Riya', body: 'replied to your comment: “haha true”' });
+  assertEquals(composeContent('activity_comment_reply', { activity: { aggCount: 1, commentText: null, postId: POST } }, riya, {}).body,
+    'replied to your comment');
+  // The request's text never reaches the copy.
+  assertEquals(composeContent('activity_comment_reply', one, riya, { body: 'click my link' }).body,
+    'replied to your comment: “this slaps”');
+});
+
+Deno.test('the comment kinds: activity channel, the actor\'s photo, Activity on tap', () => {
+  assertEquals(channelFor('activity_comment_like'), 'activity');
+  assertEquals(channelFor('activity_comment_reply'), 'activity');
+  assertEquals(isPersonToPerson('activity_comment_like'), true);
+  assertEquals(isPersonToPerson('activity_comment_reply'), true);
+  const withPhoto = { ...riya, avatarUrl: 'https://lh3.googleusercontent.com/a/abc' };
+  const grant: Grant = { activity: { aggCount: 1, commentText: null, postId: POST } };
+  assertEquals(buildPush('activity_comment_like', A, grant, withPhoto, {} as never).data.actorAvatarUrl,
+    'https://lh3.googleusercontent.com/a/abc');
+  assertEquals(buildPush('activity_comment_reply', A, grant, withPhoto, {} as never).data.actorAvatarUrl,
+    'https://lh3.googleusercontent.com/a/abc');
+  assertEquals(routeFor('activity_comment_reply', 'ActivityCenter', grant, A), { route: 'ActivityCenter', params: {} });
+  assertEquals(routeFor('activity_comment_like', 'Conversation', grant, A), { route: 'ActivityCenter', params: {} });
+});
+
 Deno.test('activity_*: an errored read denies', async () => {
   const admin = fakeAdmin(() => ({ error: { message: 'boom' } }));
   assertEquals(await allows(admin, 'activity_like', A, B), false);
   assertEquals(await allows(admin, 'activity_comment', A, B), false);
   assertEquals(await allows(admin, 'activity_milestone', A, B), false);
+  assertEquals(await allows(admin, 'activity_comment_like', A, B), false);
+  assertEquals(await allows(admin, 'activity_comment_reply', A, B), false);
 });
 
 // ── activity_milestone: a listener's play crossed the author's threshold ─────
@@ -910,10 +1031,15 @@ Deno.test('shouldPruneToken: OUR mistakes and outages never delete a device', ()
 
 // ── claims: the only part of params that is read ───────────────────────────
 
-Deno.test('claimsFrom: reads conversationId and jamRoomId from data.params, nothing else', () => {
+Deno.test('claimsFrom: reads conversationId, jamRoomId and commentId from data.params, nothing else', () => {
   assertEquals(
     claimsFrom({ data: { route: 'JamRoom', params: { jamRoomId: JAM, conversationId: CONV, title: 'x' } } }),
-    { conversationId: CONV, jamRoomId: JAM },
+    { conversationId: CONV, jamRoomId: JAM, commentId: undefined },
+  );
+  // A comment like names its comment (activity_comment_like) — a claim, only ever matched.
+  assertEquals(
+    claimsFrom({ data: { route: 'ActivityCenter', params: { commentId: POST, body: 'x' } } }),
+    { conversationId: undefined, jamRoomId: undefined, commentId: POST },
   );
   assertEquals(claimsFrom({}), {});
   assertEquals(claimsFrom({ data: null }), {});

@@ -86,3 +86,23 @@ it('never merges anything but likes, even if a card id arrives', async () => {
   expect(shown(0).id).toMatch(/^livil:activity_comment:/);
   expect(shown(0).android.onlyAlertOnce).toBe(false);
 });
+
+it('likes on one comment share one card too — and only a comment like may use that id', async () => {
+  const COMMENT = '6f1c2a10-0000-4000-8000-0000000c0de1';
+  const commentLike = (title: string) => ({
+    kind: 'activity_comment_like',
+    route: 'ActivityCenter',
+    title,
+    body: 'liked your comment',
+    collapseId: `comment_like:${COMMENT}`,
+  });
+  await displayPushNotification(commentLike('Riya'));
+  await displayPushNotification(commentLike('Riya and 1 other'));
+  expect(shown(0).id).toBe(`livil:comment_like:${COMMENT}`);
+  expect(shown(1).id).toBe(`livil:comment_like:${COMMENT}`);
+  // A post like naming a comment card, or a malformed comment id, gets a card of its own.
+  await displayPushNotification(like('Riya', { collapseId: `comment_like:${COMMENT}` }));
+  await displayPushNotification({ ...commentLike('Riya'), collapseId: 'comment_like:../chat' });
+  expect(shown(2).id).not.toBe(`livil:comment_like:${COMMENT}`);
+  expect(shown(3).id).not.toMatch(/chat/);
+});

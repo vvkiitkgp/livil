@@ -404,6 +404,53 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/comments-friends-only.test.sql
 
+      # GIFs in comments (ADR-0031): a GIF is stored whole or not at all, only with a known
+      # provider and a well-formed id (the edge function later sends that id to GIPHY), and
+      # never alongside a song — on insert or on the author's own update.
+      - name: Comment GIF tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-gifs.test.sql
+
+      # "Liked your comment" / "replied to your comment": only the liker or replier can
+      # make one, never to yourself, between blocked people or across posts; likes count
+      # and un-count like post likes; shipped apps' activity_list never returns them.
+      - name: Comment notification tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-notifications.test.sql
+
+      # A post's owner (upload or repost) can delete any comment on it; anyone else only
+      # their own; the original's uploader does not own a repost's comments.
+      - name: Comment delete-by-post-owner tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-delete-by-post-owner.test.sql
+
+      # A comment report outlives the comment: the post owner's "report, then delete" no
+      # longer erases it; who and what are snapshotted by the server, not the client.
+      - name: Comment reports survive deletion tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-reports-survive.test.sql
+
+      # A posted comment's words, song and GIF cannot be edited (no app ever could; this
+      # closes the API back door). Likes, deletes and ON DELETE SET NULL still work.
+      - name: Comment text locked tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-text-locked.test.sql
+
       # A credit names somebody, so answering it is the one write a collaborator gets on a
       # track that is not theirs. Asserts that the write is status-only (the previous policy
       # let a tagged user rewrite their own role), that an answer is final, and that being

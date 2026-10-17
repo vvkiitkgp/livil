@@ -1,37 +1,45 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { GradientBorder } from './GradientBorder';
 import { Icon } from './Icon';
 
-const SIZE = 32;
+export const ROUND_TICK_SIZE = 32;
+const SIZE = ROUND_TICK_SIZE;
 
 /**
- * The round ✓ at the right of the "+ Something else" boxes (tags, roles): the purple glow
- * when there is something to add, a plain grey ring while the box is empty. Meant for a
- * FormInput's `trailing` slot, which owns the gap to the field's edge.
+ * The round ✓ at the right of the "+ Something else" boxes (tags, roles) and of the comment
+ * box: the purple glow when there is something to add or send, a plain grey ring while the
+ * box is empty. Meant for a FormInput's `trailing` slot, which owns the gap to the field's
+ * edge.
  */
 export default function RoundTickButton({
   enabled,
   onPress,
   accessibilityLabel,
+  style,
 }: {
   enabled: boolean;
   onPress: () => void;
   accessibilityLabel: string;
+  /** The touch area around the circle (e.g. a shorter box's vertical padding). */
+  style?: StyleProp<ViewStyle>;
 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={!enabled}
       activeOpacity={0.7}
-      style={styles.hit}
+      style={[styles.hit, style]}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: !enabled }}
     >
-      <View style={[styles.circle, !enabled && styles.circleIdle]}>
+      {/* collapsable={false}: enabled, this View has no border of its own, so Fabric
+          flattens it away; when it comes back for the idle ring, Android received only the
+          changed props and drew the ring SQUARE (no borderRadius). Never flatten it. */}
+      <View collapsable={false} style={[styles.circle, !enabled && styles.circleIdle]} testID="round-tick-circle">
         {enabled ? <GradientBorder borderRadius={SIZE / 2} /> : null}
         <Icon name="check" size={16} color={enabled ? COLORS.purpleNeon : COLORS.textMuted} weight="bold" />
       </View>

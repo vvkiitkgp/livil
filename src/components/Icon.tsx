@@ -48,6 +48,7 @@ import {
   FileText,
   Flag,
   Gear,
+  Gif,
   Gift,
   Globe,
   Guitar,
@@ -120,6 +121,8 @@ export type IconName =
   | 'home' | 'search' | 'library' | 'profile'
   // music notes & albums
   | 'musicNote' | 'musicNotes' | 'disc' | 'playlist'
+  // attachments (comments)
+  | 'gif'
   // visibility
   | 'public' | 'friends' | 'lock'
   // layout switches (profile Reposts / Uploads: list ↔ grid)
@@ -236,6 +239,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   musicNotes: [MusicNotes, 'fill'],
   disc: [Disc, 'fill'],
   playlist: [PhPlaylist, 'regular'],
+  // attachments (comments)
+  gif: [Gif, 'regular'],
   // visibility
   public: [Globe, 'bold'],
   friends: [UsersThree, 'fill'],

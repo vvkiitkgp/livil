@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { notifyPostActivity } from './activity';
+import { notifyCommentActivity, notifyPostActivity } from './activity';
+import { GIF_ID_RE } from '../utils/gifIds';
 
 export type CommentAuthor = {
   id: string;
@@ -9,12 +10,36 @@ export type CommentAuthor = {
   avatarUrl: string | null;
 };
 
+/** A song shared in a comment: a Livil upload (its post) or a Spotify track (ADR-0027). */
+export type CommentSong =
+  | { kind: 'livil'; postId: string }
+  | { kind: 'spotify'; trackId: string };
+
+/**
+ * A GIF shared in a comment (ADR-0031): the provider's id and its size only. Its media URL
+ * is looked up fresh by id (services/gifs.ts), because GIPHY's terms forbid storing it.
+ */
+export type CommentGif = {
+  provider: 'giphy';
+  id: string;
+  width: number;
+  height: number;
+};
+
 export type CommentNode = {
   id: string;
   postId: string;
   authorId: string;
   author: CommentAuthor;
+  /**
+   * As stored. With a song its last line is `songLabel`, with a GIF it is `GIF_LABEL` —
+   * use `commentDisplayText`.
+   */
   body: string;
+  song: CommentSong | null;
+  songLabel: string | null;
+  /** A comment carries a song or a GIF, never both (post_comments_one_attachment). */
+  gif: CommentGif | null;
   parentCommentId: string | null;
   createdAt: string;
   likeCount: number;
@@ -27,6 +52,15 @@ type RawCommentRow = {
   post_id: string;
   author_id: string;
   body: string;
+  /** Absent before migration 20261029000000 (see songColumnsMissing). */
+  song_post_id?: string | null;
+  song_spotify_track_id?: string | null;
+  song_label?: string | null;
+  /** Absent before migration 20261030000000 (see gifColumnsMissing). */
+  gif_provider?: string | null;
+  gif_id?: string | null;
+  gif_width?: number | null;
+  gif_height?: number | null;
   parent_comment_id: string | null;
   created_at: string;
   like_count: number;
@@ -38,7 +72,7 @@ type RawCommentRow = {
   } | null;
 };
 
-const COMMENT_SELECT = `
+const COMMENT_SELECT_BASE = `
   id,
   post_id,
   author_id,
@@ -53,6 +87,117 @@ const COMMENT_SELECT = `
     avatar_url
   )
 ` as const;
+
+const SONG_COLUMNS = 'song_post_id, song_spotify_track_id, song_label';
+const GIF_COLUMNS = 'gif_provider, gif_id, gif_width, gif_height';
+
+// ── Songs and GIFs in comments, before and after the backend change ─────────
+//
+// The app can reach a backend without migration 20261029000000 (songs) or 20261030000000
+// (GIFs). A missing column fails the whole request, so the first such failure flips that
+// migration's switch and the request is retried without its columns. A song still posts
+// as its body's label line; a GIF is refused instead, since '🎞 GIF' alone says nothing.
+let songColumnsMissing = false;
+let gifColumnsMissing = false;
+
+/** Postgres/PostgREST named a column this app selects or inserts and the table lacks. */
+function missingColumnIn(
+  error: { code?: string; message?: string } | null,
+): 'song' | 'gif' | null {
+  // 42703: undefined column (select). PGRST204: column not in the schema cache (insert).
+  if (!error || (error.code !== '42703' && error.code !== 'PGRST204')) { return null; }
+  const message = error.message ?? '';
+  if (/song_(post_id|spotify_track_id|label)/.test(message)) { return 'song'; }
+  if (/gif_(provider|id|width|height)/.test(message)) { return 'gif'; }
+  return null;
+}
+
+/** Flip the switch for whichever columns the error named. False when it named none. */
+function noteMissingColumns(error: { code?: string; message?: string } | null): boolean {
+  const missing = missingColumnIn(error);
+  if (missing === 'song') { songColumnsMissing = true; }
+  if (missing === 'gif') { gifColumnsMissing = true; }
+  return missing !== null;
+}
+
+function commentSelect(): string {
+  return [
+    COMMENT_SELECT_BASE,
+    songColumnsMissing ? null : SONG_COLUMNS,
+    gifColumnsMissing ? null : GIF_COLUMNS,
+  ].filter(Boolean).join(', ');
+}
+
+/**
+ * False once this backend has shown it has no GIF columns — the GIF button hides, rather
+ * than offering a GIF that every send would refuse.
+ */
+export function gifCommentsSupported(): boolean {
+  return !gifColumnsMissing;
+}
+
+/** Test-only: reset both switches between cases. */
+export function __resetSongColumnsMissingForTest(): void {
+  songColumnsMissing = false;
+  gifColumnsMissing = false;
+}
+
+/**
+ * The fixed text a shared GIF carries in `body`, for apps that predate GIFs in comments.
+ * NEVER change it: comments already posted end with exactly this line, and the strip in
+ * `commentDisplayText` matches it exactly.
+ */
+export const GIF_LABEL = '🎞 GIF';
+
+/** Shown when a GIF comment cannot be posted because the backend has no GIF columns. */
+export const GIFS_NOT_READY_MESSAGE = "GIFs aren't available yet. Try again later.";
+
+/** The text a shared song carries in `body`: "🎵 Kesariya — Arijit Singh". */
+export function songLabelFor(title: string, artist: string | null): string {
+  const t = title.trim() || 'A song';
+  const a = artist?.trim();
+  return `🎵 ${a ? `${t} — ${a}` : t}`.slice(0, 200);
+}
+
+/**
+ * What is stored as `body`: what was typed, then the attachment's label (a song's, or
+ * `GIF_LABEL`) on its own last line — or just the label when nothing was typed. Apps that
+ * predate attachments show it as it is; this one strips the label back off
+ * (`commentDisplayText`).
+ */
+export function composeCommentBody(text: string, label: string | null): string {
+  const typed = text.trim();
+  if (!label) { return typed; }
+  return typed ? `${typed}\n${label}` : label;
+}
+
+/**
+ * The words to show above a comment's song card or GIF: the body without its label line.
+ * A comment whose song has gone (the shared upload was deleted) shows its body whole, so
+ * the label still says what was shared.
+ */
+export function commentDisplayText(
+  node: Pick<CommentNode, 'body' | 'song' | 'songLabel'> & { gif?: CommentGif | null },
+): string {
+  const { body, song, songLabel, gif } = node;
+  const label = gif ? GIF_LABEL : song ? songLabel : null;
+  if (!label) { return body; }
+  if (body === label) { return ''; }
+  const suffix = `\n${label}`;
+  return body.endsWith(suffix) ? body.slice(0, -suffix.length) : body;
+}
+
+function songOf(row: RawCommentRow): CommentSong | null {
+  if (row.song_post_id) { return { kind: 'livil', postId: row.song_post_id }; }
+  if (row.song_spotify_track_id) { return { kind: 'spotify', trackId: row.song_spotify_track_id }; }
+  return null;
+}
+
+function gifOf(row: RawCommentRow): CommentGif | null {
+  const { gif_provider: provider, gif_id: id, gif_width: width, gif_height: height } = row;
+  if (provider !== 'giphy' || !id || !GIF_ID_RE.test(id) || !width || !height) { return null; }
+  return { provider, id, width, height };
+}
 
 function toAuthor(row: RawCommentRow['author']): CommentAuthor {
   if (!row) {
@@ -73,6 +218,9 @@ function rowToNode(row: RawCommentRow, likedByMe: boolean): CommentNode {
     authorId: row.author_id,
     author: toAuthor(row.author),
     body: row.body,
+    song: songOf(row),
+    songLabel: row.song_label ?? null,
+    gif: gifOf(row),
     parentCommentId: row.parent_comment_id,
     createdAt: row.created_at,
     likeCount: row.like_count ?? 0,
@@ -92,13 +240,18 @@ export async function fetchPostComments(
   postId: string,
   limit: number = 100,
 ): Promise<CommentNode[]> {
-  const { data, error } = await supabase
+  const query = () => supabase
     .from('post_comments')
-    .select(COMMENT_SELECT)
+    .select(commentSelect())
     .eq('post_id', postId)
     .order('like_count', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
+  let { data, error } = await query();
+  // At most twice: once per migration that may be missing.
+  for (let retry = 0; retry < 2 && noteMissingColumns(error); retry++) {
+    ({ data, error } = await query());
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -141,12 +294,25 @@ function buildTree(nodes: CommentNode[]): CommentNode[] {
   return roots;
 }
 
+/**
+ * Post a comment. A `song` or a `gif`, when given, is shared with it (never both): `body`
+ * is then what was typed (possibly nothing) and the song's label, or `GIF_LABEL`, is added
+ * as its last line (composeCommentBody).
+ */
 export async function createComment(
   postId: string,
   body: string,
   parentCommentId: string | null = null,
+  song: { song: CommentSong; label: string } | null = null,
+  gif: CommentGif | null = null,
 ): Promise<CommentNode> {
-  const trimmed = body.trim();
+  if (song && gif) {
+    throw new Error('A comment can share a song or a GIF, not both.');
+  }
+  if (gif && gifColumnsMissing) {
+    throw new Error(GIFS_NOT_READY_MESSAGE);
+  }
+  const trimmed = composeCommentBody(body, song?.label ?? (gif ? GIF_LABEL : null));
   if (!trimmed) {
     throw new Error('Comment cannot be empty.');
   }
@@ -156,37 +322,74 @@ export async function createComment(
   }
   const me = userData.user.id;
 
-  const { data, error } = await supabase
+  const base = {
+    post_id: postId,
+    author_id: me,
+    body: trimmed,
+    parent_comment_id: parentCommentId,
+  };
+  const songFields = song
+    ? {
+        song_post_id: song.song.kind === 'livil' ? song.song.postId : null,
+        song_spotify_track_id: song.song.kind === 'spotify' ? song.song.trackId : null,
+        song_label: song.label,
+      }
+    : {};
+  const gifFields = gif
+    ? { gif_provider: gif.provider, gif_id: gif.id, gif_width: gif.width, gif_height: gif.height }
+    : {};
+  const insert = () => supabase
     .from('post_comments')
     .insert({
-      post_id: postId,
-      author_id: me,
-      body: trimmed,
-      parent_comment_id: parentCommentId,
+      ...base,
+      ...(songColumnsMissing ? {} : songFields),
+      ...(gifColumnsMissing ? {} : gifFields),
     })
-    .select(COMMENT_SELECT)
+    .select(commentSelect())
     .single();
+  let { data, error } = await insert();
+  for (let retry = 0; retry < 2 && noteMissingColumns(error); retry++) {
+    // The backend has no GIF columns yet: '🎞 GIF' alone would say nothing, so refuse.
+    if (gif && gifColumnsMissing) { throw new Error(GIFS_NOT_READY_MESSAGE); }
+    // No song columns yet: post it as its body, label line and all.
+    ({ data, error } = await insert());
+  }
 
   if (error || !data) {
     throw new Error(error?.message ?? 'Failed to create comment.');
   }
-  // Fan out an activity notification to the post author (self-comment is
-  // filtered server-side). Fire-and-forget — never block the comment.
+  // Fan out activity notifications (self-notification is filtered server-side).
+  // Fire-and-forget — never block the comment. A reply tells the parent comment's author
+  // first; when that is ALSO the post's author they have been told, so the post's own
+  // "commented on your post" is skipped — one notification, not two.
   const created = data as unknown as RawCommentRow;
-  void notifyPostActivity(postId, 'comment', {
-    commentText: trimmed,
-    commentId: created.id,
-  });
+  void (async () => {
+    const reply = parentCommentId ? await notifyCommentActivity(created.id, 'comment_reply') : null;
+    if (reply?.recipientIsPostAuthor) { return; }
+    await notifyPostActivity(postId, 'comment', {
+      commentText: trimmed,
+      commentId: created.id,
+    });
+  })();
   return rowToNode(created, false);
 }
 
+/**
+ * Delete a comment — your own, or any on a post that is yours (20261101000000). A delete
+ * the database refuses does not error, it just matches no row; that is reported as a
+ * failure, so the sheet puts the comment back instead of showing it gone until a reload.
+ */
 export async function deleteComment(commentId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('post_comments')
     .delete()
-    .eq('id', commentId);
+    .eq('id', commentId)
+    .select('id');
   if (error) {
     throw new Error(error.message);
+  }
+  if (!data || data.length === 0) {
+    throw new Error("Couldn't delete the comment.");
   }
 }
 
@@ -229,6 +432,8 @@ export async function toggleCommentLike(commentId: string): Promise<boolean> {
   if (insError) {
     throw new Error(insError.message);
   }
+  // "Liked your comment" — fire-and-forget, never blocks the like.
+  void notifyCommentActivity(commentId, 'comment_like');
   return true;
 }
 
@@ -331,7 +536,7 @@ export function subscribeToPostComments(
           if (insertedAuthor === myId) { return; }
           const { data, error } = await supabase
             .from('post_comments')
-            .select(COMMENT_SELECT)
+            .select(commentSelect())
             .eq('id', newId)
             .single();
           if (error || !data) { return; }

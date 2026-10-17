@@ -149,7 +149,8 @@ export default function ActivityCenterScreen() {
     // silently showed the wrong post whenever the target was on the other tab or older
     // than the first page — and the post it landed on was often another post of the same
     // song, so it read as the right one with the wrong counts.
-    if (item.type === 'comment') {
+    // A comment, a like on yours, a reply to yours: open the post's comments at that one.
+    if (item.type === 'comment' || item.type === 'comment_like' || item.type === 'comment_reply') {
       navigation.navigate('PostDetail', {
         postId,
         openComments: true,

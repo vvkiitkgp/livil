@@ -11,17 +11,28 @@ import { COLORS } from '../theme/colors';
 import UsernameBadges from './UsernameBadges';
 import { Icon } from './Icon';
 import SheetModal, { SheetScrollView } from './SheetModal';
+import CommentSongCard from './CommentSongCard';
+import CommentGifCard from './CommentGifCard';
 import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
-import type { CommentNode } from '../services/comments';
-
-const INDENT_PX = 14;
-const MAX_INDENT_DEPTH = 4;
+import { relativeTime } from '../utils/commentTime';
+import { commentDisplayText, type CommentNode } from '../services/comments';
+import {
+  ELBOW_RADIUS,
+  indentFor,
+  LINE_WIDTH,
+  ROW_PAD_LEFT,
+  threadSegments,
+  type ThreadPosition,
+} from '../utils/commentThread';
 
 type Props = {
   node: CommentNode;
-  depth: number;
+  /** Where this comment sits in its thread: its depth and the lines that cross its row. */
+  thread: ThreadPosition;
   viewerId: string;
+  /** The post's owner (upload or repost): may delete any comment on it. Null while unknown. */
+  postOwnerId: string | null;
   onReply: (node: CommentNode) => void;
   onDelete: (node: CommentNode) => void;
   onReport: (node: CommentNode) => void;
@@ -31,23 +42,6 @@ type Props = {
   highlighted: boolean;
 };
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) { return ''; }
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) { return `${diffSec}s`; }
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) { return `${m}m`; }
-  const h = Math.floor(m / 60);
-  if (h < 24) { return `${h}h`; }
-  const d = Math.floor(h / 24);
-  if (d < 7) { return `${d}d`; }
-  const w = Math.floor(d / 7);
-  if (w < 4) { return `${w}w`; }
-  const mo = Math.floor(d / 30);
-  if (mo < 12) { return `${mo}mo`; }
-  return `${Math.floor(d / 365)}y`;
-}
 
 function avatarInitial(author: CommentNode['author']): string {
   const name = author.displayName?.trim() || author.username;
@@ -62,21 +56,42 @@ function formatCount(n: number): string {
 }
 
 export default function CommentItem(props: Props) {
-  const { node, depth, viewerId, highlighted } = props;
+  const { node, thread, viewerId, highlighted } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
   // Delete and Report open a modal of the comments sheet's; on iOS it must wait until this
   // menu has closed (see useRunAfterDismiss).
   const { runAfterDismiss, onDismiss } = useRunAfterDismiss();
-  const indent = Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX;
+  const indent = indentFor(thread.depth);
   const isOwn = node.authorId === viewerId;
+  // Yours, or on your post — the database allows exactly these (post_comments_delete_*).
+  const canDelete = isOwn || (!!viewerId && props.postOwnerId === viewerId);
   const displayName = node.author.displayName || node.author.username;
+  // With a song or a GIF, the body's last line is its label (for apps that cannot draw
+  // it); the card or the GIF replaces it here.
+  const text = commentDisplayText(node);
 
   return (
-    <View style={[styles.row, { paddingLeft: 16 + indent }, highlighted && styles.highlighted]}>
-      {depth > 0 ? (
-        <View style={[styles.guide, { left: indent + 16 - 7 }]} />
-      ) : null}
+    <View style={[styles.row, { paddingLeft: ROW_PAD_LEFT + indent }, highlighted && styles.highlighted]}>
+      {/* The thread: from under a comment's avatar, curving into each reply's. Drawn
+          first, so avatars sit on top of it. */}
+      {threadSegments(thread).map((seg, i) => (
+        seg.kind === 'elbow' ? (
+          <View
+            key={i}
+            style={[styles.elbow, { left: seg.left, top: seg.top, width: seg.width, height: seg.height }]}
+          />
+        ) : (
+          <View
+            key={i}
+            style={[
+              styles.line,
+              { left: seg.left, top: seg.top },
+              seg.height === null ? styles.lineToBottom : { height: seg.height },
+            ]}
+          />
+        )
+      ))}
 
       <TouchableOpacity onPress={() => props.onAvatarPress(node.authorId)} activeOpacity={0.7}>
         {node.author.avatarUrl ? (
@@ -105,9 +120,13 @@ export default function CommentItem(props: Props) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.bodyText}>
-          {renderCommentBody(node.body, props.onMentionPress, styles.bodyText)}
-        </Text>
+        {text ? (
+          <Text style={styles.bodyText}>
+            {renderCommentBody(text, props.onMentionPress, styles.bodyText)}
+          </Text>
+        ) : null}
+        {node.song ? <CommentSongCard song={node.song} label={node.songLabel} /> : null}
+        {node.gif ? <CommentGifCard gif={node.gif} /> : null}
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -150,21 +169,22 @@ export default function CommentItem(props: Props) {
           style={styles.menuBody}
           contentContainerStyle={{ paddingBottom: 12 + insets.bottom }}
         >
-          {isOwn ? (
+          {canDelete ? (
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMenuOpen(false); runAfterDismiss(() => props.onDelete(node)); }}
             >
               <Text style={[styles.menuText, { color: COLORS.error }]}>Delete</Text>
             </TouchableOpacity>
-          ) : (
+          ) : null}
+          {!isOwn ? (
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMenuOpen(false); runAfterDismiss(() => props.onReport(node)); }}
             >
               <Text style={styles.menuText}>Report</Text>
             </TouchableOpacity>
-          )}
+          ) : null}
           <TouchableOpacity style={styles.menuItem} onPress={() => setMenuOpen(false)}>
             <Text style={[styles.menuText, { color: COLORS.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
@@ -185,12 +205,18 @@ const styles = StyleSheet.create({
   highlighted: {
     backgroundColor: COLORS.purpleDim,
   },
-  guide: {
+  line: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
+    width: LINE_WIDTH,
     backgroundColor: COLORS.border,
+  },
+  lineToBottom: { bottom: 0 },
+  elbow: {
+    position: 'absolute',
+    borderLeftWidth: LINE_WIDTH,
+    borderBottomWidth: LINE_WIDTH,
+    borderColor: COLORS.border,
+    borderBottomLeftRadius: ELBOW_RADIUS,
   },
   avatar: {
     width: 32,

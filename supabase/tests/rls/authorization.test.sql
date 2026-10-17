@@ -948,20 +948,19 @@ select pg_temp.assert(
      set post_id='f0000000-0000-0000-0000-0000000000b1'
    where id='f0000000-0000-0000-0000-0000000000d1'$q$), true);
 
--- The freeze must be narrow. If this fails, the trigger is blocking legitimate edits and
--- the first comment-edit feature will hit it.
+-- A comment's words are fixed once posted (20261103000000, owner's decision 2026-10-17):
+-- this used to pin that a body edit WORKED, to keep the post_id freeze narrow. It is
+-- refused now — by the content lock, deliberately; see comment-text-locked.test.sql.
 select pg_temp.assert(
-  'freeze #9: editing a comment''s BODY still works',
+  'freeze #9: editing a comment''s BODY is refused (content lock)',
   pg_temp.update_raises($q$update post_comments set body='edited'
-   where id='f0000000-0000-0000-0000-0000000000d1'$q$), false);
+   where id='f0000000-0000-0000-0000-0000000000d1'$q$), true);
 
 reset role;
 
--- update_raises returning false only means "nothing raised". An UPDATE that RLS filtered
--- to zero rows returns false too, so #9 could pass vacuously. Assert the write landed.
 select pg_temp.assert(
-  'freeze #10: ...and the edit actually landed (guards #9 against a vacuous pass)',
-  (select body = 'edited' from post_comments where id='f0000000-0000-0000-0000-0000000000d1'), true);
+  'freeze #10: ...and the words are unchanged',
+  (select body = 'original body' from post_comments where id='f0000000-0000-0000-0000-0000000000d1'), true);
 
 
 -- ============================================================================

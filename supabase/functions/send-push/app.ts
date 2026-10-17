@@ -56,7 +56,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 // The kinds a client may emit. Anything else is rejected.
 //
-// 14 come from pushDispatch.ts on the mobile app. `badge_granted` is the first that comes
+// 16 come from pushDispatch.ts on the mobile app. `badge_granted` is the first that comes
 // from the OPS DASHBOARD instead: a badge is awarded by an operator on the web, not by
 // anything happening on the recipient's device, so there is no phone in the loop to
 // dispatch it the way every other kind is dispatched.
@@ -64,6 +64,8 @@ export const KINDS = new Set([
   'friend_request', 'friend_accepted', 'new_follower', 'new_fan', 'message',
   'reaction', 'jam_invite_dm', 'jam_started', 'jam_join', 'jam_ended',
   'activity_like', 'activity_comment', 'activity_repost', 'activity_milestone',
+  // "liked your comment" / "replied to your comment" (20261031000000).
+  'activity_comment_like', 'activity_comment_reply',
   'badge_granted',
 ]);
 
@@ -168,7 +170,13 @@ export type Grant = {
    * The row activity_notify_post wrote for this like / comment / repost. `postId` is that
    * row's post — the recipient's own — and is what `post` is looked up from.
    */
-  activity?: { aggCount: number; commentText: string | null; postId?: string | null };
+  activity?: {
+    aggCount: number;
+    commentText: string | null;
+    postId?: string | null;
+    /** activity_comment_like: the liked comment — one card per comment (buildPush). */
+    commentId?: string | null;
+  };
   /**
    * What the push names: the liked post's song, looked up after authorization from
    * `activity.postId` (see describePost). Absent → the copy says "your post", as before.
@@ -183,13 +191,13 @@ export type Grant = {
 };
 
 /** The parts of the request authorize() verifies rather than trusts. */
-export type Claims = { conversationId?: unknown; jamRoomId?: unknown };
+export type Claims = { conversationId?: unknown; jamRoomId?: unknown; commentId?: unknown };
 
-/** The two ids in `data.params` that are read at all — as claims, never as content. */
+/** The ids in `data.params` that are read at all — as claims, never as content. */
 export function claimsFrom(payload: PushRequest): Claims {
   const params = payload.data?.params;
   return params && typeof params === 'object'
-    ? { conversationId: params.conversationId, jamRoomId: params.jamRoomId }
+    ? { conversationId: params.conversationId, jamRoomId: params.jamRoomId, commentId: params.commentId }
     : {};
 }
 
@@ -401,11 +409,15 @@ export async function authorize(
     case 'activity_like':
       return await authorizeLike(admin, actor, recipient);
 
+    case 'activity_comment_like':
+      return await authorizeCommentLike(admin, actor, recipient, claims.commentId);
+
     case 'activity_comment':
     case 'activity_repost':
+    case 'activity_comment_reply':
       return await authorizeCommentOrRepost(
         admin,
-        kind === 'activity_comment' ? 'comment' : 'repost',
+        kind === 'activity_comment' ? 'comment' : kind === 'activity_repost' ? 'repost' : 'comment_reply',
         actor,
         recipient,
       );
@@ -521,6 +533,59 @@ async function authorizeLike(
   };
 }
 
+/**
+ * activity_comment_like — activity_notify_comment keeps ONE row per liked comment, as
+ * activity_notify_post does per liked post, so this is authorizeLike against that row:
+ * this actor named by actor_id, or in payload.notified with their like still standing in
+ * post_comment_likes. The snippet is the liked comment's own text, read by the RPC from
+ * the stored comment — the recipient's words, not anything the request carried.
+ */
+async function authorizeCommentLike(
+  admin: SupabaseClient,
+  actor: string,
+  recipient: string,
+  claimedCommentId: unknown,
+): Promise<Grant | null> {
+  const { data } = await admin
+    .from('activity_notifications')
+    .select('actor_id, post_id, agg_count, payload')
+    .eq('recipient_id', recipient)
+    .eq('type', 'comment_like')
+    .gte('updated_at', evidenceSince())
+    .order('updated_at', { ascending: false })
+    .limit(25);
+  type Row = { actor_id: unknown; post_id: unknown; agg_count: unknown; payload: unknown };
+  // Which comment: the one the app names, when it does — someone who liked two of your
+  // comments a moment apart would otherwise get the newest row quoted twice. It only
+  // narrows the search; the row still has to name this actor.
+  const claimed = isUuid(claimedCommentId) ? claimedCommentId.toLowerCase() : null;
+  const row = ((data ?? []) as Row[])
+    .filter(r => !claimed || String((r.payload as { comment_id?: unknown } | null)?.comment_id ?? '').toLowerCase() === claimed)
+    .find(r => r.actor_id === actor || notifiedIncludes(r.payload, actor));
+  const aggCount = Number(row?.agg_count);
+  if (!row || !Number.isFinite(aggCount) || aggCount <= 0) return null;
+
+  const payload = row.payload as { comment_id?: unknown; comment_text?: unknown } | null;
+  if (row.actor_id !== actor) {
+    if (!isUuid(payload?.comment_id)) return null;
+    const { count } = await admin
+      .from('post_comment_likes')
+      .select('comment_id', { count: 'exact', head: true })
+      .eq('comment_id', payload.comment_id)
+      .eq('user_id', actor);
+    if ((count ?? 0) <= 0) return null;
+  }
+  const text = payload?.comment_text;
+  return {
+    activity: {
+      aggCount: Math.floor(aggCount),
+      commentText: typeof text === 'string' && text.trim() ? text : null,
+      postId: isUuid(row.post_id) ? row.post_id : null,
+      commentId: isUuid(payload?.comment_id) ? payload.comment_id : null,
+    },
+  };
+}
+
 function notifiedIncludes(payload: unknown, actor: string): boolean {
   const notified = (payload as { notified?: unknown } | null)?.notified;
   return Array.isArray(notified) && notified.includes(actor);
@@ -529,12 +594,14 @@ function notifiedIncludes(payload: unknown, actor: string): boolean {
 /**
  * activity_comment / activity_repost — activity_notify_post inserts a fresh row per event,
  * after checking the caller really wrote a comment on, or reposted, the recipient's post.
- * The comment snippet comes from that row's payload, which the RPC read from the stored
- * comment rather than from its parameter — so it is text the actor really posted.
+ * activity_comment_reply — the same, from activity_notify_comment, after checking the
+ * caller wrote a reply under the recipient's comment. The snippet comes from that row's
+ * payload, which the RPC read from the stored comment rather than from its parameter — so
+ * it is text the actor really posted.
  */
 async function authorizeCommentOrRepost(
   admin: SupabaseClient,
-  type: 'comment' | 'repost',
+  type: 'comment' | 'repost' | 'comment_reply',
   actor: string,
   recipient: string,
 ): Promise<Grant | null> {
@@ -553,7 +620,7 @@ async function authorizeCommentOrRepost(
   return {
     activity: {
       aggCount: 1,
-      commentText: type === 'comment' && typeof text === 'string' && text.trim() ? text : null,
+      commentText: type !== 'repost' && typeof text === 'string' && text.trim() ? text : null,
       postId: isUuid(row.post_id) ? row.post_id : null,
     },
   };
@@ -684,7 +751,10 @@ export type PostSubject = {
 };
 
 /** The kinds whose Android notification shows the actor's photo. */
-const PHOTO_KINDS = new Set(['activity_like', 'activity_comment', 'activity_repost']);
+const PHOTO_KINDS = new Set([
+  'activity_like', 'activity_comment', 'activity_repost',
+  'activity_comment_like', 'activity_comment_reply',
+]);
 
 /**
  * Whether a profile photo URL may ride in a push. Android's notification fetches it
@@ -758,6 +828,8 @@ const KIND_ROUTES: Record<string, readonly string[]> = {
   activity_comment: ['ActivityCenter'],
   activity_repost: ['ActivityCenter'],
   activity_milestone: ['ActivityCenter'],
+  activity_comment_like: ['ActivityCenter'],
+  activity_comment_reply: ['ActivityCenter'],
   badge_granted: ['ActivityCenter'],
 };
 
@@ -906,6 +978,27 @@ export function composeContent(
         : `commented on ${what}`);
     }
 
+    // The comment kinds name the COMMENT, not the song: the post is usually someone else's,
+    // and describePost only reads the recipient's own (see SONG_KINDS).
+    case 'activity_comment_like': {
+      const name = activityName(actor);
+      const others = (grant.activity?.aggCount ?? 1) - 1;
+      const snippet = grant.activity?.commentText;
+      return out(
+        others > 0 ? `${name} and ${others} other${others === 1 ? '' : 's'}` : name,
+        snippet
+          ? `liked your comment: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”`
+          : 'liked your comment',
+      );
+    }
+
+    case 'activity_comment_reply': {
+      const snippet = grant.activity?.commentText;
+      return out(activityName(actor), snippet
+        ? `replied to your comment: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”`
+        : 'replied to your comment');
+    }
+
     case 'activity_repost': {
       // The row's post is the ORIGINAL — the recipient's own upload — so it reads as a track.
       const title = grant.post?.title;
@@ -983,6 +1076,11 @@ export function buildPush(
   if (kind === 'activity_like' && grant.activity?.postId) {
     data.collapseId = `like:${grant.activity.postId}`;
     if (opts.quiet) data.quiet = '1';
+  }
+  // Likes on one comment share one card the same way. No quiet window: payload.notified
+  // already makes each person buzz once, and push_like_alerts is keyed by post.
+  if (kind === 'activity_comment_like' && isUuid(grant.activity?.commentId)) {
+    data.collapseId = `comment_like:${grant.activity.commentId}`;
   }
   return { title, body, data };
 }

@@ -1128,10 +1128,14 @@ export default function ConversationScreen() {
    */
   const handlePlaySharedPost = useCallback(async (postId: string) => {
     // Already the loaded track: toggle rather than restart, so tapping a card you are
-    // already listening to does not jump back to the beginning.
-    if (nowPlaying?.postId === postId) {
-      if (activePostId === postId) { handlersRef.current?.pause(); }
-      else { requestPlay(postId); }
+    // already listening to does not jump back to the beginning. Through the engine's own
+    // handlers, as the floating player does: requestPlay alone only marks the post active,
+    // and GlobalAudioPlayer treats "active is the one I hold" as already playing, so a
+    // paused song stayed silent while the player said playing (same bug and fix as
+    // CommentSongCard, 2026-10-16).
+    if (nowPlaying?.postId === postId && handlersRef.current) {
+      if (activePostId === postId) { handlersRef.current.pause(); }
+      else { handlersRef.current.play(); }
       return;
     }
 

@@ -122,6 +122,23 @@ describe('OnboardingNoticeHost', () => {
     unmount(t);
   });
 
+  it('a host inside an open sheet shows the notice while it is mounted, then hands back', async () => {
+    // The app's own host, under the screens, and the comments sheet's, inside the sheet.
+    // On iOS only the sheet's can present over the open sheet.
+    const root = mount();
+    const sheet = mount();
+    await request('spotify', jest.fn());
+    expect(modal(sheet).props.visible).toBe(true);
+    expect(modal(root).props.visible).toBe(false);
+    press(sheet, 'Stay on Livil');
+
+    // The sheet closes: its host unmounts, and the app's own host serves again.
+    unmount(sheet);
+    await request('spotify', jest.fn());
+    expect(modal(root).props.visible).toBe(true);
+    unmount(root);
+  });
+
   it('with no host mounted, the action runs at once rather than doing nothing', async () => {
     const go = jest.fn();
     await request('spotify', go);

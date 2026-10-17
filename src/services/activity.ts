@@ -21,7 +21,9 @@ export type ActivityType =
   | 'credit_accepted'
   | 'credit_declined'
   | 'badge_granted'
-  | 'content_removed';
+  | 'content_removed'
+  | 'comment_like'
+  | 'comment_reply';
 
 export type ActivityActor = {
   id: string;
@@ -54,6 +56,23 @@ export type ActivityItem = ActivityBase &
     | { type: 'like'; actor: ActivityActor; post: ActivityPostRef; aggCount: number }
     | { type: 'comment'; actor: ActivityActor; post: ActivityPostRef; commentText: string | null; commentId: string | null }
     | { type: 'repost'; actor: ActivityActor; post: ActivityPostRef }
+    // On a comment of YOURS, on anyone's post. commentText is your comment's words (a like)
+    // or the reply's (a reply); commentId is the comment to highlight when it is opened.
+    | {
+        type: 'comment_like';
+        actor: ActivityActor;
+        post: ActivityPostRef;
+        aggCount: number;
+        commentText: string | null;
+        commentId: string | null;
+      }
+    | {
+        type: 'comment_reply';
+        actor: ActivityActor;
+        post: ActivityPostRef;
+        commentText: string | null;
+        commentId: string | null;
+      }
     | { type: 'play_milestone'; post: ActivityPostRef; threshold: number }
     // No actor and no post: Livil telling you it gave you something, the same shape as
     // play_milestone. `badge` is the key from badge_kinds, not display copy — an
@@ -160,6 +179,25 @@ function rowToItem(row: RawActivityRow): ActivityItem | null {
       };
     case 'repost':
       return { ...base, type: 'repost', actor: rowToActor(row), post: rowToPost(row) };
+    case 'comment_like':
+      return {
+        ...base,
+        type: 'comment_like',
+        actor: rowToActor(row),
+        post: rowToPost(row),
+        aggCount: Number(row.agg_count ?? 1),
+        commentText: row.payload?.comment_text ?? null,
+        commentId: row.payload?.comment_id ?? null,
+      };
+    case 'comment_reply':
+      return {
+        ...base,
+        type: 'comment_reply',
+        actor: rowToActor(row),
+        post: rowToPost(row),
+        commentText: row.payload?.comment_text ?? null,
+        commentId: row.payload?.comment_id ?? null,
+      };
     case 'play_milestone':
       return { ...base, type: 'play_milestone', post: rowToPost(row), threshold: Number(row.payload?.threshold ?? 0) };
     case 'badge_granted': {
@@ -253,6 +291,18 @@ export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
     }
     case 'repost':
       return { actor: item.actor, text: ' reposted your track' };
+    case 'comment_like': {
+      const others = item.aggCount - 1;
+      const who = others > 0 ? ` and ${others} other${others === 1 ? '' : 's'}` : '';
+      const snippet = item.commentText?.trim();
+      const quoted = snippet ? `: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”` : '';
+      return { actor: item.actor, text: `${who} liked your comment${quoted}` };
+    }
+    case 'comment_reply': {
+      const snippet = item.commentText?.trim();
+      const quoted = snippet ? `: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”` : '';
+      return { actor: item.actor, text: ` replied to your comment${quoted}` };
+    }
     case 'play_milestone':
       // The first milestone (5 plays, activity_record_play) is the moment strangers start
       // listening — said as that, since "hit 5 plays" undersells it.
@@ -310,6 +360,35 @@ export function activitySummary(item: ActivityItem): string {
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
+// activity_list leaves out the types shipped apps cannot draw; activity_list_v2
+// (20261031000000) returns everything. Before that migration reaches a backend, the call
+// fails as a missing function — then the old list, so Activity still loads. Asked again
+// after a while: an app left running across the migration should not stay on the old list.
+const LIST_V2_RETRY_MS = 10 * 60 * 1000;
+let listV2MissingAt: number | null = null;
+
+function isMissingFunction(error: { code?: string } | null): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
+}
+
+async function listRows(before: string | null): Promise<{ data: unknown; error: { code?: string } | null }> {
+  const args = { p_limit: 50, p_before: before };
+  if (listV2MissingAt === null || Date.now() - listV2MissingAt > LIST_V2_RETRY_MS) {
+    const res = await db.rpc('activity_list_v2', args);
+    if (!isMissingFunction(res.error)) {
+      listV2MissingAt = null;
+      return res;
+    }
+    listV2MissingAt = Date.now();
+  }
+  return db.rpc('activity_list', args);
+}
+
+/** Test-only. */
+export function __resetActivityListForTest(): void {
+  listV2MissingAt = null;
+}
+
 /**
  * `postDetails: false` skips the post lookup for callers that only need the text of an item
  * (the Inbox banner's one-line preview): it never shows a card, so it never needs artwork,
@@ -319,10 +398,7 @@ export async function listActivity(
   beforeUpdatedAt?: string,
   { postDetails = true }: { postDetails?: boolean } = {},
 ): Promise<ActivityItem[]> {
-  const { data, error } = await db.rpc('activity_list', {
-    p_limit: 50,
-    p_before: beforeUpdatedAt ?? null,
-  });
+  const { data, error } = await listRows(beforeUpdatedAt ?? null);
   if (error) { throw error; }
   const items = ((data ?? []) as RawActivityRow[])
     .map(rowToItem)
@@ -476,6 +552,61 @@ export async function notifyPostActivity(
     });
   } catch (e) {
     console.warn('[activity] notifyPostActivity failed', e);
+  }
+}
+
+const COMMENT_PUSH_KIND: Record<'comment_like' | 'comment_reply', PushKind> = {
+  comment_like: 'activity_comment_like',
+  comment_reply: 'activity_comment_reply',
+};
+
+/**
+ * "Liked your comment" / "replied to your comment" — to the comment's author, on anyone's
+ * post. `commentId` is the liked comment, or the reply. Resolves to whether the recipient
+ * also owns the post (a reply to the post author's own comment: the caller then skips the
+ * post's "commented on your post", so they are told once). Never throws.
+ */
+export async function notifyCommentActivity(
+  commentId: string,
+  type: 'comment_like' | 'comment_reply',
+): Promise<{ recipientIsPostAuthor: boolean } | null> {
+  try {
+    const { data, error } = await db.rpc('activity_notify_comment', {
+      p_comment_id: commentId,
+      p_type: type,
+    });
+    if (error) { throw error; }
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | {
+          recipient_id: string;
+          agg_count: number;
+          actor_display_name: string | null;
+          recipient_should_push: boolean;
+          recipient_is_post_author: boolean;
+        }
+      | undefined;
+    if (!row) { return null; }  // yourself, blocked, or no such like / reply
+    if (row.recipient_should_push) {
+      // The server writes the real copy from the row it proved (send-push composeContent);
+      // these are only what a pre-composeContent server would have shown.
+      const name = row.actor_display_name ?? 'Someone';
+      void sendPush({
+        recipientUserId: row.recipient_id,
+        kind: COMMENT_PUSH_KIND[type],
+        title: 'Livil',
+        body: type === 'comment_like' ? `${name} liked your comment` : `${name} replied to your comment`,
+        // Which comment, so the push quotes this one (send-push only matches it, never
+        // trusts it). The tap still opens Activity.
+        data: type === 'comment_like'
+          ? { route: 'ActivityCenter', params: { commentId } }
+          : { route: 'ActivityCenter' },
+      });
+    }
+    return { recipientIsPostAuthor: row.recipient_is_post_author === true };
+  } catch (e) {
+    // Before migration 20261031000000 the function does not exist: no notification, as before.
+    console.warn('[activity] notifyCommentActivity failed', e);
+    return null;
   }
 }
 

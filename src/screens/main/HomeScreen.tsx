@@ -646,6 +646,7 @@ export default function HomeScreen() {
     [shownTab, forYou.posts, newOnLivil.posts],
   );
   const comments = useCommentsCountDeltas(bothFeedsPosts);
+  const clearCommentDeltas = comments.clearDeltas;
 
   const forYouListRef = useRef<FlatList<FeedListItem>>(null);
   const newOnLivilListRef = useRef<FlatList<FeedListItem>>(null);
@@ -1112,11 +1113,13 @@ export default function HomeScreen() {
         // Pulling New on Livil is what brings the newest uploads in: that clears the dot.
         tabRef.current === 'new_on_livil' ? Promise.resolve(markNewOnLivilSeen()) : refreshNewDot(),
       ]);
+      // Fresh counts from the server include every comment change made here.
+      clearCommentDeltas();
     } finally {
       setRefreshing(false);
       showTopBar();
     }
-  }, [hideTopBar, showTopBar, setStories, refreshNewDot, markNewOnLivilSeen]);
+  }, [hideTopBar, showTopBar, setStories, refreshNewDot, markNewOnLivilSeen, clearCommentDeltas]);
 
   const handleEndReached = useCallback((which: HomeFeedTab) => {
     const f = feedsRef.current[which];

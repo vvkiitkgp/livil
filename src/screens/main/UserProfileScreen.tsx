@@ -225,6 +225,7 @@ export default function UserProfileScreen() {
   const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
+  const clearCommentDeltas = comments.clearDeltas;
   const [layout, setLayout] = useProfileLayout();
   // Home's tab cross-fade for the tab content. The pill / switch show the new choice at
   // once (`pillTab`, `pendingLayout`); the content swaps once the old rows have faded out.
@@ -506,9 +507,11 @@ export default function UserProfileScreen() {
         : fetchProfileMutuals(userId).then(setMutuals),
       getRepostsPublic(userId).then(setRepostsPublic).catch(() => {}),
     ]);
+    // Fresh counts from the server include every comment change made here.
+    clearCommentDeltas();
     setRefreshing(false);
     if (isCurrent()) { setLoading(false); }
-  }, [refresh, tab, refreshRelationships, tabCache, isOwnProfile, blockedView, userId]);
+  }, [refresh, tab, refreshRelationships, tabCache, isOwnProfile, blockedView, userId, clearCommentDeltas]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || endReached || posts.length === 0) { return; }
