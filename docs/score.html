@@ -4,10 +4,83 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0A0A0F" />
-    <meta name="robots" content="index,follow" />
-    <title>Music score · Livil</title>
-    <meta name="description" content="How your Livil music score grows." />
+    <meta name="robots" content="index,follow,max-snippet:-1" />
+    <title>How the Livil Music Score Is Calculated · Livil</title>
+    <meta
+      name="description"
+      content="How is the Livil music score calculated? Your music score grows when you listen, like, comment, repost and share songs, host Jams and upload music — and when people like or comment on your reposts. It updates every night."
+    />
+    <link rel="canonical" href="https://livil-music.com/score" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content="How the Livil music score is calculated" />
+    <meta property="og:description" content="Every point in your Livil music score: listening, likes, comments, reposts, song shares, Jams, uploads, and likes and comments on your reposts. Updated nightly." />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://livil-music.com/score" />
+    <meta property="og:site_name" content="Livil" />
+    <meta property="og:image" content="https://livil-music.com/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="How the Livil music score is calculated" />
+    <meta name="twitter:description" content="Every point in your Livil music score, and how often it updates." />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebPage",
+          "@id": "https://livil-music.com/score#page",
+          "url": "https://livil-music.com/score",
+          "name": "How the Livil music score is calculated",
+          "description": "The Livil music score is the number on a Livil profile. It adds up points for listening, liking, commenting, reposting and sharing songs, hosting Jams and uploading music, plus likes and comments on your reposts and plays of your uploads. It is recalculated every night, with daily limits.",
+          "inLanguage": "en",
+          "dateModified": "2026-10-17",
+          "isPartOf": { "@type": "WebSite", "name": "Livil", "url": "https://livil-music.com/" },
+          "about": { "@type": "Thing", "name": "Livil music score", "alternateName": ["Livil score", "music score on Livil"] }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Livil", "item": "https://livil-music.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Music score", "item": "https://livil-music.com/score" }
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is the Livil music score?",
+              "acceptedAnswer": { "@type": "Answer", "text": "The number under your @name on your Livil profile. It shows how much you listen, share and create on Livil. On Livil, \"music score\" means this activity score, not sheet music." }
+            },
+            {
+              "@type": "Question",
+              "name": "How is the music score calculated in Livil?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Points for each thing you do, added up every night: listen to a song +1, like a post +1, comment +2, share a song in chat +2, repost a song +5, host a Jam +5, upload your own song +25, someone plays your upload +1, someone likes your repost +1, someone comments on your repost +2. Daily limits keep it fair." }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I increase my Livil music score?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Listen to songs, like and comment, repost songs you love, share songs with friends in chat, host Jams and upload your own music. You also earn when people play your uploads or like and comment on your reposts." }
+            },
+            {
+              "@type": "Question",
+              "name": "How often does the Livil music score update?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Once a night. What you do today shows up in your score tomorrow." }
+            },
+            {
+              "@type": "Question",
+              "name": "Can my Livil music score go down?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Yes. Undoing something removes its points: unliking, deleting a comment or a repost, or a song being taken down." }
+            },
+            {
+              "@type": "Question",
+              "name": "Who can see my Livil music score?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Anyone signed in to Livil, except people you have blocked." }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
     <style>
       :root {
         --bg: #0a0a0f;
@@ -54,29 +127,35 @@
       .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--purple); box-shadow: 0 0 12px var(--purple-glow); }
       .logo-name { font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
       h1 {
-        font-size: 40px; font-weight: 800; letter-spacing: -1px; margin: 0 0 8px;
+        font-size: 34px; line-height: 1.15; font-weight: 800; letter-spacing: -0.5px; margin: 0 0 10px;
         background: linear-gradient(135deg, #fff 0%, #c4b5fd 100%);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
       }
       .tagline { color: var(--text-secondary); font-size: 16px; margin: 0; }
-      ul { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
-      li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--border); }
-      li:first-child { border-top: none; }
+      ul.points { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+      ul.points li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--border); }
+      ul.points li:first-child { border-top: none; }
       .pts { font-weight: 800; color: var(--purple-light); white-space: nowrap; }
       .note { color: var(--text-muted); font-size: 14px; text-align: center; margin: 18px 0 0; }
+      h2 { font-size: 20px; margin: 48px 0 8px; }
+      .faq h3 { font-size: 16px; margin: 22px 0 4px; }
+      .faq p { margin: 0; color: var(--text-secondary); font-size: 15px; }
+      details { margin-top: 14px; color: var(--text-secondary); font-size: 14px; }
+      summary { cursor: pointer; color: var(--text-muted); text-align: center; }
+      details ul { margin: 10px 0 0; padding-left: 20px; }
       footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 13px; }
-      footer a { color: var(--purple-light); }
+      footer a, .faq a { color: var(--purple-light); }
     </style>
   </head>
   <body>
     <div class="wrap">
       <header>
         <a class="logo" href="/"><span class="logo-dot"></span><span class="logo-name">Livil</span></a>
-        <h1>Music score</h1>
-        <p class="tagline">The number on your profile. It grows as you use Livil.</p>
+        <h1>How is the Livil music score calculated?</h1>
+        <p class="tagline">The number on your Livil profile. It grows as you use Livil.</p>
       </header>
 
-      <ul>
+      <ul class="points">
         <li><span>Listen to a song</span><span class="pts">+1</span></li>
         <li><span>Like a post</span><span class="pts">+1</span></li>
         <li><span>Comment</span><span class="pts">+2</span></li>
@@ -89,6 +168,32 @@
         <li><span>Someone comments on your repost</span><span class="pts">+2</span></li>
       </ul>
       <p class="note">Updates every night. Daily limits keep it fair.</p>
+      <details>
+        <summary>Daily limits</summary>
+        <ul>
+          <li>Listening: one point per song a day, up to 50 a day (Livil songs you play, or Spotify songs you open).</li>
+          <li>Comments: up to 20 a day. Songs shared in chat: up to 10 a day.</li>
+          <li>Reposts: once per song, up to 10 a day. Uploads: up to 3 a day.</li>
+          <li>Jams: ones that played for 5+ minutes, up to 3 a day.</li>
+          <li>Plays of your upload: once per listener per song a day.</li>
+          <li>Likes on your reposts: up to 50 a day. Comments on your reposts: once per person per repost, up to 25 people a day.</li>
+          <li>Liking or playing your own posts earns nothing, and neither do your own likes or comments on your reposts.</li>
+        </ul>
+      </details>
+
+      <section class="faq">
+        <h2>Questions</h2>
+        <h3>What is the Livil music score?</h3>
+        <p>The number under your @name on your Livil profile. It shows how much you listen, share and create on Livil. On Livil, "music score" means this activity score — not sheet music.</p>
+        <h3>How do I increase my Livil music score?</h3>
+        <p>Listen, like, comment, repost songs you love, share songs with friends, host Jams and upload your own music. You also earn when people play your uploads or like and comment on your reposts.</p>
+        <h3>How often does it update?</h3>
+        <p>Once a night. What you do today shows up tomorrow.</p>
+        <h3>Can my music score go down?</h3>
+        <p>Yes — undoing something removes its points: unliking, deleting a comment or a repost, or a song being taken down.</p>
+        <h3>Who can see my music score?</h3>
+        <p>Anyone signed in to <a href="/">Livil</a>, except people you've blocked.</p>
+      </section>
 
       <footer>
         <a href="/">livil-music.com</a> · © 2026 Livil

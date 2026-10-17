@@ -25,10 +25,10 @@
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://livil-music.com/score.html</loc>
+    <loc>https://livil-music.com/score</loc>
     <lastmod>2026-10-17</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://livil-music.com/terms.html</loc>
