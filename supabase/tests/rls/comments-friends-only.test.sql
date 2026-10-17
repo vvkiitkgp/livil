@@ -125,7 +125,10 @@ select pg_temp.assert(
 reset role;
 select pg_temp.assert_count(
   'and no row was stored',
-  (select count(*) from post_comments where id = 'd1111111-0000-0000-0000-000000000001'),
+  -- By content, not id: an API insert gets a server-chosen id (20261103000000).
+  (select count(*) from post_comments
+    where post_id = 'c1111111-0000-0000-0000-000000000001'
+      and author_id = 'a1111111-0000-0000-0000-000000000003' and body = 'nope'),
   0);
 
 -- ============================================================================
