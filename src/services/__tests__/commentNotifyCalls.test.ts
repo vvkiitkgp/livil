@@ -13,6 +13,7 @@ jest.mock('../activity', () => ({
 }));
 
 let mockExistingLike: { comment_id: string } | null = null;
+let mockDeleteResult: { data: unknown; error: unknown } = { data: [{ id: 'c-1' }], error: null };
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     auth: { getUser: async () => ({ data: { user: { id: 'me' } }, error: null }) },
@@ -28,6 +29,7 @@ jest.mock('../../../lib/supabase', () => ({
         return chain;
       }
       return {
+        delete: () => ({ eq: () => ({ select: async () => mockDeleteResult }) }),
         insert: (row: Record<string, unknown>) => ({
           select: () => ({
             single: async () => ({
@@ -50,7 +52,7 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }));
 
-import { __resetSongColumnsMissingForTest, createComment, toggleCommentLike } from '../comments';
+import { __resetSongColumnsMissingForTest, createComment, deleteComment, toggleCommentLike } from '../comments';
 
 /** Let the fire-and-forget notification chain run. */
 const settle = () => new Promise(r => setTimeout(r, 0));
@@ -99,4 +101,14 @@ it('liking a comment tells its author; unliking tells nobody', async () => {
   mockExistingLike = { comment_id: 'c-1' };
   expect(await toggleCommentLike('c-1')).toBe(false);
   expect(mockNotifyComment).not.toHaveBeenCalled();
+});
+
+it('a delete the database refused (not yours, not your post) is a failure, not silence', async () => {
+  mockDeleteResult = { data: [{ id: 'c-1' }], error: null };
+  await expect(deleteComment('c-1')).resolves.toBeUndefined();
+  // RLS refuses by matching no row — no error comes back.
+  mockDeleteResult = { data: [], error: null };
+  await expect(deleteComment('c-1')).rejects.toThrow("Couldn't delete the comment.");
+  mockDeleteResult = { data: null, error: { message: 'boom' } };
+  await expect(deleteComment('c-1')).rejects.toThrow('boom');
 });

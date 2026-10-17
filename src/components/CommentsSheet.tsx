@@ -245,6 +245,8 @@ export default function CommentsSheet({
   const { showToast } = useToast();
 
   const [viewerId, setViewerId] = useState<string>('');
+  // Who owns the post (an upload, or a repost): they may delete any comment on it.
+  const [postOwnerId, setPostOwnerId] = useState<string | null>(null);
   const [nodes, setNodes] = useState<CommentNode[]>([]);
   const [loading, setLoading] = useState(false);
   // The list is built only once the open slide has landed: building it during the slide is
@@ -308,6 +310,12 @@ export default function CommentsSheet({
     let cancelled = false;
     setLoading(true);
     setNodes([]);
+    setPostOwnerId(null);
+    Promise.resolve(supabase.from('posts').select('author_id').eq('id', postId).maybeSingle())
+      .then(({ data }) => {
+        if (!cancelled) { setPostOwnerId((data?.author_id as string | undefined) ?? null); }
+      })
+      .catch(() => { /* no owner known: Delete stays on your own comments only */ });
     (async () => {
       try {
         const tree = await fetchPostComments(postId, 100);
@@ -590,14 +598,18 @@ export default function CommentsSheet({
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) { return; }
     setDeleting(true);
+    const target = confirmDelete;
+    const before = nodes;
+    const { tree, removed } = pruneNode(nodes, target.id);
     try {
-      const target = confirmDelete;
-      const { tree, removed } = pruneNode(nodes, target.id);
       setNodes(tree);
       onCommentsCountChange?.(-removed);
       await deleteComment(target.id);
       setConfirmDelete(null);
     } catch (e) {
+      // Refused or failed: it is still there, so show it again.
+      setNodes(before);
+      onCommentsCountChange?.(removed);
       showToast(friendlyErrorMessage(e, "Couldn't delete the comment."), { kind: 'error' });
     } finally {
       setDeleting(false);
@@ -669,6 +681,7 @@ export default function CommentsSheet({
             node={item.node}
             thread={item.thread}
             viewerId={viewerId}
+            postOwnerId={postOwnerId}
             highlighted={highlightIds.has(item.node.id)}
             onReply={setReplyingTo}
             onDelete={setConfirmDelete}
@@ -878,6 +891,7 @@ export default function CommentsSheet({
     },
     [
       viewerId,
+      postOwnerId,
       highlightIds,
       handleToggleLike,
       handleMentionPress,

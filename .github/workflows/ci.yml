@@ -424,6 +424,15 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/comment-notifications.test.sql
 
+      # A post's owner (upload or repost) can delete any comment on it; anyone else only
+      # their own; the original's uploader does not own a repost's comments.
+      - name: Comment delete-by-post-owner tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/comment-delete-by-post-owner.test.sql
+
       # A credit names somebody, so answering it is the one write a collaborator gets on a
       # track that is not theirs. Asserts that the write is status-only (the previous policy
       # let a tagged user rewrite their own role), that an answer is final, and that being

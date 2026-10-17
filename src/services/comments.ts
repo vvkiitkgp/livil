@@ -374,13 +374,22 @@ export async function createComment(
   return rowToNode(created, false);
 }
 
+/**
+ * Delete a comment — your own, or any on a post that is yours (20261101000000). A delete
+ * the database refuses does not error, it just matches no row; that is reported as a
+ * failure, so the sheet puts the comment back instead of showing it gone until a reload.
+ */
 export async function deleteComment(commentId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('post_comments')
     .delete()
-    .eq('id', commentId);
+    .eq('id', commentId)
+    .select('id');
   if (error) {
     throw new Error(error.message);
+  }
+  if (!data || data.length === 0) {
+    throw new Error("Couldn't delete the comment.");
   }
 }
 

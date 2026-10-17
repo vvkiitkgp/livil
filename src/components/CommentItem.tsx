@@ -31,6 +31,8 @@ type Props = {
   /** Where this comment sits in its thread: its depth and the lines that cross its row. */
   thread: ThreadPosition;
   viewerId: string;
+  /** The post's owner (upload or repost): may delete any comment on it. Null while unknown. */
+  postOwnerId: string | null;
   onReply: (node: CommentNode) => void;
   onDelete: (node: CommentNode) => void;
   onReport: (node: CommentNode) => void;
@@ -62,6 +64,8 @@ export default function CommentItem(props: Props) {
   const { runAfterDismiss, onDismiss } = useRunAfterDismiss();
   const indent = indentFor(thread.depth);
   const isOwn = node.authorId === viewerId;
+  // Yours, or on your post — the database allows exactly these (post_comments_delete_*).
+  const canDelete = isOwn || (!!viewerId && props.postOwnerId === viewerId);
   const displayName = node.author.displayName || node.author.username;
   // With a song or a GIF, the body's last line is its label (for apps that cannot draw
   // it); the card or the GIF replaces it here.
@@ -165,21 +169,22 @@ export default function CommentItem(props: Props) {
           style={styles.menuBody}
           contentContainerStyle={{ paddingBottom: 12 + insets.bottom }}
         >
-          {isOwn ? (
+          {canDelete ? (
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMenuOpen(false); runAfterDismiss(() => props.onDelete(node)); }}
             >
               <Text style={[styles.menuText, { color: COLORS.error }]}>Delete</Text>
             </TouchableOpacity>
-          ) : (
+          ) : null}
+          {!isOwn ? (
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setMenuOpen(false); runAfterDismiss(() => props.onReport(node)); }}
             >
               <Text style={styles.menuText}>Report</Text>
             </TouchableOpacity>
-          )}
+          ) : null}
           <TouchableOpacity style={styles.menuItem} onPress={() => setMenuOpen(false)}>
             <Text style={[styles.menuText, { color: COLORS.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
