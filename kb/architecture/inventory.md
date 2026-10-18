@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-399 TypeScript file(s) under `src/`, 87,889 lines.
+399 TypeScript file(s) under `src/`, 87,881 lines.
 
 ## Size hotspots
 
@@ -40,7 +40,7 @@ reading alone (Constitution P28).
 | `src/screens/main/SearchScreen.tsx` | 1026 |
 | `src/screens/main/RepostScreen.tsx` | 981 |
 | `src/components/FloatingPlayer.tsx` | 926 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 807 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 632 |
 | `src/components/GlobalAudioPlayer.tsx` | 624 |
@@ -104,7 +104,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-49 file(s), 27,231 lines.
+49 file(s), 27,223 lines.
 
 | File | Lines |
 |---|---:|
@@ -117,7 +117,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
 | `src/screens/main/RepostScreen.tsx` | 981 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 807 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 632 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
