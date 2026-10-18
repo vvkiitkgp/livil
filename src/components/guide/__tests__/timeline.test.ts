@@ -1,5 +1,5 @@
 import { kf } from '../timeline';
-import { GUIDE_CARDS, cardsFor, lineFor } from '../cards';
+import { GUIDE_CARDS, PICK_DONE, cardsFor, lineFor } from '../cards';
 import coverage from '../coverage.json';
 
 // `kf` is plain arithmetic; only `useLoop` touches Reanimated, and importing the real
@@ -15,7 +15,6 @@ jest.mock('react-native-reanimated', () => ({
 // The card modules pull in RN components; the test only needs the data and the pure
 // lookup, so the illustrations are stubbed out.
 jest.mock('../cardsPlayer', () => ({}));
-jest.mock('../cardsFeed', () => ({}));
 jest.mock('../cardsPeople', () => ({}));
 jest.mock('../cardWelcome', () => ({}));
 
@@ -49,19 +48,35 @@ describe('kf — keyframe lookup', () => {
 });
 
 describe('GUIDE_CARDS', () => {
-  it('is a welcome card plus fifteen feature cards, with unique keys', () => {
-    expect(GUIDE_CARDS).toHaveLength(16);
-    expect(new Set(GUIDE_CARDS.map(c => c.key)).size).toBe(16);
+  /** Every sentence a card can show, in either mode. */
+  const copy = (c: (typeof GUIDE_CARDS)[number]) =>
+    `${c.headline} ${lineFor(c, 'first')} ${lineFor(c, 'replay')} ${c.cta ?? ''}`;
+
+  it('is six cards with unique keys: a welcome, four ideas and the pick step', () => {
+    // The owner's text diet and redesign (2026-10-18): six short cards, not sixteen.
+    expect(GUIDE_CARDS.map(c => c.key)).toEqual(['welcome', 'player', 'friends', 'star', 'pick', 'notify']);
     expect(GUIDE_CARDS[0].firstRunOnly).toBe(true);
     expect(GUIDE_CARDS[GUIDE_CARDS.length - 1].cta).toBeTruthy();
   });
 
-  it('a replay skips the welcome and keeps everything else in order', () => {
-    expect(cardsFor('first')).toHaveLength(16);
-    const replay = cardsFor('replay');
-    expect(replay).toHaveLength(15);
-    expect(replay[0].key).toBe('tap');
-    expect(replay.map(c => c.key)).toEqual(GUIDE_CARDS.slice(1).map(c => c.key));
+  it('has exactly one interactive step — the pick — and an animation on every other card', () => {
+    const interactive = GUIDE_CARDS.filter(c => c.interactive);
+    expect(interactive.map(c => [c.key, c.interactive])).toEqual([['pick', 'pickThree']]);
+    expect(interactive[0].Illustration).toBeUndefined();
+    // The illustration modules are stubbed to {} here, so look at the field, not its value.
+    GUIDE_CARDS.filter(c => !c.interactive).forEach(c => expect('Illustration' in c).toBe(true));
+  });
+
+  it('a replay drops the welcome and the pick step and keeps everything else in order', () => {
+    expect(cardsFor('first')).toHaveLength(6);
+    expect(cardsFor('replay').map(c => c.key)).toEqual(['player', 'friends', 'star', 'notify']);
+  });
+
+  it('a replay never mentions "your 3 songs" — someone replaying may never have picked them', () => {
+    cardsFor('replay').forEach(c => expect(lineFor(c, 'replay')).not.toMatch(/\b3 songs\b/i));
+    const notify = GUIDE_CARDS.find(c => c.key === 'notify')!;
+    expect(lineFor(notify, 'first')).toBe(notify.line);
+    expect(lineFor(notify, 'replay')).toBe(notify.replayLine);
   });
 
   it('every card has drift coverage, and every coverage entry is a card', () => {
@@ -72,8 +87,8 @@ describe('GUIDE_CARDS', () => {
   });
 
   it('never quotes a clip length — reposts are not limited to a fixed number of seconds', () => {
-    GUIDE_CARDS.forEach(c => {
-      expect(`${c.headline} ${c.line} ${c.spotifyLine ?? ''} ${c.audienceLine ?? ''}`).not.toMatch(/\b\d+\s*(s|sec|seconds)\b/i);
+    [...GUIDE_CARDS.map(copy), `${PICK_DONE.headline} ${PICK_DONE.line}`].forEach(text => {
+      expect(text).not.toMatch(/\b\d+\s*(s|sec|seconds)\b/i);
     });
   });
 
@@ -81,31 +96,13 @@ describe('GUIDE_CARDS', () => {
     // The share page is metadata plus "Listen on Livil" (web/api/share.ts); playback needs
     // an account, and shared_post_public withholds the media URLs (20261023000000).
     GUIDE_CARDS.forEach(c => {
-      expect(lineFor(c, { spotifyReposts: true, repostAudience: true })).not.toMatch(/without (the|an?) (app|account)|no app/i);
+      expect(copy(c)).not.toMatch(/without (the|an?) (app|account)|no app/i);
     });
   });
 
-  it('promises Spotify reposts only while the server switch is on', () => {
-    // Spotify reposts sit behind a server switch (ADR-0027). Someone who sees the guide
-    // while it is off must not be told about a button they cannot find.
-    GUIDE_CARDS.forEach(c => {
-      expect(`${c.headline} ${lineFor(c, { spotifyReposts: false })}`).not.toMatch(/spotify/i);
-    });
-    const repost = GUIDE_CARDS.find(c => c.key === 'repost')!;
-    expect(lineFor(repost, { spotifyReposts: true }))
-      .toBe(`${repost.line} Found it on Spotify? Repost that too.`);
-  });
-
-  it('points at the repost-audience switch only while it exists for the viewer', () => {
-    // The Settings switch is hidden until the viewer's setting can be read (ADR-0028), so
-    // the guide must not send anyone looking for it before then.
-    GUIDE_CARDS.forEach(c => {
-      expect(lineFor(c, { spotifyReposts: true, repostAudience: false })).not.toMatch(/who sees your reposts/i);
-    });
-    const repost = GUIDE_CARDS.find(c => c.key === 'repost')!;
-    expect(lineFor(repost, { spotifyReposts: true, repostAudience: true }))
-      .toBe(`${repost.line} Found it on Spotify? Repost that too. Choose who sees your reposts in Settings.`);
-    expect(lineFor(repost, { spotifyReposts: false, repostAudience: true }))
-      .toBe(`${repost.line} Choose who sees your reposts in Settings.`);
+  it('never names Spotify — the pick step offers Spotify songs only while its switch is on', () => {
+    // Spotify reposts sit behind a server switch (ADR-0027). The pick step shows its
+    // "On Spotify" section only while the switch is on; the copy must not promise it.
+    GUIDE_CARDS.forEach(c => expect(copy(c)).not.toMatch(/spotify/i));
   });
 });

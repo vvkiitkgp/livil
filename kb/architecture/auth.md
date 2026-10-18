@@ -45,7 +45,7 @@ a design choice — it accumulated.
 | **Password recovery** | arrived via a recovery link | Reset-password screen |
 | **Needs terms** | signed in, current `TERMS_VERSION` not accepted (new user, or a re-accept) | Terms screen |
 | **Needs username** | signed in, username not yet claimed | Choose-username screen |
-| **Needs guide** | signed in, `profiles.guide_seen_at` is null | First-run guide (15 animated cards) |
+| **Needs guide** | signed in, `profiles.guide_seen_at` is null | First-run guide (6 cards, one of them a required pick-three-songs step) |
 | **App** | otherwise | Full provider stack and the navigator |
 
 The ordering matters. A user arriving on a recovery link while signed in must reach the reset
@@ -53,8 +53,11 @@ screen, not the app; agreeing to the terms comes before choosing an identity; an
 the last thing before Home, so it explains an app the user is about to enter, not one they are
 still being admitted to.
 
-The guide gate is once per **account**, not per device: finishing or skipping stamps
-`guide_seen_at` (owner-only under `profiles_update_own`). The migration that added the column
+The guide gate is once per **account**, not per device: finishing stamps `guide_seen_at`
+(owner-only under `profiles_update_own`). The first run cannot be skipped (2026-10-18): it has
+no Skip, and its pick step reposts three songs the new user chooses (`PickThree.tsx`,
+`pickSongs.ts`) before Next comes back. The stamp is also written the moment those reposts
+land, so an app closed on the last card never asks for — and reposts — three more songs. The migration that added the column
 stamped every pre-existing account; on 2026-09-30, by product decision, those stamps were
 cleared again in production so every existing account gets the tour once on its next open. Settings has a
 "Replay the guide" row (`FirstRunGuide` route) for anyone who wants it back. The stamp is

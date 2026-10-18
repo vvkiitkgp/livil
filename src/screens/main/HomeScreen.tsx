@@ -793,7 +793,7 @@ export default function HomeScreen() {
       }),
       startIdx,
       // Playing from New on Livil queues uploads only — that tab's list is all there is.
-      tabRef.current === 'for_you' ? 'Home' : 'New on Livil',
+      tabRef.current === 'for_you' ? 'Home' : 'Indie Vibes',
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.activePostId, playback.setQueue]);

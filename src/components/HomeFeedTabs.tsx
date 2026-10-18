@@ -8,7 +8,8 @@ const PILL_HIT_SLOP = { top: 6, bottom: 6, left: 3, right: 3 };
 
 const TABS: { key: HomeFeedTab; label: string }[] = [
   { key: 'for_you', label: 'For you' },
-  { key: 'new_on_livil', label: 'New on Livil' },
+  // Shown as "Indie Vibes" since 2026-10-18 (owner); the key and the RPC keep the old name.
+  { key: 'new_on_livil', label: 'Indie Vibes' },
 ];
 
 /**
