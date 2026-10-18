@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { Button } from './Button';
+import { Icon, type IconName } from './Icon';
 
 export type ConfirmTone = 'destructive' | 'primary';
 
@@ -18,6 +19,8 @@ type Props = {
   message?: string;
   bullets?: string[];
   glyph?: string;
+  /** An app icon in the circle instead of `glyph` — for a dialog that should match the row that opened it. */
+  icon?: IconName;
   tone?: ConfirmTone;
   confirmLabel: string;
   /** Pass null to hide the secondary button (one-button mode). */
@@ -38,6 +41,7 @@ export default function ConfirmActionModal({
   message,
   bullets,
   glyph,
+  icon,
   tone = 'destructive',
   confirmLabel,
   cancelLabel = 'Cancel',
@@ -74,7 +78,11 @@ export default function ConfirmActionModal({
         <View style={styles.card}>
           <View style={styles.iconWrap}>
             <View style={[styles.iconCircle, { backgroundColor: accent.bg, borderColor: accent.ring }]}>
-              <Text style={[styles.iconGlyph, { color: accent.glyph }]}>{glyph ?? '!'}</Text>
+              {icon ? (
+                <Icon name={icon} size={26} color={accent.glyph} />
+              ) : (
+                <Text style={[styles.iconGlyph, { color: accent.glyph }]}>{glyph ?? '!'}</Text>
+              )}
             </View>
           </View>
 

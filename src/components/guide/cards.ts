@@ -43,7 +43,7 @@ export const GUIDE_CARDS: GuideCard[] = [
   {
     key: 'friends',
     headline: 'Find your friends',
-    line: 'Add people who match your vibe, from Search or your feed.',
+    line: 'Add people who match your 💜 vibe, from Search or your feed.',
     Illustration: FindFriendsIllustration,
   },
   {

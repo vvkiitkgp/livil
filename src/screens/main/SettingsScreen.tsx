@@ -247,7 +247,8 @@ export default function SettingsScreen() {
         visible={signOutOpen}
         title="Sign out?"
         message="Your music and friends will be here when you're back."
-        glyph="↪"
+        // The same icon as the Sign out row that opens it.
+        icon="signOut"
         tone="destructive"
         confirmLabel="Sign out"
         cancelLabel="Stay signed in"

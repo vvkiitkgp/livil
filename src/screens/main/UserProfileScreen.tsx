@@ -1198,7 +1198,7 @@ export default function UserProfileScreen() {
         message={
           confirmBlock === 'unblock'
             ? "They can contact you again. Friendship and stars aren't restored."
-            : "Not every vibe matches 😢 You'll stop seeing each other and any friendship ends. Undo in Settings."
+            : "Not every 💜 vibe matches 😢 You'll stop seeing each other and any friendship ends. Undo in Settings."
         }
         glyph={confirmBlock === 'unblock' ? '🔓' : '🚫'}
         tone={confirmBlock === 'unblock' ? 'primary' : 'destructive'}
