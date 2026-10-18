@@ -663,6 +663,9 @@ export default function RootNavigator() {
               setNeedsGuide(false);
               void markGuideSeen(session.user.id).catch(() => {});
             }}
+            // Stamped as soon as the three songs are reposted too: closing the app on
+            // the last card must not ask for (and repost) three more songs next time.
+            onPicked={() => { void markGuideSeen(session.user.id).catch(() => {}); }}
           />
         ) : (
     <JamProvider>

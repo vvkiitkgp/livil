@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, type ComponentType } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 import { COLORS } from '../../theme/colors';
@@ -8,8 +8,9 @@ import { kf, useLoop } from './timeline';
 import { EqBars, Finger, Orb, Phone, PHONE_INNER_W, ORB, ORB_BOTTOM, TrackTitle } from './primitives';
 
 /**
- * Cards 1–4: the floating player, one gesture each. Stops are transcribed from the
- * approved CSS mockup (percent of the loop → value); see timeline.ts.
+ * The player card: tap to play, swipe up to open (and back), flick for the next song —
+ * the shipped one-gesture loops, played in turn by PlayerIllustration. Stops are
+ * transcribed from the approved CSS mockup (percent of the loop → value); see timeline.ts.
  */
 
 // Finger resting spot when it "touches" the circle: slightly right of and below
@@ -17,9 +18,12 @@ import { EqBars, Finger, Orb, Phone, PHONE_INNER_W, ORB, ORB_BOTTOM, TrackTitle 
 const FINGER_LEFT = PHONE_INNER_W / 2 - 8;
 const FINGER_BOTTOM = ORB_BOTTOM - 6;
 
-/* ── 1. Tap: play / pause ─────────────────────────────────────────────────── */
-export function TapIllustration() {
-  const t = useLoop(6000);
+/** A scene's loop length; the player card plays them faster than the shipped cards did. */
+type SceneProps = { ms?: number };
+
+/* ── Tap: play / pause ─────────────────────────────────────────────────── */
+export function TapIllustration({ ms = 6000 }: SceneProps) {
+  const t = useLoop(ms);
 
   const finger = useAnimatedStyle(() => ({
     left: FINGER_LEFT,
@@ -59,12 +63,12 @@ export function TapIllustration() {
   );
 }
 
-/* ── 2. Swipe up: full screen ─────────────────────────────────────────────── */
+/* ── Swipe up: open, then close ─────────────────────────────────────────────── */
 const FULL_W = 206;
 const FULL_H = 436;
 
-export function SwipeUpIllustration() {
-  const t = useLoop(5000);
+export function SwipeUpIllustration({ ms = 5000 }: SceneProps) {
+  const t = useLoop(ms);
 
   const finger = useAnimatedStyle(() => ({
     left: FINGER_LEFT,
@@ -106,9 +110,9 @@ export function SwipeUpIllustration() {
   );
 }
 
-/* ── 3. Flick: next / previous ────────────────────────────────────────────── */
-export function FlickIllustration() {
-  const t = useLoop(4500);
+/* ── Flick: next song ────────────────────────────────────────────── */
+export function FlickIllustration({ ms = 4500 }: SceneProps) {
+  const t = useLoop(ms);
 
   const finger = useAnimatedStyle(() => ({
     left: FINGER_LEFT,
@@ -138,48 +142,27 @@ export function FlickIllustration() {
   );
 }
 
-/* ── 4. Hold & drag: move it ──────────────────────────────────────────────── */
-const DRAG_X = 62;
-const DRAG_Y = -300;
+/* ── The player card: tap, open and close, flick — one after another ───────── */
+// Three times the speed of the shipped one-gesture cards (the owner's call, 2026-10-18).
+const PLAYER_SCENES: { Scene: ComponentType<SceneProps>; ms: number }[] = [
+  { Scene: TapIllustration, ms: 2000 },
+  { Scene: SwipeUpIllustration, ms: 1667 },
+  { Scene: FlickIllustration, ms: 1500 },
+];
 
-export function DragIllustration() {
-  const t = useLoop(6000);
-
-  const finger = useAnimatedStyle(() => ({
-    left: FINGER_LEFT,
-    bottom: FINGER_BOTTOM,
-    opacity: kf(t.value, [[0, 0], [8, 0], [14, 1], [54, 1], [60, 0], [100, 0]]),
-    transform: [
-      { translateX: kf(t.value, [[0, 0], [24, 0], [54, DRAG_X], [100, DRAG_X]]) },
-      { translateY: kf(t.value, [[0, 0], [24, 0], [54, DRAG_Y], [100, DRAG_Y]]) },
-    ],
-  }));
-  // The "hold" — a halo that swells while the finger rests before the drag starts.
-  const hold = useAnimatedStyle(() => ({
-    left: FINGER_LEFT - 10,
-    bottom: FINGER_BOTTOM - 10,
-    opacity: kf(t.value, [[0, 0], [14, 0], [24, 0.35], [54, 0.35], [60, 0], [100, 0]]),
-    transform: [
-      { translateX: kf(t.value, [[0, 0], [24, 0], [54, DRAG_X], [100, DRAG_X]]) },
-      { translateY: kf(t.value, [[0, 0], [24, 0], [54, DRAG_Y], [100, DRAG_Y]]) },
-      { scale: kf(t.value, [[0, 1], [14, 1], [24, 1.5], [54, 1.5], [60, 1], [100, 1]]) },
-    ],
-  }));
-  const orb = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: kf(t.value, [[0, 0], [24, 0], [54, DRAG_X], [82, DRAG_X], [96, 0], [100, 0]]) },
-      { translateY: kf(t.value, [[0, 0], [24, 0], [54, DRAG_Y], [82, DRAG_Y], [96, 0], [100, 0]]) },
-    ],
-  }));
-
-  return (
-    <Phone>
-      <View style={styles.ghost} />
-      <Orb style={orb} />
-      <Reanimated.View style={[styles.holdHalo, hold]} pointerEvents="none" />
-      <Finger style={finger} />
-    </Phone>
-  );
+/**
+ * The three gestures of the player card, each the shipped single-gesture loop, played
+ * once in turn. Every scene starts and ends with the circle at rest, so the cut between
+ * them is invisible; `key` remounts the next scene so its clock starts from zero.
+ */
+export function PlayerIllustration() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(() => setI(n => (n + 1) % PLAYER_SCENES.length), PLAYER_SCENES[i].ms);
+    return () => clearTimeout(timer);
+  }, [i]);
+  const { Scene, ms } = PLAYER_SCENES[i];
+  return <Scene key={i} ms={ms} />;
 }
 
 const styles = StyleSheet.create({
@@ -225,22 +208,4 @@ const styles = StyleSheet.create({
   },
   artA: { backgroundColor: COLORS.purpleDeep },
   artB: { backgroundColor: COLORS.infoDeep },
-  ghost: {
-    position: 'absolute',
-    left: PHONE_INNER_W / 2 - ORB / 2,
-    bottom: ORB_BOTTOM,
-    width: ORB,
-    height: ORB,
-    borderRadius: ORB / 2,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: COLORS.border,
-  },
-  holdHalo: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.white,
-  },
 });

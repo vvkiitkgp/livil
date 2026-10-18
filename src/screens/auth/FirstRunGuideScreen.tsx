@@ -8,18 +8,22 @@ import { FONTS } from '../../theme/fonts';
 import { Button } from '../../components/Button';
 import { cardsFor, lineFor } from '../../components/guide/cards';
 import { PHONE_H } from '../../components/guide/primitives';
+import { PickDone, PickThree } from '../../components/guide/PickThree';
+import { PICK_COUNT, usePickThree } from '../../components/guide/pickSongs';
+import { useToast } from '../../contexts/ToastContext';
 import { haptics } from '../../utils/haptics';
-import { useSpotifyAvailability } from '../../services/spotify';
-import { useMyRepostsPublic } from '../../hooks/useMyRepostsPublic';
 
 /**
- * The first-run guide: a welcome card, then fifteen looping animations, one idea each,
- * Next / Skip.
+ * The first-run guide: six cards, one short line each, and a step where the new user
+ * picks three songs that are reposted for them (cards.ts, PickThree.tsx).
  *
  * Shown ONCE, after sign-up (past the terms and username gates) and before the first
- * Home screen; RootNavigator decides that from `profiles.guide_seen_at`, and stamps it
- * in `onDone` whether the user finished or skipped. Settings can replay it any time
- * (`mode="replay"`), where Skip and the hardware back simply close it.
+ * Home screen; RootNavigator decides that from `profiles.guide_seen_at` and stamps it in
+ * `onDone` — and already in `onPicked`, so an app closed after the reposts never asks
+ * for three songs again. The first run cannot be skipped (the owner's call, 2026-10-18):
+ * there is no Skip, and the pick step's button stays off until three songs are chosen.
+ * Settings can replay it any time (`mode="replay"`) without the welcome or the pick step,
+ * and there CLOSE and the hardware back close it.
  *
  * Only the current card is mounted, so exactly one illustration animates at a time and
  * leaving a card cancels its loop. The Anton / Courier Prime pairing is the same one
@@ -29,17 +33,19 @@ import { useMyRepostsPublic } from '../../hooks/useMyRepostsPublic';
 
 type Props = {
   onDone: () => void;
+  /** The three songs are reposted — the first run's one required step is done. */
+  onPicked?: () => void;
   mode?: 'first' | 'replay';
 };
 
-export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
+export default function FirstRunGuideScreen({ onDone, onPicked, mode = 'first' }: Props) {
   const [step, setStep] = useState(0);
   const cards = cardsFor(mode);
   const last = cards.length - 1;
   const card = cards[step];
-  // Asked from the first card, so the answer is in by the Repost card (cached for the app).
-  const { reposts: spotifyReposts } = useSpotifyAvailability();
-  const myRepostsPublic = useMyRepostsPublic();
+  const pick = usePickThree();
+  const { showToast } = useToast();
+  const picking = card.interactive === 'pickThree' && pick.status !== 'done';
 
   // The illustrations are choreographed at a fixed 230×460; on a short screen the
   // whole phone is scaled down rather than reflowed, so nothing inside it moves.
@@ -52,22 +58,40 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
     if (step >= last) { onDone(); } else { setStep(s => s + 1); }
   }, [step, last, onDone]);
 
-  const skip = useCallback(() => {
+  const close = useCallback(() => {
     haptics.tap();
     onDone();
   }, [onDone]);
 
+  const { submit } = pick;
+  const repostPicks = useCallback(async () => {
+    const failed = await submit();
+    if (failed) {
+      haptics.error();
+      showToast(`Couldn't repost ${failed.title}. Try again.`, { kind: 'error' });
+      return;
+    }
+    haptics.success();
+    onPicked?.();
+  }, [submit, showToast, onPicked]);
+
   // Android back walks the cards backwards. On the first card: a replay closes; the
   // first run does nothing (there is no "before" — the OS default would exit the app
-  // in the middle of onboarding).
+  // in the middle of onboarding). Nothing moves while the reposts are being sent.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (pick.status === 'posting') { return true; }
       if (step > 0) { setStep(s => s - 1); return true; }
       if (mode === 'replay') { onDone(); }
       return true;
     });
     return () => sub.remove();
-  }, [step, mode, onDone]);
+  }, [step, mode, onDone, pick.status]);
+
+  const left = PICK_COUNT - pick.picks.length;
+  const cta = picking
+    ? (left > 0 ? `Pick ${left} more` : 'Repost my 3')
+    : (card.cta ?? 'Next');
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -76,29 +100,49 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
 
       <View style={styles.top}>
         <Text style={styles.counter}>{step + 1} / {cards.length}</Text>
-        <Pressable
-          onPress={skip}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={mode === 'replay' ? 'Close the guide' : 'Skip the guide'}
-          style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
-        >
-          <Text style={styles.skipText}>{mode === 'replay' ? 'CLOSE' : 'SKIP'}</Text>
-        </Pressable>
+        {mode === 'replay' ? (
+          <Pressable
+            onPress={close}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close the guide"
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+          >
+            <Text style={styles.closeText}>CLOSE</Text>
+          </Pressable>
+        ) : picking ? (
+          <Text style={styles.picked}>{pick.picks.length} of {PICK_COUNT} picked</Text>
+        ) : null}
       </View>
 
       <StepFade step={step}>
-        <View style={styles.body}>
-          <View style={[styles.phoneSlot, { height: PHONE_H * phoneScale }]}>
-            <View style={{ transform: [{ scale: phoneScale }] }}>
-              <card.Illustration />
+        {card.interactive === 'pickThree' ? (
+          pick.status === 'done' ? (
+            <PickDone picks={pick.picks} />
+          ) : (
+            <PickThree
+              headline={card.headline}
+              line={lineFor(card, mode)}
+              picks={pick.picks}
+              posted={pick.posted}
+              onToggle={pick.toggle}
+            />
+          )
+        ) : (
+          <View style={styles.body}>
+            {card.Illustration ? (
+              <View style={[styles.phoneSlot, { height: PHONE_H * phoneScale }]}>
+                <View style={{ transform: [{ scale: phoneScale }] }}>
+                  <card.Illustration />
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.copy}>
+              <Text style={styles.headline}>{card.headline}</Text>
+              <Text style={styles.line}>{lineFor(card, mode)}</Text>
             </View>
           </View>
-          <View style={styles.copy}>
-            <Text style={styles.headline}>{card.headline}</Text>
-            <Text style={styles.line}>{lineFor(card, { spotifyReposts, repostAudience: myRepostsPublic !== null })}</Text>
-          </View>
-        </View>
+        )}
       </StepFade>
 
       <View style={styles.bottom}>
@@ -108,8 +152,10 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           ))}
         </View>
         <Button
-          label={card.cta ?? 'Next'}
-          onPress={next}
+          label={cta}
+          onPress={picking ? () => { void repostPicks(); } : next}
+          disabled={picking && left > 0}
+          busy={pick.status === 'posting'}
           variant="primary"
           size="lg"
           // Half the content width is a FLOOR, not a fixed width. Computed from the window
@@ -120,7 +166,7 @@ export default function FirstRunGuideScreen({ onDone, mode = 'first' }: Props) {
           // letter-spaced custom-font text a few px short, and Button's content row
           // shrink-wraps the Text, so widening the button alone leaves the Text box short
           // and "SHOW ME AROUND" still ellipsized. See ctaLabelWidth.
-          labelStyle={[styles.cta, { minWidth: ctaLabelWidth(card.cta ?? 'Next') }]}
+          labelStyle={[styles.cta, { minWidth: ctaLabelWidth(cta) }]}
         />
       </View>
     </SafeAreaView>
@@ -194,8 +240,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   counter: { fontFamily: FONTS.mono, fontSize: 12, letterSpacing: 3, color: COLORS.purpleNeon },
-  skip: { paddingVertical: 10, paddingLeft: 16 },
-  skipText: { fontFamily: FONTS.mono, fontSize: 13, letterSpacing: 1, color: COLORS.textSecondary },
+  close: { paddingVertical: 10, paddingLeft: 16 },
+  closeText: { fontFamily: FONTS.mono, fontSize: 13, letterSpacing: 1, color: COLORS.textSecondary },
+  picked: { fontFamily: FONTS.mono, fontSize: 12, letterSpacing: 1, color: COLORS.purpleLight },
   pressed: { opacity: 0.6 },
   fill: { flex: 1 },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 26 },
