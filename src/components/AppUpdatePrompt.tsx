@@ -36,12 +36,12 @@ const RECHECK_MS = 30 * 60 * 1000;
 
 const COPY = {
   soft: {
-    title: 'A new version of Livil is here',
-    body: 'Update to get the newest features and fixes.',
+    title: 'New version of Livil',
+    body: 'Get the newest features and fixes.',
   },
   hard: {
     title: 'Please update Livil',
-    body: "This version of Livil isn't supported anymore. Update to keep listening with your friends.",
+    body: 'This version no longer works.',
   },
 } as const;
 

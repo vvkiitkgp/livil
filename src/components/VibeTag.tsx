@@ -5,7 +5,8 @@ import { COLORS } from '../theme/colors';
 import { formatMusicScore } from '../services/musicScore';
 
 /**
- * A chat's vibe, beside the friend's name in the inbox. Like the music score tag it says
+ * A chat's vibe, beside the friend's name in the inbox: your vibe with that friend. The
+ * profile's number is a vibe too (MusicScoreTag) and wears the same purple heart. Says
  * nothing about itself. Renders nothing at 0.
  */
 export default function VibeTag({ vibe }: { vibe: number }) {
@@ -13,7 +14,7 @@ export default function VibeTag({ vibe }: { vibe: number }) {
   const text = formatMusicScore(vibe);
   return (
     <View style={styles.tag} accessibilityLabel={`Vibe ${text}`} testID="vibe-tag">
-      <Icon name="pulse" size={11} color={COLORS.purpleNeon} />
+      <Icon name="heart" size={11} color={COLORS.purpleNeon} weight="fill" />
       <Text style={styles.text}>{text}</Text>
     </View>
   );

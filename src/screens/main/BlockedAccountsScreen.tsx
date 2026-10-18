@@ -150,14 +150,9 @@ export default function BlockedAccountsScreen() {
 
       <ConfirmActionModal
         visible={confirm !== null}
-        title="Unblock this person?"
-        message={
-          confirm?.username
-            ? `@${confirm.username} will be able to message you, send a friend request and comment again.`
-            : 'They will be able to message you, send a friend request and comment again.'
-        }
-        // Said plainly because it is the one thing people assume unblocking undoes.
-        bullets={['Your friendship and stars are not restored']}
+        title={confirm?.username ? `Unblock @${confirm.username}?` : 'Unblock this person?'}
+        // "aren't restored" is said plainly: it is the one thing people assume unblocking undoes.
+        message="They can contact you again. Friendship and stars aren't restored."
         glyph="🔓"
         tone="primary"
         confirmLabel="Unblock"

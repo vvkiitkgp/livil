@@ -137,8 +137,7 @@ export default function CopyrightMatchModal({
 
           <Text style={styles.title}>We found a possible match</Text>
           <Text style={styles.subtitle}>
-            This sounds like {matchDescription}. That does not always mean there is a
-            problem. What is your right to upload this recording?
+            This sounds like {matchDescription}. What's your right to upload it?
           </Text>
 
           <ScrollView

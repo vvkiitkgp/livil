@@ -2,11 +2,11 @@
 
 > Livil (Livil Music) is a social music app for independent artists and the people who listen to them. Listen with friends in real time (Jam), share and repost songs (from Livil or Spotify), chat, and discover artists through people you know. Free on the App Store, Google Play and the web at https://livil-music.com.
 
-## Livil music score
+## Livil vibe
 
-The Livil music score is the number shown under a person's @name on their Livil profile, next to a small round pulse badge. On Livil, "music score" means this activity score, not sheet music. It is recalculated every night from everything the person has done on Livil, with daily limits.
+Your Livil vibe (it used to be called the Livil music score) is the number shown with a purple heart under a person's @name on their Livil profile. It is recalculated every night from everything the person has done on Livil, with daily limits.
 
-How the Livil music score is calculated (points per action):
+How the Livil vibe is calculated (points per action):
 
 - Listen to a song: +1 (once per song a day, up to 50 a day; Livil songs played, or Spotify songs opened)
 - Like a post: +1
@@ -19,9 +19,11 @@ How the Livil music score is calculated (points per action):
 - Someone likes your repost: +1 (up to 50 a day)
 - Someone comments on your repost: +2 (once per person per repost, up to 25 people a day)
 
-Liking or playing your own posts earns nothing. Undoing something (unliking, deleting a comment or repost, a song taken down) removes its points. The score is visible to anyone signed in to Livil, except people the person has blocked.
+Liking or playing your own posts earns nothing. Undoing something (unliking, deleting a comment or repost, a song taken down) removes its points. The profile vibe is visible to anyone signed in to Livil, except people the person has blocked.
 
-- [How the Livil music score is calculated](https://livil-music.com/score): the full points list and FAQ
+There is also a vibe between two friends: the number beside a friend in a one-to-one chat. It grows with every message (+1), shared song (+3), reaction to each other (+1), Jam together of 5+ minutes (+10), and like or comment on each other's posts (+1). It has no limit and only the two of them can see it.
+
+- [How your Livil vibe is calculated](https://livil-music.com/vibe): the full points list and FAQ
 
 ## Links
 

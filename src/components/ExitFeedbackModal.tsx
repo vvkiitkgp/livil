@@ -68,7 +68,7 @@ export default function ExitFeedbackModal({ visible, onConfirm, onCancel }: Prop
         <View style={styles.card}>
           <Text style={styles.title}>Before you go</Text>
           <Text style={styles.subtitle}>
-            Why are you leaving? This is optional — it helps us make Livil better.
+            Why are you leaving? (optional)
           </Text>
 
           <View style={styles.chips}>
@@ -108,7 +108,7 @@ export default function ExitFeedbackModal({ visible, onConfirm, onCancel }: Prop
           {/* Said before they answer, not after: the delete screen promises everything
               goes, and this is the one thing that stays. */}
           <Text style={styles.privacy}>
-            Your answer is kept without your name after your account is deleted.
+            Your answer is kept without your name.
           </Text>
 
           <Button

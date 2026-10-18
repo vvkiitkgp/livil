@@ -25,10 +25,8 @@ export default function JamExitModal({
   onConfirm,
   onCancel,
 }: Props) {
-  const title = isHost ? 'End Jam Room?' : 'Leave Jam Room?';
-  const subtitle = isHost
-    ? "Ending the session will disconnect everyone in the room. They won't be able to rejoin."
-    : 'You can rejoin anytime while the jam is still active.';
+  const title = isHost ? 'End the Jam?' : 'Leave the Jam?';
+  const subtitle = isHost ? 'The music stops for everyone.' : 'Rejoin anytime from the Jam banner.';
   const confirmLabel = isHost ? 'End for everyone' : 'Leave room';
   const cancelLabel = isHost ? 'Keep jamming' : 'Stay in room';
 
@@ -70,22 +68,6 @@ export default function JamExitModal({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
 
-          <View style={styles.bullets}>
-            {isHost ? (
-              <>
-                <BulletRow text="Playback stops for every listener" />
-                <BulletRow text="The room is closed and can't be reopened" />
-                <BulletRow text="A new jam can be started anytime" />
-              </>
-            ) : (
-              <>
-                <BulletRow text="You'll stop hearing what the host is playing" />
-                <BulletRow text="The jam keeps going for everyone else" />
-                <BulletRow text="Tap the jam banner to rejoin" />
-              </>
-            )}
-          </View>
-
           <Button
             label={confirmLabel}
             onPress={onConfirm}
@@ -107,15 +89,6 @@ export default function JamExitModal({
         </View>
       </View>
     </Modal>
-  );
-}
-
-function BulletRow({ text }: { text: string }) {
-  return (
-    <View style={styles.bulletRow}>
-      <View style={styles.bulletDot} />
-      <Text style={styles.bulletText}>{text}</Text>
-    </View>
   );
 }
 
@@ -167,30 +140,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
-    marginBottom: 18,
-    paddingHorizontal: 4,
-  },
-  bullets: {
-    gap: 10,
     marginBottom: 22,
     paddingHorizontal: 4,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.purple,
-  },
-  bulletText: {
-    color: COLORS.white,
-    fontSize: 14,
-    lineHeight: 20,
-    flex: 1,
   },
   dismiss: {
     marginTop: 10,

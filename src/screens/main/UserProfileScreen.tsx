@@ -1180,7 +1180,7 @@ export default function UserProfileScreen() {
       <ConfirmActionModal
         visible={fansNoticeOpen}
         title="Fans are private"
-        message={`Only ${profile?.username ? `@${profile.username}` : 'they'} can see who their fans are. The count is public — the people behind it aren't.`}
+        message={`Only ${profile?.username ? `@${profile.username}` : 'they'} can see who their fans are.`}
         glyph="🔒"
         tone="primary"
         confirmLabel="Got it"
@@ -1191,25 +1191,14 @@ export default function UserProfileScreen() {
 
       <ConfirmActionModal
         visible={confirmBlock !== null}
-        title={confirmBlock === 'unblock' ? 'Unblock this person?' : 'Block this person?'}
+        title={`${confirmBlock === 'unblock' ? 'Unblock' : 'Block'} ${profile?.username ? `@${profile.username}` : 'this person'}?`}
+        // Both lines stay true to what blocking does (20260809000000: each side's content is
+        // hidden, any friendship or request is removed). Never promise the other person won't
+        // notice — a profile that stops resolving tells them.
         message={
           confirmBlock === 'unblock'
-            ? "You'll be able to see each other's music again, and they'll be able to message you, send a friend request and comment. Your friendship and stars are not restored."
-            : "You won't see each other's music, playlists or activity, and they won't be able to contact you."
-        }
-        bullets={
-          confirmBlock === 'block'
-            // Every line here was false until this commit. The first two flipped
-            // when 20260809000000 made blocking hide content; the third was never
-            // survivable alongside hiding — a person whose profile stops resolving
-            // works out what happened. Promising secrecy we cannot keep is worse
-            // than not promising it.
-            ? [
-                'Any friendship or pending request is removed',
-                "Their uploads, albums, playlists and reposts disappear for you — and yours for them",
-                'You can undo this any time from Settings → Privacy & data',
-              ]
-            : undefined
+            ? "They can contact you again. Friendship and stars aren't restored."
+            : "Not every vibe matches 😢 You'll stop seeing each other and any friendship ends. Undo in Settings."
         }
         glyph={confirmBlock === 'unblock' ? '🔓' : '🚫'}
         tone={confirmBlock === 'unblock' ? 'primary' : 'destructive'}

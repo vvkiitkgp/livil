@@ -111,7 +111,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
       <ConfirmActionModal
         visible={checkEmailOpen}
         title="Check your email"
-        message={`We sent a password reset link to ${checkEmailTarget}. Follow it to set a new password.`}
+        message={`Tap the link we sent to ${checkEmailTarget} to reset your password.`}
         glyph="✉"
         tone="primary"
         confirmLabel="Go to Sign In"

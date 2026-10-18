@@ -17,8 +17,8 @@
       "destination": "/get.html"
     },
     {
-      "source": "/score",
-      "destination": "/score.html"
+      "source": "/vibe",
+      "destination": "/vibe.html"
     },
     {
       "source": "/studio/:path*",
@@ -30,6 +30,16 @@
       "source": "/studio",
       "destination": "/studio/",
       "permanent": false
+    },
+    {
+      "source": "/score",
+      "destination": "/vibe",
+      "permanent": true
+    },
+    {
+      "source": "/score.html",
+      "destination": "/vibe",
+      "permanent": true
     }
   ],
   "headers": [

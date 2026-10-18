@@ -279,7 +279,7 @@ export default function SignUpScreen({ navigation }: Props) {
       <ConfirmActionModal
         visible={checkEmailOpen}
         title="Check your email"
-        message={`We sent a confirmation link to ${checkEmailTarget}. Verify your email to get started.`}
+        message={`Tap the link we sent to ${checkEmailTarget}.`}
         glyph="✉"
         tone="primary"
         confirmLabel="Go to Sign In"

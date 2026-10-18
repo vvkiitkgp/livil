@@ -2,7 +2,7 @@
 tier: 4
 owner: chief-architect
 consumers: [ALL]
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 verify_every: 9999d
 verified_by: manual
 visibility: public
@@ -42,7 +42,7 @@ and every loop counts again, so a raw play count is trivially farmed.
   nothing to tap (owner kept this first design after trying a logo, a gradient outline and a
   round badge, 2026-10-18). (The pulse is Phosphor's free icon:
   usable, not ownable; a trademarkable mark is a separate task — owner, 2026-10-18.) How it grows is
-  explained at livil-music.com/score, not in the app.
+  explained at livil-music.com/vibe (was /score, which now redirects), not in the app.
 - **Recomputed from scratch every night** (`refresh_music_scores()`, pg_cron 22:00 UTC).
   `music_score_points()` sums each person's whole history, using IST calendar days and daily
   caps:
@@ -88,6 +88,18 @@ and every loop counts again, so a raw play count is trivially farmed.
   size (hundreds of rows). Revisit if `post_views` reaches the millions.
 - Jam *members* earn nothing, because `jam_room_members` rows are deleted on leave, so no
   history exists. Only hosts are counted.
+
+## Update 2026-10-18 — shown as "Vibe"
+
+The owner renamed the number to **Vibe** and swapped the pulse badge for a filled purple
+heart (`Icon` `heart`, fill). The vibe between two friends in the chat list (built the same
+day, `20261106000000_chat_vibes.sql`) wears the same heart, so the profile number is "your
+vibe" and the chat number is "your vibe with that friend". The explainer page moved to
+livil-music.com/vibe (it covers both); `/score` and `/score.html` redirect there
+permanently so the Search Console request and old links carry over. Labels only: the
+table, the functions and `MusicScoreTag` keep the score names, because shipped builds read
+`music_scores` by name. The purple heart is an everyday emoji shape, so it is not
+trademarkable — a deliberate trade for warmth.
 
 ## Dissent
 

@@ -1069,7 +1069,7 @@ export default function ProfileScreen() {
         glyph="↗"
         tone="primary"
         confirmLabel="Close"
-        cancelLabel="Dismiss"
+        cancelLabel={null}
         onConfirm={() => setAllLinksOpen(false)}
         onCancel={() => setAllLinksOpen(false)}
       />
