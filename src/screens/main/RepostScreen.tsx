@@ -428,8 +428,8 @@ export default function RepostScreen() {
   const successTitle = mode === 'story' ? 'Story added!' : 'Reposted!';
   const successBody =
     mode === 'story'
-      ? 'Your story is live for the next 24 hours.'
-      : 'Your repost is live on your profile.';
+      ? "It's live for 24 hours."
+      : "It's on your profile.";
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>

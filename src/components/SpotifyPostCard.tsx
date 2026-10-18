@@ -272,7 +272,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       <ConfirmActionModal
         visible={confirmDelete}
         title="Delete this repost?"
-        message="This permanently removes your repost and any comments and likes on it. The song stays on Spotify. This cannot be undone."
+        message="Its likes, comments and vibe points go too. This can't be undone."
         confirmLabel="Delete"
         tone="destructive"
         busy={deleting}

@@ -472,8 +472,8 @@ export default function GroupInfoScreen() {
 
       <ConfirmActionModal
         visible={!!removeTarget}
-        title="Remove member?"
-        message={`Remove ${removeTarget?.displayName || removeTarget?.username || 'this member'} from the group?`}
+        title={`Remove ${removeTarget?.displayName || removeTarget?.username || 'this member'}?`}
+        message="They'll leave the group chat."
         glyph="−"
         tone="destructive"
         confirmLabel="Remove"
@@ -486,11 +486,7 @@ export default function GroupInfoScreen() {
       <ConfirmActionModal
         visible={leaveOpen}
         title="Leave this group?"
-        message="You'll stop receiving messages from this group."
-        bullets={[
-          'Past messages stay visible only to remaining members',
-          'You can be added back by any admin',
-        ]}
+        message="You'll stop getting its messages."
         glyph="↪"
         tone="destructive"
         confirmLabel="Leave group"

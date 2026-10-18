@@ -14,7 +14,8 @@ export type ConfirmTone = 'destructive' | 'primary';
 type Props = {
   visible: boolean;
   title: string;
-  message: string;
+  /** The one short line under the title. Omit it when the title says it all (text diet, 2026-10-18). */
+  message?: string;
   bullets?: string[];
   glyph?: string;
   tone?: ConfirmTone;
@@ -78,7 +79,7 @@ export default function ConfirmActionModal({
           </View>
 
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{message}</Text>
+          {message ? <Text style={styles.subtitle}>{message}</Text> : null}
 
           {bullets && bullets.length > 0 ? (
             <View style={styles.bullets}>

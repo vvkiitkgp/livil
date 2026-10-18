@@ -79,7 +79,6 @@ import {
   Playlist as PhPlaylist,
   Plus,
   Prohibit,
-  Pulse,
   Queue,
   Repeat,
   RepeatOnce,
@@ -133,9 +132,7 @@ export type IconName =
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
-  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut'
-  // the music score badge and the chat vibe tag
-  | 'pulse';
+  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -294,9 +291,6 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   signOut: [SignOut, 'regular'],
   // "Upload a track" on the Add-to-Livil chooser (ADR-0027).
   upload: [UploadSimple, 'bold'],
-  // The music score badge (MusicScoreTag) and the chat vibe tag (VibeTag). `bold`: it
-  // sits at 11-18px.
-  pulse: [Pulse, 'bold'],
 };
 
 export interface IconProps {

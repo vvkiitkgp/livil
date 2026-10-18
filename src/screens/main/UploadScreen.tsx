@@ -1697,10 +1697,10 @@ export default function UploadScreen() {
             <Text style={styles.successTitle}>Track posted</Text>
             <Text style={styles.successBody}>
               {collaboratorCount > 0
-                ? `Your track is live. ${collaboratorCount} collaborator${
+                ? `It's live. ${collaboratorCount} collaborator${
                     collaboratorCount === 1 ? '' : 's'
-                  } will see a request to confirm.`
-                : 'Your track is live and up on your profile.'}
+                  } will be asked to confirm.`
+                : "It's live on your profile."}
             </Text>
             <Button
               label="Done"

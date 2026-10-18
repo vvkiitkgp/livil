@@ -304,7 +304,7 @@ export default function EditAlbumScreen({ route }: Props) {
       <ConfirmActionModal
         visible={confirmDelete}
         title="Delete this album?"
-        message="Tracks stay on your profile — only the album grouping is removed."
+        message="Your tracks stay on your profile."
         confirmLabel="Delete album"
         tone="destructive"
         glyph="🗑"
@@ -315,7 +315,6 @@ export default function EditAlbumScreen({ route }: Props) {
       <ConfirmActionModal
         visible={!!confirmRemoveTrack}
         title="Remove from album?"
-        message={`"${confirmRemoveTrack?.title ?? 'This track'}" will leave the album. The upload stays on your profile.`}
         confirmLabel="Remove"
         tone="destructive"
         glyph="⊖"

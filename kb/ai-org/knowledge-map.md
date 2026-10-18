@@ -137,7 +137,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0029-scheduled-pushes-from-the-database.md` | chief-architect | ALL | 2026-10-14 | 9999d |
 | `decisions/0030-new-on-livil-is-for-you-filtered-to-uploads.md` | chief-architect | ALL | 2026-10-14 | 9999d |
 | `decisions/0031-gifs-in-comments.md` | chief-architect | ALL | 2026-10-16 | 9999d |
-| `decisions/0032-music-score.md` | chief-architect | ALL | 2026-10-17 | 9999d |
+| `decisions/0032-music-score.md` | chief-architect | ALL | 2026-10-18 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 

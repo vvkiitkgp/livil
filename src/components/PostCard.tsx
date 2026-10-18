@@ -599,9 +599,9 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
         <ConfirmActionModal
           visible={confirmDelete}
-          title="Remove repost?"
-          message="This permanently removes your repost and any comments and likes on it. This cannot be undone."
-          confirmLabel="Remove"
+          title="Delete this repost?"
+          message="Its likes, comments and vibe points go too. This can't be undone."
+          confirmLabel="Delete"
           tone="destructive"
           busy={deleting}
           onConfirm={handleConfirmDelete}
@@ -1003,7 +1003,6 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       <ConfirmActionModal
         visible={confirmRemoveAlbum}
         title="Remove from album?"
-        message={`This track will leave "${currentAlbum?.title ?? 'the album'}". It stays on your profile.`}
         confirmLabel="Remove from album"
         tone="destructive"
         glyph="⊖"
@@ -1025,11 +1024,11 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
       <ConfirmActionModal
         visible={confirmDelete}
-        title="Delete this post?"
+        title={post.kind === 'upload' ? 'Delete this post?' : 'Delete this repost?'}
         message={
           post.kind === 'upload'
-            ? "Your comments, likes, plays, and any playlist entries for this post will be permanently removed. Other people's reposts of it will stay, but the original will show as no longer available — they'll know it was removed. This cannot be undone."
-            : 'This permanently removes your repost and any comments and likes on it. This cannot be undone.'
+            ? "Its likes, comments, plays and vibe points go too. This can't be undone."
+            : "Its likes, comments and vibe points go too. This can't be undone."
         }
         confirmLabel="Delete"
         tone="destructive"

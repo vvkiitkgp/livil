@@ -968,11 +968,7 @@ export default function CommentsSheet({
           <ConfirmActionModal
             visible={confirmDelete !== null}
             title="Delete comment?"
-            message={
-              (confirmDelete?.replies.length ?? 0) > 0
-                ? 'This will also delete every reply underneath. This cannot be undone.'
-                : 'This cannot be undone.'
-            }
+            message={(confirmDelete?.replies.length ?? 0) > 0 ? "Its replies go too. This can't be undone." : undefined}
             confirmLabel="Delete"
             tone="destructive"
             busy={deleting}

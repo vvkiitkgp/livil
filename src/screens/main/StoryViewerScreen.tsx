@@ -1318,7 +1318,6 @@ function StoryViewerContent() {
       <ConfirmActionModal
         visible={confirmDelete}
         title="Delete this story?"
-        message="It will be removed for everyone right away. This can't be undone."
         glyph="🗑"
         tone="destructive"
         confirmLabel="Delete"
