@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-399 TypeScript file(s) under `src/`, 87,751 lines.
+399 TypeScript file(s) under `src/`, 87,760 lines.
 
 ## Size hotspots
 
@@ -103,7 +103,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-49 file(s), 27,194 lines.
+49 file(s), 27,195 lines.
 
 | File | Lines |
 |---|---:|
@@ -134,7 +134,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/PrivacyDataScreen.tsx` | 313 |
 | `src/screens/main/__tests__/SearchScreen.test.tsx` | 300 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 292 |
-| `src/screens/main/SettingsScreen.tsx` | 289 |
+| `src/screens/main/SettingsScreen.tsx` | 290 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
 | `src/screens/auth/FirstRunGuideScreen.tsx` | 275 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
@@ -159,7 +159,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-151 file(s), 30,793 lines.
+151 file(s), 30,801 lines.
 
 | File | Lines |
 |---|---:|
@@ -200,11 +200,11 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostGridCard.tsx` | 229 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/PostReportModal.tsx` | 216 |
+| `src/components/ConfirmActionModal.tsx` | 214 |
 | `src/components/ExitFeedbackModal.tsx` | 214 |
 | `src/components/guide/cardsPlayer.tsx` | 212 |
 | `src/components/CommentReportModal.tsx` | 211 |
 | `src/components/AppUpdatePrompt.tsx` | 210 |
-| `src/components/ConfirmActionModal.tsx` | 206 |
 | `src/components/AddToAlbumSheet.tsx` | 205 |
 | `src/components/ProfileBadges.tsx` | 203 |
 | `src/components/SettingsRow.tsx` | 202 |
