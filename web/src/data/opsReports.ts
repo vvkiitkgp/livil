@@ -63,8 +63,9 @@ export type OpsReport = {
    */
   postKind: 'upload' | 'repost' | null;
   /**
-   * The reported post's own caption — usually what a repost is reported for, since the
-   * song is somebody else's. Post reports only; null when there is none.
+   * The reported post's caption as it was when the report was filed — not as it reads now,
+   * since its author can edit it. Usually what a repost is reported for, the song being
+   * somebody else's. Post reports only; null when there was none.
    */
   postCaption: string | null;
   /**

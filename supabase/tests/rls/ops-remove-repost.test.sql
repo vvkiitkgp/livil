@@ -50,13 +50,15 @@ grant usage on schema auth to authenticated;
 insert into auth.users (id, email) values
   ('5a000000-0000-0000-0000-000000000001', 'sharer@rsr.test'),
   ('5a000000-0000-0000-0000-000000000002', 'reporter@rsr.test'),
-  ('5a000000-0000-0000-0000-000000000003', 'operator@rsr.test')
+  ('5a000000-0000-0000-0000-000000000003', 'operator@rsr.test'),
+  ('5a000000-0000-0000-0000-000000000004', 'listener@rsr.test')
 on conflict (id) do nothing;
 
 insert into public.profiles (id, username) values
   ('5a000000-0000-0000-0000-000000000001', 'rsr_sharer'),
   ('5a000000-0000-0000-0000-000000000002', 'rsr_reporter'),
-  ('5a000000-0000-0000-0000-000000000003', 'rsr_operator')
+  ('5a000000-0000-0000-0000-000000000003', 'rsr_operator'),
+  ('5a000000-0000-0000-0000-000000000004', 'rsr_listener')
 on conflict (id) do nothing;
 
 insert into public.ops_users (user_id) values ('5a000000-0000-0000-0000-000000000003')
@@ -98,6 +100,22 @@ insert into public.post_reports (id, post_id, reporter_id, reason) values
   ('5d000000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000003',
    '5a000000-0000-0000-0000-000000000001', 'harassment')
 on conflict (id) do nothing;
+-- … and the reposter rewrites the caption once reported. The queue must still show what
+-- was reported.
+update public.posts set caption = 'great song'
+ where id = '5c000000-0000-0000-0000-000000000003';
+
+-- A listener who saved the song while playing it FROM that repost — which saves the
+-- repost's id — in one playlist, and both the repost and the original in another.
+insert into public.playlists (id, user_id, name) values
+  ('5e100000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000004', 'from the repost'),
+  ('5e100000-0000-0000-0000-000000000002', '5a000000-0000-0000-0000-000000000004', 'has both')
+on conflict (id) do nothing;
+insert into public.playlist_posts (playlist_id, post_id, added_at) values
+  ('5e100000-0000-0000-0000-000000000001', '5c000000-0000-0000-0000-000000000003', '2026-01-02'),
+  ('5e100000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000003', '2026-01-03'),
+  ('5e100000-0000-0000-0000-000000000002', '5c000000-0000-0000-0000-000000000002', '2026-01-01')
+on conflict do nothing;
 
 -- What a real reported post carries into the cascade: a like, a comment, and a report of
 -- that comment — which must SURVIVE the post (20261102000000).
@@ -131,7 +149,7 @@ select pg_temp.assert(
   true);
 
 select pg_temp.assert(
-  '1c  the queue says a Livil repost is a repost, names its track, and shows its caption',
+  '1c  the queue says a Livil repost is a repost, names its track, and shows the caption AS REPORTED',
   (select post_kind = 'repost' and track_id = '5b000000-0000-0000-0000-000000000001'
       and spotify_track_id is null and post_caption = 'a rude caption'
      from public.ops_reports_overview(false)
@@ -309,13 +327,16 @@ select pg_temp.assert(
   (select taken_down_at is null from public.tracks where id = '5b000000-0000-0000-0000-000000000001'),
   true);
 select pg_temp.assert(
-  '6f  the ledger records a Livil repost, naming its track only in the snapshot',
+  '6f  the ledger records a Livil repost: its track (snapshot only), what came down, what was reported',
   (select track_id is null
       and target_owner_id = '5a000000-0000-0000-0000-000000000002'
       and snapshot->>'post_kind' = 'livil_repost'
       and snapshot->>'track_id' = '5b000000-0000-0000-0000-000000000001'
-      and snapshot->>'caption' = 'a rude caption'
+      and snapshot->>'caption' = 'great song'
+      and snapshot->'reports'->0->>'caption' = 'a rude caption'
       and (snapshot->>'report_count')::int = 1
+      and (snapshot->>'playlist_entries')::int = 2
+      and (snapshot->>'jam_suggestions')::int = 0
      from public.moderation_actions
     where action = 'remove_post' and target_owner_id = '5a000000-0000-0000-0000-000000000002'),
   true);
@@ -338,11 +359,43 @@ select pg_temp.assert(
              and payload->>'kind' = 'livil_repost'),
   false);
 
+select pg_temp.assert(
+  '6j  a playlist that held the repost now holds the original, keeping when it was added',
+  (select count(*) = 1 and bool_and(post_id = '5c000000-0000-0000-0000-000000000002')
+      and bool_and(added_at = '2026-01-02'::timestamptz)
+     from public.playlist_posts where playlist_id = '5e100000-0000-0000-0000-000000000001'),
+  true);
+select pg_temp.assert(
+  '6k  a playlist that held both keeps the original once, as it was',
+  (select count(*) = 1 and bool_and(post_id = '5c000000-0000-0000-0000-000000000002')
+      and bool_and(added_at = '2026-01-01'::timestamptz)
+     from public.playlist_posts where playlist_id = '5e100000-0000-0000-0000-000000000002'),
+  true);
+
 set local role authenticated;
 select pg_temp.set_user('5a000000-0000-0000-0000-000000000003');
 select pg_temp.assert(
   '6i  the song''s takedown history does not list it — the track was not acted on',
   exists (select 1 from public.ops_moderation_history('5b000000-0000-0000-0000-000000000001')),
   false);
+
+-- ── 7. A reporter cannot shape their own report ─────────────────────────────
+-- Pre-marked reviewed (out of the open queue), backdated, and with words of their own in
+-- place of the caption. The stored post decides the caption; the server decides the rest.
+select pg_temp.set_user('5a000000-0000-0000-0000-000000000002');
+insert into public.post_reports
+  (id, post_id, reporter_id, reason, caption_excerpt, reviewed_at, reviewed_by, created_at)
+values
+  ('5d000000-0000-0000-0000-000000000009', '5c000000-0000-0000-0000-000000000004',
+   '5a000000-0000-0000-0000-000000000002', 'spam', 'words I made up',
+   now(), '5a000000-0000-0000-0000-000000000003', '2020-01-01');
+reset role;
+select pg_temp.assert(
+  '7a  the report starts unreviewed, dated now, with the stored caption (none) not the client''s',
+  (select reviewed_at is null and reviewed_by is null
+      and created_at > now() - interval '1 minute'
+      and caption_excerpt is null
+     from public.post_reports where id = '5d000000-0000-0000-0000-000000000009'),
+  true);
 
 rollback;

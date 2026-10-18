@@ -376,7 +376,10 @@ export function Ops() {
       source: 'report',
       impact: `Reported as “${r.reason}”. Removing it deletes only ${who}'s repost and tells `
         + 'them why'
-        + (r.spotifyTrackId ? '. ' : " — the original upload and everyone else's reposts stay. ")
+        + (r.spotifyTrackId
+          ? '. '
+          : " — the original upload and everyone else's reposts stay, and anyone who saved "
+            + 'it to a playlist keeps the song. ')
         + 'This report closes with it; the report and your decision are kept in the '
         + 'moderation ledger.',
     });
@@ -712,8 +715,8 @@ export function Ops() {
               <p className="msg__body">
                 {r.targetExcerpt || '(nothing to show)'}
               </p>
-              {/* What the poster wrote. For a repost this is usually what was reported:
-                  the song is somebody else's. */}
+              {/* What the poster wrote WHEN REPORTED — they may have edited it since. For a
+                  repost this is usually what was reported: the song is somebody else's. */}
               {r.postCaption && <p className="msg__body">“{r.postCaption}”</p>}
 
               {/* THE REPORTED THING, PLAYABLE. Without this the queue was an accusation

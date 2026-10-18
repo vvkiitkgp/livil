@@ -33,8 +33,18 @@
 -- removing an upload's post alone would leave the track serving through every repost of
 -- it, which is exactly what the takedown exists to prevent.
 --
--- Nothing depends on a repost: the app only ever reposts an UPLOAD (`original_post_id`
--- always names one), so deleting a repost cannot orphan anybody else's post.
+-- No other POST depends on a repost: the app only ever reposts an UPLOAD
+-- (`original_post_id` always names one), and a story can only share an upload.
+--
+-- PLAYLISTS do. A listener who adds the song while playing it from a repost saves THAT
+-- post's id (`FullScreenPlayer` → `addPostToPlaylist(nowPlaying.postId)`), and
+-- `playlist_posts.post_id` is ON DELETE CASCADE — so removing @riya's repost for her
+-- caption would silently take the song out of @sam's playlist. Those entries are moved to
+-- the original upload first, keeping their `added_at`; the listener keeps the song and
+-- only the caption goes. Jam suggestions of the repost are not moved: their identity is
+-- immutable by design (`jam_suggestions_guard`) and they are a live room's queue, cleared
+-- when the jam ends; they go with the post and are counted in the ledger (security review,
+-- 2026-10-17). Spotify reposts can be in neither (`reject_spotify_post`).
 --
 -- ── WHY THE DELETE IS NOT REVERSIBLE ───────────────────────────────────────
 --
@@ -57,6 +67,16 @@
 -- `jsonb_agg` of them could make the post impossible to remove (security review,
 -- 2026-10-17). The operator's own reason, which is what the author is told, is kept whole.
 --
+-- ── THE CAPTION AS REPORTED ────────────────────────────────────────────────
+--
+-- `posts_update_own` lets the author rewrite the caption at any time, so a queue reading
+-- the live caption could show "great song" for a report of harassment, edited after the
+-- fact. `post_reports.caption_excerpt` is snapshotted from the stored post when the report
+-- is filed — never from the client — the same fix `post_comment_reports` got
+-- (20261102000000). The same trigger pins `created_at`, `reviewed_at` and `reviewed_by`:
+-- a reporter could file a report pre-marked "reviewed" (out of the open queue) or
+-- backdated, and those values now reach the append-only ledger.
+--
 -- ── NO post_removals ROW ───────────────────────────────────────────────────
 --
 -- The shipped app's card for a removed repost says "The original track is no longer
@@ -66,8 +86,10 @@
 --
 -- ── Old app versions (production compatibility) ─────────────────────────────
 --
--- ADDITIVE. Two new columns on an ops-only function the mobile app never calls, a wider
--- CHECK on an ops-only ledger, and a new ops-only function. The one thing a shipped app
+-- ADDITIVE. New columns on an ops-only function the mobile app never calls, a wider CHECK
+-- on an ops-only ledger, a new ops-only function, and a nullable `post_reports` column
+-- with a trigger that fills it: 2.1.x files a report as {post_id, reporter_id, reason,
+-- details}, which the trigger completes and never refuses. The one thing a shipped app
 -- reads is the `content_removed` notification. 2.1.x words it from `kind` and
 -- `track_title`, and only one combination is true here:
 --
@@ -90,7 +112,52 @@ alter table public.moderation_actions
   add constraint moderation_actions_action_check
   check (action in ('takedown', 'restore', 'purge_media', 'remove_post'));
 
--- ── 2. The queue says what kind of post was reported ────────────────────────
+-- ── 2. A post report keeps the caption as it was reported ──────────────────
+alter table public.post_reports
+  add column if not exists caption_excerpt text;
+
+comment on column public.post_reports.caption_excerpt is
+  'The reported post''s caption when the report was filed, copied from the stored post by '
+  'trg_post_reports_snapshot — never from the client. NULL when it had none.';
+
+-- Mirrors `post_comment_reports_snapshot` (20261102000000). DEFINER: it reads the post
+-- whatever the reporter may see, and writes only into the reporter's own new row.
+create or replace function public.post_reports_snapshot()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+begin
+  -- Overwrites anything the client sent; no row (a post deleted meanwhile) leaves NULL.
+  select left(nullif(btrim(p.caption), ''), 500)
+    into new.caption_excerpt
+    from posts p
+   where p.id = new.post_id;
+  -- A report starts unreviewed and is dated now — a reporter cannot file one pre-marked
+  -- "reviewed by" an operator, or backdated out of the open queue.
+  new.reviewed_at := null;
+  new.reviewed_by := null;
+  new.created_at  := now();
+  return new;
+end;
+$function$;
+
+revoke execute on function public.post_reports_snapshot() from public, anon, authenticated;
+
+drop trigger if exists trg_post_reports_snapshot on public.post_reports;
+create trigger trg_post_reports_snapshot
+  before insert on public.post_reports
+  for each row execute function public.post_reports_snapshot();
+
+-- Reports filed before this: the caption now is the best record there is.
+update public.post_reports r
+   set caption_excerpt = left(nullif(btrim(p.caption), ''), 500)
+  from public.posts p
+ where p.id = r.post_id
+   and r.caption_excerpt is null;
+
+-- ── 3. The queue says what kind of post was reported ────────────────────────
 -- Body as in 20261102000000 plus `spotify_track_id` and `post_kind` (posts, and the post a
 -- comment sits under), `post_caption` (reported posts only) and an excerpt that names a
 -- Spotify repost rather than calling it unavailable. `drop` first because the return type
@@ -123,8 +190,8 @@ returns table (
   -- ── new: 'upload' or 'repost', so the console offers "Remove repost" only where it
   -- applies. Null when the post is gone, and for stories.
   post_kind           text,
-  -- ── new: the reported post's own caption. Post reports only — for a comment report the
-  -- excerpt already is the reported words.
+  -- ── new: the reported post's caption AS REPORTED (section 2), not as it reads now. Post
+  -- reports only — for a comment report the excerpt already is the reported words.
   post_caption        text,
   reviewed_at       timestamptz,
   reviewed_by       uuid,
@@ -160,7 +227,7 @@ begin
       t.taken_down_at,
       po.spotify_track_id,
       po.kind,
-      nullif(btrim(po.caption), ''),
+      r.caption_excerpt,
       r.reviewed_at, r.reviewed_by, rv.username
     from public.post_reports r
     left join public.profiles rep    on rep.id = r.reporter_id
@@ -249,7 +316,11 @@ revoke all on function public.ops_reports_overview(boolean) from public;
 revoke execute on function public.ops_reports_overview(boolean) from anon;
 grant execute on function public.ops_reports_overview(boolean) to authenticated;
 
--- ── 3. Removing one ─────────────────────────────────────────────────────────
+-- ── 4. Removing one ─────────────────────────────────────────────────────────
+-- The name this function had while it removed only Spotify reposts. Never applied to
+-- production; dropped in case a copy of an earlier draft was.
+drop function if exists public.ops_remove_spotify_repost(uuid, text);
+
 -- RAISES for a non-operator, like every ops WRITE: a silent no-op would tell the operator
 -- the post was gone while it was still in feeds.
 create or replace function public.ops_remove_repost(
@@ -265,6 +336,7 @@ declare
   v_author  uuid;
   v_kind    text;
   v_track   uuid;
+  v_original uuid;
   v_spotify text;
   v_caption text;
   v_posted  timestamptz;
@@ -272,6 +344,8 @@ declare
   v_reason  text;
   v_reports jsonb;
   v_report_count integer;
+  v_playlist_entries integer;
+  v_jam_suggestions integer;
 begin
   -- FIRST, before the parameters are read (Constitution P17).
   if not public.is_ops() then
@@ -291,8 +365,8 @@ begin
   end if;
 
   -- FOR UPDATE: two operators on the same report must not both record a removal.
-  select author_id, kind, track_id, spotify_track_id, caption, created_at
-    into v_author, v_kind, v_track, v_spotify, v_caption, v_posted
+  select author_id, kind, track_id, original_post_id, spotify_track_id, caption, created_at
+    into v_author, v_kind, v_track, v_original, v_spotify, v_caption, v_posted
     from public.posts
    where id = p_post_id
      for update;
@@ -313,18 +387,36 @@ begin
     from public.post_reports
    where post_id = p_post_id;
 
+  -- `caption` is the POSTER's words as each report saw them (section 2) — what was
+  -- reported, which may differ from what came down if the caption was edited since.
   select jsonb_agg(jsonb_build_object(
            'report_id',   r.id,
            'reason',      r.reason,
+           'caption',     r.caption_excerpt,
            'reported_at', r.created_at,
            'reviewed_at', r.reviewed_at)
          order by r.created_at desc)
     into v_reports
-    from (select id, reason, created_at, reviewed_at
+    from (select id, reason, caption_excerpt, created_at, reviewed_at
             from public.post_reports
            where post_id = p_post_id
            order by created_at desc
            limit 200) r;
+
+  -- Listeners who saved the song FROM this repost keep it: their playlist entries move to
+  -- the original upload (see the header). Already holding the original → nothing to add.
+  -- An orphaned repost (its original deleted) has nowhere to move them, and they go.
+  select count(*) into v_playlist_entries
+    from public.playlist_posts where post_id = p_post_id;
+  if v_original is not null and v_playlist_entries > 0 then
+    insert into public.playlist_posts (playlist_id, post_id, added_at)
+    select pp.playlist_id, v_original, pp.added_at
+      from public.playlist_posts pp
+     where pp.post_id = p_post_id
+    on conflict (playlist_id, post_id) do nothing;
+  end if;
+  select count(*) into v_jam_suggestions
+    from public.jam_suggestions where post_id = p_post_id;
 
   delete from public.posts where id = p_post_id;
 
@@ -346,6 +438,10 @@ begin
       'caption',          v_caption,
       'posted_at',        v_posted,
       'report_count',     v_report_count,
+      -- Counts only, like the reports: whose playlists is nobody's business here.
+      'playlist_entries', v_playlist_entries,
+      'playlist_entries_kept', v_original is not null,
+      'jam_suggestions',  v_jam_suggestions,
       'reports',          coalesce(v_reports, '[]'::jsonb))
   );
 
@@ -359,13 +455,14 @@ $function$;
 comment on function public.ops_remove_repost(uuid, text) is
   'Deletes ONE repost — Spotify (ADR-0027) or Livil — records it in moderation_actions with '
   'a summary of the reports that led to it, and tells its author why. The original upload '
-  'and other reposts stay. Uploads go through ops_take_down_track.';
+  'and other reposts stay, and playlist entries of the repost move to the upload. Uploads '
+  'go through ops_take_down_track.';
 
 revoke all on function public.ops_remove_repost(uuid, text) from public;
 revoke execute on function public.ops_remove_repost(uuid, text) from anon;
 grant execute on function public.ops_remove_repost(uuid, text) to authenticated;
 
--- ── 4. Verify ───────────────────────────────────────────────────────────────
+-- ── 5. Verify ───────────────────────────────────────────────────────────────
 do $verify$
 begin
   if has_function_privilege('anon', 'public.ops_remove_repost(uuid, text)', 'execute') then
