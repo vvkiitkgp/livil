@@ -151,7 +151,9 @@ const LOOKALIKES: Record<string, string> = {
 };
 
 export function isBlockedQuery(q: string): boolean {
-  const lower = q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  // Accents off (NFKD, then drop the marks): "séxy" is "sexy". A Unicode property, not an
+  // escaped code-point range: escapes arrive as raw characters through the MCP deploy.
+  const lower = q.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '');
   const unmasked = lower.replace(/[0134578@$!]/g, c => LOOKALIKES[c] ?? c);
   for (const form of [lower, unmasked]) {
     // Split on spaces only, then drop separators inside a word, so "s.e.x" is one word.

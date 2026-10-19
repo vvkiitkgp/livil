@@ -94,7 +94,7 @@ Deno.test('normalizeGif: search offers G only; posted GIFs may also be PG or PG-
 
 Deno.test('isBlockedQuery: what a search may not be for', () => {
   for (const q of ['sexy', 'Sexy', 'SEXY girl', 's3xy', '$exy', 's.e.x', 'sexygirl', 'nudes', 'hot', 'hot girl',
-    'kiss', 'kissing', 'b00bs', 'bikini', 'twerk', 'ass', 'weed', '420', 'fuck', 'f.u.c.k', 'thirsty']) {
+    'kiss', 'kissing', 'b00bs', 'bikini', 'twerk', 'ass', 'weed', '420', 'fuck', 'f.u.c.k', 'thirsty', 'séxy', 'NÜDE']) {
     assert(isBlockedQuery(q), q);
   }
   for (const q of ['happy dance', 'cat', 'class', 'pass the ball', 'cucumber', 'cocktail', 'butterfly', 'this example',
