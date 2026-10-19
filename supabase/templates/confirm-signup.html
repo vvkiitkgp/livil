@@ -8,51 +8,77 @@
   The page verifies {{ .TokenHash }} and opens the app signed in, as the old link did.
   Paste this ONLY once livil-music.com/confirm is live, or every new sign-up gets a dead link.
 
-  The color-scheme metas are what keep it dark: without them Apple Mail in dark mode applies
-  its own colour inversion and turned this dark design LIGHT (seen 2026-10-19). Declaring
-  "light dark" tells the client the email handles both itself, so it is shown as authored.
-  (Gmail's apps may still adjust colours; that is outside the email's control.)
+  Kept dark the way the welcome email is (supabase/functions/welcome-email/app.ts, which
+  shows dark on the owner's iPhone): color-scheme DARK only, `bgcolor` plus `!important`
+  backgrounds, and every colour repeated in a [data-ogsc]/[data-ogsb] rule (Outlook.com only
+  honours overrides hung off those). A first version without them — then with "light dark" —
+  showed LIGHT in Apple Mail (2026-10-19). Gmail's apps may still adjust colours.
 -->
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="supported-color-schemes" content="light dark" />
-    <style>
-      :root { color-scheme: light dark; supported-color-schemes: light dark; }
-    </style>
-  </head>
-  <body style="margin:0;padding:0;background:#0a0a0f;" bgcolor="#0a0a0f">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#0a0a0f" style="background:#0a0a0f;">
-      <tr>
-        <td align="center" style="padding:40px 16px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
-            <tr>
-              <td align="center" style="padding-bottom:28px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:6px;color:#ffffff;">LIVIL</td>
-            </tr>
-            <tr>
-              <td bgcolor="#12121c" style="background:#12121c;border:1px solid #252545;border-radius:20px;padding:32px 28px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
-                <p style="margin:0 0 12px;font-family:'Courier New',Courier,monospace;font-size:12px;letter-spacing:3px;color:#8b90a7;">ONE LAST TAP</p>
-                <h1 style="margin:0 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Confirm your email</h1>
-                <p style="margin:0 0 26px;font-size:16px;line-height:1.55;color:#b8b8c8;">Tap the button to finish creating your Livil account.</p>
-                <a href="https://livil-music.com/confirm?token_hash={{ .TokenHash }}&amp;type=email"
-                   style="display:inline-block;padding:14px 32px;border:1.5px solid #8b3dff;border-radius:999px;color:#a855f7;font-size:16px;font-weight:700;text-decoration:none;">Confirm my email</a>
-                <p style="margin:26px 0 0;font-size:13px;line-height:1.5;color:#8b90a7;">Button not working? Open
-                  <a href="https://livil-music.com/confirm?token_hash={{ .TokenHash }}&amp;type=email" style="color:#c9b6ff;">livil-music.com/confirm</a>
-                  on your phone.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:24px 4px 0;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#8b90a7;">
-                If you didn't create a Livil account, ignore this email — nothing was set up.<br />
-                Livil · <a href="https://livil-music.com" style="color:#c9b6ff;text-decoration:none;">livil-music.com</a>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title>Confirm your email</title>
+<style>
+  :root { color-scheme: dark; supported-color-schemes: dark; }
+  [data-ogsc] .l-page, [data-ogsb] .l-page { background: #0A0A0F !important; }
+  [data-ogsc] .l-card, [data-ogsb] .l-card { background: #12121C !important; }
+  [data-ogsc] .l-mark  { color: #FFFFFF !important; }
+  [data-ogsc] .l-kicker{ color: #8B90A7 !important; }
+  [data-ogsc] .l-title { color: #FFFFFF !important; }
+  [data-ogsc] .l-body  { color: #B8B8C8 !important; }
+  [data-ogsc] .l-btn   { color: #A855F7 !important; }
+  [data-ogsc] .l-small { color: #8B90A7 !important; }
+  [data-ogsc] .l-link  { color: #C9B6FF !important; }
+  @media (max-width: 480px) {
+    .l-card { padding: 28px 22px !important; }
+    .l-title { font-size: 24px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#0A0A0F;" bgcolor="#0A0A0F">
+<table class="l-page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0A0A0F" style="background:#0A0A0F !important;margin:0;padding:40px 12px;">
+  <tr>
+    <td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+
+        <tr>
+          <td align="center" style="padding:0 0 28px;">
+            <span class="l-mark" style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:6px;color:#FFFFFF;">LIVIL</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="l-card" bgcolor="#12121C" style="background:#12121C !important;border:1px solid #252545;border-radius:20px;padding:32px 28px;">
+            <p class="l-kicker" style="margin:0 0 12px;font-family:'Courier New',Courier,monospace;font-size:12px;letter-spacing:3px;color:#8B90A7;">ONE LAST TAP</p>
+            <h1 class="l-title" style="margin:0 0 14px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:28px;line-height:1.2;font-weight:700;color:#FFFFFF;">Confirm your email</h1>
+            <p class="l-body" style="margin:0 0 26px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#B8B8C8;">Tap the button to finish creating your Livil account.</p>
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td bgcolor="#12121C" style="background:#12121C !important;border:1.5px solid #8B3DFF;border-radius:999px;">
+                  <a class="l-btn" href="https://livil-music.com/confirm?token_hash={{ .TokenHash }}&amp;type=email" style="display:inline-block;padding:14px 32px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:16px;font-weight:700;color:#A855F7;text-decoration:none;">Confirm my email</a>
+                </td>
+              </tr>
+            </table>
+            <p class="l-small" style="margin:26px 0 0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#8B90A7;">Button not working? Open
+              <a class="l-link" href="https://livil-music.com/confirm?token_hash={{ .TokenHash }}&amp;type=email" style="color:#C9B6FF;">livil-music.com/confirm</a>
+              on your phone.</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td class="l-small" style="padding:24px 4px 0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#8B90A7;">
+            If you didn't create a Livil account, ignore this email — nothing was set up.<br>
+            Livil · <a class="l-link" href="https://livil-music.com" style="color:#C9B6FF;text-decoration:none;">livil-music.com</a>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
 </html>
