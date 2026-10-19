@@ -23,10 +23,13 @@ import UsernameBadges from './UsernameBadges';
 import ProgressiveImage from './ProgressiveImage';
 import { Icon } from './Icon';
 import { GradientBorder } from './GradientBorder';
-import { Button } from './Button';
 import { SpotifyLogo } from './SpotifyLogo';
 import type { PostCardProps } from './PostCard';
 import MentionText from './MentionText';
+import { Button } from './Button';
+import ShareRepostSheet from './ShareRepostSheet';
+import { DoubleTapLike } from './DoubleTapLike';
+import { LikeHeart } from './LikeHeart';
 
 /**
  * The feed card for a Spotify repost (ADR-0027).
@@ -40,7 +43,10 @@ import MentionText from './MentionText';
  *    drawn on top (Spotify's design guidelines forbid cropping, overlays and controls on
  *    album art). So there is no centre play glyph and no rounded 18px crop.
  *  - No waveform (Spotify forbids analysing its audio), no clip, no play count, no share
- *    link (same as every repost), no add-to-queue / playlist / album.
+ *    link (same as every repost), no add-to-queue / playlist / album. Share sends it to
+ *    friends in chat only (ShareRepostSheet).
+ *  - The action row: a grey-outlined box with Spotify's icon + a filled play disc (it opens
+ *    Spotify), then the counters and Share packed on the right, as on a Livil card.
  *  - The Repost pill opens the Spotify repost screen with this song LOCKED in.
  */
 function relativeTime(iso: string): string {
@@ -78,6 +84,8 @@ function initialsOf(name: string): string {
 // than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
 // (styles.likeHit), so changing the size keeps the target the same.
 const ACTION_ICON_SIZE = 26;
+/** Share's paper plane, drawn smaller inside an ACTION_ICON_SIZE box — see PostCard's. */
+const SHARE_ICON_SIZE = 22;
 
 function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -103,12 +111,13 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const { meId } = useRelationships();
   const isOwnRepost = !!meId && meId === post.author.id;
 
-  const { liked, likesCount, toggleLike: handleToggleLike } = usePostLike(post);
+  const { liked, likesCount, likePulse, toggleLike: handleToggleLike, like: handleDoubleTapLike } = usePostLike(post);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [likersOpen, setLikersOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const author = post.author;
   const authorName = author.displayName ?? author.username;
@@ -119,16 +128,13 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   const openSpotify = useOpenInSpotify('feed');
   const handleOpen = useCallback(() => openSpotify(spotifyId), [openSpotify, spotifyId]);
+  const handleArtTap = useCallback(() => { void handleOpen(); }, [handleOpen]);
 
   const handleRepost = useCallback(() => {
     if (!spotifyId) {return;}
     haptics.tap();
-    navigation.navigate('SpotifyRepost', {
-      spotifyTrackId: spotifyId,
-      locked: true,
-      fromUsername: author.username,
-    });
-  }, [navigation, spotifyId, author.username]);
+    navigation.navigate('SpotifyRepost', { spotifyTrackId: spotifyId, locked: true });
+  }, [navigation, spotifyId]);
 
   // Button presses on the action row buzz like every other control (`tap`). The heart is
   // the exception, in usePostLike: `toggleOn` on the way on, nothing on the way off.
@@ -223,9 +229,16 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       <Text style={styles.artist} numberOfLines={1}>{artist}</Text>
       {post.caption ? <MentionText text={post.caption} style={styles.caption} numberOfLines={4} /> : null}
 
-      {/* Artwork exactly as Spotify supplies it — nothing drawn on top. Tapping it opens the
-          song, like tapping a Livil cover plays it. */}
-      <TouchableOpacity activeOpacity={0.9} onPress={() => { void handleOpen(); }} accessibilityRole="button" accessibilityLabel={`Play ${meta.track?.title ?? 'this song'} on Spotify`} style={styles.artWrap}>
+      {/* Artwork exactly as Spotify supplies it — nothing drawn on top, so a double tap likes
+          WITHOUT the heart burst (the action row's heart fills in). Tapping it opens the song,
+          like tapping a Livil cover plays it. */}
+      <DoubleTapLike
+        onSingleTap={handleArtTap}
+        onDoubleTap={handleDoubleTapLike}
+        burst={false}
+        accessibilityLabel={`Play ${meta.track?.title ?? 'this song'} on Spotify`}
+        style={styles.artWrap}
+      >
         {track?.imageUrl ? (
           <Image source={{ uri: track.imageUrl }} style={styles.art} resizeMode="cover" />
         ) : (
@@ -237,14 +250,24 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             )}
           </View>
         )}
-      </TouchableOpacity>
+      </DoubleTapLike>
 
       <View style={styles.actionRow}>
+        {/* The grey-outlined box with Spotify's icon and a filled play disc, no words
+            (owner, 2026-10-19): with like, comment and Share, "Play on Spotify" needed ~356pt
+            and overlapped the like icon on most iPhones (measured 2026-10-19), and icons
+            never grow with the phone's text size. It OPENS SPOTIFY (useOpenInSpotify pauses
+            Livil first). The screen reader still hears "Play on Spotify". */}
         <Button
-          label="Play on Spotify"
+          label=""
           variant="secondary"
           size="md"
-          leading={<SpotifyLogo size="xs" />}
+          leading={
+            <>
+              <SpotifyLogo size="xs" />
+              <Icon name="playCircle" size={22} color={COLORS.white} />
+            </>
+          }
           onPress={() => { void handleOpen(); }}
           accessibilityLabel="Play on Spotify"
           haptic="none"
@@ -252,7 +275,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit} accessibilityLabel={liked ? 'Unlike' : 'Like'}>
-              <Icon name="heart" size={ACTION_ICON_SIZE} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
+              <LikeHeart liked={liked} pulse={likePulse} size={ACTION_ICON_SIZE} />
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.7} onPress={handleOpenLikers} disabled={likesCount === 0} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
               <Text style={[styles.statValue, liked && styles.statValueLiked]}>{formatCount(likesCount)}</Text>
@@ -262,11 +285,32 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             <Icon name="comment" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
+          {/* Drawn and placed like PostCard's Share: a counter's box with an invisible "0"
+              where the number would be. Friends only — see ShareRepostSheet. */}
+          <TouchableOpacity
+            style={styles.statBtn}
+            activeOpacity={0.7}
+            onPress={() => setShareOpen(true)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Send ${meta.track?.title ?? 'this song'} to friends`}
+          >
+            <View style={styles.shareIconBox}>
+              <Icon name="share" size={SHARE_ICON_SIZE} color={COLORS.white} />
+            </View>
+            <Text style={[styles.statValue, styles.countGap]} importantForAccessibility="no" accessibilityElementsHidden>0</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
       <LikedByLine postId={post.id} likesCount={likesCount} viewerHasLiked={liked} onPress={handleOpenLikers} />
 
+      <ShareRepostSheet
+        visible={shareOpen}
+        post={shareOpen ? post : null}
+        songTitle={meta.track?.title ?? ''}
+        onClose={() => setShareOpen(false)}
+      />
       <DetailActionSheet visible={menuOpen} onClose={() => setMenuOpen(false)} actions={menuActions} />
       <PostReportModal visible={reportOpen} postId={reportOpen ? post.id : null} onClose={() => setReportOpen(false)} />
       <PostLikersSheet visible={likersOpen} postId={likersOpen ? post.id : null} onClose={() => setLikersOpen(false)} />
@@ -356,8 +400,10 @@ const styles = StyleSheet.create({
   // Spotify's mobile guideline: artwork corners rounded no more than 4px.
   art: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: COLORS.card },
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 14 },
-  statsGroup: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-around' },
+  // Same safety-net wrap as PostCard's actionRow: counters drop a line rather than overlap.
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 12, columnGap: 14, rowGap: 6 },
+  // As PostCard's: play on the left, the actions packed together on the right.
+  statsGroup: { flexDirection: 'row', alignItems: 'center', flexGrow: 1, flexShrink: 0, flexBasis: 'auto', justifyContent: 'flex-end', gap: 8 },
   // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
   // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
@@ -365,6 +411,8 @@ const styles = StyleSheet.create({
   // would never fire. The count beside it is a later sibling, so it keeps its own taps.
   likeHit: { padding: (44 - ACTION_ICON_SIZE) / 2, margin: -(44 - ACTION_ICON_SIZE) / 2 },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 6 },
+  shareIconBox: { width: ACTION_ICON_SIZE, height: ACTION_ICON_SIZE, alignItems: 'center', justifyContent: 'center' },
+  countGap: { opacity: 0 },
   statValue: { color: COLORS.white, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   statValueLiked: { color: '#FF4D6D' },
 });

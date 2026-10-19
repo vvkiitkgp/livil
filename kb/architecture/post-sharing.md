@@ -2,7 +2,7 @@
 tier: 3
 owner: chief-architect
 consumers: [P-CL, P-SE, P-DA, P-PF, FE, BE]
-last_verified: 2026-10-11
+last_verified: 2026-10-19
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -16,8 +16,8 @@ related_adrs: [0004, 0007, 0015]
 > read surface** on a database whose every post row is currently gated behind
 > `to authenticated`. That single fact, not the share sheet, is the design.
 
-**Assumptions:** Only `kind = 'upload'` posts are shareable — a repost is someone else's
-share already. A shared link is public to anyone holding it; there is no per-post privacy
+**Assumptions:** Only `kind = 'upload'` posts get a public link — a repost is someone else's
+share already. (A repost can still be sent to friends in chat — §11.) A shared link is public to anyone holding it; there is no per-post privacy
 toggle in v1. Android only, matching [ADR-0005](../decisions/0005-ios-platform-status.md).
 
 > **Revised 2026-10-09 — the public page no longer plays.** Owner's rule: **listening needs a
@@ -713,6 +713,34 @@ harvest. Fix the sign-in path first.
   the browser and the button hands off via `livil://profile/<handle>`.
 - **Old app builds** given a `livil://profile/…` link open to Home (their handler ignores it)
   and show a shared profile in chat as the bare link. Both are harmless.
+
+---
+
+## §11. Reposts in chat
+
+> **Summary:** A repost — Livil or Spotify — can be sent to friends in chat (owner,
+> 2026-10-19). It still never gets a public link: the uploads-only rule above is about the
+> **public** surface, and a DM is not one. **No server change**: the message is the song
+> message every build already draws, plus one metadata key.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Share button on repost cards | `PostCard`, `SpotifyPostCard` | Opens `ShareRepostSheet` — friends only, no link / Story / image rows. `canSharePost` stays uploads-only; `canSendRepostInChat` is the repost gate |
+| Reposter first | `FriendPickerStrip` `pinned` | The reposter leads the strip, labelled "Reposted this" — when they are a friend (a DM needs one, `20260809030000`) |
+| The message | `src/utils/repostShare.ts` | Livil repost → `track_share` of the **original upload** + `repost_post_id`. Spotify repost → text whose body is the Spotify link + `metadata.repost_post_id` |
+| The card | `RepostChatCard` → `ChatSongCard` `repost` | "Riya's repost", caption, artwork, song, one **View post** button; the whole card opens `PostDetail` for the repost. Livil mark dropped; Spotify's kept (required beside its metadata) |
+
+### Decisions
+
+| Decision | Chosen | Rejected | Why |
+|---|---|---|---|
+| Transport | Existing song message + `repost_post_id` | New `messages.kind = 'repost_share'` | `kind` is CHECK-constrained and the store build draws unknown kinds as an empty bubble. Checked at release 2.1.3 (`1c56cd0`): that build ignores the extra key and draws its usual song card — a playable Livil card, or the Spotify card. Inbox line and push read kind/body, so they are unchanged |
+| `post_id` in the Livil payload | The ORIGINAL upload | The repost's id | An older build plays `post_id` and its Repost button reposts it, and Repost takes an original upload — the repost's id would give that build a broken button. Same reason the composer's 🎵 picker sends a repost's original |
+| Card contents | Read the repost by id under the viewer's RLS | Carry reposter name / caption in the message | The profile-card rule (§10): a message carries whatever its sender typed; reading the row stops one person's name appearing over another's post and makes a block apply |
+| Repost unreadable (deleted, blocked, friends-only reposts per ADR-0028) | Draw the plain song card the message also is | Tombstone | The song still arrives; nothing about the repost is shown that the viewer may not read |
+| Tap | Open the repost's `PostDetail`; no Play / Repost on the card | Play in place | Owner's call: playing, liking and reposting happen on the post |
+
+Orphaned Livil reposts (upload deleted) cannot be sent — no song an older build could play.
 
 ---
 

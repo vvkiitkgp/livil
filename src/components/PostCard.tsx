@@ -27,8 +27,11 @@ import AddBadge from './AddBadge';
 import { useRelationships } from '../contexts/RelationshipContext';
 import { Icon } from './Icon';
 import SharePostSheet from './SharePostSheet';
+import ShareRepostSheet from './ShareRepostSheet';
+import { DoubleTapLike } from './DoubleTapLike';
+import { LikeHeart } from './LikeHeart';
 import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
-import { canSharePost, toShareablePost } from '../services/share';
+import { canSendRepostInChat, canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
 import UsernameBadges from './UsernameBadges';
@@ -100,6 +103,12 @@ function avatarInitials(author: { displayName: string | null; username: string }
 // than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
 // (styles.likeHit), so changing the size keeps the target the same.
 export const ACTION_ICON_SIZE = 26;
+/**
+ * Share's paper plane, drawn smaller INSIDE an ACTION_ICON_SIZE box: its diagonal fills far
+ * more of the 256 grid than the heart or the comment bubble, so at the same size it read as
+ * the biggest icon on the row (owner, 2026-10-19). The box keeps the row's rhythm.
+ */
+export const SHARE_ICON_SIZE = 22;
 
 const CREDIT_FACES_SHOWN = 4;
 
@@ -178,7 +187,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const [position, setPosition] = useState(0);
 
   // Engagement state (optimistic).
-  const { liked, likesCount, toggleLike: handleToggleLike } = usePostLike(post);
+  const { liked, likesCount, likePulse, toggleLike: handleToggleLike, like: handleDoubleTapLike } = usePostLike(post);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [currentAlbum, setCurrentAlbum] = useState<AlbumForTrack | null>(null);
@@ -469,6 +478,8 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   // card fetches after it draws — gating on that would flash the pill on every own repost.
   const { meId } = useRelationships();
   const isOwnRepost = post.kind === 'repost' && !!meId && meId === post.author.id;
+  // An upload: the full share sheet. A repost: friends only (ShareRepostSheet).
+  const canShare = canSharePost(post) || canSendRepostInChat(post);
 
   // Orphaned repost: the original upload was deleted (FK ON DELETE SET NULL
   // nulled out original_post_id). Reposts survive with their own engagement
@@ -535,7 +546,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <View style={styles.tombstoneStatsRow}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit}>
-              <Icon name="heart" size={ACTION_ICON_SIZE} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
+              <LikeHeart liked={liked} pulse={likePulse} size={ACTION_ICON_SIZE} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -576,7 +587,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           viewerId={viewerId}
           postId={post.id}
           postAuthorId={post.author.id}
-          onSharePost={canSharePost(post) ? () => setShareOpen(true) : undefined}
+          onSharePost={canShare ? () => setShareOpen(true) : undefined}
         onReportPost={() => setReportOpen(true)}
           onDeletePost={() => setConfirmDelete(true)}
           currentAlbumTitle={currentAlbum?.title ?? null}
@@ -756,10 +767,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           // playback can never desync. Tap anywhere on the thumbnail (or
           // the centered play glyph) → opens FS. The bottom action-row
           // play button (rendered below) plays audio in place without
-          // opening FS.
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleVideoOpenFs}
+          // opening FS. Double tap → like (DoubleTapLike).
+          <DoubleTapLike
+            onSingleTap={handleVideoOpenFs}
+            onDoubleTap={handleDoubleTapLike}
             style={styles.mediaWrap}
             accessibilityLabel="Open full-screen player"
           >
@@ -786,15 +797,15 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
                 </View>
               </View>
             ) : null}
-          </TouchableOpacity>
+          </DoubleTapLike>
         ) : (post.track.audioUrl || post.track.coverArtUrl) ? (
           // Audio posts: cover art + a center play glyph, mirroring the video
           // thumbnail. Tap toggles play/pause through the GLOBAL audio player —
           // there is no inline <Video> here, so playback is fully decoupled
-          // from this card being on screen.
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={handleAudioTogglePlay}
+          // from this card being on screen. Double tap → like (DoubleTapLike).
+          <DoubleTapLike
+            onSingleTap={handleAudioTogglePlay}
+            onDoubleTap={handleDoubleTapLike}
             style={styles.mediaWrap}
             accessibilityLabel={isThisActive ? 'Pause' : 'Play'}
           >
@@ -815,7 +826,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
                 </View>
               </View>
             ) : null}
-          </TouchableOpacity>
+          </DoubleTapLike>
         ) : (
           <View style={[styles.mediaWrap, styles.missingMedia]}>
             <Text style={styles.missingMediaText}>Media unavailable</Text>
@@ -874,7 +885,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         <View style={styles.statsGroup}>
           <View style={styles.statBtn}>
             <TouchableOpacity activeOpacity={0.7} onPress={handleToggleLike} style={styles.likeHit}>
-              <Icon name="heart" size={ACTION_ICON_SIZE} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
+              <LikeHeart liked={liked} pulse={likePulse} size={ACTION_ICON_SIZE} />
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -914,35 +925,36 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               <Text style={styles.statValue}>{formatCount(post.repostsCount)}</Text>
             </TouchableOpacity>
           ) : null}
+
+          {/* Share. An UPLOAD opens the full share sheet (friends, link, Story). A REPOST
+              opens friends only (ShareRepostSheet): its public link would put a second
+              person's clip choice on the open web under the original artist's name, so a
+              repost never gets one — `shared_post_public` is what actually refuses a
+              repost id, because a hidden button is not a rule. A chat message reaches
+              friends only.
+
+              Drawn like the like and comment icons beside it — white, same size, no count
+              (owner, 2026-10-19). It used to be a purple outlined circle outside this
+              group, from when the counters were small and grey and a grey share glyph
+              among them was unfindable; the counters are now white controls too. Laid out
+              exactly like a counter — same box, same padding — with an invisible "0" where
+              the number would be, so the gaps between all four match (owner, 2026-10-19). */}
+          {canShare ? (
+            <TouchableOpacity
+              style={styles.statBtn}
+              activeOpacity={0.7}
+              onPress={() => setShareOpen(true)}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel={post.kind === 'repost' ? `Send ${post.track.title} to friends` : `Share ${post.track.title}`}
+            >
+              <View style={styles.shareIconBox}>
+                <Icon name="share" size={SHARE_ICON_SIZE} color={COLORS.white} />
+              </View>
+              <Text style={[styles.statValue, styles.countGap]} importantForAccessibility="no" accessibilityElementsHidden>0</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-
-        {/* Share — UPLOADS ONLY. A repost is somebody else's share already, and its
-            public link would put a second person's clip choice on the open web under
-            the original artist's name. This hides the affordance; `shared_post_public`
-            is what actually refuses a repost id, because a hidden button is not a rule.
-
-            OUTSIDE statsGroup, and outlined rather than grey. Everything inside that
-            group is a COUNTER — muted icon plus a number — so a grey share glyph sitting
-            among them read as decoration and was genuinely unfindable. The purple
-            outline is what marks it as a control, which is also what the design system
-            says purple is for.
-
-            Icon-only, mirroring the play button at the other end of the row, because a
-            labelled `[icon] Share` pill is ~82dp: on a 360dp phone that leaves the three
-            counters 142dp for 144dp of content, and they clip. The labelled path is the
-            Share row in the overflow menu. */}
-        {canSharePost(post) ? (
-          <TouchableOpacity
-            style={styles.shareBtn}
-            activeOpacity={0.85}
-            onPress={() => setShareOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`Share ${post.track.title}`}
-          >
-            <GradientBorder borderRadius={23} />
-            <Icon name="share" size={18} color={COLORS.purpleNeon} />
-          </TouchableOpacity>
-        ) : null}
       </View>
 
       <LikedByLine
@@ -952,11 +964,20 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         onPress={handleOpenLikers}
       />
 
-      <SharePostSheet
-        visible={shareOpen}
-        post={shareOpen ? toShareablePost(post) : null}
-        onClose={() => setShareOpen(false)}
-      />
+      {post.kind === 'repost' ? (
+        <ShareRepostSheet
+          visible={shareOpen}
+          post={shareOpen ? post : null}
+          songTitle={post.track.title}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : (
+        <SharePostSheet
+          visible={shareOpen}
+          post={shareOpen ? toShareablePost(post) : null}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       <TrackContextMenu
         visible={contextMenuVisible}
@@ -1164,16 +1185,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 999,
   },
-  // Same box as playButton, deliberately: one outlined control at each end of the
-  // action row, counters between them. No `elevation` and no `overflow: 'hidden'` —
-  // GradientBorder draws its glow inward and both would cut it off.
-  shareBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   repostBtnLabel: {
     color: COLORS.purpleNeon,
     fontSize: 13,
@@ -1322,11 +1333,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontVariant: ['tabular-nums'],
   },
+  // Wraps as a SAFETY NET only: on a phone too narrow for the row (320-wide, Display Zoom)
+  // or at the largest text sizes, the counters drop to a second line, right-aligned,
+  // instead of sliding under the play button. A normal phone at normal text never wraps.
   actionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     marginTop: 8,
-    gap: 14,
+    columnGap: 14,
+    rowGap: 6,
   },
   playButton: {
     width: 46,
@@ -1335,11 +1351,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Play on the left, the actions packed together on the right (owner, 2026-10-19). Same in
+  // SpotifyPostCard, and UploadPreviewCard draws its row with these styles.
+  // Grows into the free space but never below its content (flexBasis auto, no shrink) — so
+  // when it does not fit beside the play button it wraps, rather than overflowing onto it.
   statsGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'space-around',
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    justifyContent: 'flex-end',
+    // 8, not 12, since Share became counter-sized (with its blank number): at 12 an upload's
+    // four actions wrapped on a 360-wide phone at normal text (measured 2026-10-19).
+    gap: 8,
   },
   // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
@@ -1354,6 +1379,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 6,
   },
+  // Share: an ACTION_ICON_SIZE box (like every counter's icon) with the smaller plane centred.
+  shareIconBox: { width: ACTION_ICON_SIZE, height: ACTION_ICON_SIZE, alignItems: 'center', justifyContent: 'center' },
+  // Takes a one-digit count's width and draws nothing.
+  countGap: { opacity: 0 },
   tombstoneBody: {
     backgroundColor: COLORS.inputBg,
     borderRadius: 14,

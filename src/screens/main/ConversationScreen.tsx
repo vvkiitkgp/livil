@@ -68,6 +68,8 @@ import { resolveSharedProfile, toShareablePost } from '../../services/share';
 import { ProfileLinkCard } from '../../components/ProfileLinkCard';
 import SpotifyChatCard from '../../components/SpotifyChatCard';
 import ChatSongCard from '../../components/ChatSongCard';
+import RepostChatCard from '../../components/RepostChatCard';
+import { sharedRepostIdFrom } from '../../utils/repostShare';
 import { ChatReplySnippet } from '../../components/ChatReplySnippet';
 import { requestNotice } from '../../components/OnboardingNotice';
 import ChatSongPicker, { MusicToggleIcon, type PickedSong } from '../../components/ChatSongPicker';
@@ -207,6 +209,7 @@ function MessageBubble({
   onPlaySharedPost,
   onRepostSharedPost,
   onOpenSharedProfile,
+  onOpenSharedRepost,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -221,6 +224,7 @@ function MessageBubble({
   onPlaySharedPost: (postId: string) => void;
   onRepostSharedPost: (postId: string) => void;
   onOpenSharedProfile: (username: string) => void;
+  onOpenSharedRepost: (postId: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   // A GIF is a text message carrying the GIF in metadata (src/utils/chatGif.ts); its body is
@@ -253,6 +257,10 @@ function MessageBubble({
   // card has resolved it, because it might not be a song at all.
   const spotifyLink = msg.kind === 'text' && msg.body && !chatGif ? findSpotifyLinkInText(msg.body) : null;
   const isSongBubble = hasTrackMeta || !!spotifyLink;
+  // A song sent from a REPOST (src/utils/repostShare.ts) is drawn as that repost and opens
+  // it; the song card underneath is only its fallback. Read off song bubbles only, so a
+  // stray key on any other message is ignored.
+  const sharedRepostId = isSongBubble ? sharedRepostIdFrom(msg.metadata) : null;
   const visibleText = chatGif
     ? null
     : spotifyLink?.id && msg.body
@@ -311,7 +319,11 @@ function MessageBubble({
           <Pressable
             onLongPress={() => onLongPress(msg)}
             onPress={
-              sharedPostId
+              // A repost card handles its own taps — and when it falls back to the plain song
+              // card, that card's artwork plays. The bubble's 8px rim does nothing.
+              sharedRepostId
+                ? undefined
+                : sharedPostId
                 ? () => onPlaySharedPost(sharedPostId)
                 : sharedProfileHandle
                   ? () => onOpenSharedProfile(sharedProfileHandle)
@@ -322,9 +334,11 @@ function MessageBubble({
             // can't reach them. Off for song bubbles; touch long-press is unaffected, and
             // the card's buttons carry the long-press too.
             accessible={isSongBubble ? false : undefined}
-            accessibilityRole={sharedPostId || sharedProfileHandle ? 'button' : undefined}
+            accessibilityRole={(sharedPostId && !sharedRepostId) || sharedProfileHandle ? 'button' : undefined}
             accessibilityLabel={
-              sharedPostId
+              sharedRepostId
+                ? undefined
+                : sharedPostId
                 ? `Play ${msg.metadata!.title as string}`
                 : sharedProfileHandle
                   ? `View @${sharedProfileHandle}'s profile`
@@ -376,11 +390,26 @@ function MessageBubble({
             {/* A Spotify song link in the text becomes a card (ADR-0027). Still a plain
                 text message underneath — older apps keep showing the raw link. */}
             {spotifyLink ? (
-              <SpotifyChatCard
-                spotifyTrackId={spotifyLink.id}
-                shortUrl={spotifyLink.shortUrl}
-                onLongPress={() => onLongPress(msg)}
-              />
+              sharedRepostId ? (
+                <RepostChatCard
+                  repostPostId={sharedRepostId}
+                  onOpen={onOpenSharedRepost}
+                  onLongPress={() => onLongPress(msg)}
+                  fallback={
+                    <SpotifyChatCard
+                      spotifyTrackId={spotifyLink.id}
+                      shortUrl={spotifyLink.shortUrl}
+                      onLongPress={() => onLongPress(msg)}
+                    />
+                  }
+                />
+              ) : (
+                <SpotifyChatCard
+                  spotifyTrackId={spotifyLink.id}
+                  shortUrl={spotifyLink.shortUrl}
+                  onLongPress={() => onLongPress(msg)}
+                />
+              )
             ) : null}
 
             {chatGif ? (
@@ -403,17 +432,27 @@ function MessageBubble({
             {/* A shared Livil song. Same card as a Spotify song (ChatSongCard) so the two read
                 as one kind of thing; "Play on Livil" plays it here, Repost opens the usual
                 Repost screen. An older card without a post_id still renders, unplayable. */}
-            {hasTrackMeta && (
-              <ChatSongCard
-                source="livil"
-                title={(msg.metadata!.title as string | undefined) ?? null}
-                artist={(msg.metadata!.artist_name as string | undefined) ?? null}
-                artUrl={(msg.metadata!.cover_art_url as string | null | undefined) ?? null}
-                onPlay={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
-                onRepost={sharedPostId ? () => onRepostSharedPost(sharedPostId) : undefined}
-                onLongPress={() => onLongPress(msg)}
-              />
-            )}
+            {hasTrackMeta && (() => {
+              const songCard = (
+                <ChatSongCard
+                  source="livil"
+                  title={(msg.metadata!.title as string | undefined) ?? null}
+                  artist={(msg.metadata!.artist_name as string | undefined) ?? null}
+                  artUrl={(msg.metadata!.cover_art_url as string | null | undefined) ?? null}
+                  onPlay={sharedPostId ? () => onPlaySharedPost(sharedPostId) : undefined}
+                  onRepost={sharedPostId ? () => onRepostSharedPost(sharedPostId) : undefined}
+                  onLongPress={() => onLongPress(msg)}
+                />
+              );
+              return sharedRepostId ? (
+                <RepostChatCard
+                  repostPostId={sharedRepostId}
+                  onOpen={onOpenSharedRepost}
+                  onLongPress={() => onLongPress(msg)}
+                  fallback={songCard}
+                />
+              ) : songCard;
+            })()}
           </Pressable>
 
           {hasReactions && (
@@ -1247,6 +1286,11 @@ export default function ConversationScreen() {
 
   // A profile card opens that person's profile — resolved under the viewer's own RLS, so
   // a block or a vanished account is a toast rather than an empty profile screen.
+  /** A repost someone sent here opens on its own page — play, like and repost happen there. */
+  const handleOpenSharedRepost = useCallback((postId: string) => {
+    navigation.navigate('PostDetail', { postId });
+  }, [navigation]);
+
   const handleOpenSharedProfile = useCallback(async (username: string) => {
     const target = await resolveSharedProfile(username);
     if (!target) {
@@ -1382,6 +1426,7 @@ export default function ConversationScreen() {
               onPlaySharedPost={handlePlaySharedPost}
               onRepostSharedPost={handleRepostSharedPost}
               onOpenSharedProfile={handleOpenSharedProfile}
+              onOpenSharedRepost={handleOpenSharedRepost}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -1396,7 +1441,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, handleOpenSharedRepost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1924,7 +1969,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
+  // White on both sides (owner, 2026-10-19): grey received text read as faded next to the
+  // white sent text.
+  bubbleText: { color: COLORS.white, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
   // Brief pulse applied when the user taps a reply quote pointing at this
   // bubble — same purple tint as the comment-row highlight in CommentsSheet.

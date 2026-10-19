@@ -76,6 +76,7 @@ import {
   PencilSimpleLine,
   PianoKeys,
   Play,
+  PlayCircle,
   Playlist as PhPlaylist,
   Plus,
   Prohibit,
@@ -107,7 +108,7 @@ import { COLORS } from '../theme/colors';
 
 export type IconName =
   // playback & transport
-  | 'play' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
+  | 'play' | 'playCircle' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
   | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
@@ -166,6 +167,8 @@ const FEED_SEAM =
 const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [PhComponent, IconWeight]> = {
   // playback
   play: [Play, 'fill'],
+  // A filled disc with the triangle cut out — the Spotify repost card's play (SpotifyPostCard).
+  playCircle: [PlayCircle, 'fill'],
   pause: [Pause, 'fill'],
   skipForward: [SkipForward, 'fill'],
   skipBack: [SkipBack, 'fill'],

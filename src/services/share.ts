@@ -11,6 +11,9 @@
  * WHERE clause, so a repost link fetched by hand still resolves to nothing. A hidden
  * button is not an access control.
  *
+ * A repost CAN be sent to friends in chat — that is not public (`canSendRepostInChat`,
+ * `shareRepostToConversations`; kb/architecture/post-sharing.md §11).
+ *
  * ── WHY THE BUILT-IN Share API IS NOT ENOUGH ────────────────────────────────
  * React Native's own `Share` handles the link case perfectly and is used for it here.
  * What it cannot do on Android is attach a FILE — it sends text and a URL, full stop.
@@ -31,6 +34,7 @@ import {
 import { getOrCreateDm } from './conversations';
 import { sendMessage } from './messages';
 import { fetchPostById, type FeedPost } from './posts';
+import { repostSharePayload } from '../utils/repostShare';
 
 /** The subset of a post the share paths actually need. Keeps callers from having to
  *  hold a whole `FeedPost` where a player or a detail row only has fragments. */
@@ -351,6 +355,38 @@ export async function shareToConversations(
         senderInfo,
       ),
     ),
+  );
+
+  const sent = results.filter(r => r.status === 'fulfilled').length;
+  return { sent, failed: results.length - sent };
+}
+
+/**
+ * Whether a post can be sent to friends in chat AS A REPOST (owner, 2026-10-19).
+ *
+ * Separate from `canSharePost` on purpose: that one is the PUBLIC link and stays
+ * uploads-only. A chat message is not a public URL — it reaches friends only, and the card
+ * reads the repost under the recipient's own RLS. False for an orphaned Livil repost, whose
+ * song is gone (see repostSharePayload).
+ */
+export function canSendRepostInChat(post: FeedPost): boolean {
+  return repostSharePayload(post) !== null;
+}
+
+/**
+ * Send a repost to each conversation — the message is described in src/utils/repostShare.ts.
+ * Settled one by one and counted like `shareToConversations`, for the same reason.
+ */
+export async function shareRepostToConversations(
+  post: FeedPost,
+  conversationIds: string[],
+): Promise<{ sent: number; failed: number }> {
+  const payload = repostSharePayload(post);
+  if (!payload) { return { sent: 0, failed: conversationIds.length }; }
+  const senderInfo = await loadSenderInfo();
+
+  const results = await Promise.allSettled(
+    conversationIds.map(conversationId => sendMessage(conversationId, payload, senderInfo)),
   );
 
   const sent = results.filter(r => r.status === 'fulfilled').length;

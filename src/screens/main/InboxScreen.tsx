@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   View,
   Text,
   FlatList,
@@ -263,6 +264,7 @@ export default function InboxScreen() {
   useEffect(() => {
     if (!myId) { return; }
     console.log('[realtime] inbox subscribing', { myId });
+    let joinedOnce = false;
     const channel = supabase
       .channel(`inbox:${myId}`)
       .on(
@@ -299,12 +301,30 @@ export default function InboxScreen() {
       )
       .subscribe(status => {
         console.log('[realtime] inbox status', status);
+        // Joined AGAIN after the socket dropped (a network blip, or RealtimeConnectionGate
+        // closing it while backgrounded): events in the gap were never delivered, so
+        // re-read. The first join needs nothing — focus already loaded the list.
+        if (status === 'SUBSCRIBED') {
+          if (joinedOnce) { void refreshFromNetwork(); }
+          joinedOnce = true;
+        }
       });
     return () => {
       console.log('[realtime] inbox unsubscribing');
       void supabase.removeChannel(channel);
     };
   }, [myId, refreshFromNetwork]);
+
+  // Back in the foreground: re-read the list. RealtimeConnectionGate closes the socket
+  // while the app is backgrounded (delivery there is push's job), so a message that
+  // arrived meanwhile — the push you just tapped past — never reached this screen, and
+  // focus does not fire (the inbox never lost it). Home re-counts unread the same way.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') { void refreshFromNetwork(); }
+    });
+    return () => sub.remove();
+  }, [refreshFromNetwork]);
 
   const openConversation = useCallback((item: ConversationSummary) => {
     const isDm = item.kind === 'dm';

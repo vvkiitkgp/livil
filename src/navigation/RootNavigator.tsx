@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { postIdFromUrl, profileUsernameFromUrl } from '../utils/shareLinks';
 import { createShareLinkGate } from '../utils/shareLinkGate';
 import { clearProfileLinkCache } from '../components/ProfileLinkCard';
+import { clearRepostChatCache } from '../components/RepostChatCard';
 import { navigateWhenReady } from './navigationRef';
 import { resolveSharedPostTarget, resolveSharedProfile } from '../services/share';
 import AuthNavigator from './AuthNavigator';
@@ -554,6 +555,8 @@ export default function RootNavigator() {
           void messageCache.clearAll();
           // Profile-link cards were resolved under the previous account's RLS (its blocks).
           clearProfileLinkCache();
+          // Repost cards in chat too: each was read under that account's RLS.
+          clearRepostChatCache();
           // Same reason as the line above: the feed-impression buffer is module-global
           // and the server attributes a flush to whoever is signed in when it lands, so
           // ids collected by the previous account would be filed against the next one.

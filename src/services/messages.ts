@@ -261,9 +261,11 @@ export async function fetchMessages(
 }
 
 export type SendMessagePayload =
-  // `metadata` only for a GIF (src/utils/chatGif.ts): still a text message, body '🎞 GIF'.
-  | { kind: 'text'; body: string; replyToId?: string; metadata?: { gif: ChatGif } }
-  | { kind: 'track_share'; metadata: { track_id: string; post_id?: string; title: string; artist_name: string; cover_art_url: string | null } }
+  // `metadata` only for a GIF (src/utils/chatGif.ts): still a text message, body '🎞 GIF' —
+  // or for a shared Spotify repost (src/utils/repostShare.ts), body its Spotify link.
+  | { kind: 'text'; body: string; replyToId?: string; metadata?: { gif: ChatGif } | { repost_post_id: string } }
+  // `repost_post_id`: sent from a repost (src/utils/repostShare.ts); `post_id` is still the upload.
+  | { kind: 'track_share'; metadata: { track_id: string; post_id?: string; title: string; artist_name: string; cover_art_url: string | null; repost_post_id?: string } }
   | { kind: 'sticker'; metadata: { sticker_id: string; sticker_url: string } }
   | { kind: 'jam_invite'; metadata: { jam_room_id: string } };
 
