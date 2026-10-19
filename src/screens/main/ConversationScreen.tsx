@@ -1523,6 +1523,9 @@ export default function ConversationScreen() {
           interpolator="ios"
           style={styles.flex}
           textInputNativeID="conversation-input"
+          // Song / GIF search: the box IS the search, so a drag — scrolling results past their
+          // end included — must never put the keyboard away (owner, 2026-10-19).
+          enableSwipeToDismiss={!searchMode}
         >
           <SwipeRevealProvider>
             <SwipeRevealGestureView>

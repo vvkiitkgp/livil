@@ -161,3 +161,38 @@ it('"More GIFs" appends the next page, and stops after five pages', async () => 
   expect(tiles(r)).toHaveLength(15);
   expect(r.root.findAll(x => x.props.testID === 'button')).toHaveLength(0);
 });
+
+it('typing keeps the last GIFs on screen until the new ones arrive (no collapse per letter)', async () => {
+  const next = deferred();
+  mockSearch.mockResolvedValueOnce(page('t')).mockReturnValueOnce(next.promise);
+  let r!: TestRenderer.ReactTestRenderer;
+  act(() => { r = TestRenderer.create(<GifSearchPanel query="" onPick={() => {}} />); });
+  await settle(0);
+  layOut(r);
+  expect(tiles(r)).toEqual(['t0', 't1', 't2']);
+
+  act(() => { r.update(<GifSearchPanel query="cat" onPick={() => {}} />); });
+  await settle();
+  // Searching: trending still drawn, never an empty spinner.
+  expect(tiles(r)).toEqual(['t0', 't1', 't2']);
+
+  await act(async () => { next.resolve(page('c')); await Promise.resolve(); });
+  layOut(r);
+  expect(tiles(r)).toEqual(['c0', 'c1', 'c2']);
+});
+
+it('a scrolling host (chat) loads the next page on request, with no "More GIFs" button', async () => {
+  mockSearch.mockResolvedValueOnce(page('a')).mockResolvedValueOnce(page('b'));
+  let r!: TestRenderer.ReactTestRenderer;
+  act(() => { r = TestRenderer.create(<GifSearchPanel query="" onPick={() => {}} verb="send" moreRequest={0} />); });
+  await settle(0);
+  layOut(r);
+  expect(texts(r)).not.toContain('More GIFs');
+  expect(tileNodes(r)[0]!.props.accessibilityLabel).toBe('Send a0');
+
+  act(() => { r.update(<GifSearchPanel query="" onPick={() => {}} verb="send" moreRequest={1} />); });
+  await act(async () => { await Promise.resolve(); });
+  expect(mockSearch).toHaveBeenLastCalledWith('', 18);
+  layOut(r);
+  expect(tiles(r).map(t => t.replace('Send ', ''))).toEqual(['a0', 'a1', 'a2', 'b0', 'b1', 'b2']);
+});

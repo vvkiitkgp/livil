@@ -1,5 +1,5 @@
-import React from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { ChatPopover } from './ChatSongPicker';
 import { GifSearchPanel } from './GifPicker';
 import type { Gif } from '../services/gifs';
@@ -11,8 +11,8 @@ import type { Gif } from '../services/gifs';
  * a song does.
  *
  * Scrollable, unlike in comments (where the sheet's own list scrolls it); taps land on the
- * FIRST touch while the keyboard is up (keyboardShouldPersistTaps), and a scroll never puts
- * the keyboard away.
+ * FIRST touch while the keyboard is up (keyboardShouldPersistTaps), a scroll never puts the
+ * keyboard away, and the next page loads by itself near the bottom (no "More GIFs" button).
  */
 export default function ChatGifPicker({
   open,
@@ -29,6 +29,18 @@ export default function ChatGifPicker({
   /** Centre of the GIF button, from the popover's left edge — the grow origin. */
   originX: number;
 }) {
+  // Near the bottom → the next page, once per content height (so one page is asked for once).
+  const [moreRequest, setMoreRequest] = useState(0);
+  const askedAtHeight = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    const nearEnd = contentOffset.y + layoutMeasurement.height >= contentSize.height - NEAR_END_PX;
+    if (nearEnd && contentSize.height !== askedAtHeight.current) {
+      askedAtHeight.current = contentSize.height;
+      setMoreRequest(n => n + 1);
+    }
+  }, []);
+
   return (
     <ChatPopover open={open} bottom={bottom} originX={originX}>
       {/* Scrolling GIFs keeps the keyboard up: the box is the search, and the next thing a
@@ -36,13 +48,18 @@ export default function ChatGifPicker({
       <ScrollView
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="none"
+        onScroll={onScroll}
+        scrollEventThrottle={100}
         contentContainerStyle={styles.content}
       >
-        <GifSearchPanel query={query} onPick={onPick} verb="send" />
+        <GifSearchPanel query={query} onPick={onPick} verb="send" moreRequest={moreRequest} />
       </ScrollView>
     </ChatPopover>
   );
 }
+
+/** How close to the bottom (dp) the next page starts loading. */
+const NEAR_END_PX = 240;
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 4, paddingTop: 2 },
