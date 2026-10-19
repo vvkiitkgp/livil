@@ -19,7 +19,6 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import ArtGlow from './ArtGlow';
 import { useImageAspect } from '../hooks/useImageAspect';
 import { haptics } from '../utils/haptics';
-import { likeCountAfterToggle } from '../utils/likeCount';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -41,6 +40,7 @@ import WaveformScrubber, {
 } from './WaveformScrubber';
 import { ScrubTimeLabel } from './ScrubTimeLabel';
 import { useTrackWaveform } from '../hooks/useTrackWaveform';
+import { usePostLike } from '../hooks/usePostLike';
 import CoverFallback from './CoverFallback';
 import CollabAvatar from './CollabAvatar';
 import UsernameBadges from './UsernameBadges';
@@ -49,7 +49,7 @@ import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import { usePlayback, type NowPlayingInfo } from '../contexts/PlaybackContext';
 import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services/tracks';
 import { fetchAlbumForTrack, type AlbumForTrack } from '../services/albums';
-import { toggleLike, fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
+import { fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
 import CommentsSheet from './CommentsSheet';
 import PostLikersSheet from './PostLikersSheet';
 import {
@@ -560,7 +560,7 @@ function InfoContent({
   onLikesPress: (postId: string) => void;
   trackPlaysTotal: number;
 }) {
-  const { setNowPlaying, closeFullScreenPlayer } = usePlayback();
+  const { closeFullScreenPlayer } = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const effective = getEffectivePost(nowPlaying);
   const [collabs, setCollabs] = useState<TrackCollaboratorInfo[]>([]);
@@ -573,8 +573,13 @@ function InfoContent({
   // An uploader can give themselves several roles, each its own row: shown together.
   const uploaderRoles = collabs.filter(c => c.userId === nowPlaying.authorId).map(c => c.role);
   const otherCredits = collabs.filter(c => c.userId !== nowPlaying.authorId);
-  const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
-  const [likesCount, setLikesCount] = useState(nowPlaying.likesCount);
+  // The shared tally (usePostLike): the same heart and count as the feed card and the rest
+  // of the player. Targets the effective post — the original upload for a repost.
+  const { liked, likesCount, toggleLike: handleToggleLike } = usePostLike({
+    id: effective.postId,
+    viewerHasLiked: effective.viewerHasLiked,
+    likesCount: effective.likesCount,
+  });
 
   // Fetch collaborators for this track
   useEffect(() => {
@@ -598,42 +603,6 @@ function InfoContent({
     return () => { cancelled = true; };
   }, [nowPlaying.trackId]);
 
-  // Reset like state if the effective post changes (resolves to original for reposts).
-  useEffect(() => {
-    setLiked(effective.viewerHasLiked);
-    setLikesCount(effective.likesCount);
-  }, [effective.postId, effective.viewerHasLiked, effective.likesCount]);
-
-  const handleToggleLike = useCallback(async () => {
-    const prev = liked;
-    const prevCount = likesCount;
-    const next = !prev;
-    if (next) { haptics.toggleOn(); }
-    setLiked(next);
-    setLikesCount(prevCount + (next ? 1 : -1));
-    try {
-      const serverLiked = await toggleLike(effective.postId);
-      const finalCount = likeCountAfterToggle(prevCount, prev, serverLiked);
-      if (serverLiked !== next) {
-        setLiked(serverLiked);
-        setLikesCount(finalCount);
-      }
-      // Write back to PlaybackContext so CompactStats (and any other consumer
-      // of nowPlaying.likesCount / viewerHasLiked) stays in sync.
-      if (effective.isOriginal) {
-        setNowPlaying({
-          ...nowPlaying,
-          originalViewerHasLiked: serverLiked,
-          originalLikesCount: finalCount,
-        });
-      } else {
-        setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked, likesCount: finalCount });
-      }
-    } catch {
-      setLiked(prev);
-      setLikesCount(prevCount);
-    }
-  }, [liked, likesCount, effective.postId, effective.isOriginal, nowPlaying, setNowPlaying]);
 
 
   return (
@@ -894,15 +863,18 @@ function AddToPlaylistModal({
   onClose: () => void;
   onNavigateToCreate: () => void;
 }) {
-  const { setNowPlaying } = usePlayback();
   const insets = useSafeAreaInsets();
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
-  const [liked, setLiked] = useState(nowPlaying.viewerHasLiked);
+  // The shared tally (usePostLike), so this heart agrees with every other one.
+  const { liked, toggleLike: handleToggleLiked } = usePostLike({
+    id: nowPlaying.postId,
+    viewerHasLiked: nowPlaying.viewerHasLiked,
+    likesCount: nowPlaying.likesCount,
+  });
 
   useEffect(() => {
     if (!visible) { return; }
-    setLiked(nowPlaying.viewerHasLiked);
     let cancelled = false;
 
     fetchUserPlaylists()
@@ -916,22 +888,7 @@ function AddToPlaylistModal({
       .catch(() => {});
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, nowPlaying.postId]);
-
-  const handleToggleLiked = useCallback(async () => {
-    const next = !liked;
-    if (next) { haptics.toggleOn(); }
-    setLiked(next);
-    try {
-      const serverLiked = await toggleLike(nowPlaying.postId);
-      setLiked(serverLiked);
-      // Sync back to PlaybackContext so CompactStats / heart icon updates
-      setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked });
-    } catch {
-      setLiked(!next);
-    }
-  }, [liked, nowPlaying, setNowPlaying]);
 
   const handleAddToPlaylist = useCallback(async (playlistId: string) => {
     if (addedIds.has(playlistId)) { return; }
@@ -2227,10 +2184,13 @@ function CompactStats({
   onLikesPress: (postId: string) => void;
   trackPlaysTotal: number;
 }) {
-  const { setNowPlaying } = usePlayback();
   const effective = getEffectivePost(nowPlaying);
-  const [liked, setLiked] = useState(effective.viewerHasLiked);
-  const [count, setCount] = useState(effective.likesCount);
+  // The shared tally (usePostLike): the same heart and count as the Info card and the feed.
+  const { liked, likesCount: count, toggleLike: handleLike } = usePostLike({
+    id: effective.postId,
+    viewerHasLiked: effective.viewerHasLiked,
+    likesCount: effective.likesCount,
+  });
   const [shareOpen, setShareOpen] = useState(false);
 
   /**
@@ -2255,41 +2215,6 @@ function CompactStats({
         }
       : null;
 
-  useEffect(() => {
-    setLiked(effective.viewerHasLiked);
-    setCount(effective.likesCount);
-  }, [effective.postId, effective.viewerHasLiked, effective.likesCount]);
-
-  const handleLike = useCallback(async () => {
-    const prev = liked;
-    const prevCount = count;
-    const next = !prev;
-    if (next) { haptics.toggleOn(); }
-    setLiked(next);
-    setCount(prevCount + (next ? 1 : -1));
-    try {
-      const serverLiked = await toggleLike(effective.postId);
-      const finalCount = likeCountAfterToggle(prevCount, prev, serverLiked);
-      setLiked(serverLiked);
-      setCount(finalCount);
-      // Write back to PlaybackContext so the add-to-playlist modal reads the
-      // correct liked state when it opens after a like/unlike here. For
-      // reposts, we update both the original mirror (consumed by the player)
-      // and the live like state on the underlying post.
-      if (effective.isOriginal) {
-        setNowPlaying({
-          ...nowPlaying,
-          originalViewerHasLiked: serverLiked,
-          originalLikesCount: finalCount,
-        });
-      } else {
-        setNowPlaying({ ...nowPlaying, viewerHasLiked: serverLiked, likesCount: finalCount });
-      }
-    } catch {
-      setLiked(prev);
-      setCount(prevCount);
-    }
-  }, [liked, count, nowPlaying, setNowPlaying, effective.postId, effective.isOriginal]);
 
   return (
     <View style={csSt.row}>
