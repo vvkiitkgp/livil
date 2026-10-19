@@ -999,6 +999,11 @@ jobs:
           create schema if not exists cron;
           create table if not exists cron.job (jobid bigserial primary key, jobname text unique, schedule text, command text, active boolean default true);
           create or replace function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $cron$ insert into cron.job (jobname, schedule, command) values (job_name, schedule, command) on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command returning jobid $cron$;
+          -- pg_net stand-in, as in the `migrations` job: 20261025000000_scheduled_pushes refuses
+          -- to apply without net.http_post. Lives outside `public`, so the fingerprint never sees it.
+          create schema if not exists net;
+          create table if not exists net.stub_requests (id bigserial primary key, url text, body jsonb, headers jsonb, created_at timestamptz default now());
+          create or replace function net.http_post(url text, body jsonb default '{}'::jsonb, params jsonb default '{}'::jsonb, headers jsonb default '{}'::jsonb, timeout_milliseconds integer default 5000) returns bigint language sql as $net$ insert into net.stub_requests (url, body, headers) values (url, body, headers) returning id $net$;
           create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
           create table if not exists storage.buckets (id text primary key, name text, public boolean);
