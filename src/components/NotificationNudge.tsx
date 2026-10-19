@@ -9,6 +9,7 @@ import { Icon } from './Icon';
 import { useToast } from '../contexts/ToastContext';
 import {
   getPushPromptStatus,
+  canShowPermissionDialog,
   isPushEnabled,
   isPushOffFor,
   openOsNotificationSettings,
@@ -45,10 +46,11 @@ export default function NotificationNudge({ userId }: { userId: string | null })
       await registerIfNewlyAllowed(userId);
       if (await isPushEnabled()) { setMode('hidden'); return; }
       if (await isPushOffFor(userId)) { setMode('hidden'); return; }
-      const status = await getPushPromptStatus();
       const dismissedAt = Number(await AsyncStorage.getItem(DISMISS_KEY).catch(() => null)) || 0;
       if (Date.now() - dismissedAt < SNOOZE_MS) { setMode('hidden'); return; }
-      setMode(status === 'denied' ? 'settings' : 'ask');
+      // Straight to "Settings" when the phone will not show its dialog again — a "Turn on"
+      // that only flips to "Settings" on the first tap felt broken (owner, 2026-10-19).
+      setMode((await canShowPermissionDialog()) ? 'ask' : 'settings');
     } catch {
       setMode('hidden');
     }

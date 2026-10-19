@@ -12,7 +12,7 @@ import {
 } from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, AndroidStyle, EventType } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Platform, PermissionsAndroid } from 'react-native';
+import { AppState, Linking, Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
 import { navigateWhenReady } from '../navigation/navigationRef';
@@ -169,7 +169,30 @@ export async function isPushOffFor(userId: string): Promise<boolean> {
  * lands on the app's notification page either way).
  */
 export async function openOsNotificationSettings(channelId?: string): Promise<void> {
+  // notifee's opener is Android-only — on iOS it silently did nothing (found 2026-10-19:
+  // the inbox card's Settings button). Livil's page in iOS Settings holds Notifications.
+  if (Platform.OS === 'ios') {
+    await Linking.openSettings();
+    return;
+  }
   await notifee.openNotificationSettings(channelId);
+}
+
+/**
+ * Whether asking would show the phone's own dialog. iOS shows it once per install: after
+ * an answer only Settings can change it. Android 13+ shows it until refused twice, which
+ * it does not report — there the last answer we recorded ('denied') stands in for it.
+ */
+export async function canShowPermissionDialog(): Promise<boolean> {
+  if (Platform.OS === 'ios') {
+    try {
+      return (await hasPermission(getMessaging())) === AuthorizationStatus.NOT_DETERMINED;
+    } catch {
+      return false;
+    }
+  }
+  if (Number(Platform.Version) < 33) return false; // granted at install; nothing to ask
+  return (await getPushPromptStatus()) !== 'denied';
 }
 
 /**

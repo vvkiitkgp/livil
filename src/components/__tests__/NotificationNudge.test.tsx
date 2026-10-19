@@ -8,6 +8,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
 let mockEnabled = false;
 let mockStatus = 'pending';
+let mockCanAsk = true;
 const mockStore = new Map<string, string>();
 const mockRequest = jest.fn(async () => true);
 const mockRegisterIfNewlyAllowed = jest.fn(async (_userId: string) => {});
@@ -16,6 +17,7 @@ jest.mock('../../services/pushNotifications', () => ({
   isPushEnabled: async () => mockEnabled,
   getPushPromptStatus: async () => mockStatus,
   isPushOffFor: async () => mockStatus === 'off',
+  canShowPermissionDialog: async () => mockCanAsk,
   registerIfNewlyAllowed: (id: string) => mockRegisterIfNewlyAllowed(id),
   requestPushPermissionInteractive: () => mockRequest(),
   openOsNotificationSettings: jest.fn(async () => {}),
@@ -55,6 +57,7 @@ async function render(userId: string | null = 'me') {
 beforeEach(() => {
   mockEnabled = false;
   mockStatus = 'pending';
+  mockCanAsk = true;
   mockStore.clear();
   mockRequest.mockClear();
   mockShowToast.mockClear();
@@ -65,8 +68,8 @@ it('asks when the phone cannot get pushes and the dialog can still be shown', as
   expect(texts(r)).toEqual(expect.arrayContaining(['Turn on notifications', 'Turn on']));
 });
 
-it('points at the phone\'s settings when the dialog was refused before', async () => {
-  mockStatus = 'denied';
+it('points straight at the phone\'s settings when its dialog will not show again', async () => {
+  mockCanAsk = false;
   const r = await render();
   expect(texts(r)).toEqual(expect.arrayContaining(['Settings']));
 });
