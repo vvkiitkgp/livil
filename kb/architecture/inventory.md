@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-443 TypeScript file(s) under `src/`, 92,197 lines.
+443 TypeScript file(s) under `src/`, 92,217 lines.
 
 ## Size hotspots
 
@@ -44,9 +44,10 @@ reading alone (Constitution P28).
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
+| `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 19 file(s) over the threshold against **30 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 20 file(s) over the threshold against **30 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -103,7 +104,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,552 lines.
+50 file(s), 27,572 lines.
 
 | File | Lines |
 |---|---:|
@@ -119,9 +120,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
+| `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
-| `src/screens/main/InboxScreen.tsx` | 590 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 516 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
