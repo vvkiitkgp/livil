@@ -1,40 +1,39 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Linking,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BackHandler, Linking, Pressable, StyleSheet, Text } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
-import { Button } from '../../components/Button';
+import { FONTS } from '../../theme/fonts';
 import { AuthStackParamList } from '../../navigation/types';
 import FormInput from '../../components/FormInput';
 import { TERMS_URL, PRIVACY_POLICY_URL } from '../../constants/links';
 import { Icon } from '../../components/Icon';
 import ConfirmActionModal from '../../components/ConfirmActionModal';
-import { passwordProblem, isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../../shared/services/passwordPolicy';
+import { AuthStep, StepButton, StepError, StepField, StepLink } from '../../components/auth/AuthStep';
+import {
+  UsernameStatusLine,
+  cleanUsername,
+  usernameReady,
+  useUsernameAvailability,
+} from '../../components/auth/usernameCheck';
+import { stepProblem } from '../../components/auth/signUpSteps';
+import { isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '../../../shared/services/passwordPolicy';
 
 type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'SignUp'>;
 };
 
-type UsernameStatus =
-  | 'idle'
-  | 'invalid'
-  | 'checking'
-  | 'available'
-  | 'taken'
-  | 'error';
+const STEPS = 3;
 
-const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
-
+/**
+ * Email sign-up, one question per step (owner's design, 2026-10-19): your name, a
+ * username, then email and password. Nothing is created until the last step; then
+ * Supabase sends the confirmation link and the account exists once it is tapped. The
+ * profile photo is asked for after that first sign-in (AddPhotoScreen) — before then
+ * there is no account to save it to.
+ */
 export default function SignUpScreen({ navigation }: Props) {
+  const [step, setStep] = useState(1);
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -42,67 +41,42 @@ export default function SignUpScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [checkEmailOpen, setCheckEmailOpen] = useState(false);
   const [checkEmailTarget, setCheckEmailTarget] = useState('');
-  // 'emailExists' shows an inline "Sign In instead" hint next to the error;
-  // 'generic' covers validation / rate-limit / network failures.
+  // 'emailExists' adds a "Sign in instead" link under the error.
   const [errorKind, setErrorKind] = useState<'generic' | 'emailExists'>('generic');
 
-  const cleanedUsername = useMemo(
-    () => username.trim().toLowerCase().replace(/^@/, ''),
-    [username],
-  );
+  const cleanedUsername = cleanUsername(username);
+  const usernameStatus = useUsernameAvailability(cleanedUsername);
 
-  // Debounced username availability check.
+  const back = useCallback(() => {
+    setError('');
+    if (step > 1) { setStep(s => s - 1); } else { navigation.goBack(); }
+  }, [step, navigation]);
+
+  // Android back walks the steps before it leaves the screen.
   useEffect(() => {
-    if (cleanedUsername.length === 0) {
-      setUsernameStatus('idle');
-      return;
-    }
-    if (!USERNAME_RE.test(cleanedUsername)) {
-      setUsernameStatus('invalid');
-      return;
-    }
-    setUsernameStatus('checking');
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const db = supabase as any;
-      const { data, error: rpcError } = await db.rpc('is_username_available', {
-        p_username: cleanedUsername,
-      });
-      if (cancelled) { return; }
-      if (rpcError) {
-        setUsernameStatus('error');
-        return;
-      }
-      setUsernameStatus(data ? 'available' : 'taken');
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [cleanedUsername]);
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step === 1) { return false; }
+      back();
+      return true;
+    });
+    return () => sub.remove();
+  }, [step, back]);
+
+  const next = useCallback(() => {
+    const problem = step === 1
+      ? stepProblem({ kind: 'name', displayName })
+      : stepProblem({ kind: 'username', username: cleanedUsername, status: usernameStatus });
+    if (problem) { setErrorKind('generic'); setError(problem); return; }
+    setError('');
+    setStep(s => s + 1);
+  }, [step, displayName, cleanedUsername, usernameStatus]);
 
   const handleSignUp = async () => {
     setErrorKind('generic');
-    if (!displayName.trim() || !cleanedUsername || !email.trim() || !password) {
-      setError('Please fill in all fields.');
-      return;
-    }
-    if (!USERNAME_RE.test(cleanedUsername)) {
-      setError('Username must be 3–30 characters: letters, numbers, underscore.');
-      return;
-    }
-    if (usernameStatus === 'taken') {
-      setError('That username is taken. Please choose another.');
-      return;
-    }
-    const weak = passwordProblem(password);
-    if (weak) {
-      setError(weak);
-      return;
-    }
+    const problem = stepProblem({ kind: 'account', email, password });
+    if (problem) { setError(problem); return; }
     setLoading(true);
     setError('');
     try {
@@ -126,13 +100,19 @@ export default function SignUpScreen({ navigation }: Props) {
           setError(WEAK_PASSWORD_MESSAGE);
         } else if (msg.includes('rate limit')) {
           setError('Too many attempts. Please wait a bit and try again.');
+        } else if (msg.includes('sending confirmation email')) {
+          // The mail provider refused the address (a typo, or a domain like example.com
+          // that takes no mail). Supabase rolls the sign-up back, so nothing is left behind.
+          setError("We couldn't send an email to that address. Check it and try again.");
+        } else if (msg.includes('username') || msg.includes('duplicate')) {
+          // The username went to someone else between the check and now.
+          setError('That username was just taken. Go back and pick another.');
         } else {
           setError(signUpError.message);
         }
       } else if (data.user && data.user.identities && data.user.identities.length === 0) {
-        // Supabase's anti-enumeration behavior: a 200 with an empty identities
-        // array means this email is already registered and confirmed — no
-        // confirmation email is sent in that case.
+        // Supabase's anti-enumeration behaviour: a 200 with no identities means this email
+        // is already registered and confirmed — and no confirmation email was sent.
         setErrorKind('emailExists');
         setError('An account with this email already exists.');
       } else {
@@ -140,141 +120,146 @@ export default function SignUpScreen({ navigation }: Props) {
         setCheckEmailOpen(true);
       }
     } catch {
-      setError('Network error. Please check your connection and try again.');
+      setError('Network error. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const errorBox = error ? (
+    <StepError
+      message={error}
+      action={errorKind === 'emailExists'
+        ? <StepLink label="Sign in instead →" onPress={() => navigation.navigate('SignIn')} />
+        : undefined}
+    />
+  ) : null;
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <KeyboardAwareScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
-          >
-            <Icon name="backArrow" size={20} color={COLORS.white} />
-          </TouchableOpacity>
-
-          <View style={styles.titleSection}>
-            <Text style={styles.appName}>Livil</Text>
-            <Text style={styles.title}>Create account</Text>
-            <Text style={styles.subtitle}>Join the music community today</Text>
-          </View>
-
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-              {errorKind === 'emailExists' ? (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('SignIn')}
-                  activeOpacity={0.7}
-                  style={styles.errorHintRow}
-                >
-                  <Text style={styles.errorHintText}>Sign in instead →</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
-
-          <View style={styles.form}>
-            {/* Display Name + Username side by side */}
-            <View style={styles.row}>
-              <View style={[styles.fieldGroup, styles.flex]}>
-                <Text style={styles.label}>Display Name</Text>
-                <FormInput
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  placeholder="Your name"
-                  autoCorrect={false}
-                />
-              </View>
-
-              <View style={[styles.fieldGroup, styles.flex]}>
-                <Text style={styles.label}>Username</Text>
-                <FormInput
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder="@handle"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <UsernameStatusLine status={usernameStatus} />
-              </View>
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Email</Text>
-              <FormInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="you@example.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Password</Text>
-              <FormInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Min. 8 characters"
-                secureTextEntry={!passwordVisible}
-                trailing={
-                  <TouchableOpacity
-                    style={styles.eyeButton}
-                    onPress={() => setPasswordVisible(v => !v)}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name={passwordVisible ? 'eyeOff' : 'eye'} size={16} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                }
-              />
-              <Text style={styles.hint}>At least 8 characters, with a letter and a number</Text>
-            </View>
-
-            <Button
-              label="Create Account"
-              onPress={handleSignUp}
-              variant="primary"
-              size="lg"
-              busy={loading}
-              disabled={usernameStatus === 'checking' || usernameStatus === 'taken' || usernameStatus === 'invalid'}
-              fullWidth
+    <>
+      {step === 1 ? (
+        <AuthStep
+          kicker="SIGN UP"
+          headline="What's your name?"
+          line="This is how friends see you."
+          step={1}
+          steps={STEPS}
+          onBack={back}
+          footer={
+            <>
+              <StepButton label="NEXT →" onPress={next} />
+              <StepLink label="Already have an account? Sign in" onPress={() => navigation.navigate('SignIn')} />
+            </>
+          }
+        >
+          {errorBox}
+          <StepField label="NAME">
+            <FormInput
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholder="Your name"
+              autoCorrect={false}
+              autoFocus
+              returnKeyType="next"
+              onSubmitEditing={next}
+              accessibilityLabel="Your name"
             />
-
-            {/* These were styled as links and had no onPress -- purple, weighted, and
-                completely inert. Worse than plain text: it invites a tap, does
-                nothing, and the user concludes the documents do not exist. This
-                line is the point of agreement, so what it names has to be
-                reachable from it. */}
-            <Text style={styles.termsText}>
-              By creating an account you agree to our{' '}
-              <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>
-                Terms of Service
+          </StepField>
+        </AuthStep>
+      ) : step === 2 ? (
+        <AuthStep
+          kicker="SIGN UP"
+          headline="Pick a username"
+          line="How friends find you. You can't change it later."
+          step={2}
+          steps={STEPS}
+          onBack={back}
+          footer={
+            <StepButton
+              label="NEXT →"
+              onPress={next}
+              disabled={!usernameReady(cleanedUsername, usernameStatus)}
+            />
+          }
+        >
+          {errorBox}
+          <StepField label="USERNAME" below={<UsernameStatusLine status={usernameStatus} />}>
+            <FormInput
+              value={username}
+              onChangeText={setUsername}
+              placeholder="handle"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              returnKeyType="next"
+              onSubmitEditing={next}
+              accessibilityLabel="Username"
+              leading={<Text style={styles.at}>@</Text>}
+            />
+          </StepField>
+        </AuthStep>
+      ) : (
+        <AuthStep
+          kicker="SIGN UP"
+          headline="Email and password"
+          line="We'll email you a link to confirm."
+          step={3}
+          steps={STEPS}
+          onBack={back}
+          footer={
+            <>
+              <StepButton label="CREATE ACCOUNT" onPress={() => { void handleSignUp(); }} busy={loading} />
+              {/* This line is the point of agreement, so what it names must be reachable from it. */}
+              <Text style={styles.terms}>
+                By creating an account you agree to our{' '}
+                <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>Terms</Text>
+                {' '}and{' '}
+                <Text style={styles.termsLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>Privacy Policy</Text>.
               </Text>
-              {' '}and{' '}
-              <Text style={styles.termsLink} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
-                Privacy Policy
-              </Text>
-            </Text>
-          </View>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('SignIn')} activeOpacity={0.7}>
-              <Text style={styles.footerLink}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
-      </KeyboardAwareScrollView>
+            </>
+          }
+        >
+          {errorBox}
+          <StepField label="EMAIL">
+            <FormInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              autoFocus
+              returnKeyType="next"
+              accessibilityLabel="Email"
+            />
+          </StepField>
+          <StepField label="PASSWORD" below={<Text style={styles.hint}>8+ characters, with a letter and a number</Text>}>
+            <FormInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Your password"
+              secureTextEntry={!passwordVisible}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              returnKeyType="done"
+              onSubmitEditing={() => { void handleSignUp(); }}
+              accessibilityLabel="Password"
+              trailing={
+                <Pressable
+                  style={({ pressed }) => [styles.eye, pressed && styles.pressed]}
+                  onPress={() => setPasswordVisible(v => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+                >
+                  <Icon name={passwordVisible ? 'eyeOff' : 'eye'} size={18} color={COLORS.textSecondary} />
+                </Pressable>
+              }
+            />
+          </StepField>
+        </AuthStep>
+      )}
 
       <ConfirmActionModal
         visible={checkEmailOpen}
@@ -290,180 +275,15 @@ export default function SignUpScreen({ navigation }: Props) {
         }}
         onCancel={() => setCheckEmailOpen(false)}
       />
-    </SafeAreaView>
+    </>
   );
 }
 
-function UsernameStatusLine({ status }: { status: UsernameStatus }) {
-  if (status === 'idle') { return null; }
-  if (status === 'checking') {
-    return (
-      <View style={statusStyles.row}>
-        <ActivityIndicator size="small" color={COLORS.textSecondary} />
-        <Text style={[statusStyles.text, statusStyles.muted]}>Checking…</Text>
-      </View>
-    );
-  }
-  if (status === 'available') {
-    return <Text style={[statusStyles.text, statusStyles.success]}>✓ Available</Text>;
-  }
-  if (status === 'taken') {
-    return <Text style={[statusStyles.text, statusStyles.errorText]}>Username taken</Text>;
-  }
-  if (status === 'invalid') {
-    return <Text style={[statusStyles.text, statusStyles.muted]}>3–30 letters, numbers, or _</Text>;
-  }
-  return <Text style={[statusStyles.text, statusStyles.errorText]}>Couldn't verify availability</Text>;
-}
-
-const statusStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  text: {
-    fontSize: 12,
-    marginTop: -2,
-  },
-  muted: {
-    color: COLORS.textMuted,
-  },
-  success: {
-    color: '#22C55E',
-  },
-  errorText: {
-    color: COLORS.error,
-  },
-});
-
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingBottom: 32,
-  },
-  backButton: {
-    marginTop: 8,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  backIcon: {
-    fontSize: 20,
-    color: COLORS.white,
-    lineHeight: 22,
-  },
-  titleSection: {
-    marginTop: 32,
-    marginBottom: 28,
-  },
-  appName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.purple,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-  },
-  errorBox: {
-    backgroundColor: COLORS.errorBg,
-    borderWidth: 1,
-    borderColor: COLORS.errorBorder,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: COLORS.error,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  errorHintRow: {
-    marginTop: 8,
-  },
-  errorHintText: {
-    color: COLORS.purpleLight,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  form: {
-    gap: 16,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  fieldGroup: {
-    gap: 7,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  eyeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  eyeText: {
-    fontSize: 16,
-  },
-  hint: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginTop: -2,
-  },
-  termsText: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  termsLink: {
-    color: COLORS.purpleLight,
-    fontWeight: '500',
-    // Underlined now that it genuinely is a link: tint plus weight alone is not a
-    // reliable affordance, and fails outright for colour-blind users.
-    textDecorationLine: 'underline',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 'auto',
-    paddingTop: 36,
-  },
-  footerText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-  },
-  footerLink: {
-    color: COLORS.purple,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  pressed: { opacity: 0.6 },
+  at: { paddingLeft: 14, paddingRight: 2, fontSize: 15, color: COLORS.textSecondary },
+  eye: { paddingHorizontal: 14, paddingVertical: 12 },
+  hint: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.textSecondary },
+  terms: { fontFamily: FONTS.mono, fontSize: 11, lineHeight: 17, color: COLORS.textMuted, textAlign: 'center' },
+  termsLink: { color: COLORS.textSecondary, textDecorationLine: 'underline' },
 });
