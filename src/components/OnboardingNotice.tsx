@@ -26,27 +26,23 @@ export type NoticeKind = 'spotify' | 'jam';
 type NoticeCopy = {
   title: string;
   body: string;
-  closing: string;
+  /** A second line under the body, when one is needed. */
+  closing?: string;
   confirm: string;
   cancel: string;
 };
 
 const COPY: Record<NoticeKind, NoticeCopy> = {
   spotify: {
-    title: 'Sorry, this one plays on Spotify',
-    body:
-      'Livil is still onboarding independent artists, so not every song lives here yet. ' +
-      'Until your favourite does, you can keep reposting it from Spotify.',
-    closing: "Your music friends are right here. Come back once the song's done 💜",
+    title: 'This one plays on Spotify',
+    body: 'Play it there, then come back and tell your friends what you think.',
+    closing: "Don't forget to like the repost. It grows your vibe 💜",
     confirm: 'Open Spotify',
     cancel: 'Stay on Livil',
   },
   jam: {
     title: 'Jams play Livil songs only',
-    body:
-      "Sorry, a Jam can only play songs that live on Livil, and we're still onboarding " +
-      'independent artists, so your favourite might not be here yet.',
-    closing: 'Pick something from Livil and listen together, in sync 💜',
+    body: 'Pick a Livil song (Indie Vibes) and listen together, in sync 💜',
     confirm: 'Start Jam',
     cancel: 'Not now',
   },
@@ -166,8 +162,8 @@ export function OnboardingNoticeHost() {
             </View>
 
             <Text style={styles.title} accessibilityRole="header">{copy.title}</Text>
-            <Text style={styles.body}>{copy.body}</Text>
-            <Text style={[styles.body, styles.closing]}>{copy.closing}</Text>
+            <Text style={[styles.body, !copy.closing && styles.bodyLast]}>{copy.body}</Text>
+            {copy.closing ? <Text style={[styles.body, styles.closing]}>{copy.closing}</Text> : null}
 
             <Pressable
               onPress={() => setDontShow(v => !v)}
@@ -254,6 +250,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   closing: { color: COLORS.white, marginBottom: 14 },
+  bodyLast: { marginBottom: 14 },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -55,15 +55,7 @@ export default function NotificationPermissionModal({
           </View>
 
           <Text style={styles.title}>Stay in the loop</Text>
-          <Text style={styles.subtitle}>
-            Turn on notifications so you don't miss a beat.
-          </Text>
-
-          <View style={styles.bullets}>
-            <BulletRow text="New friend requests and accepts" />
-            <BulletRow text="Messages from friends and groups" />
-            <BulletRow text="Jam invites and when friends start listening" />
-          </View>
+          <Text style={styles.subtitle}>Get friend requests, messages, likes and comments.</Text>
 
           <Button
             label="Enable notifications"
@@ -86,15 +78,6 @@ export default function NotificationPermissionModal({
         </View>
       </View>
     </Modal>
-  );
-}
-
-function BulletRow({ text }: { text: string }) {
-  return (
-    <View style={styles.bulletRow}>
-      <View style={styles.bulletDot} />
-      <Text style={styles.bulletText}>{text}</Text>
-    </View>
   );
 }
 
@@ -148,29 +131,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
-    marginBottom: 18,
-  },
-  bullets: {
-    gap: 10,
     marginBottom: 22,
-    paddingHorizontal: 4,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.purple,
-  },
-  bulletText: {
-    color: COLORS.white,
-    fontSize: 14,
-    lineHeight: 20,
-    flex: 1,
   },
   dismiss: {
     marginTop: 10,

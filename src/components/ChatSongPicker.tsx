@@ -65,6 +65,29 @@ export default function ChatSongPicker({
   /** Centre of the 🎵 button, measured from the popover's left edge — the grow origin. */
   originX: number;
 }) {
+  return (
+    <ChatPopover open={open} bottom={bottom} originX={originX}>
+      <SongSearchPanel query={query} onPick={onPick} />
+    </ChatPopover>
+  );
+}
+
+/**
+ * The composer popover itself, shared by song search and GIF search (ChatGifPicker): grows
+ * out of its button (`originX`) on open, shrinks back into it on close, stays mounted until
+ * that has finished.
+ */
+export function ChatPopover({
+  open,
+  bottom,
+  originX,
+  children,
+}: {
+  open: boolean;
+  bottom: number;
+  originX: number;
+  children: React.ReactNode;
+}) {
   const reduceMotion = useReducedMotion();
   const [mounted, setMounted] = useState(open);
   const progress = useSharedValue(0);
@@ -100,7 +123,7 @@ export default function ChatSongPicker({
       pointerEvents={open ? 'auto' : 'none'}
       style={[styles.popover, { bottom, transformOrigin: `${originX}px 100%` }, animatedStyle]}
     >
-      <SongSearchPanel query={query} onPick={onPick} />
+      {children}
     </Animated.View>
   );
 }

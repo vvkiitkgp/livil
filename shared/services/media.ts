@@ -129,15 +129,56 @@ const MIME_BY_EXT: Record<string, string> = {
   heic: 'image/heic',
 };
 
+/**
+ * Other spellings of formats the bucket accepts → the spelling it is written against.
+ *
+ * One container routinely carries several registered MIME types, and which one a file
+ * arrives with depends on the OS, not the file. iOS names WAV `audio/vnd.wave` (the
+ * preferred MIME type of UTType `com.microsoft.waveform-audio`); Android names it
+ * `audio/x-wav`; browsers mostly say `audio/wav`. An allowlist that lists only some of them
+ * rejects real files while appearing to support the format — production incident
+ * 2026-10-11, an artist's WAV master refused on iPhone.
+ *
+ * The bucket also accepts these aliases (20261022000000_tracks_media_mime_aliases.sql) so
+ * already-installed apps work, but uploads are canonicalised here so stored objects carry
+ * one spelling per format. That matters at playback: Firefox refuses a media response
+ * whose Content-Type it does not recognise, and it does not recognise `audio/vnd.wave`.
+ */
+const MIME_ALIASES: Record<string, string> = {
+  'audio/vnd.wave': 'audio/wav',
+  'audio/wave': 'audio/wav',
+  'audio/x-pn-wav': 'audio/wav',
+  'audio/x-flac': 'audio/flac',
+  'audio/x-aac': 'audio/aac',
+  'audio/mp3': 'audio/mpeg',
+  'audio/x-mp3': 'audio/mpeg',
+  'audio/mpeg3': 'audio/mpeg',
+  'audio/x-mpeg': 'audio/mpeg',
+  'image/jpg': 'image/jpeg',
+  'image/pjpeg': 'image/jpeg',
+};
+
+/**
+ * The content type to upload under when it can be KNOWN: the declared type in its canonical
+ * spelling, else the extension's. Null when neither says anything — the caller decides
+ * whether to guess (`resolveContentType`) or let the bucket refuse it (mobile).
+ */
+export function canonicalContentType(ext: string, declared: string | null): string | null {
+  const normalized = declared?.trim().toLowerCase() || null;
+  if (normalized && normalized !== 'application/octet-stream') {
+    return MIME_ALIASES[normalized] ?? normalized;
+  }
+  return MIME_BY_EXT[ext] ?? null;
+}
+
 export function resolveContentType(
   kind: TrackMediaKind,
   ext: string,
   declared: string | null,
 ): string {
-  // Trust the browser when it gave us something usable.
-  if (declared && declared !== 'application/octet-stream') return declared;
-  const byExt = MIME_BY_EXT[ext];
-  if (byExt) return byExt;
+  // Trust the declared type when it is usable (canonicalised), then the extension.
+  const known = canonicalContentType(ext, declared);
+  if (known) return known;
   // webm is ambiguous — the same container is audio or video depending on the track.
   if (ext === 'webm') return kind === 'audio' ? 'audio/webm' : 'video/webm';
   if (kind === 'audio') return 'audio/mpeg';

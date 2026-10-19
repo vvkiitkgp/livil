@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { findSpotifyLinkInText } from '../utils/spotifyLinks';
 import { sendPush } from './pushDispatch';
 import { profileHandleIfExactLink } from '../utils/shareLinks';
+import type { ChatGif } from '../utils/chatGif';
 
 const db = supabase as any;
 
@@ -260,7 +261,8 @@ export async function fetchMessages(
 }
 
 export type SendMessagePayload =
-  | { kind: 'text'; body: string; replyToId?: string }
+  // `metadata` only for a GIF (src/utils/chatGif.ts): still a text message, body '🎞 GIF'.
+  | { kind: 'text'; body: string; replyToId?: string; metadata?: { gif: ChatGif } }
   | { kind: 'track_share'; metadata: { track_id: string; post_id?: string; title: string; artist_name: string; cover_art_url: string | null } }
   | { kind: 'sticker'; metadata: { sticker_id: string; sticker_url: string } }
   | { kind: 'jam_invite'; metadata: { jam_room_id: string } };
@@ -282,6 +284,7 @@ export async function sendMessage(
   if (payload.kind === 'text') {
     insert.body = payload.body;
     if (payload.replyToId) { insert.reply_to_id = payload.replyToId; }
+    if (payload.metadata) { insert.metadata = payload.metadata; }
   } else {
     insert.metadata = payload.metadata;
   }
@@ -301,7 +304,7 @@ export async function sendMessage(
     sender_id: myId,
     kind: payload.kind,
     body: payload.kind === 'text' ? payload.body : null,
-    metadata: payload.kind !== 'text' ? (payload.metadata as Record<string, unknown>) : null,
+    metadata: payload.metadata ? (payload.metadata as Record<string, unknown>) : null,
     reply_to_id: payload.kind === 'text' && payload.replyToId ? payload.replyToId : null,
     created_at: row.created_at,
     deleted_at: null,

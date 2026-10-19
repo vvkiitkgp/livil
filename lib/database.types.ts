@@ -800,6 +800,32 @@ export type Database = {
         }
         Relationships: []
       }
+      music_scores: {
+        Row: {
+          computed_at: string
+          score: number
+          user_id: string
+        }
+        Insert: {
+          computed_at?: string
+          score?: number
+          user_id: string
+        }
+        Update: {
+          computed_at?: string
+          score?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "music_scores_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           activity: boolean
@@ -2538,6 +2564,20 @@ export type Database = {
         Returns: string
       }
       moderating_now: { Args: never; Returns: boolean }
+      my_chat_vibes: {
+        Args: never
+        Returns: {
+          conversation_id: string
+          vibe: number
+        }[]
+      }
+      my_recent_spotify_opens: {
+        Args: { p_before?: string; p_limit?: number }
+        Returns: {
+          opened_at: string
+          spotify_track_id: string
+        }[]
+      }
       notify_badge_granted: {
         Args: { p_badge: string; p_user_id: string }
         Returns: undefined

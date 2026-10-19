@@ -21,7 +21,7 @@ import { StripedFill } from './StripedFill';
  * The laminate backstage pass — the centrepiece of pre-auth onboarding.
  *
  * `BackstagePass` is the full hanging card from step 1: lanyard, metal clip, a
- * ±2.4° sway, and a tappable 180° flip to the white "what this grants you" back.
+ * ±2.4° sway, and a tappable 180° flip to the white back, which wears the role.
  * `MiniPass` is the finished, role-printed version handed back on step 6.
  *
  * Flip note: this uses `backfaceVisibility: 'hidden'` on two stacked absolute
@@ -41,7 +41,8 @@ const SWAY_DEG = 2.4;
  */
 const SWAY_MS = 1000;
 
-export type PassRole = 'ARTIST' | 'FAN' | 'CREW';
+/** MUSIC LOVER is everyone's while the role pick is hidden (owner, 2026-10-18). */
+export type PassRole = 'MUSIC LOVER' | 'ARTIST' | 'FAN' | 'CREW';
 
 /** Dot-leader rows are the pass's typographic signature — keep the widths. */
 function SpecRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
@@ -159,15 +160,12 @@ export function BackstagePass({ flipped, onFlip, role }: BackstagePassProps) {
             </View>
           </Reanimated.View>
 
-          {/* BACK */}
+          {/* BACK — the role, big. (It used to list perks; most of them are not in the app.) */}
           <Reanimated.View style={[styles.face, styles.back, backStyle]}>
-            <Text style={styles.backHeading}>THIS PASS GRANTS ENTRY TO:</Text>
-            <View style={styles.backList}>
-              <Text style={styles.backItem}>→ the green room</Text>
-              <Text style={styles.backItem}>→ unreleased demos</Text>
-              <Text style={styles.backItem}>→ front-row fan DMs</Text>
-              <Text style={styles.backItem}>→ collab call-outs</Text>
-              <Text style={styles.backItem}>→ the merch table</Text>
+            <View style={styles.backCenter}>
+              <Text style={styles.backHeart}>💜</Text>
+              <Text style={styles.backHeading}>CERTIFIED</Text>
+              <Text style={styles.backRole}>{role ?? 'MUSIC LOVER'}</Text>
             </View>
             <Text style={styles.backFooter}>Non-transferable. Extremely yours.</Text>
           </Reanimated.View>
@@ -325,26 +323,28 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 16,
   },
+  backCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  backHeart: { fontSize: 64, lineHeight: 78 },
   backHeading: {
     fontFamily: FONTS.monoBold,
     fontSize: 11,
     letterSpacing: 3,
     color: COLORS.purpleRoyal,
   },
-  backList: {
-    marginTop: 14,
-  },
-  backItem: {
-    fontFamily: FONTS.mono,
-    fontSize: 14,
-    lineHeight: 29,
+  backRole: {
+    fontFamily: FONTS.display,
+    fontSize: 34,
+    lineHeight: 44,
+    paddingTop: 2,
+    letterSpacing: 1,
     color: COLORS.bg,
+    textAlign: 'center',
   },
   backFooter: {
-    marginTop: 'auto',
     fontFamily: FONTS.mono,
     fontSize: 11,
     color: COLORS.textSecondary,
+    textAlign: 'center',
   },
 
   mini: {

@@ -85,7 +85,7 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
   API for `Retry-After` when Spotify answers 429 (cards fall back to oEmbed meanwhile).
   Transient failures are left out of `tracks` responses so the app retries rather than
   caching "unavailable".
-- Ops removes a reported repost with `ops_remove_repost` (`20261104000000`), since
+- Ops removes a reported repost with `ops_remove_repost` (`20261109000000`), since
   `ops_take_down_track` acts on a track and a Spotify repost has none. It removes ONE repost
   of either kind — Spotify or Livil; for a Livil repost the upload and every other repost
   stay, and playlist entries saved from the repost move to the upload — and refuses

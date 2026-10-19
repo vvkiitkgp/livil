@@ -36,6 +36,8 @@ import {
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
 import ProfileBadges from '../../components/ProfileBadges';
+import MusicScoreTag from '../../components/MusicScoreTag';
+import { useMusicScore } from '../../services/musicScore';
 import ProfilePhotoViewer from '../../components/ProfilePhotoViewer';
 import { fetchPlaylistsForUser, type UserPlaylist } from '../../services/playlists';
 import { fetchAlbumsByUser, type AlbumSummary } from '../../services/albums';
@@ -213,6 +215,7 @@ export default function UserProfileScreen() {
     return () => { cancelled = true; };
   }, [userId]);
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
+  const musicScore = useMusicScore(userId);
   const [stats, setStats] = useState<ProfileStats>({ posts: 0, uploads: 0 });
   const [followCounts, setFollowCounts] = useState<FollowCounts>({ fans: 0, friends: 0, stars: 0 });
 
@@ -916,6 +919,7 @@ export default function UserProfileScreen() {
                 <ProfileBadges badges={badges} size={20} />
               </View>
               <Text style={styles.handle} numberOfLines={1}>@{handle}</Text>
+              <MusicScoreTag score={musicScore} />
             </>
           )}
           {profile?.bio ? (
@@ -1033,7 +1037,7 @@ export default function UserProfileScreen() {
         ) : null}
       </View>
     );
-  }, [profile, stats, followCounts, badges, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
+  }, [profile, stats, followCounts, badges, musicScore, error, loading, navigation, rel, userId, handleMessage, messagingBusy, storyCluster, blockedView, isOwnProfile, mutuals, pinned.onHeaderLayout]);
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
@@ -1176,7 +1180,7 @@ export default function UserProfileScreen() {
       <ConfirmActionModal
         visible={fansNoticeOpen}
         title="Fans are private"
-        message={`Only ${profile?.username ? `@${profile.username}` : 'they'} can see who their fans are. The count is public — the people behind it aren't.`}
+        message={`Only ${profile?.username ? `@${profile.username}` : 'they'} can see who their fans are.`}
         glyph="🔒"
         tone="primary"
         confirmLabel="Got it"
@@ -1187,25 +1191,14 @@ export default function UserProfileScreen() {
 
       <ConfirmActionModal
         visible={confirmBlock !== null}
-        title={confirmBlock === 'unblock' ? 'Unblock this person?' : 'Block this person?'}
+        title={`${confirmBlock === 'unblock' ? 'Unblock' : 'Block'} ${profile?.username ? `@${profile.username}` : 'this person'}?`}
+        // Both lines stay true to what blocking does (20260809000000: each side's content is
+        // hidden, any friendship or request is removed). Never promise the other person won't
+        // notice — a profile that stops resolving tells them.
         message={
           confirmBlock === 'unblock'
-            ? "You'll be able to see each other's music again, and they'll be able to message you, send a friend request and comment. Your friendship and stars are not restored."
-            : "You won't see each other's music, playlists or activity, and they won't be able to contact you."
-        }
-        bullets={
-          confirmBlock === 'block'
-            // Every line here was false until this commit. The first two flipped
-            // when 20260809000000 made blocking hide content; the third was never
-            // survivable alongside hiding — a person whose profile stops resolving
-            // works out what happened. Promising secrecy we cannot keep is worse
-            // than not promising it.
-            ? [
-                'Any friendship or pending request is removed',
-                "Their uploads, albums, playlists and reposts disappear for you — and yours for them",
-                'You can undo this any time from Settings → Privacy & data',
-              ]
-            : undefined
+            ? "They can contact you again. Friendship and stars aren't restored."
+            : "Not every 💜 vibe matches 😢 You'll stop seeing each other and any friendship ends. Undo in Settings."
         }
         glyph={confirmBlock === 'unblock' ? '🔓' : '🚫'}
         tone={confirmBlock === 'unblock' ? 'primary' : 'destructive'}
@@ -1370,19 +1363,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // ~93% of its original size, as on your own profile (owner, 2026-10-18).
   socialPills: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.surface, borderRadius: 16,
+    alignSelf: 'center', width: '93%',
+    backgroundColor: COLORS.surface, borderRadius: 15,
     borderWidth: 1, borderColor: COLORS.border,
-    marginHorizontal: 4, marginBottom: 12, paddingVertical: 12,
+    marginBottom: 12, paddingVertical: 11,
   },
   socialPill: { flex: 1, alignItems: 'center' },
-  socialPillValue: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
-  socialPillLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 2 },
-  socialPillDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+  socialPillValue: { color: COLORS.white, fontSize: 16.5, fontWeight: '800' },
+  socialPillLabel: { color: COLORS.textMuted, fontSize: 10.25, fontWeight: '600', marginTop: 2 },
+  socialPillDivider: { width: 1, height: 30, backgroundColor: COLORS.border },
 
   contentStats: { alignItems: 'center', marginBottom: 8 },
-  contentStatsText: { color: COLORS.textSecondary, fontSize: 13 },
+  contentStatsText: { color: COLORS.textSecondary, fontSize: 15 },
   contentStatsValue: { color: COLORS.white, fontWeight: '700' },
   contentStatsDivider: { color: COLORS.border },
 

@@ -81,7 +81,7 @@ it('shows nothing when the policy cannot be read', async () => {
 it('gentle prompt: Update and Later; Later snoozes this release and hides it', async () => {
   mockPolicy = { latestBuild: 79, minimumBuild: 0, message: null };
   const r = await mount(77);
-  expect(texts(r)).toContain('A new version of Livil is here');
+  expect(texts(r)).toContain('New version of Livil');
   await act(async () => { pressButton(r, 'Later'); });
   expect(mockSnooze).toHaveBeenCalledWith(79);
   expect(r.toJSON()).toBeNull();
@@ -130,7 +130,7 @@ it('blocking prompt has no Later, and lifts when the minimum is lowered — on r
   mockPolicy = { latestBuild: 79, minimumBuild: 0, message: null };
   await act(async () => { appStateListener?.('active'); });
   // Still behind the latest → the gentle prompt replaces the blocking one.
-  expect(texts(r)).toContain('A new version of Livil is here');
+  expect(texts(r)).toContain('New version of Livil');
 });
 
 it('a recheck that cannot read the policy never lifts a blocking prompt', async () => {

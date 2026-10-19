@@ -245,6 +245,10 @@ const CLIENT_UNREACHABLE = new Map([
    'pure predicate over its 4 arguments; called only inside grant_badge and badge_status, both SECURITY DEFINER'],
   ['notify_badge_granted',
    'writes an activity notification as Livil; a caller could post themselves a notice claiming any badge'],
+  ['music_score_points',
+   'every person\'s per-activity breakdown, incl. listening and chat-share counts the public score only sums (ADR-0032)'],
+  ['refresh_music_scores',
+   'rewrites every score; the nightly cron job is its only caller (ADR-0032)'],
 ]);
 
 const unreachableViolations = [];

@@ -245,14 +245,10 @@ export default function SettingsScreen() {
 
       <ConfirmActionModal
         visible={signOutOpen}
-        title="Sign out of Livil?"
-        message="You'll need your password to sign back in."
-        bullets={[
-          'Playback stops on this device',
-          'Push notifications pause until you sign in again',
-          'Your music and friends stay safe',
-        ]}
-        glyph="↪"
+        title="Sign out?"
+        message="Your music and friends will be here when you're back."
+        // The same icon as the Sign out row that opens it.
+        icon="signOut"
         tone="destructive"
         confirmLabel="Sign out"
         cancelLabel="Stay signed in"

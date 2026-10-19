@@ -45,7 +45,7 @@ a design choice — it accumulated.
 | **Password recovery** | arrived via a recovery link | Reset-password screen |
 | **Needs terms** | signed in, current `TERMS_VERSION` not accepted (new user, or a re-accept) | Terms screen |
 | **Needs username** | signed in, username not yet claimed | Choose-username screen |
-| **Needs guide** | signed in, `profiles.guide_seen_at` is null | First-run guide (15 animated cards) |
+| **Needs guide** | signed in, `profiles.guide_seen_at` is null | Photo step (AddPhotoScreen, once; skippable), then the first-run guide (6 cards, one of them a required pick-three-songs step) |
 | **App** | otherwise | Full provider stack and the navigator |
 
 The ordering matters. A user arriving on a recovery link while signed in must reach the reset
@@ -53,13 +53,27 @@ screen, not the app; agreeing to the terms comes before choosing an identity; an
 the last thing before Home, so it explains an app the user is about to enter, not one they are
 still being admitted to.
 
-The guide gate is once per **account**, not per device: finishing or skipping stamps
-`guide_seen_at` (owner-only under `profiles_update_own`). The migration that added the column
+The guide gate is once per **account**, not per device: finishing stamps `guide_seen_at`
+(owner-only under `profiles_update_own`). The first run cannot be skipped (2026-10-18): it has
+no Skip, and its pick step reposts three songs the new user chooses (`PickThree.tsx`,
+`pickSongs.ts`) before Next comes back. The stamp is also written the moment those reposts
+land, so an app closed on the last card never asks for — and reposts — three more songs. The migration that added the column
 stamped every pre-existing account; on 2026-09-30, by product decision, those stamps were
 cleared again in production so every existing account gets the tour once on its next open. Settings has a
 "Replay the guide" row (`FirstRunGuide` route) for anyone who wants it back. The stamp is
 written *after* the gate is dropped — a slow network must never hold a new user on the last
 card; the worst case of a failed write is one more tour on another device.
+
+The photo step ("Add your face", 2026-10-19) rides the guide gate: it shows first, for the
+same accounts, and is remembered per device (`livil.photoStepDone.v1.<userId>`) — an account
+whose photo is already an uploaded one (`isUploadedAvatar`) skips it on any device, so closing
+the app between the photo and the guide reopens on the guide. It always starts empty: a Google
+photo copied by `handle_new_user` is not offered, the person is asked.
+
+Email sign-up confirmation links go to livil-music.com/confirm (`docs/confirm.html`), not to
+Supabase's `/auth/v1/verify`: the "Confirm signup" template (`supabase/templates/confirm-signup.html`,
+pasted into the dashboard) links there with `{{ .TokenHash }}`; the page verifies it and opens
+`livil://auth#access_token=…` — the fragment shape every shipped app already handles.
 
 The guide is kept from going stale by CI, not by memory: `src/components/guide/coverage.json`
 maps each card to the files it depicts, and `scripts/check-guide-drift.mjs` (job

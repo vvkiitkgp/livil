@@ -83,3 +83,22 @@ export function findSpotifyLinkInText(text: string): SpotifyLinkInText | null {
   if (short && short[2]) {return { shortUrl: short[2], match: short[2] };}
   return null;
 }
+
+/** Longer than any share link — a pasted essay is not scanned. */
+const CLIPBOARD_MAX = 500;
+
+/**
+ * The Spotify song link the person just copied, or null. Only when the clipboard IS a link
+ * (Spotify's "Copy link" puts exactly one there) — the whole text, give or take a `?si=…`
+ * query — so a copied message that merely mentions a song does not prompt. A bare
+ * 22-character id is NOT accepted here — copied from anywhere else, that is far more likely
+ * a code or password than a song.
+ */
+export function spotifyLinkInClipboard(text: string | null | undefined): SpotifyLinkInText | null {
+  const trimmed = (text ?? '').trim();
+  if (!trimmed || trimmed.length > CLIPBOARD_MAX || !looksLikeSpotifyLink(trimmed)) {return null;}
+  const found = findSpotifyLinkInText(trimmed);
+  if (!found || !trimmed.startsWith(found.match)) {return null;}
+  const rest = trimmed.slice(found.match.length);
+  return rest === '' || /^[?#]\S*$/.test(rest) ? found : null;
+}

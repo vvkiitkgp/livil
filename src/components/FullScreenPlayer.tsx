@@ -960,13 +960,13 @@ function AddToPlaylistModal({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Liked Songs — always first */}
+        {/* Liked Indie Vibes — always first */}
         <TouchableOpacity style={modalSt.row} onPress={handleToggleLiked} activeOpacity={0.7}>
           <View style={[modalSt.rowThumb, { backgroundColor: COLORS.purple }]}>
             <Icon name="heart" size={20} color={COLORS.white} weight="fill" />
           </View>
           <View style={modalSt.rowMeta}>
-            <Text style={modalSt.rowName}>Liked Songs</Text>
+            <Text style={modalSt.rowName}>Liked Indie Vibes</Text>
           </View>
           {liked && <Icon name="check" size={18} color={COLORS.purpleLight} />}
         </TouchableOpacity>

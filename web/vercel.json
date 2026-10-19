@@ -17,6 +17,14 @@
       "destination": "/get.html"
     },
     {
+      "source": "/vibe",
+      "destination": "/vibe.html"
+    },
+    {
+      "source": "/confirm",
+      "destination": "/confirm.html"
+    },
+    {
       "source": "/studio/:path*",
       "destination": "/studio/index.html"
     }
@@ -26,6 +34,16 @@
       "source": "/studio",
       "destination": "/studio/",
       "permanent": false
+    },
+    {
+      "source": "/score",
+      "destination": "/vibe",
+      "permanent": true
+    },
+    {
+      "source": "/score.html",
+      "destination": "/vibe",
+      "permanent": true
     }
   ],
   "headers": [

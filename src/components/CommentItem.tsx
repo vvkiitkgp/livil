@@ -17,14 +17,7 @@ import { useRunAfterDismiss } from '../hooks/useRunAfterDismiss';
 import { renderCommentBody } from '../utils/mentions';
 import { relativeTime } from '../utils/commentTime';
 import { commentDisplayText, type CommentNode } from '../services/comments';
-import {
-  ELBOW_RADIUS,
-  indentFor,
-  LINE_WIDTH,
-  ROW_PAD_LEFT,
-  threadSegments,
-  type ThreadPosition,
-} from '../utils/commentThread';
+import { ELBOW_RADIUS, indentFor, LINE_WIDTH, ROW_PAD_LEFT, sameThreadPosition, threadSegments, type ThreadPosition } from '../utils/commentThread';
 
 type Props = {
   node: CommentNode;
@@ -40,6 +33,8 @@ type Props = {
   onMentionPress: (username: string) => void;
   onAvatarPress: (userId: string) => void;
   highlighted: boolean;
+  /** The sheet's clock for "just now" / "5m" (ticks twice a minute). */
+  now: number;
 };
 
 
@@ -55,7 +50,7 @@ function formatCount(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}m`;
 }
 
-export default function CommentItem(props: Props) {
+function CommentItem(props: Props) {
   const { node, thread, viewerId, highlighted } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -108,7 +103,7 @@ export default function CommentItem(props: Props) {
           <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
           {/* 13 to match the name beside it. headerRow already sets gap: 4. */}
           <UsernameBadges userId={node.authorId} size={13} />
-          <Text style={styles.time}>· {relativeTime(node.createdAt)}</Text>
+          <Text style={styles.time}>· {relativeTime(node.createdAt, props.now)}</Text>
           <View style={styles.spacer} />
           <TouchableOpacity
             onPress={() => setMenuOpen(true)}
@@ -301,3 +296,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+/**
+ * Same row → no redraw. The thread position is rebuilt on every list change (typing in
+ * the composer, a new comment), so it is compared by value; everything else by identity —
+ * the sheet keeps its callbacks stable.
+ */
+function sameRow(a: Props, b: Props): boolean {
+  return a.node === b.node
+    && a.viewerId === b.viewerId
+    && a.postOwnerId === b.postOwnerId
+    && a.highlighted === b.highlighted
+    && a.now === b.now
+    && a.onReply === b.onReply
+    && a.onDelete === b.onDelete
+    && a.onReport === b.onReport
+    && a.onToggleLike === b.onToggleLike
+    && a.onMentionPress === b.onMentionPress
+    && a.onAvatarPress === b.onAvatarPress
+    && sameThreadPosition(a.thread, b.thread);
+}
+
+export default React.memo(CommentItem, sameRow);

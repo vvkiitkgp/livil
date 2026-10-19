@@ -247,6 +247,20 @@ export default function CommentsSheet({
   const [viewerId, setViewerId] = useState<string>('');
   // Who owns the post (an upload, or a repost): they may delete any comment on it.
   const [postOwnerId, setPostOwnerId] = useState<string | null>(null);
+  // The latest onClose without depending on it: parents pass an inline arrow, and a
+  // callback that changes on every parent render (the player re-renders as music plays)
+  // would hand every row new props and redraw the whole list each tick.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  // A comment's "just now" / "5m" moves on with this clock, twice a minute — rows are
+  // memoized (CommentItem), so they no longer redraw for anything else.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!visible) {return;}
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [visible]);
   const [nodes, setNodes] = useState<CommentNode[]>([]);
   const [loading, setLoading] = useState(false);
   // The list is built only once the open slide has landed: building it during the slide is
@@ -627,17 +641,17 @@ export default function CommentsSheet({
         showToast(`Couldn't find @${username}.`, { kind: 'error' });
         return;
       }
-      onClose();
+      onCloseRef.current();
       navigation.navigate('UserProfile', { userId: data.id as string });
     } catch {
       showToast(`Couldn't open @${username}.`, { kind: 'error' });
     }
-  }, [navigation, onClose, showToast]);
+  }, [navigation, showToast]);
 
   const handleAvatarPress = useCallback((userId: string) => {
-    onClose();
+    onCloseRef.current();
     navigation.navigate('UserProfile', { userId });
-  }, [navigation, onClose]);
+  }, [navigation]);
 
   // Composer change with mention trigger detection.
   const handleComposerChange = useCallback((text: string) => {
@@ -683,6 +697,7 @@ export default function CommentsSheet({
             viewerId={viewerId}
             postOwnerId={postOwnerId}
             highlighted={highlightIds.has(item.node.id)}
+            now={now}
             onReply={setReplyingTo}
             onDelete={setConfirmDelete}
             onReport={setReportTarget}
@@ -893,6 +908,7 @@ export default function CommentsSheet({
       viewerId,
       postOwnerId,
       highlightIds,
+      now,
       handleToggleLike,
       handleMentionPress,
       handleAvatarPress,
@@ -952,11 +968,7 @@ export default function CommentsSheet({
           <ConfirmActionModal
             visible={confirmDelete !== null}
             title="Delete comment?"
-            message={
-              (confirmDelete?.replies.length ?? 0) > 0
-                ? 'This will also delete every reply underneath. This cannot be undone.'
-                : 'This cannot be undone.'
-            }
+            message={(confirmDelete?.replies.length ?? 0) > 0 ? "Its replies go too. This can't be undone." : undefined}
             confirmLabel="Delete"
             tone="destructive"
             busy={deleting}

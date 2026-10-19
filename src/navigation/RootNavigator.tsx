@@ -17,6 +17,7 @@ import { hasAcceptedCurrentTerms } from '../services/terms';
 import { sweepAbandonedUploads } from '../services/tracks';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
+import AddPhotoScreen from '../screens/auth/AddPhotoScreen';
 import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
 import RepostScreen from '../screens/main/RepostScreen';
@@ -63,6 +64,7 @@ import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { AppUpdatePrompt } from '../components/AppUpdatePrompt';
+import SpotifyClipboardPrompt from '../components/SpotifyClipboardPrompt';
 import { RootStackParamList } from './types';
 import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
 import { COLORS } from '../theme/colors';
@@ -73,6 +75,7 @@ import { discardImpressions } from '../services/feedImpressions';
 import {
   initPush,
   registerDeviceForUser,
+  registerIfNewlyAllowed,
   unregisterDevice,
   shouldShowPushPrompt,
   requestPushPermissionInteractive,
@@ -275,6 +278,10 @@ export default function RootNavigator() {
   // (`profiles.guide_seen_at`). Resolved alongside the other two so the splash covers
   // it and a new user never sees a flash of Home before their tour.
   const [needsGuide, setNeedsGuide] = useState<boolean | null>(null);
+  // The sign-up photo step ("Add your face") runs once, just before the guide, for the
+  // same new accounts (owner, 2026-10-19). Not stored: an app closed on it shows it again
+  // next time, with the guide — it can be skipped, and the guide's own stamp ends both.
+  const [photoStepDone, setPhotoStepDone] = useState(false);
   // Set when a livil://auth deep link carries type=recovery (password reset
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
@@ -315,8 +322,13 @@ export default function RootNavigator() {
   // Runs after a short delay so the user sees the home screen mount first
   // (Android 13+ shows the modal less jarringly when it's not racing the
   // first frame).
+  //
+  // Only once the person is in the app: never over the sign-up gates, and never during the
+  // first run — the guide's last card asks there instead (NOTIFY_ASK, 2026-10-19), and its
+  // answer settles the prompt status so this pop-up does not follow it.
+  const inApp = needsTerms === false && needsUsername === false && needsGuide === false;
   useEffect(() => {
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !inApp) {
       setPushPromptVisible(false);
       return;
     }
@@ -330,7 +342,7 @@ export default function RootNavigator() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, inApp]);
 
   // One welcome email per account, on the first CONFIRMED session rather than at signup
   // — at signup the address is unverified, and the confirmation email is the one that
@@ -385,6 +397,9 @@ export default function RootNavigator() {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         void updatePresenceHeartbeat();
+        // Notifications switched on in Settings while the app was away start working
+        // now, not at the next sign-in. No-op once this install is registered.
+        if (session?.user?.id) { void registerIfNewlyAllowed(session.user.id); }
         if (!heartbeatRef.current) {
           heartbeatRef.current = setInterval(() => { void updatePresenceHeartbeat(); }, LAST_SEEN_HEARTBEAT_MS);
         }
@@ -638,19 +653,17 @@ export default function RootNavigator() {
               (session.user?.user_metadata?.name as string | undefined) ??
               null
             }
-            avatarUrl={
-              (session.user?.user_metadata?.avatar_url as string | undefined) ??
-              (session.user?.user_metadata?.picture as string | undefined) ??
-              null
-            }
             // Sign in with Apple already covered name + email; App Review rejects
             // asking again (guideline 4).
             askForName={session.user?.app_metadata?.provider !== 'apple'}
             userId={session.user?.id ?? null}
             onComplete={() => setNeedsUsername(false)}
           />
+        ) : session?.user?.id && needsGuide && !photoStepDone ? (
+          <AddPhotoScreen userId={session.user.id} onDone={() => setPhotoStepDone(true)} />
         ) : session?.user?.id && needsGuide ? (
           <FirstRunGuideScreen
+            userId={session.user.id}
             onDone={() => {
               // Drop the gate first: the stamp is a courtesy write, and a slow network
               // must not hold a new user on the last card. If it fails they may see the
@@ -659,6 +672,9 @@ export default function RootNavigator() {
               setNeedsGuide(false);
               void markGuideSeen(session.user.id).catch(() => {});
             }}
+            // Stamped as soon as the three songs are reposted too: closing the app on
+            // the last card must not ask for (and repost) three more songs next time.
+            onPicked={() => { void markGuideSeen(session.user.id).catch(() => {}); }}
           />
         ) : (
     <JamProvider>
@@ -924,6 +940,9 @@ export default function RootNavigator() {
 
       {/* "We're still onboarding" notices — before Play on Spotify and before a Jam (ADR-0027). */}
       <OnboardingNoticeHost />
+
+      {/* "Repost the song you copied?" — never on top of the notifications question. */}
+      <SpotifyClipboardPrompt active={appReady && !pushPromptVisible} />
 
       <NotificationPermissionModal
         visible={pushPromptVisible}

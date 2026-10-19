@@ -39,13 +39,15 @@ import { wasSignedInHere } from '../../utils/returningListener';
 /**
  * "Backstage Pass" — the pre-auth onboarding flow.
  *
- * Six steps: pass hand-off → role pick → itinerary → soundcheck → crowd →
- * guest list + sign-in. Deliberately silent; nothing here touches the audio
+ * Two steps are shown (FLOW): the pass hand-off, then the pass printed + sign-in. The
+ * owner cut the rest on 2026-10-18 ("too much to read"); the role pick, itinerary,
+ * soundcheck and crowd steps stay in this file, unshown, so they can come back by
+ * adding their numbers to FLOW. Deliberately silent; nothing here touches the audio
  * engine, which is not even mounted before a session exists.
  *
- * The ROLE is interaction only. It is printed onto the pass at step 6 and then
- * discarded — nothing is persisted and no backend knows about it. Do not wire it
- * to a profile column without a product decision.
+ * The ROLE is interaction only — MUSIC LOVER for everyone while the role pick is
+ * hidden. It is printed onto the pass and then discarded: nothing is persisted and no
+ * backend knows about it. Do not wire it to a profile column without a product decision.
  *
  * Deviations from the handoff, all deliberate:
  *  - CTAs use the app's `Button` (gradient-glow outline), not a solid #8B3DFF
@@ -62,7 +64,8 @@ type Props = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Onboarding'>;
 };
 
-const STEPS = 6;
+/** The steps shown, in order — numbers are the `step ===` blocks below. */
+const FLOW = [0, 5];
 /** Google's brand colours (same values as GoogleGlyph), blue → red → yellow → green. */
 const GOOGLE_BORDER = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
 
@@ -79,26 +82,27 @@ const ITINERARY = [
 ];
 
 export default function BackstagePassOnboarding({ navigation }: Props) {
-  const [step, setStep] = useState(0);
+  const [pos, setPos] = useState(0);
+  const step = FLOW[pos];
   const [flipped, setFlipped] = useState(false);
-  const [role, setRole] = useState<PassRole | null>(null);
+  const [role, setRole] = useState<PassRole | null>('MUSIC LOVER');
   const [lamps, setLamps] = useState([false, false, false]);
   const [googleBusy, setGoogleBusy] = useState(false);
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showToast } = useToast();
 
-  const next = useCallback(() => setStep(s => Math.min(s + 1, STEPS - 1)), []);
+  const next = useCallback(() => setPos(p => Math.min(p + 1, FLOW.length - 1)), []);
 
-  // Android back walks the flow backwards. Returning false on step 0 lets the
-  // OS do its normal thing (exit), which is correct for the first screen.
+  // Android back walks the flow backwards. Returning false on the first step lets
+  // the OS do its normal thing (exit), which is correct for the first screen.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (step === 0) { return false; }
-      setStep(s => s - 1);
+      if (pos === 0) { return false; }
+      setPos(p => p - 1);
       return true;
     });
     return () => sub.remove();
-  }, [step]);
+  }, [pos]);
 
   useEffect(() => () => {
     if (advanceTimer.current) { clearTimeout(advanceTimer.current); }
@@ -118,7 +122,7 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
   // reaches for it during the 900ms still gets a response.
   useEffect(() => {
     if (step !== 3 || !allLit) { return; }
-    advanceTimer.current = setTimeout(() => setStep(s => (s === 3 ? 4 : s)), 900);
+    advanceTimer.current = setTimeout(() => setPos(p => (FLOW[p] === 3 ? Math.min(p + 1, FLOW.length - 1) : p)), 900);
     return () => {
       if (advanceTimer.current) { clearTimeout(advanceTimer.current); }
     };
@@ -149,14 +153,7 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
             flipped={flipped}
             onFlip={() => setFlipped(f => !f)}
             role={role}
-            // FAN is the default pick, applied on the way INTO the role step rather than
-            // as the initial state: the pass on this screen still reads PENDING, so the
-            // pick step stays the moment it gets printed. `?? ` keeps a choice made
-            // earlier when someone steps back here and forward again.
-            onNext={() => {
-              setRole(r => r ?? 'FAN');
-              next();
-            }}
+            onNext={next}
           />
         )}
         {step === 1 && (
@@ -180,10 +177,10 @@ export default function BackstagePassOnboarding({ navigation }: Props) {
       </StepFade>
 
       <View style={styles.dots} pointerEvents="none">
-        {Array.from({ length: STEPS }, (_, i) => (
+        {FLOW.map((_, i) => (
           <View
             key={i}
-            style={[styles.dot, i <= step ? styles.dotOn : styles.dotOff]}
+            style={[styles.dot, i <= pos ? styles.dotOn : styles.dotOff]}
           />
         ))}
       </View>
@@ -292,7 +289,7 @@ function PassHandoff({
   const { height } = useWindowDimensions();
 
   // Scrolls only when it must: on a short phone the pass + welcome copy + CTA overflow,
-  // and a non-scrolling step would clip "CLIP IT ON" below the edge — no way past step 0.
+  // and a non-scrolling step would clip the Next button below the edge — no way past step 0.
   // flexGrow keeps `ctaSlot`'s marginTop:'auto' pinning the CTA low on taller phones.
   return (
     <ScrollView
@@ -312,16 +309,12 @@ function PassHandoff({
           <Kicker>{returning ? 'GOOD TO SEE YOU' : 'DOORS ARE OPEN'}</Kicker>
           <Headline size={30} center>{returning ? 'WELCOME BACK' : 'YOUR NIGHT STARTS HERE'}</Headline>
           {height >= 760 ? (
-            <Text style={[styles.sub, styles.passSub]}>
-              {returning
-                ? "Your pass is still valid. The stage is lit and your music's waiting."
-                : "Clip on your pass. The stage is lit and the music's already playing."}
-            </Text>
+            <Text style={[styles.sub, styles.passSub]}>Share and explore music with friends.</Text>
           ) : null}
         </View>
       )}
       <View style={styles.ctaSlot}>
-        <PrimaryCta label="CLIP IT ON →" onPress={onNext} />
+        <PrimaryCta label="NEXT →" onPress={onNext} />
       </View>
     </ScrollView>
   );
@@ -542,7 +535,6 @@ function GuestList({
 }) {
   return (
     <View style={styles.step}>
-      <Kicker>THE GUEST LIST</Kicker>
       <Headline size={34}>YOUR PASS IS PRINTED</Headline>
 
       <View style={styles.miniWrap}>

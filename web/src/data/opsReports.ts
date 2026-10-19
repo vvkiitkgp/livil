@@ -59,7 +59,7 @@ export type OpsReport = {
   /**
    * 'upload' or 'repost' — the reported post, or for a comment report the post it is on.
    * A repost can be removed on its own; an upload only through a track takedown. Null
-   * when the post is gone, for stories, and before 20261104000000 is applied.
+   * when the post is gone, for stories, and before 20261109000000 is applied.
    */
   postKind: 'upload' | 'repost' | null;
   /**
@@ -103,7 +103,7 @@ export async function fetchOpsReports(includeReviewed = false): Promise<OpsRepor
     mediaUrl: r.media_url,
     coverUrl: r.cover_url,
     trackTakenDownAt: r.track_taken_down_at,
-    // `?? null`, not a straight copy: before 20261104000000 is applied the column is not
+    // `?? null`, not a straight copy: before 20261109000000 is applied the column is not
     // returned at all, and the queue must read as it did rather than break.
     spotifyTrackId: r.spotify_track_id ?? null,
     postKind: r.post_kind === 'upload' || r.post_kind === 'repost' ? r.post_kind : null,

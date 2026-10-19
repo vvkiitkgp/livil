@@ -256,7 +256,6 @@ export default function EditPlaylistScreen({ route }: Props) {
       <ConfirmActionModal
         visible={confirmDelete}
         title="Delete this playlist?"
-        message="The posts inside stay on the original poster's profile — only the playlist is removed."
         confirmLabel="Delete playlist"
         tone="destructive"
         glyph="🗑"
@@ -267,7 +266,6 @@ export default function EditPlaylistScreen({ route }: Props) {
       <ConfirmActionModal
         visible={!!confirmRemovePost}
         title="Remove from playlist?"
-        message={`"${confirmRemovePost?.title ?? 'This post'}" will leave the playlist. The post stays on the original poster's profile.`}
         confirmLabel="Remove"
         tone="destructive"
         glyph="⊖"

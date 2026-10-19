@@ -9,6 +9,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import {PlaybackProvider} from './src/contexts/PlaybackContext';
 import {ToastProvider} from './src/contexts/ToastContext';
 import {ProfileBadgesProvider} from './src/contexts/ProfileBadgesContext';
+import OfflineBanner from './src/components/OfflineBanner';
 import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
 import {hideNativeSplash} from './src/native/splashScreen';
 import {ErrorBoundary} from './src/components/ErrorBoundary';
@@ -80,6 +81,9 @@ export default function App(): React.JSX.Element {
               <ProfileBadgesProvider>
                 <RootNavigator />
               </ProfileBadgesProvider>
+              {/* After the screens (so it draws over them), before the toast (so a toast
+                  draws over it). */}
+              <OfflineBanner />
             </ToastProvider>
           </NavigationContainer>
         </PlaybackProvider>

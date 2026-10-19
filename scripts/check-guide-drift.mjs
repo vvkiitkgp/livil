@@ -2,9 +2,9 @@
 /**
  * Keeps the first-run guide honest.
  *
- * The guide (src/components/guide/) is fifteen animated cards, each depicting one
- * real behaviour of the app: how the floating player responds to a flick, what the
- * repost screen offers, who a Star can see. Nothing ties those drawings to the code
+ * The guide (src/components/guide/) is six short cards, each depicting one
+ * real behaviour of the app: how the floating player responds to a tap, where friends
+ * are added, what starring an artist does. Nothing ties those drawings to the code
  * they draw, so the natural fate of a guide is to quietly describe the app as it was
  * on the day it shipped. This is the layer that stops that.
  *

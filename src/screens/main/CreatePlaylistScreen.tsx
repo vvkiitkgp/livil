@@ -193,7 +193,7 @@ export default function CreatePlaylistScreen({ route }: Props) {
       {/* Suggestions header */}
       <View style={styles.suggHeader}>
         <Text style={styles.suggHeaderTitle}>
-          {initialPost ? 'Add from Liked Songs' : 'Suggestions from Liked Songs'}
+          {initialPost ? 'Add from Liked Indie Vibes' : 'Suggestions from Liked Indie Vibes'}
         </Text>
         {selectedIds.size > 0 && (
           <Text style={styles.suggHeaderCount}>{selectedIds.size} selected</Text>

@@ -33,6 +33,14 @@ function avatarCenterX(depth: number): number {
  */
 export type ThreadPosition = { depth: number; continues: boolean[]; hasReplies: boolean };
 
+/** Same position, compared by value: flattenThread builds new objects on every pass. */
+export function sameThreadPosition(a: ThreadPosition, b: ThreadPosition): boolean {
+  return a.depth === b.depth
+    && a.hasReplies === b.hasReplies
+    && a.continues.length === b.continues.length
+    && a.continues.every((c, i) => c === b.continues[i]);
+}
+
 export type ThreadSegment =
   /** Straight down from `top`, `height` long (null = to the row's bottom edge). */
   | { kind: 'vertical'; left: number; top: number; height: number | null }

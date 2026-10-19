@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { noUserError } from './session';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { notifyCommentActivity, notifyPostActivity } from './activity';
 import { GIF_ID_RE } from '../utils/gifIds';
@@ -318,7 +319,7 @@ export async function createComment(
   }
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to comment.');
+    throw noUserError(userError, 'You must be signed in to comment.');
   }
   const me = userData.user.id;
 
@@ -400,7 +401,7 @@ export async function deleteComment(commentId: string): Promise<void> {
 export async function toggleCommentLike(commentId: string): Promise<boolean> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to like a comment.');
+    throw noUserError(userError, 'You must be signed in to like a comment.');
   }
   const me = userData.user.id;
 
@@ -446,7 +447,7 @@ export async function reportComment(
 ): Promise<void> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to report.');
+    throw noUserError(userError, 'You must be signed in to report.');
   }
   const me = userData.user.id;
 

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { keepLocalCopy } from '@react-native-documents/picker';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
+import { canonicalContentType } from '../../shared/services/media';
 
 export const TRACKS_MEDIA_BUCKET = 'tracks-media';
 
@@ -60,6 +61,21 @@ export function tooLargeMessage(kind: TrackMediaKind): string {
     return `This audio file is over the ${limitMb} MB upload limit. Try a shorter or more compressed file.`;
   }
   return `This image is over the ${limitMb} MB upload limit. Try a smaller image.`;
+}
+
+/**
+ * User-facing "we don't take this format" copy, for when the bucket's MIME allowlist refuses
+ * a file. Storage's own text ("mime type audio/vnd.wave is not supported") was shown to an
+ * artist verbatim on 2026-10-11; it names an internal label, not anything they can act on.
+ */
+export function unsupportedTypeMessage(kind: TrackMediaKind): string {
+  if (kind === 'video') {
+    return "Livil can't take this video format yet. Try an MP4 or MOV file.";
+  }
+  if (kind === 'audio') {
+    return "Livil can't take this audio format yet. Try an MP3, M4A, WAV, FLAC or AIFF file.";
+  }
+  return "Livil can't take this image format. Try a JPG or PNG.";
 }
 
 function extensionFromName(name: string | null, fallback: string): string {
@@ -243,6 +259,12 @@ function uploadFileUriWithProgress(
         reject(new Error(tooLargeMessage(kind)));
         return;
       }
+      // The bucket's MIME allowlist refused the file. storage-api answers 400 with
+      // `error: "invalid_mime_type"` (its own statusCode field says 415).
+      if (/invalid_mime_type|mime type .* is not supported/i.test(xhr.responseText)) {
+        reject(new Error(unsupportedTypeMessage(kind)));
+        return;
+      }
       let message = `Upload failed (HTTP ${xhr.status})`;
       try {
         const parsed = JSON.parse(xhr.responseText);
@@ -305,9 +327,13 @@ export async function uploadTrackFile(
 
   const readableUri = await resolveReadableUri(file);
 
-  // 'cover' and 'thumbnail' are both image uploads — branch on that.
+  // The picker's type, under the spelling the bucket's allowlist is written against — iOS
+  // calls WAV `audio/vnd.wave`, which the allowlist did not list (incident 2026-10-11) — or
+  // the extension's when the picker gave none. Neither known: a wildcard the bucket refuses,
+  // so an unplayable format is turned away at upload instead of guessed at (and stored
+  // mislabelled) like the web client does. 'cover' and 'thumbnail' are both images.
   const isImage = kind === 'cover' || kind === 'thumbnail';
-  const contentType = file.type ?? `${isImage ? 'image' : kind}/*`;
+  const contentType = canonicalContentType(ext, file.type) ?? `${isImage ? 'image' : kind}/*`;
   const fileName = file.name ?? `${kind}.${ext}`;
 
   await uploadFileUriWithProgress(path, kind, readableUri, fileName, contentType, accessToken, onProgress, signal);

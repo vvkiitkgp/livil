@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0A0A0F" />
+    <meta name="robots" content="noindex,nofollow" />
+    <!-- The address carries a one-time token: send it nowhere. -->
+    <meta name="referrer" content="no-referrer" />
+    <title>Confirm your email · Livil</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!--
+      THE SIGN-UP CONFIRMATION LINK. The "Confirm signup" email template links here
+      (livil-music.com/confirm?token_hash=…&type=email) instead of to Supabase's own
+      /auth/v1/verify address, which showed people a long supabase.co URL (owner, 2026-10-19).
+
+      This page confirms the email itself (POST /auth/v1/verify with the token hash) and then
+      opens the app with the session in the fragment — livil://auth#access_token=…&refresh_token=…
+      — exactly the shape Supabase's own redirect produced, so every shipped app signs the person
+      in as it always has (RootNavigator's deep-link handler, "Implicit / fragment flow").
+
+      Verifying in script rather than on page load also means a mail scanner that fetches the
+      link (most do not run scripts) can no longer use up the one-time token.
+
+      No outside resources on this page, and the token is wiped from the address bar first.
+    -->
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: #0a0a0f; color: #f5f5fa;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+      main { width: 100%; max-width: 420px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+      .brand { font-weight: 800; letter-spacing: 0.3em; font-size: 22px; margin-bottom: 18px; }
+      .card { width: 100%; background: #12121c; border: 1px solid #252545; border-radius: 20px; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+      .badge { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #a855f7; background: rgba(139, 61, 255, 0.15); }
+      .badge.bad { border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+      h1 { margin: 6px 0 0; font-size: 26px; line-height: 1.2; }
+      p { margin: 0; color: #b8b8c8; font-size: 15px; line-height: 1.5; }
+      .open { margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 28px; border-radius: 14px; border: 1.5px solid #8b3dff; color: #c9b6ff; font-weight: 700; text-decoration: none; }
+      .open:hover, .open:focus-visible { color: #ffffff; border-color: #a855f7; outline: none; }
+      .small { font-size: 13px; color: #8b90a7; }
+      .spin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #252545; border-top-color: #a855f7; animation: s 0.9s linear infinite; }
+      @keyframes s { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand" aria-label="Livil">LIVIL</div>
+
+      <section class="card" id="working" aria-live="polite">
+        <div class="spin" aria-hidden="true"></div>
+        <h1>Confirming your email…</h1>
+      </section>
+
+      <section class="card" id="done" hidden>
+        <div class="badge" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+        </div>
+        <h1>Email confirmed</h1>
+        <p id="done-line">Opening Livil…</p>
+        <a class="open" id="open-signed-in" href="livil://">Open Livil</a>
+        <p class="small" id="desktop-line" hidden>On a computer? Open Livil on your phone and sign in.</p>
+      </section>
+
+      <section class="card" id="failed" hidden>
+        <div class="badge bad" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.6" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>
+        </div>
+        <h1>This link has expired</h1>
+        <p>It may have been used already. Open Livil and sign in: if your email still needs confirming, you can send a new link from there.</p>
+        <a class="open" href="livil://">Open Livil</a>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        var SUPABASE_URL = 'https://fqzrmqnlgjeuxzinbqvs.supabase.co';
+        // The public anon key, the same one every Livil app ships with. It can do nothing
+        // the database's row-level rules do not allow.
+        var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxenJtcW5sZ2pldXh6aW5icXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MjQwNDYsImV4cCI6MjA5OTAwMDA0Nn0.lM3_oFmNmNL9vyjI1bAuBON_P1rAJolgocB0HWmDCmo';
+
+        var query = new URLSearchParams(window.location.search);
+        var tokenHash = query.get('token_hash');
+        var type = query.get('type') === 'signup' ? 'signup' : 'email';
+        // Take the token out of the address bar and history before anything else runs.
+        try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+
+        var isPhone = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        function show(id) {
+          ['working', 'done', 'failed'].forEach(function (s) {
+            document.getElementById(s).hidden = s !== id;
+          });
+        }
+
+        if (!tokenHash) { show('failed'); return; }
+
+        fetch(SUPABASE_URL + '/auth/v1/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+          body: JSON.stringify({ type: type, token_hash: tokenHash }),
+        })
+          .then(function (res) { return res.ok ? res.json() : Promise.reject(res.status); })
+          .then(function (session) {
+            if (!session || !session.access_token || !session.refresh_token) { throw new Error('no session'); }
+            var fragment = new URLSearchParams({
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+              expires_in: String(session.expires_in || 3600),
+              token_type: 'bearer',
+              type: 'signup',
+            }).toString();
+            var appLink = 'livil://auth#' + fragment;
+            show('done');
+            if (isPhone) {
+              document.getElementById('open-signed-in').href = appLink;
+              window.location.href = appLink;
+            } else {
+              document.getElementById('done-line').textContent = 'You can sign in to Livil now.';
+              document.getElementById('open-signed-in').hidden = true;
+              document.getElementById('desktop-line').hidden = false;
+            }
+          })
+          .catch(function () { show('failed'); });
+      })();
+    </script>
+  </body>
+</html>
