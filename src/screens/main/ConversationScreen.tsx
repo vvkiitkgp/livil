@@ -1969,7 +1969,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  bubbleText: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 21 },
+  // White on both sides (owner, 2026-10-19): grey received text read as faded next to the
+  // white sent text.
+  bubbleText: { color: COLORS.white, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
   // Brief pulse applied when the user taps a reply quote pointing at this
   // bubble — same purple tint as the comment-row highlight in CommentsSheet.
