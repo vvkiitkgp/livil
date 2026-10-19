@@ -45,12 +45,18 @@ async function getCurrentUserId(): Promise<string> {
   return data.user.id;
 }
 
+/**
+ * How many songs "Liked Indie Vibes" holds: likes on posts that carry a Livil track. A liked
+ * Spotify repost has no track, and fetchLikedPosts leaves it out of the list, so it must be
+ * left out of the count too (the number used to include them — owner, 2026-10-19).
+ */
 export async function getLikedPostCount(): Promise<number> {
   const me = await getCurrentUserId();
   const { count, error } = await supabase
     .from('post_likes')
-    .select('post_id', { count: 'exact', head: true })
-    .eq('user_id', me);
+    .select('post_id, posts!inner(track_id)', { count: 'exact', head: true })
+    .eq('user_id', me)
+    .not('posts.track_id', 'is', null);
   if (error) { throw new Error(error.message); }
   return count ?? 0;
 }
