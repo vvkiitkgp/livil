@@ -62,12 +62,16 @@ export function GifSearchPanel({
   const [width, setWidth] = useState(0);
   // Answers for an older query (typed over, or still in flight) are dropped.
   const requestRef = useRef(0);
+  // The offset a "more" call last FAILED at: scroll-to-load asks on every scroll near the
+  // bottom, so a failure must not be retried until the query changes — each attempt is a call against GIPHY's hourly allowance.
+  const failedMoreAt = useRef<number | null>(null);
 
   // The previous query's GIFs stay until this query's arrive, then are REPLACED — as song
   // search does (ChatSongPicker). Emptying the grid on every keystroke collapsed the chat
   // popover to a spinner and regrew it, a jump per letter typed (owner, 2026-10-19).
   useEffect(() => {
     const request = ++requestRef.current;
+    failedMoreAt.current = null;
     setResults(prev => (prev.status === 'ready' && prev.gifs.length > 0 ? prev : LOADING));
     setRefreshing(true);
     setLoadingMore(false);
@@ -84,13 +88,14 @@ export function GifSearchPanel({
   const loadMore = useCallback(() => {
     // MAX_PAGES for scroll-to-load too: each page is one call against GIPHY's hourly allowance.
     if (results.status !== 'ready' || results.next === null || results.pages >= MAX_PAGES || loadingMore) { return; }
+    if (failedMoreAt.current === results.next) { return; }
     const request = requestRef.current;
     const offset = results.next;
     setLoadingMore(true);
     searchGifs(trimmed, offset).then(page => {
       if (request !== requestRef.current) { return; }
       setLoadingMore(false);
-      if (!page) { return; }
+      if (!page) { failedMoreAt.current = offset; return; }
       setResults(prev => {
         const seen = new Set(prev.gifs.map(g => g.id));
         return {

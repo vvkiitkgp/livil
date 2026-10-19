@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { ChatPopover } from './ChatSongPicker';
 import { GifSearchPanel } from './GifPicker';
@@ -29,14 +29,14 @@ export default function ChatGifPicker({
   /** Centre of the GIF button, from the popover's left edge — the grow origin. */
   originX: number;
 }) {
-  // Near the bottom → the next page, once per content height (so one page is asked for once).
+  // Near the bottom → ask the panel for the next page. The panel decides whether one is due
+  // (not already loading, more exist, under the page cap). This used to skip a request at a
+  // content height already asked at — and a fresh grid of 18 GIFs (reopened, or a new search)
+  // has exactly that height, so after the first time nothing ever loaded again.
   const [moreRequest, setMoreRequest] = useState(0);
-  const askedAtHeight = useRef(0);
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-    const nearEnd = contentOffset.y + layoutMeasurement.height >= contentSize.height - NEAR_END_PX;
-    if (nearEnd && contentSize.height !== askedAtHeight.current) {
-      askedAtHeight.current = contentSize.height;
+    if (contentOffset.y + layoutMeasurement.height >= contentSize.height - NEAR_END_PX) {
       setMoreRequest(n => n + 1);
     }
   }, []);
