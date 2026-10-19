@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { ScrollView, View } from 'react-native';
+import { ScrollView } from 'react-native';
 
 jest.mock('react-native-reanimated', () => {
   const { View: V } = jest.requireActual('react-native');
