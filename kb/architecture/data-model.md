@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 162 migration(s) in `supabase/migrations/`.
+Reconstructed from 163 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -833,12 +833,17 @@ RLS enabled · defined in `20260607000007_post_reports.sql`
 |---|---|---|
 | `reviewed_at` | `timestamptz` | `20260808120000_ops_reports_queue.sql` |
 | `reviewed_by` | `uuid references public.profiles(id) on delete set null` | `20260808120000_ops_reports_queue.sql` |
+| `caption_excerpt` | `text` | `20261109000000_ops_remove_repost.sql` |
 
 **Indexes**
 
 - `post_reports_reporter_idx` `(reporter_id)`
 - `post_reports_post_idx` `(post_id)`
 - `post_reports_open_idx` `(created_at desc) where reviewed_at is null`
+
+**Triggers**
+
+- `trg_post_reports_snapshot` — before insert (`20261109000000_ops_remove_repost.sql`)
 
 ### `post_views`
 
@@ -1598,6 +1603,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
 | `trg_post_likes_stamp_created_at` | `post_likes` | before insert | `20261105000000_server_time_on_writes.sql` |
+| `trg_post_reports_snapshot` | `post_reports` | before insert | `20261109000000_ops_remove_repost.sql` |
 | `trg_post_views_count` | `post_views` | after insert | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_views_recent_tracks` | `post_views` | after insert | `20260929000000_recently_played_is_recorded.sql` |
 | `trg_post_views_reject_spotify` | `post_views` | before insert | `20261013000000_spotify_reposts.sql` |

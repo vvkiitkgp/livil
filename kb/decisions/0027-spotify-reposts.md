@@ -85,8 +85,20 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
   API for `Retry-After` when Spotify answers 429 (cards fall back to oEmbed meanwhile).
   Transient failures are left out of `tracks` responses so the app retries rather than
   caching "unavailable".
-- Ops has no tool to remove a Spotify repost yet (`ops_take_down_track` acts on a track).
-  Reports on one reach the queue; removal is by SQL until an ops action exists.
+- Ops removes a reported repost with `ops_remove_repost` (`20261109000000`), since
+  `ops_take_down_track` acts on a track and a Spotify repost has none. It removes ONE repost
+  of either kind — Spotify or Livil; for a Livil repost the upload and every other repost
+  stay, and playlist entries saved from the repost move to the upload — and refuses
+  uploads, which still go through the takedown. It records a
+  `remove_post` row in `moderation_actions` (with the count and categories of the reports
+  the cascade deletes, never who filed them or their words) and sends `content_removed`
+  with kind `spotify_repost` / `livil_repost` and no title, which 2.1.x words as "one of
+  your posts was removed from Livil." plus the reason. It is not a rights strike, and it
+  has no restore: the author can repost. The queue shows the Spotify song (title, artists,
+  artwork) through the `spotify` edge function, and every reported post's caption as it
+  was when reported (`post_reports.caption_excerpt`, snapshotted by trigger). Until
+  that migration was written, removal was by SQL; the first report (2026-10-17) was
+  handled by switching the author's reposts to friends-only.
 - Spotify's logo must be its official file. `SpotifyLogo` is a placeholder wordmark to be
   replaced before public release (same lesson as Sign in with Apple).
 

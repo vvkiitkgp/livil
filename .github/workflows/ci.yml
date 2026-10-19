@@ -827,6 +827,15 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/spotify-reposts.test.sql
 
+      # Removing one reported repost (Spotify or Livil): only an operator, never an upload in
+      # place of a takedown, nothing but that post, and the ledger keeps the report summary.
+      - name: Ops repost removal tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/ops-remove-repost.test.sql
+
       # send-push's like window: deny-all to every app role, one alerting like per post per
       # 15 minutes (the exact claim claimLikeAlert issues), and rows go with post and profile.
       - name: Push like alert tests

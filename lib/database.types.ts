@@ -2656,6 +2656,10 @@ export type Database = {
           username: string
         }[]
       }
+      ops_remove_repost: {
+        Args: { p_post_id: string; p_reason: string }
+        Returns: undefined
+      }
       ops_reports_overview: {
         Args: { p_include_reviewed?: boolean }
         Returns: {
@@ -2666,6 +2670,8 @@ export type Database = {
           kind: string
           media_kind: string
           media_url: string
+          post_caption: string
+          post_kind: string
           reason: string
           reported_user_id: string
           reported_username: string
@@ -2674,6 +2680,7 @@ export type Database = {
           reviewed_at: string
           reviewed_by: string
           reviewer_username: string
+          spotify_track_id: string
           target_excerpt: string
           target_exists: boolean
           target_id: string

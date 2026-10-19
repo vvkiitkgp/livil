@@ -3,6 +3,7 @@ import { ModalLayer } from './ModalLayer';
 import { Button } from './Button';
 import { Choice } from './RightsDeclarationForm';
 import {
+  POST_REMOVAL_REASONS,
   TAKEDOWN_REASONS,
   composeTakedownReason,
   isTakedownReasonComplete,
@@ -40,6 +41,13 @@ import {
  * A restore reason is an internal note — nobody is told "your track came back because
  * X" — so `mode="restore"` drops the vocabulary and keeps the box. Same component so the
  * two actions cannot drift apart visually.
+ *
+ * ── REMOVE IS A TAKEDOWN OF A POST, NOT A TRACK ────────────────────────────
+ *
+ * `mode="remove"` is for a Spotify repost (ADR-0027), which has no Livil track to take
+ * down. Same question, same presets-plus-note shape, but the post-worded vocabulary
+ * (`POST_REMOVAL_REASONS`) — "This upload…" would be false about somebody else's song —
+ * and no restore: the post is deleted, and its author can simply repost it.
  */
 export function TakedownDialog({
   mode,
@@ -53,8 +61,10 @@ export function TakedownDialog({
   onConfirm,
   onCancel,
 }: {
-  mode: 'takedown' | 'restore';
+  mode: 'takedown' | 'restore' | 'remove';
+  /** For `remove`, what the post was: the Spotify song when known. */
   trackTitle: string;
+  /** For `remove`, the POST id — there is no track. */
   trackIdShort: string;
   warning?: string | null;
   impact?: string | null;
@@ -62,7 +72,10 @@ export function TakedownDialog({
   onConfirm: (reason: string) => void;
   onCancel: () => void;
 }) {
-  const isTakedown = mode === 'takedown';
+  const isRemove = mode === 'remove';
+  // Both remove something and both tell its owner why, so both ask with the presets.
+  const isTakedown = mode === 'takedown' || isRemove;
+  const reasons = isRemove ? POST_REMOVAL_REASONS : TAKEDOWN_REASONS;
   const [reasonId, setReasonId] = useState<TakedownReasonId | null>(null);
   const [note, setNote] = useState('');
 
@@ -81,7 +94,7 @@ export function TakedownDialog({
 
   const submit = () => {
     if (!ready || busy) return;
-    onConfirm(isTakedown ? composeTakedownReason(reasonId, note) : note.trim());
+    onConfirm(isTakedown ? composeTakedownReason(reasonId, note, reasons) : note.trim());
   };
 
   return (
@@ -90,16 +103,18 @@ export function TakedownDialog({
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-label={isTakedown ? 'Take down this track' : 'Restore this track'}
+        aria-label={
+          isRemove ? 'Remove this post' : isTakedown ? 'Take down this track' : 'Restore this track'
+        }
         onMouseDown={e => {
           if (e.target === e.currentTarget && !busy) onCancel();
         }}
       >
         <div className="modal__panel takedown">
           <h3 className="confirm__title display">
-            {isTakedown ? 'Take down' : 'Restore'} “{trackTitle}”
+            {isRemove ? 'Remove' : isTakedown ? 'Take down' : 'Restore'} “{trackTitle}”
           </h3>
-          <p className="hint takedown__id">Track {trackIdShort}</p>
+          <p className="hint takedown__id">{isRemove ? 'Post' : 'Track'} {trackIdShort}</p>
 
           {/* Two uploads can share a title, and one of them having nothing published is
               the single strongest signal that the wrong row was clicked — which is
@@ -110,9 +125,11 @@ export function TakedownDialog({
           {isTakedown && (
             <fieldset className="rights__group takedown__reasons">
               <legend className="rights__legend">
-                Why? The creator is shown this.
+                {isRemove
+                  ? 'Why? The person who posted it is shown this.'
+                  : 'Why? The creator is shown this.'}
               </legend>
-              {TAKEDOWN_REASONS.map(r => (
+              {reasons.map(r => (
                 <Choice
                   key={r.id}
                   label={r.label}
@@ -127,7 +144,7 @@ export function TakedownDialog({
           <label className="takedown__notelabel" htmlFor="takedown-note">
             {isTakedown
               ? reasonId === 'other'
-                ? 'Write the reason the creator will read (required)'
+                ? `Write the reason the ${isRemove ? 'poster' : 'creator'} will read (required)`
                 : 'Anything specific to add? (optional)'
               : 'Why is this being restored? (recorded in the ledger)'}
           </label>
@@ -139,16 +156,24 @@ export function TakedownDialog({
             onChange={e => setNote(e.target.value)}
             disabled={busy}
             placeholder={
-              isTakedown
-                ? 'e.g. the second verse, from 1:40'
-                : 'e.g. the uploader sent their distribution agreement'
+              isRemove
+                ? 'e.g. the album cover'
+                : isTakedown
+                  ? 'e.g. the second verse, from 1:40'
+                  : 'e.g. the uploader sent their distribution agreement'
             }
           />
 
-          {isTakedown && (
+          {isTakedown && !isRemove && (
             <p className="hint">
               The files are <strong>not</strong> removed — they stay reachable at their
               public URL. This can be undone.
+            </p>
+          )}
+          {isRemove && (
+            <p className="hint">
+              The post, its likes and its comments are deleted. This <strong>cannot</strong> be
+              undone — they can repost the song if this was a mistake.
             </p>
           )}
 
@@ -159,7 +184,7 @@ export function TakedownDialog({
               disabled={!ready}
               onClick={submit}
             >
-              {isTakedown ? 'Take it down' : 'Restore it'}
+              {isRemove ? 'Remove it' : isTakedown ? 'Take it down' : 'Restore it'}
             </Button>
             <Button variant="ghost" onClick={onCancel} disabled={busy}>
               Cancel
