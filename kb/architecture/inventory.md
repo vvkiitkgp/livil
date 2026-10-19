@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-423 TypeScript file(s) under `src/`, 90,141 lines.
+426 TypeScript file(s) under `src/`, 90,443 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2521 |
 | `src/screens/main/UploadScreen.tsx` | 2225 |
-| `src/screens/main/ConversationScreen.tsx` | 2194 |
+| `src/screens/main/ConversationScreen.tsx` | 2197 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
@@ -42,7 +42,7 @@ reading alone (Constitution P28).
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/components/GlobalAudioPlayer.tsx` | 675 |
+| `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
@@ -103,12 +103,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,413 lines.
+50 file(s), 27,416 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/UploadScreen.tsx` | 2225 |
-| `src/screens/main/ConversationScreen.tsx` | 2194 |
+| `src/screens/main/ConversationScreen.tsx` | 2197 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-162 file(s), 32,053 lines.
+163 file(s), 32,301 lines.
 
 | File | Lines |
 |---|---:|
@@ -169,7 +169,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentsSheet.tsx` | 1175 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
-| `src/components/GlobalAudioPlayer.tsx` | 675 |
+| `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/MediaPlayer.tsx` | 468 |
 | `src/components/guide/PickThree.tsx` | 468 |
@@ -200,11 +200,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/PostGridCard.tsx` | 229 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
+| `src/components/GifPicker.tsx` | 216 |
 | `src/components/PostReportModal.tsx` | 216 |
 | `src/components/ConfirmActionModal.tsx` | 214 |
 | `src/components/ExitFeedbackModal.tsx` | 214 |
 | `src/components/guide/cardsPlayer.tsx` | 212 |
 | `src/components/CommentReportModal.tsx` | 211 |
+| `src/components/__tests__/GifPicker.test.tsx` | 211 |
 | `src/components/AppUpdatePrompt.tsx` | 210 |
 | `src/components/AddToAlbumSheet.tsx` | 205 |
 | `src/components/ProfileBadges.tsx` | 203 |
@@ -212,19 +214,18 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/auth/AuthStep.tsx` | 195 |
+| `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/FriendPickerStrip.tsx` | 184 |
 | `src/components/UploadPreviewCard.tsx` | 183 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ChatReplySnippet.tsx` | 179 |
-| `src/components/GifPicker.tsx` | 175 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/ProfileLinkCard.tsx` | 173 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 173 |
 | `src/components/RolePicker.tsx` | 172 |
 | `src/components/GroupAvatarCluster.tsx` | 170 |
-| `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 170 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 170 |
 | `src/components/guide/__tests__/pickSongs.test.ts` | 170 |
 | `src/components/ProfileTabBar.tsx` | 167 |
@@ -232,7 +233,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FullScreenFrame.tsx` | 166 |
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
-| `src/components/__tests__/GifPicker.test.tsx` | 164 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/__tests__/PostGridCard.test.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
@@ -266,6 +266,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/__tests__/NotificationNudge.test.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
+| `src/components/__tests__/ChatGifPicker.test.tsx` | 100 |
 | `src/components/__tests__/CommentGifCard.test.tsx` | 100 |
 | `src/components/guide/cards.ts` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
@@ -295,6 +296,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/OfflineBanner.test.tsx` | 70 |
 | `src/components/onboarding/StripedFill.tsx` | 69 |
 | `src/components/VisibilitySelector.tsx` | 68 |
+| `src/components/ChatGifPicker.tsx` | 67 |
 | `src/components/__tests__/CollabAvatar.test.tsx` | 67 |
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
@@ -308,7 +310,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/amplitudeBars.test.ts` | 57 |
 | `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/ListeningStatusReporter.tsx` | 48 |
-| `src/components/ChatGifPicker.tsx` | 47 |
 | `src/components/__tests__/FormInput.test.tsx` | 47 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/MusicScoreTag.tsx` | 43 |
@@ -489,7 +490,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-56 file(s), 4,714 lines.
+58 file(s), 4,765 lines.
 
 | File | Lines |
 |---|---:|
@@ -541,9 +542,11 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/returningListener.ts` | 30 |
 | `src/utils/__tests__/likeCount.test.ts` | 29 |
 | `src/utils/__tests__/returningListener.test.ts` | 29 |
+| `src/utils/playbackErrors.ts` | 28 |
 | `src/utils/__tests__/passwordPolicy.test.ts` | 27 |
 | `src/utils/__tests__/chatGif.test.ts` | 25 |
 | `src/utils/__tests__/commentTime.test.ts` | 23 |
+| `src/utils/__tests__/playbackErrors.test.ts` | 23 |
 | `src/utils/avoidRepeatTop.ts` | 23 |
 | `src/utils/commentTime.ts` | 20 |
 | `src/utils/likeCount.ts` | 20 |
