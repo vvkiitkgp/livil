@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from 'react-native';
-import { detectMentionTrigger } from '../utils/mentions';
+import { detectMentionTrigger, renderInputMentions } from '../utils/mentions';
 import type { MentionProfile } from '../services/comments';
 
 /**
@@ -8,6 +8,9 @@ import type { MentionProfile } from '../services/comments';
  * Wire `onSelectionChange` to the input and render `<MentionSuggestions query={query}
  * onSelect={select} />`. A pick replaces the typed `@partial` with `@username ` — always the
  * username, even when the person was found by their name.
+ *
+ * `styled` is the text with its @tags in the tag colour: give it to the input as CHILDREN in
+ * place of `value` (owner, 2026-10-19: a tag should look like a tag while you type).
  */
 export function useMentionInput(value: string, setValue: (next: string) => void) {
   const [caret, setCaret] = useState(0);
@@ -30,5 +33,7 @@ export function useMentionInput(value: string, setValue: (next: string) => void)
     setCaret(before.length + insertion.length);
   }, [value, caret, trigger, setValue]);
 
-  return { onSelectionChange, query: trigger?.partial ?? null, select };
+  const styled = useMemo(() => renderInputMentions(value), [value]);
+
+  return { onSelectionChange, query: trigger?.partial ?? null, select, styled };
 }

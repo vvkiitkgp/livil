@@ -1203,7 +1203,7 @@ export default function UploadScreen() {
           {/* @ to tag someone (a collaborator, a friend); above the field for the keyboard. */}
           <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
           <FormInput
-            value={description}
+            // Children, not `value`: the text with its @tags coloured (useMentionInput).
             onChangeText={setDescription}
             onSelectionChange={mention.onSelectionChange}
             placeholder="Tell people about this track"
@@ -1212,7 +1212,9 @@ export default function UploadScreen() {
             editable={!submitting}
             wrapperStyle={styles.descriptionWrapper}
             style={styles.descriptionInput}
-          />
+          >
+            {mention.styled}
+          </FormInput>
         </View>
         {/* Tags sit with the description, not behind a disclosure: they decide whether
             anyone not already following you ever finds the track. The moods are one-tap

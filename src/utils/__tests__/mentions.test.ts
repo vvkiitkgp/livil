@@ -1,4 +1,5 @@
-import { detectMentionTrigger, mentionedUsernames, parseMentions } from '../mentions';
+import React from 'react';
+import { detectMentionTrigger, mentionedUsernames, parseMentions, renderInputMentions } from '../mentions';
 
 describe('parseMentions', () => {
   it('splits text and tags, keeping every character', () => {
@@ -39,5 +40,22 @@ describe('detectMentionTrigger', () => {
   it('not inside an email or after a space', () => {
     expect(detectMentionTrigger('riya@gm', 7)).toBeNull();
     expect(detectMentionTrigger('@riya ', 6)).toBeNull();
+  });
+});
+
+describe('renderInputMentions', () => {
+  // The pieces must join to exactly the text, or the caret jumps while typing.
+  const flatten = (nodes: React.ReactNode): string =>
+    (nodes as React.ReactElement<{ children: string }>[]).map(n => n.props.children).join('');
+
+  it('joins back to exactly the text, tags and all', () => {
+    for (const t of ['', 'plain', '@riya', 'for @riya and @Sam!', 'mail a@b.com @x', '@riya_s\n@tom ']) {
+      expect(flatten(renderInputMentions(t))).toBe(t);
+    }
+  });
+
+  it('only the tags carry the tag colour', () => {
+    const nodes = renderInputMentions('hi @riya') as React.ReactElement<{ style?: unknown; children: string }>[];
+    expect(nodes.map(n => [n.props.children, Boolean(n.props.style)])).toEqual([['hi ', false], ['@riya', true]]);
   });
 });

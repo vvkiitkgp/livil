@@ -75,6 +75,21 @@ export function renderCommentBody(
   });
 }
 
+/**
+ * The text box's own content with its @tags in the tag colour, for a TextInput that takes
+ * this as children instead of `value` (useMentionInput). Joined, the pieces are EXACTLY the
+ * text — parseMentions keeps every character — so the caret never jumps.
+ */
+export function renderInputMentions(text: string): React.ReactNode {
+  return parseMentions(text).map((c, i) =>
+    c.type === 'text'
+      ? React.createElement(Text, { key: i }, c.value)
+      : React.createElement(Text, { key: i, style: MENTION_IN_INPUT }, `@${c.value}`),
+  );
+}
+
+const MENTION_IN_INPUT: TextStyle = { color: COLORS.purpleLight };
+
 export type MentionTrigger = {
   /** The character index where `@` starts. */
   start: number;

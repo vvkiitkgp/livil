@@ -643,7 +643,7 @@ export default function RepostScreen() {
                 <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
               ) : null}
               <FormInput
-                value={text}
+                // Children, not `value`: the caption with its @tags coloured (useMentionInput).
                 onChangeText={setText}
                 onSelectionChange={mode === 'post' ? mention.onSelectionChange : undefined}
                 placeholder={descPlaceholder}
@@ -653,7 +653,10 @@ export default function RepostScreen() {
                 onFocus={revealCaption}
                 wrapperStyle={styles.textAreaWrapper}
                 style={styles.textArea}
-              />
+              >
+                {/* A story's comment notifies nobody, so its @ is not dressed as a tag. */}
+                {mode === 'post' ? mention.styled : text}
+              </FormInput>
 
               <View style={styles.scrollSpacer} />
             </>

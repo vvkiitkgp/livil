@@ -20,6 +20,7 @@ import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
+import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
 import { useToast } from '../../contexts/ToastContext';
 import { createSpotifyRepost } from '../../services/posts';
 import {
@@ -79,6 +80,7 @@ export default function SpotifyRepostScreen() {
   const findRef = useRef<TextInput>(null);
 
   const picked = useSpotifyTrack(pickedId);
+  const listenOnSpotify = useOpenInSpotify('search');
 
   const pick = useCallback((track: SpotifyTrack) => {
     haptics.select();
@@ -298,7 +300,16 @@ export default function SpotifyRepostScreen() {
               ) : null}
             </View>
 
-            <View style={styles.trackCard}>
+            {/* Tap the song (or "Play on Spotify") to hear it in Spotify before reposting — Livil cannot play
+                Spotify audio itself (ADR-0027: no previews). Same hand-off as everywhere else:
+                the "plays on Spotify" notice, Livil paused, the screen kept as it is. */}
+            <Pressable
+              style={({ pressed }) => [styles.trackCard, pressed && picked.status === 'ready' && styles.trackCardPressed]}
+              onPress={picked.status === 'ready' ? () => { void listenOnSpotify(picked.track.id); } : undefined}
+              disabled={picked.status !== 'ready'}
+              accessibilityRole="button"
+              accessibilityLabel={picked.status === 'ready' ? `Play ${picked.track.title} on Spotify` : undefined}
+            >
               {picked.track?.imageUrl ? (
                 <Image source={{ uri: picked.track.imageUrl }} style={styles.trackArt} />
               ) : (
@@ -328,7 +339,20 @@ export default function SpotifyRepostScreen() {
                   <Icon name="lock" size={14} color={COLORS.textSecondary} />
                 </View>
               ) : null}
-            </View>
+            </Pressable>
+            {/* The feed's own Spotify-post button, so it reads the same everywhere. */}
+            {picked.status === 'ready' ? (
+              <Button
+                label="Play on Spotify"
+                variant="secondary"
+                size="md"
+                leading={<SpotifyLogo size="xs" />}
+                onPress={() => { void listenOnSpotify(picked.track.id); }}
+                accessibilityLabel="Play on Spotify"
+                haptic="none"
+                style={styles.playOnSpotify}
+              />
+            ) : null}
             {locked && fromUsername ? (
               <Text style={styles.fromLine}>
                 From <Text style={styles.fromName}>@{fromUsername}</Text>'s repost
@@ -352,7 +376,7 @@ export default function SpotifyRepostScreen() {
             {/* @ to tag someone; above the field, so the keyboard never covers it. */}
             <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
             <FormInput
-              value={caption}
+              // Children, not `value`: the caption with its @tags coloured (useMentionInput).
               onChangeText={setCaption}
               onSelectionChange={mention.onSelectionChange}
               placeholder="Share what you feel about this track"
@@ -361,7 +385,9 @@ export default function SpotifyRepostScreen() {
               editable={!submitting}
               wrapperStyle={styles.textAreaWrapper}
               style={styles.textArea}
-            />
+            >
+              {mention.styled}
+            </FormInput>
           </>
         )}
       </KeyboardAwareScrollView>
@@ -452,6 +478,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
+  trackCardPressed: { opacity: 0.7 },
+  playOnSpotify: { alignSelf: 'flex-start', marginTop: 10 },
   trackArt: { width: 96, height: 96, borderRadius: 4, backgroundColor: COLORS.card },
   trackText: { flex: 1, minWidth: 0, gap: 4 },
   trackTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
