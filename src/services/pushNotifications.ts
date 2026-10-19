@@ -80,6 +80,11 @@ async function checkOsNotificationPermission(): Promise<boolean> {
   }
 }
 
+/** Whether the OS permission is granted now — the guide's last card asks only when it is not. */
+export function notificationPermissionGranted(): Promise<boolean> {
+  return checkOsNotificationPermission();
+}
+
 /**
  * Trigger the actual OS-level runtime permission dialog.
  *
@@ -788,6 +793,31 @@ export async function requestPushPermissionInteractive(userId: string): Promise<
     return true;
   } catch (e) {
     console.warn('[push] requestPushPermissionInteractive failed', e);
+    return false;
+  }
+}
+
+/**
+ * The guide's last card (TURN ON NOTIFICATIONS): waits only for the person's answer in the
+ * phone's dialog, then registers in the background. Registration is two network calls with
+ * no timeout (Firebase getToken, then the device_tokens upsert); awaiting them could hold a
+ * new user on a spinning last card on a stalled connection. 'accepted' is written first, so
+ * the in-app pre-prompt never asks again; a failed registration is retried on the next cold
+ * start by registerDeviceForUser. NotificationSettingsScreen keeps the awaited version,
+ * because there "on" must mean push is live.
+ */
+export async function requestPermissionThenRegisterInBackground(userId: string): Promise<boolean> {
+  try {
+    const granted = await requestOsNotificationPermission();
+    if (!granted) {
+      await setPushPromptStatus('denied');
+      return false;
+    }
+    await setPushPromptStatus('accepted');
+    registerTokenAndListen(userId).catch(e => console.warn('[push] background registration failed', e));
+    return true;
+  } catch (e) {
+    console.warn('[push] requestPermissionThenRegisterInBackground failed', e);
     return false;
   }
 }

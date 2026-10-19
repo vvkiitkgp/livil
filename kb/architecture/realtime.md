@@ -155,7 +155,9 @@ Details that exist for specific reasons:
 - **Android 13+ notification permission is requested manually.** Firebase's own permission
   request is a no-op there.
 - A **pre-prompt modal** gates the OS prompt behind a stored state machine, so the OS prompt is
-  only spent when the user is likely to accept.
+  only spent when the user is likely to accept. A new account is asked once, on the first-run
+  guide's last card instead ("Turn on notifications", 2026-10-19 — the phone's own dialog,
+  then registration in the background); the modal shows only once the person is in the app.
 - **Three Android channels** allow per-category muting; chat notifications use a messaging
   style, others a large-icon layout.
 - Cold-start taps are recovered from both the FCM and notifee initial-notification paths, then

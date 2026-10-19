@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-405 TypeScript file(s) under `src/`, 88,145 lines.
+405 TypeScript file(s) under `src/`, 88,224 lines.
 
 ## Size hotspots
 
@@ -103,7 +103,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,186 lines.
+50 file(s), 27,218 lines.
 
 | File | Lines |
 |---|---:|
@@ -130,12 +130,12 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/EditPlaylistScreen.tsx` | 336 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 315 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 313 |
+| `src/screens/auth/FirstRunGuideScreen.tsx` | 307 |
 | `src/screens/main/__tests__/SearchScreen.test.tsx` | 300 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 292 |
 | `src/screens/auth/SignUpScreen.tsx` | 290 |
 | `src/screens/main/SettingsScreen.tsx` | 290 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 284 |
-| `src/screens/auth/FirstRunGuideScreen.tsx` | 275 |
 | `src/screens/auth/AddPhotoScreen.tsx` | 273 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 271 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-155 file(s), 31,155 lines.
+155 file(s), 31,166 lines.
 
 | File | Lines |
 |---|---:|
@@ -262,13 +262,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/AddBadge.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/__tests__/CommentGifCard.test.tsx` | 100 |
+| `src/components/guide/cards.ts` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 92 |
 | `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/auth/usernameCheck.tsx` | 89 |
-| `src/components/guide/cards.ts` | 89 |
 | `src/components/CommentGifCard.tsx` | 87 |
 | `src/components/MutualsLine.tsx` | 87 |
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
@@ -322,13 +322,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-88 file(s), 17,885 lines.
+88 file(s), 17,915 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/tracks.ts` | 1482 |
 | `src/services/posts.ts` | 1281 |
-| `src/services/pushNotifications.ts` | 826 |
+| `src/services/pushNotifications.ts` | 856 |
 | `src/services/activity.ts` | 647 |
 | `src/services/comments.ts` | 588 |
 | `src/services/albums.ts` | 521 |
