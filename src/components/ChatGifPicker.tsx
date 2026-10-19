@@ -10,8 +10,9 @@ import type { Gif } from '../services/gifs';
  * the search; an empty box shows what is trending. A tap sends the GIF at once, as a tap on
  * a song does.
  *
- * Scrollable, unlike in comments (where the sheet's own list scrolls it), and taps land on
- * the FIRST touch while the keyboard is up (keyboardShouldPersistTaps).
+ * Scrollable, unlike in comments (where the sheet's own list scrolls it); taps land on the
+ * FIRST touch while the keyboard is up (keyboardShouldPersistTaps), and a scroll never puts
+ * the keyboard away.
  */
 export default function ChatGifPicker({
   open,
@@ -30,9 +31,11 @@ export default function ChatGifPicker({
 }) {
   return (
     <ChatPopover open={open} bottom={bottom} originX={originX}>
+      {/* Scrolling GIFs keeps the keyboard up: the box is the search, and the next thing a
+          person does is often type more (owner, 2026-10-19). Song search behaves the same. */}
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
+        keyboardDismissMode="none"
         contentContainerStyle={styles.content}
       >
         <GifSearchPanel query={query} onPick={onPick} verb="send" />
