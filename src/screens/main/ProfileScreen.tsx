@@ -17,6 +17,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
+import { friendlyErrorMessage } from '../../utils/errorMessages';
 import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
 import RemovedContentCard from '../../components/RemovedContentCard';
@@ -410,8 +411,7 @@ export default function ProfileScreen() {
         }
       } catch (err) {
         if (!isCurrent()) { return; }
-        const message = err instanceof Error ? err.message : 'Failed to load profile.';
-        setError(message);
+        setError(friendlyErrorMessage(err, 'Failed to load profile.'));
       }
     },
     [fetchPosts, fetchProfileAndStats, fetchTabCounts],

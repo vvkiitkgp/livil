@@ -67,7 +67,8 @@ import {
   onBadgeRefreshRequested,
 } from '../../services/appBadge';
 import { retryOnce } from '../../utils/retryOnce';
-import { useOnReconnect } from '../../services/network';
+import { useIsOffline, useOnReconnect } from '../../services/network';
+import { friendlyErrorMessage } from '../../utils/errorMessages';
 
 type HomeNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<AppTabParamList, 'Home'>,
@@ -326,7 +327,9 @@ function HomeListHeader({
 
       {feedError ? (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>{feedError}</Text>
+          <Text style={styles.errorBannerText}>
+            {friendlyErrorMessage(feedError, "Couldn't refresh the feed.")}
+          </Text>
           <Button
             label="Retry"
             size="md"
@@ -744,6 +747,7 @@ export default function HomeScreen() {
     selectTab(routeTab, { fresh: true });
   }, [routeTab, routeAt, selectTab, updatePinned, showTopBar, listRefs]);
 
+  const offline = useIsOffline();
   // Back online: a feed that failed (or never loaded) while offline fills itself in, instead
   // of waiting for a pull. A feed that loaded is left as it is.
   useOnReconnect(() => {
@@ -1227,7 +1231,8 @@ export default function HomeScreen() {
             newDot={newDot}
             onTabsLayout={onTabsLayout}
             loading={f.loadingInitial}
-            feedError={f.feedError}
+            // With no posts, the error is the empty state below — never shown twice.
+            feedError={rows.length > 0 ? f.feedError : ''}
             onRetry={() => { void f.appendFeedPage('initial'); }}
           />
         }
@@ -1236,11 +1241,26 @@ export default function HomeScreen() {
         ListEmptyComponent={
           f.loadingInitial ? undefined : (
             <View style={styles.emptyFeed}>
-              {f.feedError ? (
+              {f.feedError && offline ? (
+                // No "Try again": it would fail too. The feed reloads by itself on reconnect.
+                <>
+                  <Icon name="offline" size={28} color={COLORS.textSecondary} />
+                  <Text style={styles.emptyFeedTitle}>You're offline</Text>
+                  <Text style={styles.emptyFeedBody}>Your feed will load as soon as you're back online.</Text>
+                </>
+              ) : f.feedError ? (
                 <>
                   <Text style={styles.emptyFeedTitle}>Couldn't load the feed</Text>
-                  <Text style={styles.emptyFeedBody}>{f.feedError}</Text>
-                  <Text style={styles.emptyFeedHint}>Pull to refresh or tap Retry above.</Text>
+                  <Text style={styles.emptyFeedBody}>
+                    {friendlyErrorMessage(f.feedError, 'Something went wrong. Try again.')}
+                  </Text>
+                  <Button
+                    label="Try again"
+                    size="md"
+                    variant="primary"
+                    style={styles.emptyRetry}
+                    onPress={() => { void f.appendFeedPage('initial'); }}
+                  />
                 </>
               ) : which === 'for_you' ? (
                 <>
@@ -1638,11 +1658,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  emptyFeedHint: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 12,
-    textAlign: 'center',
+  emptyRetry: {
+    marginTop: 8,
   },
 
   footerSpace: {

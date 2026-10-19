@@ -16,6 +16,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
+import { friendlyErrorMessage } from '../../utils/errorMessages';
 import { haptics } from '../../utils/haptics';
 import type { LibraryRecentTrack } from '../../services/tracks';
 import { listRecentlyPlayedPage } from '../../services/recentlyPlayed';
@@ -88,7 +89,7 @@ export default function RecentlyPlayedScreen() {
       setError('');
     } catch (err) {
       // Keep whatever is already on screen; only an empty list shows the error.
-      setError(err instanceof Error ? err.message : 'Could not load recently played.');
+      setError(friendlyErrorMessage(err, 'Could not load recently played.'));
     } finally {
       setLoading(false);
     }

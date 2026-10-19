@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, StackActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
+import { friendlyErrorMessage } from '../../utils/errorMessages';
 import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
@@ -106,7 +107,7 @@ export default function LibraryScreen() {
       const { items } = await listRecentlyPlayedPage();
       setRecent(items);
     } catch (err) {
-      setRecentError(err instanceof Error ? err.message : 'Could not load recently played.');
+      setRecentError(friendlyErrorMessage(err, 'Could not load recently played.'));
       setRecent([]);
     } finally {
       setRecentLoading(false);
