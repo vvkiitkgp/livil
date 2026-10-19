@@ -74,6 +74,8 @@ import UploadPreviewCard, { type UploadPreviewAuthor } from '../../components/Up
 import { GradientFill } from '../../components/GradientFill';
 import { supabase } from '../../../lib/supabase';
 import { getMyProfile } from '../../services/profileService';
+import MentionSuggestions from '../../components/MentionSuggestions';
+import { useMentionInput } from '../../hooks/useMentionInput';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
 
@@ -223,6 +225,7 @@ export default function UploadScreen() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const mention = useMentionInput(description, setDescription);
 
   const [collaborators, setCollaborators] = useState<PendingCollaborator[]>([]);
   // Already normalized — `TagInput` commits the stored form, never the typed form. Seeded
@@ -1197,9 +1200,12 @@ export default function UploadScreen() {
         </View>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Description · optional</Text>
+          {/* @ to tag someone (a collaborator, a friend); above the field for the keyboard. */}
+          <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
           <FormInput
             value={description}
             onChangeText={setDescription}
+            onSelectionChange={mention.onSelectionChange}
             placeholder="Tell people about this track"
             multiline
             maxLength={2000}

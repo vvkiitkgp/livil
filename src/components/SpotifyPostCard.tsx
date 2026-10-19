@@ -26,6 +26,7 @@ import { GradientBorder } from './GradientBorder';
 import { Button } from './Button';
 import { SpotifyLogo } from './SpotifyLogo';
 import type { PostCardProps } from './PostCard';
+import MentionText from './MentionText';
 
 /**
  * The feed card for a Spotify repost (ADR-0027).
@@ -220,7 +221,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
       <Text style={styles.trackTitle} numberOfLines={2}>{title}</Text>
       <Text style={styles.artist} numberOfLines={1}>{artist}</Text>
-      {post.caption ? <Text style={styles.caption} numberOfLines={4}>{post.caption}</Text> : null}
+      {post.caption ? <MentionText text={post.caption} style={styles.caption} numberOfLines={4} /> : null}
 
       {/* Artwork exactly as Spotify supplies it — nothing drawn on top. Tapping it opens the
           song, like tapping a Livil cover plays it. */}

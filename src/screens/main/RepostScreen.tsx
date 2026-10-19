@@ -35,6 +35,8 @@ import { createStory } from '../../services/stories';
 import type { FeedPost } from '../../services/posts';
 import type { RootStackParamList } from '../../navigation/types';
 import { MIN_REPOST_CLIP_SECONDS } from '../../../shared/constants/media';
+import MentionSuggestions from '../../components/MentionSuggestions';
+import { useMentionInput } from '../../hooks/useMentionInput';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -196,6 +198,7 @@ export default function RepostScreen() {
   const loopGuardUntilRef = useRef(0);
 
   const [text, setText] = useState('');
+  const mention = useMentionInput(text, setText);
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   // The caption sits at the bottom of a tall page; once the keyboard is fully up, make sure
   // the whole box is above it (it opened with only its first line showing). ~350 ms is the
@@ -634,9 +637,15 @@ export default function RepostScreen() {
                   <Text style={styles.sectionHint}> (How do you feel about this track)</Text>
                 ) : null}
               </Text>
+              {/* @ to tag someone in a post's caption (not a story's comment: stories send
+                  no notifications). Above the field, so the keyboard never covers it. */}
+              {mode === 'post' ? (
+                <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
+              ) : null}
               <FormInput
                 value={text}
                 onChangeText={setText}
+                onSelectionChange={mode === 'post' ? mention.onSelectionChange : undefined}
                 placeholder={descPlaceholder}
                 multiline
                 maxLength={2000}

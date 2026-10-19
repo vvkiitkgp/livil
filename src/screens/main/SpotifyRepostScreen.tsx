@@ -34,6 +34,8 @@ import {
 import { looksLikeSpotifyLink, parseSpotifyTrackId } from '../../utils/spotifyLinks';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 import type { RootStackParamList } from '../../navigation/types';
+import MentionSuggestions from '../../components/MentionSuggestions';
+import { useMentionInput } from '../../hooks/useMentionInput';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'SpotifyRepost'>;
@@ -72,6 +74,7 @@ export default function SpotifyRepostScreen() {
   const [searching, setSearching] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
+  const mention = useMentionInput(caption, setCaption);
   const [submitting, setSubmitting] = useState(false);
   const findRef = useRef<TextInput>(null);
 
@@ -346,9 +349,12 @@ export default function SpotifyRepostScreen() {
             <Text style={styles.sectionLabel}>
               Caption <Text style={styles.sectionHint}>(How do you feel about this track)</Text>
             </Text>
+            {/* @ to tag someone; above the field, so the keyboard never covers it. */}
+            <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
             <FormInput
               value={caption}
               onChangeText={setCaption}
+              onSelectionChange={mention.onSelectionChange}
               placeholder="Share what you feel about this track"
               multiline
               maxLength={CAPTION_MAX}

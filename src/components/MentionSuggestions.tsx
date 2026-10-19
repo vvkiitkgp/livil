@@ -7,9 +7,12 @@ import {
   Text,
   TouchableOpacity,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { COLORS } from '../theme/colors';
 import UsernameBadges from './UsernameBadges';
+import { useRelationships } from '../contexts/RelationshipContext';
 import {
   searchUsernamesForMention,
   type MentionProfile,
@@ -18,13 +21,23 @@ import {
 type Props = {
   query: string | null;
   onSelect: (profile: MentionProfile) => void;
+  /**
+   * 'card' for a caption box: a rounded card ABOVE the field, so the keyboard never covers
+   * it (a caption sits low on its screen). Comments keep the strip under their box.
+   */
+  variant?: 'strip' | 'card';
+  style?: StyleProp<ViewStyle>;
 };
 
 const DEBOUNCE_MS = 200;
 
-export default function MentionSuggestions({ query, onSelect }: Props) {
+export default function MentionSuggestions({ query, onSelect, variant = 'strip', style }: Props) {
   const [results, setResults] = useState<MentionProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  // Friends first, as Instagram puts the people you follow first.
+  const { status } = useRelationships();
+  const statusRef = React.useRef(status);
+  statusRef.current = status;
 
   useEffect(() => {
     if (query === null || query.length === 0) {
@@ -36,7 +49,7 @@ export default function MentionSuggestions({ query, onSelect }: Props) {
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const list = await searchUsernamesForMention(query, 6);
+        const list = await searchUsernamesForMention(query, 6, id => statusRef.current(id) === 'friend');
         if (!cancelled) {
           setResults(list);
           setLoading(false);
@@ -58,7 +71,7 @@ export default function MentionSuggestions({ query, onSelect }: Props) {
   if (!loading && results.length === 0) { return null; }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, variant === 'card' && styles.card, style]}>
       {loading && results.length === 0 ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={COLORS.purpleLight} size="small" />
@@ -113,6 +126,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderTopWidth: 1,
     borderColor: COLORS.border,
+  },
+  card: {
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 8,
+    overflow: 'hidden',
   },
   scroll: {
     maxHeight: 240,
