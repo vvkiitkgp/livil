@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-17
+last_verified: 2026-10-19
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 161 migration(s) in `supabase/migrations/`.
+Reconstructed from 162 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -1194,6 +1194,7 @@ RLS enabled · defined in `20261014000000_play_stats.sql`
 
 - `spotify_opens_created_idx` `(created_at desc)`
 - `spotify_opens_track_user_idx` `(spotify_track_id, user_id)`
+- `spotify_opens_user_created_idx` `(user_id, created_at desc)`
 
 **Triggers**
 

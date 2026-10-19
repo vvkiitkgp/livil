@@ -58,7 +58,7 @@ export default function PlaylistScreen({ route }: Props) {
         const data = await fetchLikedPosts();
         setItems(data);
         setMeta({
-          name: 'Liked Songs',
+          name: 'Liked Indie Vibes',
           ownerId: me ?? '',
           ownerHandle: 'you',
           ownerDisplayName: null,
@@ -163,7 +163,7 @@ export default function PlaylistScreen({ route }: Props) {
       }
       initialIdx = 0;
     }
-    const label = playlistId === 'liked' ? 'playlist:Liked Songs' : `playlist:${meta?.name ?? playlistName}`;
+    const label = playlistId === 'liked' ? 'playlist:Liked Indie Vibes' : `playlist:${meta?.name ?? playlistName}`;
     setQueue(queue, initialIdx, label);
     setNowPlaying(queue[initialIdx]!);
     requestPlay(queue[initialIdx]!.postId);

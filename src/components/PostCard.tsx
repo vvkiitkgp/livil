@@ -1231,8 +1231,9 @@ const styles = StyleSheet.create({
   creditFaceStacked: { marginLeft: -10 },
   creditsMore: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', marginLeft: 2 },
   creditsLabel: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
+  // White, like the rest of the card's text — grey read as secondary (owner, 2026-10-19).
   caption: {
-    color: COLORS.textSecondary,
+    color: COLORS.white,
     fontSize: 14,
     lineHeight: 20,
     marginTop: 8,

@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { noUserError } from './session';
 import type { Json } from '../../lib/database.types';
 import type { PendingCollaborator } from '../constants/roles';
 import { MAX_TAGS_PER_TRACK, normalizeTags } from '../../shared/constants/tags';
@@ -1381,6 +1382,11 @@ export type LibraryRecentTrack = {
   artistLabel: string;
   coverArtUrl: string | null;
   playedAt: string;
+  /**
+   * Set on a Spotify song (listRecentlyPlayedPage): a tap opens it in Spotify. Its
+   * `trackId` is `spotify:<id>` (a list key, never a Livil track) and `postId` is null.
+   */
+  spotifyTrackId?: string;
 };
 
 /**
@@ -1410,7 +1416,7 @@ export async function listRecentTracksPage(
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData.user) {
-    throw new Error('You must be signed in to view your library.');
+    throw noUserError(userError, 'You must be signed in to view your library.');
   }
 
   const me = userData.user.id;

@@ -37,21 +37,48 @@ const FAILED: Results = { status: 'failed', gifs: [], next: null, pages: 0 };
  * list, so a drag reaches the sheet. Status text and "Powered by GIPHY" (GIPHY's condition
  * for using its API) go at the TOP, where the keyboard never covers them.
  */
-export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif: Gif) => void }) {
+export function GifSearchPanel({
+  query,
+  onPick,
+  verb = 'attach',
+  moreRequest,
+}: {
+  query: string;
+  onPick: (gif: Gif) => void;
+  /** What a tap does: comments attach the GIF to the comment; chat sends it at once. */
+  verb?: 'attach' | 'send';
+  /**
+   * Set by a host that scrolls the panel itself (chat): each new value loads the next page,
+   * as the person nears the bottom, and the "More GIFs" button goes away — it was hard to hit
+   * at the bottom edge of a popover (owner, 2026-10-19). Comments keep the button.
+   */
+  moreRequest?: number;
+}) {
   const trimmed = query.trim();
   const [results, setResults] = useState<Results>(LOADING);
+  // A newer query is on its way while the last one's GIFs stay on screen (see below).
+  const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [width, setWidth] = useState(0);
   // Answers for an older query (typed over, or still in flight) are dropped.
   const requestRef = useRef(0);
+  // The offset a "more" call last FAILED at: scroll-to-load asks on every scroll near the
+  // bottom, so a failure must not be retried until the query changes — each attempt is a call against GIPHY's hourly allowance.
+  const failedMoreAt = useRef<number | null>(null);
 
+  // The previous query's GIFs stay until this query's arrive, then are REPLACED — as song
+  // search does (ChatSongPicker). Emptying the grid on every keystroke collapsed the chat
+  // popover to a spinner and regrew it, a jump per letter typed (owner, 2026-10-19).
   useEffect(() => {
     const request = ++requestRef.current;
-    setResults(LOADING);
+    failedMoreAt.current = null;
+    setResults(prev => (prev.status === 'ready' && prev.gifs.length > 0 ? prev : LOADING));
+    setRefreshing(true);
     setLoadingMore(false);
     const t = setTimeout(() => {
       searchGifs(trimmed).then(page => {
         if (request !== requestRef.current) { return; }
+        setRefreshing(false);
         setResults(page ? { status: 'ready', gifs: page.gifs, next: page.next, pages: 1 } : FAILED);
       });
     }, trimmed ? SEARCH_DEBOUNCE_MS : 0);
@@ -59,14 +86,16 @@ export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif:
   }, [trimmed]);
 
   const loadMore = useCallback(() => {
-    if (results.status !== 'ready' || results.next === null || loadingMore) { return; }
+    // MAX_PAGES for scroll-to-load too: each page is one call against GIPHY's hourly allowance.
+    if (results.status !== 'ready' || results.next === null || results.pages >= MAX_PAGES || loadingMore) { return; }
+    if (failedMoreAt.current === results.next) { return; }
     const request = requestRef.current;
     const offset = results.next;
     setLoadingMore(true);
     searchGifs(trimmed, offset).then(page => {
       if (request !== requestRef.current) { return; }
       setLoadingMore(false);
-      if (!page) { return; }
+      if (!page) { failedMoreAt.current = offset; return; }
       setResults(prev => {
         const seen = new Set(prev.gifs.map(g => g.id));
         return {
@@ -79,6 +108,13 @@ export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif:
     });
   }, [results, loadingMore, trimmed]);
 
+  const autoMore = moreRequest !== undefined;
+  useEffect(() => {
+    if (autoMore && moreRequest > 0) { loadMore(); }
+    // Only a NEW request loads: loadMore changes with every page, and must not re-fire this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreRequest]);
+
   // Whole dp: a fractional width makes the third tile wrap onto its own row.
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     setWidth(Math.floor(e.nativeEvent.layout.width));
@@ -88,7 +124,16 @@ export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif:
   return (
     <View style={styles.panel} testID="gif-search-panel">
       <View style={styles.headingRow}>
-        <Text style={styles.heading}>{trimmed ? 'GIFs' : 'Trending'}</Text>
+        <View style={styles.headingLeft}>
+          <Text style={styles.heading}>{trimmed ? 'GIFs' : 'Trending'}</Text>
+          {/* New results on their way while the old ones still show. Always takes its slot,
+              so appearing never moves the heading. */}
+          <View style={styles.refreshing}>
+            {refreshing && results.status === 'ready' ? (
+              <ActivityIndicator size="small" color={COLORS.purpleLight} />
+            ) : null}
+          </View>
+        </View>
         <Text style={styles.attribution} accessibilityLabel="Powered by GIPHY">
           Powered by <Text style={styles.attributionMark}>GIPHY</Text>
         </Text>
@@ -112,7 +157,7 @@ export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif:
                   pressed && styles.tilePressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Attach ${gif.title || 'GIF'}`}
+                accessibilityLabel={`${verb === 'send' ? 'Send' : 'Attach'} ${gif.title || 'GIF'}`}
                 testID="gif-tile"
               >
                 <Image source={{ uri: gif.previewUrl }} style={styles.tileImage} resizeMode="cover" />
@@ -121,7 +166,10 @@ export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif:
             : null}
         </View>
       )}
-      {results.status === 'ready' && results.next !== null && results.pages < MAX_PAGES ? (
+      {autoMore && loadingMore ? (
+        <ActivityIndicator color={COLORS.purpleLight} style={styles.spinner} />
+      ) : null}
+      {!autoMore && results.status === 'ready' && results.next !== null && results.pages < MAX_PAGES ? (
         <View style={styles.footer}>
           <Button
             label="More GIFs"
@@ -146,6 +194,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
   },
+  headingLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  refreshing: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   heading: {
     color: COLORS.textSecondary,
     fontSize: 11,

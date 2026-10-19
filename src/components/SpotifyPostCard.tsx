@@ -349,7 +349,8 @@ const styles = StyleSheet.create({
   moreBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center' },
   trackTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: -0.3, marginTop: 12 },
   artist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
-  caption: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 8 },
+  // White, as on Livil cards (owner, 2026-10-19).
+  caption: { color: COLORS.white, fontSize: 14, lineHeight: 20, marginTop: 8 },
   artWrap: { marginTop: 12 },
   // Spotify's mobile guideline: artwork corners rounded no more than 4px.
   art: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: COLORS.card },

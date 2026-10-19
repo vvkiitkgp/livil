@@ -6,8 +6,12 @@
 //
 // Server-side so the key never ships and a provider switch is a deploy, not an app update.
 // Signed-in callers only; no database credential; never fetches a caller-supplied URL;
-// returns only the `Gif` shape below. Every GIF returned, from every action, is rated
-// G/PG/PG-13 (normalizeGif) — `lookup` ids come from comment rows anyone can write.
+// returns only the `Gif` shape below. Search and trending return G-rated GIFs only, and a
+// search for something we don't offer (isBlockedQuery) gets trending instead (owner,
+// 2026-10-19: "sexy" still returned kissing and swimwear at G/PG). `lookup` — GIFs already
+// posted in comments and chats — also keeps PG and PG-13 ones, so a stricter filter never
+// blanks out a message. Nothing above PG-13 is ever returned: lookup ids come from rows
+// anyone can write.
 // GIPHY's terms: media URLs pass through untouched and are never cached or stored.
 //
 // SECRETS: GIPHY_API_KEY (required); GIFS_CALLS_PER_HOUR (optional app-wide budget).
@@ -22,8 +26,10 @@ export const GIF_ID_RE = /^[A-Za-z0-9]{1,64}$/;
  */
 const GIPHY_MEDIA_RE = /^https:\/\/(?:media\d?|i)\.giphy\.com\/\S+$/;
 
-/** G, PG and PG-13. Anything else, or no rating at all, is never returned. */
-export const ALLOWED_RATINGS: ReadonlySet<string> = new Set(['g', 'pg', 'pg-13']);
+/** What search and trending offer: G only. */
+export const SEARCH_RATINGS: ReadonlySet<string> = new Set(['g']);
+/** What an already-posted GIF may be shown at: also PG and PG-13 (older search limits). Never more. */
+export const SHOWN_RATINGS: ReadonlySet<string> = new Set(['g', 'pg', 'pg-13']);
 
 export const PAGE_SIZE = 18;
 export const MAX_QUERY_LENGTH = 50;
@@ -80,14 +86,14 @@ function side(value: unknown): number | null {
 
 /**
  * GIPHY's GIF object → our enumerated shape, or null when it is not one we may show: a bad
- * id, a rating above PG-13 (or none), or no usable fixed-width rendition on GIPHY's CDN.
+ * id, a rating outside `ratings` (or none), or no usable fixed-width rendition on GIPHY's CDN.
  */
-export function normalizeGif(raw: unknown): Gif | null {
+export function normalizeGif(raw: unknown, ratings: ReadonlySet<string> = SEARCH_RATINGS): Gif | null {
   if (!raw || typeof raw !== 'object') return null;
   const g = raw as ApiGif;
   if (typeof g.id !== 'string' || !GIF_ID_RE.test(g.id)) return null;
   const rating = typeof g.rating === 'string' ? g.rating.toLowerCase() : '';
-  if (!ALLOWED_RATINGS.has(rating)) return null;
+  if (!ratings.has(rating)) return null;
   const main = g.images?.fixed_width;
   const url = mediaUrl(main?.url);
   const width = side(main?.width);
@@ -112,6 +118,53 @@ export function nextOffset(offset: number, count: number, total: unknown): numbe
   if (next > MAX_OFFSET) return null;
   if (typeof total === 'number' && next >= total) return null;
   return next;
+}
+
+// ── Blocked searches ────────────────────────────────────────────────────────
+
+/**
+ * Words a GIF search may not be for. GIPHY's ratings are its own labels and miss things, so
+ * this catches what the person is asking for instead (owner, 2026-10-19). A blocked search
+ * is answered with trending GIFs — nothing errors, nothing says "blocked".
+ *
+ *   ANYWHERE: matched inside any word too ("sexygirl", "nudes"). Only stems no common word
+ *             contains — not "ass" (class), "cum" (cucumber) or "cock" (cocktail).
+ *   WORDS:    matched as a whole word only. "hot" also catches "hot chocolate"; accepted —
+ *             that person just gets trending.
+ */
+export const BLOCKED_ANYWHERE: readonly string[] = [
+  'sex', 'porn', 'nude', 'naked', 'nsfw', 'xxx', 'boob', 'tits', 'titty', 'titties', 'nipple',
+  'horny', 'hentai', 'onlyfans', 'fetish', 'erotic', 'lingerie', 'stripper', 'milf', 'dildo',
+  'orgasm', 'penis', 'vagina', 'pussy', 'genital', 'blowjob', 'handjob', 'masturbat', 'slut',
+  'whore', 'fuck', 'bikini', 'cocaine', 'heroin',
+];
+export const BLOCKED_WORDS: readonly string[] = [
+  'hot', 'kiss', 'kisses', 'kissing', 'makeout', 'thong', 'bra', 'bras', 'underwear', 'panties',
+  'booty', 'butt', 'ass', 'twerk', 'twerking', 'seduce', 'seductive', 'sensual', 'lust',
+  'thirsty', 'thirst', 'cock', 'dick', 'cum', 'weed', 'drugs', 'stoned', '420', 'shit',
+  'bitch', 'bitches',
+];
+
+/** Look-alike digits and symbols back to letters: s3xy, $exy, b00bs. */
+const LOOKALIKES: Record<string, string> = {
+  '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '@': 'a', '$': 's', '!': 'i',
+};
+
+export function isBlockedQuery(q: string): boolean {
+  // Accents off (NFKD, then drop the marks): "séxy" is "sexy". A Unicode property, not an
+  // escaped code-point range: escapes arrive as raw characters through the MCP deploy.
+  const lower = q.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '');
+  const unmasked = lower.replace(/[0134578@$!]/g, c => LOOKALIKES[c] ?? c);
+  for (const form of [lower, unmasked]) {
+    // Split on spaces only, then drop separators inside a word, so "s.e.x" is one word.
+    for (const raw of form.split(/\s+/)) {
+      const word = raw.replace(/[^a-z0-9]/g, '');
+      if (!word) continue;
+      if (BLOCKED_WORDS.includes(word)) return true;
+      if (BLOCKED_ANYWHERE.some(stem => word.includes(stem))) return true;
+    }
+  }
+  return false;
 }
 
 // ── The handler ─────────────────────────────────────────────────────────────
@@ -274,11 +327,11 @@ async function page(
     ...params,
     limit: String(PAGE_SIZE),
     offset: String(offset),
-    rating: 'pg-13',
+    rating: 'g',
   });
   if (!body) return json(502, { error: 'GIF search is unavailable' });
   const raw = Array.isArray(body.data) ? body.data : [];
-  const gifs = raw.map(normalizeGif).filter((g): g is Gif => g !== null);
+  const gifs = raw.map(g => normalizeGif(g)).filter((g): g is Gif => g !== null);
   // Paged by what GIPHY returned, not by what survived the filter, so a page whose GIFs
   // were all dropped still moves on to the next one.
   return json(200, {
@@ -335,6 +388,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       if (offset === null) return json(400, { error: `offset must be an integer 0–${MAX_OFFSET}` });
       if (!enabled) return json(200, { enabled: false, gifs: [], next: null });
       if (!spend(userId, deps.env, deps.now())) return json(429, { error: 'slow down' });
+      // Asking for something we don't offer: trending instead, same shape. The query is never
+      // logged.
+      if (isBlockedQuery(q)) return page(deps, 'gifs/trending', {}, offset);
       return page(deps, 'gifs/search', { q }, offset);
     }
 
@@ -356,7 +412,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       if (!res) return json(200, { gifs: {} });
       const found = new Map<string, Gif>();
       for (const raw of Array.isArray(res.data) ? res.data : []) {
-        const gif = normalizeGif(raw);
+        const gif = normalizeGif(raw, SHOWN_RATINGS);
         if (gif) found.set(gif.id, gif);
       }
       // GIPHY answered: an id it did not return (removed, or rated above PG-13 and so

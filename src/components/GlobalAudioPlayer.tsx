@@ -10,7 +10,17 @@ import { jamHeartbeatTick } from '../services/jamHeartbeat';
 import { listeningTrackFor } from '../utils/listeningStatus';
 import { fetchAlbumForTrack } from '../services/albums';
 import { buildNowPlayingMetadata, buildMediaQueueJson, buildCurrentClipJson, buildMediaSessionStateJson } from '../utils/nowPlayingMetadata';
+import { subscribeToOffline } from '../services/network';
+import { isNetworkPlaybackError } from '../utils/playbackErrors';
 import type { RepeatMode } from '../contexts/PlaybackContext';
+
+/**
+ * Failed loads in a row before the engine stops skipping — see handleError. 2 = it skips past
+ * ONE broken track, never two, unless something actually played in between.
+ */
+const MAX_FAILS_IN_A_ROW = 2;
+/** Seconds of playhead movement that count as "something played" and reset the count. */
+const PLAYED_RESETS_FAILS_SEC = 1;
 
 const AUDIO_BUFFER_CONFIG = {
   minBufferMs: 15_000,
@@ -98,6 +108,25 @@ export default function GlobalAudioPlayer() {
   // native pause-sync callback can tell this self-imposed pause from a real
   // lock-screen pause (otherwise it would reportPaused and stop the queue).
   const videoGateRef = useRef(false);
+  // Load failures in a row with nothing played between them — see handleError. Reset only
+  // by a playhead that really moved (handleProgress), NOT by onLoad: a cached track can load
+  // offline and then fail, which reset the count on every track and let skipping run on.
+  const failStreakRef = useRef(0);
+  const playedFromRef = useRef<number | null>(null);
+  const offlineRef = useRef(false);
+  useEffect(() => subscribeToOffline(offline => { offlineRef.current = offline; }), []);
+  // The post the engine stopped on after a failed load, and how many times play has asked
+  // to load it again. A failed source does not reload by itself on play (iOS), so a retry
+  // changes the URI's #fragment — never sent to the server, so signed URLs stay valid —
+  // which the source prop treats as a new source.
+  const stoppedOnErrorRef = useRef<string | null>(null);
+  const [retry, setRetry] = useState<{ postId: string; n: number } | null>(null);
+  // A different post: its URI goes back to plain, so a later return to the retried post
+  // matches what the native queue loads (no redundant reload).
+  const playingPostId = nowPlaying?.postId ?? null;
+  useEffect(() => {
+    setRetry(prev => (prev && prev.postId !== playingPostId ? null : prev));
+  }, [playingPostId]);
 
   // Which postId this component is currently responsible for
   const myPostIdRef = useRef<string | null>(null);
@@ -182,6 +211,15 @@ export default function GlobalAudioPlayer() {
         play:    () => {
           console.log('[LIVIL][GAP] handler PLAY');
           clipEndFiredRef.current = false;
+          if (stoppedOnErrorRef.current === nowPlaying!.postId) {
+            // Stopped here by a failed load (offline): load it again, guarded like a new track.
+            stoppedOnErrorRef.current = null;
+            setIsBuffering(true);
+            bufferingRef.current = true;
+            loadGuardUntilRef.current = Date.now() + 4000;
+            const postId = nowPlaying!.postId;
+            setRetry(prev => ({ postId, n: prev?.postId === postId ? prev.n + 1 : 1 }));
+          }
           setPaused(false);
           resumePlay(nowPlaying!.postId);
         },
@@ -270,6 +308,8 @@ export default function GlobalAudioPlayer() {
     setIsBuffering(false);
     bufferingRef.current = false;
     lastProgressTimeRef.current = -1;
+    playedFromRef.current = null;
+    stoppedOnErrorRef.current = null;
     // Committed start first. `positionRef` is shared with progress reporting, and the
     // outgoing track keeps writing to it while the new one prepares — which is how a new
     // track ended up starting at the previous track's playhead (and, when that exceeded the
@@ -298,6 +338,11 @@ export default function GlobalAudioPlayer() {
       setIsBuffering(false);
     }
     lastProgressTimeRef.current = t;
+    // Real playback (the playhead moved a second) clears the load-failure count.
+    if (failStreakRef.current > 0) {
+      if (playedFromRef.current === null) { playedFromRef.current = t; }
+      else if (t - playedFromRef.current >= PLAYED_RESETS_FAILS_SEC) { failStreakRef.current = 0; }
+    }
     updatePosition(t);
     const mine = myPostIdRef.current;
     if (mine) { trackPlayProgress(mine, t); }
@@ -428,12 +473,37 @@ export default function GlobalAudioPlayer() {
   // GAP is the single engine, so a decode/URL failure here means the audio for
   // this post (audio OR video) won't play. Surface it and skip to the next
   // track so the queue doesn't dead-end on one broken file.
+  //
+  // EXCEPT when the next one will fail too. Offline, every track fails, so skipping raced
+  // through the whole queue — a new song every second and an error buzz with each one (owner
+  // report, 2026-10-19, twice). Offline (the phone says so, or the error is a connection
+  // error), or a second failure with nothing played in between, it stops on this track, paused —
+  // silently offline (the offline pill says why), else with one quiet toast. Play
+  // loads it again (see the play handler).
   const handleError = useCallback((e: { error?: unknown }) => {
+    setIsBuffering(false);
+    bufferingRef.current = false;
+    failStreakRef.current += 1;
+    playedFromRef.current = null;
+    // Offline by the phone's own report, OR by the error itself (iOS can fail the stream before
+    // NetInfo has said so) — or simply too many in a row.
+    const offline = offlineRef.current || isNetworkPlaybackError(e);
+    if (offline || failStreakRef.current >= MAX_FAILS_IN_A_ROW) {
+      console.warn(`[LIVIL][GAP] onError → stop (offline=${offline}, inARow=${failStreakRef.current})`, e?.error ?? e);
+      failStreakRef.current = 0;
+      const mine = myPostIdRef.current;
+      stoppedOnErrorRef.current = mine;
+      setPaused(true);
+      if (mine) { reportPaused(mine); }
+      // Offline, the "No internet connection" pill (OfflineBanner) says so — unless the phone
+      // has not noticed yet, so a connection error still gets one quiet line.
+      if (!offlineRef.current) { showToast("Couldn't play. Check your connection.", { kind: 'info' }); }
+      return;
+    }
     console.warn('[LIVIL][GAP] onError → skip', e?.error ?? e);
     showToast('Could not play this track', { kind: 'error' });
-    setIsBuffering(false);
     playNext();
-  }, [showToast, setIsBuffering, playNext]);
+  }, [showToast, setIsBuffering, playNext, reportPaused]);
 
   // Lock-screen / notification / headset next & previous-track presses.
   // After a skip that may happen in the background, publish the new track directly.
@@ -568,7 +638,7 @@ export default function GlobalAudioPlayer() {
     <Video
       ref={videoRef}
       source={{
-        uri: audioSrc,
+        uri: retry?.postId === nowPlaying.postId ? `${audioSrc}#retry=${retry.n}` : audioSrc,
         metadata: buildNowPlayingMetadata(notificationTrack),
         ...(startPositionMs !== undefined ? { startPosition: startPositionMs } : {}),
       }}

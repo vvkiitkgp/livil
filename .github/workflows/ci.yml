@@ -866,6 +866,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/play-stats.test.sql
 
+      # Recently Played's Spotify half (20261108000000): my_recent_spotify_opens answers
+      # about the caller only — one row per song at its latest open, paged — the log itself
+      # stays unreadable, and 'library' joins the sources without dropping any old one.
+      - name: Recent Spotify opens tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/recent-spotify-opens.test.sql
+
       # ADR-0028 — repost audience: profiles.reposts_public (everyone by default) decides
       # who sees a person's reposts, live and including past ones; only the owner can flip
       # it; blocks and signed-out callers still see nothing; record_post_impressions agrees

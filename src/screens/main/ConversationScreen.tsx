@@ -87,6 +87,11 @@ import SwipeRevealRow from '../../components/SwipeRevealRow';
 import SwipeReplyRow from '../../components/SwipeReplyRow';
 import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
 import { formatChatTimestamp, formatChatTimeOnly, shouldShowTimeSeparator } from '../../utils/chatTime';
+import ChatGifPicker from '../../components/ChatGifPicker';
+import CommentGifCard from '../../components/CommentGifCard';
+import { MAX_GIF_QUERY_LENGTH, rememberGif, useGifsEnabled, type Gif } from '../../services/gifs';
+import { GIF_LABEL } from '../../services/comments';
+import { chatGifFrom, chatGifMetadata } from '../../utils/chatGif';
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -184,6 +189,10 @@ function JamInviteBubble({
   );
 }
 
+/** A GIF in a chat bubble: a little larger than in a comment. */
+const CHAT_GIF_MAX_W = 220;
+const CHAT_GIF_MAX_H = 260;
+
 function MessageBubble({
   msg,
   isMe,
@@ -214,6 +223,9 @@ function MessageBubble({
   onOpenSharedProfile: (username: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
+  // A GIF is a text message carrying the GIF in metadata (src/utils/chatGif.ts); its body is
+  // '🎞 GIF', what older builds show, so the text is hidden here.
+  const chatGif = msg.kind === 'text' ? chatGifFrom(msg.metadata) : null;
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
   /**
    * A shared track opens the post. `track_share` bubbles rendered cover art and a title
@@ -239,11 +251,13 @@ function MessageBubble({
   // A Spotify song link inside a text message is drawn as a card. A DIRECT link is then
   // dropped from the text (the card carries it); a short link stays in the text until the
   // card has resolved it, because it might not be a song at all.
-  const spotifyLink = msg.kind === 'text' && msg.body ? findSpotifyLinkInText(msg.body) : null;
+  const spotifyLink = msg.kind === 'text' && msg.body && !chatGif ? findSpotifyLinkInText(msg.body) : null;
   const isSongBubble = hasTrackMeta || !!spotifyLink;
-  const visibleText = spotifyLink?.id && msg.body
-    ? msg.body.replace(spotifyLink.match, '').trim()
-    : msg.body;
+  const visibleText = chatGif
+    ? null
+    : spotifyLink?.id && msg.body
+      ? msg.body.replace(spotifyLink.match, '').trim()
+      : msg.body;
 
   if (isSystem) {
     return (
@@ -314,12 +328,14 @@ function MessageBubble({
                 ? `Play ${msg.metadata!.title as string}`
                 : sharedProfileHandle
                   ? `View @${sharedProfileHandle}'s profile`
-                  : undefined
+                  : chatGif
+                    ? 'GIF'
+                    : undefined
             }
             style={[
               styles.bubble,
               isSongBubble ? styles.bubbleSong : isMe ? styles.bubbleMe : styles.bubbleThem,
-              hasStickerMeta ? styles.bubbleSticker : null,
+              hasStickerMeta || chatGif ? styles.bubbleSticker : null,
               sharedProfileHandle ? styles.bubbleProfileCard : null,
               isHighlighted && styles.bubbleHighlighted,
             ]}
@@ -364,6 +380,15 @@ function MessageBubble({
                 spotifyTrackId={spotifyLink.id}
                 shortUrl={spotifyLink.shortUrl}
                 onLongPress={() => onLongPress(msg)}
+              />
+            ) : null}
+
+            {chatGif ? (
+              <CommentGifCard
+                gif={chatGif}
+                maxWidth={CHAT_GIF_MAX_W}
+                maxHeight={CHAT_GIF_MAX_H}
+                style={styles.chatGif}
               />
             ) : null}
 
@@ -573,6 +598,12 @@ export default function ConversationScreen() {
   // still there when you come back from picking a song.
   const [songMode, setSongMode] = useState(false);
   const [songQuery, setSongQuery] = useState('');
+  // GIF search in the composer, the same way (owner, 2026-10-19). Shown only while the gifs
+  // function answers `enabled`.
+  const gifsOn = useGifsEnabled();
+  const [gifMode, setGifMode] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const searchMode = songMode || gifMode;
   const [composerHeight, setComposerHeight] = useState(64);
   const { search: spotifySearchOn } = useSpotifyAvailability();
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -1027,9 +1058,61 @@ export default function ConversationScreen() {
    */
   const openSongSearch = useCallback(() => {
     setReplyingTo(null);
+    setGifMode(false);
     setSongQuery('');
     setSongMode(true);
   }, []);
+
+  /** GIF search off. As with songs, the query stays while the popover shrinks away. */
+  const closeGifSearch = useCallback(() => {
+    setGifMode(false);
+  }, []);
+
+  /** GIF search on — drops an armed reply for the same reason song search does. */
+  const openGifSearch = useCallback(() => {
+    setReplyingTo(null);
+    setSongMode(false);
+    setGifQuery('');
+    setGifMode(true);
+  }, []);
+
+  /**
+   * Tap a GIF → it is sent at once, as a song is. A plain text message reading '🎞 GIF' with
+   * the GIF in its metadata (src/utils/chatGif.ts): this build draws the GIF, older builds
+   * and the inbox line show the text, and nothing changes on the server.
+   */
+  const handlePickGif = useCallback(async (gif: Gif) => {
+    closeGifSearch();
+    KeyboardController.dismiss();
+    rememberGif(gif);
+    const payload: SendMessagePayload = { kind: 'text', body: GIF_LABEL, metadata: chatGifMetadata(gif) };
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      conversationId,
+      senderId: myId,
+      kind: 'text',
+      body: GIF_LABEL,
+      metadata: payload.metadata as Record<string, unknown>,
+      replyToId: null,
+      createdAt: new Date().toISOString(),
+      deletedAt: null,
+      senderUsername: null,
+      senderDisplayName: null,
+      senderAvatarUrl: null,
+      reactions: [],
+    };
+    setMessages(prev => [optimistic, ...prev]);
+    setTimeout(scrollToLatest, 50);
+    try {
+      const real = await sendMessage(conversationId, payload, myProfile);
+      setMessages(prev => prev.map(m => (m.id === optimistic.id ? real : m)));
+      void messageCache.prependMessages(conversationId, [real]);
+    } catch (err) {
+      console.warn('[chat] gif send failed', err);
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      showToast("Couldn't send that GIF. Please try again.", { kind: 'error' });
+    }
+  }, [closeGifSearch, conversationId, myId, myProfile, showToast, scrollToLatest]);
 
   /**
    * Tap a song in the composer's song search → it is sent at once (no preview step).
@@ -1292,7 +1375,7 @@ export default function ConversationScreen() {
               repliedTo={repliedTo}
               isHighlighted={isHighlighted}
               // Arming a reply leaves song search: a picked song can't be a reply.
-              onReply={() => { closeSongSearch(); setReplyingTo(item); }}
+              onReply={() => { closeSongSearch(); closeGifSearch(); setReplyingTo(item); }}
               onReplyQuotePress={handleReplyQuotePress}
               onLongPress={handleLongPress}
               onReactionToggle={handleReactionToggle}
@@ -1313,7 +1396,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1440,6 +1523,9 @@ export default function ConversationScreen() {
           interpolator="ios"
           style={styles.flex}
           textInputNativeID="conversation-input"
+          // Song / GIF search: the box IS the search, so a drag — scrolling results past their
+          // end included — must never put the keyboard away (owner, 2026-10-19).
+          enableSwipeToDismiss={!searchMode}
         >
           <SwipeRevealProvider>
             <SwipeRevealGestureView>
@@ -1539,6 +1625,15 @@ export default function ConversationScreen() {
               // 8dp inset — the point the list grows out of and shrinks back into.
               originX={12 + 19 - 8}
             />
+            <ChatGifPicker
+              open={gifMode}
+              query={gifQuery}
+              onPick={gif => { void handlePickGif(gif); }}
+              bottom={composerHeight}
+              // GIF button centre: padding (12) + 🎵 (38) + gap (8) + half its 38dp, minus the
+              // popover's 8dp inset.
+              originX={12 + 38 + 8 + 19 - 8}
+            />
             {replyingTo ? (
               <View style={styles.replyPreview}>
                 <View style={styles.replyPreviewBar} />
@@ -1597,16 +1692,38 @@ export default function ConversationScreen() {
                 {songMode ? <GradientBorder borderRadius={19} /> : null}
                 <MusicToggleIcon active={songMode} color={songMode ? COLORS.purpleNeon : COLORS.textSecondary} />
               </TouchableOpacity>
+              {/* GIF turns the box into a GIF search (GIPHY, G/PG); tap a GIF to send it. */}
+              {gifsOn ? (
+                <TouchableOpacity
+                  style={[styles.musicBtn, gifMode && styles.musicBtnActive]}
+                  activeOpacity={0.7}
+                  onPress={() => (gifMode ? closeGifSearch() : openGifSearch())}
+                  accessibilityRole="button"
+                  accessibilityLabel={gifMode ? 'Back to typing a message' : 'Send a GIF'}
+                  accessibilityState={{ selected: gifMode }}
+                >
+                  {gifMode ? <GradientBorder borderRadius={19} /> : null}
+                  <Icon name="gif" size={20} color={gifMode ? COLORS.purpleNeon : COLORS.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
               <View style={styles.inputWrap}>
                 <FormInput
                   nativeID="conversation-input"
-                  value={songMode ? songQuery : text}
+                  value={songMode ? songQuery : gifMode ? gifQuery : text}
                   // A search is one line: a pasted newline becomes a space.
-                  onChangeText={t => (songMode ? setSongQuery(t.replace(/\n/g, ' ').slice(0, 100)) : setText(clampComposerInput(t)))}
+                  onChangeText={t => (
+                    songMode
+                      ? setSongQuery(t.replace(/\n/g, ' ').slice(0, 100))
+                      : gifMode
+                        ? setGifQuery(t.replace(/\n/g, ' ').slice(0, MAX_GIF_QUERY_LENGTH))
+                        : setText(clampComposerInput(t))
+                  )}
                   placeholder={
                     songMode
                       ? (spotifySearchOn ? 'Search a song on Livil or Spotify…' : 'Search a song on Livil…')
-                      : 'Send Message…'
+                      : gifMode
+                        ? 'Search GIFs…'
+                        : 'Send Message…'
                   }
                   placeholderTextColor={COLORS.textMuted}
                   // ALWAYS multiline. On iOS `multiline` picks the native view (UITextView vs
@@ -1614,24 +1731,24 @@ export default function ConversationScreen() {
                   // keyboard. Song mode gets its single-line behaviour from submitBehavior
                   // instead: return closes the keyboard, never inserts a newline.
                   multiline
-                  submitBehavior={songMode ? 'blurAndSubmit' : 'newline'}
-                  autoCorrect={!songMode}
+                  submitBehavior={searchMode ? 'blurAndSubmit' : 'newline'}
+                  autoCorrect={!searchMode}
                   style={styles.textInput}
-                  returnKeyType={songMode ? 'search' : 'default'}
+                  returnKeyType={searchMode ? 'search' : 'default'}
                 />
-                {!songMode && text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
+                {!searchMode && text.length > MAX_CHARS - COUNTER_VISIBLE_FROM && (
                   <Text style={[styles.charCounter, text.length >= MAX_CHARS && styles.charCounterOver]}>
                     {MAX_CHARS - text.length}
                   </Text>
                 )}
               </View>
-              {songMode ? (
+              {searchMode ? (
                 <TouchableOpacity
                   style={[styles.sendBtn, styles.sendBtnDisabled]}
                   activeOpacity={0.7}
-                  onPress={closeSongSearch}
+                  onPress={songMode ? closeSongSearch : closeGifSearch}
                   accessibilityRole="button"
-                  accessibilityLabel="Close song search"
+                  accessibilityLabel={songMode ? 'Close song search' : 'Close GIF search'}
                 >
                   <Icon name="close" size={16} color={COLORS.textSecondary} />
                 </TouchableOpacity>
@@ -1858,6 +1975,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   stickerImg: { width: 120, height: 120 },
+  // The comment card's own top margin is for sitting under comment text.
+  chatGif: { marginTop: 0 },
   // Jam invite card
   jamInviteCard: {
     flexDirection: 'row',

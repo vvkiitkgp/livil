@@ -2571,6 +2571,13 @@ export type Database = {
           vibe: number
         }[]
       }
+      my_recent_spotify_opens: {
+        Args: { p_before?: string; p_limit?: number }
+        Returns: {
+          opened_at: string
+          spotify_track_id: string
+        }[]
+      }
       notify_badge_granted: {
         Args: { p_badge: string; p_user_id: string }
         Returns: undefined
