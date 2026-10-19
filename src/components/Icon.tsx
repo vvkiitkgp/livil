@@ -97,6 +97,7 @@ import {
   UsersThree,
   Warning,
   WarningCircle,
+  WifiSlash,
   X,
   XCircle,
 } from 'phosphor-react-native';
@@ -132,7 +133,8 @@ export type IconName =
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
-  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut';
+  | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut'
+  | 'offline';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -291,6 +293,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   signOut: [SignOut, 'regular'],
   // "Upload a track" on the Add-to-Livil chooser (ADR-0027).
   upload: [UploadSimple, 'bold'],
+  // The "No internet connection" pill (OfflineBanner).
+  offline: [WifiSlash, 'bold'],
 };
 
 export interface IconProps {

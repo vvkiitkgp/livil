@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -6,6 +7,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- @react-native-community/netinfo merges this in to report Wi-Fi names; Livil only asks
+         "online or not", which ACCESS_NETWORK_STATE answers. NetInfo checks the grant before
+         touching Wi-Fi details, so removing it is safe and keeps the Play listing's
+         permissions as they were. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
 
     <!-- Android 11+ (API 30) hides installed packages from an app unless it declares
          what it wants to see. Without this, react-native-share cannot resolve
