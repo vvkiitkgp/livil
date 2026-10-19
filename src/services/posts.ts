@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { noUserError } from './session';
 import { normalizeTag } from '../../shared/constants/tags';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
 import { notifyPostActivity } from './activity';
@@ -836,7 +837,7 @@ export async function createRepost(
 ): Promise<{ postId: string }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to repost.');
+    throw noUserError(userError, 'You must be signed in to repost.');
   }
   const me = userData.user.id;
 
@@ -894,7 +895,7 @@ export async function createSpotifyRepost(
 ): Promise<{ postId: string }> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to repost.');
+    throw noUserError(userError, 'You must be signed in to repost.');
   }
 
   const { data: created, error: insertError } = await supabase
@@ -1051,7 +1052,7 @@ export async function fetchTrackPlaysTotals(trackIds: string[]): Promise<Record<
 export async function toggleLike(postId: string): Promise<boolean> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to like a post.');
+    throw noUserError(userError, 'You must be signed in to like a post.');
   }
   const me = userData.user.id;
 
@@ -1198,7 +1199,7 @@ export async function reportPost(
 ): Promise<void> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    throw new Error('You must be signed in to report.');
+    throw noUserError(userError, 'You must be signed in to report.');
   }
   const me = userData.user.id;
   const trimmed = details?.trim();

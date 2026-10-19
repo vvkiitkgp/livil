@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
 import { COLORS } from '../../theme/colors';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
+import { getMyUserId } from '../../services/session';
 import { haptics } from '../../utils/haptics';
 import { Icon } from '../../components/Icon';
 import RemovedContentCard from '../../components/RemovedContentCard';
@@ -367,11 +368,10 @@ export default function ProfileScreen() {
       const isCurrent = opts?.isCurrent ?? (() => true);
       setError('');
       try {
-        const { data: userData, error: userError } = await supabase.auth.getUser();
-        if (userError || !userData?.user) {
+        const me = await getMyUserId();
+        if (!me) {
           throw new Error('You must be signed in to view your profile.');
         }
-        const me = userData.user.id;
         let activeTab = currentTab;
         if (!opts?.contentOnly) {
           await fetchProfileAndStats(me);
@@ -442,8 +442,7 @@ export default function ProfileScreen() {
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        const { data: userData } = await supabase.auth.getUser();
-        const me = userData?.user?.id;
+        const me = await getMyUserId();
         if (!me) {return;}
         const value = await getRepostsPublic(me);
         if (!cancelled) {setRepostsPublic(value);}
@@ -463,8 +462,7 @@ export default function ProfileScreen() {
       }
       (async () => {
         try {
-          const { data: userData } = await supabase.auth.getUser();
-          const me = userData?.user?.id;
+          const me = await getMyUserId();
           if (!me) {return;}
           await fetchProfileAndStats(me);
         } catch {
@@ -526,8 +524,8 @@ export default function ProfileScreen() {
     await Promise.all([
       refresh(tab, { isCurrent }),
       // Who can see my reposts — otherwise only re-read when the screen regains focus.
-      supabase.auth.getUser()
-        .then(({ data }) => (data?.user?.id ? getRepostsPublic(data.user.id) : null))
+      getMyUserId()
+        .then(me => (me ? getRepostsPublic(me) : null))
         .then(value => { if (value !== null) { setRepostsPublic(value); } })
         .catch(() => {}),
     ]);
@@ -544,8 +542,7 @@ export default function ProfileScreen() {
     // A page for the tab on screen now: dropped if a switch or a refresh lands first.
     const isCurrent = tabCache.current();
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const me = userData?.user?.id;
+      const me = await getMyUserId();
       if (!me) {return;}
       const last = posts[posts.length - 1]!;
       const more = await fetchPosts(me, tab, last.createdAt);
