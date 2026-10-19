@@ -1074,6 +1074,24 @@ export async function likePost(postId: string): Promise<void> {
 }
 
 /**
+ * UNLIKE a post — never like it. The heart's tap sends the intent the viewer SAW (like, or
+ * unlike), not a toggle of whatever the server holds: a toggle on a heart that was out of
+ * date did the opposite of what was shown. Deleting a like that is not there is a no-op.
+ */
+export async function unlikePost(postId: string): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    throw noUserError(userError, 'You must be signed in to like a post.');
+  }
+  const { error } = await supabase
+    .from('post_likes')
+    .delete()
+    .eq('post_id', postId)
+    .eq('user_id', userData.user.id);
+  if (error) { throw new Error(error.message); }
+}
+
+/**
  * Toggle the viewer's like on a post. Returns the resulting liked state.
  * Idempotent: clicking twice rapidly will end where it started.
  */
