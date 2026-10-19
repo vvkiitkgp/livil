@@ -64,6 +64,7 @@ import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { AppUpdatePrompt } from '../components/AppUpdatePrompt';
+import SpotifyClipboardPrompt from '../components/SpotifyClipboardPrompt';
 import { RootStackParamList } from './types';
 import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
 import { COLORS } from '../theme/colors';
@@ -939,6 +940,9 @@ export default function RootNavigator() {
 
       {/* "We're still onboarding" notices — before Play on Spotify and before a Jam (ADR-0027). */}
       <OnboardingNoticeHost />
+
+      {/* "Repost the song you copied?" — never on top of the notifications question. */}
+      <SpotifyClipboardPrompt active={appReady && !pushPromptVisible} />
 
       <NotificationPermissionModal
         visible={pushPromptVisible}

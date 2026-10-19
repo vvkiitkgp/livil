@@ -2,6 +2,7 @@ import {
   findSpotifyLinkInText,
   looksLikeSpotifyLink,
   parseSpotifyTrackId,
+  spotifyLinkInClipboard,
   spotifyTrackUrl,
 } from '../spotifyLinks';
 
@@ -79,5 +80,29 @@ describe('findSpotifyLinkInText', () => {
     expect(findSpotifyLinkInText(`https://evil.example/open.spotify.com/track/${ID}`)).toBeNull();
     expect(findSpotifyLinkInText(`https://evil.example?u=https://open.spotify.com/track/${ID}`)).toBeNull();
     expect(findSpotifyLinkInText('see you at 8')).toBeNull();
+  });
+});
+
+describe('spotifyLinkInClipboard', () => {
+  it("finds the song in Spotify's Copy link, with or without ?si= and stray spaces", () => {
+    expect(spotifyLinkInClipboard(`https://open.spotify.com/track/${ID}?si=abc123`)?.id).toBe(ID);
+    expect(spotifyLinkInClipboard(`  https://open.spotify.com/intl-de/track/${ID}\n`)?.id).toBe(ID);
+    expect(spotifyLinkInClipboard(`spotify:track:${ID}`)?.id).toBe(ID);
+  });
+
+  it('hands a short link back for the server to resolve', () => {
+    expect(spotifyLinkInClipboard('https://spotify.link/AbCd1234')).toEqual({
+      shortUrl: 'https://spotify.link/AbCd1234',
+      match: 'https://spotify.link/AbCd1234',
+    });
+  });
+
+  it('ignores anything that is not just a Spotify link', () => {
+    expect(spotifyLinkInClipboard(ID)).toBeNull(); // a bare id is more likely a password
+    expect(spotifyLinkInClipboard(`listen to this https://open.spotify.com/track/${ID}`)).toBeNull();
+    expect(spotifyLinkInClipboard('https://open.spotify.com/album/' + ID)).toBeNull();
+    expect(spotifyLinkInClipboard('')).toBeNull();
+    expect(spotifyLinkInClipboard(null)).toBeNull();
+    expect(spotifyLinkInClipboard(`https://open.spotify.com/track/${ID}?` + 'x'.repeat(600))).toBeNull();
   });
 });
