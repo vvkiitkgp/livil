@@ -15,6 +15,8 @@ import { likeCountAfterToggle } from '../utils/likeCount';
 export function usePostLike(post: { id: string; viewerHasLiked: boolean; likesCount: number }) {
   const [liked, setLiked] = useState(post.viewerHasLiked);
   const [likesCount, setLikesCount] = useState(post.likesCount);
+  /** Goes up on every like (never an unlike) — what LikeHeart bounces on. */
+  const [likePulse, setLikePulse] = useState(0);
 
   useEffect(() => {
     setLiked(post.viewerHasLiked);
@@ -26,6 +28,8 @@ export function usePostLike(post: { id: string; viewerHasLiked: boolean; likesCo
     const prevLiked = liked;
     const prevCount = likesCount;
     const nextLiked = !prevLiked;
+    // The heart bounces on the way ON only — unliking is not an achievement either.
+    if (nextLiked) { setLikePulse(n => n + 1); }
     // Only on the way ON — unliking is not an achievement, and buzzing both
     // directions turns an accidental double-tap into a rattle.
     if (nextLiked) { haptics.toggleOn(); }
@@ -44,5 +48,13 @@ export function usePostLike(post: { id: string; viewerHasLiked: boolean; likesCo
     }
   }, [liked, likesCount, post.id]);
 
-  return { liked, likesCount, toggleLike: toggle };
+  /**
+   * Double-tap on the artwork: only ever LIKES. A second double tap on a liked post is an
+   * acknowledgement (the heart pops again), never an undo — undoing is the heart's job.
+   */
+  const like = useCallback(() => {
+    if (liked) { setLikePulse(n => n + 1); } else { void toggle(); }
+  }, [liked, toggle]);
+
+  return { liked, likesCount, likePulse, toggleLike: toggle, like };
 }

@@ -51,8 +51,16 @@ export type ButtonVariant = 'primary' | 'secondary' | 'selected' | 'ghost' | 'de
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export type ButtonProps = {
+  /** Empty for a button that is only its marks (`leading` / `icon`) — then pass
+   *  `accessibilityLabel`, which is all a screen reader will have. */
   label: string;
   onPress: () => void;
+  /**
+   * For a button inside something that has its own long-press — a chat bubble's message
+   * menu (ChatSongCard). A touchable claims the whole touch, so without it holding the
+   * button never reaches the bubble.
+   */
+  onLongPress?: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
   disabled?: boolean;
@@ -167,6 +175,7 @@ function paintFor(variant: ButtonVariant, onMedia: boolean) {
 export function Button({
   label,
   onPress,
+  onLongPress,
   variant = 'primary',
   size = 'md',
   disabled = false,
@@ -207,6 +216,7 @@ export function Button({
   return (
     <TouchableOpacity
       onPress={handlePress}
+      onLongPress={onLongPress}
       disabled={inactive}
       hitSlop={hitSlop}
       activeOpacity={0.85}
@@ -234,7 +244,7 @@ export function Button({
         <View style={[styles.content, { gap: s.gap }]}>
           {leading}
           {icon ? <Icon name={icon} size={s.icon} color={labelColor} /> : null}
-          <Text
+          {label ? <Text
             style={[
               styles.label,
               { color: labelColor, fontSize: s.font, fontWeight: paint.weight },
@@ -243,7 +253,7 @@ export function Button({
             numberOfLines={1}
           >
             {label}
-          </Text>
+          </Text> : null}
         </View>
       )}
     </TouchableOpacity>

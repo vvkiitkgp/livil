@@ -171,10 +171,9 @@ export default function UploadPreviewCard({
             <Icon name="repost" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>0</Text>
           </View>
-        </View>
-        <View style={styles.shareBtn} importantForAccessibility="no-hide-descendants">
-          <GradientBorder borderRadius={23} />
-          <Icon name="share" size={18} color={COLORS.purpleNeon} />
+          <View style={styles.likeHit}>
+            <Icon name="share" size={ACTION_ICON_SIZE} color={COLORS.white} />
+          </View>
         </View>
       </View>
     </View>
