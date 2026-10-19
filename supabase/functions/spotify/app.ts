@@ -23,7 +23,7 @@
 // fetches a URL the caller supplies — every outbound URL is built here from a validated id.
 //
 // ── SPOTIFY'S TERMS THAT SHAPE IT ───────────────────────────────────────────
-// Only TEMPORARY caching of metadata is allowed: every entry expires (an hour for full
+// Only TEMPORARY caching of metadata is allowed: every entry expires (six hours for full
 // metadata, minutes for the oEmbed stand-in). Nothing is written to the Livil database
 // except the bare id (by the app).
 //
@@ -34,7 +34,7 @@
 // 20-id `tracks` call fired 20 lookups in the same instant — Spotify rate-limited us
 // (2026-10-19) and every card fell back to oEmbed, artists gone. So:
 //   - a shared cache (Upstash Redis, REST) is read first, in ONE command for the whole
-//     request; each song is fetched from Spotify about once per hour for EVERYONE;
+//     request; each song is fetched from Spotify about once per CACHE_TTL_MS for EVERYONE;
 //   - misses go to Spotify at most UPSTREAM_CONCURRENCY at a time;
 //   - a 429 is written to the shared cache, so every isolate backs off, not just the one
 //     that was told.
@@ -70,8 +70,12 @@ const TRACK_LINK_RE =
 export const MAX_SEARCH_RESULTS = 10;
 export const MAX_QUERY_LENGTH = 100;
 export const MAX_IDS_PER_CALL = 20;
-/** "Temporary caching" — Spotify's terms name no lifetime; an hour is comfortably short. */
-export const CACHE_TTL_MS = 60 * 60 * 1000;
+/**
+ * "Temporary caching" — Spotify's terms name no lifetime, only that content is not kept
+ * indefinitely and is refreshed. Six hours (owner, 2026-10-19; was one): with the shared
+ * cache a song then costs about four Spotify calls a day, however many people see it.
+ */
+export const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 /**
  * Advisory per-user budget, in UPSTREAM calls per minute rather than requests: one `tracks`
  * request can cost up to 20 Spotify lookups, so it is charged per uncached id. In-memory,

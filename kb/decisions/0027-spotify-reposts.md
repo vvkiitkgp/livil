@@ -48,13 +48,13 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
    likes, comments, reports, delete — because all of those key on `posts.id`.
 2. **Only the id is stored.** Title, artists and artwork are resolved at display time by the
    `spotify` edge function (client-credentials token; oEmbed fallback without credentials).
-   Nothing Spotify-owned is persisted: metadata is cached with an expiry only — one hour for
-   full metadata, five minutes for the oEmbed stand-in — in each isolate and, since
+   Nothing Spotify-owned is persisted: metadata is cached with an expiry only — six hours for
+   full metadata (one hour until 2026-10-19), five minutes for the oEmbed stand-in — in each isolate and, since
    2026-10-19, in one cache every isolate shares (Upstash Redis). *Amended 2026-10-19:* the
    February 2026 dev-mode changes removed the batch `GET /tracks` endpoint, and with only
    per-isolate caches every cold isolate re-asked Spotify for the same songs in bursts of up to
    20 — Spotify rate-limited us and every card lost its artists. The shared cache makes a song
-   cost about one Spotify call per hour for everyone; misses go at most four at a time; a 429
+   cost about one Spotify call per six hours for everyone; misses go at most four at a time; a 429
    is shared so every isolate backs off. The shared cache is optional: unset or failing, the
    function behaves as before.
 3. **Livil never plays it.** Tapping play pauses Livil (the single engine, ADR-0001) and opens

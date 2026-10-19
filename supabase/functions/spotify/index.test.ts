@@ -30,6 +30,7 @@ import {
   mapLimit,
   upstashCache,
   CACHED_SEARCH_COST,
+  CACHE_TTL_MS,
   EMPTY_SEARCH_TTL_MS,
   MAX_BACKOFF_MS,
   isSpotifyImageUrl,
@@ -461,7 +462,7 @@ Deno.test('a song one isolate fetched is served to every other from the shared c
   const body = await (await handle(post({ action: 'tracks', ids: [ID] }), b.deps)).json();
   assertEquals(spotifyTrackCalls(b.calls), 0);
   assertEquals(body.tracks[ID].artists, ['The Weeknd']);
-  assertEquals(shared.store.get(`${SHARED_PREFIX}track:${ID}`)?.ttlMs, 60 * 60 * 1000);
+  assertEquals(shared.store.get(`${SHARED_PREFIX}track:${ID}`)?.ttlMs, CACHE_TTL_MS);
 });
 
 Deno.test('a 429 in one isolate makes every isolate back off', async () => {
