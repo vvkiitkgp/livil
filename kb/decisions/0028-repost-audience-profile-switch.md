@@ -100,9 +100,12 @@ friends, while still letting someone keep their reposts to friends.
   2e/2f now follow the switch.
 - The first-run guide's Friends card no longer lists reposts as something friendship unlocks.
 - **Plays, notifications and reposts of a hidden post closed by
-  `20261113000000_post_visibility_remaining_paths`** (the rest of the known gap above):
+  `20261113000000_post_visibility_remaining_paths`** (with `20261111000000`, which closes
+  likes and comments, the rest of the known gap above):
   `posts_insert_own` requires a repost's original to be an upload the caller can see, with
-  that upload's track ("repost only uploads" had been client-side only); the DEFINER
+  that upload's track ("repost only uploads" had been client-side only), and an upload to
+  be of a track the caller uploaded (found in review: anyone could post someone else's
+  song as their own upload); the DEFINER
   `activity_notify_post`, `activity_notify_comment` and `activity_record_play` repeat the
   posts predicate by hand and treat a post hidden from the caller as absent (no row written,
   nothing returned — no like or play counts handed back); `post_comment_likes` left the

@@ -9,6 +9,8 @@
 --   3. record plays on it and read back views_count (activity_record_play, DEFINER);
 --   4. and every Realtime subscriber was sent (comment_id, user_id) for every comment
 --      unlike, because post_comment_likes was published and RLS does not filter DELETEs.
+-- And, found in review, in the same policy as 1: anyone could post someone else's track
+-- as their own UPLOAD (1m).
 -- Sections 1–4 are those attacks; each must be refused while the honest path beside it
 -- still works. Section 5 checks that the three DEFINER functions agree with
 -- posts_select_authenticated for every viewer × post × switch value, so a drift between a
@@ -198,6 +200,9 @@ select pg_temp.assert('1g  SAM still reposts from Spotify (no original)',
   pg_temp.allows($q$insert into posts (author_id, kind, track_id, spotify_track_id) values
     ('e1000000-0000-0000-0000-000000000003', 'repost', null, '4uLU6hMCjMI75M1A2tKUQC')
     returning id$q$), true);
+select pg_temp.assert('1m  SAM cannot post ARTIST''s song as his own upload',
+  pg_temp.allows($q$insert into posts (author_id, kind, track_id) values
+    ('e1000000-0000-0000-0000-000000000003', 'upload', 'e2000000-0000-0000-0000-000000000002')$q$), false);
 select pg_temp.assert('1h  SAM still cannot post as someone else',
   pg_temp.allows($q$insert into posts (author_id, kind, track_id) values
     ('e1000000-0000-0000-0000-000000000005', 'upload', 'e2000000-0000-0000-0000-000000000002')$q$), false);

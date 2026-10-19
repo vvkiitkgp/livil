@@ -1,12 +1,13 @@
 -- ============================================================================
--- The last paths around a hidden post (ADR-0028 follow-up, after 20261111000000)
+-- The last paths around a hidden post (ADR-0028 follow-up, beside 20261111000000)
 -- ============================================================================
 --
 -- THE GAP. posts_select_authenticated (20261019000000) hides a friends-only repost from
 -- everyone but the reposter's accepted friends, and a blocked pair's posts from each
--- other. 20261111000000 made likes, comments and comment likes follow that rule. Its
--- security review found four more paths, all older than the switch, open to a caller who
--- holds a hidden post's id (sharing a repost in chat hands such ids to non-friends):
+-- other. 20261111000000 (a separate migration) makes likes, comments and comment likes
+-- follow that rule; until it is applied those stay open. Its security review found four
+-- more paths, all older than the switch, open to a caller who holds a hidden post's id
+-- (sharing a repost in chat hands such ids to non-friends):
 --
 --   1. posts_insert_own checks only author_id. "Repost only uploads" lived in the app
 --      (createRepost), so a direct insert of posts(kind='repost', original_post_id=<a
@@ -27,18 +28,29 @@
 --      (comment_id, user_id) — the primary key — for every unlike in the app. No build has
 --      ever subscribed to it: the comment sheet listens to post_comments only, and reads
 --      like_count off the comment row.
+--   5. Found reviewing this one, in the same policy: nothing stopped an UPLOAD of someone
+--      else's track. posts(kind='upload', track_id=<Artist's track>) put Artist's song in
+--      feeds and New on Livil under the caller's name, sent its plays, milestones and the
+--      upload count (a verified-badge criterion) to the caller, and fired
+--      tg_notify_track_credits at Artist's collaborators. posts_freeze_counter_identity
+--      already forbids exactly this on UPDATE ("a wrapper around someone else's work");
+--      INSERT was never closed.
 --
 -- ── THE FIX ─────────────────────────────────────────────────────────────────
 --   1. posts_insert_own: a post with an original must name an UPLOAD the caller can see,
 --      carrying that upload's track. The EXISTS runs as the caller, so the posts read
---      policy applies to it (the stories_insert pattern, 20260724120000). Uploads and
---      Spotify reposts have no original and are untouched.
+--      policy applies to it (the stories_insert pattern, 20260724120000). Spotify reposts
+--      have no original and are untouched.
+--   5. posts_insert_own: an upload must be of a track the caller uploaded.
 --   2, 3. The three DEFINER functions repeat posts_select_authenticated BY HAND, as
 --      record_post_impressions (20261019000000) and can_comment_on_post (20261111000000)
 --      do — the same predicate, not a paraphrase, so they cannot drift into disagreeing
---      about who can see what. A post the caller cannot see is treated exactly like one
---      that does not exist: no row written, no row returned. activity_record_play checks
---      FIRST, so a missing id now returns nothing too, instead of a foreign-key error.
+--      about who can see what. Inside these three functions a post the caller cannot see
+--      is treated exactly like one that does not exist: no row written, no row returned.
+--      activity_record_play checks FIRST, so a missing id now returns nothing too, instead
+--      of a foreign-key error. (Elsewhere a foreign key still tells the two apart — a
+--      report on a missing id fails, on a hidden one succeeds — which tells someone who
+--      already holds the id only that the post exists.)
 --   4. post_comment_likes leaves the publication; its replica identity goes back to the
 --      default (FULL existed only to give Realtime the old row).
 --
@@ -54,6 +66,10 @@
 --   * createRepost (2.1.3 and main) reads the original first and refuses a non-upload;
 --     the guide's auto-reposts go through it; Spotify reposts send no original.
 --     Production: 0 reposts whose original is not an upload, 0 whose track differs.
+--   * createTrack (2.1.3 and main) inserts the track as the caller, then its upload post
+--     as the same caller; tracks_select_authenticated always shows an uploader their own
+--     tracks, staged or taken down, so the EXISTS finds it. ops_restore_track is DEFINER
+--     and bypasses the policy. Production: 0 of 12 uploads by anyone but the uploader.
 --   * The like / comment / reply / repost notifications follow the action, on a post on
 --     screen. A post that becomes hidden between the tap and the call notifies nobody.
 --   * Plays are recorded for the post the player is on, which the app loaded under the
@@ -75,13 +91,14 @@
 -- ============================================================================
 
 
--- ── 1. posts_insert_own: an original must be a visible upload ───────────────
+-- ── 1, 5. posts_insert_own: an original is a visible upload; an upload is yours ──
 -- NOTE ON QUALIFICATION — load-bearing, do not "simplify". The new row is referred to as
 -- `posts.<col>`; the original is aliased `o`. posts has its own original_post_id and
 -- track_id, so an UNQUALIFIED name inside `from public.posts o` binds to `o` (inner scope
 -- wins): `o.id = original_post_id` would silently become `o.id = o.original_post_id`
 -- (NULL for every upload) and refuse every repost. The test's 1d (an honest repost must
--- be accepted) is what catches that.
+-- be accepted) is what catches that. Same for `posts.track_id` against `t` (tracks has
+-- no track_id, but keep it qualified so a future column cannot capture it).
 --
 -- Replaced, never added alongside: two permissive INSERT policies are OR'd, and the old
 -- one alone admits anything with your author_id.
@@ -97,6 +114,14 @@ create policy "posts_insert_own" on public.posts
          where o.id = posts.original_post_id
            and o.kind = 'upload'
            and o.track_id = posts.track_id
+      )
+    )
+    and (
+      kind <> 'upload'
+      or exists (
+        select 1 from public.tracks t
+         where t.id = posts.track_id
+           and t.uploader_id = auth.uid()
       )
     )
   );
@@ -522,13 +547,14 @@ begin
   end if;
   -- Exactly the intended expression, after dropping the `public.` prefix and whitespace
   -- that the deparser varies with search_path. Catches a policy that only LOOKS right
-  -- (an unqualified original_post_id binding to the inner row, an `or true`).
+  -- (an unqualified original_post_id binding to the inner row, an `or true`, a lost
+  -- clause).
   select regexp_replace(replace(with_check, 'public.', ''), '\s+', ' ', 'g') into v_check
     from pg_policies
    where schemaname = 'public' and tablename = 'posts' and cmd = 'INSERT'
      and roles::text = '{authenticated}';
   if v_check is distinct from
-     '((author_id = auth.uid()) AND ((original_post_id IS NULL) OR (EXISTS ( SELECT 1 FROM posts o WHERE ((o.id = posts.original_post_id) AND (o.kind = ''upload''::text) AND (o.track_id = posts.track_id))))))'
+     '((author_id = auth.uid()) AND ((original_post_id IS NULL) OR (EXISTS ( SELECT 1 FROM posts o WHERE ((o.id = posts.original_post_id) AND (o.kind = ''upload''::text) AND (o.track_id = posts.track_id))))) AND ((kind <> ''upload''::text) OR (EXISTS ( SELECT 1 FROM tracks t WHERE ((t.id = posts.track_id) AND (t.uploader_id = auth.uid()))))))'
   then
     raise exception 'posts INSERT policy is not the intended one: %', coalesce(v_check, '(missing)');
   end if;
