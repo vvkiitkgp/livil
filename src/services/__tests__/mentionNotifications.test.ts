@@ -1,5 +1,5 @@
 /**
- * Mentions (migration 20261109000000), app side:
+ * Mentions (migration 20261110000000), app side:
  *  - a 'mention' row reads as a sentence — a caption tag and a comment tag differ;
  *  - notifyMentions asks the server (by post OR comment) and pushes to exactly who it
  *    returns, as activity_mention; a missing function is silence, never a throw.

@@ -1573,7 +1573,7 @@ Deno.test('handler: an oversized body is refused before anything reads it', asyn
   assertEquals(res.status, 413);
 });
 
-// ── activity_mention (20261109000000) ───────────────────────────────────────
+// ── activity_mention (20261110000000) ───────────────────────────────────────
 const MENTION = '12121212-1212-1212-1212-121212121212';
 
 /** activityAdmin, plus the row's id and claim_mention_push: true once per unpushed id. */

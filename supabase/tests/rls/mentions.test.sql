@@ -1,4 +1,4 @@
--- Mention tests (20261109000000_mentions.sql).
+-- Mention tests (20261110000000_mentions.sql).
 --
 -- "Sam tagged you in a post" / "Sam mentioned you in a comment". What must hold:
 --   * the tags are read from the STORED caption / comment, and only its author can announce

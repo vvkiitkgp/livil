@@ -66,7 +66,7 @@ export const KINDS = new Set([
   'activity_like', 'activity_comment', 'activity_repost', 'activity_milestone',
   // "liked your comment" / "replied to your comment" (20261031000000).
   'activity_comment_like', 'activity_comment_reply',
-  // "tagged you in a post" / "mentioned you in a comment" (20261109000000).
+  // "tagged you in a post" / "mentioned you in a comment" (20261110000000).
   'activity_mention',
   'badge_granted',
 ]);
@@ -242,7 +242,7 @@ function json(status: number, payload: Record<string, unknown>): Response {
 
 /**
  * The notification_preferences columns that can silence `kind`: its channel's, and for a
- * mention also `mentions` (20261109000000) — a finer switch inside Activity. Mentions show
+ * mention also `mentions` (20261110000000) — a finer switch inside Activity. Mentions show
  * on the Activity channel, the one every installed app already created, so an older build
  * still displays them; turning Activity off silences them too.
  */
@@ -270,7 +270,7 @@ export async function isCategoryMuted(
   const columns = preferenceColumnsFor(kind);
   const { data, error } = await admin
     .from('notification_preferences')
-    // `*`, not a column list: before 20261109000000 there is no `mentions` column, and naming
+    // `*`, not a column list: before 20261110000000 there is no `mentions` column, and naming
     // it would fail the whole read — which reads as "not muted" for EVERY category.
     .select('*')
     .eq('user_id', recipient)

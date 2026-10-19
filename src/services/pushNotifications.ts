@@ -297,7 +297,7 @@ export type NotificationCategoryPrefs = {
   new_music: boolean;
   reminders: boolean;
   /**
-   * @-tags in posts and comments (20261109000000). Not a channel of its own: mentions show
+   * @-tags in posts and comments (20261110000000). Not a channel of its own: mentions show
    * on Activity's channel, which every installed app already has, and Activity off silences
    * them too (send-push preferenceColumnsFor).
    */

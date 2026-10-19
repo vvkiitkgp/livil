@@ -644,7 +644,7 @@ export async function notifyCommentActivity(
 }
 
 /**
- * Tell the people @-tagged in your post's caption or your comment (20261109000000). The
+ * Tell the people @-tagged in your post's caption or your comment (20261110000000). The
  * server reads the tags from the STORED text and decides who is told (≤ 5, once each, never
  * across a block, never someone who cannot see the post); this pushes to whoever it returns.
  * Fire-and-forget: before the migration the function is missing, and nothing happens.

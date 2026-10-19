@@ -424,7 +424,7 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/comment-notifications.test.sql
 
-      # Mentions (20261109000000): only the author announces their caption's / comment's
+      # Mentions (20261110000000): only the author announces their caption's / comment's
       # tags, read from the stored text; ≤ 5, once each, never across a block, never to
       # someone who cannot see the post; shipped apps' activity_list never returns them.
       - name: Mention notification tests
