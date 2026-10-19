@@ -1,28 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Image,
-} from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { supabase } from '../../../lib/supabase';
 import { claimUsername, getMyProfile } from '../../services/profileService';
 import { COLORS } from '../../theme/colors';
-import { Button } from '../../components/Button';
+import { FONTS } from '../../theme/fonts';
 import FormInput from '../../components/FormInput';
 import { Icon } from '../../components/Icon';
+import { AuthStep, StepButton, StepError, StepField, StepLink } from '../../components/auth/AuthStep';
+import {
+  UsernameStatusLine,
+  cleanUsername,
+  usernameReady,
+  useUsernameAvailability,
+} from '../../components/auth/usernameCheck';
+import { stepProblem } from '../../components/auth/signUpSteps';
 
 type Props = {
-  /** Verified Google email — shown locked, never editable. */
+  /** Verified email from Google / Apple — shown, never editable. */
   email?: string | null;
   /** Display name prefilled from Google (editable). */
   displayName?: string | null;
-  /** Google profile photo, if any. */
-  avatarUrl?: string | null;
   /**
    * Whether to ask for a name. FALSE for Sign in with Apple: App Review
    * (guideline 4) rejects asking for a name or email the Apple sheet already
@@ -37,79 +34,55 @@ type Props = {
   onComplete: () => void;
 };
 
-type UsernameStatus =
-  | 'idle'
-  | 'invalid'
-  | 'checking'
-  | 'available'
-  | 'taken'
-  | 'error';
-
-const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
-const SUCCESS_GREEN = '#22C55E';
-
+/**
+ * "Almost done" for a Google or Apple sign-up, in the same steps as email sign-up
+ * (owner's design, 2026-10-19): your name (filled in from Google; skipped for Apple),
+ * then a username. The email and password step does not exist here — the provider
+ * already verified the email. The photo step follows (AddPhotoScreen); the Google photo
+ * is not used for it, the person is asked.
+ */
 export default function ChooseUsernameScreen({
   email,
   displayName: initialDisplayName,
-  avatarUrl,
   askForName = true,
   userId,
   onComplete,
 }: Props) {
+  const steps = askForName ? 2 : 1;
+  const [step, setStep] = useState(1);
   const [displayName, setDisplayName] = useState(initialDisplayName?.trim() ?? '');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
 
-  const cleanedUsername = useMemo(
-    () => username.trim().toLowerCase().replace(/^@/, ''),
-    [username],
-  );
+  const cleanedUsername = cleanUsername(username);
+  const usernameStatus = useUsernameAvailability(cleanedUsername);
+  const onUsernameStep = step === steps;
 
-  // Debounced availability check (mirrors SignUpScreen).
+  // Android back: from the username step back to the name; on the first step there is
+  // nothing before it (this is a gate, not a stack screen), so it is swallowed.
   useEffect(() => {
-    if (cleanedUsername.length === 0) {
-      setUsernameStatus('idle');
-      return;
-    }
-    if (!USERNAME_RE.test(cleanedUsername)) {
-      setUsernameStatus('invalid');
-      return;
-    }
-    setUsernameStatus('checking');
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const db = supabase as any;
-      const { data, error: rpcError } = await db.rpc('is_username_available', {
-        p_username: cleanedUsername,
-      });
-      if (cancelled) { return; }
-      if (rpcError) {
-        setUsernameStatus('error');
-        return;
-      }
-      setUsernameStatus(data ? 'available' : 'taken');
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [cleanedUsername]);
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step > 1) { setError(''); setStep(s => s - 1); }
+      return true;
+    });
+    return () => sub.remove();
+  }, [step]);
+
+  const nextFromName = useCallback(() => {
+    const problem = stepProblem({ kind: 'name', displayName });
+    if (problem) { setError(problem); return; }
+    setError('');
+    setStep(2);
+  }, [displayName]);
 
   const handleCreate = async () => {
-    if (askForName && !displayName.trim()) {
-      setError('Please enter your name.');
-      return;
+    if (askForName) {
+      const nameProblem = stepProblem({ kind: 'name', displayName });
+      if (nameProblem) { setError(nameProblem); setStep(1); return; }
     }
-    if (!USERNAME_RE.test(cleanedUsername)) {
-      setError('Username must be 3–30 characters: letters, numbers, underscore.');
-      return;
-    }
-    if (usernameStatus === 'taken') {
-      setError('That username is taken. Please choose another.');
-      return;
-    }
+    const problem = stepProblem({ kind: 'username', username: cleanedUsername, status: usernameStatus });
+    if (problem) { setError(problem); return; }
     setLoading(true);
     setError('');
     try {
@@ -124,111 +97,87 @@ export default function ChooseUsernameScreen({
     }
   };
 
-  const handleSignOut = () => {
-    void supabase.auth.signOut();
-  };
+  const signOut = () => { void supabase.auth.signOut(); };
+  const errorBox = error ? <StepError message={error} /> : null;
 
-  const createDisabled =
-    loading ||
-    usernameStatus === 'checking' ||
-    usernameStatus === 'taken' ||
-    usernameStatus === 'invalid' ||
-    cleanedUsername.length === 0 ||
-    (askForName && displayName.trim().length === 0);
+  const emailChip = email ? (
+    <View style={styles.chip} accessible accessibilityLabel={`Signed in as ${email}, verified`}>
+      <Icon name="email" size={14} color={COLORS.purpleLight} />
+      <Text style={styles.chipText} numberOfLines={1}>{email}</Text>
+      <Icon name="check" size={13} color={COLORS.success} weight="bold" />
+    </View>
+  ) : null;
 
-  const initial = (displayName.trim()[0] || cleanedUsername[0] || email?.trim()[0] || '♪').toUpperCase();
+  if (!onUsernameStep) {
+    return (
+      <AuthStep
+        kicker="ALMOST DONE"
+        headline="What's your name?"
+        line="This is how friends see you."
+        step={1}
+        steps={steps}
+        footer={
+          <>
+            <StepButton label="NEXT →" onPress={nextFromName} />
+            <StepLink label="Not you? Sign out" onPress={signOut} />
+          </>
+        }
+      >
+        {emailChip}
+        {errorBox}
+        <StepField label="NAME" below={initialDisplayName ? <Text style={styles.hint}>From your Google account. Change it if you like.</Text> : undefined}>
+          <FormInput
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="Your name"
+            autoCorrect={false}
+            returnKeyType="next"
+            onSubmitEditing={nextFromName}
+            accessibilityLabel="Your name"
+          />
+        </StepField>
+      </AuthStep>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <KeyboardAwareScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.titleSection}>
-          <Text style={styles.appName}>Livil</Text>
-          <Text style={styles.title}>Finish your account</Text>
-          <Text style={styles.subtitle}>
-            Choose a username — this is permanent and can't be changed later.
-          </Text>
-        </View>
-
-        {/* Avatar from Google */}
-        <View style={styles.avatarWrap}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarInitial}>{initial}</Text>
-            </View>
-          )}
-        </View>
-
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.form}>
-          {/* Verified, locked email */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email</Text>
-            <View style={styles.lockedField}>
-              <Text style={styles.lockedText} numberOfLines={1}>
-                {email ?? '—'}
-              </Text>
-              <View style={styles.verifiedPill}>
-                <Icon name="check" size={12} color={SUCCESS_GREEN} />
-                <Text style={styles.verifiedText}>Verified</Text>
-              </View>
-            </View>
-          </View>
-
-          {askForName ? (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Name</Text>
-              <FormInput
-                value={displayName}
-                onChangeText={setDisplayName}
-                placeholder="Your name"
-                autoCorrect={false}
-              />
-            </View>
-          ) : null}
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Username</Text>
-            <FormInput
-              value={username}
-              onChangeText={setUsername}
-              placeholder="@handle"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <UsernameStatusLine status={usernameStatus} />
-          </View>
-
-          <Button
-            label="Create Account"
-            onPress={handleCreate}
-            variant="primary"
-            size="lg"
+    <AuthStep
+      kicker="ALMOST DONE"
+      headline="Pick a username"
+      line="How friends find you. You can't change it later."
+      step={steps}
+      steps={steps}
+      onBack={steps > 1 ? () => { setError(''); setStep(1); } : undefined}
+      footer={
+        <>
+          <StepButton
+            label="NEXT →"
+            onPress={() => { void handleCreate(); }}
             busy={loading}
-            disabled={createDisabled}
-            fullWidth
+            disabled={!usernameReady(cleanedUsername, usernameStatus)}
           />
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Not you? </Text>
-          <TouchableOpacity onPress={handleSignOut} activeOpacity={0.7}>
-            <Text style={styles.footerLink}>Sign out</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAwareScrollView>
-    </SafeAreaView>
+          {/* With no name step (Apple), this is the first screen: keep the way out here. */}
+          {steps === 1 ? <StepLink label="Not you? Sign out" onPress={signOut} /> : null}
+        </>
+      }
+    >
+      {steps === 1 ? emailChip : null}
+      {errorBox}
+      <StepField label="USERNAME" below={<UsernameStatusLine status={usernameStatus} />}>
+        <FormInput
+          value={username}
+          onChangeText={setUsername}
+          placeholder="handle"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={() => { void handleCreate(); }}
+          accessibilityLabel="Username"
+          leading={<Text style={styles.at}>@</Text>}
+        />
+      </StepField>
+    </AuthStep>
   );
 }
 
@@ -257,115 +206,21 @@ async function appleDisplayName(
   }
 }
 
-function UsernameStatusLine({ status }: { status: UsernameStatus }) {
-  if (status === 'idle') { return null; }
-  if (status === 'checking') {
-    return (
-      <View style={statusStyles.row}>
-        <ActivityIndicator size="small" color={COLORS.textSecondary} />
-        <Text style={[statusStyles.text, statusStyles.muted]}>Checking…</Text>
-      </View>
-    );
-  }
-  if (status === 'available') {
-    return <Text style={[statusStyles.text, statusStyles.success]}>✓ Available</Text>;
-  }
-  if (status === 'taken') {
-    return <Text style={[statusStyles.text, statusStyles.errorText]}>Username taken</Text>;
-  }
-  if (status === 'invalid') {
-    return <Text style={[statusStyles.text, statusStyles.errorText]}>Use 3–30 lowercase letters, numbers, or _</Text>;
-  }
-  return <Text style={[statusStyles.text, statusStyles.errorText]}>Couldn't verify availability</Text>;
-}
-
-const statusStyles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  text: { fontSize: 12, marginTop: -2 },
-  muted: { color: COLORS.textMuted },
-  success: { color: '#22C55E' },
-  errorText: { color: COLORS.error },
-});
-
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: COLORS.bg },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 32 },
-  titleSection: { marginTop: 48, marginBottom: 20 },
-  appName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.purple,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-  subtitle: { fontSize: 15, color: COLORS.textSecondary, lineHeight: 22 },
-  avatarWrap: { alignItems: 'center', marginBottom: 24 },
-  avatar: { width: 88, height: 88, borderRadius: 44 },
-  avatarFallback: {
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  avatarInitial: { fontSize: 36, fontWeight: '800', color: COLORS.purple },
-  errorBox: {
-    backgroundColor: COLORS.errorBg,
-    borderWidth: 1,
-    borderColor: COLORS.errorBorder,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  errorText: { color: COLORS.error, fontSize: 14, lineHeight: 20 },
-  form: { gap: 16 },
-  fieldGroup: { gap: 7 },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  lockedField: {
+  chip: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    gap: 10,
-  },
-  lockedText: { flex: 1, color: COLORS.textSecondary, fontSize: 15 },
-  verifiedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(34,197,94,0.12)',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
   },
-  verifiedText: { color: SUCCESS_GREEN, fontSize: 11, fontWeight: '700' },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 'auto',
-    paddingTop: 36,
-  },
-  footerText: { color: COLORS.textSecondary, fontSize: 14 },
-  footerLink: { color: COLORS.purple, fontSize: 14, fontWeight: '700' },
+  chipText: { flexShrink: 1, fontFamily: FONTS.mono, fontSize: 12, color: COLORS.purpleLight },
+  hint: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.textSecondary },
+  at: { paddingLeft: 14, paddingRight: 2, fontSize: 15, color: COLORS.textSecondary },
 });

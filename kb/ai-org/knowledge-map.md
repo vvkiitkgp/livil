@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -25,7 +25,7 @@ related_adrs: []
 | Documents | 83 |
 | Drift-proof (tier 1 + 4) | 50 |
 | Hand-maintained (tier 3 + 5) | 26 |
-| Past freshness SLA | 2 |
+| Past freshness SLA | 4 |
 | Private-content stubs | 6 |
 
 Tiers 1 and 4 cannot drift by construction — the first is regenerated, the second is never
@@ -36,6 +36,8 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Last verified | SLA |
 |---|---|---|---|
+| `INDEX.md` | chief-architect | 2026-07-20 | 90d |
+| `architecture/overview.md` | chief-architect | 2026-07-20 | 90d |
 | `debt/proposals/0005-restore-the-messages-write-boundary.md` | chief-architect | 2026-07-29 | 30d |
 | `debt/register.md` | chief-architect | 2026-07-21 | 30d |
 
@@ -43,9 +45,9 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-10-18 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-10-19 | 9999d |
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-10-17 | 9999d |
-| `architecture/inventory.md` | principal-client | ALL | 2026-10-18 | 9999d |
+| `architecture/inventory.md` | principal-client | ALL | 2026-10-19 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-10-17 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-10-17 | 9999d |
 
@@ -74,12 +76,12 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/backend.md` | principal-data | P-DA, BE, CR, QA | 2026-07-21 | 90d |
 | `architecture/client.md` | principal-client | P-CL, FE, RF, CR | 2026-07-21 | 90d |
 | `architecture/media-pipeline.md` | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
-| `architecture/overview.md` | chief-architect | ALL | 2026-07-20 | 90d |
+| `architecture/overview.md` ⚠️ | chief-architect | ALL | 2026-07-20 | 90d |
 | `architecture/playback.md` | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
 | `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-10-11 | 90d |
 | `architecture/realtime.md` | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
 | `glossary.md` | chief-architect | ALL | 2026-07-20 | 180d |
-| `INDEX.md` | chief-architect | ALL | 2026-07-20 | 90d |
+| `INDEX.md` ⚠️ | chief-architect | ALL | 2026-07-20 | 90d |
 | `operations/deployment.md` | principal-platform | DO, P-PF | 2026-09-30 | 90d |
 | `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
 | `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-14 | 90d |

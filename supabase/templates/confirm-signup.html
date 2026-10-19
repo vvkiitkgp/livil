@@ -1,0 +1,44 @@
+<!--
+  Supabase → Authentication → Email Templates → "Confirm signup". This file is the source of
+  truth: the dashboard holds a pasted copy (there is no CLI-managed config for this project).
+  Subject: Confirm your email address
+
+  The link goes to livil-music.com/confirm (docs/confirm.html), never to Supabase's own
+  {{ .ConfirmationURL }} — that showed people a long supabase.co address (owner, 2026-10-19).
+  The page verifies {{ .TokenHash }} and opens the app signed in, as the old link did.
+  Paste this ONLY once livil-music.com/confirm is live, or every new sign-up gets a dead link.
+-->
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#0a0a0f;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;">
+      <tr>
+        <td align="center" style="padding:40px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
+            <tr>
+              <td align="center" style="padding-bottom:28px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;letter-spacing:6px;color:#ffffff;">LIVIL</td>
+            </tr>
+            <tr>
+              <td style="background:#12121c;border:1px solid #252545;border-radius:20px;padding:32px 28px;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
+                <p style="margin:0 0 12px;font-family:'Courier New',Courier,monospace;font-size:12px;letter-spacing:3px;color:#8b90a7;">ONE LAST TAP</p>
+                <h1 style="margin:0 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Confirm your email</h1>
+                <p style="margin:0 0 26px;font-size:16px;line-height:1.55;color:#b8b8c8;">Tap the button to finish creating your Livil account.</p>
+                <a href="https://livil-music.com/confirm?token_hash={{ .TokenHash }}&amp;type=email"
+                   style="display:inline-block;padding:14px 32px;border:1.5px solid #8b3dff;border-radius:999px;color:#a855f7;font-size:16px;font-weight:700;text-decoration:none;">Confirm my email</a>
+                <p style="margin:26px 0 0;font-size:13px;line-height:1.5;color:#8b90a7;">Button not working? Open
+                  <a href="https://livil-music.com/confirm?token_hash={{ .TokenHash }}&amp;type=email" style="color:#c9b6ff;">livil-music.com/confirm</a>
+                  on your phone.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 4px 0;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#8b90a7;">
+                If you didn't create a Livil account, ignore this email — nothing was set up.<br />
+                Livil · <a href="https://livil-music.com" style="color:#c9b6ff;text-decoration:none;">livil-music.com</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

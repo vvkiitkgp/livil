@@ -138,6 +138,28 @@ export async function updateProfile(
   emitMyAvatarChanged(patch.avatar_url ?? null);
 }
 
+/**
+ * Sets only the signed-in user's photo — the sign-up photo step, which must not touch the
+ * name, bio or links `updateProfile` writes as a set. Owner's row only (profiles_update_own).
+ */
+export async function setMyAvatar(userId: string, avatarUrl: string): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ avatar_url: avatarUrl })
+    .eq('id', userId);
+  if (error) {throw error;}
+  emitMyAvatarChanged(avatarUrl);
+}
+
+/**
+ * Whether a profile photo is one the person uploaded to Livil (the `avatars` bucket), as
+ * opposed to none or the Google photo `handle_new_user` copied at sign-up. The sign-up photo
+ * step treats an uploaded one as done, on any device.
+ */
+export function isUploadedAvatar(url: string | null | undefined): boolean {
+  return !!url && url.includes(`/storage/v1/object/public/${AVATARS_BUCKET}/`);
+}
+
 const MY_AVATAR_CHANGED = 'livil:profile:my-avatar-changed';
 
 /**

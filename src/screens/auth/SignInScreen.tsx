@@ -9,6 +9,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../../lib/supabase';
+import { useToast } from '../../contexts/ToastContext';
 import { signInWithGoogle } from '../../services/googleAuth';
 import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
@@ -30,6 +31,11 @@ export default function SignInScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  // Set when the password was right but the account's email was never confirmed: the
+  // error then names the inbox (the person may have typed a username) and offers a resend.
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const { showToast } = useToast();
   const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleSignIn = async () => {
@@ -40,6 +46,7 @@ export default function SignInScreen({ navigation }: Props) {
     }
     setLoading(true);
     setError('');
+    setUnconfirmedEmail(null);
 
     let emailToUse = trimmed;
     if (!trimmed.includes('@')) {
@@ -67,8 +74,33 @@ export default function SignInScreen({ navigation }: Props) {
     });
     setLoading(false);
     if (signInError) {
-      setError(signInError.message);
+      // GoTrue says "not confirmed" only after the password checked out, so naming the
+      // address here tells nothing to someone who does not already hold the password.
+      if (signInError.code === 'email_not_confirmed' || /not confirmed/i.test(signInError.message)) {
+        setUnconfirmedEmail(emailToUse);
+        setError(`Confirm your email first. We sent the link to ${emailToUse}.`);
+      } else {
+        setError(signInError.message);
+      }
     }
+  };
+
+  const resendConfirmation = async () => {
+    if (!unconfirmedEmail || resending) {return;}
+    setResending(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email: unconfirmedEmail,
+      options: { emailRedirectTo: 'livil://auth' },
+    });
+    setResending(false);
+    if (resendError) {
+      setError(/rate limit|seconds/i.test(resendError.message)
+        ? 'Please wait a minute before sending another link.'
+        : resendError.message);
+      return;
+    }
+    showToast(`New link sent to ${unconfirmedEmail}`, { kind: 'success' });
   };
 
   const handleGoogleSignIn = async () => {
@@ -113,6 +145,16 @@ export default function SignInScreen({ navigation }: Props) {
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
+              {unconfirmedEmail ? (
+                <Text
+                  style={styles.resendText}
+                  onPress={() => { void resendConfirmation(); }}
+                  suppressHighlighting
+                  accessibilityRole="button"
+                >
+                  {resending ? 'Sending…' : 'Resend the link →'}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -256,6 +298,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.textSecondary,
   },
+  resendText: { marginTop: 10, color: COLORS.purpleLight, fontSize: 14, fontWeight: '700' },
   errorBox: {
     backgroundColor: COLORS.errorBg,
     borderWidth: 1,

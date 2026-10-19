@@ -21,6 +21,10 @@
       "destination": "/vibe.html"
     },
     {
+      "source": "/confirm",
+      "destination": "/confirm.html"
+    },
+    {
       "source": "/studio/:path*",
       "destination": "/studio/index.html"
     }

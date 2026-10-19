@@ -17,6 +17,7 @@ import { hasAcceptedCurrentTerms } from '../services/terms';
 import { sweepAbandonedUploads } from '../services/tracks';
 import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
+import AddPhotoScreen from '../screens/auth/AddPhotoScreen';
 import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
 import RepostScreen from '../screens/main/RepostScreen';
@@ -276,6 +277,10 @@ export default function RootNavigator() {
   // (`profiles.guide_seen_at`). Resolved alongside the other two so the splash covers
   // it and a new user never sees a flash of Home before their tour.
   const [needsGuide, setNeedsGuide] = useState<boolean | null>(null);
+  // The sign-up photo step ("Add your face") runs once, just before the guide, for the
+  // same new accounts (owner, 2026-10-19). Not stored: an app closed on it shows it again
+  // next time, with the guide — it can be skipped, and the guide's own stamp ends both.
+  const [photoStepDone, setPhotoStepDone] = useState(false);
   // Set when a livil://auth deep link carries type=recovery (password reset
   // link) — gates the app behind ResetPasswordScreen until a new password is set.
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false);
@@ -642,17 +647,14 @@ export default function RootNavigator() {
               (session.user?.user_metadata?.name as string | undefined) ??
               null
             }
-            avatarUrl={
-              (session.user?.user_metadata?.avatar_url as string | undefined) ??
-              (session.user?.user_metadata?.picture as string | undefined) ??
-              null
-            }
             // Sign in with Apple already covered name + email; App Review rejects
             // asking again (guideline 4).
             askForName={session.user?.app_metadata?.provider !== 'apple'}
             userId={session.user?.id ?? null}
             onComplete={() => setNeedsUsername(false)}
           />
+        ) : session?.user?.id && needsGuide && !photoStepDone ? (
+          <AddPhotoScreen userId={session.user.id} onDone={() => setPhotoStepDone(true)} />
         ) : session?.user?.id && needsGuide ? (
           <FirstRunGuideScreen
             onDone={() => {
