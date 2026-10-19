@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-443 TypeScript file(s) under `src/`, 92,279 lines.
+446 TypeScript file(s) under `src/`, 92,479 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2521 |
+| `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/ConversationScreen.tsx` | 2244 |
 | `src/screens/main/UploadScreen.tsx` | 2240 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
@@ -47,7 +47,7 @@ reading alone (Constitution P28).
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 20 file(s) over the threshold against **30 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 20 file(s) over the threshold against **31 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -161,11 +161,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-168 file(s), 33,040 lines.
+168 file(s), 32,965 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2521 |
+| `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/components/PostCard.tsx` | 1453 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
@@ -336,12 +336,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-99 file(s), 19,004 lines.
+99 file(s), 19,022 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/tracks.ts` | 1492 |
-| `src/services/posts.ts` | 1310 |
+| `src/services/posts.ts` | 1328 |
 | `src/services/pushNotifications.ts` | 925 |
 | `src/services/activity.ts` | 715 |
 | `src/services/comments.ts` | 620 |
@@ -464,12 +464,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-30 file(s), 2,009 lines.
+31 file(s), 2,116 lines.
 
 | File | Lines |
 |---|---:|
 | `src/hooks/useHomeFeed.ts` | 173 |
 | `src/hooks/__tests__/useHomeFeed.test.tsx` | 115 |
+| `src/hooks/__tests__/usePostLike.test.tsx` | 106 |
 | `src/hooks/__tests__/useRunAfterDismiss.test.tsx` | 98 |
 | `src/hooks/useListeningNow.ts` | 93 |
 | `src/hooks/useRecentSearches.ts` | 85 |
@@ -478,7 +479,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/usePlayFullScreen.ts` | 80 |
 | `src/hooks/useSwitchFade.ts` | 80 |
 | `src/hooks/__tests__/useNewOnLivilDot.test.tsx` | 78 |
-| `src/hooks/usePostLike.ts` | 76 |
+| `src/hooks/usePostLike.ts` | 77 |
 | `src/hooks/useCommentsCountDeltas.ts` | 64 |
 | `src/hooks/__tests__/useProfileTabCache.test.tsx` | 63 |
 | `src/hooks/__tests__/useSwitchFade.test.tsx` | 63 |
@@ -501,7 +502,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-65 file(s), 5,140 lines.
+67 file(s), 5,290 lines.
 
 | File | Lines |
 |---|---:|
@@ -532,10 +533,12 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/listeningStatus.test.ts` | 88 |
 | `src/utils/__tests__/repostShare.test.ts` | 83 |
 | `src/utils/chatTime.ts` | 82 |
+| `src/utils/likeStore.ts` | 82 |
 | `src/utils/__tests__/recentSearches.test.ts` | 78 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
 | `src/utils/authorDisplay.ts` | 72 |
 | `src/utils/recentSearches.ts` | 72 |
+| `src/utils/__tests__/likeStore.test.ts` | 68 |
 | `src/utils/errorMessages.ts` | 68 |
 | `src/utils/__tests__/mentions.test.ts` | 62 |
 | `src/utils/__tests__/recentSearchOpens.test.ts` | 58 |
