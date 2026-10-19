@@ -12,7 +12,7 @@ import { PickDone, PickThree } from '../../components/guide/PickThree';
 import { PICK_COUNT, usePickThree } from '../../components/guide/pickSongs';
 import { useToast } from '../../contexts/ToastContext';
 import { haptics } from '../../utils/haptics';
-import { notificationPermissionGranted, requestPushPermissionInteractive } from '../../services/pushNotifications';
+import { notificationPermissionGranted, requestPermissionThenRegisterInBackground } from '../../services/pushNotifications';
 
 /**
  * The first-run guide: six cards, one short line each, and a step where the new user
@@ -68,10 +68,10 @@ export default function FirstRunGuideScreen({ onDone, onPicked, userId, mode = '
 
   const finishWithNotifications = useCallback(async () => {
     if (!userId) { onDone(); return; }
-    haptics.tap();
     setAsking(true);
-    // The phone's own dialog decides; the guide ends whatever the answer.
-    await requestPushPermissionInteractive(userId).catch(() => false);
+    // The phone's own dialog decides; the guide ends whatever the answer, as soon as it is
+    // given — registration finishes in the background (Button plays its own tap haptic).
+    await requestPermissionThenRegisterInBackground(userId);
     setAsking(false);
     onDone();
   }, [userId, onDone]);
@@ -106,16 +106,17 @@ export default function FirstRunGuideScreen({ onDone, onPicked, userId, mode = '
 
   // Android back walks the cards backwards. On the first card: a replay closes; the
   // first run does nothing (there is no "before" — the OS default would exit the app
-  // in the middle of onboarding). Nothing moves while the reposts are being sent.
+  // in the middle of onboarding).
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (pick.status === 'posting') { return true; }
+      // Nothing moves while the reposts are being sent or the phone's dialog is up.
+      if (pick.status === 'posting' || asking) { return true; }
       if (step > 0) { setStep(s => s - 1); return true; }
       if (mode === 'replay') { onDone(); }
       return true;
     });
     return () => sub.remove();
-  }, [step, mode, onDone, pick.status]);
+  }, [step, mode, onDone, pick.status, asking]);
 
   const left = PICK_COUNT - pick.picks.length;
   const cta = picking
