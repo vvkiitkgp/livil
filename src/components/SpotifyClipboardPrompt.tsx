@@ -106,7 +106,8 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
       tone="primary"
       title="Repost the song you copied?"
       message={track ? `${track.title} · ${artistLine(track)}` : undefined}
-      confirmLabel="Repost"
+      // Not "Repost": it opens the repost screen (caption first), it does not post (owner, 2026-10-19).
+      confirmLabel="New repost"
       cancelLabel="Not now"
       onConfirm={() => answer(true)}
       onCancel={() => answer(false)}
