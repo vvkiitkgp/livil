@@ -6,8 +6,10 @@
 //
 // Server-side so the key never ships and a provider switch is a deploy, not an app update.
 // Signed-in callers only; no database credential; never fetches a caller-supplied URL;
-// returns only the `Gif` shape below. Every GIF returned, from every action, is rated
-// G/PG/PG-13 (normalizeGif) — `lookup` ids come from comment rows anyone can write.
+// returns only the `Gif` shape below. Search and trending return G and PG only (owner,
+// 2026-10-19); `lookup` — GIFs already posted in comments — also keeps PG-13 ones, so a
+// stricter filter never blanks out a comment. Nothing above PG-13 is ever returned: lookup
+// ids come from comment rows anyone can write.
 // GIPHY's terms: media URLs pass through untouched and are never cached or stored.
 //
 // SECRETS: GIPHY_API_KEY (required); GIFS_CALLS_PER_HOUR (optional app-wide budget).
@@ -22,8 +24,10 @@ export const GIF_ID_RE = /^[A-Za-z0-9]{1,64}$/;
  */
 const GIPHY_MEDIA_RE = /^https:\/\/(?:media\d?|i)\.giphy\.com\/\S+$/;
 
-/** G, PG and PG-13. Anything else, or no rating at all, is never returned. */
-export const ALLOWED_RATINGS: ReadonlySet<string> = new Set(['g', 'pg', 'pg-13']);
+/** What search and trending offer: G and PG. */
+export const SEARCH_RATINGS: ReadonlySet<string> = new Set(['g', 'pg']);
+/** What an already-posted GIF may be shown at: also PG-13 (the old search limit). Never more. */
+export const SHOWN_RATINGS: ReadonlySet<string> = new Set(['g', 'pg', 'pg-13']);
 
 export const PAGE_SIZE = 18;
 export const MAX_QUERY_LENGTH = 50;
@@ -80,14 +84,14 @@ function side(value: unknown): number | null {
 
 /**
  * GIPHY's GIF object → our enumerated shape, or null when it is not one we may show: a bad
- * id, a rating above PG-13 (or none), or no usable fixed-width rendition on GIPHY's CDN.
+ * id, a rating outside `ratings` (or none), or no usable fixed-width rendition on GIPHY's CDN.
  */
-export function normalizeGif(raw: unknown): Gif | null {
+export function normalizeGif(raw: unknown, ratings: ReadonlySet<string> = SEARCH_RATINGS): Gif | null {
   if (!raw || typeof raw !== 'object') return null;
   const g = raw as ApiGif;
   if (typeof g.id !== 'string' || !GIF_ID_RE.test(g.id)) return null;
   const rating = typeof g.rating === 'string' ? g.rating.toLowerCase() : '';
-  if (!ALLOWED_RATINGS.has(rating)) return null;
+  if (!ratings.has(rating)) return null;
   const main = g.images?.fixed_width;
   const url = mediaUrl(main?.url);
   const width = side(main?.width);
@@ -274,11 +278,11 @@ async function page(
     ...params,
     limit: String(PAGE_SIZE),
     offset: String(offset),
-    rating: 'pg-13',
+    rating: 'pg',
   });
   if (!body) return json(502, { error: 'GIF search is unavailable' });
   const raw = Array.isArray(body.data) ? body.data : [];
-  const gifs = raw.map(normalizeGif).filter((g): g is Gif => g !== null);
+  const gifs = raw.map(g => normalizeGif(g)).filter((g): g is Gif => g !== null);
   // Paged by what GIPHY returned, not by what survived the filter, so a page whose GIFs
   // were all dropped still moves on to the next one.
   return json(200, {
@@ -356,7 +360,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       if (!res) return json(200, { gifs: {} });
       const found = new Map<string, Gif>();
       for (const raw of Array.isArray(res.data) ? res.data : []) {
-        const gif = normalizeGif(raw);
+        const gif = normalizeGif(raw, SHOWN_RATINGS);
         if (gif) found.set(gif.id, gif);
       }
       // GIPHY answered: an id it did not return (removed, or rated above PG-13 and so

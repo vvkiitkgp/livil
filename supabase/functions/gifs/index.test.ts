@@ -24,6 +24,7 @@ import {
   PAGE_SIZE,
   parseCallsPerHour,
   resetState,
+  SHOWN_RATINGS,
   CALLS_PER_USER_PER_HOUR,
   DEFAULT_CALLS_PER_HOUR,
 } from './app.ts';
@@ -75,12 +76,15 @@ Deno.test('normalizeGif keeps only the enumerated fields, URLs untouched', () =>
   });
 });
 
-Deno.test('normalizeGif refuses anything rated above PG-13, or unrated', () => {
-  for (const rating of ['g', 'pg', 'pg-13', 'PG-13']) {
+Deno.test('normalizeGif: search offers G and PG only; posted GIFs may also be PG-13; never more', () => {
+  for (const rating of ['g', 'pg', 'G', 'PG']) {
     assert(normalizeGif(apiGif(ID, { rating })), rating);
   }
+  assertEquals(normalizeGif(apiGif(ID, { rating: 'pg-13' })), null, 'pg-13 is not offered in search');
+  assert(normalizeGif(apiGif(ID, { rating: 'pg-13' }), SHOWN_RATINGS), 'pg-13 still shows once posted');
   for (const rating of ['r', 'R', 'nc-17', 'y', '', null, undefined, 3]) {
     assertEquals(normalizeGif(apiGif(ID, { rating })), null, String(rating));
+    assertEquals(normalizeGif(apiGif(ID, { rating }), SHOWN_RATINGS), null, String(rating));
   }
 });
 
@@ -224,7 +228,7 @@ Deno.test('without a key nothing reaches GIPHY', async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test('search asks GIPHY for one PG-13 page and returns only our shape', async () => {
+Deno.test('search asks GIPHY for one PG page and returns only our shape', async () => {
   resetState();
   const { deps: d, calls } = deps({
     respond: () => Response.json({
@@ -245,7 +249,7 @@ Deno.test('search asks GIPHY for one PG-13 page and returns only our shape', asy
   const url = new URL(calls[0].url);
   assertEquals(url.origin + url.pathname, 'https://api.giphy.com/v1/gifs/search');
   assertEquals(url.searchParams.get('q'), 'happy dance');
-  assertEquals(url.searchParams.get('rating'), 'pg-13');
+  assertEquals(url.searchParams.get('rating'), 'pg');
   assertEquals(url.searchParams.get('limit'), String(PAGE_SIZE));
   assertEquals(url.searchParams.get('offset'), '36');
   assertEquals(url.searchParams.get('api_key'), KEY);
@@ -258,7 +262,7 @@ Deno.test('trending is the same, without a query', async () => {
   assertEquals(body.gifs.length, 2);
   const url = new URL(calls[0].url);
   assertEquals(url.pathname, '/v1/gifs/trending');
-  assertEquals(url.searchParams.get('rating'), 'pg-13');
+  assertEquals(url.searchParams.get('rating'), 'pg');
   assertEquals(url.searchParams.get('offset'), '0');
   assertEquals(url.searchParams.has('q'), false);
 });
@@ -332,8 +336,9 @@ Deno.test('the key never reaches a log line', async () => {
 Deno.test('lookup answers every id GIPHY answered, null for removed or too-high rated', async () => {
   resetState();
   const { deps: d, calls } = deps({
-    // ID2 comes back rated R: GIPHY answered, and the answer is "not for us".
-    respond: () => Response.json({ data: [apiGif(ID), apiGif(ID2, { rating: 'r' })] }),
+    // ID comes back PG-13: already posted, so it still shows. ID2 comes back rated R:
+    // GIPHY answered, and the answer is "not for us".
+    respond: () => Response.json({ data: [apiGif(ID, { rating: 'pg-13' }), apiGif(ID2, { rating: 'r' })] }),
   });
   const res = await handle(post({ action: 'lookup', ids: [ID, ID2, 'gone123', ID] }), d);
   const body = await res.json() as { gifs: Record<string, Gif | null> };
