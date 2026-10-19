@@ -15,6 +15,7 @@ jest.mock('@react-native-firebase/messaging', () => ({
   getToken: () => mockGetToken(),
   onTokenRefresh: () => () => {},
   hasPermission: async () => mockPermission,
+  deleteToken: async () => {},
   requestPermission: async () => mockPermission,
   AuthorizationStatus: { NOT_DETERMINED: -1, DENIED: 0, AUTHORIZED: 1, PROVISIONAL: 2 },
 }));
@@ -33,11 +34,16 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 jest.mock('../../../lib/supabase', () => ({
-  supabase: { from: () => ({ upsert: (row: unknown, opts: unknown) => mockUpsert(row, opts) }) },
+  supabase: {
+    from: () => ({
+      upsert: (row: unknown, opts: unknown) => mockUpsert(row, opts),
+      delete: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
+    }),
+  },
 }));
 jest.mock('../../navigation/navigationRef', () => ({ navigateWhenReady: jest.fn() }));
 
-import { registerDeviceForUser, registerIfNewlyAllowed } from '../pushNotifications';
+import { disablePushForUser, registerDeviceForUser, registerIfNewlyAllowed } from '../pushNotifications';
 
 const STATUS = 'livil.push_prompt_status';
 
@@ -53,6 +59,29 @@ it('said no in the app, later allowed in Settings: the phone is registered', asy
   await registerDeviceForUser('me');
   expect(mockUpsert).toHaveBeenCalledTimes(1);
   expect(mockStore.get(STATUS)).toBe('accepted');
+});
+
+it('switched off in Livil\'s Settings: stays off, even with the OS permission on', async () => {
+  await disablePushForUser('me');
+  await registerDeviceForUser('me');
+  await registerIfNewlyAllowed('me');
+  expect(mockUpsert).not.toHaveBeenCalled();
+  expect(mockStore.get(STATUS)).toBe('off');
+});
+
+it('one account\'s off switch does not bind the next account on the same phone', async () => {
+  await disablePushForUser('riya');
+  await registerDeviceForUser('arjun');
+  expect(mockUpsert).toHaveBeenCalledTimes(1);
+  expect(mockUpsert.mock.calls[0][0]).toEqual(expect.objectContaining({ user_id: 'arjun' }));
+});
+
+it('two registrations at once (app + inbox card on return): one device, one row', async () => {
+  mockStore.set(STATUS, 'denied');
+  await Promise.all([registerIfNewlyAllowed('me'), registerIfNewlyAllowed('me')]);
+  const ids = new Set(mockUpsert.mock.calls.map(c => (c[0] as { device_id: string }).device_id));
+  expect(ids.size).toBe(1);
+  expect(mockUpsert).toHaveBeenCalledTimes(1);
 });
 
 it('still not allowed: nothing is registered, whatever the earlier answer', async () => {
