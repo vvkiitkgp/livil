@@ -29,6 +29,7 @@ import {
   isAllowedAvatarUrl,
   isBlockedBetween,
   isCategoryMuted,
+  preferenceColumnsFor,
   isPersonToPerson,
   isValidKind,
   KINDS,
@@ -129,7 +130,7 @@ Deno.test('channelFor routes each kind to the channel the client created', () =>
 // silently stops a user's notifications with no error anyone would see.
 
 const prefsRow = (over: Record<string, boolean> = {}) => ({
-  social: true, activity: true, messages: true, jam: true, ...over,
+  social: true, activity: true, messages: true, jam: true, mentions: true, ...over,
 });
 
 Deno.test('isCategoryMuted: a user who never set a preference gets everything', async () => {
@@ -197,6 +198,20 @@ Deno.test('every channelFor() result is a column on notification_preferences', a
     const admin = fakeAdmin(() => ({ data: prefsRow({ [category]: false }) }));
     assertEquals(await isCategoryMuted(admin, B, kind), true, `muting '${category}' did not suppress '${kind}'`);
   }
+});
+
+Deno.test('isCategoryMuted: mentions — their own switch, and Activity silences them too', async () => {
+  const muted = async (over: Record<string, boolean>) =>
+    await isCategoryMuted(fakeAdmin(() => ({ data: prefsRow(over) })), B, 'activity_mention');
+  assertEquals(await muted({}), false);
+  assertEquals(await muted({ mentions: false }), true);
+  assertEquals(await muted({ activity: false }), true);
+  // The Mentions switch touches nothing else.
+  assertEquals(await isCategoryMuted(fakeAdmin(() => ({ data: prefsRow({ mentions: false }) })), B, 'activity_like'), false);
+  // Before the column exists (no `mentions` in the row): not muted.
+  const { mentions: _gone, ...older } = prefsRow();
+  assertEquals(await isCategoryMuted(fakeAdmin(() => ({ data: older })), B, 'activity_mention'), false);
+  assertEquals(preferenceColumnsFor('activity_mention'), ['activity', 'mentions']);
 });
 
 Deno.test('defaultBody: kinds without client copy get server-generated text', () => {
@@ -1551,4 +1566,40 @@ Deno.test('handler: an oversized body is refused before anything reads it', asyn
     body: 'x'.repeat(20_000),
   }));
   assertEquals(res.status, 413);
+});
+
+// ── activity_mention (20261109000000) ───────────────────────────────────────
+Deno.test('activity_mention: allowed by the mention row from this actor; quote and place from the row', async () => {
+  const admin = activityAdmin([
+    { recipient_id: B, type: 'mention', actor_id: A, post_id: POST, payload: { where: 'comment', text: '@riya hear this' } },
+  ]);
+  const grant = await authorize(admin, 'activity_mention', A, B);
+  assertEquals(grant?.activity, { aggCount: 1, commentText: '@riya hear this', postId: POST, mentionWhere: 'comment' });
+  // Someone else's tag is not evidence for this actor.
+  assertEquals(await allows(admin, 'activity_mention', C, B), false);
+  // Another kind's row is not a mention, nor the other way round.
+  assertEquals(await allows(activityAdmin([{ recipient_id: B, type: 'comment', actor_id: A, payload: {} }]), 'activity_mention', A, B), false);
+  assertEquals(await allows(admin, 'activity_comment', A, B), false);
+  // Time-bounded like every other.
+  assertEquals(await allows(activityAdmin([
+    { recipient_id: B, type: 'mention', actor_id: A, payload: {}, created_at: MINUTES_AGO(11) },
+  ]), 'activity_mention', A, B), false);
+  // Never yourself.
+  assertEquals(await allows(activityAdmin([{ recipient_id: A, type: 'mention', actor_id: A, payload: {} }]), 'activity_mention', A, A), false);
+});
+
+Deno.test('composeContent: a mention says where, and quotes the tagged text', () => {
+  const post: Grant = { activity: { aggCount: 1, commentText: "this one's for @riya 🎧", postId: POST, mentionWhere: 'post' } };
+  assertEquals(composeContent('activity_mention', post, riya, {}),
+    { title: 'Riya', body: "tagged you in a post: “this one's for @riya 🎧”" });
+  const comment: Grant = { activity: { aggCount: 1, commentText: '@riya listen to the drop', postId: POST, mentionWhere: 'comment' } };
+  assertEquals(composeContent('activity_mention', comment, riya, {}),
+    { title: 'Riya', body: 'mentioned you in a comment: “@riya listen to the drop”' });
+  const bare: Grant = { activity: { aggCount: 1, commentText: null, postId: POST, mentionWhere: 'post' } };
+  assertEquals(composeContent('activity_mention', bare, riya, {}).body, 'tagged you in a post');
+});
+
+Deno.test('activity_mention opens Activity and shows the actor\'s photo, on the Activity channel', () => {
+  assertEquals(channelFor('activity_mention'), 'activity');
+  assertEquals(KINDS.has('activity_mention'), true);
 });

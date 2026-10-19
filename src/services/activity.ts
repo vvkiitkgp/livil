@@ -23,7 +23,8 @@ export type ActivityType =
   | 'badge_granted'
   | 'content_removed'
   | 'comment_like'
-  | 'comment_reply';
+  | 'comment_reply'
+  | 'mention';
 
 export type ActivityActor = {
   id: string;
@@ -71,6 +72,16 @@ export type ActivityItem = ActivityBase &
         actor: ActivityActor;
         post: ActivityPostRef;
         commentText: string | null;
+        commentId: string | null;
+      }
+    // You were @-tagged in someone's caption (`where: 'post'`) or comment. `text` is the
+    // caption / comment as the server read it; commentId opens the comments at that one.
+    | {
+        type: 'mention';
+        actor: ActivityActor;
+        post: ActivityPostRef;
+        where: 'post' | 'comment';
+        text: string | null;
         commentId: string | null;
       }
     | { type: 'play_milestone'; post: ActivityPostRef; threshold: number }
@@ -127,6 +138,10 @@ type RawActivityRow = {
     track_title?: string;
     /** content_removed: the operator's own words, shown verbatim. */
     reason?: string;
+    /** mention: tagged in a post's caption or in a comment. */
+    where?: string;
+    /** mention: the caption / comment, as the server read it (≤ 280). */
+    text?: string;
   } | null;
   actor_username: string | null;
   actor_display_name: string | null;
@@ -196,6 +211,16 @@ function rowToItem(row: RawActivityRow): ActivityItem | null {
         actor: rowToActor(row),
         post: rowToPost(row),
         commentText: row.payload?.comment_text ?? null,
+        commentId: row.payload?.comment_id ?? null,
+      };
+    case 'mention':
+      return {
+        ...base,
+        type: 'mention',
+        actor: rowToActor(row),
+        post: rowToPost(row),
+        where: row.payload?.where === 'comment' ? 'comment' : 'post',
+        text: row.payload?.text ?? null,
         commentId: row.payload?.comment_id ?? null,
       };
     case 'play_milestone':
@@ -302,6 +327,14 @@ export function activityBubbleParts(item: ActivityItem): ActivityBubbleParts {
       const snippet = item.commentText?.trim();
       const quoted = snippet ? `: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”` : '';
       return { actor: item.actor, text: ` replied to your comment${quoted}` };
+    }
+    case 'mention': {
+      const snippet = item.text?.trim();
+      const quoted = snippet ? `: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”` : '';
+      return {
+        actor: item.actor,
+        text: item.where === 'comment' ? ` mentioned you in a comment${quoted}` : ` tagged you in a post${quoted}`,
+      };
     }
     case 'play_milestone':
       // The first milestone (5 plays, activity_record_play) is the moment strangers start
@@ -607,6 +640,36 @@ export async function notifyCommentActivity(
     // Before migration 20261031000000 the function does not exist: no notification, as before.
     console.warn('[activity] notifyCommentActivity failed', e);
     return null;
+  }
+}
+
+/**
+ * Tell the people @-tagged in your post's caption or your comment (20261109000000). The
+ * server reads the tags from the STORED text and decides who is told (≤ 5, once each, never
+ * across a block, never someone who cannot see the post); this pushes to whoever it returns.
+ * Fire-and-forget: before the migration the function is missing, and nothing happens.
+ */
+export async function notifyMentions(target: { postId: string } | { commentId: string }): Promise<void> {
+  try {
+    const { data, error } = await db.rpc(
+      'activity_notify_mentions',
+      'postId' in target ? { p_post_id: target.postId } : { p_comment_id: target.commentId },
+    );
+    if (error) { throw error; }
+    const rows = (Array.isArray(data) ? data : []) as Array<{ recipient_id: string; actor_display_name: string | null }>;
+    const where = 'postId' in target ? 'tagged you in a post' : 'mentioned you in a comment';
+    for (const row of rows) {
+      // The server writes the real copy from the row it proved (send-push composeContent).
+      void sendPush({
+        recipientUserId: row.recipient_id,
+        kind: 'activity_mention',
+        title: 'Livil',
+        body: `${row.actor_display_name ?? 'Someone'} ${where}`,
+        data: { route: 'ActivityCenter' },
+      });
+    }
+  } catch (e) {
+    console.warn('[activity] notifyMentions failed', e);
   }
 }
 

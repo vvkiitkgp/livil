@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { noUserError } from './session';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { notifyCommentActivity, notifyPostActivity } from './activity';
+import { notifyCommentActivity, notifyMentions, notifyPostActivity } from './activity';
 import { GIF_ID_RE } from '../utils/gifIds';
 
 export type CommentAuthor = {
@@ -372,6 +372,8 @@ export async function createComment(
       commentId: created.id,
     });
   })();
+  // People @-tagged in it (the server reads the stored comment and decides who).
+  if (trimmed.includes('@')) { void notifyMentions({ commentId: created.id }); }
   return rowToNode(created, false);
 }
 

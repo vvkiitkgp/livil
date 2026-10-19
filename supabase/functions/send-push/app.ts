@@ -66,6 +66,8 @@ export const KINDS = new Set([
   'activity_like', 'activity_comment', 'activity_repost', 'activity_milestone',
   // "liked your comment" / "replied to your comment" (20261031000000).
   'activity_comment_like', 'activity_comment_reply',
+  // "tagged you in a post" / "mentioned you in a comment" (20261109000000).
+  'activity_mention',
   'badge_granted',
 ]);
 
@@ -176,6 +178,8 @@ export type Grant = {
     postId?: string | null;
     /** activity_comment_like: the liked comment — one card per comment (buildPush). */
     commentId?: string | null;
+    /** activity_mention: tagged in a post's caption, or in a comment (the row's payload). */
+    mentionWhere?: 'post' | 'comment';
   };
   /**
    * What the push names: the liked post's song, looked up after authorization from
@@ -231,6 +235,17 @@ function json(status: number, payload: Record<string, unknown>): Response {
   });
 }
 
+/**
+ * The notification_preferences columns that can silence `kind`: its channel's, and for a
+ * mention also `mentions` (20261109000000) — a finer switch inside Activity. Mentions show
+ * on the Activity channel, the one every installed app already created, so an older build
+ * still displays them; turning Activity off silences them too.
+ */
+export function preferenceColumnsFor(kind: string): string[] {
+  const channel = channelFor(kind);
+  return kind === 'activity_mention' ? [channel, 'mentions'] : [channel];
+}
+
 // ── Per-category preference. ALLOW BY DEFAULT. ─────────────────────────────
 // Whether the recipient has switched this kind's category off in Livil's settings.
 //
@@ -240,23 +255,24 @@ function json(status: number, payload: Record<string, unknown>): Response {
 // has never touched the setting must keep receiving notifications, and a transient
 // database error must not silently stop delivery. Only an explicit `false` suppresses.
 //
-// Selects all four columns and indexes in JS rather than interpolating the category into
-// .select(). channelFor() only ever returns one of four literals so either is safe today,
-// but a fixed select cannot become an injection point if that ever stops being true.
+// Reads the whole row and indexes in JS rather than interpolating the category into
+// .select(), so the category can never become an injection point.
 export async function isCategoryMuted(
   admin: SupabaseClient,
   recipient: string,
   kind: string,
 ): Promise<boolean> {
-  const category = channelFor(kind);
+  const columns = preferenceColumnsFor(kind);
   const { data, error } = await admin
     .from('notification_preferences')
-    .select('social, activity, messages, jam')
+    // `*`, not a column list: before 20261109000000 there is no `mentions` column, and naming
+    // it would fail the whole read — which reads as "not muted" for EVERY category.
+    .select('*')
     .eq('user_id', recipient)
     .maybeSingle();
 
   if (error || !data) return false;
-  return (data as Record<string, unknown>)[category] === false;
+  return columns.some(c => (data as Record<string, unknown>)[c] === false);
 }
 
 /**
@@ -424,6 +440,9 @@ export async function authorize(
 
     case 'activity_milestone':
       return await authorizeMilestone(admin, actor, recipient);
+
+    case 'activity_mention':
+      return await authorizeMention(admin, actor, recipient);
 
     default:
       return null; // deny-by-default, incl. unknown kinds
@@ -627,6 +646,39 @@ async function authorizeCommentOrRepost(
 }
 
 /**
+ * activity_mention — activity_notify_mentions writes one 'mention' row per person tagged,
+ * after checking the caller wrote the caption / comment, that the recipient can see the post
+ * and is not blocked either way. The quote is that row's payload.text, which the function
+ * read from the stored text, so it is what the actor really wrote.
+ */
+async function authorizeMention(
+  admin: SupabaseClient,
+  actor: string,
+  recipient: string,
+): Promise<Grant | null> {
+  const { data } = await admin
+    .from('activity_notifications')
+    .select('payload, post_id')
+    .eq('recipient_id', recipient)
+    .eq('type', 'mention')
+    .eq('actor_id', actor)
+    .gte('created_at', evidenceSince())
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const row = ((data ?? []) as Array<{ payload: unknown; post_id: unknown }>)[0];
+  if (!row) return null;
+  const payload = (row.payload ?? {}) as { text?: unknown; where?: unknown };
+  return {
+    activity: {
+      aggCount: 1,
+      commentText: typeof payload.text === 'string' && payload.text.trim() ? payload.text : null,
+      postId: isUuid(row.post_id) ? row.post_id : null,
+      mentionWhere: payload.where === 'comment' ? 'comment' : 'post',
+    },
+  };
+}
+
+/**
  * activity_milestone — activity_record_play inserts a 'play_milestone' row (actor_id NULL,
  * payload.threshold) the moment a LISTENER's play crosses a threshold, and returns the
  * author for the client to push. Two facts are required: the milestone row exists and is
@@ -754,6 +806,7 @@ export type PostSubject = {
 const PHOTO_KINDS = new Set([
   'activity_like', 'activity_comment', 'activity_repost',
   'activity_comment_like', 'activity_comment_reply',
+  'activity_mention',
 ]);
 
 /**
@@ -830,6 +883,7 @@ const KIND_ROUTES: Record<string, readonly string[]> = {
   activity_milestone: ['ActivityCenter'],
   activity_comment_like: ['ActivityCenter'],
   activity_comment_reply: ['ActivityCenter'],
+  activity_mention: ['ActivityCenter'],
   badge_granted: ['ActivityCenter'],
 };
 
@@ -997,6 +1051,16 @@ export function composeContent(
       return out(activityName(actor), snippet
         ? `replied to your comment: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”`
         : 'replied to your comment');
+    }
+
+    // The quote is the tagged text itself, read by activity_notify_mentions from the stored
+    // caption / comment — never the request's body.
+    case 'activity_mention': {
+      const snippet = grant.activity?.commentText;
+      const what = grant.activity?.mentionWhere === 'comment' ? 'mentioned you in a comment' : 'tagged you in a post';
+      return out(activityName(actor), snippet
+        ? `${what}: “${truncateInline(snippet, COMMENT_INLINE_MAX)}”`
+        : what);
     }
 
     case 'activity_repost': {

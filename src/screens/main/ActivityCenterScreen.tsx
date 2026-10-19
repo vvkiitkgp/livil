@@ -150,7 +150,9 @@ export default function ActivityCenterScreen() {
     // than the first page — and the post it landed on was often another post of the same
     // song, so it read as the right one with the wrong counts.
     // A comment, a like on yours, a reply to yours: open the post's comments at that one.
-    if (item.type === 'comment' || item.type === 'comment_like' || item.type === 'comment_reply') {
+    // A tag in a comment opens the comments at it; a tag in a caption, the post.
+    if (item.type === 'comment' || item.type === 'comment_like' || item.type === 'comment_reply'
+        || (item.type === 'mention' && item.where === 'comment')) {
       navigation.navigate('PostDetail', {
         postId,
         openComments: true,

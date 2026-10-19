@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { noUserError } from './session';
+import { notifyMentions } from './activity';
 import type { Json } from '../../lib/database.types';
 import type { PendingCollaborator } from '../constants/roles';
 import { MAX_TAGS_PER_TRACK, normalizeTags } from '../../shared/constants/tags';
@@ -791,6 +792,9 @@ async function finishTrack({
   if (postError || !postRow) {
     throw new Error(`Failed to create post: ${postError?.message ?? 'unknown error'}`);
   }
+
+  // People @-tagged in the description, which is the post's caption (read server-side).
+  if (description?.includes('@')) { void notifyMentions({ postId: (postRow as { id: string }).id }); }
 
   // Not awaited: an acknowledgement that fails to land must not cost a creator an upload
   // they were entitled to make. It is logged rather than surfaced, because this is the half

@@ -51,6 +51,7 @@ function toRenderFormat(item: ActivityItem): RenderFormat {
     case 'play_milestone':
     case 'comment_like':
     case 'comment_reply':
+    case 'mention':
       return { format: 'post', post: item.post };
     // Text, not 'post': there is no track behind a badge. The icon is the generic award
     // mark rather than the badge artwork — the bubble is a 20px monochrome slot and the
@@ -110,7 +111,7 @@ export default function ActivityBubble({
   const parts = activityBubbleParts(item);
   const actor = parts.actor;
   // A comment of yours can sit on anyone's post: there the post is not "yours".
-  const someoneElsesPost = item.type === 'comment_like' || item.type === 'comment_reply';
+  const someoneElsesPost = item.type === 'comment_like' || item.type === 'comment_reply' || item.type === 'mention';
   const name = actor ? (actor.displayName?.trim() || `@${actor.username}`) : null;
 
   return (
