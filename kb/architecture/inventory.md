@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-419 TypeScript file(s) under `src/`, 89,807 lines.
+423 TypeScript file(s) under `src/`, 90,141 lines.
 
 ## Size hotspots
 
@@ -28,12 +28,12 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2521 |
 | `src/screens/main/UploadScreen.tsx` | 2225 |
-| `src/screens/main/ConversationScreen.tsx` | 2078 |
+| `src/screens/main/ConversationScreen.tsx` | 2194 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
 | `src/screens/main/ProfileScreen.tsx` | 1428 |
-| `src/components/PostCard.tsx` | 1424 |
+| `src/components/PostCard.tsx` | 1425 |
 | `src/components/CommentsSheet.tsx` | 1175 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -103,12 +103,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,297 lines.
+50 file(s), 27,413 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/UploadScreen.tsx` | 2225 |
-| `src/screens/main/ConversationScreen.tsx` | 2078 |
+| `src/screens/main/ConversationScreen.tsx` | 2194 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
@@ -160,12 +160,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-161 file(s), 31,961 lines.
+162 file(s), 32,053 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2521 |
-| `src/components/PostCard.tsx` | 1424 |
+| `src/components/PostCard.tsx` | 1425 |
 | `src/components/CommentsSheet.tsx` | 1175 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
@@ -175,11 +175,11 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/PickThree.tsx` | 468 |
 | `src/components/QueueList.tsx` | 425 |
 | `src/components/DetailView.tsx` | 411 |
+| `src/components/ChatSongPicker.tsx` | 407 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/AddUserSheet.tsx` | 392 |
-| `src/components/ChatSongPicker.tsx` | 384 |
 | `src/components/SharePostSheet.tsx` | 372 |
-| `src/components/SpotifyPostCard.tsx` | 371 |
+| `src/components/SpotifyPostCard.tsx` | 372 |
 | `src/components/CopyrightMatchModal.tsx` | 370 |
 | `src/components/Icon.tsx` | 334 |
 | `src/components/PostLikersSheet.tsx` | 330 |
@@ -218,6 +218,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/UploadPreviewCard.tsx` | 183 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ChatReplySnippet.tsx` | 179 |
+| `src/components/GifPicker.tsx` | 175 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/ProfileLinkCard.tsx` | 173 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 173 |
@@ -229,7 +230,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProfileTabBar.tsx` | 167 |
 | `src/components/guide/pickSongs.ts` | 167 |
 | `src/components/FullScreenFrame.tsx` | 166 |
-| `src/components/GifPicker.tsx` | 166 |
 | `src/components/MentionSuggestions.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
 | `src/components/__tests__/GifPicker.test.tsx` | 164 |
@@ -269,12 +269,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/CommentGifCard.test.tsx` | 100 |
 | `src/components/guide/cards.ts` | 100 |
 | `src/components/ProgressiveImage.tsx` | 99 |
+| `src/components/CommentGifCard.tsx` | 98 |
 | `src/components/LikedByLine.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 92 |
 | `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/auth/usernameCheck.tsx` | 89 |
-| `src/components/CommentGifCard.tsx` | 87 |
 | `src/components/MutualsLine.tsx` | 87 |
 | `src/components/RealtimeConnectionGate.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
@@ -308,6 +308,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/amplitudeBars.test.ts` | 57 |
 | `src/components/CollabAvatar.tsx` | 55 |
 | `src/components/ListeningStatusReporter.tsx` | 48 |
+| `src/components/ChatGifPicker.tsx` | 47 |
 | `src/components/__tests__/FormInput.test.tsx` | 47 |
 | `src/components/GoogleGlyph.tsx` | 46 |
 | `src/components/MusicScoreTag.tsx` | 43 |
@@ -328,7 +329,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-96 file(s), 18,564 lines.
+97 file(s), 18,621 lines.
 
 | File | Lines |
 |---|---:|
@@ -342,7 +343,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/share.ts` | 484 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/playlists.ts` | 388 |
-| `src/services/messages.ts` | 381 |
+| `src/services/messages.ts` | 384 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/spotify.ts` | 348 |
 | `src/services/uploads.ts` | 344 |
@@ -413,6 +414,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/teamMessages.ts` | 57 |
 | `src/services/__tests__/scanUploadRequest.test.ts` | 56 |
 | `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
+| `src/services/__tests__/chatGifMessage.test.ts` | 54 |
 | `src/services/__tests__/clipboard.test.ts` | 53 |
 | `src/services/__tests__/trackPlaysTotals.test.ts` | 52 |
 | `src/services/clipboard.ts` | 50 |
@@ -487,7 +489,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-54 file(s), 4,645 lines.
+56 file(s), 4,714 lines.
 
 | File | Lines |
 |---|---:|
@@ -528,6 +530,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/homeTabsPin.test.ts` | 49 |
 | `src/utils/mutualsText.ts` | 48 |
 | `src/utils/__tests__/shareLinkGate.test.ts` | 47 |
+| `src/utils/chatGif.ts` | 44 |
 | `src/utils/shareLinkGate.ts` | 44 |
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
 | `src/utils/commentsDelta.ts` | 40 |
@@ -539,6 +542,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/likeCount.test.ts` | 29 |
 | `src/utils/__tests__/returningListener.test.ts` | 29 |
 | `src/utils/__tests__/passwordPolicy.test.ts` | 27 |
+| `src/utils/__tests__/chatGif.test.ts` | 25 |
 | `src/utils/__tests__/commentTime.test.ts` | 23 |
 | `src/utils/avoidRepeatTop.ts` | 23 |
 | `src/utils/commentTime.ts` | 20 |
