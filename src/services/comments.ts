@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { noUserError } from './session';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { notifyCommentActivity, notifyPostActivity } from './activity';
+import { notifyCommentActivity, notifyMentions, notifyPostActivity } from './activity';
 import { GIF_ID_RE } from '../utils/gifIds';
 
 export type CommentAuthor = {
@@ -372,6 +372,8 @@ export async function createComment(
       commentId: created.id,
     });
   })();
+  // People @-tagged in it (the server reads the stored comment and decides who).
+  if (trimmed.includes('@')) { void notifyMentions({ commentId: created.id }); }
   return rowToNode(created, false);
 }
 
@@ -470,29 +472,58 @@ export type MentionProfile = {
   avatarUrl: string | null;
 };
 
+/**
+ * People to suggest after `@`: by username OR by name, like Instagram (owner, 2026-10-19:
+ * typing a friend's name found nothing). Whatever matched, the tag inserted is always the
+ * @username — usernames never change, so a stored tag always points at the same person.
+ *
+ * Ranked: username starts with it, then a name that starts with it, then a later word of the
+ * name ("Riya Shah" for "sha"). Friends (`isFriend`, from MentionSuggestions) float up within
+ * that order. The partial is [a-z0-9_] only (detectMentionTrigger), so
+ * nothing in it can break the ilike pattern beyond the escaped % and _.
+ */
 export async function searchUsernamesForMention(
   query: string,
   limit: number = 6,
+  isFriend?: (userId: string) => boolean,
 ): Promise<MentionProfile[]> {
   const trimmed = query.trim().toLowerCase();
-  if (!trimmed) {
+  // Only what a username can be. Callers pass detectMentionTrigger's partial, which already is;
+  // this keeps a future free-text caller from widening the match (PostgREST reads `*` as `%`).
+  if (!/^[a-z0-9_]{1,30}$/.test(trimmed)) {
     return [];
   }
-  const pattern = `${trimmed.replace(/[%_]/g, '\\$&')}%`;
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_url')
-    .ilike('username', pattern)
-    .order('username', { ascending: true })
-    .limit(limit);
-  if (error) {
-    throw new Error(error.message);
+  const esc = trimmed.replace(/[%_\\]/g, '\\$&');
+  const columns = 'id, username, display_name, avatar_url';
+  const ask = (column: 'username' | 'display_name', pattern: string) =>
+    supabase.from('profiles').select(columns).ilike(column, pattern).order(column, { ascending: true }).limit(limit);
+  const [byUsername, byNameStart, byLaterWord] = await Promise.all([
+    ask('username', `${esc}%`),
+    ask('display_name', `${esc}%`),
+    ask('display_name', `% ${esc}%`),
+  ]);
+  if (byUsername.error) {
+    throw new Error(byUsername.error.message);
   }
-  return (data ?? []).map(p => ({
-    id: p.id as string,
-    username: p.username as string,
-    displayName: (p.display_name as string | null) ?? null,
-    avatarUrl: (p.avatar_url as string | null) ?? null,
+  type Row = { id: string; username: string; display_name: string | null; avatar_url: string | null };
+  const seen = new Set<string>();
+  const ranked: Row[] = [];
+  // A name lookup failing only loses those rows; the username ones still come back.
+  for (const res of [byUsername, byNameStart, byLaterWord]) {
+    for (const row of ((res.error ? [] : res.data) ?? []) as Row[]) {
+      if (seen.has(row.id) || !row.username) { continue; }
+      seen.add(row.id);
+      ranked.push(row);
+    }
+  }
+  const friendsFirst = isFriend
+    ? [...ranked.filter(r => isFriend(r.id)), ...ranked.filter(r => !isFriend(r.id))]
+    : ranked;
+  return friendsFirst.slice(0, limit).map(p => ({
+    id: p.id,
+    username: p.username,
+    displayName: p.display_name ?? null,
+    avatarUrl: p.avatar_url ?? null,
   }));
 }
 

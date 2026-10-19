@@ -33,6 +33,7 @@ import { GradientBorder } from './GradientBorder';
 import ProgressiveImage from './ProgressiveImage';
 import UsernameBadges from './UsernameBadges';
 import SpotifyPostCard from './SpotifyPostCard';
+import MentionText from './MentionText';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -713,9 +714,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         </Text>
       </View>
       {post.caption ? (
-        <Text style={styles.caption} numberOfLines={4}>
-          {post.caption}
-        </Text>
+        <MentionText text={post.caption} style={styles.caption} numberOfLines={4} />
       ) : null}
 
       {/* Credits — faces only. A track's collaborators are part of what the post IS, and

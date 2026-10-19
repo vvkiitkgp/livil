@@ -29,6 +29,7 @@ import {
   isAllowedAvatarUrl,
   isBlockedBetween,
   isCategoryMuted,
+  preferenceColumnsFor,
   isPersonToPerson,
   isValidKind,
   KINDS,
@@ -129,7 +130,7 @@ Deno.test('channelFor routes each kind to the channel the client created', () =>
 // silently stops a user's notifications with no error anyone would see.
 
 const prefsRow = (over: Record<string, boolean> = {}) => ({
-  social: true, activity: true, messages: true, jam: true, ...over,
+  social: true, activity: true, messages: true, jam: true, mentions: true, ...over,
 });
 
 Deno.test('isCategoryMuted: a user who never set a preference gets everything', async () => {
@@ -197,6 +198,20 @@ Deno.test('every channelFor() result is a column on notification_preferences', a
     const admin = fakeAdmin(() => ({ data: prefsRow({ [category]: false }) }));
     assertEquals(await isCategoryMuted(admin, B, kind), true, `muting '${category}' did not suppress '${kind}'`);
   }
+});
+
+Deno.test('isCategoryMuted: mentions — their own switch, and Activity silences them too', async () => {
+  const muted = async (over: Record<string, boolean>) =>
+    await isCategoryMuted(fakeAdmin(() => ({ data: prefsRow(over) })), B, 'activity_mention');
+  assertEquals(await muted({}), false);
+  assertEquals(await muted({ mentions: false }), true);
+  assertEquals(await muted({ activity: false }), true);
+  // The Mentions switch touches nothing else.
+  assertEquals(await isCategoryMuted(fakeAdmin(() => ({ data: prefsRow({ mentions: false }) })), B, 'activity_like'), false);
+  // Before the column exists (no `mentions` in the row): not muted.
+  const { mentions: _gone, ...older } = prefsRow();
+  assertEquals(await isCategoryMuted(fakeAdmin(() => ({ data: older })), B, 'activity_mention'), false);
+  assertEquals(preferenceColumnsFor('activity_mention'), ['activity', 'mentions']);
 });
 
 Deno.test('defaultBody: kinds without client copy get server-generated text', () => {
@@ -1031,15 +1046,20 @@ Deno.test('shouldPruneToken: OUR mistakes and outages never delete a device', ()
 
 // ── claims: the only part of params that is read ───────────────────────────
 
-Deno.test('claimsFrom: reads conversationId, jamRoomId and commentId from data.params, nothing else', () => {
+Deno.test('claimsFrom: reads conversationId, jamRoomId, commentId and notificationId from data.params, nothing else', () => {
   assertEquals(
     claimsFrom({ data: { route: 'JamRoom', params: { jamRoomId: JAM, conversationId: CONV, title: 'x' } } }),
-    { conversationId: CONV, jamRoomId: JAM, commentId: undefined },
+    { conversationId: CONV, jamRoomId: JAM, commentId: undefined, notificationId: undefined },
   );
   // A comment like names its comment (activity_comment_like) — a claim, only ever matched.
   assertEquals(
     claimsFrom({ data: { route: 'ActivityCenter', params: { commentId: POST, body: 'x' } } }),
-    { conversationId: undefined, jamRoomId: undefined, commentId: POST },
+    { conversationId: undefined, jamRoomId: undefined, commentId: POST, notificationId: undefined },
+  );
+  // A mention names its row (activity_mention) — claimed once, by claim_mention_push.
+  assertEquals(
+    claimsFrom({ data: { route: 'ActivityCenter', params: { notificationId: POST } } }).notificationId,
+    POST,
   );
   assertEquals(claimsFrom({}), {});
   assertEquals(claimsFrom({ data: null }), {});
@@ -1551,4 +1571,79 @@ Deno.test('handler: an oversized body is refused before anything reads it', asyn
     body: 'x'.repeat(20_000),
   }));
   assertEquals(res.status, 413);
+});
+
+// ── activity_mention (20261110000000) ───────────────────────────────────────
+const MENTION = '12121212-1212-1212-1212-121212121212';
+
+/** activityAdmin, plus the row's id and claim_mention_push: true once per unpushed id. */
+// deno-lint-ignore no-explicit-any
+function mentionAdmin(rows: Array<Record<string, unknown>>): any {
+  const base = activityAdmin(rows);
+  const pushed = new Set<string>();
+  const claims: Array<Record<string, unknown>> = [];
+  return {
+    claims,
+    from: (t: string) => {
+      const b = base.from(t);
+      const eq = b.eq.bind(b);
+      let id: string | undefined;
+      b.eq = (col: string, val: string) => { if (col === 'id') { id = val; return b; } return eq(col, val); };
+      const then = b.then.bind(b);
+      b.then = (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+        then((out: { data?: Array<Record<string, unknown>> }) =>
+          res({ ...out, data: (out.data ?? []).filter(r => id === undefined || r.id === id) }), rej);
+      return b;
+    },
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      claims.push({ fn, ...args });
+      const row = rows.find(r => r.id === args.p_id && r.recipient_id === args.p_recipient && r.actor_id === args.p_actor);
+      const ok = fn === 'claim_mention_push' && !!row && !pushed.has(String(args.p_id));
+      if (ok) pushed.add(String(args.p_id));
+      return Promise.resolve({ data: ok, error: null });
+    },
+  };
+}
+
+Deno.test('activity_mention: allowed once for the named row; quote and place from the row', async () => {
+  const admin = mentionAdmin([
+    { id: MENTION, recipient_id: B, type: 'mention', actor_id: A, post_id: POST, payload: { where: 'comment', text: '@riya hear this' } },
+  ]);
+  const grant = await authorize(admin, 'activity_mention', A, B, { notificationId: MENTION });
+  assertEquals(grant?.activity, { aggCount: 1, commentText: '@riya hear this', postId: POST, mentionWhere: 'comment' });
+  // SINGLE-USE: the same tag can never be pushed again (security review, 2026-10-19).
+  assertEquals(await allows(admin, 'activity_mention', A, B, { notificationId: MENTION }), false);
+});
+
+Deno.test('activity_mention: refused without a row id, for someone else\'s row, or a stale one', async () => {
+  const row = { id: MENTION, recipient_id: B, type: 'mention', actor_id: A, post_id: POST, payload: {} };
+  // No id (an app that does not name the row): no push.
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, B), false);
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, B, { notificationId: 'not-a-uuid' }), false);
+  // Another sender, another recipient, another id.
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', C, B, { notificationId: MENTION }), false);
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, C, { notificationId: MENTION }), false);
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, B, { notificationId: POST }), false);
+  // Another kind's row is not a mention.
+  assertEquals(await allows(mentionAdmin([{ ...row, type: 'comment' }]), 'activity_mention', A, B, { notificationId: MENTION }), false);
+  // Time-bounded like every other.
+  assertEquals(await allows(mentionAdmin([{ ...row, created_at: MINUTES_AGO(11) }]), 'activity_mention', A, B, { notificationId: MENTION }), false);
+  // Never yourself.
+  assertEquals(await allows(mentionAdmin([{ ...row, recipient_id: A }]), 'activity_mention', A, A, { notificationId: MENTION }), false);
+});
+
+Deno.test('composeContent: a mention says where, and quotes the tagged text', () => {
+  const post: Grant = { activity: { aggCount: 1, commentText: "this one's for @riya 🎧", postId: POST, mentionWhere: 'post' } };
+  assertEquals(composeContent('activity_mention', post, riya, {}),
+    { title: 'Riya', body: "tagged you in a post: “this one's for @riya 🎧”" });
+  const comment: Grant = { activity: { aggCount: 1, commentText: '@riya listen to the drop', postId: POST, mentionWhere: 'comment' } };
+  assertEquals(composeContent('activity_mention', comment, riya, {}),
+    { title: 'Riya', body: 'mentioned you in a comment: “@riya listen to the drop”' });
+  const bare: Grant = { activity: { aggCount: 1, commentText: null, postId: POST, mentionWhere: 'post' } };
+  assertEquals(composeContent('activity_mention', bare, riya, {}).body, 'tagged you in a post');
+});
+
+Deno.test('activity_mention opens Activity and shows the actor\'s photo, on the Activity channel', () => {
+  assertEquals(channelFor('activity_mention'), 'activity');
+  assertEquals(KINDS.has('activity_mention'), true);
 });

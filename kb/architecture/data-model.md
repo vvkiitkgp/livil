@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 163 migration(s) in `supabase/migrations/`.
+Reconstructed from 164 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -78,6 +78,8 @@ RLS enabled · realtime · defined in `20260608000000_activity_notifications.sql
 - **unique** `activity_notifications_agg_uq` `(recipient_id, agg_key) where agg_key is not null`
 - `activity_notifications_recipient_idx` `(recipient_id, updated_at desc)`
 - `activity_notifications_unread_idx` `(recipient_id) where is_read = false`
+- `activity_notifications_mention_actor_idx` `(actor_id, created_at) where type = 'mention'`
+- `activity_notifications_mention_key_idx` `(agg_key) where type = 'mention'`
 
 ### `album_tracks`
 
@@ -582,6 +584,7 @@ RLS enabled · defined in `20260803120000_notification_preferences.sql`
 | `reminders` | `boolean not null default true` | `20261025000000_scheduled_pushes.sql` |
 | `new_music` | `boolean not null default true` | `20261026000000_new_on_livil_feed.sql` |
 | `new_music` | `boolean not null default true` | `20261027000000_new_music_pushes.sql` |
+| `mentions` | `boolean not null default true` | `20261110000000_mentions.sql` |
 
 ### `ops_copyright_reviews`
 
@@ -747,6 +750,7 @@ RLS enabled · realtime · defined in `00000000000000_baseline_schema.sql`
 - `trg_post_comments_activity_deleted` — after delete (`20261031000000_comment_notifications.sql`)
 - `trg_post_comments_lock_content` — before update of id, created_at, body, song_label, song_spotify_track_id, song_post_id, gif_provider, gif_id, gif_width, gif_height (`20261103000000_comment_text_locked.sql`)
 - `trg_post_comments_clamp_on_insert` — before insert (`20261103000000_comment_text_locked.sql`)
+- `trg_post_comments_mentions_deleted` — after delete (`20261110000000_mentions.sql`)
 
 ### `post_impressions`
 
@@ -1600,6 +1604,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_post_comments_activity_deleted` | `post_comments` | after delete | `20261031000000_comment_notifications.sql` |
 | `trg_post_comments_lock_content` | `post_comments` | before update of id, created_at, body, song_label, song_spotify_track_id, song_post_id, gif_provider, gif_id, gif_width, gif_height | `20261103000000_comment_text_locked.sql` |
 | `trg_post_comments_clamp_on_insert` | `post_comments` | before insert | `20261103000000_comment_text_locked.sql` |
+| `trg_post_comments_mentions_deleted` | `post_comments` | after delete | `20261110000000_mentions.sql` |
 | `trg_post_likes_count` | `post_likes` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_post_likes_activity_removed` | `post_likes` | after delete | `20260929010000_like_notifications_follow_real_likes.sql` |
 | `trg_post_likes_stamp_created_at` | `post_likes` | before insert | `20261105000000_server_time_on_writes.sql` |

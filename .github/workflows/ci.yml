@@ -424,6 +424,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/comment-notifications.test.sql
 
+      # Mentions (20261110000000): only the author announces their caption's / comment's
+      # tags, read from the stored text; ≤ 5, once each, never across a block, never to
+      # someone who cannot see the post; shipped apps' activity_list never returns them.
+      - name: Mention notification tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/mentions.test.sql
+
       # A post's owner (upload or repost) can delete any comment on it; anyone else only
       # their own; the original's uploader does not own a repost's comments.
       - name: Comment delete-by-post-owner tests

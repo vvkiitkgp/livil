@@ -216,8 +216,8 @@ export default function NotificationSettingsScreen() {
             // it — otherwise the user's own switch already explains the silence.
             const silencedByOs = isAndroid && on && blockedChannels.has(channel.id);
             return (
+              <React.Fragment key={channel.id}>
               <SettingsRow
-                key={channel.id}
                 icon={on ? 'bell' : 'bellOff'}
                 iconColor={silencedByOs ? COLORS.warning : undefined}
                 iconBackground={silencedByOs ? COLORS.warningBg : undefined}
@@ -233,6 +233,21 @@ export default function NotificationSettingsScreen() {
                   disabled: loading || !userId || savingCategory === channel.id,
                 }}
               />
+              {/* Mentions ride Activity's channel (send-push preferenceColumnsFor), so their
+                  switch sits under it — and is off whenever Activity is. */}
+              {channel.id === 'activity' ? (
+                <SettingsRow
+                  icon={on && prefs.mentions ? 'bell' : 'bellOff'}
+                  label="Mentions"
+                  subtitle="When someone tags you with @ in a post or a comment"
+                  toggle={{
+                    value: on && prefs.mentions,
+                    onValueChange: next => { void onToggleCategory('mentions', next); },
+                    disabled: loading || !userId || !on || savingCategory === 'mentions',
+                  }}
+                />
+              ) : null}
+              </React.Fragment>
             );
           })}
         </SettingsSection>

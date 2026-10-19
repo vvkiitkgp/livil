@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { noUserError } from './session';
 import { normalizeTag } from '../../shared/constants/tags';
 import type { NowPlayingInfo } from '../contexts/PlaybackContext';
-import { notifyPostActivity } from './activity';
+import { notifyMentions, notifyPostActivity } from './activity';
 import { sendPush } from './pushDispatch';
 import { fetchSpotifyTrackIds } from './spotify';
 
@@ -873,6 +873,8 @@ export async function createRepost(
 
   // Notify the original post's author (self-repost is filtered server-side).
   void notifyPostActivity(originalPostId, 'repost');
+  // And anyone @-tagged in the caption (read server-side from the stored caption).
+  if (caption.includes('@')) { void notifyMentions({ postId: created.id }); }
 
   return { postId: created.id };
 }
@@ -887,7 +889,8 @@ export async function createRepost(
  * id (posts_spotify_track_id_format), so a malformed value fails loudly here rather than
  * becoming a card that cannot open.
  *
- * No notification: there is no Livil author behind a Spotify song to tell.
+ * No notification to an author: there is no Livil author behind a Spotify song to tell. People
+ * @-tagged in the caption are told.
  */
 export async function createSpotifyRepost(
   spotifyTrackId: string,
@@ -913,6 +916,8 @@ export async function createSpotifyRepost(
   if (insertError || !created) {
     throw new Error(insertError?.message ?? 'Failed to create repost.');
   }
+  // Anyone @-tagged in the caption (read server-side from the stored caption).
+  if (caption.includes('@')) { void notifyMentions({ postId: created.id }); }
   return { postId: created.id };
 }
 

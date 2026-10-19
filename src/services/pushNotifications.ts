@@ -296,6 +296,12 @@ export type NotificationCategoryPrefs = {
   jam: boolean;
   new_music: boolean;
   reminders: boolean;
+  /**
+   * @-tags in posts and comments (20261110000000). Not a channel of its own: mentions show
+   * on Activity's channel, which every installed app already has, and Activity off silences
+   * them too (send-push preferenceColumnsFor).
+   */
+  mentions: boolean;
 };
 
 /** Every category on, which is what an absent row means server-side. */
@@ -306,6 +312,7 @@ export const ALL_CATEGORIES_ON: NotificationCategoryPrefs = {
   jam: true,
   new_music: true,
   reminders: true,
+  mentions: true,
 };
 
 /**
@@ -342,6 +349,7 @@ export async function getNotificationPreferences(
     jam: row.jam ?? true,
     new_music: row.new_music ?? true,
     reminders: row.reminders ?? true,
+    mentions: row.mentions ?? true,
   };
 }
 

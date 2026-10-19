@@ -35,6 +35,8 @@ import { createStory } from '../../services/stories';
 import type { FeedPost } from '../../services/posts';
 import type { RootStackParamList } from '../../navigation/types';
 import { MIN_REPOST_CLIP_SECONDS } from '../../../shared/constants/media';
+import MentionSuggestions from '../../components/MentionSuggestions';
+import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -196,7 +198,11 @@ export default function RepostScreen() {
   const loopGuardUntilRef = useRef(0);
 
   const [text, setText] = useState('');
+  const mention = useMentionInput(text, setText);
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  // 120 = room under the caret for the rest of the caption box (see bottomOffset below),
+  // plus the @ list's height while it is open.
+  const mentionRoom = useMentionListRoom(scrollRef, 120);
   // The caption sits at the bottom of a tall page; once the keyboard is fully up, make sure
   // the whole box is above it (it opened with only its first line showing). ~350 ms is the
   // keyboard's rise, as for revealFocusedField on Upload.
@@ -461,7 +467,7 @@ export default function RepostScreen() {
         // Room under the caret for the rest of the caption box: a multiline field is
         // scrolled by its caret line, so a small offset left the box's lower part (it is
         // 100pt tall) under the keyboard. Same clearance as Upload's fields.
-        bottomOffset={120}
+        bottomOffset={mentionRoom.bottomOffset}
         showsVerticalScrollIndicator={false}
       >
           {/* Loading / error state */}
@@ -635,8 +641,9 @@ export default function RepostScreen() {
                 ) : null}
               </Text>
               <FormInput
-                value={text}
+                // Children, not `value`: the caption with its @tags coloured (useMentionInput).
                 onChangeText={setText}
+                onSelectionChange={mode === 'post' ? mention.onSelectionChange : undefined}
                 placeholder={descPlaceholder}
                 multiline
                 maxLength={2000}
@@ -644,7 +651,20 @@ export default function RepostScreen() {
                 onFocus={revealCaption}
                 wrapperStyle={styles.textAreaWrapper}
                 style={styles.textArea}
-              />
+              >
+                {/* A story's comment notifies nobody, so its @ is not dressed as a tag. */}
+                {mode === 'post' ? mention.styled : text}
+              </FormInput>
+              {/* @ to tag someone in a post's caption (not a story's comment: stories send
+                  no notifications). Under the field; the page makes room above the keyboard. */}
+              {mode === 'post' ? (
+                <MentionSuggestions
+                  query={mention.query}
+                  onSelect={mention.select}
+                  variant="card"
+                  onHeightChange={mentionRoom.onHeightChange}
+                />
+              ) : null}
 
               <View style={styles.scrollSpacer} />
             </>

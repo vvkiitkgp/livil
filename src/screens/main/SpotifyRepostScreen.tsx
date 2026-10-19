@@ -11,7 +11,7 @@ import {
   type TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
@@ -20,6 +20,7 @@ import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
+import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
 import { useToast } from '../../contexts/ToastContext';
 import { createSpotifyRepost } from '../../services/posts';
 import {
@@ -34,6 +35,8 @@ import {
 import { looksLikeSpotifyLink, parseSpotifyTrackId } from '../../utils/spotifyLinks';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 import type { RootStackParamList } from '../../navigation/types';
+import MentionSuggestions from '../../components/MentionSuggestions';
+import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'SpotifyRepost'>;
@@ -72,10 +75,15 @@ export default function SpotifyRepostScreen() {
   const [searching, setSearching] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
+  const mention = useMentionInput(caption, setCaption);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const mentionRoom = useMentionListRoom(scrollRef, 24);
   const [submitting, setSubmitting] = useState(false);
   const findRef = useRef<TextInput>(null);
 
   const picked = useSpotifyTrack(pickedId);
+  // No notice here: this screen IS about Spotify, and iOS cannot show it over this sheet.
+  const listenOnSpotify = useOpenInSpotify('search', { notice: false });
 
   const pick = useCallback((track: SpotifyTrack) => {
     haptics.select();
@@ -200,6 +208,9 @@ export default function SpotifyRepostScreen() {
       </View>
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
+        // Room for the @ list under the caption while it is open (useMentionListRoom).
+        bottomOffset={mentionRoom.bottomOffset}
         style={styles.flex}
         // At least 1px taller than the screen: this page is often short (a search box and a
         // few results), and a page with nothing to scroll ignores a drag on Android — so
@@ -295,7 +306,16 @@ export default function SpotifyRepostScreen() {
               ) : null}
             </View>
 
-            <View style={styles.trackCard}>
+            {/* Tap the song (or "Play on Spotify") to hear it in Spotify before reposting — Livil cannot play
+                Spotify audio itself (ADR-0027: no previews). Livil pauses, Spotify opens, and
+                this screen is kept as it is. */}
+            <Pressable
+              style={({ pressed }) => [styles.trackCard, pressed && picked.status === 'ready' && styles.trackCardPressed]}
+              onPress={picked.status === 'ready' ? () => { void listenOnSpotify(picked.track.id); } : undefined}
+              disabled={picked.status !== 'ready'}
+              accessibilityRole="button"
+              accessibilityLabel={picked.status === 'ready' ? `Play ${picked.track.title} on Spotify` : undefined}
+            >
               {picked.track?.imageUrl ? (
                 <Image source={{ uri: picked.track.imageUrl }} style={styles.trackArt} />
               ) : (
@@ -325,7 +345,20 @@ export default function SpotifyRepostScreen() {
                   <Icon name="lock" size={14} color={COLORS.textSecondary} />
                 </View>
               ) : null}
-            </View>
+            </Pressable>
+            {/* The feed's own Spotify-post button, so it reads the same everywhere. */}
+            {picked.status === 'ready' ? (
+              <Button
+                label="Play on Spotify"
+                variant="secondary"
+                size="md"
+                leading={<SpotifyLogo size="xs" />}
+                onPress={() => { void listenOnSpotify(picked.track.id); }}
+                accessibilityLabel="Play on Spotify"
+                haptic="none"
+                style={styles.playOnSpotify}
+              />
+            ) : null}
             {locked && fromUsername ? (
               <Text style={styles.fromLine}>
                 From <Text style={styles.fromName}>@{fromUsername}</Text>'s repost
@@ -347,14 +380,24 @@ export default function SpotifyRepostScreen() {
               Caption <Text style={styles.sectionHint}>(How do you feel about this track)</Text>
             </Text>
             <FormInput
-              value={caption}
+              // Children, not `value`: the caption with its @tags coloured (useMentionInput).
               onChangeText={setCaption}
+              onSelectionChange={mention.onSelectionChange}
               placeholder="Share what you feel about this track"
               multiline
               maxLength={CAPTION_MAX}
               editable={!submitting}
               wrapperStyle={styles.textAreaWrapper}
               style={styles.textArea}
+            >
+              {mention.styled}
+            </FormInput>
+            {/* @ to tag someone. Under the field; the page makes room above the keyboard. */}
+            <MentionSuggestions
+              query={mention.query}
+              onSelect={mention.select}
+              variant="card"
+              onHeightChange={mentionRoom.onHeightChange}
             />
           </>
         )}
@@ -446,6 +489,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
+  trackCardPressed: { opacity: 0.7 },
+  playOnSpotify: { alignSelf: 'flex-start', marginTop: 10 },
   trackArt: { width: 96, height: 96, borderRadius: 4, backgroundColor: COLORS.card },
   trackText: { flex: 1, minWidth: 0, gap: 4 },
   trackTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },

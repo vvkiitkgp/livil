@@ -6,7 +6,12 @@ export type CommentChunk =
   | { type: 'text'; value: string }
   | { type: 'mention'; value: string };
 
-const MENTION_REGEX = /@([a-z0-9_]{2,30})/gi;
+/**
+ * `@username`: 2–30 of [a-z0-9_], at the start or after a character that cannot be part of a
+ * username — so "riya@gmail.com" is not a tag. The SAME rule the server uses to decide who
+ * was tagged (activity_notify_mentions), so what looks like a tag here is what notifies.
+ */
+const MENTION_REGEX = /(^|[^a-z0-9_])@([a-z0-9_]{2,30})(?![a-z0-9_])/gi;
 
 /**
  * Split a comment body into text and mention chunks. Mention `value` is the
@@ -19,16 +24,29 @@ export function parseMentions(body: string): CommentChunk[] {
   const re = new RegExp(MENTION_REGEX.source, MENTION_REGEX.flags);
   let match: RegExpExecArray | null;
   while ((match = re.exec(body)) !== null) {
-    if (match.index > lastIndex) {
-      chunks.push({ type: 'text', value: body.slice(lastIndex, match.index) });
+    const at = match.index + match[1]!.length;
+    if (at > lastIndex) {
+      chunks.push({ type: 'text', value: body.slice(lastIndex, at) });
     }
-    chunks.push({ type: 'mention', value: match[1]! });
-    lastIndex = match.index + match[0].length;
+    chunks.push({ type: 'mention', value: match[2]! });
+    lastIndex = at + 1 + match[2]!.length;
   }
   if (lastIndex < body.length) {
     chunks.push({ type: 'text', value: body.slice(lastIndex) });
   }
   return chunks;
+}
+
+/** The distinct usernames tagged in `text`, lower-cased, in order — at most `max`. */
+export function mentionedUsernames(text: string, max = 5): string[] {
+  const out: string[] = [];
+  for (const c of parseMentions(text)) {
+    if (c.type !== 'mention') { continue; }
+    const u = c.value.toLowerCase();
+    if (!out.includes(u)) { out.push(u); }
+    if (out.length >= max) { break; }
+  }
+  return out;
 }
 
 /**
@@ -56,6 +74,21 @@ export function renderCommentBody(
     );
   });
 }
+
+/**
+ * The text box's own content with its @tags in the tag colour, for a TextInput that takes
+ * this as children instead of `value` (useMentionInput). Joined, the pieces are EXACTLY the
+ * text — parseMentions keeps every character — so the caret never jumps.
+ */
+export function renderInputMentions(text: string): React.ReactNode {
+  return parseMentions(text).map((c, i) =>
+    c.type === 'text'
+      ? React.createElement(Text, { key: i }, c.value)
+      : React.createElement(Text, { key: i, style: MENTION_IN_INPUT }, `@${c.value}`),
+  );
+}
+
+const MENTION_IN_INPUT: TextStyle = { color: COLORS.purpleLight };
 
 export type MentionTrigger = {
   /** The character index where `@` starts. */
