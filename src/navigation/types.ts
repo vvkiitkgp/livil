@@ -113,11 +113,11 @@ export type RootStackParamList = {
   AddToLivil: undefined;
   // Repost a Spotify track. Without params: search Spotify or paste a link. With
   // `spotifyTrackId`: that song is pre-picked; `locked` (reposting a friend's Spotify
-  // repost) hides "Change song". `fromUsername` names whose repost it came from.
+  // repost) hides "Change song". No "From @x's repost" line: nothing about the source is
+  // saved, so it read as a credit that never appeared (owner, 2026-10-19).
   SpotifyRepost: {
     spotifyTrackId?: string;
     locked?: boolean;
-    fromUsername?: string;
   } | undefined;
   // Stories are grouped by author (one tray ring per person). The viewer receives
   // the ordered clusters plus which ring/story was tapped, and flattens them into

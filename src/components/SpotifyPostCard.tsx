@@ -45,8 +45,8 @@ import { LikeHeart } from './LikeHeart';
  *  - No waveform (Spotify forbids analysing its audio), no clip, no play count, no share
  *    link (same as every repost), no add-to-queue / playlist / album. Share sends it to
  *    friends in chat only (ShareRepostSheet).
- *  - The action row: Spotify's icon + "Play" (it opens Spotify), then the counters and
- *    Share packed on the right, as on a Livil card.
+ *  - The action row: a grey-outlined box with Spotify's icon + a filled play disc (it opens
+ *    Spotify), then the counters and Share packed on the right, as on a Livil card.
  *  - The Repost pill opens the Spotify repost screen with this song LOCKED in.
  */
 function relativeTime(iso: string): string {
@@ -131,12 +131,8 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const handleRepost = useCallback(() => {
     if (!spotifyId) {return;}
     haptics.tap();
-    navigation.navigate('SpotifyRepost', {
-      spotifyTrackId: spotifyId,
-      locked: true,
-      fromUsername: author.username,
-    });
-  }, [navigation, spotifyId, author.username]);
+    navigation.navigate('SpotifyRepost', { spotifyTrackId: spotifyId, locked: true });
+  }, [navigation, spotifyId]);
 
   // Button presses on the action row buzz like every other control (`tap`). The heart is
   // the exception, in usePostLike: `toggleOn` on the way on, nothing on the way off.
@@ -255,15 +251,21 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       </DoubleTapLike>
 
       <View style={styles.actionRow}>
-        {/* "Play" beside Spotify's icon, not "Play on Spotify": with like, comment and Share
-            the full words needed ~356pt and overlapped the like icon on most iPhones
-            (measured 2026-10-19). "Play" fits every phone from 360 wide at normal and large
-            text; the screen reader still hears "Play on Spotify". */}
+        {/* The grey-outlined box with Spotify's icon and a filled play disc, no words
+            (owner, 2026-10-19): with like, comment and Share, "Play on Spotify" needed ~356pt
+            and overlapped the like icon on most iPhones (measured 2026-10-19), and icons
+            never grow with the phone's text size. It OPENS SPOTIFY (useOpenInSpotify pauses
+            Livil first). The screen reader still hears "Play on Spotify". */}
         <Button
-          label="Play"
+          label=""
           variant="secondary"
           size="md"
-          leading={<SpotifyLogo size="xs" />}
+          leading={
+            <>
+              <SpotifyLogo size="xs" />
+              <Icon name="playCircle" size={22} color={COLORS.white} />
+            </>
+          }
           onPress={() => { void handleOpen(); }}
           accessibilityLabel="Play on Spotify"
           haptic="none"

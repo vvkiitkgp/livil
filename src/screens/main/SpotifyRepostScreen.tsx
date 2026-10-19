@@ -65,7 +65,6 @@ export default function SpotifyRepostScreen() {
   const availability = useSpotifyAvailability();
 
   const locked = route.params?.locked === true && !!route.params?.spotifyTrackId;
-  const fromUsername = route.params?.fromUsername ?? null;
   const [pickedId, setPickedId] = useState<string | null>(route.params?.spotifyTrackId ?? null);
 
   const [query, setQuery] = useState('');
@@ -359,11 +358,6 @@ export default function SpotifyRepostScreen() {
                 style={styles.playOnSpotify}
               />
             ) : null}
-            {locked && fromUsername ? (
-              <Text style={styles.fromLine}>
-                From <Text style={styles.fromName}>@{fromUsername}</Text>'s repost
-              </Text>
-            ) : null}
 
             <View style={styles.infoBox}>
               <Icon name="info" size={16} color={COLORS.purpleLight} />
@@ -497,8 +491,6 @@ const styles = StyleSheet.create({
   trackArtist: { color: COLORS.textSecondary, fontSize: 14 },
   trackLogo: { marginTop: 4 },
   lock: { position: 'absolute', top: 12, right: 12 },
-  fromLine: { color: COLORS.textSecondary, fontSize: 12, marginTop: 8 },
-  fromName: { color: COLORS.purpleLight, fontWeight: '600' },
   infoBox: {
     flexDirection: 'row',
     gap: 10,
