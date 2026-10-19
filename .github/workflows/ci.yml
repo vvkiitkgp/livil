@@ -906,6 +906,17 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/repost-audience.test.sql
 
+      # ADR-0028 follow-up (20261111000000): likes, comments and comment likes follow the
+      # post's visibility — a stranger holding a friends-only repost's id cannot read its
+      # thread or likers, like it or comment on it; can_comment_on_post (DEFINER, predicate
+      # by hand) agrees with posts_select_authenticated for every viewer × post.
+      - name: Post children visibility tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/post-children-visibility.test.sql
+
       # App update prompt: everyone (signed out too) reads the per-platform policy, no
       # client can write it, and the constraints refuse a dashboard typo that would block
       # everyone (minimum above latest, negative builds, unknown platforms).
