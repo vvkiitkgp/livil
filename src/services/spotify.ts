@@ -143,7 +143,7 @@ export async function searchSpotifyOrFail(
   });
   if (res === null) {return null;}
   const tracks = res.tracks ?? [];
-  for (const t of tracks) { trackCache.set(t.id, t); }
+  for (const t of tracks) { cacheTrack(t.id, t); }
   return tracks;
 }
 
@@ -176,9 +176,33 @@ export async function resolveSpotifyLinkCached(url: string): Promise<string | nu
 // Cards ask one at a time as they mount; requests made within the same short window are
 // sent as ONE call. Answers are cached for the app session only (Spotify allows temporary
 // caching, not storage), and `null` — Spotify has no such track — is cached too, so a dead
-// link does not refetch on every scroll.
+// link does not refetch on every scroll. An answer without artists is the exception: see
+// STAND_IN_TTL_MS.
 
-const trackCache = new Map<string, SpotifyTrack | null>();
+const trackCache = new Map<string, { track: SpotifyTrack | null; at: number }>();
+
+/**
+ * How long an answer WITHOUT artists is kept. That is the server's stand-in (Spotify's oEmbed:
+ * title and artwork only) while the Web API is limiting us — kept for the session like a real
+ * answer, it stuck on every card ("Spotify" where the artists go) until the app was restarted,
+ * long after Spotify had recovered (2026-10-19). Kept briefly, the next mount asks again.
+ */
+export const STAND_IN_TTL_MS = 2 * 60 * 1000;
+
+function cacheTrack(id: string, track: SpotifyTrack | null): void {
+  trackCache.set(id, { track, at: Date.now() });
+}
+
+/** The cached answer for `id`, or undefined when there is none (or a stand-in has aged out). */
+function cachedTrack(id: string): { track: SpotifyTrack | null } | undefined {
+  const entry = trackCache.get(id);
+  if (!entry) {return undefined;}
+  if (entry.track && entry.track.artists.length === 0 && Date.now() - entry.at > STAND_IN_TTL_MS) {
+    trackCache.delete(id);
+    return undefined;
+  }
+  return entry;
+}
 const waiters = new Map<string, Array<(t: SpotifyTrack | null) => void>>();
 let pending = new Set<string>();
 /** Ids whose call is in flight — a second card asking for one waits on that call. */
@@ -202,7 +226,7 @@ async function flush(): Promise<void> {
       const answered = res?.tracks && id in res.tracks;
       const track = answered ? res!.tracks![id] ?? null : null;
       // A failed CALL is not an answer: leave it uncached so the next mount retries.
-      if (answered) { trackCache.set(id, track); }
+      if (answered) { cacheTrack(id, track); }
       inflight.delete(id);
       const list = waiters.get(id) ?? [];
       waiters.delete(id);
@@ -214,7 +238,8 @@ async function flush(): Promise<void> {
 /** Metadata for one track; batched with other requests made in the same moment. */
 export function getSpotifyTrack(id: string): Promise<SpotifyTrack | null> {
   if (!SPOTIFY_ID_RE.test(id)) {return Promise.resolve(null);}
-  if (trackCache.has(id)) {return Promise.resolve(trackCache.get(id) ?? null);}
+  const hit = cachedTrack(id);
+  if (hit) {return Promise.resolve(hit.track);}
   return new Promise(resolve => {
     const list = waiters.get(id) ?? [];
     list.push(resolve);
@@ -231,8 +256,9 @@ export type SpotifyTrackState =
 
 function stateFromCache(id: string | null): SpotifyTrackState {
   if (!id) {return { status: 'unavailable', track: null };}
-  if (!trackCache.has(id)) {return { status: 'loading', track: null };}
-  const cached = trackCache.get(id) ?? null;
+  const hit = cachedTrack(id);
+  if (!hit) {return { status: 'loading', track: null };}
+  const cached = hit.track;
   return cached ? { status: 'ready', track: cached } : { status: 'unavailable', track: null };
 }
 
@@ -265,7 +291,7 @@ export function useSpotifyTrack(id: string | null): SpotifyTrackState {
 
 /** Seed the cache from a search result, so the repost screen and card render instantly. */
 export function rememberSpotifyTrack(track: SpotifyTrack): void {
-  trackCache.set(track.id, track);
+  cacheTrack(track.id, track);
 }
 
 /**
