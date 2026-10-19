@@ -196,3 +196,15 @@ it('a scrolling host (chat) loads the next page on request, with no "More GIFs" 
   layOut(r);
   expect(tiles(r).map(t => t.replace('Send ', ''))).toEqual(['a0', 'a1', 'a2', 'b0', 'b1', 'b2']);
 });
+
+it('scroll-to-load stops after five pages too', async () => {
+  for (let i = 0; i < 7; i++) { mockSearch.mockResolvedValueOnce(page(`p${i}`)); }
+  let r!: TestRenderer.ReactTestRenderer;
+  act(() => { r = TestRenderer.create(<GifSearchPanel query="" onPick={() => {}} moreRequest={0} />); });
+  await settle(0);
+  for (let n = 1; n <= 6; n++) {
+    act(() => { r.update(<GifSearchPanel query="" onPick={() => {}} moreRequest={n} />); });
+    await act(async () => { await Promise.resolve(); });
+  }
+  expect(mockSearch).toHaveBeenCalledTimes(5);
+});

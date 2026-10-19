@@ -82,7 +82,8 @@ export function GifSearchPanel({
   }, [trimmed]);
 
   const loadMore = useCallback(() => {
-    if (results.status !== 'ready' || results.next === null || loadingMore) { return; }
+    // MAX_PAGES for scroll-to-load too: each page is one call against GIPHY's hourly allowance.
+    if (results.status !== 'ready' || results.next === null || results.pages >= MAX_PAGES || loadingMore) { return; }
     const request = requestRef.current;
     const offset = results.next;
     setLoadingMore(true);
