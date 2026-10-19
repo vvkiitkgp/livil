@@ -23,7 +23,12 @@ import type { RootStackParamList } from '../navigation/types';
 const DEVICE_ID_KEY = 'livil.device_id';
 const PROMPT_STATUS_KEY = 'livil.push_prompt_status';
 
-export type PushPromptStatus = 'pending' | 'shown' | 'accepted' | 'denied';
+/**
+ * 'denied' = the phone's dialog was refused; the OS permission stays the truth after that, so
+ * allowing Livil in the phone's settings later registers it. 'off' = switched off in Livil's
+ * own Settings: respected whatever the OS says, until switched on again there.
+ */
+export type PushPromptStatus = 'pending' | 'shown' | 'accepted' | 'denied' | 'off';
 
 /* eslint-disable no-bitwise -- RFC 4122 v4 layout: `| 0` truncates to a nibble, `& 0x3 | 0x8` sets the variant bits */
 function generateDeviceId(): string {
@@ -35,18 +40,28 @@ function generateDeviceId(): string {
 }
 /* eslint-enable no-bitwise */
 
-export async function getOrCreateDeviceId(): Promise<string> {
-  let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
-  if (!id) {
-    id = generateDeviceId();
-    await AsyncStorage.setItem(DEVICE_ID_KEY, id);
-  }
-  return id;
+const PUSH_OFF_USER_KEY = 'livil.push_off_user';
+
+// One read-or-create at a time: two registrations started in the same tick (the app's and
+// the inbox card's, both on returning to the foreground) would otherwise each mint an id and
+// write two device_tokens rows for one token — every push then arrives twice.
+let deviceIdOnce: Promise<string> | null = null;
+
+export function getOrCreateDeviceId(): Promise<string> {
+  deviceIdOnce ??= (async () => {
+    let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = generateDeviceId();
+      await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  })().catch(e => { deviceIdOnce = null; throw e; });
+  return deviceIdOnce;
 }
 
 export async function getPushPromptStatus(): Promise<PushPromptStatus> {
   const v = await AsyncStorage.getItem(PROMPT_STATUS_KEY);
-  if (v === 'shown' || v === 'accepted' || v === 'denied') return v;
+  if (v === 'shown' || v === 'accepted' || v === 'denied' || v === 'off') return v;
   return 'pending';
 }
 
@@ -109,31 +124,43 @@ async function requestOsNotificationPermission(): Promise<boolean> {
 
 /**
  * Whether push is currently live for this device: the OS permission is granted
- * AND the user has not turned it off in Settings.
+ * AND it is neither switched off in Livil ('off') nor last refused ('denied').
  *
- * Both halves matter. The OS permission alone is not enough — turning push off
- * from Settings deletes the device token and records 'denied', which leaves the
- * OS permission granted but no delivery path. Checking only our own status is
- * likewise wrong: the user can revoke the permission from OS settings behind
- * our back.
+ * Both halves matter. The OS permission alone is not enough — Livil's off switch
+ * deletes the device token and records 'off', which leaves the OS permission
+ * granted but no delivery path. Checking only our own status is likewise wrong:
+ * the user can revoke the permission from OS settings behind our back.
  */
 export async function isPushEnabled(): Promise<boolean> {
   const status = await getPushPromptStatus();
-  if (status === 'denied') return false;
+  if (status === 'denied' || status === 'off') return false;
   return await checkOsNotificationPermission();
 }
 
 /**
- * Settings-screen "off" switch. Deletes this device's token so the edge
- * function stops targeting it, and records 'denied' so a later app launch does
- * not silently re-register (registerDeviceForUser short-circuits on 'denied').
+ * Settings-screen "off" switch. Deletes this device's token so the edge function
+ * stops targeting it, and records 'off' — with the account it belongs to — so a
+ * later app launch does not silently re-register this account
+ * (registerDeviceForUser returns early on it). 'denied' would not do: that marks a
+ * refused dialog, which the OS permission overrides once it is granted.
  *
  * The OS permission is deliberately left alone — an app cannot revoke it, and
  * re-enabling from Settings should not have to re-prompt.
  */
 export async function disablePushForUser(userId: string): Promise<void> {
-  await setPushPromptStatus('denied');
+  await setPushPromptStatus('off');
+  await AsyncStorage.setItem(PUSH_OFF_USER_KEY, userId);
   await unregisterDevice(userId);
+}
+
+/**
+ * Whether THIS account switched notifications off in Livil on this phone. The choice is
+ * per account: another account signing in on the same phone is not bound by it.
+ */
+export async function isPushOffFor(userId: string): Promise<boolean> {
+  if ((await getPushPromptStatus()) !== 'off') return false;
+  const owner = await AsyncStorage.getItem(PUSH_OFF_USER_KEY);
+  return owner === null || owner === userId;
 }
 
 /**
@@ -742,6 +769,8 @@ async function registerTokenAndListen(userId: string): Promise<void> {
 export async function registerDeviceForUser(userId: string): Promise<void> {
   try {
     const status = await getPushPromptStatus();
+    // Switched off in Livil's own Settings by this account: stays off until switched on there.
+    if (await isPushOffFor(userId)) return;
     // The OS permission is the truth, whatever was answered in the app before. 'denied'
     // used to return here unconditionally — so someone who said no and later switched
     // notifications ON in Settings was never registered, and no push could reach them
@@ -764,13 +793,22 @@ export async function registerDeviceForUser(userId: string): Promise<void> {
  * ('accepted'), it returns without touching the network; token changes after that arrive
  * through onTokenRefresh.
  */
-export async function registerIfNewlyAllowed(userId: string): Promise<void> {
-  try {
-    if ((await getPushPromptStatus()) === 'accepted') return;
-    await registerDeviceForUser(userId);
-  } catch (e) {
-    console.warn('[push] registerIfNewlyAllowed failed', e);
-  }
+let registerOnce: Promise<void> | null = null;
+
+export function registerIfNewlyAllowed(userId: string): Promise<void> {
+  // Shared while one is running: the app and the inbox card both call this when the app
+  // comes back, and two registrations in parallel would race each other's writes.
+  registerOnce ??= (async () => {
+    try {
+      if ((await getPushPromptStatus()) === 'accepted') return;
+      await registerDeviceForUser(userId);
+    } catch (e) {
+      console.warn('[push] registerIfNewlyAllowed failed', e);
+    } finally {
+      registerOnce = null;
+    }
+  })();
+  return registerOnce;
 }
 
 /**

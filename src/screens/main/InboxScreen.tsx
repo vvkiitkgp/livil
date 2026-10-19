@@ -22,6 +22,7 @@ import {
 import { messageCache } from '../../services/messageCache';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
+import NotificationNudge from '../../components/NotificationNudge';
 import AddBadge from '../../components/AddBadge';
 import UsernameBadges from '../../components/UsernameBadges';
 import VibeTag from '../../components/VibeTag';
@@ -449,6 +450,7 @@ export default function InboxScreen() {
             // Hidden while searching: the results are the chats that match, nothing else.
             searching ? null : (
               <>
+                <NotificationNudge userId={myId} />
                 <FriendRequestsBanner refreshKey={bannerKey} />
                 <ActivityBanner refreshKey={bannerKey} />
               </>
