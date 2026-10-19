@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-// Core's Clipboard (deprecated, still shipped): two calls, and no native module to add. It
-// logs a one-time "moved to @react-native-clipboard/clipboard" warning in debug builds only.
-import { AppState, Clipboard } from 'react-native';
+import { AppState } from 'react-native';
 import ConfirmActionModal from './ConfirmActionModal';
 import {
   artistLine,
@@ -11,6 +9,7 @@ import {
   type SpotifyTrack,
 } from '../services/spotify';
 import { spotifyLinkInClipboard } from '../utils/spotifyLinks';
+import { clearCopiedText, readCopiedText } from '../services/clipboard';
 import { navigateWhenReady, navigationRef } from '../navigation/navigationRef';
 
 /**
@@ -29,6 +28,9 @@ const SKIP_ON = new Set(['SpotifyRepost', 'AddToLivil']);
  * Whichever button they press, the clipboard is then cleared, so the same link does not ask
  * again on every open (owner, 2026-10-19). Leaving the app with the question still up counts
  * as no answer: nothing is cleared, and the next open asks again.
+ *
+ * On an iPhone the clipboard is read only when it holds a web link (readCopiedText), so the
+ * system's "Allow Paste?" question never appears for a copied code or message.
  *
  * Privacy: the clipboard text is read and parsed on the phone; it is never stored or logged.
  * Only a spotify.link short link — the clipboard's whole content, and only when it is one —
@@ -52,7 +54,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
     if (route && SKIP_ON.has(route)) {return;}
     checkingRef.current = true;
     try {
-      const text = (await Clipboard.getString()) ?? '';
+      const text = await readCopiedText();
       if (answeredRef.current.has(text)) {return;}
       const link = spotifyLinkInClipboard(text);
       if (!link) {return;}
@@ -92,7 +94,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
   const answer = useCallback((repost: boolean) => {
     const id = track?.id;
     answeredRef.current.add(textRef.current);
-    Clipboard.setString('');
+    clearCopiedText();
     setVisible(false);
     if (repost && id) { navigateWhenReady('SpotifyRepost', { spotifyTrackId: id }); }
   }, [track]);

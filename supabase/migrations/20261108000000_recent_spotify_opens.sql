@@ -51,6 +51,11 @@ $$;
 revoke all on function public.my_recent_spotify_opens(integer, timestamptz) from public, anon;
 grant execute on function public.my_recent_spotify_opens(integer, timestamptz) to authenticated;
 
+comment on table public.spotify_opens is
+  'One row per confirmed hand-off to the Spotify app (ADR-0027). Write-only for clients '
+  '(RLS, no SELECT policy). Totals come from the ops_play_* functions, never per-person; '
+  'the one per-person reader is my_recent_spotify_opens, and it returns only the caller''s rows.';
+
 comment on function public.my_recent_spotify_opens(integer, timestamptz) is
   'The caller''s own Spotify hand-offs for Recently Played: one row per song at its latest '
   'open, newest first, paged by p_before. The only client read of spotify_opens; never '

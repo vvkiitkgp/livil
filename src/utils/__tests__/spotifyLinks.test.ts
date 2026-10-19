@@ -88,6 +88,7 @@ describe('spotifyLinkInClipboard', () => {
     expect(spotifyLinkInClipboard(`https://open.spotify.com/track/${ID}?si=abc123`)?.id).toBe(ID);
     expect(spotifyLinkInClipboard(`  https://open.spotify.com/intl-de/track/${ID}\n`)?.id).toBe(ID);
     expect(spotifyLinkInClipboard(`spotify:track:${ID}`)?.id).toBe(ID);
+    expect(spotifyLinkInClipboard('https://spotify.link/AbCd1234?si=x1')?.shortUrl).toBe('https://spotify.link/AbCd1234');
   });
 
   it('hands a short link back for the server to resolve', () => {
@@ -100,6 +101,8 @@ describe('spotifyLinkInClipboard', () => {
   it('ignores anything that is not just a Spotify link', () => {
     expect(spotifyLinkInClipboard(ID)).toBeNull(); // a bare id is more likely a password
     expect(spotifyLinkInClipboard(`listen to this https://open.spotify.com/track/${ID}`)).toBeNull();
+    expect(spotifyLinkInClipboard('https://spotify.link/AbCd1234 hunter2')).toBeNull();
+    expect(spotifyLinkInClipboard(`https://open.spotify.com/track/${ID} and more`)).toBeNull();
     expect(spotifyLinkInClipboard('https://open.spotify.com/album/' + ID)).toBeNull();
     expect(spotifyLinkInClipboard('')).toBeNull();
     expect(spotifyLinkInClipboard(null)).toBeNull();
