@@ -18,19 +18,29 @@ import { repostLabel } from '../utils/repostShare';
  * (`fallback`), so the song still arrives.
  */
 
-/** One read per repost per app session; a failed read is forgotten so the next mount retries. */
-const repostCache = new Map<string, Promise<FeedPost | null>>();
+/**
+ * Reads are shared between the cards of one chat, but kept only briefly: each was made under
+ * one account's RLS, so a block, an unfriend, a switch to friends-only reposts or a deletion
+ * must reach the card without an app restart. A failed read is forgotten at once, so the next
+ * mount retries. Cleared on sign-out (RootNavigator), like the profile-card cache, so the next
+ * account on this phone never sees what the last one could.
+ */
+const REPOST_CACHE_MS = 2 * 60 * 1000;
+const repostCache = new Map<string, { at: number; post: Promise<FeedPost | null> }>();
+
+export function clearRepostChatCache(): void {
+  repostCache.clear();
+}
 
 function loadRepost(postId: string): Promise<FeedPost | null> {
-  let pending = repostCache.get(postId);
-  if (!pending) {
-    pending = fetchPostById(postId).catch(() => {
-      repostCache.delete(postId);
-      return null;
-    });
-    repostCache.set(postId, pending);
-  }
-  return pending;
+  const hit = repostCache.get(postId);
+  if (hit && Date.now() - hit.at < REPOST_CACHE_MS) { return hit.post; }
+  const post = fetchPostById(postId).catch(() => {
+    repostCache.delete(postId);
+    return null;
+  });
+  repostCache.set(postId, { at: Date.now(), post });
+  return post;
 }
 
 type Load = { status: 'loading' } | { status: 'ready'; post: FeedPost } | { status: 'missing' };

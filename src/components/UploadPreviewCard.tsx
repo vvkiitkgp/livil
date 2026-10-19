@@ -4,7 +4,7 @@ import { COLORS } from '../theme/colors';
 import CoverFallback from './CoverFallback';
 import { GradientBorder } from './GradientBorder';
 import { Icon } from './Icon';
-import { ACTION_ICON_SIZE, postCardStyles as styles } from './PostCard';
+import { ACTION_ICON_SIZE, SHARE_ICON_SIZE, postCardStyles as styles } from './PostCard';
 
 export type UploadPreviewAuthor = {
   name: string;
@@ -171,8 +171,11 @@ export default function UploadPreviewCard({
             <Icon name="repost" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>0</Text>
           </View>
-          <View style={styles.likeHit}>
-            <Icon name="share" size={ACTION_ICON_SIZE} color={COLORS.white} />
+          <View style={styles.statBtn}>
+            <View style={styles.shareIconBox}>
+              <Icon name="share" size={SHARE_ICON_SIZE} color={COLORS.white} />
+            </View>
+            <Text style={[styles.statValue, styles.countGap]}>0</Text>
           </View>
         </View>
       </View>

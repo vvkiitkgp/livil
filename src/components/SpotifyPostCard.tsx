@@ -84,6 +84,8 @@ function initialsOf(name: string): string {
 // than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
 // (styles.likeHit), so changing the size keeps the target the same.
 const ACTION_ICON_SIZE = 26;
+/** Share's paper plane, drawn smaller inside an ACTION_ICON_SIZE box — see PostCard's. */
+const SHARE_ICON_SIZE = 22;
 
 function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -283,15 +285,20 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             <Icon name="comment" size={ACTION_ICON_SIZE} color={COLORS.white} />
             <Text style={styles.statValue}>{formatCount(post.commentsCount)}</Text>
           </TouchableOpacity>
-          {/* Drawn and placed like PostCard's Share. Friends only — see ShareRepostSheet. */}
+          {/* Drawn and placed like PostCard's Share: a counter's box with an invisible "0"
+              where the number would be. Friends only — see ShareRepostSheet. */}
           <TouchableOpacity
-            style={styles.likeHit}
+            style={styles.statBtn}
             activeOpacity={0.7}
             onPress={() => setShareOpen(true)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             accessibilityRole="button"
             accessibilityLabel={`Send ${meta.track?.title ?? 'this song'} to friends`}
           >
-            <Icon name="share" size={ACTION_ICON_SIZE} color={COLORS.white} />
+            <View style={styles.shareIconBox}>
+              <Icon name="share" size={SHARE_ICON_SIZE} color={COLORS.white} />
+            </View>
+            <Text style={[styles.statValue, styles.countGap]} importantForAccessibility="no" accessibilityElementsHidden>0</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -396,7 +403,7 @@ const styles = StyleSheet.create({
   // Same safety-net wrap as PostCard's actionRow: counters drop a line rather than overlap.
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 12, columnGap: 14, rowGap: 6 },
   // As PostCard's: play on the left, the actions packed together on the right.
-  statsGroup: { flexDirection: 'row', alignItems: 'center', flexGrow: 1, flexShrink: 0, flexBasis: 'auto', justifyContent: 'flex-end', gap: 12 },
+  statsGroup: { flexDirection: 'row', alignItems: 'center', flexGrow: 1, flexShrink: 0, flexBasis: 'auto', justifyContent: 'flex-end', gap: 8 },
   // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
   // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
@@ -404,6 +411,8 @@ const styles = StyleSheet.create({
   // would never fire. The count beside it is a later sibling, so it keeps its own taps.
   likeHit: { padding: (44 - ACTION_ICON_SIZE) / 2, margin: -(44 - ACTION_ICON_SIZE) / 2 },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 6 },
+  shareIconBox: { width: ACTION_ICON_SIZE, height: ACTION_ICON_SIZE, alignItems: 'center', justifyContent: 'center' },
+  countGap: { opacity: 0 },
   statValue: { color: COLORS.white, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   statValueLiked: { color: '#FF4D6D' },
 });

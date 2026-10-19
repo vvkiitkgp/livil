@@ -103,6 +103,12 @@ function avatarInitials(author: { displayName: string | null; username: string }
 // than captions; a liked heart keeps its pink. The heart's 44pt touch box is derived from it
 // (styles.likeHit), so changing the size keeps the target the same.
 export const ACTION_ICON_SIZE = 26;
+/**
+ * Share's paper plane, drawn smaller INSIDE an ACTION_ICON_SIZE box: its diagonal fills far
+ * more of the 256 grid than the heart or the comment bubble, so at the same size it read as
+ * the biggest icon on the row (owner, 2026-10-19). The box keeps the row's rhythm.
+ */
+export const SHARE_ICON_SIZE = 22;
 
 const CREDIT_FACES_SHOWN = 4;
 
@@ -930,17 +936,22 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               Drawn like the like and comment icons beside it — white, same size, no count
               (owner, 2026-10-19). It used to be a purple outlined circle outside this
               group, from when the counters were small and grey and a grey share glyph
-              among them was unfindable; the counters are now white controls too. The 44pt
-              box is likeHit's, for the reason given on that style. */}
+              among them was unfindable; the counters are now white controls too. Laid out
+              exactly like a counter — same box, same padding — with an invisible "0" where
+              the number would be, so the gaps between all four match (owner, 2026-10-19). */}
           {canShare ? (
             <TouchableOpacity
-              style={styles.likeHit}
+              style={styles.statBtn}
               activeOpacity={0.7}
               onPress={() => setShareOpen(true)}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
               accessibilityRole="button"
               accessibilityLabel={post.kind === 'repost' ? `Send ${post.track.title} to friends` : `Share ${post.track.title}`}
             >
-              <Icon name="share" size={ACTION_ICON_SIZE} color={COLORS.white} />
+              <View style={styles.shareIconBox}>
+                <Icon name="share" size={SHARE_ICON_SIZE} color={COLORS.white} />
+              </View>
+              <Text style={[styles.statValue, styles.countGap]} importantForAccessibility="no" accessibilityElementsHidden>0</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1351,7 +1362,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexBasis: 'auto',
     justifyContent: 'flex-end',
-    gap: 12,
+    // 8, not 12, since Share became counter-sized (with its blank number): at 12 an upload's
+    // four actions wrapped on a 360-wide phone at normal text (measured 2026-10-19).
+    gap: 8,
   },
   // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
@@ -1366,6 +1379,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 6,
   },
+  // Share: an ACTION_ICON_SIZE box (like every counter's icon) with the smaller plane centred.
+  shareIconBox: { width: ACTION_ICON_SIZE, height: ACTION_ICON_SIZE, alignItems: 'center', justifyContent: 'center' },
+  // Takes a one-digit count's width and draws nothing.
+  countGap: { opacity: 0 },
   tombstoneBody: {
     backgroundColor: COLORS.inputBg,
     borderRadius: 14,
