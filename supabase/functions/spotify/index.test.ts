@@ -29,6 +29,12 @@ import {
   decodeSharedTrack,
   mapLimit,
   upstashCache,
+  CACHED_SEARCH_COST,
+  EMPTY_SEARCH_TTL_MS,
+  MAX_BACKOFF_MS,
+  isSpotifyImageUrl,
+  normalizeQuery,
+  searchKey,
 } from './app.ts';
 import * as client from '../../../src/utils/spotifyLinks.ts';
 
@@ -563,7 +569,7 @@ Deno.test('mapLimit keeps order', async () => {
 });
 
 Deno.test('upstashCache: one MGET to read, one pipeline of SET … PX to write', async () => {
-  const seen: Array<{ url: string; body: unknown; auth: string | null; hasSignal: boolean }> = [];
+  const seen: Array<{ url: string; body: unknown; auth: string | null; hasSignal: boolean; redirect?: RequestRedirect }> = [];
   const fake = ((input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     seen.push({
@@ -571,13 +577,14 @@ Deno.test('upstashCache: one MGET to read, one pipeline of SET … PX to write',
       body: JSON.parse(String(init?.body)),
       auth: new Headers(init?.headers).get('Authorization'),
       hasSignal: init?.signal instanceof AbortSignal,
+      redirect: init?.redirect,
     });
     return Promise.resolve(url.endsWith('/pipeline') ? Response.json([{ result: 'OK' }]) : Response.json({ result: ['a', null] }));
   }) as typeof fetch;
   const cache = upstashCache('https://eu1-x.upstash.io/', 'tok', fake);
   assertEquals(await cache.mget(['k1', 'k2']), ['a', null]);
   await cache.mset([{ key: 'k1', value: 'v', ttlMs: 3_600_000 }, { key: 'k2', value: 'v', ttlMs: 10 }]);
-  assertEquals(seen[0], { url: 'https://eu1-x.upstash.io', body: ['MGET', 'k1', 'k2'], auth: 'Bearer tok', hasSignal: true });
+  assertEquals(seen[0], { url: 'https://eu1-x.upstash.io', body: ['MGET', 'k1', 'k2'], auth: 'Bearer tok', hasSignal: true, redirect: 'error' });
   // An entry about to expire is not worth a command.
   assertEquals(seen[1].url, 'https://eu1-x.upstash.io/pipeline');
   assertEquals(seen[1].body, [['SET', 'k1', 'v', 'PX', '3600000']]);
@@ -590,4 +597,68 @@ Deno.test('upstashCache never throws: a failure reads as all-missing and a write
   await cache.mset([{ key: 'a', value: 'v', ttlMs: 60_000 }]);
   const errorStatus = (() => Promise.resolve(new Response('', { status: 401 }))) as typeof fetch;
   assertEquals(await upstashCache('https://x.upstash.io', 'bad', errorStatus).mget(['a']), [null]);
+});
+
+// ── Hardening from the security review ──────────────────────────────────────
+
+Deno.test('a shared back-off far in the future is capped: nobody is stopped for long', async () => {
+  const shared = memoryCache();
+  shared.store.set(`${SHARED_PREFIX}blocked-until`, { value: String(9e15), ttlMs: 60_000 });
+  const { deps, calls, setNow } = makeDeps();
+  deps.shared = shared;
+  await handle(post({ action: 'tracks', ids: [ID] }), deps); // backs off: oEmbed only
+  assertEquals(calls.filter(c => c.url.startsWith('https://api.spotify.com/')).length, 0);
+  shared.store.clear();
+  setNow(1_000_000 + MAX_BACKOFF_MS + 1);
+  await handle(post({ action: 'tracks', ids: [ID2] }), deps);
+  assert(calls.some(c => c.url.startsWith('https://api.spotify.com/v1/tracks/')));
+});
+
+Deno.test('artwork in a shared entry must come from Spotify\'s own image hosts', () => {
+  assert(isSpotifyImageUrl('https://i.scdn.co/image/ab67616d0000b273'));
+  assert(isSpotifyImageUrl('https://image-cdn-fa.spotifycdn.com/image/ab67616d00001e02'));
+  assert(!isSpotifyImageUrl('https://evil.example/i.scdn.co.png'));
+  assert(!isSpotifyImageUrl('https://scdn.co.evil.example/x'));
+  assert(!isSpotifyImageUrl('http://i.scdn.co/x'));
+  const bad = { id: ID, title: 'x', artists: [], album: null, imageUrl: 'https://tracker.example/x.png', durationMs: null };
+  assertEquals(decodeSharedTrack(JSON.stringify({ track: bad, full: true }), ID), null);
+  const long = { ...bad, imageUrl: null, title: 'x'.repeat(301) };
+  assertEquals(decodeSharedTrack(JSON.stringify({ track: long, full: true }), ID), null);
+});
+
+Deno.test('the search key never holds the words typed, and folds them like the query sent', async () => {
+  const key = await searchKey(normalizeQuery('  Blinding\u00a0LIGHTS '), 10, 'secret');
+  assert(!key.toLowerCase().includes('blinding'));
+  assertEquals(key, await searchKey('blinding lights', 10, 'secret'));
+  assert(key !== await searchKey('blinding lights', 5, 'secret'));
+  assert(key !== await searchKey('blinding lights', 10, 'another secret'));
+  const { deps, calls } = makeDeps();
+  await handle(post({ action: 'search', q: 'Blinding\u00a0LIGHTS' }), deps);
+  const sent = new URL(calls.find(c => c.url.startsWith('https://api.spotify.com/v1/search'))!.url);
+  assertEquals(sent.searchParams.get('q'), 'blinding lights'); // the same text the key was made from
+});
+
+Deno.test('cached search answers still cost the caller something, so a loop cannot run forever', async () => {
+  const { deps } = makeDeps();
+  deps.shared = memoryCache();
+  await handle(post({ action: 'search', q: 'same words' }, GOOD_JWT), deps);
+  let refused = 0;
+  const tries = Math.ceil(UPSTREAM_CALLS_PER_USER_PER_MINUTE / CACHED_SEARCH_COST) + 5;
+  for (let i = 0; i < tries; i++) {
+    if ((await handle(post({ action: 'search', q: 'same words' }, GOOD_JWT), deps)).status === 429) refused++;
+  }
+  assert(refused > 0);
+});
+
+Deno.test('an empty search answer is shared only briefly', async () => {
+  const shared = memoryCache();
+  const { deps } = makeDeps({
+    respond: url => url.includes('accounts.spotify.com')
+      ? Response.json({ access_token: 't', expires_in: 3600 })
+      : Response.json({ tracks: { items: [] } }),
+  });
+  deps.shared = shared;
+  await handle(post({ action: 'search', q: 'asdfqwer' }), deps);
+  const entry = [...shared.store.entries()].find(([k]) => k.includes(':search:'))!;
+  assertEquals(entry[1].ttlMs, EMPTY_SEARCH_TTL_MS);
 });
