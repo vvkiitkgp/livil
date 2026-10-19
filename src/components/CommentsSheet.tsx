@@ -993,7 +993,8 @@ export default function CommentsSheet({
           data={rows}
           keyExtractor={item => item.key}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
+          // Not while the @ list is open: scrolling the names is still typing the tag.
+          keyboardDismissMode={mentionTrigger ? 'none' : 'on-drag'}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: insets.bottom + 8 },

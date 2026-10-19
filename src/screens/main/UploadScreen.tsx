@@ -75,7 +75,7 @@ import { GradientFill } from '../../components/GradientFill';
 import { supabase } from '../../../lib/supabase';
 import { getMyProfile } from '../../services/profileService';
 import MentionSuggestions from '../../components/MentionSuggestions';
-import { useMentionInput } from '../../hooks/useMentionInput';
+import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
 type UploadNavigation = NativeStackNavigationProp<RootStackParamList, 'Upload'>;
 
@@ -674,6 +674,8 @@ export default function UploadScreen() {
 
   // ── Steps ────────────────────────────────────────────────────────────────────
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  // FIELD_CLEARANCE, plus the @ list's height while the description's list is open.
+  const mentionRoom = useMentionListRoom(scrollRef, FIELD_CLEARANCE);
   const [step, setStep] = useState<StepKey>('type');
   const [reviewing, setReviewing] = useState(false);
 
@@ -1200,8 +1202,6 @@ export default function UploadScreen() {
         </View>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Description · optional</Text>
-          {/* @ to tag someone (a collaborator, a friend); above the field for the keyboard. */}
-          <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
           <FormInput
             // Children, not `value`: the text with its @tags coloured (useMentionInput).
             onChangeText={setDescription}
@@ -1215,6 +1215,13 @@ export default function UploadScreen() {
           >
             {mention.styled}
           </FormInput>
+          {/* @ to tag someone (a collaborator, a friend). Under the field; the page makes room. */}
+          <MentionSuggestions
+            query={mention.query}
+            onSelect={mention.select}
+            variant="card"
+            onHeightChange={mentionRoom.onHeightChange}
+          />
         </View>
         {/* Tags sit with the description, not behind a disclosure: they decide whether
             anyone not already following you ever finds the track. The moods are one-tap
@@ -1605,10 +1612,11 @@ export default function UploadScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         // As on Search and New message: dragging the page puts the keyboard away.
-        keyboardDismissMode="on-drag"
+        // …except while the @ list is open: scrolling the names keeps the keyboard.
+        keyboardDismissMode={mentionRoom.keyboardDismissMode}
         scrollEnabled={!pinching}
         // Room between a focused field and the keyboard — the Next button under it included.
-        bottomOffset={FIELD_CLEARANCE}
+        bottomOffset={mentionRoom.bottomOffset}
         showsVerticalScrollIndicator={false}
       >
         {/* Measured by revealFocusedField; collapsable={false} keeps it a real native view. */}

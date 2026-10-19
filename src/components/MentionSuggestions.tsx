@@ -22,16 +22,21 @@ type Props = {
   query: string | null;
   onSelect: (profile: MentionProfile) => void;
   /**
-   * 'card' for a caption box: a rounded card ABOVE the field, so the keyboard never covers
-   * it (a caption sits low on its screen). Comments keep the strip under their box.
+   * 'card' for a caption box: a rounded card BELOW the field — above it, it pushed the box
+   * down as it opened (owner, 2026-10-19). Comments keep the strip under their box.
    */
   variant?: 'strip' | 'card';
   style?: StyleProp<ViewStyle>;
+  /**
+   * The list's height while open, 0 when closed — so a caption screen can scroll the field
+   * up by that much and the list sits above the keyboard (useMentionListRoom).
+   */
+  onHeightChange?: (height: number) => void;
 };
 
 const DEBOUNCE_MS = 200;
 
-export default function MentionSuggestions({ query, onSelect, variant = 'strip', style }: Props) {
+export default function MentionSuggestions({ query, onSelect, variant = 'strip', style, onHeightChange }: Props) {
   const [results, setResults] = useState<MentionProfile[]>([]);
   const [loading, setLoading] = useState(false);
   // Friends first, as Instagram puts the people you follow first.
@@ -67,11 +72,18 @@ export default function MentionSuggestions({ query, onSelect, variant = 'strip',
     };
   }, [query]);
 
-  if (query === null || query.length === 0) { return null; }
-  if (!loading && results.length === 0) { return null; }
+  const visible = !(query === null || query.length === 0) && (loading || results.length > 0);
+  const heightRef = React.useRef(onHeightChange);
+  heightRef.current = onHeightChange;
+  useEffect(() => { if (!visible) { heightRef.current?.(0); } }, [visible]);
+
+  if (!visible) { return null; }
 
   return (
-    <View style={[styles.container, variant === 'card' && styles.card, style]}>
+    <View
+      style={[styles.container, variant === 'card' && styles.card, style]}
+      onLayout={onHeightChange ? e => onHeightChange(Math.ceil(e.nativeEvent.layout.height)) : undefined}
+    >
       {loading && results.length === 0 ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={COLORS.purpleLight} size="small" />
@@ -86,6 +98,8 @@ export default function MentionSuggestions({ query, onSelect, variant = 'strip',
           style={styles.scroll}
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
+          // Scrolling the names is still typing the tag: never put the keyboard away.
+          keyboardDismissMode="none"
           showsVerticalScrollIndicator
         >
           {results.map(p => (
@@ -130,7 +144,7 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderRadius: 12,
-    marginBottom: 8,
+    marginTop: 8,
     overflow: 'hidden',
   },
   scroll: {

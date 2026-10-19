@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from 'react-native';
+import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { detectMentionTrigger, renderInputMentions } from '../utils/mentions';
 import type { MentionProfile } from '../services/comments';
 
@@ -36,4 +37,28 @@ export function useMentionInput(value: string, setValue: (next: string) => void)
   const styled = useMemo(() => renderInputMentions(value), [value]);
 
   return { onSelectionChange, query: trigger?.partial ?? null, select, styled };
+}
+
+/**
+ * Room for the @ list under a caption box. The list opens BELOW the field (above it, it
+ * pushed the box down), which on a phone is where the keyboard is — so while it is open the
+ * scroll view keeps `base + its height` between the field and the keyboard, and scrolls to
+ * honour that. Wire `bottomOffset` and `keyboardDismissMode` to the KeyboardAwareScrollView
+ * and `onHeightChange` to MentionSuggestions.
+ */
+export function useMentionListRoom(scrollRef: RefObject<KeyboardAwareScrollViewRef | null>, base: number) {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (height <= 0) { return; }
+    // After the new bottomOffset has reached the scroll view.
+    const t = setTimeout(() => { scrollRef.current?.assureFocusedInputVisible(); }, 50);
+    return () => clearTimeout(t);
+  }, [height, scrollRef]);
+  return {
+    bottomOffset: base + height,
+    onHeightChange: setHeight,
+    // While the list is open a drag must not put the keyboard away — scrolling the names is
+    // still typing the tag (owner, 2026-10-19). Use as the scroll view's keyboardDismissMode.
+    keyboardDismissMode: (height > 0 ? 'none' : 'on-drag') as 'none' | 'on-drag',
+  };
 }

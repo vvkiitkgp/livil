@@ -11,7 +11,7 @@ import {
   type TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
@@ -36,7 +36,7 @@ import { looksLikeSpotifyLink, parseSpotifyTrackId } from '../../utils/spotifyLi
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 import type { RootStackParamList } from '../../navigation/types';
 import MentionSuggestions from '../../components/MentionSuggestions';
-import { useMentionInput } from '../../hooks/useMentionInput';
+import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'SpotifyRepost'>;
@@ -76,6 +76,8 @@ export default function SpotifyRepostScreen() {
   const [hint, setHint] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const mention = useMentionInput(caption, setCaption);
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const mentionRoom = useMentionListRoom(scrollRef, 24);
   const [submitting, setSubmitting] = useState(false);
   const findRef = useRef<TextInput>(null);
 
@@ -206,6 +208,9 @@ export default function SpotifyRepostScreen() {
       </View>
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
+        // Room for the @ list under the caption while it is open (useMentionListRoom).
+        bottomOffset={mentionRoom.bottomOffset}
         style={styles.flex}
         // At least 1px taller than the screen: this page is often short (a search box and a
         // few results), and a page with nothing to scroll ignores a drag on Android — so
@@ -214,7 +219,8 @@ export default function SpotifyRepostScreen() {
         onLayout={e => setFrameHeight(Math.floor(e.nativeEvent.layout.height))}
         keyboardShouldPersistTaps="handled"
         // Dragging the page puts the keyboard away, as on Upload, Search and New message.
-        keyboardDismissMode="on-drag"
+        // …except while the @ list is open: scrolling the names keeps the keyboard.
+        keyboardDismissMode={mentionRoom.keyboardDismissMode}
         showsVerticalScrollIndicator={false}
       >
         {!pickedId ? (
@@ -374,8 +380,6 @@ export default function SpotifyRepostScreen() {
             <Text style={styles.sectionLabel}>
               Caption <Text style={styles.sectionHint}>(How do you feel about this track)</Text>
             </Text>
-            {/* @ to tag someone; above the field, so the keyboard never covers it. */}
-            <MentionSuggestions query={mention.query} onSelect={mention.select} variant="card" />
             <FormInput
               // Children, not `value`: the caption with its @tags coloured (useMentionInput).
               onChangeText={setCaption}
@@ -389,6 +393,13 @@ export default function SpotifyRepostScreen() {
             >
               {mention.styled}
             </FormInput>
+            {/* @ to tag someone. Under the field; the page makes room above the keyboard. */}
+            <MentionSuggestions
+              query={mention.query}
+              onSelect={mention.select}
+              variant="card"
+              onHeightChange={mentionRoom.onHeightChange}
+            />
           </>
         )}
       </KeyboardAwareScrollView>
