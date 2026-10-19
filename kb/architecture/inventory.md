@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-432 TypeScript file(s) under `src/`, 91,064 lines.
+432 TypeScript file(s) under `src/`, 91,126 lines.
 
 ## Size hotspots
 
@@ -331,7 +331,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-98 file(s), 18,825 lines.
+98 file(s), 18,887 lines.
 
 | File | Lines |
 |---|---:|
@@ -346,13 +346,14 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/playlists.ts` | 388 |
 | `src/services/messages.ts` | 384 |
+| `src/services/spotify.ts` | 374 |
 | `src/services/jamRooms.ts` | 368 |
-| `src/services/spotify.ts` | 348 |
 | `src/services/uploads.ts` | 344 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/conversations.ts` | 249 |
 | `src/services/gifs.ts` | 245 |
+| `src/services/__tests__/spotify.test.ts` | 237 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
 | `src/services/__tests__/commentSongs.test.ts` | 230 |
 | `src/services/__tests__/pushScheduled.test.ts` | 230 |
@@ -364,7 +365,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/commentGifs.test.ts` | 213 |
 | `src/services/__tests__/waveform.test.ts` | 212 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
-| `src/services/__tests__/spotify.test.ts` | 201 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/gifs.test.ts` | 178 |
