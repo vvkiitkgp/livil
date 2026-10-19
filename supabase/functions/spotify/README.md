@@ -11,13 +11,28 @@ api.spotify.com directly — the client secret lives here.
 | `resolve` | `{ url }` | `{ id \| null }` — pasted link, incl. `spotify.link` short links |
 
 Signed-in Livil users only (the access token is checked against GoTrue). No database
-credential; nothing is written.
+credential; nothing is written to the Livil database.
+
+## Caching
+
+Spotify allows only temporary caching, so every entry expires: one hour for full metadata,
+five minutes for the oEmbed stand-in (no artist). Each isolate keeps its own copy, and — when
+the Upstash secrets are set — all isolates share one Redis cache:
+
+- `tracks` reads every miss in ONE `MGET` (plus the shared back-off key), fetches what is
+  still missing from Spotify at most 4 at a time, then writes the answers in one pipeline.
+- `search` caches each query (lower-cased) for an hour.
+- A 429 writes `livil:spotify:v1:blocked-until`, so every isolate stops calling the Web API
+  for Spotify's `Retry-After`, not just the one that was told.
+
+Redis unset, failing or slower than 500 ms → the function behaves exactly as without it.
 
 ## Secrets
 
 | Name | Effect |
 |---|---|
 | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | From the Spotify developer dashboard. Without them: no search, and card metadata falls back to oEmbed (title + artwork, no artist). |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | The shared cache (Upstash Redis, Mumbai, REST API — the read-write token). Optional: without them each isolate caches alone. |
 
 The on/off switch for Spotify reposts is **not** a secret here — it lives in the database
 (`app_switches`, key `spotify_reposts`), where it also refuses the insert. See ADR-0027.
