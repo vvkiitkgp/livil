@@ -1322,11 +1322,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontVariant: ['tabular-nums'],
   },
+  // Wraps as a SAFETY NET only: on a phone too narrow for the row (320-wide, Display Zoom)
+  // or at the largest text sizes, the counters drop to a second line, right-aligned,
+  // instead of sliding under the play button. A normal phone at normal text never wraps.
   actionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     marginTop: 8,
-    gap: 14,
+    columnGap: 14,
+    rowGap: 6,
   },
   playButton: {
     width: 46,
@@ -1337,10 +1342,14 @@ const styles = StyleSheet.create({
   },
   // Play on the left, the actions packed together on the right (owner, 2026-10-19). Same in
   // SpotifyPostCard, and UploadPreviewCard draws its row with these styles.
+  // Grows into the free space but never below its content (flexBasis auto, no shrink) — so
+  // when it does not fit beside the play button it wraps, rather than overflowing onto it.
   statsGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 'auto',
     justifyContent: 'flex-end',
     gap: 12,
   },

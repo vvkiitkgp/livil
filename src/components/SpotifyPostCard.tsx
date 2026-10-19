@@ -45,8 +45,8 @@ import { LikeHeart } from './LikeHeart';
  *  - No waveform (Spotify forbids analysing its audio), no clip, no play count, no share
  *    link (same as every repost), no add-to-queue / playlist / album. Share sends it to
  *    friends in chat only (ShareRepostSheet).
- *  - The action row: "Play on Spotify" (it opens Spotify), then the counters and Share
- *    packed on the right, as on a Livil card.
+ *  - The action row: Spotify's icon + "Play" (it opens Spotify), then the counters and
+ *    Share packed on the right, as on a Livil card.
  *  - The Repost pill opens the Spotify repost screen with this song LOCKED in.
  */
 function relativeTime(iso: string): string {
@@ -255,8 +255,12 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
       </DoubleTapLike>
 
       <View style={styles.actionRow}>
+        {/* "Play" beside Spotify's icon, not "Play on Spotify": with like, comment and Share
+            the full words needed ~356pt and overlapped the like icon on most iPhones
+            (measured 2026-10-19). "Play" fits every phone from 360 wide at normal and large
+            text; the screen reader still hears "Play on Spotify". */}
         <Button
-          label="Play on Spotify"
+          label="Play"
           variant="secondary"
           size="md"
           leading={<SpotifyLogo size="xs" />}
@@ -387,9 +391,10 @@ const styles = StyleSheet.create({
   // Spotify's mobile guideline: artwork corners rounded no more than 4px.
   art: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: COLORS.card },
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 14 },
+  // Same safety-net wrap as PostCard's actionRow: counters drop a line rather than overlap.
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 12, columnGap: 14, rowGap: 6 },
   // As PostCard's: play on the left, the actions packed together on the right.
-  statsGroup: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', gap: 12 },
+  statsGroup: { flexDirection: 'row', alignItems: 'center', flexGrow: 1, flexShrink: 0, flexBasis: 'auto', justifyContent: 'flex-end', gap: 12 },
   // The heart is ACTION_ICON_SIZE; this makes its touch box 44pt without moving or resizing it — the
   // padding grows the box and the equal negative margin gives the space back. A real box, not
   // hitSlop: both platforms drop a touch outside the parent's laid-out bounds unless a child's
