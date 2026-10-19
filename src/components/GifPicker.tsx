@@ -37,7 +37,16 @@ const FAILED: Results = { status: 'failed', gifs: [], next: null, pages: 0 };
  * list, so a drag reaches the sheet. Status text and "Powered by GIPHY" (GIPHY's condition
  * for using its API) go at the TOP, where the keyboard never covers them.
  */
-export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif: Gif) => void }) {
+export function GifSearchPanel({
+  query,
+  onPick,
+  verb = 'attach',
+}: {
+  query: string;
+  onPick: (gif: Gif) => void;
+  /** What a tap does: comments attach the GIF to the comment; chat sends it at once. */
+  verb?: 'attach' | 'send';
+}) {
   const trimmed = query.trim();
   const [results, setResults] = useState<Results>(LOADING);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -112,7 +121,7 @@ export function GifSearchPanel({ query, onPick }: { query: string; onPick: (gif:
                   pressed && styles.tilePressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Attach ${gif.title || 'GIF'}`}
+                accessibilityLabel={`${verb === 'send' ? 'Send' : 'Attach'} ${gif.title || 'GIF'}`}
                 testID="gif-tile"
               >
                 <Image source={{ uri: gif.previewUrl }} style={styles.tileImage} resizeMode="cover" />

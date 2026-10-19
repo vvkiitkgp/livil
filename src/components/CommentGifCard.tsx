@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { useGif } from '../services/gifs';
 import type { CommentGif } from '../services/comments';
@@ -44,15 +44,26 @@ export function gifBox(
  * Android animates it only in a build with Fresco's animated-gif module; without one it
  * shows the first frame (ADR-0031).
  */
-export default function CommentGifCard({ gif }: { gif: CommentGif }) {
+export default function CommentGifCard({
+  gif,
+  maxWidth = MAX_W,
+  maxHeight = MAX_H,
+  style,
+}: {
+  gif: Pick<CommentGif, 'id' | 'width' | 'height'>;
+  /** A chat bubble draws it larger than a comment does. */
+  maxWidth?: number;
+  maxHeight?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
   const state = useGif(gif.id);
   const [failed, setFailed] = useState(false);
-  const box = gifBox(gif.width, gif.height);
+  const box = gifBox(gif.width, gif.height, maxWidth, maxHeight);
   const unavailable = state.status === 'unavailable' || failed;
 
   return (
     <View
-      style={[styles.box, box]}
+      style={[styles.box, box, style]}
       accessible
       accessibilityRole="image"
       accessibilityLabel={unavailable ? 'GIF unavailable' : `GIF${state.gif?.title ? `: ${state.gif.title}` : ''}`}
