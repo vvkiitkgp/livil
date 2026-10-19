@@ -4,6 +4,7 @@
 // No network: every outbound call goes through a fake `fetch` that records what was asked.
 // The properties under test, most important first:
 //   - only signed-in users get anything;
+//   - search and trending return G only, and a blocked search gets trending instead;
 //   - nothing rated above PG-13 is ever returned, from ANY action — lookup included, since
 //     its ids come from comment rows anyone signed in can write;
 //   - only media URLs on GIPHY's CDN are returned, exactly as GIPHY sent them, and never
@@ -25,6 +26,7 @@ import {
   parseCallsPerHour,
   resetState,
   SHOWN_RATINGS,
+  isBlockedQuery,
   CALLS_PER_USER_PER_HOUR,
   DEFAULT_CALLS_PER_HOUR,
 } from './app.ts';
@@ -39,7 +41,7 @@ function apiGif(id: string, over: Record<string, unknown> = {}) {
     type: 'gif',
     id,
     title: 'Happy Dance GIF by Disney',
-    rating: 'pg',
+    rating: 'g',
     url: `https://giphy.com/gifs/${id}`,
     username: 'disney',
     images: {
@@ -76,16 +78,43 @@ Deno.test('normalizeGif keeps only the enumerated fields, URLs untouched', () =>
   });
 });
 
-Deno.test('normalizeGif: search offers G and PG only; posted GIFs may also be PG-13; never more', () => {
-  for (const rating of ['g', 'pg', 'G', 'PG']) {
+Deno.test('normalizeGif: search offers G only; posted GIFs may also be PG or PG-13; never more', () => {
+  for (const rating of ['g', 'G']) {
     assert(normalizeGif(apiGif(ID, { rating })), rating);
   }
-  assertEquals(normalizeGif(apiGif(ID, { rating: 'pg-13' })), null, 'pg-13 is not offered in search');
-  assert(normalizeGif(apiGif(ID, { rating: 'pg-13' }), SHOWN_RATINGS), 'pg-13 still shows once posted');
+  for (const rating of ['pg', 'PG', 'pg-13']) {
+    assertEquals(normalizeGif(apiGif(ID, { rating })), null, `${rating} is not offered in search`);
+    assert(normalizeGif(apiGif(ID, { rating }), SHOWN_RATINGS), `${rating} still shows once posted`);
+  }
   for (const rating of ['r', 'R', 'nc-17', 'y', '', null, undefined, 3]) {
     assertEquals(normalizeGif(apiGif(ID, { rating })), null, String(rating));
     assertEquals(normalizeGif(apiGif(ID, { rating }), SHOWN_RATINGS), null, String(rating));
   }
+});
+
+Deno.test('isBlockedQuery: what a search may not be for', () => {
+  for (const q of ['sexy', 'Sexy', 'SEXY girl', 's3xy', '$exy', 's.e.x', 'sexygirl', 'nudes', 'hot', 'hot girl',
+    'kiss', 'kissing', 'b00bs', 'bikini', 'twerk', 'ass', 'weed', '420', 'fuck', 'f.u.c.k', 'thirsty']) {
+    assert(isBlockedQuery(q), q);
+  }
+  for (const q of ['happy dance', 'cat', 'class', 'pass the ball', 'cucumber', 'cocktail', 'butterfly', 'this example',
+    'shotgun wedding', 'bravo', 'thank you', 'good morning', 'hotel', 'photo']) {
+    assertEquals(isBlockedQuery(q), false, q);
+  }
+});
+
+Deno.test('a blocked search gets trending instead, same shape, query never sent', async () => {
+  resetState();
+  const { deps: d, calls } = deps();
+  const res = await handle(post({ action: 'search', q: 'sexy' }), d);
+  assertEquals(res.status, 200);
+  const body = await res.json() as { enabled: boolean; gifs: Gif[]; next: number | null };
+  assertEquals(Object.keys(body).sort(), ['enabled', 'gifs', 'next']);
+  assertEquals(body.gifs.length, 2);
+  const url = new URL(calls[0].url);
+  assertEquals(url.pathname, '/v1/gifs/trending');
+  assertEquals(url.searchParams.has('q'), false);
+  assertEquals(url.searchParams.get('rating'), 'g');
 });
 
 Deno.test('normalizeGif refuses media off GIPHY\'s CDN', () => {
@@ -228,7 +257,7 @@ Deno.test('without a key nothing reaches GIPHY', async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test('search asks GIPHY for one PG page and returns only our shape', async () => {
+Deno.test('search asks GIPHY for one G page and returns only our shape', async () => {
   resetState();
   const { deps: d, calls } = deps({
     respond: () => Response.json({
@@ -249,7 +278,7 @@ Deno.test('search asks GIPHY for one PG page and returns only our shape', async 
   const url = new URL(calls[0].url);
   assertEquals(url.origin + url.pathname, 'https://api.giphy.com/v1/gifs/search');
   assertEquals(url.searchParams.get('q'), 'happy dance');
-  assertEquals(url.searchParams.get('rating'), 'pg');
+  assertEquals(url.searchParams.get('rating'), 'g');
   assertEquals(url.searchParams.get('limit'), String(PAGE_SIZE));
   assertEquals(url.searchParams.get('offset'), '36');
   assertEquals(url.searchParams.get('api_key'), KEY);
@@ -262,7 +291,7 @@ Deno.test('trending is the same, without a query', async () => {
   assertEquals(body.gifs.length, 2);
   const url = new URL(calls[0].url);
   assertEquals(url.pathname, '/v1/gifs/trending');
-  assertEquals(url.searchParams.get('rating'), 'pg');
+  assertEquals(url.searchParams.get('rating'), 'g');
   assertEquals(url.searchParams.get('offset'), '0');
   assertEquals(url.searchParams.has('q'), false);
 });

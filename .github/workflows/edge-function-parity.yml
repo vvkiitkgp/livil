@@ -105,7 +105,7 @@ jobs:
             supabase/functions/spotify/index.test.ts
 
       # GIFs in comments (ADR-0031). No permissions: the suite fakes every network call. It
-      # pins the content-rating filter: G/PG in search, nothing above PG-13 ever.
+      # pins the content-rating filter: G only in search (blocked words get trending), nothing above PG-13 ever.
       - name: gifs tests
         run: |
           deno test --no-config \
