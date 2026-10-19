@@ -36,7 +36,13 @@ type Props = {
 
 const DEBOUNCE_MS = 200;
 
-export default function MentionSuggestions({ query, onSelect, variant = 'strip', style, onHeightChange }: Props) {
+export default function MentionSuggestions({
+  query,
+  onSelect,
+  variant = 'strip',
+  style,
+  onHeightChange,
+}: Props) {
   const [results, setResults] = useState<MentionProfile[]>([]);
   const [loading, setLoading] = useState(false);
   // Friends first, as Instagram puts the people you follow first.
@@ -98,8 +104,9 @@ export default function MentionSuggestions({ query, onSelect, variant = 'strip',
           style={styles.scroll}
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
-          // Scrolling the names is still typing the tag: never put the keyboard away.
-          keyboardDismissMode="none"
+          // Scrolling the names puts the keyboard away, like a drag anywhere else on the page
+          // (owner, 2026-10-19). A tap on a name still lands while it is up (persistTaps).
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator
         >
           {results.map(p => (

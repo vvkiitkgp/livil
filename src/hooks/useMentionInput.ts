@@ -43,8 +43,8 @@ export function useMentionInput(value: string, setValue: (next: string) => void)
  * Room for the @ list under a caption box. The list opens BELOW the field (above it, it
  * pushed the box down), which on a phone is where the keyboard is — so while it is open the
  * scroll view keeps `base + its height` between the field and the keyboard, and scrolls to
- * honour that. Wire `bottomOffset` and `keyboardDismissMode` to the KeyboardAwareScrollView
- * and `onHeightChange` to MentionSuggestions.
+ * honour that. Wire `bottomOffset` to the KeyboardAwareScrollView and `onHeightChange` to
+ * MentionSuggestions.
  */
 export function useMentionListRoom(scrollRef: RefObject<KeyboardAwareScrollViewRef | null>, base: number) {
   const [height, setHeight] = useState(0);
@@ -54,11 +54,5 @@ export function useMentionListRoom(scrollRef: RefObject<KeyboardAwareScrollViewR
     const t = setTimeout(() => { scrollRef.current?.assureFocusedInputVisible(); }, 50);
     return () => clearTimeout(t);
   }, [height, scrollRef]);
-  return {
-    bottomOffset: base + height,
-    onHeightChange: setHeight,
-    // While the list is open a drag must not put the keyboard away — scrolling the names is
-    // still typing the tag (owner, 2026-10-19). Use as the scroll view's keyboardDismissMode.
-    keyboardDismissMode: (height > 0 ? 'none' : 'on-drag') as 'none' | 'on-drag',
-  };
+  return { bottomOffset: base + height, onHeightChange: setHeight };
 }

@@ -219,8 +219,7 @@ export default function SpotifyRepostScreen() {
         onLayout={e => setFrameHeight(Math.floor(e.nativeEvent.layout.height))}
         keyboardShouldPersistTaps="handled"
         // Dragging the page puts the keyboard away, as on Upload, Search and New message.
-        // …except while the @ list is open: scrolling the names keeps the keyboard.
-        keyboardDismissMode={mentionRoom.keyboardDismissMode}
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {!pickedId ? (

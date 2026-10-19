@@ -463,8 +463,7 @@ export default function RepostScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         // Dragging the page puts the keyboard away, as on Upload, Search and New message.
-        // …except while the @ list is open: scrolling the names keeps the keyboard.
-        keyboardDismissMode={mentionRoom.keyboardDismissMode}
+        keyboardDismissMode="on-drag"
         // Room under the caret for the rest of the caption box: a multiline field is
         // scrolled by its caret line, so a small offset left the box's lower part (it is
         // 100pt tall) under the keyboard. Same clearance as Upload's fields.

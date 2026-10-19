@@ -1612,8 +1612,7 @@ export default function UploadScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         // As on Search and New message: dragging the page puts the keyboard away.
-        // …except while the @ list is open: scrolling the names keeps the keyboard.
-        keyboardDismissMode={mentionRoom.keyboardDismissMode}
+        keyboardDismissMode="on-drag"
         scrollEnabled={!pinching}
         // Room between a focused field and the keyboard — the Next button under it included.
         bottomOffset={mentionRoom.bottomOffset}
