@@ -917,6 +917,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/post-children-visibility.test.sql
 
+      # 20261112000000 — a friends-only repost sent in chat to a non-friend says whose it
+      # is: shared_repost_author answers only chat members, only when the SENDER may see the
+      # repost (no author oracle through a crafted message), never across a block.
+      - name: Shared repost author tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/shared-repost-author.test.sql
+
       # App update prompt: everyone (signed out too) reads the per-platform policy, no
       # client can write it, and the constraints refuse a dashboard typo that would block
       # everyone (minimum above latest, negative builds, unknown platforms).

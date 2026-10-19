@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-446 TypeScript file(s) under `src/`, 92,479 lines.
+447 TypeScript file(s) under `src/`, 92,729 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/screens/main/ConversationScreen.tsx` | 2244 |
+| `src/screens/main/ConversationScreen.tsx` | 2257 |
 | `src/screens/main/UploadScreen.tsx` | 2240 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
@@ -104,11 +104,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,572 lines.
+50 file(s), 27,585 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 2244 |
+| `src/screens/main/ConversationScreen.tsx` | 2257 |
 | `src/screens/main/UploadScreen.tsx` | 2240 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
@@ -161,7 +161,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-168 file(s), 32,965 lines.
+168 file(s), 33,105 lines.
 
 | File | Lines |
 |---|---:|
@@ -189,6 +189,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/primitives.tsx` | 319 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/TrackContextMenu.tsx` | 293 |
+| `src/components/ChatSongCard.tsx` | 290 |
 | `src/components/Button.tsx` | 286 |
 | `src/components/InboxBanner.tsx` | 281 |
 | `src/components/TagInput.tsx` | 278 |
@@ -200,7 +201,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/PostGridCard.tsx` | 229 |
-| `src/components/ChatSongCard.tsx` | 224 |
+| `src/components/RepostChatCard.tsx` | 228 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/GifPicker.tsx` | 216 |
 | `src/components/PostReportModal.tsx` | 216 |
@@ -239,7 +240,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/PostGridCard.test.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/NotificationNudge.tsx` | 154 |
-| `src/components/RepostChatCard.tsx` | 154 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/AppUpdatePrompt.test.tsx` | 151 |
 | `src/components/__tests__/CommentSongCard.test.tsx` | 151 |
@@ -336,7 +336,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-99 file(s), 19,022 lines.
+100 file(s), 19,119 lines.
 
 | File | Lines |
 |---|---:|
@@ -345,8 +345,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/pushNotifications.ts` | 925 |
 | `src/services/activity.ts` | 715 |
 | `src/services/comments.ts` | 620 |
+| `src/services/share.ts` | 551 |
 | `src/services/albums.ts` | 521 |
-| `src/services/share.ts` | 520 |
 | `src/services/profileService.ts` | 509 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/playlists.ts` | 388 |
@@ -415,6 +415,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
 | `src/services/__tests__/createTrackStreamingGrant.test.ts` | 67 |
+| `src/services/__tests__/sharedRepostAuthor.test.ts` | 66 |
 | `src/services/mutuals.ts` | 66 |
 | `src/services/activeConversation.ts` | 62 |
 | `src/services/__tests__/network.test.ts` | 60 |

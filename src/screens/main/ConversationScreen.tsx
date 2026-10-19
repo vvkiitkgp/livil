@@ -210,6 +210,7 @@ function MessageBubble({
   onRepostSharedPost,
   onOpenSharedProfile,
   onOpenSharedRepost,
+  onOpenReposterProfile,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -225,6 +226,8 @@ function MessageBubble({
   onRepostSharedPost: (postId: string) => void;
   onOpenSharedProfile: (username: string) => void;
   onOpenSharedRepost: (postId: string) => void;
+  /** A friends-only repost the viewer may not see opens its reposter's profile instead. */
+  onOpenReposterProfile: (userId: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   // A GIF is a text message carrying the GIF in metadata (src/utils/chatGif.ts); its body is
@@ -393,7 +396,9 @@ function MessageBubble({
               sharedRepostId ? (
                 <RepostChatCard
                   repostPostId={sharedRepostId}
+                  messageId={msg.id}
                   onOpen={onOpenSharedRepost}
+                  onOpenProfile={onOpenReposterProfile}
                   onLongPress={() => onLongPress(msg)}
                   fallback={
                     <SpotifyChatCard
@@ -447,7 +452,9 @@ function MessageBubble({
               return sharedRepostId ? (
                 <RepostChatCard
                   repostPostId={sharedRepostId}
+                  messageId={msg.id}
                   onOpen={onOpenSharedRepost}
+                  onOpenProfile={onOpenReposterProfile}
                   onLongPress={() => onLongPress(msg)}
                   fallback={songCard}
                 />
@@ -1291,6 +1298,11 @@ export default function ConversationScreen() {
     navigation.navigate('PostDetail', { postId });
   }, [navigation]);
 
+  /** …and one from someone whose reposts the viewer may not see opens that person. */
+  const handleOpenReposterProfile = useCallback((userId: string) => {
+    navigation.navigate('UserProfile', { userId });
+  }, [navigation]);
+
   const handleOpenSharedProfile = useCallback(async (username: string) => {
     const target = await resolveSharedProfile(username);
     if (!target) {
@@ -1427,6 +1439,7 @@ export default function ConversationScreen() {
               onRepostSharedPost={handleRepostSharedPost}
               onOpenSharedProfile={handleOpenSharedProfile}
               onOpenSharedRepost={handleOpenSharedRepost}
+              onOpenReposterProfile={handleOpenReposterProfile}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -1441,7 +1454,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, handleOpenSharedRepost, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, handleOpenSharedRepost, handleOpenReposterProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
