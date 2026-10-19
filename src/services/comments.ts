@@ -488,7 +488,9 @@ export async function searchUsernamesForMention(
   isFriend?: (userId: string) => boolean,
 ): Promise<MentionProfile[]> {
   const trimmed = query.trim().toLowerCase();
-  if (!trimmed) {
+  // Only what a username can be. Callers pass detectMentionTrigger's partial, which already is;
+  // this keeps a future free-text caller from widening the match (PostgREST reads `*` as `%`).
+  if (!/^[a-z0-9_]{1,30}$/.test(trimmed)) {
     return [];
   }
   const esc = trimmed.replace(/[%_\\]/g, '\\$&');

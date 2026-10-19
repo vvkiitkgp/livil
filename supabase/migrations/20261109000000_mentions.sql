@@ -27,9 +27,17 @@
 --     — they are told about this comment already ("commented on your post", "replied to
 --     your comment"); twice would be noise. And the post author's bar (block,
 --     friends-only comments) must still let the commenter comment, as for replies.
+--   * a CONFIRMED account — never-confirmed sign-ups are hidden from everyone (ADR-0025);
 -- ONCE per post or comment per person: agg_key 'mention:post:<id>' / 'mention:comment:<id>'
 -- under the (recipient_id, agg_key) unique index, so calling again — or editing a caption
 -- to repeat a tag — writes nothing and pushes nothing.
+--
+-- ── Spam ────────────────────────────────────────────────────────────────────
+-- "≤ 5 per text" alone does not bound a sender: twenty comments on your own post can tag
+-- the same person twenty times (security review, 2026-10-19). So a sender gets at most
+-- MENTIONS_PER_HOUR (30) mention notifications an hour, counted here — the database is the
+-- only place a durable cap can live. And each PUSH is single-use: send-push claims the row
+-- by id (claim_mention_push) before sending, so one tag can never be pushed twice.
 --
 -- ── The switch ──────────────────────────────────────────────────────────────
 -- notification_preferences.mentions (default on): send-push skips the push when it is
@@ -91,6 +99,9 @@ as $$
     ) s;
 $$;
 
+-- Only the definer function below needs it (and runs as its owner).
+revoke execute on function public.mentioned_usernames(text, integer) from public, anon, authenticated;
+
 -- ── 4. Creating them ────────────────────────────────────────────────────────
 -- Exactly one of p_post_id (a post's caption) or p_comment_id (a comment). Returns one row
 -- per person newly told, for the app to push to.
@@ -115,6 +126,7 @@ declare
   v_name     text;
   v_user     record;
   v_id       uuid;
+  v_left     int;
 begin
   if v_actor is null then return; end if;
   if (p_post_id is null) = (p_comment_id is null) then return; end if;
@@ -145,6 +157,12 @@ begin
 
   if v_text is null or position('@' in v_text) = 0 then return; end if;
 
+  -- The hourly cap (see Spam above).
+  select 30 - count(*)::int into v_left
+    from activity_notifications
+   where actor_id = v_actor and type = 'mention' and created_at > now() - interval '1 hour';
+  if v_left <= 0 then return; end if;
+
   select coalesce(display_name, '@' || username) into v_name from profiles where id = v_actor;
 
   for v_user in
@@ -154,6 +172,8 @@ begin
       join posts p on p.id = v_post
      where pr.id <> v_actor
        and not (pr.id = any (v_skip))
+       -- A confirmed account (profiles_select_authenticated's rule, 20261010000000).
+       and (case when pr.email_confirmed then true else auth_email_confirmed(pr.id) end)
        and not is_blocked_between(v_actor, pr.id)
        -- posts_select_authenticated (20261019000000), for the RECIPIENT as viewer.
        and (
@@ -185,6 +205,8 @@ begin
       notification_id := v_id;
       actor_display_name := v_name;
       return next;
+      v_left := v_left - 1;
+      exit when v_left <= 0;
     end if;
   end loop;
 end;
@@ -197,6 +219,41 @@ comment on function public.activity_notify_mentions(uuid, uuid) is
   'Tell the people @-tagged in the caller''s own post caption or comment (read from the '
   'stored row): at most 5, once each, never across a block, never someone who cannot see '
   'the post. Returns who was newly told, for the app to push to.';
+
+-- ── 4b. One push per mention ────────────────────────────────────────────────
+-- send-push calls this (service role) with the notification id the app was given, and
+-- sends only on `true`: the row exists, is this sender's to this recipient, is recent, and
+-- has not been pushed — and it is marked pushed in the same statement, so a replay (or two
+-- racing requests) gets `false`. Not callable by apps.
+create or replace function public.claim_mention_push(p_id uuid, p_recipient uuid, p_actor uuid)
+returns boolean
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+  with claimed as (
+    update activity_notifications
+       set payload = payload || '{"pushed": true}'::jsonb
+     where id = p_id
+       and recipient_id = p_recipient
+       and actor_id = p_actor
+       and type = 'mention'
+       and created_at > now() - interval '10 minutes'
+       and not (payload ? 'pushed')
+    returning 1
+  )
+  select exists (select 1 from claimed);
+$$;
+
+revoke execute on function public.claim_mention_push(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.claim_mention_push(uuid, uuid, uuid) to service_role;
+
+-- The hourly cap counts a sender's recent mentions; the comment-delete trigger finds a
+-- comment's mention rows by agg_key. Neither is served by an existing index.
+create index if not exists activity_notifications_mention_actor_idx
+  on public.activity_notifications (actor_id, created_at) where type = 'mention';
+create index if not exists activity_notifications_mention_key_idx
+  on public.activity_notifications (agg_key) where type = 'mention';
 
 -- ── 5. A deleted comment takes its mentions with it ─────────────────────────
 -- "Sam mentioned you in a comment: …" must not outlive the comment. (A deleted post's

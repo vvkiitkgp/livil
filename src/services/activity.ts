@@ -656,7 +656,11 @@ export async function notifyMentions(target: { postId: string } | { commentId: s
       'postId' in target ? { p_post_id: target.postId } : { p_comment_id: target.commentId },
     );
     if (error) { throw error; }
-    const rows = (Array.isArray(data) ? data : []) as Array<{ recipient_id: string; actor_display_name: string | null }>;
+    const rows = (Array.isArray(data) ? data : []) as Array<{
+      recipient_id: string;
+      notification_id: string;
+      actor_display_name: string | null;
+    }>;
     const where = 'postId' in target ? 'tagged you in a post' : 'mentioned you in a comment';
     for (const row of rows) {
       // The server writes the real copy from the row it proved (send-push composeContent).
@@ -665,7 +669,8 @@ export async function notifyMentions(target: { postId: string } | { commentId: s
         kind: 'activity_mention',
         title: 'Livil',
         body: `${row.actor_display_name ?? 'Someone'} ${where}`,
-        data: { route: 'ActivityCenter' },
+        // Which row: send-push claims it, so each tag is pushed once (claim_mention_push).
+        data: { route: 'ActivityCenter', params: { notificationId: row.notification_id } },
       });
     }
   } catch (e) {

@@ -1046,15 +1046,20 @@ Deno.test('shouldPruneToken: OUR mistakes and outages never delete a device', ()
 
 // ── claims: the only part of params that is read ───────────────────────────
 
-Deno.test('claimsFrom: reads conversationId, jamRoomId and commentId from data.params, nothing else', () => {
+Deno.test('claimsFrom: reads conversationId, jamRoomId, commentId and notificationId from data.params, nothing else', () => {
   assertEquals(
     claimsFrom({ data: { route: 'JamRoom', params: { jamRoomId: JAM, conversationId: CONV, title: 'x' } } }),
-    { conversationId: CONV, jamRoomId: JAM, commentId: undefined },
+    { conversationId: CONV, jamRoomId: JAM, commentId: undefined, notificationId: undefined },
   );
   // A comment like names its comment (activity_comment_like) — a claim, only ever matched.
   assertEquals(
     claimsFrom({ data: { route: 'ActivityCenter', params: { commentId: POST, body: 'x' } } }),
-    { conversationId: undefined, jamRoomId: undefined, commentId: POST },
+    { conversationId: undefined, jamRoomId: undefined, commentId: POST, notificationId: undefined },
+  );
+  // A mention names its row (activity_mention) — claimed once, by claim_mention_push.
+  assertEquals(
+    claimsFrom({ data: { route: 'ActivityCenter', params: { notificationId: POST } } }).notificationId,
+    POST,
   );
   assertEquals(claimsFrom({}), {});
   assertEquals(claimsFrom({ data: null }), {});
@@ -1569,23 +1574,62 @@ Deno.test('handler: an oversized body is refused before anything reads it', asyn
 });
 
 // ── activity_mention (20261109000000) ───────────────────────────────────────
-Deno.test('activity_mention: allowed by the mention row from this actor; quote and place from the row', async () => {
-  const admin = activityAdmin([
-    { recipient_id: B, type: 'mention', actor_id: A, post_id: POST, payload: { where: 'comment', text: '@riya hear this' } },
+const MENTION = '12121212-1212-1212-1212-121212121212';
+
+/** activityAdmin, plus the row's id and claim_mention_push: true once per unpushed id. */
+// deno-lint-ignore no-explicit-any
+function mentionAdmin(rows: Array<Record<string, unknown>>): any {
+  const base = activityAdmin(rows);
+  const pushed = new Set<string>();
+  const claims: Array<Record<string, unknown>> = [];
+  return {
+    claims,
+    from: (t: string) => {
+      const b = base.from(t);
+      const eq = b.eq.bind(b);
+      let id: string | undefined;
+      b.eq = (col: string, val: string) => { if (col === 'id') { id = val; return b; } return eq(col, val); };
+      const then = b.then.bind(b);
+      b.then = (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+        then((out: { data?: Array<Record<string, unknown>> }) =>
+          res({ ...out, data: (out.data ?? []).filter(r => id === undefined || r.id === id) }), rej);
+      return b;
+    },
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      claims.push({ fn, ...args });
+      const row = rows.find(r => r.id === args.p_id && r.recipient_id === args.p_recipient && r.actor_id === args.p_actor);
+      const ok = fn === 'claim_mention_push' && !!row && !pushed.has(String(args.p_id));
+      if (ok) pushed.add(String(args.p_id));
+      return Promise.resolve({ data: ok, error: null });
+    },
+  };
+}
+
+Deno.test('activity_mention: allowed once for the named row; quote and place from the row', async () => {
+  const admin = mentionAdmin([
+    { id: MENTION, recipient_id: B, type: 'mention', actor_id: A, post_id: POST, payload: { where: 'comment', text: '@riya hear this' } },
   ]);
-  const grant = await authorize(admin, 'activity_mention', A, B);
+  const grant = await authorize(admin, 'activity_mention', A, B, { notificationId: MENTION });
   assertEquals(grant?.activity, { aggCount: 1, commentText: '@riya hear this', postId: POST, mentionWhere: 'comment' });
-  // Someone else's tag is not evidence for this actor.
-  assertEquals(await allows(admin, 'activity_mention', C, B), false);
-  // Another kind's row is not a mention, nor the other way round.
-  assertEquals(await allows(activityAdmin([{ recipient_id: B, type: 'comment', actor_id: A, payload: {} }]), 'activity_mention', A, B), false);
-  assertEquals(await allows(admin, 'activity_comment', A, B), false);
+  // SINGLE-USE: the same tag can never be pushed again (security review, 2026-10-19).
+  assertEquals(await allows(admin, 'activity_mention', A, B, { notificationId: MENTION }), false);
+});
+
+Deno.test('activity_mention: refused without a row id, for someone else\'s row, or a stale one', async () => {
+  const row = { id: MENTION, recipient_id: B, type: 'mention', actor_id: A, post_id: POST, payload: {} };
+  // No id (an app that does not name the row): no push.
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, B), false);
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, B, { notificationId: 'not-a-uuid' }), false);
+  // Another sender, another recipient, another id.
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', C, B, { notificationId: MENTION }), false);
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, C, { notificationId: MENTION }), false);
+  assertEquals(await allows(mentionAdmin([row]), 'activity_mention', A, B, { notificationId: POST }), false);
+  // Another kind's row is not a mention.
+  assertEquals(await allows(mentionAdmin([{ ...row, type: 'comment' }]), 'activity_mention', A, B, { notificationId: MENTION }), false);
   // Time-bounded like every other.
-  assertEquals(await allows(activityAdmin([
-    { recipient_id: B, type: 'mention', actor_id: A, payload: {}, created_at: MINUTES_AGO(11) },
-  ]), 'activity_mention', A, B), false);
+  assertEquals(await allows(mentionAdmin([{ ...row, created_at: MINUTES_AGO(11) }]), 'activity_mention', A, B, { notificationId: MENTION }), false);
   // Never yourself.
-  assertEquals(await allows(activityAdmin([{ recipient_id: A, type: 'mention', actor_id: A, payload: {} }]), 'activity_mention', A, A), false);
+  assertEquals(await allows(mentionAdmin([{ ...row, recipient_id: A }]), 'activity_mention', A, A, { notificationId: MENTION }), false);
 });
 
 Deno.test('composeContent: a mention says where, and quotes the tagged text', () => {

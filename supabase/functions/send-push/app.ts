@@ -195,13 +195,18 @@ export type Grant = {
 };
 
 /** The parts of the request authorize() verifies rather than trusts. */
-export type Claims = { conversationId?: unknown; jamRoomId?: unknown; commentId?: unknown };
+export type Claims = { conversationId?: unknown; jamRoomId?: unknown; commentId?: unknown; notificationId?: unknown };
 
 /** The ids in `data.params` that are read at all — as claims, never as content. */
 export function claimsFrom(payload: PushRequest): Claims {
   const params = payload.data?.params;
   return params && typeof params === 'object'
-    ? { conversationId: params.conversationId, jamRoomId: params.jamRoomId, commentId: params.commentId }
+    ? {
+        conversationId: params.conversationId,
+        jamRoomId: params.jamRoomId,
+        commentId: params.commentId,
+        notificationId: params.notificationId,
+      }
     : {};
 }
 
@@ -442,7 +447,7 @@ export async function authorize(
       return await authorizeMilestone(admin, actor, recipient);
 
     case 'activity_mention':
-      return await authorizeMention(admin, actor, recipient);
+      return await authorizeMention(admin, actor, recipient, claims.notificationId);
 
     default:
       return null; // deny-by-default, incl. unknown kinds
@@ -650,23 +655,36 @@ async function authorizeCommentOrRepost(
  * after checking the caller wrote the caption / comment, that the recipient can see the post
  * and is not blocked either way. The quote is that row's payload.text, which the function
  * read from the stored text, so it is what the actor really wrote.
+ *
+ * SINGLE-USE (security review, 2026-10-19): the app names the row it was given
+ * (`notificationId`), and claim_mention_push marks it pushed in the same statement that
+ * checks it — recipient, actor, type, the evidence window and "not pushed yet" — so one tag
+ * is one push, never a replay for ten minutes. No id, or a claim that fails: no push.
  */
 async function authorizeMention(
   admin: SupabaseClient,
   actor: string,
   recipient: string,
+  notificationId: unknown,
 ): Promise<Grant | null> {
+  if (!isUuid(notificationId)) return null;
   const { data } = await admin
     .from('activity_notifications')
     .select('payload, post_id')
+    .eq('id', notificationId)
     .eq('recipient_id', recipient)
     .eq('type', 'mention')
     .eq('actor_id', actor)
     .gte('created_at', evidenceSince())
-    .order('created_at', { ascending: false })
     .limit(1);
   const row = ((data ?? []) as Array<{ payload: unknown; post_id: unknown }>)[0];
   if (!row) return null;
+  const claimed = await admin.rpc('claim_mention_push', {
+    p_id: notificationId,
+    p_recipient: recipient,
+    p_actor: actor,
+  });
+  if (claimed.error || claimed.data !== true) return null;
   const payload = (row.payload ?? {}) as { text?: unknown; where?: unknown };
   return {
     activity: {
