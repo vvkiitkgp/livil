@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-405 TypeScript file(s) under `src/`, 88,224 lines.
+407 TypeScript file(s) under `src/`, 88,572 lines.
 
 ## Size hotspots
 
@@ -103,7 +103,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,218 lines.
+50 file(s), 27,220 lines.
 
 | File | Lines |
 |---|---:|
@@ -121,7 +121,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/LibraryScreen.tsx` | 632 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
-| `src/screens/main/InboxScreen.tsx` | 588 |
+| `src/screens/main/InboxScreen.tsx` | 590 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 479 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
@@ -160,7 +160,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-155 file(s), 31,166 lines.
+157 file(s), 31,422 lines.
 
 | File | Lines |
 |---|---:|
@@ -235,6 +235,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/__tests__/PostGridCard.test.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
+| `src/components/NotificationNudge.tsx` | 154 |
 | `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/AppUpdatePrompt.test.tsx` | 151 |
 | `src/components/__tests__/CommentSongCard.test.tsx` | 151 |
@@ -260,6 +261,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FormInput.tsx` | 107 |
 | `src/components/HomeFeedTabs.tsx` | 107 |
 | `src/components/AddBadge.tsx` | 102 |
+| `src/components/__tests__/NotificationNudge.test.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/__tests__/CommentGifCard.test.tsx` | 100 |
 | `src/components/guide/cards.ts` | 100 |
@@ -322,13 +324,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-88 file(s), 17,915 lines.
+88 file(s), 18,005 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/tracks.ts` | 1482 |
 | `src/services/posts.ts` | 1281 |
-| `src/services/pushNotifications.ts` | 856 |
+| `src/services/pushNotifications.ts` | 917 |
 | `src/services/activity.ts` | 647 |
 | `src/services/comments.ts` | 588 |
 | `src/services/albums.ts` | 521 |
@@ -376,6 +378,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/commentNotifyCalls.test.ts` | 115 |
 | `src/services/follows.ts` | 114 |
 | `src/services/__tests__/profileBadges.test.ts` | 110 |
+| `src/services/__tests__/pushRegistration.test.ts` | 110 |
 | `src/services/__tests__/pushLikeCard.test.ts` | 109 |
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
@@ -388,7 +391,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/pushOpenChat.test.ts` | 87 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/groupFaces.ts` | 86 |
-| `src/services/__tests__/pushRegistration.test.ts` | 81 |
 | `src/services/__tests__/submitExitFeedback.test.ts` | 81 |
 | `src/services/googleAuth.ts` | 79 |
 | `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
