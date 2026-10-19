@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-432 TypeScript file(s) under `src/`, 90,999 lines.
+432 TypeScript file(s) under `src/`, 91,067 lines.
 
 ## Size hotspots
 
@@ -27,18 +27,18 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2521 |
-| `src/screens/main/UploadScreen.tsx` | 2233 |
+| `src/screens/main/UploadScreen.tsx` | 2241 |
 | `src/screens/main/ConversationScreen.tsx` | 2197 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
 | `src/screens/main/ProfileScreen.tsx` | 1428 |
 | `src/components/PostCard.tsx` | 1424 |
-| `src/components/CommentsSheet.tsx` | 1180 |
+| `src/components/CommentsSheet.tsx` | 1181 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
-| `src/screens/main/RepostScreen.tsx` | 993 |
+| `src/screens/main/RepostScreen.tsx` | 1002 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
@@ -103,11 +103,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,488 lines.
+50 file(s), 27,516 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/UploadScreen.tsx` | 2233 |
+| `src/screens/main/UploadScreen.tsx` | 2241 |
 | `src/screens/main/ConversationScreen.tsx` | 2197 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/HomeScreen.tsx` | 1670 |
@@ -115,14 +115,14 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ProfileScreen.tsx` | 1428 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1026 |
-| `src/screens/main/RepostScreen.tsx` | 993 |
+| `src/screens/main/RepostScreen.tsx` | 1002 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
 | `src/screens/main/InboxScreen.tsx` | 590 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 514 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 525 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
@@ -160,13 +160,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-164 file(s), 32,352 lines.
+164 file(s), 32,367 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2521 |
 | `src/components/PostCard.tsx` | 1424 |
-| `src/components/CommentsSheet.tsx` | 1180 |
+| `src/components/CommentsSheet.tsx` | 1181 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
@@ -212,12 +212,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ProfileBadges.tsx` | 203 |
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
+| `src/components/MentionSuggestions.tsx` | 199 |
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/auth/AuthStep.tsx` | 195 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
-| `src/components/MentionSuggestions.tsx` | 185 |
 | `src/components/FriendPickerStrip.tsx` | 184 |
 | `src/components/UploadPreviewCard.tsx` | 183 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
@@ -458,7 +458,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-30 file(s), 1,963 lines.
+30 file(s), 1,988 lines.
 
 | File | Lines |
 |---|---:|
@@ -472,6 +472,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/usePlayFullScreen.ts` | 80 |
 | `src/hooks/useSwitchFade.ts` | 80 |
 | `src/hooks/__tests__/useNewOnLivilDot.test.tsx` | 78 |
+| `src/hooks/useMentionInput.ts` | 65 |
 | `src/hooks/useCommentsCountDeltas.ts` | 64 |
 | `src/hooks/__tests__/useProfileTabCache.test.tsx` | 63 |
 | `src/hooks/__tests__/useSwitchFade.test.tsx` | 63 |
@@ -487,7 +488,6 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |
 | `src/hooks/__tests__/usePinnedTabsScroll.test.tsx` | 48 |
 | `src/hooks/__tests__/useProfileLayout.test.tsx` | 45 |
-| `src/hooks/useMentionInput.ts` | 40 |
 | `src/hooks/useImageAspect.ts` | 37 |
 | `src/hooks/useProfileLayout.ts` | 35 |
 | `src/hooks/useTrackPlaysTotals.ts` | 30 |
