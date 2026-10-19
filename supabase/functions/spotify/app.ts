@@ -23,8 +23,23 @@
 // fetches a URL the caller supplies — every outbound URL is built here from a validated id.
 //
 // ── SPOTIFY'S TERMS THAT SHAPE IT ───────────────────────────────────────────
-// Only TEMPORARY caching of metadata is allowed, so the cache below is in-memory, per
-// isolate, one hour. Nothing is written to the database except the bare id (by the app).
+// Only TEMPORARY caching of metadata is allowed: every entry expires (six hours for full
+// metadata, minutes for the oEmbed stand-in). Nothing is written to the Livil database
+// except the bare id (by the app).
+//
+// ── ONE SHARED CACHE, NOT ONE PER ISOLATE ───────────────────────────────────
+// Since February 2026 a development-mode app may fetch tracks only ONE AT A TIME
+// (GET /tracks/{id}; the batch endpoint was removed), and we cannot reach Extended Quota.
+// With a cache per isolate, every cold isolate re-asked Spotify for the same songs, and a
+// 20-id `tracks` call fired 20 lookups in the same instant — Spotify rate-limited us
+// (2026-10-19) and every card fell back to oEmbed, artists gone. So:
+//   - a shared cache (Upstash Redis, REST) is read first, in ONE command for the whole
+//     request; each song is fetched from Spotify about once per CACHE_TTL_MS for EVERYONE;
+//   - misses go to Spotify at most UPSTREAM_CONCURRENCY at a time;
+//   - a 429 is written to the shared cache, so every isolate backs off, not just the one
+//     that was told.
+// The shared cache is an optimisation, never a dependency: unset, failing or slow (a
+// SHARED_TIMEOUT_MS budget), the function behaves exactly as it did without it.
 // Without credentials the `tracks` action falls back to Spotify's public oEmbed endpoint
 // (title + artwork, no artist), so feed cards still render before search is configured.
 //
@@ -34,6 +49,7 @@
 //
 // SECRETS (custom):
 //   SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET  — enable search and full metadata
+//   UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN — the shared cache (optional)
 // Platform-injected: SUPABASE_URL, SUPABASE_ANON_KEY.
 // ============================================================================
 
@@ -54,8 +70,12 @@ const TRACK_LINK_RE =
 export const MAX_SEARCH_RESULTS = 10;
 export const MAX_QUERY_LENGTH = 100;
 export const MAX_IDS_PER_CALL = 20;
-/** "Temporary caching" — Spotify's terms name no lifetime; an hour is comfortably short. */
-export const CACHE_TTL_MS = 60 * 60 * 1000;
+/**
+ * "Temporary caching" — Spotify's terms name no lifetime, only that content is not kept
+ * indefinitely and is refreshed. Six hours (owner, 2026-10-19; was one): with the shared
+ * cache a song then costs about four Spotify calls a day, however many people see it.
+ */
+export const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 /**
  * Advisory per-user budget, in UPSTREAM calls per minute rather than requests: one `tracks`
  * request can cost up to 20 Spotify lookups, so it is charged per uncached id. In-memory,
@@ -68,6 +88,60 @@ export const UPSTREAM_CALLS_PER_USER_PER_MINUTE = 120;
 export const DEFAULT_BACKOFF_MS = 30_000;
 /** oEmbed answers lack the artist; when we HAVE credentials, keep them only briefly. */
 export const OEMBED_CACHE_TTL_MS = 5 * 60 * 1000;
+/** Spotify lookups in flight at once for one request — a burst of 20 is what tripped 429s. */
+export const UPSTREAM_CONCURRENCY = 4;
+/** The most a shared-cache round trip may cost a request before it is treated as a miss. */
+export const SHARED_TIMEOUT_MS = 500;
+/**
+ * How long an isolate keeps an entry it READ from the shared cache. Short, because the
+ * shared entry's own remaining life is unknown here, and an entry must not outlive it by
+ * much ("temporary").
+ */
+export const SHARED_HIT_LOCAL_TTL_MS = 5 * 60 * 1000;
+/** Every shared key starts with this; the version lets a shape change start clean. */
+export const SHARED_PREFIX = 'livil:spotify:v1:';
+const BLOCK_KEY = `${SHARED_PREFIX}blocked-until`;
+const trackKey = (id: string) => `${SHARED_PREFIX}track:${id}`;
+/** The longest any back-off may last — Spotify's Retry-After is capped here too. */
+export const MAX_BACKOFF_MS = 600_000;
+/** An empty search answer is kept briefly: it may be a typo, or Spotify having a moment. */
+export const EMPTY_SEARCH_TTL_MS = 5 * 60 * 1000;
+/**
+ * What a search answered from a cache costs the caller's budget. Not free: each still costs
+ * an auth round trip and (from Redis) a command, and a loop of free requests could spend the
+ * shared cache's quota and switch it off for everyone.
+ */
+export const CACHED_SEARCH_COST = 0.25;
+/** Search answers one isolate keeps itself, so repeats never reach Redis. */
+const LOCAL_SEARCH_ENTRIES = 300;
+
+/**
+ * Search text is folded ONCE and the folded text is both the cache key's input and what
+ * Spotify is asked — so two spellings that share a key always share an answer (otherwise
+ * "blinding lights" with a no-break space could choose what "blinding lights" shows).
+ */
+export function normalizeQuery(q: string): string {
+  return q.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The shared key for a search: an HMAC of the folded text, keyed with the Spotify client
+ * secret (already set wherever search works). Redis then holds Spotify's results under an
+ * opaque name and never the words anyone typed — the privacy policy and the store
+ * declarations say search text is passed to Spotify, not kept.
+ */
+let hmacKey: { secret: string; key: CryptoKey } | null = null;
+export async function searchKey(norm: string, limit: number, secret: string): Promise<string> {
+  if (!hmacKey || hmacKey.secret !== secret) {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    hmacKey = { secret, key };
+  }
+  const sig = await crypto.subtle.sign('HMAC', hmacKey.key, new TextEncoder().encode(`${limit}\n${norm}`));
+  const hex = Array.from(new Uint8Array(sig), b => b.toString(16).padStart(2, '0')).join('');
+  return `${SHARED_PREFIX}search:${hex}`;
+}
 
 /** The only shape this function ever returns for a track. */
 export type SpotifyTrack = {
@@ -165,13 +239,187 @@ export type Env = {
   clientSecret: string | null;
 };
 
+/**
+ * The cache every isolate shares. Both methods NEVER throw and never wait longer than
+ * SHARED_TIMEOUT_MS: a failure reads as "all missing" and a write that fails is dropped.
+ */
+export type SharedCache = {
+  /** The values for `keys`, in order; null where missing. */
+  mget: (keys: string[]) => Promise<(string | null)[]>;
+  /** Write each entry with its own lifetime, in one round trip. */
+  mset: (entries: Array<{ key: string; value: string; ttlMs: number }>) => Promise<void>;
+};
+
 export type Deps = {
   env: Env;
   /** Resolves the caller from their access token; null when it is not a valid session. */
   getUserId: (jwt: string) => Promise<string | null>;
   fetch: typeof fetch;
   now: () => number;
+  /** Absent or null: each isolate caches alone, as before the shared cache existed. */
+  shared?: SharedCache | null;
 };
+
+/**
+ * The shared cache over Upstash Redis's REST API: one MGET to read, one pipeline of
+ * SET … PX to write. Exported for its tests; production builds it from two secrets.
+ */
+export function upstashCache(baseUrl: string, token: string, fetchImpl: typeof fetch): SharedCache {
+  const base = baseUrl.replace(/\/+$/, '');
+  const call = async (path: string, body: unknown): Promise<unknown> => {
+    const res = await fetchImpl(`${base}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(SHARED_TIMEOUT_MS),
+      // Upstash never redirects; a redirect would re-send the body (keys) to another host.
+      redirect: 'error',
+    });
+    if (!res.ok) throw new Error(`shared cache HTTP ${res.status}`);
+    return await res.json();
+  };
+  return {
+    mget: async (keys: string[]) => {
+      if (keys.length === 0) return [];
+      try {
+        const out = await call('', ['MGET', ...keys]) as { result?: unknown };
+        const values = Array.isArray(out?.result) ? out.result : [];
+        return keys.map((_, i) => (typeof values[i] === 'string' ? values[i] as string : null));
+      } catch (e) {
+        console.warn(`[spotify] shared cache read failed: ${(e as Error).message}`);
+        return keys.map(() => null);
+      }
+    },
+    mset: async entries => {
+      const usable = entries.filter(e => e.ttlMs >= 1000);
+      if (usable.length === 0) return;
+      try {
+        await call('/pipeline', usable.map(e => ['SET', e.key, e.value, 'PX', String(Math.floor(e.ttlMs))]));
+      } catch (e) {
+        console.warn(`[spotify] shared cache write failed: ${(e as Error).message}`);
+      }
+    },
+  };
+}
+
+/** A shared track entry: the track (or null = "no such track") and whether it is complete. */
+type SharedTrack = { track: SpotifyTrack | null; full: boolean };
+
+/** Longest title / album / artist name a shared entry may carry. */
+const MAX_TEXT = 300;
+const MAX_ARTISTS = 50;
+const shortText = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= MAX_TEXT;
+
+/**
+ * Artwork from Spotify's own image hosts only — i.scdn.co (Web API) and *.spotifycdn.com
+ * (oEmbed). A shared entry is shown on every feed card, so one naming another host would
+ * put that host's images (and a beacon) in front of everyone.
+ */
+export function isSpotifyImageUrl(v: unknown): v is string {
+  if (typeof v !== 'string' || v.length > 500) return false;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && (u.hostname.endsWith('.scdn.co') || u.hostname.endsWith('.spotifycdn.com'));
+  } catch {
+    return false;
+  }
+}
+
+function isTrackShape(t: unknown, id: string): t is SpotifyTrack {
+  if (!t || typeof t !== 'object') return false;
+  const x = t as Record<string, unknown>;
+  return x.id === id &&
+    shortText(x.title) &&
+    Array.isArray(x.artists) && x.artists.length <= MAX_ARTISTS && x.artists.every(shortText) &&
+    (x.album === null || shortText(x.album)) &&
+    (x.imageUrl === null || isSpotifyImageUrl(x.imageUrl)) &&
+    (x.durationMs === null || (typeof x.durationMs === 'number' && Number.isFinite(x.durationMs)));
+}
+
+/** Parsed and CHECKED — a shared entry is input like any other; a bad one is a miss. */
+export function decodeSharedTrack(raw: string | null, id: string): SharedTrack | null {
+  if (raw === null) return null;
+  try {
+    const v = JSON.parse(raw) as { track?: unknown; full?: unknown };
+    if (typeof v.full !== 'boolean') return null;
+    if (v.track === null) return { track: null, full: v.full };
+    return isTrackShape(v.track, id)
+      ? { track: { id, title: v.track.title, artists: v.track.artists, album: v.track.album, imageUrl: v.track.imageUrl, durationMs: v.track.durationMs }, full: v.full }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A shared search answer: up to MAX_SEARCH_RESULTS checked tracks, or null (a miss). */
+export function decodeSharedSearch(raw: string | null): SpotifyTrack[] | null {
+  if (raw === null) return null;
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v) || v.length > MAX_SEARCH_RESULTS) return null;
+    const out: SpotifyTrack[] = [];
+    for (const t of v) {
+      const id = t && typeof t === 'object' ? (t as { id?: unknown }).id : null;
+      if (typeof id !== 'string' || !SPOTIFY_ID_RE.test(id) || !isTrackShape(t, id)) return null;
+      // Rebuilt field by field: only the enumerated shape ever leaves this function.
+      out.push({ id, title: t.title, artists: t.artists, album: t.album, imageUrl: t.imageUrl, durationMs: t.durationMs });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function rememberSearch(key: string, tracks: SpotifyTrack[], at: number, ttl: number): void {
+  state.searchCache.delete(key);
+  state.searchCache.set(key, { tracks, at, ttl });
+  while (state.searchCache.size > LOCAL_SEARCH_ENTRIES) {
+    state.searchCache.delete(state.searchCache.keys().next().value!);
+  }
+}
+
+/**
+ * A cache write is not worth making the caller wait for: the answer goes out first and the
+ * runtime finishes the write after the response (Supabase's EdgeRuntime.waitUntil). Awaited
+ * only where that does not exist — tests and plain Deno — so they still see the write land.
+ */
+function inBackground(task: Promise<void> | undefined): Promise<void> {
+  if (!task) return Promise.resolve();
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (typeof runtime?.waitUntil === 'function') {
+    runtime.waitUntil(task);
+    return Promise.resolve();
+  }
+  return task;
+}
+
+/** Run `fn` over `items`, at most `limit` at a time, results in order. */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/** A 429 seen anywhere → every isolate: adopt a shared "blocked until" newer than ours. */
+function adoptSharedBlock(raw: string | null, now: number): void {
+  const until = raw === null ? NaN : Number(raw);
+  // Capped like a Retry-After: an entry from anywhere else can never stop us for long.
+  if (Number.isFinite(until)) state.backoffUntil = Math.max(state.backoffUntil, Math.min(until, now + MAX_BACKOFF_MS));
+}
+
+/** The block entry to share when THIS request tripped the breaker, else none. */
+function blockEntry(before: number, now: number): Array<{ key: string; value: string; ttlMs: number }> {
+  return state.backoffUntil > before && state.backoffUntil > now
+    ? [{ key: BLOCK_KEY, value: String(state.backoffUntil), ttlMs: state.backoffUntil - now }]
+    : [];
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -189,6 +437,8 @@ const json = (status: number, body: unknown) =>
 export const state = {
   token: null as { value: string; expiresAt: number } | null,
   cache: new Map<string, { track: SpotifyTrack | null; at: number; ttl: number }>(),
+  /** Search answers by shared key (insertion-ordered; the oldest goes past the limit). */
+  searchCache: new Map<string, { tracks: SpotifyTrack[]; at: number; ttl: number }>(),
   spend: new Map<string, Array<{ at: number; cost: number }>>(),
   /** Circuit breaker: no Web API calls until this time (set by a 429). */
   backoffUntil: 0,
@@ -198,6 +448,7 @@ export function resetState(): void {
   state.token = null;
   tokenInFlight = null;
   state.cache.clear();
+  state.searchCache.clear();
   state.spend.clear();
   state.backoffUntil = 0;
 }
@@ -252,7 +503,7 @@ function inBackoff(now: number): boolean {
 /** Spotify said 429: stop calling the Web API for Retry-After seconds (or a default). */
 function tripBreaker(res: Response, now: number): void {
   const retryAfter = Number(res.headers.get('retry-after'));
-  const ms = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 600) * 1000 : DEFAULT_BACKOFF_MS;
+  const ms = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, MAX_BACKOFF_MS) : DEFAULT_BACKOFF_MS;
   state.backoffUntil = Math.max(state.backoffUntil, now + ms);
 }
 
@@ -351,8 +602,13 @@ async function apiGet(deps: Deps, url: string): Promise<Response | null> {
   return res;
 }
 
-/** A lookup either answers (a track, or null for "no such track") or is transient. */
-type Lookup = { answered: true; track: SpotifyTrack | null } | { answered: false };
+/**
+ * A lookup either answers (a track, or null for "no such track") or is transient. `ttl` and
+ * `full` say how long the answer may be shared and whether it carries the artists.
+ */
+type Lookup =
+  | { answered: true; track: SpotifyTrack | null; ttl: number; full: boolean; fresh: boolean }
+  | { answered: false };
 
 function isCached(id: string, now: number): boolean {
   const cached = state.cache.get(id);
@@ -362,19 +618,21 @@ function isCached(id: string, now: number): boolean {
 async function lookupTrack(deps: Deps, id: string): Promise<Lookup> {
   const now = deps.now();
   const cached = state.cache.get(id);
-  if (cached && now - cached.at < cached.ttl) return { answered: true, track: cached.track };
+  if (cached && now - cached.at < cached.ttl) {
+    return { answered: true, track: cached.track, ttl: cached.ttl, full: true, fresh: false };
+  }
 
   if (hasCredentials(deps.env)) {
     const res = await apiGet(deps, `https://api.spotify.com/v1/tracks/${id}`);
     if (res?.ok) {
       const track = normalizeApiTrack(await res.json().catch(() => null));
       state.cache.set(id, { track, at: now, ttl: CACHE_TTL_MS });
-      return { answered: true, track };
+      return { answered: true, track, ttl: CACHE_TTL_MS, full: true, fresh: true };
     }
     if (res && (res.status === 404 || res.status === 400)) {
       // The id does not name a track. A real answer: remember it.
       state.cache.set(id, { track: null, at: now, ttl: CACHE_TTL_MS });
-      return { answered: true, track: null };
+      return { answered: true, track: null, ttl: CACHE_TTL_MS, full: true, fresh: true };
     }
     // No token, breaker open, or a server error: degrade to oEmbed below.
   }
@@ -387,11 +645,11 @@ async function lookupTrack(deps: Deps, id: string): Promise<Lookup> {
     const track = normalizeOembed(id, await res.json().catch(() => null));
     const ttl = hasCredentials(deps.env) ? OEMBED_CACHE_TTL_MS : CACHE_TTL_MS;
     state.cache.set(id, { track, at: now, ttl });
-    return { answered: true, track };
+    return { answered: true, track, ttl, full: false, fresh: true };
   }
   if (res.status === 404) {
     state.cache.set(id, { track: null, at: now, ttl: CACHE_TTL_MS });
-    return { answered: true, track: null };
+    return { answered: true, track: null, ttl: CACHE_TTL_MS, full: false, fresh: true };
   }
   // Transient: not cached here, and left OUT of the response so the app retries later
   // instead of remembering "unavailable" for the rest of the session.
@@ -443,11 +701,34 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       const requested = typeof body.limit === 'number' ? Math.floor(body.limit) : 8;
       const limit = Math.min(Math.max(requested, 1), MAX_SEARCH_RESULTS);
       if (!hasCredentials(deps.env)) return json(200, { enabled: false, tracks: [] });
-      if (!spend(userId, 1, deps.now())) return json(429, { error: 'slow down' });
 
-      const params = new URLSearchParams({ q, type: 'track', limit: String(limit) });
+      // Someone searched the same words recently: their answer — this isolate's first, then
+      // the shared one. Cheap, not free (CACHED_SEARCH_COST).
+      const norm = normalizeQuery(q);
+      const key = await searchKey(norm, limit, deps.env.clientSecret!);
+      const now = deps.now();
+      const local = state.searchCache.get(key);
+      if (local && now - local.at < local.ttl) {
+        if (!spend(userId, CACHED_SEARCH_COST, now)) return json(429, { error: 'slow down' });
+        return json(200, { enabled: true, tracks: local.tracks });
+      }
+      if (deps.shared) {
+        const [block, hit] = await deps.shared.mget([BLOCK_KEY, key]);
+        adoptSharedBlock(block, now);
+        const cachedTracks = decodeSharedSearch(hit);
+        if (cachedTracks) {
+          if (!spend(userId, CACHED_SEARCH_COST, now)) return json(429, { error: 'slow down' });
+          rememberSearch(key, cachedTracks, now, SHARED_HIT_LOCAL_TTL_MS);
+          return json(200, { enabled: true, tracks: cachedTracks });
+        }
+      }
+      if (!spend(userId, 1, now)) return json(429, { error: 'slow down' });
+
+      const before = state.backoffUntil;
+      const params = new URLSearchParams({ q: norm, type: 'track', limit: String(limit) });
       const res = await apiGet(deps, `https://api.spotify.com/v1/search?${params}`);
       if (!res || !res.ok) {
+        await inBackground(deps.shared?.mset(blockEntry(before, deps.now())));
         return json(502, { error: 'spotify search is unavailable', status: res?.status ?? null });
       }
       const raw = await res.json().catch(() => null) as { tracks?: { items?: unknown[] } } | null;
@@ -455,8 +736,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
         .map(normalizeApiTrack)
         .filter((t): t is SpotifyTrack => t !== null)
         .slice(0, limit);
-      const now = deps.now();
-      for (const t of tracks) state.cache.set(t.id, { track: t, at: now, ttl: CACHE_TTL_MS });
+      const answeredAt = deps.now();
+      for (const t of tracks) state.cache.set(t.id, { track: t, at: answeredAt, ttl: CACHE_TTL_MS });
+      const ttl = tracks.length > 0 ? CACHE_TTL_MS : EMPTY_SEARCH_TTL_MS;
+      rememberSearch(key, tracks, answeredAt, ttl);
+      await inBackground(deps.shared?.mset([{ key, value: JSON.stringify(tracks), ttlMs: ttl }]));
       return json(200, { enabled: true, tracks });
     }
 
@@ -469,19 +753,47 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
         return json(400, { error: 'every id must be a Spotify track id' });
       }
       const unique = [...new Set(ids as string[])];
-      // Charged per id that will actually reach Spotify; cached ids are free.
       const now = deps.now();
-      const cost = unique.filter(id => !isCached(id, now)).length;
-      if (cost > 0 && !spend(userId, cost, now)) return json(429, { error: 'slow down' });
-      const found = await Promise.all(
-        unique.map(id => lookupTrack(deps, id).catch((): Lookup => ({ answered: false }))),
-      );
-      // Only answered ids are returned: a missing key means "try again later".
       const tracks: Record<string, SpotifyTrack | null> = {};
-      unique.forEach((id, i) => {
+
+      // 1. This isolate's own cache, then the shared one — in ONE command, which also
+      //    carries whether any isolate has been told to back off.
+      let misses = unique.filter(id => !isCached(id, now));
+      if (deps.shared && misses.length > 0) {
+        const [block, ...values] = await deps.shared.mget([BLOCK_KEY, ...misses.map(trackKey)]);
+        adoptSharedBlock(block, now);
+        misses = misses.filter((id, i) => {
+          const hit = decodeSharedTrack(values[i] ?? null, id);
+          // An oEmbed stand-in is used, but a full answer is still worth fetching when the
+          // Web API is open — otherwise the artists stay missing for its whole life.
+          if (!hit || (!hit.full && hasCredentials(deps.env) && !inBackoff(now))) return true;
+          state.cache.set(id, { track: hit.track, at: now, ttl: SHARED_HIT_LOCAL_TTL_MS });
+          return false;
+        });
+      }
+
+      // 2. Charged per id that will actually reach Spotify; cached ids are free.
+      if (misses.length > 0 && !spend(userId, misses.length, now)) return json(429, { error: 'slow down' });
+
+      // 3. The misses, a few at a time — never the whole request in one burst.
+      const before = state.backoffUntil;
+      const found = await mapLimit(misses, UPSTREAM_CONCURRENCY,
+        id => lookupTrack(deps, id).catch((): Lookup => ({ answered: false })));
+
+      // 4. Share what was learned (and any 429) so no other isolate asks again.
+      const writes = misses.flatMap((id, i) => {
         const r = found[i];
-        if (r.answered) tracks[id] = r.track;
+        return r.answered && r.fresh
+          ? [{ key: trackKey(id), value: JSON.stringify({ track: r.track, full: r.full }), ttlMs: r.ttl }]
+          : [];
       });
+      await inBackground(deps.shared?.mset([...writes, ...blockEntry(before, deps.now())]));
+
+      // Only answered ids are returned: a missing key means "try again later".
+      for (const id of unique) {
+        const cached = state.cache.get(id);
+        if (cached && deps.now() - cached.at < cached.ttl) tracks[id] = cached.track;
+      }
       return json(200, { tracks });
     }
 
@@ -523,7 +835,16 @@ export function productionDeps(): Deps {
     },
     fetch,
     now: () => Date.now(),
+    shared: sharedFromEnv(),
   };
+}
+
+/** The shared cache when both secrets are set (and the URL is https), else none. */
+function sharedFromEnv(): SharedCache | null {
+  const url = Deno.env.get('UPSTASH_REDIS_REST_URL')?.trim() ?? '';
+  const token = Deno.env.get('UPSTASH_REDIS_REST_TOKEN')?.trim() ?? '';
+  if (!url.startsWith('https://') || !token) return null;
+  return upstashCache(url, token, fetch);
 }
 
 export async function handler(req: Request): Promise<Response> {

@@ -110,6 +110,42 @@ describe('getSpotifyTrack', () => {
   });
 });
 
+describe('stand-in answers (no artists)', () => {
+  // While Spotify limits the server, it answers with oEmbed: title and artwork, no artists.
+  // Kept for the session, every card said "Spotify" until the app restarted (2026-10-19).
+  const STAND_IN = { ...TRACK_A, artists: [] as string[] };
+
+  it('is used now but asked again after a couple of minutes, so the artists come back', async () => {
+    const { getSpotifyTrack, STAND_IN_TTL_MS } = load();
+    mockInvoke.mockResolvedValueOnce({ data: { tracks: { [ID_A]: STAND_IN } }, error: null });
+    const first = getSpotifyTrack(ID_A);
+    await settle();
+    await expect(first).resolves.toEqual(STAND_IN);
+
+    // Within the window: the cached stand-in, no new call.
+    await expect(getSpotifyTrack(ID_A)).resolves.toEqual(STAND_IN);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(STAND_IN_TTL_MS + 1);
+    mockInvoke.mockResolvedValueOnce({ data: { tracks: { [ID_A]: TRACK_A } }, error: null });
+    const later = getSpotifyTrack(ID_A);
+    await settle();
+    await expect(later).resolves.toEqual(TRACK_A);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('a full answer is still kept for the session', async () => {
+    const { getSpotifyTrack, STAND_IN_TTL_MS } = load();
+    mockInvoke.mockResolvedValueOnce({ data: { tracks: { [ID_A]: TRACK_A } }, error: null });
+    const first = getSpotifyTrack(ID_A);
+    await settle();
+    await first;
+    await jest.advanceTimersByTimeAsync(STAND_IN_TTL_MS * 10);
+    await expect(getSpotifyTrack(ID_A)).resolves.toEqual(TRACK_A);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('getSpotifyAvailability', () => {
   it('reads the switch from the database and search from the function', async () => {
     const { getSpotifyAvailability } = load();
