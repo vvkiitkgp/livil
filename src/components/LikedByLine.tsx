@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
 import { listPostLikers, type PostLiker } from '../services/posts';
+import { likerToName } from '../utils/likedBy';
 
 type Props = {
   postId: string;
@@ -24,7 +25,9 @@ type Props = {
  * name to match.
  */
 export default function LikedByLine({ postId, likesCount, viewerHasLiked, onPress }: Props) {
-  const [latest, setLatest] = useState<PostLiker | null>(null);
+  // The newest TWO: right after an unlike the newest can still be the viewer (the fetch
+  // beats the write to the server), and the one after it is who to name — see likedBy.ts.
+  const [newest, setNewest] = useState<PostLiker[]>([]);
   const [viewerId, setViewerId] = useState<string>('');
   const runIdRef = useRef(0);
 
@@ -38,20 +41,21 @@ export default function LikedByLine({ postId, likesCount, viewerHasLiked, onPres
 
   useEffect(() => {
     if (likesCount === 0) {
-      setLatest(null);
+      setNewest([]);
       return;
     }
     const myRun = ++runIdRef.current;
-    listPostLikers(postId, { limit: 1 })
+    listPostLikers(postId, { limit: 2 })
       .then(rows => {
         if (runIdRef.current !== myRun) { return; }
-        setLatest(rows[0] ?? null);
+        setNewest(rows);
       })
       .catch(() => { /* silent — fall back to the count-only label */ });
   }, [postId, likesCount, viewerHasLiked]);
 
   if (likesCount === 0) { return null; }
 
+  const latest = likerToName(newest, viewerId, viewerHasLiked);
   const latestIsViewer = latest != null && viewerId !== '' && latest.userId === viewerId;
   const nameLabel = !latest
     ? (viewerHasLiked ? 'you' : '…')

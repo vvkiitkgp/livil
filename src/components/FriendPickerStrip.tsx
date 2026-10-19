@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { listFriends, type FriendRef } from '../services/relationships';
+import { listConversations } from '../services/conversations';
+import { orderByRecentChat } from '../utils/friendOrder';
 import FormInput from './FormInput';
 import { Icon } from './Icon';
 
@@ -17,6 +19,8 @@ import { Icon } from './Icon';
  * The "send to friends" half of a share sheet: a horizontal strip of friend avatars you
  * tap to select. Shared by `SharePostSheet` (a song) and `ShareProfileSheet` (a person),
  * so sending anything to friends looks and behaves the same.
+ *
+ * Friends come in chat order — whoever you messaged most recently first, as in the inbox.
  *
  * Owns loading the friend list and the search query; the SELECTION is the parent's,
  * because the parent's Send button is what acts on it. Loads when `visible` turns on and
@@ -28,6 +32,12 @@ type Props = {
   onToggle: (userId: string) => void;
   /** Shown when the viewer has no friends yet — say what sending would have done. */
   emptyText: string;
+  /**
+   * A friend to put FIRST, with a line under their name — the reposter when a repost is
+   * being sent ("Reposted this"), so it can go straight back to them. Ignored when they
+   * are not a friend: a DM needs a friendship (20260809030000).
+   */
+  pinned?: { userId: string; label: string };
 };
 
 /**
@@ -42,7 +52,7 @@ function initials(name: string | null, username: string): string {
   return (n[0] ?? '♪').toUpperCase();
 }
 
-export function FriendPickerStrip({ visible, selected, onToggle, emptyText }: Props) {
+export function FriendPickerStrip({ visible, selected, onToggle, emptyText, pinned }: Props) {
   const [friends, setFriends] = useState<FriendRef[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [query, setQuery] = useState('');
@@ -54,8 +64,10 @@ export function FriendPickerStrip({ visible, selected, onToggle, emptyText }: Pr
     }
     let cancelled = false;
     setLoadingFriends(true);
-    listFriends()
-      .then(rows => { if (!cancelled) { setFriends(rows); } })
+    // In chat order, most recent first (friendOrder.ts). The chat list is only for ordering:
+    // when it fails, the friends still show, alphabetically.
+    Promise.all([listFriends(), listConversations().catch(() => [])])
+      .then(([rows, chats]) => { if (!cancelled) { setFriends(orderByRecentChat(rows, chats)); } })
       .catch(() => { if (!cancelled) { setFriends([]); } })
       .finally(() => { if (!cancelled) { setLoadingFriends(false); } });
     return () => { cancelled = true; };
@@ -68,14 +80,18 @@ export function FriendPickerStrip({ visible, selected, onToggle, emptyText }: Pr
    * already picked, and "Send to 3" would send to one.
    */
   const q = query.trim().toLowerCase();
+  const pinnedId = pinned?.userId;
+  const ordered = pinnedId && friends.some(f => f.id === pinnedId)
+    ? [...friends.filter(f => f.id === pinnedId), ...friends.filter(f => f.id !== pinnedId)]
+    : friends;
   const visibleFriends = q
-    ? friends.filter(
+    ? ordered.filter(
         f =>
           selected.has(f.id) ||
           (f.displayName ?? '').toLowerCase().includes(q) ||
           f.username.toLowerCase().includes(q),
       )
-    : friends;
+    : ordered;
 
   if (loadingFriends) {
     return (
@@ -138,6 +154,9 @@ export function FriendPickerStrip({ visible, selected, onToggle, emptyText }: Pr
               <Text style={styles.friendName} numberOfLines={1}>
                 {item.displayName || item.username}
               </Text>
+              {item.id === pinnedId ? (
+                <Text style={styles.pinnedLabel} numberOfLines={1}>{pinned!.label}</Text>
+              ) : null}
             </Pressable>
           );
         }}
@@ -179,5 +198,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.surface,
   },
   friendName: { color: COLORS.textSecondary, fontSize: 11, marginTop: 6, textAlign: 'center' },
+  pinnedLabel: { color: COLORS.purpleLight, fontSize: 10, marginTop: 1, textAlign: 'center' },
   search: { marginBottom: 12 },
 });

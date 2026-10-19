@@ -4,15 +4,33 @@ import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { SpotifyLogo } from './SpotifyLogo';
+import { Button } from './Button';
 
 /** Half the screen wide, art on top — a song in chat is a piece of music, not a file. */
 const ART = Math.round(Dimensions.get('window').width * 0.5);
+
+/** A REPOST shared in chat (src/utils/repostShare.ts): whose it is, and where it opens. */
+export type ChatSongCardRepost = {
+  /** "Riya's repost" / "Your repost" — repostLabel. */
+  label: string;
+  avatarUrl: string | null;
+  initial: string;
+  caption: string | null;
+  /** Opens the repost's own page. */
+  onView: () => void;
+};
 
 /**
  * THE song card in chat, for both sources (ADR-0027). A Livil song and a Spotify song are
  * drawn by this one component so they cannot drift apart: same panel, same artwork size,
  * same title / artist / source row, same two buttons. Only the source mark and the verbs
  * differ — "Play on Livil" plays in Livil, "Play on Spotify" opens Spotify.
+ *
+ * A REPOST (`repost`) is the same card wearing whose repost it is above the artwork, and it
+ * is one link to that repost's page: the whole card opens it and "View post" is its only
+ * button — playing, liking and reposting happen on the post (owner, 2026-10-19). It drops the
+ * Livil mark (the owner's call); a Spotify repost keeps Spotify's, which Spotify requires
+ * beside its metadata.
  *
  * Spotify's rules set the shared look, and Livil follows them too so the two match:
  * artwork corners rounded no more than 4px and nothing drawn on top of it; the card sits on
@@ -28,14 +46,16 @@ export default function ChatSongCard({
   onPlay,
   onRepost,
   onLongPress,
+  repost,
 }: {
   source: 'livil' | 'spotify';
   title: string | null;
   artist: string | null;
   artUrl: string | null;
   loading?: boolean;
+  /** Ignored for a repost, which opens its post instead. */
   onPlay?: () => void;
-  /** Omitted → no Repost button (e.g. Spotify reposts switched off). */
+  /** Omitted → no Repost button (e.g. Spotify reposts switched off). Ignored for a repost. */
   onRepost?: () => void;
   /**
    * The chat bubble's long-press (react / reply / delete). Every button here takes it too:
@@ -43,8 +63,68 @@ export default function ChatSongCard({
    * opened the message menu — and letting go then played the song.
    */
   onLongPress?: () => void;
+  repost?: ChatSongCardRepost;
 }) {
   const where = source === 'spotify' ? 'Spotify' : 'Livil';
+
+  const artwork = artUrl ? (
+    <Image source={{ uri: artUrl }} style={styles.art} />
+  ) : (
+    <View style={[styles.art, styles.artEmpty]}>
+      {loading ? (
+        <ActivityIndicator color={COLORS.purpleLight} />
+      ) : (
+        <Icon name="musicNote" size={32} color={COLORS.textMuted} />
+      )}
+    </View>
+  );
+  const song = (
+    <>
+      <Text style={styles.title} numberOfLines={2}>{title ?? ' '}</Text>
+      <Text style={styles.artist} numberOfLines={1}>{artist ?? ' '}</Text>
+    </>
+  );
+
+  if (repost) {
+    return (
+      <View style={styles.card}>
+        <Pressable
+          onPress={repost.onView}
+          onLongPress={onLongPress}
+          accessibilityRole="button"
+          accessibilityLabel={title ? `Open ${repost.label} of ${title}` : `Open ${repost.label}`}
+        >
+          <View style={styles.repostHeader}>
+            {repost.avatarUrl ? (
+              <Image source={{ uri: repost.avatarUrl }} style={styles.repostAvatar} />
+            ) : (
+              <View style={[styles.repostAvatar, styles.repostAvatarEmpty]}>
+                <Text style={styles.repostInitial}>{repost.initial}</Text>
+              </View>
+            )}
+            <Text style={styles.repostLabel} numberOfLines={1}>{repost.label}</Text>
+            <Icon name="repost" size={14} color={COLORS.purpleLight} />
+          </View>
+          {repost.caption ? (
+            <Text style={styles.caption} numberOfLines={2}>{repost.caption}</Text>
+          ) : null}
+          <View style={styles.repostArt}>{artwork}</View>
+          {song}
+          {source === 'spotify' ? <SpotifyLogo size="xs" withName style={styles.mark} /> : null}
+        </Pressable>
+        <Button
+          label="View post"
+          variant="primary"
+          size="sm"
+          fullWidth
+          onPress={repost.onView}
+          onLongPress={onLongPress}
+          style={styles.viewPost}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.card}>
       <Pressable
@@ -54,21 +134,10 @@ export default function ChatSongCard({
         accessibilityRole="button"
         accessibilityLabel={title ? `Play ${title} on ${where}` : `Play on ${where}`}
       >
-        {artUrl ? (
-          <Image source={{ uri: artUrl }} style={styles.art} />
-        ) : (
-          <View style={[styles.art, styles.artEmpty]}>
-            {loading ? (
-              <ActivityIndicator color={COLORS.purpleLight} />
-            ) : (
-              <Icon name="musicNote" size={32} color={COLORS.textMuted} />
-            )}
-          </View>
-        )}
+        {artwork}
       </Pressable>
 
-      <Text style={styles.title} numberOfLines={2}>{title ?? ' '}</Text>
-      <Text style={styles.artist} numberOfLines={1}>{artist ?? ' '}</Text>
+      {song}
 
       {source === 'spotify' ? (
         <SpotifyLogo size="xs" withName style={styles.mark} />
@@ -142,4 +211,13 @@ const styles = StyleSheet.create({
   actionText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
   actionTextRepost: { color: COLORS.purpleLight },
   pressed: { opacity: 0.7 },
+  repostHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 24 },
+  repostAvatar: { width: 22, height: 22, borderRadius: 11 },
+  repostAvatarEmpty: { backgroundColor: COLORS.purpleDeep, alignItems: 'center', justifyContent: 'center' },
+  repostInitial: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  repostLabel: { flex: 1, color: COLORS.white, fontSize: 12.5, fontWeight: '700' },
+  // White, as captions are on the feed cards.
+  caption: { color: COLORS.white, fontSize: 13, lineHeight: 18, marginTop: 4 },
+  repostArt: { marginTop: 8 },
+  viewPost: { marginTop: 10 },
 });
