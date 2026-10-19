@@ -6,12 +6,13 @@ import Reanimated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from
 import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/fonts';
 import { Button } from '../../components/Button';
-import { cardsFor, lineFor } from '../../components/guide/cards';
+import { NOTIFY_ASK, cardsFor, lineFor } from '../../components/guide/cards';
 import { PHONE_H } from '../../components/guide/primitives';
 import { PickDone, PickThree } from '../../components/guide/PickThree';
 import { PICK_COUNT, usePickThree } from '../../components/guide/pickSongs';
 import { useToast } from '../../contexts/ToastContext';
 import { haptics } from '../../utils/haptics';
+import { notificationPermissionGranted, requestPushPermissionInteractive } from '../../services/pushNotifications';
 
 /**
  * The first-run guide: six cards, one short line each, and a step where the new user
@@ -33,12 +34,17 @@ import { haptics } from '../../utils/haptics';
 
 type Props = {
   onDone: () => void;
+  /**
+   * The signed-in account, on a first run: the last card's button then asks for
+   * notifications (NOTIFY_ASK) when they are off. Omitted on a replay.
+   */
+  userId?: string;
   /** The three songs are reposted — the first run's one required step is done. */
   onPicked?: () => void;
   mode?: 'first' | 'replay';
 };
 
-export default function FirstRunGuideScreen({ onDone, onPicked, mode = 'first' }: Props) {
+export default function FirstRunGuideScreen({ onDone, onPicked, userId, mode = 'first' }: Props) {
   const [step, setStep] = useState(0);
   const cards = cardsFor(mode);
   const last = cards.length - 1;
@@ -46,6 +52,29 @@ export default function FirstRunGuideScreen({ onDone, onPicked, mode = 'first' }
   const pick = usePickThree();
   const { showToast } = useToast();
   const picking = card.interactive === 'pickThree' && pick.status !== 'done';
+
+  // null until the OS answers; false = notifications are off, so the last card asks.
+  const [notifyOn, setNotifyOn] = useState<boolean | null>(null);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (mode !== 'first' || !userId) {return;}
+    let alive = true;
+    notificationPermissionGranted()
+      .then(granted => { if (alive) {setNotifyOn(granted);} })
+      .catch(() => { if (alive) {setNotifyOn(true);} }); // unknown: never block the last card
+    return () => { alive = false; };
+  }, [mode, userId]);
+  const askNotifications = step === last && mode === 'first' && !!userId && notifyOn === false;
+
+  const finishWithNotifications = useCallback(async () => {
+    if (!userId) { onDone(); return; }
+    haptics.tap();
+    setAsking(true);
+    // The phone's own dialog decides; the guide ends whatever the answer.
+    await requestPushPermissionInteractive(userId).catch(() => false);
+    setAsking(false);
+    onDone();
+  }, [userId, onDone]);
 
   // The illustrations are choreographed at a fixed 230×460; on a short screen the
   // whole phone is scaled down rather than reflowed, so nothing inside it moves.
@@ -91,7 +120,7 @@ export default function FirstRunGuideScreen({ onDone, onPicked, mode = 'first' }
   const left = PICK_COUNT - pick.picks.length;
   const cta = picking
     ? (left > 0 ? `Pick ${left} more` : 'Repost my 3')
-    : (card.cta ?? 'Next');
+    : askNotifications ? NOTIFY_ASK.cta : (card.cta ?? 'Next');
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -153,9 +182,9 @@ export default function FirstRunGuideScreen({ onDone, onPicked, mode = 'first' }
         </View>
         <Button
           label={cta}
-          onPress={picking ? () => { void repostPicks(); } : next}
+          onPress={picking ? () => { void repostPicks(); } : askNotifications ? () => { void finishWithNotifications(); } : next}
           disabled={picking && left > 0}
-          busy={pick.status === 'posting'}
+          busy={pick.status === 'posting' || asking}
           variant="primary"
           size="lg"
           // Half the content width is a FLOOR, not a fixed width. Computed from the window
@@ -168,6 +197,7 @@ export default function FirstRunGuideScreen({ onDone, onPicked, mode = 'first' }
           // and "SHOW ME AROUND" still ellipsized. See ctaLabelWidth.
           labelStyle={[styles.cta, { minWidth: ctaLabelWidth(cta) }]}
         />
+        {askNotifications ? <Text style={styles.ctaNote}>{NOTIFY_ASK.note}</Text> : null}
       </View>
     </SafeAreaView>
   );
@@ -271,4 +301,5 @@ const styles = StyleSheet.create({
   dotOn: { width: 18, backgroundColor: COLORS.purpleNeon },
   dotOff: { width: 6, backgroundColor: COLORS.border },
   cta: { fontFamily: FONTS.monoBold, letterSpacing: 2, textTransform: 'uppercase', textAlign: 'center' },
+  ctaNote: { marginTop: -8, fontFamily: FONTS.mono, fontSize: 12, color: COLORS.textSecondary, textAlign: 'center' },
 });

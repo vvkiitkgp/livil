@@ -71,6 +71,17 @@ export const GUIDE_CARDS: GuideCard[] = [
   },
 ];
 
+/**
+ * The last card's button on a first run while notifications are off (owner, 2026-10-19):
+ * it shows the phone's own permission dialog — which keeps its "Don't Allow" — and the guide
+ * ends either way. No skip button; the note says how to undo it. Replaces the separate
+ * notifications pop-up for new accounts.
+ */
+export const NOTIFY_ASK = {
+  cta: 'Turn on notifications',
+  note: 'You can turn them off in Settings anytime.',
+};
+
 /** The pick step once its three songs are reposted. */
 export const PICK_DONE = {
   headline: 'Reposted',

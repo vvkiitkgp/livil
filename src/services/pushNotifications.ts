@@ -80,6 +80,11 @@ async function checkOsNotificationPermission(): Promise<boolean> {
   }
 }
 
+/** Whether the OS permission is granted now — the guide's last card asks only when it is not. */
+export function notificationPermissionGranted(): Promise<boolean> {
+  return checkOsNotificationPermission();
+}
+
 /**
  * Trigger the actual OS-level runtime permission dialog.
  *

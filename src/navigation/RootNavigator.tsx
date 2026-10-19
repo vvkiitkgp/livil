@@ -321,8 +321,13 @@ export default function RootNavigator() {
   // Runs after a short delay so the user sees the home screen mount first
   // (Android 13+ shows the modal less jarringly when it's not racing the
   // first frame).
+  //
+  // Only once the person is in the app: never over the sign-up gates, and never during the
+  // first run — the guide's last card asks there instead (NOTIFY_ASK, 2026-10-19), and its
+  // answer settles the prompt status so this pop-up does not follow it.
+  const inApp = needsTerms === false && needsUsername === false && needsGuide === false;
   useEffect(() => {
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !inApp) {
       setPushPromptVisible(false);
       return;
     }
@@ -336,7 +341,7 @@ export default function RootNavigator() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, inApp]);
 
   // One welcome email per account, on the first CONFIRMED session rather than at signup
   // — at signup the address is unverified, and the confirmation email is the one that
@@ -657,6 +662,7 @@ export default function RootNavigator() {
           <AddPhotoScreen userId={session.user.id} onDone={() => setPhotoStepDone(true)} />
         ) : session?.user?.id && needsGuide ? (
           <FirstRunGuideScreen
+            userId={session.user.id}
             onDone={() => {
               // Drop the gate first: the stamp is a courtesy write, and a slow network
               // must not hold a new user on the last card. If it fails they may see the
