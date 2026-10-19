@@ -293,7 +293,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   signOut: [SignOut, 'regular'],
   // "Upload a track" on the Add-to-Livil chooser (ADR-0027).
   upload: [UploadSimple, 'bold'],
-  // The "No internet connection" pill (OfflineBanner).
+  // The "No internet connection" screen (OfflineScreen).
   offline: [WifiSlash, 'bold'],
 };
 
