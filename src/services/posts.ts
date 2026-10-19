@@ -1051,6 +1051,29 @@ export async function fetchTrackPlaysTotals(trackIds: string[]): Promise<Record<
 }
 
 /**
+ * LIKE a post — never unlike. What a double tap on the artwork does (usePostLike.like).
+ *
+ * Not `toggleLike`: a card's heart can be stale (the post was liked in the full-screen player
+ * or on another screen, and cards share no like state), and a toggle would then DELETE the
+ * like the gesture promised to add. An insert that hits the (post_id, user_id) primary key
+ * means "already liked" — the answer the caller wanted — and notifies nobody again.
+ */
+export async function likePost(postId: string): Promise<void> {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    throw noUserError(userError, 'You must be signed in to like a post.');
+  }
+  const { error } = await supabase
+    .from('post_likes')
+    .insert({ post_id: postId, user_id: userData.user.id });
+  if (error) {
+    if (error.code === '23505') { return; }
+    throw new Error(error.message);
+  }
+  void notifyPostActivity(postId, 'like');
+}
+
+/**
  * Toggle the viewer's like on a post. Returns the resulting liked state.
  * Idempotent: clicking twice rapidly will end where it started.
  */

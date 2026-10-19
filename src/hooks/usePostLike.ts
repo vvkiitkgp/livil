@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { toggleLike } from '../services/posts';
+import { likePost, toggleLike } from '../services/posts';
 import { haptics } from '../utils/haptics';
 import { likeCountAfterToggle } from '../utils/likeCount';
 
@@ -51,10 +51,25 @@ export function usePostLike(post: { id: string; viewerHasLiked: boolean; likesCo
   /**
    * Double-tap on the artwork: only ever LIKES. A second double tap on a liked post is an
    * acknowledgement (the heart pops again), never an undo — undoing is the heart's job.
+   *
+   * Calls `likePost`, not the toggle: this card's `liked` can be stale (liked on another
+   * screen), and a toggle would then remove the like. When it was stale, the count shown
+   * was stale too — missing that like — so the +1 below lands on the right number.
    */
-  const like = useCallback(() => {
-    if (liked) { setLikePulse(n => n + 1); } else { void toggle(); }
-  }, [liked, toggle]);
+  const like = useCallback(async () => {
+    setLikePulse(n => n + 1);
+    if (liked) { return; }
+    const prevCount = likesCount;
+    haptics.toggleOn();
+    setLiked(true);
+    setLikesCount(likeCountAfterToggle(prevCount, false, true));
+    try {
+      await likePost(post.id);
+    } catch {
+      setLiked(false);
+      setLikesCount(prevCount);
+    }
+  }, [liked, likesCount, post.id]);
 
   return { liked, likesCount, likePulse, toggleLike: toggle, like };
 }

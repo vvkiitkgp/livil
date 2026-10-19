@@ -4,6 +4,7 @@ import { useRelationships } from '../contexts/RelationshipContext';
 import { fetchPostById, type FeedPost } from '../services/posts';
 import { artistLine, useSpotifyTrack } from '../services/spotify';
 import { repostLabel } from '../utils/repostShare';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 
 /**
  * A repost shared in chat (src/utils/repostShare.ts), drawn from the REPOST ITSELF.
@@ -26,24 +27,45 @@ import { repostLabel } from '../utils/repostShare';
  * account on this phone never sees what the last one could.
  */
 const REPOST_CACHE_MS = 2 * 60 * 1000;
-const repostCache = new Map<string, { at: number; post: Promise<FeedPost | null> }>();
+/** `settled` is filled once the read answers, so a remount draws the card at once. */
+type CacheEntry = { at: number; post: Promise<FeedPost | null>; settled?: { post: FeedPost | null } };
+const repostCache = new Map<string, CacheEntry>();
 
 export function clearRepostChatCache(): void {
   repostCache.clear();
 }
 
-function loadRepost(postId: string): Promise<FeedPost | null> {
+function freshEntry(postId: string): CacheEntry | null {
   const hit = repostCache.get(postId);
-  if (hit && Date.now() - hit.at < REPOST_CACHE_MS) { return hit.post; }
-  const post = fetchPostById(postId).catch(() => {
-    repostCache.delete(postId);
-    return null;
-  });
-  repostCache.set(postId, { at: Date.now(), post });
-  return post;
+  return hit && Date.now() - hit.at < REPOST_CACHE_MS ? hit : null;
+}
+
+function loadRepost(postId: string): Promise<FeedPost | null> {
+  const hit = freshEntry(postId);
+  if (hit) { return hit.post; }
+  const entry: CacheEntry = { at: Date.now(), post: Promise.resolve(null) };
+  entry.post = fetchPostById(postId).then(
+    post => { entry.settled = { post }; return post; },
+    () => { repostCache.delete(postId); return null; },
+  );
+  repostCache.set(postId, entry);
+  return entry.post;
 }
 
 type Load = { status: 'loading' } | { status: 'ready'; post: FeedPost } | { status: 'missing' };
+
+// An id that turns out to be an upload is not a repost card — the sender's app wrote the
+// metadata, so this is checked rather than assumed.
+function toLoad(post: FeedPost | null): Load {
+  return post && post.kind === 'repost' ? { status: 'ready', post } : { status: 'missing' };
+}
+
+/** What a remount can draw straight away: a read that already answered skips the placeholder,
+ *  which is shorter than the card and made the inverted chat list jump. */
+function initialLoad(postId: string): Load {
+  const settled = freshEntry(postId)?.settled;
+  return settled ? toLoad(settled.post) : { status: 'loading' };
+}
 
 export default function RepostChatCard({
   repostPostId,
@@ -59,16 +81,13 @@ export default function RepostChatCard({
   onLongPress?: () => void;
 }) {
   const { meId } = useRelationships();
-  const [load, setLoad] = useState<Load>({ status: 'loading' });
+  const [load, setLoad] = useState<Load>(() => initialLoad(repostPostId));
 
   useEffect(() => {
     let cancelled = false;
-    setLoad({ status: 'loading' });
+    setLoad(initialLoad(repostPostId));
     loadRepost(repostPostId).then(post => {
-      if (cancelled) { return; }
-      // An id that turns out to be an upload is not a repost card — the sender's app wrote
-      // the metadata, so this is checked rather than assumed.
-      setLoad(post && post.kind === 'repost' ? { status: 'ready', post } : { status: 'missing' });
+      if (!cancelled) { setLoad(toLoad(post)); }
     });
     return () => { cancelled = true; };
   }, [repostPostId]);
@@ -94,11 +113,11 @@ export default function RepostChatCard({
     );
   }
 
-  const reposter = post.author.displayName?.trim() || post.author.username;
+  const reposter = resolveAuthorDisplay(post.author);
   const repost = {
-    label: repostLabel(reposter, !!meId && meId === post.author.id),
+    label: repostLabel(reposter.name, !!meId && meId === post.author.id),
     avatarUrl: post.author.avatarUrl,
-    initial: (reposter[0] ?? '♪').toUpperCase(),
+    initial: reposter.initial,
     caption: post.caption?.trim() || null,
     onView: open,
   };

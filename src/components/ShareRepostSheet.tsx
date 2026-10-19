@@ -7,6 +7,7 @@ import { useRelationships } from '../contexts/RelationshipContext';
 import { sendToFriends, shareRepostToConversations } from '../services/share';
 import type { FeedPost } from '../services/posts';
 import { repostLabel } from '../utils/repostShare';
+import { resolveAuthorDisplay } from '../utils/authorDisplay';
 import { Button } from './Button';
 import { FriendPickerStrip } from './FriendPickerStrip';
 import SheetModal, { SheetScrollView } from './SheetModal';
@@ -77,7 +78,7 @@ export default function ShareRepostSheet({ visible, post, songTitle, onClose }: 
 
   if (!post) { return null; }
 
-  const reposter = post.author.displayName?.trim() || post.author.username;
+  const reposter = resolveAuthorDisplay(post.author).name;
   const isMine = !!meId && meId === post.author.id;
 
   return (
