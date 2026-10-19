@@ -34,6 +34,14 @@ export function stripComments(sql) {
 // ── Tables ───────────────────────────────────────────────────────────────────
 
 /**
+ * DROP TABLE, and not the `drop table` inside `alter publication … drop table x`, which
+ * only stops publishing x to Realtime. Read as a drop, it erased a live table (and its
+ * policies) from the generated documents.
+ */
+const DROP_TABLE =
+  /(?<!\bpublication\s+[a-z_][a-z0-9_]*\s+)drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)/gi;
+
+/**
  * Replays migrations in filename order. A table's final state is whatever the last
  * migration to mention it did — CREATE or DROP. Without replaying drops, a table that
  * has been removed is still documented as live, and the data model describes a schema
@@ -49,7 +57,7 @@ export function parseTables(migrations) {
     // Drops first; a create later in the SAME file re-adds. Accepts the `public.`
     // prefix and a trailing CASCADE / RESTRICT.
     for (const d of body.matchAll(
-      /drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)/gi,
+      DROP_TABLE,
     )) {
       tables.delete(d[1].toLowerCase());
     }
@@ -165,7 +173,7 @@ export function parseRls(migrations) {
     // a security document, which is the same class of false finding the drop-replay
     // above exists to prevent.
     for (const d of body.matchAll(
-      /drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)/gi,
+      DROP_TABLE,
     )) {
       const table = d[1].toLowerCase();
       rlsEnabled.delete(table);
@@ -413,13 +421,15 @@ function classifyGuard(name, params, body, isDefiner, returnsTrigger) {
 
 // ── Realtime ─────────────────────────────────────────────────────────────────
 
+/** Tables published to Realtime after the last migration: adds and drops, in order. */
 export function parsePublications(migrations) {
   const pub = new Set();
   for (const { sql } of migrations) {
     for (const m of stripComments(sql).matchAll(
-      /alter\s+publication\s+supabase_realtime\s+add\s+table\s+(?:public\.)?([a-z_][a-z0-9_]*)/gi,
+      /alter\s+publication\s+supabase_realtime\s+(add|drop)\s+table\s+(?:public\.)?([a-z_][a-z0-9_]*)/gi,
     )) {
-      pub.add(m[1]);
+      if (m[1].toLowerCase() === 'add') pub.add(m[2]);
+      else pub.delete(m[2]);
     }
   }
   return pub;
