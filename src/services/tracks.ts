@@ -1381,6 +1381,11 @@ export type LibraryRecentTrack = {
   artistLabel: string;
   coverArtUrl: string | null;
   playedAt: string;
+  /**
+   * Set on a Spotify song (listRecentlyPlayedPage): a tap opens it in Spotify. Its
+   * `trackId` is `spotify:<id>` (a list key, never a Livil track) and `postId` is null.
+   */
+  spotifyTrackId?: string;
 };
 
 /**

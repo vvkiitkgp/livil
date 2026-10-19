@@ -316,7 +316,8 @@ export async function openInSpotify(id: string): Promise<boolean> {
 }
 
 /** Where a hand-off to Spotify started — mirrors spotify_opens_source_check. */
-export type SpotifyOpenSource = 'feed' | 'chat' | 'search';
+/** 'library' = Library → Recently Played (allowed from migration 20261108000000). */
+export type SpotifyOpenSource = 'feed' | 'chat' | 'search' | 'library';
 
 /**
  * Log a confirmed hand-off for the ops play stats (migration 20261014000000). Fire and

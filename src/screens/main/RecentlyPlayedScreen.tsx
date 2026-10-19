@@ -17,7 +17,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
-import { listRecentTracksPage, type LibraryRecentTrack } from '../../services/tracks';
+import type { LibraryRecentTrack } from '../../services/tracks';
+import { listRecentlyPlayedPage } from '../../services/recentlyPlayed';
+import { SpotifyLogo } from '../../components/SpotifyLogo';
 import { Icon } from '../../components/Icon';
 import { usePlayRecentlyPlayed } from '../../hooks/usePlayRecentlyPlayed';
 
@@ -47,9 +49,10 @@ function TrackRow({
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={`${item.title} by ${item.artistLabel}`}
+      accessibilityLabel={`${item.title} by ${item.artistLabel}${item.spotifyTrackId ? ', on Spotify' : ''}`}
     >
-      <View style={[styles.cover, { backgroundColor: accents[0] }]}>
+      {/* Spotify artwork: Spotify's small corner radius, nothing drawn on top. */}
+      <View style={[styles.cover, { backgroundColor: accents[0] }, item.spotifyTrackId ? styles.coverSpotify : null]}>
         <View style={[styles.coverAccent, { backgroundColor: accents[1] }]} />
         {item.coverArtUrl ? (
           <Image source={{ uri: item.coverArtUrl }} style={StyleSheet.absoluteFill} />
@@ -61,6 +64,7 @@ function TrackRow({
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.artist} numberOfLines={1}>{item.artistLabel}</Text>
       </View>
+      {item.spotifyTrackId ? <SpotifyLogo size="xs" /> : null}
     </Pressable>
   );
 }
@@ -78,7 +82,7 @@ export default function RecentlyPlayedScreen() {
 
   const load = useCallback(async () => {
     try {
-      const page = await listRecentTracksPage(PAGE_SIZE);
+      const page = await listRecentlyPlayedPage(PAGE_SIZE);
       setTracks(page.items);
       setNextBefore(page.nextBefore);
       setError('');
@@ -105,7 +109,7 @@ export default function RecentlyPlayedScreen() {
     if (loadingMore || !nextBefore) { return; }
     setLoadingMore(true);
     try {
-      const page = await listRecentTracksPage(PAGE_SIZE, nextBefore);
+      const page = await listRecentlyPlayedPage(PAGE_SIZE, nextBefore);
       setTracks(prev => [...prev, ...page.items.filter(m => !prev.some(p => p.trackId === m.trackId))]);
       setNextBefore(page.nextBefore);
     } catch {
@@ -233,6 +237,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  coverSpotify: { borderRadius: 4 },
   coverAccent: {
     position: 'absolute',
     width: 44,

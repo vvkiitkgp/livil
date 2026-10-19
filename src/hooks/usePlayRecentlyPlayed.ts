@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { usePlayFullScreen } from './usePlayFullScreen';
+import { useOpenInSpotify } from './useOpenInSpotify';
 import { fetchPostsByIds, feedPostToNowPlaying } from '../services/posts';
 import type { LibraryRecentTrack } from '../services/tracks';
 
@@ -12,14 +13,22 @@ import type { LibraryRecentTrack } from '../services/tracks';
  *
  * Rows whose post is gone (deleted, blocked) are left out of the queue; tapping one of
  * those says so instead of playing something else.
+ *
+ * A Spotify row opens in Spotify (the "plays on Spotify" notice first, as everywhere) and
+ * is never queued: Livil's engine only plays Livil songs (ADR-0027).
  */
 export function usePlayRecentlyPlayed() {
   const { setQueue, setNowPlaying, markSeekTarget, requestPlay } = usePlayback();
   const openFullScreen = usePlayFullScreen();
   const { showToast } = useToast();
+  const openSpotify = useOpenInSpotify('library');
 
   return useCallback(async (tracks: LibraryRecentTrack[], index: number) => {
     const tapped = tracks[index];
+    if (tapped?.spotifyTrackId) {
+      await openSpotify(tapped.spotifyTrackId);
+      return;
+    }
     if (!tapped?.postId) {
       showToast('That post is no longer available', { kind: 'info' });
       return;
@@ -42,5 +51,5 @@ export function usePlayRecentlyPlayed() {
     } catch {
       showToast("Couldn't play that track", { kind: 'error' });
     }
-  }, [setQueue, setNowPlaying, markSeekTarget, requestPlay, openFullScreen, showToast]);
+  }, [setQueue, setNowPlaying, markSeekTarget, requestPlay, openFullScreen, showToast, openSpotify]);
 }

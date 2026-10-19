@@ -19,7 +19,9 @@ import { Icon } from '../../components/Icon';
 import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import FeedEndMessage from '../../components/FeedEndMessage';
 import EmojiCoverArt from '../../components/EmojiCoverArt';
-import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../../services/tracks';
+import type { LibraryRecentTrack } from '../../services/tracks';
+import { listRecentlyPlayedPage } from '../../services/recentlyPlayed';
+import { SpotifyLogo } from '../../components/SpotifyLogo';
 import {
   getLikedPostCount,
   getStarredUsersCount,
@@ -100,8 +102,9 @@ export default function LibraryScreen() {
   const loadRecent = useCallback(async () => {
     setRecentError('');
     try {
-      const rows = await listRecentTracksForLibrary();
-      setRecent(rows);
+      // Livil and Spotify songs together (Spotify ones open in Spotify).
+      const { items } = await listRecentlyPlayedPage();
+      setRecent(items);
     } catch (err) {
       setRecentError(err instanceof Error ? err.message : 'Could not load recently played.');
       setRecent([]);
@@ -178,7 +181,7 @@ export default function LibraryScreen() {
   }, [loadRecent, loadPlaylists, loadAlbums]);
 
   const goToLiked = useCallback(() => {
-    navigation.dispatch(StackActions.push('PlaylistDetail', { playlistId: 'liked', playlistName: 'Liked Songs' }));
+    navigation.dispatch(StackActions.push('PlaylistDetail', { playlistId: 'liked', playlistName: 'Liked Indie Vibes' }));
   }, [navigation]);
 
   const goToFollowing = useCallback(() => {
@@ -259,9 +262,17 @@ export default function LibraryScreen() {
                   style={({ pressed }) => [styles.recentCard, pressed && styles.recentCardPressed]}
                   onPress={() => openRecent(track)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${track.title} by ${track.artistLabel}`}
+                  accessibilityLabel={`${track.title} by ${track.artistLabel}${track.spotifyTrackId ? ', on Spotify' : ''}`}
                 >
-                  <View style={[styles.recentCover, { backgroundColor: accents[0] }]}>
+                  {/* Spotify artwork: Spotify's small corner radius, nothing drawn on top; its
+                      logo goes beside the artist instead (Spotify's design guidelines). */}
+                  <View
+                    style={[
+                      styles.recentCover,
+                      { backgroundColor: accents[0] },
+                      track.spotifyTrackId ? styles.recentCoverSpotify : null,
+                    ]}
+                  >
                     <View style={[styles.recentCoverAccent, { backgroundColor: accents[1] }]} />
                     {track.coverArtUrl ? (
                       <Image source={{ uri: track.coverArtUrl }} style={styles.recentCoverImg} />
@@ -270,7 +281,16 @@ export default function LibraryScreen() {
                     )}
                   </View>
                   <Text style={styles.recentTitle} numberOfLines={1}>{track.title}</Text>
-                  <Text style={styles.recentArtist} numberOfLines={1}>{track.artistLabel}</Text>
+                  {track.spotifyTrackId ? (
+                    <View style={styles.recentSpotifyRow}>
+                      <SpotifyLogo size="xs" />
+                      <Text style={[styles.recentArtist, styles.recentArtistSpotify]} numberOfLines={1}>
+                        {track.artistLabel}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.recentArtist} numberOfLines={1}>{track.artistLabel}</Text>
+                  )}
                 </Pressable>
               );
             })}
@@ -346,13 +366,13 @@ export default function LibraryScreen() {
           <PlaylistSkeleton />
         ) : (
           <View style={styles.list}>
-            {/* Liked Songs — virtual */}
+            {/* Liked Indie Vibes — virtual: liked Livil songs (Spotify reposts are left out) */}
             <TouchableOpacity style={styles.row} onPress={goToLiked} activeOpacity={0.75}>
               <View style={[styles.thumb, { backgroundColor: COLORS.purple }]}>
                 <Icon name="heart" size={22} color={COLORS.white} weight="fill" />
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>Liked Songs</Text>
+                <Text style={styles.rowTitle}>Liked Indie Vibes</Text>
                 <Text style={styles.rowSubtitle}>
                   {likedCount !== null ? `${likedCount} posts` : '—'}
                 </Text>
@@ -546,6 +566,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  recentCoverSpotify: { borderRadius: 8 },
+  recentSpotifyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  recentArtistSpotify: { flexShrink: 1, marginTop: 0 },
   recentEmpty: {
     paddingHorizontal: 24,
     paddingBottom: 22,
