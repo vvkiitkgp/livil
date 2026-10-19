@@ -54,7 +54,7 @@ import { MAX_GIF_QUERY_LENGTH, prefetchGifs, rememberGif, useGifsEnabled, type G
 import { fetchPostById, isPlayableInLivil, type FeedPost } from '../services/posts';
 import { toShareablePost } from '../services/share';
 import { artistLine, rememberSpotifyTrack, useSpotifyAvailability } from '../services/spotify';
-import { detectMentionTrigger } from '../utils/mentions';
+import { detectMentionTrigger, renderInputMentions } from '../utils/mentions';
 import { flattenThread, indentFor, type ThreadPosition } from '../utils/commentThread';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 
@@ -670,6 +670,7 @@ export default function CommentsSheet({
     () => detectMentionTrigger(composer, caret),
     [composer, caret],
   );
+  const composerStyled = useMemo(() => renderInputMentions(composer), [composer]);
 
   const handleMentionSelect = useCallback((profile: MentionProfile) => {
     if (!mentionTrigger) { return; }
@@ -768,7 +769,8 @@ export default function CommentsSheet({
             ) : null}
             <FormInput
               ref={composerInputRef}
-              value={songMode ? songQuery : gifMode ? gifQuery : composer}
+              // Children, not `value`: the comment shows its @tags in the tag colour while typed
+              // (renderInputMentions); a song / GIF search is plain text.
               // A search is one line: a pasted newline becomes a space.
               onChangeText={
                 songMode
@@ -842,7 +844,9 @@ export default function CommentsSheet({
                   />
                 )
               }
-            />
+            >
+              {songMode ? songQuery : gifMode ? gifQuery : composerStyled}
+            </FormInput>
           </View>
           {songMode ? (
             // Inline, under the box — the sheet's own list scrolls it.
@@ -913,6 +917,7 @@ export default function CommentsSheet({
       handleMentionPress,
       handleAvatarPress,
       composer,
+      composerStyled,
       sending,
       replyingTo,
       handleSend,

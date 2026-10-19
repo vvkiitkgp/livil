@@ -80,7 +80,8 @@ export default function SpotifyRepostScreen() {
   const findRef = useRef<TextInput>(null);
 
   const picked = useSpotifyTrack(pickedId);
-  const listenOnSpotify = useOpenInSpotify('search');
+  // No notice here: this screen IS about Spotify, and iOS cannot show it over this sheet.
+  const listenOnSpotify = useOpenInSpotify('search', { notice: false });
 
   const pick = useCallback((track: SpotifyTrack) => {
     haptics.select();
@@ -301,8 +302,8 @@ export default function SpotifyRepostScreen() {
             </View>
 
             {/* Tap the song (or "Play on Spotify") to hear it in Spotify before reposting — Livil cannot play
-                Spotify audio itself (ADR-0027: no previews). Same hand-off as everywhere else:
-                the "plays on Spotify" notice, Livil paused, the screen kept as it is. */}
+                Spotify audio itself (ADR-0027: no previews). Livil pauses, Spotify opens, and
+                this screen is kept as it is. */}
             <Pressable
               style={({ pressed }) => [styles.trackCard, pressed && picked.status === 'ready' && styles.trackCardPressed]}
               onPress={picked.status === 'ready' ? () => { void listenOnSpotify(picked.track.id); } : undefined}

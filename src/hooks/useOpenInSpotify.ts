@@ -14,7 +14,19 @@ import { haptics } from '../utils/haptics';
  * back is one tap on play. And Livil never loads the Spotify song itself — the single
  * engine (GlobalAudioPlayer) only ever plays Livil media.
  */
-export function useOpenInSpotify(source: SpotifyOpenSource): (spotifyTrackId: string) => Promise<void> {
+export function useOpenInSpotify(
+  source: SpotifyOpenSource,
+  options: {
+    /**
+     * Skip the "plays on Spotify" notice — for a screen where Spotify is the whole point
+     * (Repost from Spotify). Also REQUIRED there: that screen is an iOS modal sheet, and the
+     * notice is a Modal of its own, which iOS will not present over it — the tap did nothing
+     * (owner report, 2026-10-19).
+     */
+    notice?: boolean;
+  } = {},
+): (spotifyTrackId: string) => Promise<void> {
+  const notice = options.notice ?? true;
   const playback = usePlayback();
   const { showToast } = useToast();
 
@@ -32,7 +44,8 @@ export function useOpenInSpotify(source: SpotifyOpenSource): (spotifyTrackId: st
 
   return useCallback(async (spotifyTrackId: string) => {
     haptics.tap();
+    if (!notice) { await handOff(spotifyTrackId); return; }
     // Resolves once the notice is up (or straight after handing off, if dismissed).
     await requestNotice('spotify', () => { void handOff(spotifyTrackId); });
-  }, [handOff]);
+  }, [handOff, notice]);
 }
