@@ -80,21 +80,3 @@ export function useOnReconnect(onReconnect: () => void): void {
   }, []);
 }
 
-/**
- * Whether `url` answers at all right now — ANY HTTP response counts, a 401 included; only a
- * failed connection or the timeout is "no". For "Try again" on the offline screen, so a phone
- * that wrongly thinks it is offline (Android marks some working networks "no internet") is
- * never locked out.
- */
-export async function canReach(url: string, timeoutMs = 5000): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    await fetch(url, { method: 'HEAD', cache: 'no-store', signal: controller.signal });
-    return true;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}

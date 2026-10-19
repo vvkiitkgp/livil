@@ -464,7 +464,7 @@ export default function GlobalAudioPlayer() {
   // through the whole queue — a new song every second and an error buzz with each one (owner
   // report, 2026-10-19). Offline, or after MAX_FAILS_IN_A_ROW failures in a row (a network
   // the phone thinks is fine, or a build without NetInfo), it stops on this track, paused —
-  // silently offline (the offline screen covers the app), else with one quiet toast. Play
+  // silently offline (the offline pill says why), else with one quiet toast. Play
   // loads it again (see the play handler).
   const handleError = useCallback((e: { error?: unknown }) => {
     setIsBuffering(false);
@@ -477,7 +477,7 @@ export default function GlobalAudioPlayer() {
       stoppedOnErrorRef.current = mine;
       setPaused(true);
       if (mine) { reportPaused(mine); }
-      // Offline, the full-screen "No internet connection" (OfflineScreen) already says so.
+      // Offline, the "No internet connection" pill (OfflineBanner) already says so.
       if (!offlineRef.current) { showToast("Couldn't play. Check your connection.", { kind: 'info' }); }
       return;
     }
