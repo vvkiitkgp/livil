@@ -663,3 +663,21 @@ Deno.test('an empty search answer is shared only briefly', async () => {
   const entry = [...shared.store.entries()].find(([k]) => k.includes(':search:'))!;
   assertEquals(entry[1].ttlMs, EMPTY_SEARCH_TTL_MS);
 });
+
+Deno.test('on the edge runtime the answer goes out first and the cache write finishes after', async () => {
+  const handed: Promise<unknown>[] = [];
+  (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime = { waitUntil: (p: Promise<unknown>) => { handed.push(p); } };
+  try {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const { deps } = makeDeps();
+    deps.shared = { mget: keys => Promise.resolve(keys.map(() => null)), mset: () => gate };
+    const res = await handle(post({ action: 'tracks', ids: [ID] }), deps); // the write has NOT finished
+    assertEquals((await res.json()).tracks[ID].title, 'Blinding Lights');
+    assertEquals(handed.length, 1);
+    release();
+    await handed[0];
+  } finally {
+    delete (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime;
+  }
+});

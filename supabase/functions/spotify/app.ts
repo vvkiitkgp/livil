@@ -378,6 +378,21 @@ function rememberSearch(key: string, tracks: SpotifyTrack[], at: number, ttl: nu
   }
 }
 
+/**
+ * A cache write is not worth making the caller wait for: the answer goes out first and the
+ * runtime finishes the write after the response (Supabase's EdgeRuntime.waitUntil). Awaited
+ * only where that does not exist — tests and plain Deno — so they still see the write land.
+ */
+function inBackground(task: Promise<void> | undefined): Promise<void> {
+  if (!task) return Promise.resolve();
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (typeof runtime?.waitUntil === 'function') {
+    runtime.waitUntil(task);
+    return Promise.resolve();
+  }
+  return task;
+}
+
 /** Run `fn` over `items`, at most `limit` at a time, results in order. */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
@@ -713,7 +728,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       const params = new URLSearchParams({ q: norm, type: 'track', limit: String(limit) });
       const res = await apiGet(deps, `https://api.spotify.com/v1/search?${params}`);
       if (!res || !res.ok) {
-        await deps.shared?.mset(blockEntry(before, deps.now()));
+        await inBackground(deps.shared?.mset(blockEntry(before, deps.now())));
         return json(502, { error: 'spotify search is unavailable', status: res?.status ?? null });
       }
       const raw = await res.json().catch(() => null) as { tracks?: { items?: unknown[] } } | null;
@@ -725,7 +740,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       for (const t of tracks) state.cache.set(t.id, { track: t, at: answeredAt, ttl: CACHE_TTL_MS });
       const ttl = tracks.length > 0 ? CACHE_TTL_MS : EMPTY_SEARCH_TTL_MS;
       rememberSearch(key, tracks, answeredAt, ttl);
-      await deps.shared?.mset([{ key, value: JSON.stringify(tracks), ttlMs: ttl }]);
+      await inBackground(deps.shared?.mset([{ key, value: JSON.stringify(tracks), ttlMs: ttl }]));
       return json(200, { enabled: true, tracks });
     }
 
@@ -772,7 +787,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
           ? [{ key: trackKey(id), value: JSON.stringify({ track: r.track, full: r.full }), ttlMs: r.ttl }]
           : [];
       });
-      await deps.shared?.mset([...writes, ...blockEntry(before, deps.now())]);
+      await inBackground(deps.shared?.mset([...writes, ...blockEntry(before, deps.now())]));
 
       // Only answered ids are returned: a missing key means "try again later".
       for (const id of unique) {
