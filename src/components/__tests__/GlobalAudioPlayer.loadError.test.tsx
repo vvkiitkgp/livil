@@ -3,7 +3,8 @@
  *
  * One broken file skips to the next track. But offline EVERY track fails, and skipping raced
  * through the queue — a new song each second, an error buzz with each (owner report,
- * 2026-10-19). Offline, or after three failures in a row, the engine must stop on the track,
+ * 2026-10-19). Offline — by NetInfo or by the error itself — or on a second failure with nothing
+ * played between, the engine must stop on the track,
  * paused; and play must then load that track again (a failed source does not reload itself).
  */
 
@@ -17,6 +18,7 @@ type VideoProps = {
   paused?: boolean;
   onEnd?: () => void;
   onError?: (e: { error?: unknown }) => void;
+  onProgress?: (d: { currentTime: number }) => void;
   onLoad?: (d: { duration: number }) => void;
   onPlaybackStateChanged?: (e: { isPlaying: boolean; isSeeking: boolean }) => void;
 };
@@ -122,8 +124,12 @@ function playing(queue: NowPlayingInfo[]) {
 }
 
 
-function fails() {
-  act(() => { mockLatest.props!.onError!({ error: { errorString: 'Network request failed' } }); });
+function fails(error: unknown = { domain: 'AVFoundationErrorDomain', code: -11828, localizedDescription: 'Cannot Open' }) {
+  act(() => { mockLatest.props!.onError!({ error }); });
+}
+function plays(fromSec: number, toSec: number) {
+  act(() => { mockLatest.props!.onProgress!({ currentTime: fromSec }); });
+  act(() => { mockLatest.props!.onProgress!({ currentTime: toSec }); });
 }
 
 it('one broken track skips to the next', () => {
@@ -133,7 +139,7 @@ it('one broken track skips to the next', () => {
   expect(mockShowToast).toHaveBeenCalledWith('Could not play this track', { kind: 'error' });
 });
 
-it('offline: stops on the track, paused, without skipping or an error toast', () => {
+it('offline (NetInfo): stops on the track, paused, without skipping or an error toast', () => {
   playing([track('a'), track('b'), track('c')]);
   act(() => { mockOfflineListener(true); });
   fails();
@@ -141,22 +147,37 @@ it('offline: stops on the track, paused, without skipping or an error toast', ()
   expect(mockShowToast).not.toHaveBeenCalled();
 });
 
-it('online but three failures in a row: stops on the third, with one quiet toast', () => {
-  playing([track('a'), track('b'), track('c'), track('d'), track('e')]);
+it('a connection error stops at once, even before NetInfo has noticed', () => {
+  playing([track('a'), track('b'), track('c')]);
+  fails({ domain: 'NSURLErrorDomain', code: -1009, localizedDescription: 'The Internet connection appears to be offline.' });
+  expect(mockLatest.props).toMatchObject({ source: { uri: 'a.mp3' }, paused: true });
+  expect(mockShowToast).toHaveBeenCalledWith("Couldn't play. Check your connection.", { kind: 'info' });
+  expect(mockShowToast).not.toHaveBeenCalledWith('Could not play this track', expect.anything());
+});
+
+it('two failures in a row: skips once, stops on the second', () => {
+  playing([track('a'), track('b'), track('c'), track('d')]);
   fails(); // a → b
-  fails(); // b → c
-  fails(); // stops on c
-  expect(mockLatest.props).toMatchObject({ source: { uri: 'c.mp3' }, paused: true });
+  fails(); // stops on b
+  expect(mockLatest.props).toMatchObject({ source: { uri: 'b.mp3' }, paused: true });
   expect(mockShowToast).toHaveBeenLastCalledWith("Couldn't play. Check your connection.", { kind: 'info' });
 });
 
-it('a track that loads resets the count', () => {
-  playing([track('a'), track('b'), track('c'), track('d'), track('e')]);
+it('a track that only LOADS does not reset the count (a cached track can load offline)', () => {
+  playing([track('a'), track('b'), track('c'), track('d')]);
   fails(); // a → b
-  fails(); // b → c
   act(() => { mockLatest.props!.onLoad!({ duration: 200 }); });
-  fails(); // c → d: only one in a row now
-  expect(mockLatest.props).toMatchObject({ source: { uri: 'd.mp3' }, paused: false });
+  fails(); // still the second in a row → stop on b
+  expect(mockLatest.props).toMatchObject({ source: { uri: 'b.mp3' }, paused: true });
+});
+
+it('a track that really PLAYS resets the count', () => {
+  playing([track('a'), track('b'), track('c'), track('d')]);
+  fails(); // a → b
+  act(() => { mockLatest.props!.onLoad!({ duration: 200 }); });
+  plays(0, 1.5);
+  fails(); // b → c: the first failure since something played
+  expect(mockLatest.props).toMatchObject({ source: { uri: 'c.mp3' }, paused: false });
 });
 
 it('play after an offline stop loads the same track again', () => {
