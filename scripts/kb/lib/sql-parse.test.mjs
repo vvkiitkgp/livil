@@ -74,7 +74,7 @@ test('regenerating twice on different days is stable', () => {
  * `public.` prefix that most drops in this repository actually use, so a dropped
  * function stayed in the RPC reference and in the security review that reads it.
  */
-import { parseTables, parseRls, parseFunctions } from './sql-parse.mjs';
+import { parseTables, parseRls, parseFunctions, parsePublications } from './sql-parse.mjs';
 
 const mig = (file, sql) => ({ file, sql });
 
@@ -108,6 +108,26 @@ test('dropping a table drops its policies without naming them', () => {
   assert.deepEqual(policies.map(p => p.name), ['keep_me'],
     'only the dropped table’s policies go');
   assert.equal(rlsEnabled.has('waitlist'), false);
+});
+
+test('dropping a table from the Realtime publication does not drop the table', () => {
+  // `alter publication … drop table x` stops publishing x; x and its policies stay.
+  const migrations = [
+    mig('001.sql', [
+      'create table public.post_comment_likes (comment_id uuid, user_id uuid);',
+      'alter table public.post_comment_likes enable row level security;',
+      'create policy pcl_select on public.post_comment_likes for select to authenticated using (true);',
+      'alter publication supabase_realtime add table public.post_comment_likes;',
+      'alter publication supabase_realtime add table public.post_comments;',
+    ].join('\n')),
+    mig('002.sql', 'alter publication supabase_realtime drop table public.post_comment_likes;'),
+  ];
+  assert.equal(parseTables(migrations).has('post_comment_likes'), true, 'the table is still live');
+  const { policies, rlsEnabled } = parseRls(migrations);
+  assert.deepEqual(policies.map(p => p.name), ['pcl_select'], 'its policies are still live');
+  assert.equal(rlsEnabled.has('post_comment_likes'), true);
+  assert.deepEqual([...parsePublications(migrations)], ['post_comments'],
+    'but it is no longer published');
 });
 
 test('a drop qualified with public. is seen — the prefix most migrations actually use', () => {

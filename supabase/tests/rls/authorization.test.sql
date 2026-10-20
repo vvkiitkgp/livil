@@ -865,7 +865,10 @@ end $$;
 
 insert into tracks (id, uploader_id, title, media_kind, audio_url) values
   ('f0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',
-   'freeze fixture', 'audio', 'https://example.invalid/a.mp3')
+   'freeze fixture', 'audio', 'https://example.invalid/a.mp3'),
+  -- 3333's own track: since 20261113000000 an upload must be of a track you uploaded.
+  ('f0000000-0000-0000-0000-000000000002', '33333333-3333-3333-3333-333333333333',
+   'counter fixture', 'audio', 'https://example.invalid/c.mp3')
 on conflict do nothing;
 
 insert into posts (id, author_id, kind, track_id) values
@@ -1005,7 +1008,7 @@ select pg_temp.assert(
 -- does not name, so the UPDATE guard alone would be bypassed by never updating.
 insert into posts (id, author_id, kind, track_id, views_count, reposts_count) values
   ('f0000000-0000-0000-0000-0000000000e1', '33333333-3333-3333-3333-333333333333', 'upload',
-   'f0000000-0000-0000-0000-000000000001', 999999, 888888);
+   'f0000000-0000-0000-0000-000000000002', 999999, 888888);
 
 reset role;
 

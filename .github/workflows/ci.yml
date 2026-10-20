@@ -895,6 +895,18 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/recent-spotify-opens.test.sql
 
+      # ADR-0028 follow-up (20261113000000): a repost must name an upload you can see;
+      # activity_notify_post / activity_notify_comment / activity_record_play (DEFINER,
+      # predicate by hand) treat a post hidden from the caller as absent and agree with
+      # posts_select_authenticated for every viewer × post; post_comment_likes is not
+      # published to Realtime.
+      - name: Post visibility remaining paths tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/post-visibility-remaining.test.sql
+
       # ADR-0028 — repost audience: profiles.reposts_public (everyone by default) decides
       # who sees a person's reposts, live and including past ones; only the owner can flip
       # it; blocks and signed-out callers still see nothing; record_post_impressions agrees

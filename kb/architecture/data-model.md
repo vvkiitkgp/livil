@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 166 migration(s) in `supabase/migrations/`.
+Reconstructed from 167 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -654,7 +654,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 
 ### `post_comment_likes`
 
-RLS enabled · realtime · defined in `20260607000004_post_comments_likes_reports.sql`
+RLS enabled · defined in `20260607000004_post_comments_likes_reports.sql`
 
 | Column | Definition |
 |---|---|
@@ -1566,7 +1566,6 @@ same row-level security policies that gate ordinary reads.
 - `listen_sessions`
 - `message_reactions`
 - `messages`
-- `post_comment_likes`
 - `post_comments`
 
 ## Triggers
