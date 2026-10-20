@@ -8,6 +8,9 @@ PODS:
   - FBLazyVector (0.85.3)
   - Firebase/CoreOnly (12.11.0):
     - FirebaseCore (~> 12.11.0)
+  - Firebase/Crashlytics (12.11.0):
+    - Firebase/CoreOnly
+    - FirebaseCrashlytics (~> 12.11.0)
   - Firebase/Messaging (12.11.0):
     - Firebase/CoreOnly
     - FirebaseMessaging (~> 12.11.0)
@@ -19,6 +22,15 @@ PODS:
     - FirebaseCore (~> 12.11.0)
   - FirebaseCoreInternal (12.11.0):
     - "GoogleUtilities/NSData+zlib (~> 8.1)"
+  - FirebaseCrashlytics (12.11.0):
+    - FirebaseCore (~> 12.11.0)
+    - FirebaseInstallations (~> 12.11.0)
+    - FirebaseRemoteConfigInterop (~> 12.11.0)
+    - FirebaseSessions (~> 12.11.0)
+    - GoogleDataTransport (~> 10.1)
+    - GoogleUtilities/Environment (~> 8.1)
+    - nanopb (~> 3.30910.0)
+    - PromisesObjC (~> 2.4)
   - FirebaseInstallations (12.11.0):
     - FirebaseCore (~> 12.11.0)
     - GoogleUtilities/Environment (~> 8.1)
@@ -33,6 +45,16 @@ PODS:
     - GoogleUtilities/Reachability (~> 8.1)
     - GoogleUtilities/UserDefaults (~> 8.1)
     - nanopb (~> 3.30910.0)
+  - FirebaseRemoteConfigInterop (12.11.0)
+  - FirebaseSessions (12.11.0):
+    - FirebaseCore (~> 12.11.0)
+    - FirebaseCoreExtension (~> 12.11.0)
+    - FirebaseInstallations (~> 12.11.0)
+    - GoogleDataTransport (~> 10.1)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GoogleUtilities/UserDefaults (~> 8.1)
+    - nanopb (~> 3.30910.0)
+    - PromisesSwift (~> 2.1)
   - GoogleDataTransport (10.1.1):
     - nanopb (~> 3.30910.0)
     - PromisesObjC (~> 2.4)
@@ -85,6 +107,8 @@ PODS:
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
   - PromisesObjC (2.4.1)
+  - PromisesSwift (2.4.1):
+    - PromisesObjC (= 2.4.1)
   - RCTDeprecation (0.85.3)
   - RCTRequired (0.85.3)
   - RCTSwiftUI (0.85.3)
@@ -2330,6 +2354,31 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNFBCrashlytics (24.1.0):
+    - Firebase/Crashlytics (= 12.11.0)
+    - FirebaseCoreExtension
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - RNFBApp
+    - Yoga
   - RNFBMessaging (24.1.0):
     - Firebase/Messaging (= 12.11.0)
     - FirebaseCoreExtension
@@ -2717,8 +2766,10 @@ PODS:
 
 DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
+  - GoogleDataTransport
   - GoogleUtilities
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - nanopb
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTSwiftUI (from `../node_modules/react-native/ReactApple/RCTSwiftUI`)
@@ -2804,6 +2855,7 @@ DEPENDENCIES:
   - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
   - "RNCMaskedView (from `../node_modules/@react-native-masked-view/masked-view`)"
   - "RNFBApp (from `../node_modules/@react-native-firebase/app`)"
+  - "RNFBCrashlytics (from `../node_modules/@react-native-firebase/crashlytics`)"
   - "RNFBMessaging (from `../node_modules/@react-native-firebase/messaging`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNImageCropPicker (from `../node_modules/react-native-image-crop-picker`)
@@ -2823,12 +2875,16 @@ SPEC REPOS:
     - FirebaseCore
     - FirebaseCoreExtension
     - FirebaseCoreInternal
+    - FirebaseCrashlytics
     - FirebaseInstallations
     - FirebaseMessaging
+    - FirebaseRemoteConfigInterop
+    - FirebaseSessions
     - GoogleDataTransport
     - GoogleUtilities
     - nanopb
     - PromisesObjC
+    - PromisesSwift
     - TOCropViewController
 
 EXTERNAL SOURCES:
@@ -3005,6 +3061,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-masked-view/masked-view"
   RNFBApp:
     :path: "../node_modules/@react-native-firebase/app"
+  RNFBCrashlytics:
+    :path: "../node_modules/@react-native-firebase/crashlytics"
   RNFBMessaging:
     :path: "../node_modules/@react-native-firebase/messaging"
   RNGestureHandler:
@@ -3035,13 +3093,17 @@ SPEC CHECKSUMS:
   FirebaseCore: 1b39aa6e67b4b4d5771045abf9c9a57a585ff1e7
   FirebaseCoreExtension: dd75d774a2d9bc48a4e559c5b80b7c43e30d66dd
   FirebaseCoreInternal: 26601b1134d192ef73e80c0c0110fb96477db687
+  FirebaseCrashlytics: 0752614319acf43e90df6210e7d8bcf644f5215f
   FirebaseInstallations: 3b65e8f4faed02bad1abf5de40e8286c5b13073d
   FirebaseMessaging: ff23938c6c1a1d0f5e22e915131d6e14c6a74b99
+  FirebaseRemoteConfigInterop: 372ef310f177ee237dda0a695fe058848effb155
+  FirebaseSessions: 380475216987a33191364c241772d36b24e4e393
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
   GoogleUtilities: 4e0c2ad9fa0d0d18b5c4df8bf57b461cba35b0bb
   hermes-engine: 4d06ba4a8a553fbfb4ff12a112fba352eb0ca07b
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
+  PromisesSwift: 217dea0fd5d2ad65222a109c48698add13cc1c5b
   RCTDeprecation: a4c521821fab57cbb125b36effe84d897d0dfa12
   RCTRequired: 9f3a7e5645d4bc3f551593de7550bb66ab6e42bc
   RCTSwiftUI: 239ed2eb9e73de5a6f518810630f0c95e01c8702
@@ -3126,6 +3188,7 @@ SPEC CHECKSUMS:
   RNCClipboard: 715fa7c6c8366f17d00f05a439ee7488f390fa5f
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
   RNFBApp: e8e006a376b78203874f7dc9db1373fbce8eddce
+  RNFBCrashlytics: 67c787ec7f0555662f04895e67a187176ed0c415
   RNFBMessaging: c9d94c0494692e87380c09c25d0f5ef1a0733a6c
   RNGestureHandler: 2ff61eac036eaf89f6818bf4ed9c39771a17d134
   RNImageCropPicker: 6b9ac564593efdf86b886f93aab4356e80db12de
@@ -3139,6 +3202,6 @@ SPEC CHECKSUMS:
   TOCropViewController: 797deaf39c90e6e9ddd848d88817f6b9a8a09888
   Yoga: 77dfa8673de2874e1855002ae59c68b8be9b007b
 
-PODFILE CHECKSUM: bbeebecfe90ed5583284c783a020a9d83d23313a
+PODFILE CHECKSUM: 5a266d5da226bf51f748a619ccdd745dbd141661
 
 COCOAPODS: 1.16.2

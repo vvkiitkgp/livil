@@ -27,6 +27,10 @@ target 'livil' do
   # RN 0.85 + Hermes + the New Architecture is a much larger blast radius than this one
   # dependency warrants.
   pod 'GoogleUtilities', :modular_headers => true
+  # Same fix, same reason, for crash reporting: FirebaseCrashlytics and FirebaseSessions are
+  # Swift pods that depend on these two.
+  pod 'GoogleDataTransport', :modular_headers => true
+  pod 'nanopb', :modular_headers => true
 
   use_react_native!(
     :path => config[:reactNativePath],
