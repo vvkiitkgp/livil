@@ -94,8 +94,8 @@ friends, while still letting someone keep their reposts to friends.
   `post_likes` / `post_comment_likes` require the parent row to be visible to the caller
   (an `EXISTS` that runs under the posts policy), and the DEFINER `can_comment_on_post`
   repeats the posts predicate by hand. Pinned by `post-children-visibility.test.sql`.
-  **Plays remain open:** `activity_record_play` (DEFINER) records a play — and returns
-  `views_count` — for any post id.
+  **Plays** — `activity_record_play` (DEFINER) recorded a play, and returned `views_count`,
+  for any post id — **closed by `20261113000000`** (below).
 - `supabase/tests/rls/repost-audience.test.sql` pins the rule; `spotify-reposts.test.sql`
   2e/2f now follow the switch.
 - The first-run guide's Friends card no longer lists reposts as something friendship unlocks.

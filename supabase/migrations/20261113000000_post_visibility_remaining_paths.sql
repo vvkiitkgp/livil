@@ -4,8 +4,8 @@
 --
 -- THE GAP. posts_select_authenticated (20261019000000) hides a friends-only repost from
 -- everyone but the reposter's accepted friends, and a blocked pair's posts from each
--- other. 20261111000000 (a separate migration) makes likes, comments and comment likes
--- follow that rule; until it is applied those stay open. Its security review found four
+-- other. 20261111000000 (applied 2026-10-20) made likes, comments and comment likes
+-- follow that rule; this migration does not depend on it. Its security review found four
 -- more paths, all older than the switch, open to a caller who holds a hidden post's id
 -- (sharing a repost in chat hands such ids to non-friends):
 --
