@@ -16,7 +16,7 @@ import { Icon } from './Icon';
 import { SpotifyLogo } from './SpotifyLogo';
 import { isPlayableInLivil, searchPosts, type FeedPost } from '../services/posts';
 import { listRecentTracksForLibrary, type LibraryRecentTrack } from '../services/tracks';
-import { artistLine, searchSpotify, useSpotifyAvailability, type SpotifyTrack } from '../services/spotify';
+import { SPOTIFY_SEARCH_BUSY, artistLine, searchSpotifyOrFail, useSpotifyAvailability, type SpotifyTrack } from '../services/spotify';
 
 /** What the composer sends when a row is tapped. */
 export type PickedSong =
@@ -178,6 +178,8 @@ export function SongSearchPanel({
   const [spotify, setSpotify] = useState<SpotifyTrack[]>([]);
   const [livilLoading, setLivilLoading] = useState(false);
   const [spotifyLoading, setSpotifyLoading] = useState(false);
+  /** Spotify turned down the last search (rate limit, outage) — not "no matches". */
+  const [spotifyBusy, setSpotifyBusy] = useState(false);
 
   // Recently played — fetched once when the picker opens.
   useEffect(() => {
@@ -210,13 +212,15 @@ export function SongSearchPanel({
 
   // Spotify. Same keep-until-replaced rule.
   useEffect(() => {
-    if (!spotifyOn || trimmed.length < 2) { setSpotify([]); setSpotifyLoading(false); return; }
+    if (!spotifyOn || trimmed.length < 2) { setSpotify([]); setSpotifyBusy(false); setSpotifyLoading(false); return; }
     let cancelled = false;
     setSpotifyLoading(true);
     const timer = setTimeout(async () => {
-      const found = await searchSpotify(trimmed, SPOTIFY_RESULTS).catch(() => [] as SpotifyTrack[]);
+      const found = await searchSpotifyOrFail(trimmed, SPOTIFY_RESULTS).catch(() => null);
       if (cancelled) {return;}
-      setSpotify(found);
+      setSpotify(found ?? []);
+      // Spotify turned the search down — said as such, never as "no songs match".
+      setSpotifyBusy(found === null);
       setSpotifyLoading(false);
     }, SPOTIFY_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -301,7 +305,17 @@ export function SongSearchPanel({
             {loading && livil.length === 0 && spotify.length === 0 ? (
               <ActivityIndicator color={COLORS.purpleLight} style={styles.spinner} />
             ) : null}
-            {nothing ? <Text style={styles.hint}>No songs match "{trimmed}".</Text> : null}
+            {nothing && spotifyBusy ? <Text style={styles.hint}>No songs on Livil match "{trimmed}".</Text> : null}
+            {spotifyBusy && !spotifyLoading ? (
+              <>
+                <View style={styles.headingRow}>
+                  <Text style={[styles.heading, styles.headingInline]}>On Spotify</Text>
+                  <SpotifyLogo size="xs" />
+                </View>
+                <Text style={styles.hint}>{SPOTIFY_SEARCH_BUSY}</Text>
+              </>
+            ) : null}
+            {nothing && !spotifyBusy ? <Text style={styles.hint}>No songs match "{trimmed}".</Text> : null}
           </>
         )}
       </Body>

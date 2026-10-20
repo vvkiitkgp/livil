@@ -190,6 +190,24 @@ describe('searchSpotifyOrFail', () => {
     await expect(searchSpotifyOrFail('a')).resolves.toEqual([]);
     expect(mockInvoke).not.toHaveBeenCalled();
   });
+
+  // Every Spotify search box offers "or paste a Spotify link" when search is busy, so a
+  // pasted link must be answered as that one song — through a track lookup (which falls
+  // back to Spotify's public preview while searches are limited), never a search.
+  it('answers a pasted track link with that song, without searching', async () => {
+    const { searchSpotifyOrFail } = load();
+    mockInvoke.mockResolvedValue({ data: { tracks: { [ID_A]: TRACK_A } }, error: null });
+    const found = searchSpotifyOrFail(`https://open.spotify.com/track/${ID_A}?si=abc`);
+    await settle();
+    await expect(found).resolves.toEqual([TRACK_A]);
+    const bodies = mockInvoke.mock.calls.map(c => (c[1] as { body: { action: string } }).body.action);
+    expect(bodies).toEqual(['tracks']);
+  });
+
+  it('answers a link that is not a song with no results', async () => {
+    const { searchSpotifyOrFail } = load();
+    await expect(searchSpotifyOrFail(`https://open.spotify.com/album/${ID_A}`)).resolves.toEqual([]);
+  });
 });
 
 describe('searchSpotify', () => {

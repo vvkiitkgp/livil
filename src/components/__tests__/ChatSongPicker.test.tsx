@@ -49,6 +49,9 @@ const mockSearchSpotify = jest.fn();
 jest.mock('../../services/spotify', () => ({
   artistLine: (t: { artists?: string[] }) => (t.artists ?? []).join(', '),
   searchSpotify: (...a: unknown[]) => mockSearchSpotify(...a),
+  // The screen calls the "or fail" form: null = Spotify refused the search.
+  searchSpotifyOrFail: (...a: unknown[]) => mockSearchSpotify(...a),
+  SPOTIFY_SEARCH_BUSY: 'Spotify search is busy right now. Please try after some time, or paste a Spotify link.',
   useSpotifyAvailability: () => ({ search: true, reposts: false }),
 }));
 
@@ -158,6 +161,16 @@ describe('ChatSongPicker results', () => {
     await act(async () => { next.resolve([spotifyTrack('s2', 'Bliss')]); });
     expect(texts(tree)).toContain('Bliss');
     expect(texts(tree)).not.toContain('Blinding Lights');
+  });
+
+  it('says Spotify search is busy — not "No songs match" — when Spotify refused it', async () => {
+    mockSearchPosts.mockResolvedValue([]);
+    mockSearchSpotify.mockResolvedValueOnce(null);
+    const tree = mount('kesariya');
+    await advance(500);
+    const shown = texts(tree).join(' ');
+    expect(shown).toContain('Spotify search is busy right now. Please try after some time, or paste a Spotify link.');
+    expect(shown).not.toContain('No songs match "kesariya"');
   });
 
   it('dropping below two characters clears the results back to Recently played', async () => {

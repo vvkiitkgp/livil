@@ -102,8 +102,13 @@ export const SHARED_HIT_LOCAL_TTL_MS = 5 * 60 * 1000;
 export const SHARED_PREFIX = 'livil:spotify:v1:';
 const BLOCK_KEY = `${SHARED_PREFIX}blocked-until`;
 const trackKey = (id: string) => `${SHARED_PREFIX}track:${id}`;
-/** The longest any back-off may last — Spotify's Retry-After is capped here too. */
-export const MAX_BACKOFF_MS = 600_000;
+/**
+ * The longest any back-off may last. Spotify's Retry-After is honoured up to this (it was
+ * capped at 10 minutes, and on 2026-10-19/20 every retry after those 10 minutes was refused
+ * again — calling back while Spotify still has us in a timeout may only extend it). A value
+ * read from the shared cache is capped here too, so a bad entry can never stop us longer.
+ */
+export const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 /** An empty search answer is kept briefly: it may be a typo, or Spotify having a moment. */
 export const EMPTY_SEARCH_TTL_MS = 5 * 60 * 1000;
 /**
@@ -501,10 +506,13 @@ function inBackoff(now: number): boolean {
 }
 
 /** Spotify said 429: stop calling the Web API for Retry-After seconds (or a default). */
-function tripBreaker(res: Response, now: number): void {
-  const retryAfter = Number(res.headers.get('retry-after'));
+function tripBreaker(res: Response, now: number, what: string): void {
+  const header = res.headers.get('retry-after');
+  const retryAfter = Number(header);
   const ms = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, MAX_BACKOFF_MS) : DEFAULT_BACKOFF_MS;
   state.backoffUntil = Math.max(state.backoffUntil, now + ms);
+  // How long Spotify asked for is the one number that says how bad a limit is.
+  console.warn(`[spotify] Web API rate-limited us (429) on ${what}; Retry-After ${header ?? 'none'}; backing off ${Math.round(ms / 1000)}s`);
 }
 
 /**
@@ -594,8 +602,7 @@ async function apiGet(deps: Deps, url: string): Promise<Response | null> {
     res = await deps.fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   }
   if (res.status === 429) {
-    tripBreaker(res, deps.now());
-    console.warn('[spotify] Web API rate-limited us (429); backing off');
+    tripBreaker(res, deps.now(), url.includes('/v1/search') ? 'search' : 'a track');
     return null;
   }
   if (!res.ok && res.status !== 404) await logUpstreamFailure('Web API call', res);

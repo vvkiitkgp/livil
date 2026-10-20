@@ -67,6 +67,9 @@ jest.mock('../../../services/spotify', () => ({
   artistLine: (t: { artists?: string[] }) => (t.artists ?? []).join(', '),
   rememberSpotifyTrack: () => {},
   searchSpotify: (...a: unknown[]) => mockSearchSpotify(...a),
+  // The screen calls the "or fail" form: null = Spotify refused the search.
+  searchSpotifyOrFail: (...a: unknown[]) => mockSearchSpotify(...a),
+  SPOTIFY_SEARCH_BUSY: 'Spotify search is busy right now. Please try after some time, or paste a Spotify link.',
   useSpotifyAvailability: () => ({ search: true, reposts: false }),
 }));
 jest.mock('../../../../lib/supabase', () => ({
@@ -274,6 +277,27 @@ describe('SearchScreen while a search is loading', () => {
     await act(async () => { next.resolve([spotifyTrack('s2', 'Blinding Lights (Remix)')]); });
     expect(texts(tree)).toContain('Blinding Lights (Remix)');
     expect(texts(tree)).not.toContain('Blinding Lights');
+  });
+
+  it('says Spotify search is busy — never "Nothing matches" — when Spotify refused it', async () => {
+    // 2026-10-20: while Spotify was limiting us, a refused search read as "Nothing matches".
+    mockSearchPosts.mockResolvedValue([]);
+    mockSearchSpotify.mockResolvedValueOnce(null);
+    const tree = await mount();
+    type(tree, 'kesariya');
+    await advance(600);
+    const shown = texts(tree).join(' ');
+    expect(shown).toContain('Spotify search is busy right now. Please try after some time, or paste a Spotify link.');
+    expect(shown).not.toContain('Nothing matches "kesariya"');
+  });
+
+  it('keeps Livil rows and says Spotify is busy under them', async () => {
+    mockSearchPosts.mockResolvedValueOnce([post('p1', 'Kesariya (cover)')]);
+    mockSearchSpotify.mockResolvedValueOnce(null);
+    const tree = await mount();
+    type(tree, 'kesariya');
+    await advance(600);
+    expect(texts(tree)).toEqual(expect.arrayContaining(['Kesariya (cover)', 'Spotify search is busy right now. Please try after some time, or paste a Spotify link.']));
   });
 
   it("never shows the previous query's Spotify rows under the new query's Livil rows", async () => {

@@ -27,6 +27,7 @@ import {
   artistLine,
   rememberSpotifyTrack,
   resolveSpotifyLink,
+  SPOTIFY_SEARCH_BUSY,
   searchSpotifyOrFail,
   useSpotifyAvailability,
   useSpotifyTrack,
@@ -152,9 +153,9 @@ export default function SpotifyRepostScreen() {
       setResults(found ?? []);
       setSearching(false);
       if (found === null) {
-        // Spotify refused or the call failed — not "no matches". Same wording as the
-        // search-not-configured branch above, which offers the path that still works.
-        setHint('Search is not available right now. Paste a Spotify song link instead.');
+        // Spotify refused or the call failed — not "no matches". The same words as every
+        // other Spotify search box, offering the path that still works (a pasted link).
+        setHint(SPOTIFY_SEARCH_BUSY);
       } else if (found.length === 0) {
         setHint(`Nothing on Spotify for "${text}".`);
       }

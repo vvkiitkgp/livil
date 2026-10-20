@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react';
 import { AppState, Linking } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import { SPOTIFY_ID_RE, spotifyTrackUrl } from '../utils/spotifyLinks';
+import { SPOTIFY_ID_RE, looksLikeSpotifyLink, parseSpotifyTrackId, spotifyTrackUrl } from '../utils/spotifyLinks';
 
 /** What the edge function returns for a track. Nothing else from Spotify reaches the app. */
 export type SpotifyTrack = {
@@ -121,14 +121,23 @@ export async function searchSpotify(query: string, limit = 5): Promise<SpotifyTr
 }
 
 /**
+ * What every Spotify search box says when Spotify turned the search down (owner's words,
+ * 2026-10-20) — not "no results": while Spotify is limiting us, an honest "busy" plus the
+ * path that still works (a pasted link, answered without a search) beats a false "nothing".
+ */
+export const SPOTIFY_SEARCH_BUSY =
+  'Spotify search is busy right now. Please try after some time, or paste a Spotify link.';
+
+/**
  * The same search, but a FAILED search resolves to `null` instead of `[]`.
  *
  * For the one screen where Spotify search is the whole point (Repost from Spotify). There,
  * "no matches" and "Spotify refused" must read differently: the function answers 502 when
  * Spotify turns a search down (e.g. the developer account's Premium lapsing), and showing
  * `Nothing on Spotify for "Taylor Swift"` for that looks like a broken feature — exactly
- * what an App Reviewer would report. The Search tab and the chat picker keep `searchSpotify`
- * and simply hide their Spotify section.
+ * what an App Reviewer would report. Every Spotify search box now uses it, and shows
+ * SPOTIFY_SEARCH_BUSY for a `null` (2026-10-20: the Search tab said "Nothing matches" while
+ * Spotify was limiting us).
  */
 export async function searchSpotifyOrFail(
   query: string,
@@ -136,6 +145,16 @@ export async function searchSpotifyOrFail(
 ): Promise<SpotifyTrack[] | null> {
   const q = query.trim();
   if (q.length < 2) {return [];}
+  // A pasted Spotify link is answered as that one song, not searched for — every Spotify
+  // search box takes one. It also works while Spotify is limiting our searches: one song's
+  // details fall back to Spotify's public preview (title and artwork) instead of failing,
+  // which is why SPOTIFY_SEARCH_BUSY can offer it.
+  if (looksLikeSpotifyLink(q)) {
+    const id = parseSpotifyTrackId(q) ?? await resolveSpotifyLinkCached(q);
+    if (!id) {return [];}
+    const track = await getSpotifyTrack(id);
+    return track ? [track] : [];
+  }
   const res = await call<{ enabled?: boolean; tracks?: SpotifyTrack[] }>({
     action: 'search',
     q: q.slice(0, 100),

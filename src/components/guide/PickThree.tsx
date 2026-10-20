@@ -15,7 +15,7 @@ import CoverFallback from '../CoverFallback';
 import { SpotifyLogo } from '../SpotifyLogo';
 import { SPOTIFY_GREEN } from '../spotifyLogoArtwork';
 import { listNewestUploads, searchPosts } from '../../services/posts';
-import { searchSpotify, useSpotifyAvailability } from '../../services/spotify';
+import { SPOTIFY_SEARCH_BUSY, searchSpotifyOrFail, useSpotifyAvailability } from '../../services/spotify';
 import { haptics } from '../../utils/haptics';
 import { PICK_DONE } from './cards';
 import { PICK_COUNT, pickFromPost, pickFromSpotify, uniquePicks, type GuidePick } from './pickSongs';
@@ -72,6 +72,8 @@ export function PickThree({
   const [spotify, setSpotify] = useState<GuidePick[]>([]);
   const [livilLoading, setLivilLoading] = useState(false);
   const [spotifyLoading, setSpotifyLoading] = useState(false);
+  /** Spotify turned down the last search (rate limit, outage) — not "no matches". */
+  const [spotifyBusy, setSpotifyBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,13 +100,14 @@ export function PickThree({
   }, [trimmed, searching]);
 
   useEffect(() => {
-    if (!spotifyOn || !searching) { setSpotify([]); setSpotifyLoading(false); return; }
+    if (!spotifyOn || !searching) { setSpotify([]); setSpotifyBusy(false); setSpotifyLoading(false); return; }
     let cancelled = false;
     setSpotifyLoading(true);
     const timer = setTimeout(async () => {
-      const found = await searchSpotify(trimmed, SPOTIFY_RESULTS).catch(() => []);
+      const found = await searchSpotifyOrFail(trimmed, SPOTIFY_RESULTS).catch(() => null);
       if (cancelled) {return;}
-      setSpotify(uniquePicks(found.map(pickFromSpotify)));
+      setSpotify(uniquePicks((found ?? []).map(pickFromSpotify)));
+      setSpotifyBusy(found === null);
       setSpotifyLoading(false);
     }, SPOTIFY_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
@@ -224,7 +227,11 @@ export function PickThree({
       ) : (
         <>
           {/* Status text sits at the top, right under the box — never behind the keyboard. */}
-          {nothing ? <Text style={styles.hint}>No songs match "{trimmed}".</Text> : null}
+          {nothing ? (
+            <Text style={styles.hint}>
+              {spotifyBusy ? `No songs on Livil match "${trimmed}".` : `No songs match "${trimmed}".`}
+            </Text>
+          ) : null}
           {loading && livil.length === 0 && spotify.length === 0 ? (
             <ActivityIndicator color={COLORS.purpleLight} style={styles.spinner} />
           ) : null}
@@ -241,6 +248,14 @@ export function PickThree({
                 <SpotifyLogo size="xs" style={styles.headingLogo} />
               </View>
               {rows(spotify)}
+            </>
+          ) : spotifyBusy && !spotifyLoading ? (
+            <>
+              <View style={styles.headingRow}>
+                <Text style={styles.heading}>ON SPOTIFY</Text>
+                <SpotifyLogo size="xs" style={styles.headingLogo} />
+              </View>
+              <Text style={styles.hint}>{SPOTIFY_SEARCH_BUSY}</Text>
             </>
           ) : null}
         </>
