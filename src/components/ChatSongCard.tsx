@@ -179,6 +179,68 @@ export default function ChatSongCard({
   );
 }
 
+/**
+ * A repost the viewer may NOT see — its reposter keeps reposts to friends (ADR-0028) — sent to
+ * them in chat. Says whose it is and that it is friends-only, and nothing else: no caption,
+ * no song, no artwork (owner, 2026-10-19). The whole card opens the reposter's profile, the
+ * one place the viewer can go from here. Same panel and header as a readable repost card.
+ */
+export function LockedRepostCard({
+  label,
+  note,
+  avatarUrl,
+  initial,
+  onOpenProfile,
+  onLongPress,
+}: {
+  /** "Riya's repost" — repostLabel. */
+  label: string;
+  /** "Only Riya's friends can see this repost". */
+  note: string;
+  avatarUrl: string | null;
+  initial: string;
+  onOpenProfile: () => void;
+  onLongPress?: () => void;
+}) {
+  return (
+    <View style={styles.card}>
+      <Pressable
+        onPress={onOpenProfile}
+        onLongPress={onLongPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}. ${note}. Open profile`}
+      >
+        <View style={styles.repostHeader}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.repostAvatar} />
+          ) : (
+            <View style={[styles.repostAvatar, styles.repostAvatarEmpty]}>
+              <Text style={styles.repostInitial}>{initial}</Text>
+            </View>
+          )}
+          <Text style={styles.repostLabel} numberOfLines={1}>{label}</Text>
+          <Icon name="repost" size={14} color={COLORS.purpleLight} />
+        </View>
+        <View style={styles.lockedRow}>
+          <View style={styles.lockedIcon}>
+            <Icon name="lock" size={14} color={COLORS.textSecondary} />
+          </View>
+          <Text style={styles.lockedNote}>{note}</Text>
+        </View>
+      </Pressable>
+      <Button
+        label="View profile"
+        variant="primary"
+        size="sm"
+        fullWidth
+        onPress={onOpenProfile}
+        onLongPress={onLongPress}
+        style={styles.viewPost}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: {
     width: ART + 20,
@@ -220,4 +282,8 @@ const styles = StyleSheet.create({
   caption: { color: COLORS.white, fontSize: 13, lineHeight: 18, marginTop: 4 },
   repostArt: { marginTop: 8 },
   viewPost: { marginTop: 10 },
+  lockedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, marginTop: 10 },
+  // Centres the 14px glyph on the note's first 18px line.
+  lockedIcon: { marginTop: 2 },
+  lockedNote: { flex: 1, color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
 });

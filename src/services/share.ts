@@ -517,3 +517,34 @@ export async function fetchSharedProfile(username: string): Promise<ShareablePro
     avatarUrl: row.avatar_url,
   };
 }
+
+/**
+ * Who made the repost a chat message points at, for when the viewer may not read the repost
+ * itself — Riya keeps her reposts to friends and her friend sent one to Sam. The server
+ * answers only for a message the viewer can read, whose sender may see the repost, with no
+ * block between the viewer and the reposter (20261112000000); the profile is then read under
+ * the viewer's own RLS. Null when it names nobody, or the backend has no such function yet —
+ * the card then stays the plain song card. A failed REQUEST throws, so a caller that caches
+ * the answer does not remember an offline failure as "nobody".
+ */
+export async function fetchSharedRepostAuthor(messageId: string): Promise<ShareableProfile | null> {
+  const { data: authorId, error } = await supabase.rpc('shared_repost_author', { p_message_id: messageId });
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') { return null; }
+    throw error;
+  }
+  if (typeof authorId !== 'string') { return null; }
+  const { data, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .eq('id', authorId)
+    .maybeSingle();
+  if (profileError) { throw profileError; }
+  if (!data) { return null; }
+  return {
+    userId: data.id,
+    username: data.username,
+    displayName: data.display_name,
+    avatarUrl: data.avatar_url,
+  };
+}

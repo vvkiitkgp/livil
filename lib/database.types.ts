@@ -2901,6 +2901,7 @@ export type Database = {
           track_video_url: string
         }[]
       }
+      shared_repost_author: { Args: { p_message_id: string }; Returns: string }
       shares_conversation_with: {
         Args: { a: string; b: string }
         Returns: boolean
