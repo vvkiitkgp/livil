@@ -88,7 +88,7 @@ friends, while still letting someone keep their reposts to friends.
 - Known gap (follow-up): a stranger who already holds a friends-only repost's id can still
   like it, comment, read its comments and record a play by calling the API directly —
   likes/comments/plays never checked post visibility. Pre-existing, made reachable here.
-  **Likes and comments closed by `20261111000000_post_children_follow_post_visibility`**
+  **Likes and comments closed by `20261111000000_post_children_follow_post_visibility`** (applied 2026-10-20)
   (sharing reposts in chat began handing such ids to non-friends): the read policies on
   `post_likes` / `post_comments` / `post_comment_likes` and the insert policies on
   `post_likes` / `post_comment_likes` require the parent row to be visible to the caller
