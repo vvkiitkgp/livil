@@ -33,10 +33,14 @@ function loadClipboard(): ClipboardModule | null {
  * copied door code or password never sets off that question — only a copied link does
  * (security review, 2026-10-19). Android has no such check; it shows a small "pasted from your
  * clipboard" notice instead, which it does for every read.
+ *
+ * An iPhone build without the library has no way to look first, so it returns '' — never
+ * core's full read, which asked about EVERY copy on each open (owner, 2026-10-20).
  */
 export async function readCopiedText(os: string = Platform.OS): Promise<string> {
   const mod = loadClipboard();
-  if (os === 'ios' && mod) {
+  if (os === 'ios') {
+    if (!mod) { return ''; }
     const hasLink = await mod.hasWebURL().catch(() => false);
     if (!hasLink) { return ''; }
   }

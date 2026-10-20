@@ -43,10 +43,31 @@ it('clearing empties the clipboard', () => {
   expect(lib.setString).toHaveBeenCalledWith('');
 });
 
-it('a build without the library falls back to core Clipboard instead of crashing', async () => {
+function withoutLib(os: 'ios' | 'android') {
   jest.doMock('@react-native-clipboard/clipboard', () => { throw new Error('RNCClipboard could not be found'); });
-  const getString = jest.fn(async () => 'hello');
-  jest.doMock('react-native', () => ({ Platform: { OS: 'ios' }, Clipboard: { getString, setString: jest.fn() } }));
+  const core = { getString: jest.fn(async () => 'hello'), setString: jest.fn() };
+  jest.doMock('react-native', () => ({ Platform: { OS: os }, Clipboard: core }));
+  return core;
+}
+
+it('iPhone build without the library: nothing is read, so no paste question on open', async () => {
+  const core = withoutLib('ios');
   const { readCopiedText } = require('../clipboard');
-  expect(await readCopiedText('ios')).toBe('hello');
+  expect(await readCopiedText('ios')).toBe('');
+  expect(core.getString).not.toHaveBeenCalled();
+});
+
+it('iPhone, the look-first check fails: nothing is read', async () => {
+  const lib = withLib(true);
+  lib.hasWebURL.mockRejectedValueOnce(new Error('detectPatterns failed'));
+  const { readCopiedText } = require('../clipboard');
+  expect(await readCopiedText('ios')).toBe('');
+  expect(lib.getString).not.toHaveBeenCalled();
+});
+
+it('Android build without the library falls back to core Clipboard instead of crashing', async () => {
+  const core = withoutLib('android');
+  const { readCopiedText } = require('../clipboard');
+  expect(await readCopiedText('android')).toBe('hello');
+  expect(core.getString).toHaveBeenCalledTimes(1);
 });
