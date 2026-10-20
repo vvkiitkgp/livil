@@ -9,7 +9,13 @@ import {
   type SpotifyTrack,
 } from '../services/spotify';
 import { spotifyLinkInClipboard } from '../utils/spotifyLinks';
-import { clearCopiedText, readCopiedText } from '../services/clipboard';
+import {
+  clearCopiedText,
+  forgetCheckedCopy,
+  hasOpenedPasteSettings,
+  openPasteSettings,
+  readCopiedText,
+} from '../services/clipboard';
 import { navigateWhenReady, navigationRef } from '../navigation/navigationRef';
 
 /**
@@ -29,8 +35,12 @@ const SKIP_ON = new Set(['SpotifyRepost', 'AddToLivil']);
  * again on every open (owner, 2026-10-19). Leaving the app with the question still up counts
  * as no answer: nothing is cleared, and the next open asks again.
  *
- * On an iPhone the clipboard is read only when it holds a web link (readCopiedText), so the
- * system's "Allow Paste?" question never appears for a copied code or message.
+ * On an iPhone the clipboard is read only for a NEW copy that holds a web link (readCopiedText),
+ * so the system's "Allow Paste?" question never appears for a copied code or message, and at
+ * most once per copied link. When the person allowed it and the link is not a Spotify song,
+ * "Not a Spotify song" says why we asked and offers iPhone Settings → Paste from Other Apps →
+ * Allow (owner, 2026-10-20: "on allow, we don't do anything if it's not spotify link"). Once
+ * they have opened Settings from it, it stops appearing — Livil cannot see that switch.
  *
  * Privacy: the clipboard text is read and parsed on the phone; it is never stored or logged.
  * Only a spotify.link short link — the clipboard's whole content, and only when it is one —
@@ -41,8 +51,12 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
   // The song stays set while the dialog fades out; `visible` is what opens and closes it.
   const [track, setTrack] = useState<SpotifyTrack | null>(null);
   const [visible, setVisible] = useState(false);
+  // "Not a Spotify song": iOS asked to paste and the copy was some other link.
+  const [sorryVisible, setSorryVisible] = useState(false);
   const shownRef = useRef(false);
-  shownRef.current = visible;
+  shownRef.current = visible || sorryVisible;
+  const songShownRef = useRef(false);
+  songShownRef.current = visible;
   const checkingRef = useRef(false);
   // Clipboard texts already answered this session — in case clearing it did not stick.
   const answeredRef = useRef(new Set<string>());
@@ -54,14 +68,25 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
     if (route && SKIP_ON.has(route)) {return;}
     checkingRef.current = true;
     try {
-      const text = await readCopiedText();
+      const { text, askedToPaste } = await readCopiedText();
       if (answeredRef.current.has(text)) {return;}
       const link = spotifyLinkInClipboard(text);
-      if (!link) {return;}
+      if (!link) {
+        // "Don't Allow" reads as '' — they said no, so there is nothing to explain.
+        if (askedToPaste && text.trim() !== '' && !(await hasOpenedPasteSettings())
+          && AppState.currentState === 'active') {
+          setSorryVisible(true);
+        }
+        return;
+      }
       const id = link.id ?? (await resolveSpotifyLinkCached(link.shortUrl));
       const found = id ? await getSpotifyTrack(id) : null;
+      if (!found) {return;}
       // Left the app (or opened the repost screen) while the song was being looked up.
-      if (!found || AppState.currentState !== 'active') {return;}
+      if (AppState.currentState !== 'active') {
+        forgetCheckedCopy();
+        return;
+      }
       textRef.current = text;
       setTrack(found);
       setVisible(true);
@@ -82,7 +107,9 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
         timer = setTimeout(() => { void check(); }, READ_DELAY_MS);
       } else {
         // Gone without answering: ask again next time, and clear nothing.
+        if (songShownRef.current) { forgetCheckedCopy(); }
         setVisible(false);
+        setSorryVisible(false);
       }
     });
     return () => {
@@ -100,17 +127,36 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
   }, [track]);
 
   return (
-    <ConfirmActionModal
-      visible={visible && active}
-      icon="repost"
-      tone="primary"
-      title="Repost the song you copied?"
-      message={track ? `${track.title} · ${artistLine(track)}` : undefined}
-      // Not "Repost": it opens the repost screen (caption first), it does not post (owner, 2026-10-19).
-      confirmLabel="New repost"
-      cancelLabel="Not now"
-      onConfirm={() => answer(true)}
-      onCancel={() => answer(false)}
-    />
+    <>
+      <ConfirmActionModal
+        visible={visible && active}
+        icon="repost"
+        tone="primary"
+        title="Repost the song you copied?"
+        message={track ? `${track.title} · ${artistLine(track)}` : undefined}
+        // Not "Repost": it opens the repost screen (caption first), it does not post (owner, 2026-10-19).
+        confirmLabel="New repost"
+        cancelLabel="Not now"
+        onConfirm={() => answer(true)}
+        onCancel={() => answer(false)}
+      />
+      <ConfirmActionModal
+        visible={sorryVisible && active}
+        icon="info"
+        tone="primary"
+        title="Not a Spotify song"
+        message={
+          "We asked because it looked like you'd copied a link. When it's a Spotify song, you can "
+          + 'repost it in one tap. To stop this question: Settings → Paste from Other Apps → Allow.'
+        }
+        confirmLabel="Open Settings"
+        cancelLabel="Got it"
+        onConfirm={() => {
+          setSorryVisible(false);
+          void openPasteSettings();
+        }}
+        onCancel={() => setSorryVisible(false)}
+      />
+    </>
   );
 }

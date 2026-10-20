@@ -17,6 +17,7 @@
 		989D9278610848D5ADB12ED8 /* CourierPrime-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2C6FE265F1FA4F55B71709C0 /* CourierPrime-Bold.ttf */; };
 		A1B2C3D4E5F60718293A4B5D /* LivilAuthSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LivilAuthSession.m */; };
 		B7C1E5A2D3F4051627384950 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E5A2D3F4051627384951 /* SceneDelegate.swift */; };
+		A1B2C3D4E5F60718293A4B5F /* LivilPasteboard.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* LivilPasteboard.m */; };
 		B8B2F2DDD8F578D86EB76732 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 561141FE479ED60BE31C013C /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +37,7 @@
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = livil/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5C /* LivilAuthSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilAuthSession.m; path = livil/LivilAuthSession.m; sourceTree = "<group>"; };
 		B7C1E5A2D3F4051627384951 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneDelegate.swift; path = livil/SceneDelegate.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5E /* LivilPasteboard.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilPasteboard.m; path = livil/LivilPasteboard.m; sourceTree = "<group>"; };
 		E3E337CF3E28A727C95A141D /* livil.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = livil/livil.entitlements; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -59,6 +61,7 @@
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				B7C1E5A2D3F4051627384951 /* SceneDelegate.swift */,
 				A1B2C3D4E5F60718293A4B5C /* LivilAuthSession.m */,
+				A1B2C3D4E5F60718293A4B5E /* LivilPasteboard.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -311,6 +314,7 @@
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 				B7C1E5A2D3F4051627384950 /* SceneDelegate.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5D /* LivilAuthSession.m in Sources */,
+				A1B2C3D4E5F60718293A4B5F /* LivilPasteboard.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
