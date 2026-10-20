@@ -16,6 +16,10 @@ buildscript {
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
         classpath("com.google.gms:google-services:4.4.2")
+        // Crashlytics: the version @react-native-firebase/app 24.1.0 pins (sdkVersions.android
+        // .firebaseCrashlyticsGradle). Applied in app/build.gradle — without that apply, the SDK
+        // finds no build ID and the app throws on launch.
+        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.7")
     }
 }
 

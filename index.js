@@ -10,6 +10,11 @@ import notifee, {EventType} from '@notifee/react-native';
 import App from './App';
 import {name as appName} from './app.json';
 import {displayPushNotification} from './src/services/pushNotifications';
+import {startCrashReporting} from './src/services/crashReporting';
+
+// Before anything renders: installs Crashlytics' JS fatal-error handler, so a crash
+// on the very first screen still leaves a report behind.
+startCrashReporting();
 
 // Edge function sends data-only FCM messages so the OS won't auto-display
 // the notification. We render it via notifee here (in the headless JS

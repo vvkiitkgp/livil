@@ -49,14 +49,34 @@ scale; revisit per [scaling-assumptions.md](scaling-assumptions.md).
 
 ### Firebase Cloud Messaging — push transport
 
-**Role:** delivering push notifications. **Nothing else** — not Firestore, not Firebase Auth,
-not Analytics, not Crashlytics.
+**Role:** delivering push notifications. Not Firestore, not Firebase Auth, not Analytics.
+Crashlytics shares the same Firebase project — see below.
 
 **Why:** on Android there is no practical alternative. FCM is the platform mechanism.
 
 **If it disappears:** push stops. The app keeps working.
 
 **Lock-in:** low in code (a thin service module), unavoidable on the platform.
+
+### Firebase Crashlytics — crash reporting
+
+**Role:** crash and error reports from release builds: native crashes (caught by the SDK),
+fatal JS errors (RNFB's global handler), unhandled rejections, and render errors the
+`ErrorBoundary` swallows (recorded as non-fatals). Breadcrumbs are screen NAMES only; no user
+id, username or email is attached. Debug builds send nothing. Code:
+`src/services/crashReporting.ts`.
+
+**Why:** Play Console's Android vitals show nothing below its volume threshold ("Not enough
+data"), so a single user's crash was invisible. Crashlytics rides the Firebase project push
+already uses — no new vendor, account, or key — and is free.
+
+**Rejected:** Sentry — better JS stacks (it symbolicates Hermes source maps; Crashlytics
+shows bundle offsets, partly made up for by the screen breadcrumbs), but a new vendor and a paid tier
+past the free quota. Revisit if JS stacks prove too opaque to act on.
+
+**If it disappears:** crash reports stop. The app keeps working — every call is fail-safe.
+
+**Lock-in:** none. One service module plus the Gradle plugin and pod.
 
 ### notifee — notification display
 

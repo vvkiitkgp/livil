@@ -6,16 +6,17 @@ import { COLORS } from '../theme/colors';
  * Catches render-phase errors so a thrown component does not take down the app.
  *
  * Without this, any error during render unmounts the whole tree and the user sees
- * a white screen with no way forward. There is currently no crash reporting, so
- * such a failure also produces no signal at all — the user simply loses the app.
+ * a white screen with no way forward.
  *
- * `onError` is the hook for a reporting service when one is added. Until then the
- * error is logged and shown to the user in dev builds only.
+ * A caught error never reaches the global JS error handler, so crash reporting only
+ * hears about it through `onError` — App.tsx passes `reportRenderError`
+ * (src/services/crashReporting.ts), which records it as a non-fatal. The details are
+ * shown to the user in dev builds only.
  */
 
 type Props = {
   children: React.ReactNode;
-  /** Called on every caught error. Wire crash reporting here. */
+  /** Called on every caught error — App.tsx reports it to Crashlytics. */
   onError?: (error: Error, componentStack: string) => void;
 };
 
@@ -35,7 +36,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     const componentStack = info?.componentStack ?? '';
     this.setState({ componentStack });
 
-    // Always log — this is the only signal that exists today.
+    // Always log — the only signal in a debug build, where crash reporting is off.
     console.error('[ErrorBoundary] render error:', error, componentStack);
 
     try {

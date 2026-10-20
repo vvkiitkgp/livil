@@ -13,6 +13,7 @@ import OfflineBanner from './src/components/OfflineBanner';
 import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navigation/navigationRef';
 import {hideNativeSplash} from './src/native/splashScreen';
 import {ErrorBoundary} from './src/components/ErrorBoundary';
+import {noteScreen, reportRenderError} from './src/services/crashReporting';
 
 const AppTheme = {
   ...DarkTheme,
@@ -47,6 +48,14 @@ function useInitReanimatedMappers() {
   }, []);
 }
 
+/** Crash-report breadcrumb: the focused (deepest) screen's name, e.g. "Home" — not "Main". */
+function noteCrashScreen() {
+  const name = navigationRef.getCurrentRoute()?.name;
+  if (name) {
+    noteScreen(name);
+  }
+}
+
 export default function App(): React.JSX.Element {
   useInitReanimatedMappers();
 
@@ -59,7 +68,7 @@ export default function App(): React.JSX.Element {
   }, []);
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary onError={reportRenderError}>
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <KeyboardProvider>
@@ -68,12 +77,16 @@ export default function App(): React.JSX.Element {
           <NavigationContainer
             theme={AppTheme}
             ref={navigationRef}
-            onReady={flushPendingNavigation}
+            onReady={() => {
+              flushPendingNavigation();
+              noteCrashScreen();
+            }}
             onStateChange={state => {
               const route = state?.routes?.[state.index ?? 0];
               if (route) {
                 setCurrentRoute({ name: route.name, params: route.params as Record<string, unknown> | undefined });
               }
+              noteCrashScreen();
             }}>
             <ToastProvider>
               {/* One cache for every screen: a user seen in the feed is already known by

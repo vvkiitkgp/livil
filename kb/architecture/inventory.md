@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-447 TypeScript file(s) under `src/`, 92,853 lines.
+449 TypeScript file(s) under `src/`, 93,033 lines.
 
 ## Size hotspots
 
@@ -161,7 +161,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-168 file(s), 33,147 lines.
+168 file(s), 33,148 lines.
 
 | File | Lines |
 |---|---:|
@@ -239,8 +239,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/__tests__/PostGridCard.test.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
+| `src/components/ErrorBoundary.tsx` | 154 |
 | `src/components/NotificationNudge.tsx` | 154 |
-| `src/components/ErrorBoundary.tsx` | 153 |
 | `src/components/__tests__/AppUpdatePrompt.test.tsx` | 151 |
 | `src/components/__tests__/CommentSongCard.test.tsx` | 151 |
 | `src/components/onboarding/StageLamp.tsx` | 151 |
@@ -336,7 +336,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-100 file(s), 19,156 lines.
+102 file(s), 19,335 lines.
 
 | File | Lines |
 |---|---:|
@@ -396,6 +396,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/messageCache.ts` | 109 |
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
+| `src/services/crashReporting.ts` | 93 |
 | `src/services/mediaPicks.ts` | 93 |
 | `src/services/appUpdate.ts` | 92 |
 | `src/services/recentlyPlayed.ts` | 92 |
@@ -405,6 +406,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/mentionNotifications.test.ts` | 87 |
 | `src/services/__tests__/pushOpenChat.test.ts` | 87 |
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
+| `src/services/__tests__/crashReporting.test.ts` | 86 |
 | `src/services/groupFaces.ts` | 86 |
 | `src/services/network.ts` | 83 |
 | `src/services/__tests__/submitExitFeedback.test.ts` | 81 |
@@ -589,6 +591,7 @@ version is not the version running (Constitution P52).
 | `@react-native-community/netinfo` | `12.0.1` | 12.0.1 |
 | `@react-native-documents/picker` | `^10.1.7` | 10.1.7 |
 | `@react-native-firebase/app` | `^24.1.0` | 24.1.0 |
+| `@react-native-firebase/crashlytics` | `24.1.0` | 24.1.0 |
 | `@react-native-firebase/messaging` | `^24.1.0` | 24.1.0 |
 | `@react-native-masked-view/masked-view` | `^0.3.2` | 0.3.2 |
 | `@react-navigation/bottom-tabs` | `^7.15.10` | 7.15.10 |
