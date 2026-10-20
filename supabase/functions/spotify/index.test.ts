@@ -681,3 +681,18 @@ Deno.test('on the edge runtime the answer goes out first and the cache write fin
     delete (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime;
   }
 });
+
+Deno.test('Spotify\'s Retry-After is honoured in full (up to MAX_BACKOFF_MS), not cut to minutes', async () => {
+  const shared = memoryCache();
+  const { deps } = makeDeps({
+    respond: url => {
+      if (url.includes('accounts.spotify.com')) return Response.json({ access_token: 't', expires_in: 3600 });
+      if (url.startsWith('https://api.spotify.com/')) return new Response('', { status: 429, headers: { 'retry-after': '3600' } });
+      return Response.json({ title: 'Blinding Lights', thumbnail_url: 'https://i.scdn.co/o' });
+    },
+  });
+  deps.shared = shared;
+  await handle(post({ action: 'search', q: 'anything' }), deps);
+  assertEquals(shared.store.get(`${SHARED_PREFIX}blocked-until`)?.ttlMs, 3_600_000);
+  assert(MAX_BACKOFF_MS >= 3_600_000);
+});

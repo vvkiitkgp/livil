@@ -43,7 +43,7 @@ import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
 import SpotifyTrackSheet from '../../components/SpotifyTrackSheet';
 import {
-  artistLine, rememberSpotifyTrack, searchSpotify, useSpotifyAvailability, type SpotifyTrack,
+  SPOTIFY_SEARCH_BUSY, artistLine, rememberSpotifyTrack, searchSpotifyOrFail, useSpotifyAvailability, type SpotifyTrack,
 } from '../../services/spotify';
 import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
 import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
@@ -220,6 +220,8 @@ export default function SearchScreen() {
    * "Nothing matches" in between and then grew an "On Spotify" section under the claim.
    */
   const [spotifyPending, setSpotifyPending] = useState(false);
+  /** Spotify turned down the search for `spotifyResultsQuery` (not "no matches"). */
+  const [spotifyBusy, setSpotifyBusy] = useState(false);
   const [spotifySheet, setSpotifySheet] = useState<SpotifyTrack | null>(null);
   const { runAfterDismiss: runAfterSpotifySheet, onDismiss: onSpotifySheetDismiss } = useRunAfterDismiss();
 
@@ -417,14 +419,16 @@ export default function SearchScreen() {
       setSpotifyResults([]);
       setSpotifyResultsQuery('');
       setSpotifyPending(false);
+      setSpotifyBusy(false);
       return;
     }
     let cancelled = false;
     setSpotifyPending(true);
     const timer = setTimeout(async () => {
-      const found = await searchSpotify(spotifyQuery, SPOTIFY_RESULTS).catch(() => [] as SpotifyTrack[]);
+      const found = await searchSpotifyOrFail(spotifyQuery, SPOTIFY_RESULTS).catch(() => null);
       if (cancelled) { return; }
-      setSpotifyResults(found);
+      setSpotifyResults(found ?? []);
+      setSpotifyBusy(found === null);
       setSpotifyResultsQuery(spotifyQuery);
       setSpotifyPending(false);
     }, SPOTIFY_DEBOUNCE_MS);
@@ -674,9 +678,19 @@ export default function SearchScreen() {
   const visibleSpotify =
     spotifyResultsQuery === resultsQuery || results.length === 0 ? spotifyResults : [];
   const hasRows = results.length > 0 || visibleSpotify.length > 0;
+  /** Spotify refused THIS query — said under the Livil rows, or in place of "Nothing matches". */
+  const showSpotifyBusy = spotifyBusy && !spotifyPending && spotifyResultsQuery === trimmedQuery;
 
   // An ELEMENT (not a function), for the same remount reason as the list header below.
-  const spotifySection = visibleSpotify.length > 0 ? (
+  const spotifySection = showSpotifyBusy ? (
+    <View>
+      <View style={[styles.sectionHeading, styles.spotifyHeading]}>
+        <Text style={[styles.recentHeading, styles.spotifyHeadingText]}>On Spotify</Text>
+        <SpotifyLogo size="xs" />
+      </View>
+      <Text style={[styles.emptyText, styles.spotifyBusyText]}>{SPOTIFY_SEARCH_BUSY}</Text>
+    </View>
+  ) : visibleSpotify.length > 0 ? (
     <View>
       <View style={[styles.sectionHeading, styles.spotifyHeading]}>
         <Text style={[styles.recentHeading, styles.spotifyHeadingText]}>On Spotify</Text>
@@ -848,7 +862,11 @@ export default function SearchScreen() {
         />
       ) : !hasRows && trimmedQuery.length > 0 ? (
         <View style={styles.topState}>
-          <Text style={styles.emptyText}>Nothing matches "{trimmedQuery}".</Text>
+          <Text style={styles.emptyText}>
+            {showSpotifyBusy
+              ? `Nothing on Livil matches "${trimmedQuery}". ${SPOTIFY_SEARCH_BUSY}`
+              : `Nothing matches "${trimmedQuery}".`}
+          </Text>
         </View>
       ) : !hasRows ? (
         <View style={styles.centerState}>
@@ -987,6 +1005,8 @@ const styles = StyleSheet.create({
   sectionHeading: { paddingHorizontal: 8, paddingTop: 20, paddingBottom: 6 },
   spotifyHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   spotifyHeadingText: { paddingBottom: 0 },
+  // Spotify refused the search: a line under the heading, aligned with the rows.
+  spotifyBusyText: { textAlign: 'left', paddingHorizontal: 8, paddingTop: 4, paddingBottom: 8 },
   // Spotify's guideline for artwork on mobile: corners rounded no more than 4px.
   spotifyArt: { width: ART, height: ART, borderRadius: 4, backgroundColor: COLORS.card },
   spotifyArtEmpty: { alignItems: 'center', justifyContent: 'center' },
