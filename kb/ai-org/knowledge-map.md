@@ -2,7 +2,7 @@
 tier: 1
 owner: chief-architect
 consumers: [DS, CA]
-last_verified: 2026-10-19
+last_verified: 2026-10-20
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -25,7 +25,7 @@ related_adrs: []
 | Documents | 83 |
 | Drift-proof (tier 1 + 4) | 50 |
 | Hand-maintained (tier 3 + 5) | 26 |
-| Past freshness SLA | 4 |
+| Past freshness SLA | 21 |
 | Private-content stubs | 6 |
 
 Tiers 1 and 4 cannot drift by construction — the first is regenerated, the second is never
@@ -37,15 +37,32 @@ content, so the hand-maintained count is the number worth keeping small.
 | Document | Owner | Last verified | SLA |
 |---|---|---|---|
 | `INDEX.md` | chief-architect | 2026-07-20 | 90d |
+| `ai-org/autonomy-policy.md` | chief-architect | 2026-07-21 | 90d |
+| `ai-org/review-log.md` | chief-architect | 2026-07-21 | 90d |
+| `architecture/auth.md` | principal-security | 2026-07-21 | 90d |
+| `architecture/backend.md` | principal-data | 2026-07-21 | 90d |
+| `architecture/client.md` | principal-client | 2026-07-21 | 90d |
+| `architecture/media-pipeline.md` | principal-playback | 2026-07-21 | 90d |
 | `architecture/overview.md` | chief-architect | 2026-07-20 | 90d |
+| `architecture/playback.md` | principal-playback | 2026-07-21 | 90d |
+| `architecture/realtime.md` | principal-realtime | 2026-07-21 | 90d |
 | `debt/proposals/0005-restore-the-messages-write-boundary.md` | chief-architect | 2026-07-29 | 30d |
 | `debt/register.md` | chief-architect | 2026-07-21 | 30d |
+| `operations/infrastructure.md` | principal-platform | 2026-07-21 | 90d |
+| `operations/scaling-assumptions.md` | principal-data | 2026-07-21 | 90d |
+| `security/model.md` | principal-security | 2026-07-21 | 90d |
+| `standards/coding.md` | principal-client | 2026-07-21 | 90d |
+| `standards/data-access.md` | principal-data | 2026-07-21 | 90d |
+| `standards/design-system.md` | principal-client | 2026-07-21 | 90d |
+| `standards/performance-budgets.md` | principal-client | 2026-07-21 | 90d |
+| `standards/testing.md` | chief-architect | 2026-07-21 | 90d |
+| `standards/work-tracking.md` | chief-architect | 2026-07-21 | 90d |
 
 ## Tier 1 — Generated
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-10-19 | 9999d |
+| `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-10-20 | 9999d |
 | `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-10-19 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-10-19 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-10-19 | 9999d |
@@ -56,41 +73,41 @@ content, so the hand-maintained count is the number worth keeping small.
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
 | `debt/register.md` 🔒 ⚠️ | chief-architect | DC, CA, TR, ALL | 2026-07-21 | 30d |
-| `standards/coding.md` | principal-client | ALL, CR, RF, FE, BE | 2026-07-21 | 90d |
-| `standards/data-access.md` | principal-data | BE, P-DA, CR, QA | 2026-07-21 | 90d |
-| `standards/design-system.md` | principal-client | FE, RF, CR, P-CL | 2026-07-21 | 90d |
-| `standards/performance-budgets.md` | principal-client | P-CL, P-PF, FE, QA | 2026-07-21 | 90d |
-| `standards/testing.md` | chief-architect | QA, ALL, CR | 2026-07-21 | 90d |
-| `standards/work-tracking.md` | chief-architect | TR, CA, ALL | 2026-07-21 | 90d |
+| `standards/coding.md` ⚠️ | principal-client | ALL, CR, RF, FE, BE | 2026-07-21 | 90d |
+| `standards/data-access.md` ⚠️ | principal-data | BE, P-DA, CR, QA | 2026-07-21 | 90d |
+| `standards/design-system.md` ⚠️ | principal-client | FE, RF, CR, P-CL | 2026-07-21 | 90d |
+| `standards/performance-budgets.md` ⚠️ | principal-client | P-CL, P-PF, FE, QA | 2026-07-21 | 90d |
+| `standards/testing.md` ⚠️ | chief-architect | QA, ALL, CR | 2026-07-21 | 90d |
+| `standards/work-tracking.md` ⚠️ | chief-architect | TR, CA, ALL | 2026-07-21 | 90d |
 
 ## Tier 3 — Curated
 
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
-| `ai-org/autonomy-policy.md` | chief-architect | ALL | 2026-07-21 | 90d |
+| `ai-org/autonomy-policy.md` ⚠️ | chief-architect | ALL | 2026-07-21 | 90d |
 | `ai-org/board-charter.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/debate-protocol.md` | chief-architect | ALL | 2026-07-21 | 180d |
 | `ai-org/knowledge-base-spec.md` | chief-architect | ALL | 2026-07-20 | 180d |
-| `ai-org/review-log.md` | chief-architect | CA, CR, SR, DS | 2026-07-21 | 90d |
-| `architecture/auth.md` | principal-security | P-SE, SR, BE, CR | 2026-07-21 | 90d |
-| `architecture/backend.md` | principal-data | P-DA, BE, CR, QA | 2026-07-21 | 90d |
-| `architecture/client.md` | principal-client | P-CL, FE, RF, CR | 2026-07-21 | 90d |
-| `architecture/media-pipeline.md` | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
+| `ai-org/review-log.md` ⚠️ | chief-architect | CA, CR, SR, DS | 2026-07-21 | 90d |
+| `architecture/auth.md` ⚠️ | principal-security | P-SE, SR, BE, CR | 2026-07-21 | 90d |
+| `architecture/backend.md` ⚠️ | principal-data | P-DA, BE, CR, QA | 2026-07-21 | 90d |
+| `architecture/client.md` ⚠️ | principal-client | P-CL, FE, RF, CR | 2026-07-21 | 90d |
+| `architecture/media-pipeline.md` ⚠️ | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
 | `architecture/overview.md` ⚠️ | chief-architect | ALL | 2026-07-20 | 90d |
-| `architecture/playback.md` | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
+| `architecture/playback.md` ⚠️ | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
 | `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-10-19 | 90d |
-| `architecture/realtime.md` | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
+| `architecture/realtime.md` ⚠️ | principal-realtime | P-RT, BE, P-DA, QA | 2026-07-21 | 90d |
 | `glossary.md` | chief-architect | ALL | 2026-07-20 | 180d |
 | `INDEX.md` ⚠️ | chief-architect | ALL | 2026-07-20 | 90d |
 | `operations/deployment.md` | principal-platform | DO, P-PF | 2026-09-30 | 90d |
-| `operations/infrastructure.md` | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
+| `operations/infrastructure.md` ⚠️ | principal-platform | P-PF, DO, P-DA | 2026-07-21 | 90d |
 | `operations/play-production-checklist.md` | principal-platform | DO, P-PF | 2026-08-14 | 90d |
 | `operations/runbooks/disable-autonomy.md` | chief-architect | ALL, human | 2026-07-21 | 180d |
 | `operations/runbooks/incident-response.md` | principal-platform | DO, P-PF, P-SE, human | 2026-07-21 | 180d |
 | `operations/runbooks/keystore-recovery.md` | principal-platform | DO, P-PF, human | 2026-07-22 | 180d |
-| `operations/scaling-assumptions.md` | principal-data | P-DA, P-PF, CA, DC | 2026-07-21 | 90d |
+| `operations/scaling-assumptions.md` ⚠️ | principal-data | P-DA, P-PF, CA, DC | 2026-07-21 | 90d |
 | `operations/third-party.md` | principal-platform | P-PF, CA, DO | 2026-07-21 | 365d |
-| `security/model.md` | principal-security | P-SE, SR, P-DA, BE, ALL | 2026-07-21 | 90d |
+| `security/model.md` ⚠️ | principal-security | P-SE, SR, P-DA, BE, ALL | 2026-07-21 | 90d |
 | `security/threat-model.md` 🔒 | principal-security | P-SE, SR, CA | 2026-07-21 | 180d |
 
 ## Tier 4 — Append-only
