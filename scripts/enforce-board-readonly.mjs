@@ -68,6 +68,11 @@ const NEVER = [
  */
 const VERSION_LINE = /^[+-]\s*(versionCode\s+\d+|versionName\s+"[^"]*")\s*$/;
 
+// Plugin lines the owner reviewed by hand. They change the build, not the signing
+// block. Add exact lines only; never widen this to a pattern.
+const REVIEWED_PLUGIN_LINES = new Set(['apply plugin: "com.google.firebase.crashlytics"']);
+const isReviewedPluginLine = l => REVIEWED_PLUGIN_LINES.has(l.slice(1).trim());
+
 function isVersionBumpOnly(range, mode) {
   let diff;
   try {
@@ -81,7 +86,7 @@ function isVersionBumpOnly(range, mode) {
     .split('\n')
     // Real content lines only: skip the +++/--- headers and @@ hunk markers.
     .filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
-  return touched.length > 0 && touched.every(l => VERSION_LINE.test(l));
+  return touched.length > 0 && touched.every(l => VERSION_LINE.test(l) || isReviewedPluginLine(l));
 }
 
 const args = process.argv.slice(2);
@@ -162,7 +167,7 @@ for (const f of files) {
     // numbers. Anything touching signing is refused as before. See the comment
     // on isVersionBumpOnly for why this exists.
     if (f === 'android/app/build.gradle' && isVersionBumpOnly(range, mode)) {
-      console.log('note  android/app/build.gradle: version bump only — signing untouched');
+      console.log('note  android/app/build.gradle: version bump / reviewed plugin only — signing untouched');
       continue;
     }
     failures.push(`${f}\n        never modifiable by an agent: ${n.why}`);
