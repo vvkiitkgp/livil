@@ -151,15 +151,26 @@ describe('getSpotifyAvailability', () => {
     const { getSpotifyAvailability } = load();
     mockRpc.mockResolvedValue({ data: true, error: null });
     mockInvoke.mockResolvedValue({ data: { search: true }, error: null });
-    await expect(getSpotifyAvailability()).resolves.toEqual({ reposts: true, search: true });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: true, search: true, copiedLinks: true });
     expect(mockRpc).toHaveBeenCalledWith('spotify_reposts_enabled');
+    expect(mockRpc).toHaveBeenCalledWith('spotify_copied_links_enabled');
+  });
+
+  it('the copied-link kill switch is read on its own: off while reposts stay on', async () => {
+    const { getSpotifyAvailability } = load();
+    mockRpc.mockImplementation(async (fn: string) => ({ data: fn === 'spotify_reposts_enabled', error: null }));
+    mockInvoke.mockResolvedValue({ data: { search: true }, error: null });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: true, search: true, copiedLinks: false });
   });
 
   it('is OFF when the database function does not exist yet (migration not applied)', async () => {
     const { getSpotifyAvailability } = load();
     mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'not found' } });
     mockInvoke.mockResolvedValue({ data: null, error: { message: 'not deployed' } });
-    await expect(getSpotifyAvailability()).resolves.toEqual({ reposts: false, search: false });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: false, search: false, copiedLinks: false });
   });
 });
 

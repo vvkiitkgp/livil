@@ -207,3 +207,16 @@ it('opening Paste settings is remembered, so the "not Spotify" note stops', asyn
   expect(openSettings).toHaveBeenCalledTimes(1);
   expect(await hasOpenedPasteSettings()).toBe(true);
 });
+
+describe('"Detect copied Spotify links" (this phone)', () => {
+  it('is on until the person turns it off, and remembers it', async () => {
+    withLib(true);
+    const { isCopiedLinkDetectionOn, setCopiedLinkDetection, DETECT_COPIED_LINKS_KEY } = load();
+    expect(await isCopiedLinkDetectionOn()).toBe(true);
+    await setCopiedLinkDetection(false);
+    expect(storage.get(DETECT_COPIED_LINKS_KEY)).toBe('0');
+    expect(await isCopiedLinkDetectionOn()).toBe(false);
+    await setCopiedLinkDetection(true);
+    expect(await isCopiedLinkDetectionOn()).toBe(true);
+  });
+});

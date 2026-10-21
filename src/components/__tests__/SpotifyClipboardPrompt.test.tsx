@@ -15,6 +15,8 @@ const SPOTIFY = 'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b';
 type MockCopied = { text: string; askedToPaste: boolean };
 let mockRead: (value: MockCopied) => void;
 let mockSettingsOpened = false;
+let mockDetectOn = true;
+let mockSpotify = { reposts: true, search: true, copiedLinks: true };
 let mockLookup: (id: string) => Promise<{ id: string; title: string } | null>;
 const mockReadCopiedText = jest.fn(() => new Promise<MockCopied>(resolve => { mockRead = resolve; }));
 const mockOpenPasteSettings = jest.fn(async () => {});
@@ -23,12 +25,13 @@ const mockForgetCheckedCopy = jest.fn();
 jest.mock('../../services/clipboard', () => ({
   readCopiedText: () => mockReadCopiedText(),
   hasOpenedPasteSettings: async () => mockSettingsOpened,
+  isCopiedLinkDetectionOn: async () => mockDetectOn,
   openPasteSettings: () => mockOpenPasteSettings(),
   clearCopiedText: jest.fn(),
   forgetCheckedCopy: () => mockForgetCheckedCopy(),
 }));
 jest.mock('../../services/spotify', () => ({
-  useSpotifyAvailability: () => ({ reposts: true }),
+  useSpotifyAvailability: () => mockSpotify,
   artistLine: () => 'Rick Astley',
   getSpotifyTrack: (id: string) => mockLookup(id),
   resolveSpotifyLinkCached: async () => null,
@@ -90,6 +93,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   appState = 'active';
   mockSettingsOpened = false;
+  mockDetectOn = true;
+  mockSpotify = { reposts: true, search: true, copiedLinks: true };
   mockLookup = async id => ({ id, title: 'Never Gonna Give You Up' });
   mockReadCopiedText.mockClear();
   mockOpenPasteSettings.mockClear();
@@ -217,4 +222,24 @@ it('the song lookup finishes after Livil was left: the next open asks again', as
   await act(async () => { finish({ id: 'x', title: 'Never Gonna Give You Up' }); });
   expect(texts(r)).toEqual([]);
   expect(mockForgetCheckedCopy).toHaveBeenCalledTimes(1);
+});
+
+describe('the off switches: no clipboard check at all', () => {
+  it('the server kill switch is off', async () => {
+    mockSpotify = { reposts: true, search: true, copiedLinks: false };
+    await open();
+    expect(mockReadCopiedText).not.toHaveBeenCalled();
+  });
+
+  it('Spotify reposts are off', async () => {
+    mockSpotify = { reposts: false, search: true, copiedLinks: true };
+    await open();
+    expect(mockReadCopiedText).not.toHaveBeenCalled();
+  });
+
+  it('the person turned "Detect copied Spotify links" off on this phone', async () => {
+    mockDetectOn = false;
+    await open();
+    expect(mockReadCopiedText).not.toHaveBeenCalled();
+  });
 });

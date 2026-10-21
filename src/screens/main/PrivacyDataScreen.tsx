@@ -22,6 +22,8 @@ import {
   updateShowActivity,
 } from '../../services/profileService';
 import { setShareListening } from '../../services/listeningStatus';
+import { useSpotifyAvailability } from '../../services/spotify';
+import { isCopiedLinkDetectionOn, setCopiedLinkDetection } from '../../services/clipboard';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '../../constants/links';
 import { supabase } from '../../../lib/supabase';
 
@@ -39,12 +41,24 @@ export default function PrivacyDataScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
+  // Per phone, not per account: it decides what Livil does with THIS phone's clipboard.
+  // null until read; the row also needs both server switches (see the Clipboard section).
+  const [detectCopiedLinks, setDetectCopiedLinks] = useState<boolean | null>(null);
+  const spotify = useSpotifyAvailability();
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    isCopiedLinkDetectionOn().then(on => {
+      if (mounted.current) {
+        setDetectCopiedLinks(on);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -161,6 +175,21 @@ export default function PrivacyDataScreen() {
     [persistToggle],
   );
 
+  const onToggleDetectCopiedLinks = useCallback(
+    async (next: boolean) => {
+      setDetectCopiedLinks(next);
+      try {
+        await setCopiedLinkDetection(next);
+      } catch {
+        if (mounted.current) {
+          setDetectCopiedLinks(!next);
+          showToast("Couldn't change this setting.", { kind: 'error' });
+        }
+      }
+    },
+    [showToast],
+  );
+
   const openPrivacyPolicy = useCallback(async () => {
     try {
       await Linking.openURL(PRIVACY_POLICY_URL);
@@ -237,6 +266,23 @@ export default function PrivacyDataScreen() {
             }}
           />
         </SettingsSection>
+
+        {/* "Repost the song you copied?" (SpotifyClipboardPrompt). Gone entirely while the
+            server's kill switch (spotify_copied_links_enabled()) or Spotify reposts are off —
+            there is nothing to turn on or off then (owner, 2026-10-21). */}
+        {spotify.reposts && spotify.copiedLinks && detectCopiedLinks !== null ? (
+          <SettingsSection title="Clipboard">
+            <SettingsRow
+              icon="link"
+              label="Detect copied Spotify links"
+              subtitle="When you open Livil with a Spotify song link copied, offer to repost it."
+              toggle={{
+                value: detectCopiedLinks,
+                onValueChange: onToggleDetectCopiedLinks,
+              }}
+            />
+          </SettingsSection>
+        ) : null}
 
         {/* Blocking is done from a person's profile, so this row is a way BACK to
             the people you blocked — severing the friendship removes them from

@@ -17,6 +17,8 @@ type PasteboardCounter = { changeCount: () => Promise<number> };
 export const CHECKED_COPY_KEY = 'livil.clipboard.checkedCopy.v1';
 /** Set once the person has opened Livil's page in iPhone Settings from the "not Spotify" note. */
 export const PASTE_SETTINGS_OPENED_KEY = 'livil.clipboard.pasteSettingsOpened.v1';
+/** Privacy & data → "Detect copied Spotify links", per phone. '0' = off; anything else = on. */
+export const DETECT_COPIED_LINKS_KEY = 'livil.clipboard.detectSpotifyLinks.v1';
 
 /**
  * A read faster than this cannot have waited for a tap on iOS's "Allow Paste?" question, so
@@ -114,6 +116,20 @@ export async function readCopiedText(os: string = Platform.OS): Promise<CopiedTe
 /** Empties the clipboard. */
 export function clearCopiedText(): void {
   (loadClipboard() ?? CoreClipboard).setString('');
+}
+
+/**
+ * The person's own switch for the copied-link check on this phone. On unless they turned it
+ * off — an unreadable value counts as on, like every other default here. The server's kill
+ * switch (SpotifyAvailability.copiedLinks) is checked separately and wins.
+ */
+export async function isCopiedLinkDetectionOn(): Promise<boolean> {
+  return (await AsyncStorage.getItem(DETECT_COPIED_LINKS_KEY).catch(() => null)) !== '0';
+}
+
+/** Throws when it could not be saved, so Settings can put the toggle back. */
+export async function setCopiedLinkDetection(on: boolean): Promise<void> {
+  await AsyncStorage.setItem(DETECT_COPIED_LINKS_KEY, on ? '1' : '0');
 }
 
 /** Whether the person has already been sent to iPhone Settings → Paste from Other Apps. */

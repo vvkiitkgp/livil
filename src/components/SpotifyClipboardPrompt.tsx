@@ -13,6 +13,7 @@ import {
   clearCopiedText,
   forgetCheckedCopy,
   hasOpenedPasteSettings,
+  isCopiedLinkDetectionOn,
   openPasteSettings,
   readCopiedText,
 } from '../services/clipboard';
@@ -44,12 +45,17 @@ const appStateNow = (): AppStateStatus => AppState.currentState;
  * Allow (owner, 2026-10-20: "on allow, we don't do anything if it's not spotify link"). Once
  * they have opened Settings from it, it stops appearing — Livil cannot see that switch.
  *
+ * Two off switches, either one stops every clipboard check: the server's kill switch
+ * (spotify_copied_links_enabled(), for everyone at once — owner, 2026-10-21) and the person's
+ * own "Detect copied Spotify links" in Privacy & data (this phone).
+ *
  * Privacy: the clipboard text is read and parsed on the phone; it is never stored or logged.
  * Only a spotify.link short link — the clipboard's whole content, and only when it is one —
  * goes to the server, which turns it into a song id.
  */
 export default function SpotifyClipboardPrompt({ active }: { active: boolean }) {
-  const { reposts } = useSpotifyAvailability();
+  const { reposts, copiedLinks } = useSpotifyAvailability();
+  const enabled = reposts && copiedLinks;
   // The song stays set while the dialog fades out; `visible` is what opens and closes it.
   const [track, setTrack] = useState<SpotifyTrack | null>(null);
   const [visible, setVisible] = useState(false);
@@ -69,7 +75,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
   const pendingRef = useRef<string | null>(null);
 
   const check = useCallback(async () => {
-    if (!active || !reposts || checkingRef.current || shownRef.current) {return;}
+    if (!active || !enabled || checkingRef.current || shownRef.current) {return;}
     // Not on screen (opened in the background, or a shade is down): starting a read here would
     // use up the copy on an iPhone without the person seeing anything.
     if (appStateNow() === 'background' || appStateNow() === 'inactive') {return;}
@@ -77,6 +83,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
     if (route && SKIP_ON.has(route)) {return;}
     checkingRef.current = true;
     try {
+      if (!(await isCopiedLinkDetectionOn())) {return;}
       const read = await readCopiedText();
       const { askedToPaste } = read;
       let { text } = read;
@@ -121,11 +128,11 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
     } finally {
       checkingRef.current = false;
     }
-  }, [active, reposts]);
+  }, [active, enabled]);
 
   // On open (once the app is ready and the switch is known) and every return to the app.
   useEffect(() => {
-    if (!active || !reposts) {return;}
+    if (!active || !enabled) {return;}
     let timer = setTimeout(() => { void check(); }, READ_DELAY_MS);
     const sub = AppState.addEventListener('change', state => {
       // 'inactive' (iOS only) is not leaving: Livil is still on screen, behind iOS's own "Allow
@@ -146,7 +153,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
       clearTimeout(timer);
       sub.remove();
     };
-  }, [active, reposts, check]);
+  }, [active, enabled, check]);
 
   const answer = useCallback((repost: boolean) => {
     const id = track?.id;
