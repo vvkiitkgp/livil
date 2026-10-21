@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-450 TypeScript file(s) under `src/`, 93,571 lines.
+450 TypeScript file(s) under `src/`, 93,752 lines.
 
 ## Size hotspots
 
@@ -104,7 +104,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,630 lines.
+50 file(s), 27,727 lines.
 
 | File | Lines |
 |---|---:|
@@ -128,10 +128,11 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
+| `src/screens/main/PrivacyDataScreen.tsx` | 359 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 336 |
 | `src/screens/main/__tests__/SearchScreen.test.tsx` | 324 |
+| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 322 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 317 |
-| `src/screens/main/PrivacyDataScreen.tsx` | 313 |
 | `src/screens/auth/FirstRunGuideScreen.tsx` | 307 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 299 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 292 |
@@ -139,7 +140,6 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/SettingsScreen.tsx` | 290 |
 | `src/screens/auth/AddPhotoScreen.tsx` | 273 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
-| `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 271 |
 | `src/screens/main/PlaylistScreen.tsx` | 269 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 261 |
@@ -161,7 +161,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,446 lines.
+169 file(s), 33,478 lines.
 
 | File | Lines |
 |---|---:|
@@ -195,6 +195,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TagInput.tsx` | 278 |
 | `src/components/OnboardingNotice.tsx` | 276 |
 | `src/components/guide/cardsPeople.tsx` | 272 |
+| `src/components/__tests__/SpotifyClipboardPrompt.test.tsx` | 246 |
 | `src/components/CommentSongCard.tsx` | 241 |
 | `src/components/ShareProfileSheet.tsx` | 240 |
 | `src/components/StoryReportModal.tsx` | 239 |
@@ -202,7 +203,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/PostGridCard.tsx` | 229 |
 | `src/components/RepostChatCard.tsx` | 228 |
-| `src/components/__tests__/SpotifyClipboardPrompt.test.tsx` | 221 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/GifPicker.tsx` | 216 |
 | `src/components/PostReportModal.tsx` | 216 |
@@ -217,10 +217,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FriendPickerStrip.tsx` | 204 |
 | `src/components/ProfileBadges.tsx` | 203 |
 | `src/components/SettingsRow.tsx` | 202 |
+| `src/components/SpotifyClipboardPrompt.tsx` | 201 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/auth/AuthStep.tsx` | 195 |
-| `src/components/SpotifyClipboardPrompt.tsx` | 194 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
@@ -337,7 +337,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-102 file(s), 19,575 lines.
+102 file(s), 19,627 lines.
 
 | File | Lines |
 |---|---:|
@@ -350,14 +350,14 @@ case the call fails silently wherever its result is discarded.
 | `src/services/albums.ts` | 521 |
 | `src/services/profileService.ts` | 509 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
-| `src/services/spotify.ts` | 393 |
+| `src/services/spotify.ts` | 405 |
 | `src/services/playlists.ts` | 388 |
 | `src/services/messages.ts` | 386 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/uploads.ts` | 344 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
-| `src/services/__tests__/spotify.test.ts` | 255 |
+| `src/services/__tests__/spotify.test.ts` | 266 |
 | `src/services/conversations.ts` | 249 |
 | `src/services/gifs.ts` | 245 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
@@ -365,12 +365,12 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/pushScheduled.test.ts` | 230 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
 | `src/services/__tests__/uploadContentType.test.ts` | 227 |
+| `src/services/__tests__/clipboard.test.ts` | 223 |
 | `src/services/listeningStatus.ts` | 223 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/stories.ts` | 215 |
 | `src/services/__tests__/commentGifs.test.ts` | 213 |
 | `src/services/__tests__/waveform.test.ts` | 212 |
-| `src/services/__tests__/clipboard.test.ts` | 210 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
 | `src/services/__tests__/tags.test.ts` | 180 |
@@ -383,10 +383,10 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/appBadge.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
+| `src/services/clipboard.ts` | 149 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 144 |
 | `src/services/__tests__/appUpdate.test.ts` | 141 |
 | `src/services/jamSuggestions.ts` | 139 |
-| `src/services/clipboard.ts` | 133 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/sweepAbandonedUploads.test.ts` | 127 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
