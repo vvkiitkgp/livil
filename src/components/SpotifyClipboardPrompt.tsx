@@ -74,7 +74,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
       if (!link) {
         // "Don't Allow" reads as '' — they said no, so there is nothing to explain.
         if (askedToPaste && text.trim() !== '' && !(await hasOpenedPasteSettings())
-          && AppState.currentState === 'active') {
+          && AppState.currentState !== 'background') {
           setSorryVisible(true);
         }
         return;
@@ -82,8 +82,8 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
       const id = link.id ?? (await resolveSpotifyLinkCached(link.shortUrl));
       const found = id ? await getSpotifyTrack(id) : null;
       if (!found) {return;}
-      // Left the app (or opened the repost screen) while the song was being looked up.
-      if (AppState.currentState !== 'active') {
+      // Left the app while the song was being looked up.
+      if (AppState.currentState === 'background') {
         forgetCheckedCopy();
         return;
       }
@@ -102,10 +102,15 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
     if (!active || !reposts) {return;}
     let timer = setTimeout(() => { void check(); }, READ_DELAY_MS);
     const sub = AppState.addEventListener('change', state => {
-      clearTimeout(timer);
+      // 'inactive' (iOS only) is not leaving: Livil is still on screen, behind iOS's own "Allow
+      // Paste?" question — which this check sets off — or Control Center or the notification
+      // shade. Treating it as gone closed nothing but made the check drop its answer: Allow
+      // was tapped and no dialog followed (owner's iPhone, 2026-10-21).
       if (state === 'active') {
+        clearTimeout(timer);
         timer = setTimeout(() => { void check(); }, READ_DELAY_MS);
-      } else {
+      } else if (state === 'background') {
+        clearTimeout(timer);
         // Gone without answering: ask again next time, and clear nothing.
         if (songShownRef.current) { forgetCheckedCopy(); }
         setVisible(false);
