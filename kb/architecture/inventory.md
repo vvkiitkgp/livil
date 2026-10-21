@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-20
+last_verified: 2026-10-21
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-449 TypeScript file(s) under `src/`, 93,033 lines.
+450 TypeScript file(s) under `src/`, 93,571 lines.
 
 ## Size hotspots
 
@@ -161,7 +161,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-168 file(s), 33,148 lines.
+169 file(s), 33,446 lines.
 
 | File | Lines |
 |---|---:|
@@ -202,6 +202,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/PostGridCard.tsx` | 229 |
 | `src/components/RepostChatCard.tsx` | 228 |
+| `src/components/__tests__/SpotifyClipboardPrompt.test.tsx` | 221 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/GifPicker.tsx` | 216 |
 | `src/components/PostReportModal.tsx` | 216 |
@@ -219,6 +220,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/auth/AuthStep.tsx` | 195 |
+| `src/components/SpotifyClipboardPrompt.tsx` | 194 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
@@ -258,7 +260,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsHighlightCard.tsx` | 124 |
 | `src/components/ProfilePhotoViewer.tsx` | 120 |
 | `src/components/ProfileGridCard.tsx` | 118 |
-| `src/components/SpotifyClipboardPrompt.tsx` | 117 |
 | `src/components/SpotifyTrackSheet.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
@@ -336,7 +337,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-102 file(s), 19,335 lines.
+102 file(s), 19,575 lines.
 
 | File | Lines |
 |---|---:|
@@ -369,6 +370,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/stories.ts` | 215 |
 | `src/services/__tests__/commentGifs.test.ts` | 213 |
 | `src/services/__tests__/waveform.test.ts` | 212 |
+| `src/services/__tests__/clipboard.test.ts` | 210 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
 | `src/services/__tests__/tags.test.ts` | 180 |
@@ -384,6 +386,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 144 |
 | `src/services/__tests__/appUpdate.test.ts` | 141 |
 | `src/services/jamSuggestions.ts` | 139 |
+| `src/services/clipboard.ts` | 133 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/sweepAbandonedUploads.test.ts` | 127 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
@@ -427,10 +430,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/scanUploadRequest.test.ts` | 56 |
 | `src/services/__tests__/jamHeartbeat.test.ts` | 55 |
 | `src/services/__tests__/chatGifMessage.test.ts` | 54 |
-| `src/services/__tests__/clipboard.test.ts` | 53 |
 | `src/services/__tests__/trackPlaysTotals.test.ts` | 52 |
 | `src/services/pushDispatch.ts` | 51 |
-| `src/services/clipboard.ts` | 50 |
 | `src/services/chatVibes.ts` | 49 |
 | `src/services/__tests__/session.test.ts` | 47 |
 | `src/services/__tests__/activeConversation.test.ts` | 44 |
