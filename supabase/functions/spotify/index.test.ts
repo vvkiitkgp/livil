@@ -25,7 +25,6 @@ import {
   UPSTREAM_CONCURRENCY,
   SHARED_PREFIX,
   type SharedCache,
-  decodeSharedSearch,
   decodeSharedTrack,
   mapLimit,
   upstashCache,
@@ -529,7 +528,9 @@ Deno.test('a request answered entirely from this isolate costs the shared cache 
   assertEquals(shared.commands, after);
 });
 
-Deno.test('search: the same words within the hour are answered from the shared cache', async () => {
+// Owner, 2026-10-21: Redis is for feed cards only — search never reads or writes it, not
+// even for the same words again.
+Deno.test('search never touches the shared cache, even for the same words again', async () => {
   const shared = memoryCache();
   const a = makeDeps();
   a.deps.shared = shared;
@@ -537,8 +538,33 @@ Deno.test('search: the same words within the hour are answered from the shared c
   const b = makeDeps();
   b.deps.shared = shared;
   const body = await (await handle(post({ action: 'search', q: 'blinding lights' }), b.deps)).json();
-  assertEquals(b.calls.filter(c => c.url.startsWith('https://api.spotify.com/v1/search')).length, 0);
+  assertEquals(b.calls.filter(c => c.url.startsWith('https://api.spotify.com/v1/search')).length, 1);
   assertEquals(body.tracks[0].id, ID);
+  assertEquals(shared.commands, 0);
+  assertEquals(shared.store.size, 0);
+});
+
+Deno.test('the same words again in one isolate are answered from its own memory', async () => {
+  const { deps, calls } = makeDeps();
+  deps.shared = memoryCache();
+  await handle(post({ action: 'search', q: 'Blinding  Lights' }), deps);
+  const body = await (await handle(post({ action: 'search', q: 'blinding lights' }), deps)).json();
+  assertEquals(calls.filter(c => c.url.startsWith('https://api.spotify.com/v1/search')).length, 1);
+  assertEquals(body.tracks[0].id, ID);
+});
+
+Deno.test('a 429 on a search backs this isolate off but writes nothing shared', async () => {
+  const shared = memoryCache();
+  const { deps, calls } = makeDeps({
+    respond: url => url.includes('accounts.spotify.com')
+      ? Response.json({ access_token: 't', expires_in: 3600 })
+      : new Response('', { status: 429, headers: { 'retry-after': '60' } }),
+  });
+  deps.shared = shared;
+  assertEquals((await handle(post({ action: 'search', q: 'anything' }), deps)).status, 502);
+  assertEquals((await handle(post({ action: 'search', q: 'something else' }), deps)).status, 502);
+  assertEquals(calls.filter(c => c.url.startsWith('https://api.spotify.com/v1/search')).length, 1);
+  assertEquals(shared.commands, 0);
 });
 
 Deno.test('a shared cache that answers nothing changes nothing', async () => {
@@ -559,9 +585,8 @@ Deno.test('shared entries are input: a bad or tampered one is a miss', () => {
   assertEquals(decodeSharedTrack('not json', ID), null);
   assertEquals(decodeSharedTrack(null, ID), null);
   // Only the enumerated shape ever leaves the function, whatever the entry carried.
-  assertEquals(Object.keys(decodeSharedSearch(JSON.stringify([{ ...good, raw: 'spotify response' }]))![0]).sort(),
+  assertEquals(Object.keys(decodeSharedTrack(JSON.stringify({ track: { ...good, raw: 'spotify response' }, full: true }), ID)!.track!).sort(),
     ['album', 'artists', 'durationMs', 'id', 'imageUrl', 'title']);
-  assertEquals(decodeSharedSearch(JSON.stringify(Array(11).fill(good))), null);
 });
 
 Deno.test('mapLimit keeps order', async () => {
@@ -651,17 +676,19 @@ Deno.test('cached search answers still cost the caller something, so a loop cann
   assert(refused > 0);
 });
 
-Deno.test('an empty search answer is shared only briefly', async () => {
-  const shared = memoryCache();
-  const { deps } = makeDeps({
+Deno.test('an empty search answer is kept only briefly', async () => {
+  const { deps, calls, setNow } = makeDeps({
     respond: url => url.includes('accounts.spotify.com')
       ? Response.json({ access_token: 't', expires_in: 3600 })
       : Response.json({ tracks: { items: [] } }),
   });
-  deps.shared = shared;
+  const searches = () => calls.filter(c => c.url.startsWith('https://api.spotify.com/v1/search')).length;
   await handle(post({ action: 'search', q: 'asdfqwer' }), deps);
-  const entry = [...shared.store.entries()].find(([k]) => k.includes(':search:'))!;
-  assertEquals(entry[1].ttlMs, EMPTY_SEARCH_TTL_MS);
+  await handle(post({ action: 'search', q: 'asdfqwer' }), deps);
+  assertEquals(searches(), 1);
+  setNow(deps.now() + EMPTY_SEARCH_TTL_MS + 1);
+  await handle(post({ action: 'search', q: 'asdfqwer' }), deps);
+  assertEquals(searches(), 2);
 });
 
 Deno.test('on the edge runtime the answer goes out first and the cache write finishes after', async () => {
@@ -692,7 +719,7 @@ Deno.test('Spotify\'s Retry-After is honoured in full (up to MAX_BACKOFF_MS), no
     },
   });
   deps.shared = shared;
-  await handle(post({ action: 'search', q: 'anything' }), deps);
+  await handle(post({ action: 'tracks', ids: [ID] }), deps);
   assertEquals(shared.store.get(`${SHARED_PREFIX}blocked-until`)?.ttlMs, 3_600_000);
   assert(MAX_BACKOFF_MS >= 3_600_000);
 });

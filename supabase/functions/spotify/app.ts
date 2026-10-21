@@ -38,6 +38,10 @@
 //   - misses go to Spotify at most UPSTREAM_CONCURRENCY at a time;
 //   - a 429 is written to the shared cache, so every isolate backs off, not just the one
 //     that was told.
+// SEARCH NEVER TOUCHES THE SHARED CACHE — no read, no write, not even for the same words
+// again (owner, 2026-10-21): Redis is for feed cards' song details only. A search is
+// answered from this isolate's own memory or from Spotify, and a 429 on a search backs off
+// this isolate alone.
 // The shared cache is an optimisation, never a dependency: unset, failing or slow (a
 // SHARED_TIMEOUT_MS budget), the function behaves exactly as it did without it.
 // Without credentials the `tracks` action falls back to Spotify's public oEmbed endpoint
@@ -112,12 +116,11 @@ export const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 /** An empty search answer is kept briefly: it may be a typo, or Spotify having a moment. */
 export const EMPTY_SEARCH_TTL_MS = 5 * 60 * 1000;
 /**
- * What a search answered from a cache costs the caller's budget. Not free: each still costs
- * an auth round trip and (from Redis) a command, and a loop of free requests could spend the
- * shared cache's quota and switch it off for everyone.
+ * What a search answered from this isolate's memory costs the caller's budget. Not free:
+ * each still costs an auth round trip, and a loop of free requests would never be stopped.
  */
 export const CACHED_SEARCH_COST = 0.25;
-/** Search answers one isolate keeps itself, so repeats never reach Redis. */
+/** Search answers one isolate keeps itself — the only place a search answer is kept. */
 const LOCAL_SEARCH_ENTRIES = 300;
 
 /**
@@ -130,10 +133,11 @@ export function normalizeQuery(q: string): string {
 }
 
 /**
- * The shared key for a search: an HMAC of the folded text, keyed with the Spotify client
- * secret (already set wherever search works). Redis then holds Spotify's results under an
- * opaque name and never the words anyone typed — the privacy policy and the store
- * declarations say search text is passed to Spotify, not kept.
+ * The key for a search in this isolate's memory: an HMAC of the folded text, keyed with the
+ * Spotify client secret (already set wherever search works), so even the in-memory cache
+ * holds an opaque name and never the words anyone typed — the privacy policy and the store
+ * declarations say search text is passed to Spotify, not kept. (Search answers are never
+ * written to the shared cache; see the header.)
  */
 let hmacKey: { secret: string; key: CryptoKey } | null = null;
 export async function searchKey(norm: string, limit: number, secret: string): Promise<string> {
@@ -351,25 +355,6 @@ export function decodeSharedTrack(raw: string | null, id: string): SharedTrack |
     return isTrackShape(v.track, id)
       ? { track: { id, title: v.track.title, artists: v.track.artists, album: v.track.album, imageUrl: v.track.imageUrl, durationMs: v.track.durationMs }, full: v.full }
       : null;
-  } catch {
-    return null;
-  }
-}
-
-/** A shared search answer: up to MAX_SEARCH_RESULTS checked tracks, or null (a miss). */
-export function decodeSharedSearch(raw: string | null): SpotifyTrack[] | null {
-  if (raw === null) return null;
-  try {
-    const v = JSON.parse(raw) as unknown;
-    if (!Array.isArray(v) || v.length > MAX_SEARCH_RESULTS) return null;
-    const out: SpotifyTrack[] = [];
-    for (const t of v) {
-      const id = t && typeof t === 'object' ? (t as { id?: unknown }).id : null;
-      if (typeof id !== 'string' || !SPOTIFY_ID_RE.test(id) || !isTrackShape(t, id)) return null;
-      // Rebuilt field by field: only the enumerated shape ever leaves this function.
-      out.push({ id, title: t.title, artists: t.artists, album: t.album, imageUrl: t.imageUrl, durationMs: t.durationMs });
-    }
-    return out;
   } catch {
     return null;
   }
@@ -709,8 +694,8 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       const limit = Math.min(Math.max(requested, 1), MAX_SEARCH_RESULTS);
       if (!hasCredentials(deps.env)) return json(200, { enabled: false, tracks: [] });
 
-      // Someone searched the same words recently: their answer — this isolate's first, then
-      // the shared one. Cheap, not free (CACHED_SEARCH_COST).
+      // Someone searched the same words recently in THIS isolate: their answer. Cheap, not
+      // free (CACHED_SEARCH_COST). Never the shared cache — see the header.
       const norm = normalizeQuery(q);
       const key = await searchKey(norm, limit, deps.env.clientSecret!);
       const now = deps.now();
@@ -719,23 +704,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
         if (!spend(userId, CACHED_SEARCH_COST, now)) return json(429, { error: 'slow down' });
         return json(200, { enabled: true, tracks: local.tracks });
       }
-      if (deps.shared) {
-        const [block, hit] = await deps.shared.mget([BLOCK_KEY, key]);
-        adoptSharedBlock(block, now);
-        const cachedTracks = decodeSharedSearch(hit);
-        if (cachedTracks) {
-          if (!spend(userId, CACHED_SEARCH_COST, now)) return json(429, { error: 'slow down' });
-          rememberSearch(key, cachedTracks, now, SHARED_HIT_LOCAL_TTL_MS);
-          return json(200, { enabled: true, tracks: cachedTracks });
-        }
-      }
       if (!spend(userId, 1, now)) return json(429, { error: 'slow down' });
 
-      const before = state.backoffUntil;
       const params = new URLSearchParams({ q: norm, type: 'track', limit: String(limit) });
       const res = await apiGet(deps, `https://api.spotify.com/v1/search?${params}`);
       if (!res || !res.ok) {
-        await inBackground(deps.shared?.mset(blockEntry(before, deps.now())));
         return json(502, { error: 'spotify search is unavailable', status: res?.status ?? null });
       }
       const raw = await res.json().catch(() => null) as { tracks?: { items?: unknown[] } } | null;
@@ -747,7 +720,6 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       for (const t of tracks) state.cache.set(t.id, { track: t, at: answeredAt, ttl: CACHE_TTL_MS });
       const ttl = tracks.length > 0 ? CACHE_TTL_MS : EMPTY_SEARCH_TTL_MS;
       rememberSearch(key, tracks, answeredAt, ttl);
-      await inBackground(deps.shared?.mset([{ key, value: JSON.stringify(tracks), ttlMs: ttl }]));
       return json(200, { enabled: true, tracks });
     }
 

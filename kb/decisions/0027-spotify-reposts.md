@@ -56,7 +56,11 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
    20 — Spotify rate-limited us and every card lost its artists. The shared cache makes a song
    cost about one Spotify call per six hours for everyone; misses go at most four at a time; a 429
    is shared so every isolate backs off. The shared cache is optional: unset or failing, the
-   function behaves as before.
+   function behaves as before. *Amended 2026-10-21 (owner):* the shared cache is for feed
+   cards' song details only — **search never reads or writes it**, not even for the same words
+   again. A search is answered from the isolate's own memory or from Spotify, and a 429 on a
+   search backs off that isolate alone. Accepted cost: more search calls reach Spotify, so a
+   busy spell can rate-limit us sooner (cards share the same Spotify allowance).
 3. **Livil never plays it.** Tapping play pauses Livil (the single engine, ADR-0001) and opens
    `https://open.spotify.com/track/<id>`. Every queue builder filters with
    `isPlayableInLivil`; the database refuses Spotify posts in `playlist_posts`,
@@ -68,9 +72,14 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
    read by the app through `spotify_reposts_enabled()` and **enforced on insert** by
    `trg_posts_spotify_switch_guard` — a switch only the client reads hides a button, it does
    not stop a direct PostgREST insert (security review, 2026-10-09). Off → "+ Track" / "+" go
-   straight to Upload as before, the chooser and the Repost pill on Spotify cards are hidden,
-   and the database refuses any Spotify repost. Existing ones keep their likes and comments.
-   Flipped by the owner in the SQL editor; the app re-reads it on returning to the foreground.
+   straight to Upload as before, the chooser and "Repost this song" (in a Spotify card's ⋯
+   menu; it was a header pill until 2026-10-21, which squeezed the name off small phones)
+   are hidden, and the database refuses any Spotify repost. Existing ones keep their likes
+   and comments. Flipped by the owner in the SQL editor; the app re-reads it on returning to
+   the foreground. Only a real answer counts: a check that failed or has not answered yet is
+   "not known" (`null`), never "off" — "+ Track" still offers the chooser, and the miss is
+   re-asked within seconds rather than cached for five minutes (2026-10-21: a cached miss
+   sent "+ Track" straight to Upload while the switch was on).
 6. **No Spotify sign-in and no "Connect Spotify"** — blocked by the 5-user cap, and Spotify's
    `/me` email is unverified, which makes it unsafe as an account-linking key.
 
