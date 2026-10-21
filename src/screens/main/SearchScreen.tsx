@@ -901,7 +901,7 @@ export default function SearchScreen() {
       </Pressable>
       <SpotifyTrackSheet
         track={spotifySheet}
-        canRepost={spotify.reposts}
+        canRepost={spotify.reposts === true}
         onClose={() => setSpotifySheet(null)}
         onDismiss={onSpotifySheetDismiss}
         onPlay={track => {

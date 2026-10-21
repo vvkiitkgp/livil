@@ -830,9 +830,10 @@ export default function ProfileScreen() {
             size="sm"
             // Home's 38pt "+ Track" (HomeScreen `uploadButton`), so the two read as one control.
             style={styles.addTrackButton}
-            // With Spotify reposts switched on, "+ Track" asks what to add (ADR-0027).
-            onPress={() => navigation.navigate(spotify.reposts ? 'AddToLivil' : 'Upload')}
-            accessibilityLabel={spotify.reposts ? 'Add a track' : 'Upload a track'}
+            // With Spotify reposts switched on — or not known yet — "+ Track" asks what to
+            // add (ADR-0027); only a real "off" from the server goes straight to Upload.
+            onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
+            accessibilityLabel={spotify.reposts !== false ? 'Add a track' : 'Upload a track'}
           />
           <TouchableOpacity
             style={styles.headerIconBtn}

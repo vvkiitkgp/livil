@@ -25,17 +25,23 @@ export type SpotifyTrack = {
 
 export type SpotifyAvailability = {
   /** The server switch: may people create Spotify reposts? */
-  reposts: boolean;
+  reposts: boolean | null;
   /** Is Spotify search configured? Without it, only pasting a link works. */
-  search: boolean;
+  search: boolean | null;
   /**
    * The kill switch for "Repost the song you copied?" (spotify_copied_links_enabled()).
    * Off: no clipboard check at all, and no "Detect copied Spotify links" row in Settings.
    */
-  copiedLinks: boolean;
+  copiedLinks: boolean | null;
 };
+// Every answer above is three-way: `true`, `false`, or `null` — NOT KNOWN YET (still
+// asking, signed out, offline, a timeout). `null` is falsy, so `if (a.reposts)` keeps
+// hiding a feature until the server says yes. An entry point that must never lose a
+// working feature to a failed check asks `!== false` instead: Home's "+ Track" used to
+// skip the Upload / Spotify chooser whenever the check had failed — and remembered that
+// "off" for five minutes (2026-10-21, a relative's phone).
 
-const UNAVAILABLE: SpotifyAvailability = { reposts: false, search: false, copiedLinks: false };
+const UNKNOWN: SpotifyAvailability = { reposts: null, search: null, copiedLinks: null };
 
 async function call<T>(body: Record<string, unknown>): Promise<T | null> {
   try {
@@ -56,66 +62,121 @@ async function call<T>(body: Record<string, unknown>): Promise<T | null> {
 // Three independent answers, asked in parallel:
 //   reposts     — the switch, which lives in the DATABASE (spotify_reposts_enabled()), where it
 //                 also refuses the insert. A missing function (migration not applied) is "off".
-//   search      — whether the edge function has Spotify credentials. Missing function → off.
+//   search      — whether the edge function has Spotify credentials.
 //   copiedLinks — the kill switch for the copied-link check (spotify_copied_links_enabled(),
 //                 20261114000000). Same rule: a missing function is "off".
 //
-// Cached for a few minutes and re-asked when the app returns to the foreground, so the
-// owner flipping the switch reaches open apps without a restart — in either direction.
+// Only a real answer counts. A failed question leaves that answer as it was (`null`, or the
+// last real answer) and is asked again in seconds, not minutes — a miss is never cached as
+// "off". Signed out, nothing is asked at all (every question would be refused), and signing
+// in asks at once.
+//
+// Real answers are cached for a few minutes and re-asked when the app returns to the
+// foreground, so the owner flipping a switch reaches open apps without a restart. Every
+// mounted hook hears every new answer, not only the one that asked.
 
 const AVAILABILITY_TTL_MS = 5 * 60 * 1000;
-let availability: { value: SpotifyAvailability; at: number } | null = null;
+/** How soon an answer with a gap in it is asked again. */
+const AVAILABILITY_RETRY_MS = 15 * 1000;
+let availability: { value: SpotifyAvailability; at: number; complete: boolean } | null = null;
 let availabilityInFlight: Promise<SpotifyAvailability> | null = null;
+/** Bumped on sign-in: an answer asked for before it (refused, signed out) is dropped. */
+let availabilityEpoch = 0;
+const availabilityListeners = new Set<(value: SpotifyAvailability) => void>();
+
+/** A database switch: on/off, or null when the question could not be asked. */
+function switchAnswer(res: { data: unknown; error: { code?: string } | null } | null): boolean | null {
+  if (!res) {return null;}
+  if (!res.error) {return res.data === true;}
+  // PGRST202: no such function — the migration is not applied, so the feature is off.
+  // Anything else (permission, network, timeout) says nothing about the switch.
+  return res.error.code === 'PGRST202' ? false : null;
+}
 
 async function fetchAvailability(): Promise<SpotifyAvailability> {
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) {return UNKNOWN;}
   const [repostsRes, statusRes, copiedRes] = await Promise.all([
     Promise.resolve(supabase.rpc('spotify_reposts_enabled')).catch(() => null),
     call<{ search?: boolean }>({ action: 'status' }),
     Promise.resolve(supabase.rpc('spotify_copied_links_enabled')).catch(() => null),
   ]);
-  const reposts = repostsRes && !repostsRes.error ? repostsRes.data === true : false;
-  const copiedLinks = copiedRes && !copiedRes.error ? copiedRes.data === true : false;
-  return { reposts, search: statusRes?.search === true, copiedLinks };
+  return {
+    reposts: switchAnswer(repostsRes),
+    search: statusRes ? statusRes.search === true : null,
+    copiedLinks: switchAnswer(copiedRes),
+  };
+}
+
+function sameAvailability(a: SpotifyAvailability, b: SpotifyAvailability): boolean {
+  return a.reposts === b.reposts && a.search === b.search && a.copiedLinks === b.copiedLinks;
 }
 
 export function getSpotifyAvailability(): Promise<SpotifyAvailability> {
-  if (availability && Date.now() - availability.at < AVAILABILITY_TTL_MS) {
-    return Promise.resolve(availability.value);
+  if (availability) {
+    const ttl = availability.complete ? AVAILABILITY_TTL_MS : AVAILABILITY_RETRY_MS;
+    if (Date.now() - availability.at < ttl) {return Promise.resolve(availability.value);}
   }
   if (!availabilityInFlight) {
-    availabilityInFlight = fetchAvailability()
-      .then(value => {
-        availability = { value, at: Date.now() };
+    const epoch = availabilityEpoch;
+    const request: Promise<SpotifyAvailability> = fetchAvailability()
+      .catch(() => UNKNOWN)
+      .then(fresh => {
+        if (epoch !== availabilityEpoch) {return availability?.value ?? UNKNOWN;}
+        const prev = availability?.value ?? UNKNOWN;
+        const value: SpotifyAvailability = {
+          reposts: fresh.reposts ?? prev.reposts,
+          search: fresh.search ?? prev.search,
+          copiedLinks: fresh.copiedLinks ?? prev.copiedLinks,
+        };
+        const complete = fresh.reposts !== null && fresh.search !== null && fresh.copiedLinks !== null;
+        availability = { value, at: Date.now(), complete };
+        availabilityListeners.forEach(listener => listener(value));
         return value;
       })
-      .catch(() => UNAVAILABLE)
-      .finally(() => { availabilityInFlight = null; });
+      .finally(() => {
+        if (availabilityInFlight === request) {availabilityInFlight = null;}
+      });
+    availabilityInFlight = request;
   }
   return availabilityInFlight;
 }
 
+let watchingAuth = false;
+/** Signing in asks again at once: anything asked before it was refused. Registered once. */
+function watchAuthForAvailability(): void {
+  if (watchingAuth) {return;}
+  watchingAuth = true;
+  supabase.auth.onAuthStateChange(event => {
+    if (event !== 'SIGNED_IN') {return;}
+    availabilityEpoch += 1;
+    availabilityInFlight = null;
+    if (availability) {availability = { ...availability, at: 0 };}
+    void getSpotifyAvailability();
+  });
+}
+
 /**
- * React wrapper. Starts from the cached answer (or "unavailable") and re-asks whenever the
- * app comes back to the foreground — the TTL above keeps that to one request per few minutes.
+ * React wrapper. Starts from the cached answer (or "not known yet"), hears every new answer,
+ * and re-asks whenever the app comes back to the foreground — the TTL above keeps that to
+ * one request per few minutes.
  */
 export function useSpotifyAvailability(): SpotifyAvailability {
-  const [value, setValue] = useState<SpotifyAvailability>(availability?.value ?? UNAVAILABLE);
+  const [value, setValue] = useState<SpotifyAvailability>(availability?.value ?? UNKNOWN);
   useEffect(() => {
-    let cancelled = false;
-    const refresh = () => {
-      getSpotifyAvailability().then(v => {
-        if (!cancelled) {
-          setValue(prev => (
-            prev.reposts === v.reposts && prev.search === v.search
-              && prev.copiedLinks === v.copiedLinks ? prev : v
-          ));
-        }
-      });
+    watchAuthForAvailability();
+    const listener = (next: SpotifyAvailability) => {
+      setValue(prev => (sameAvailability(prev, next) ? prev : next));
     };
-    refresh();
-    const sub = AppState.addEventListener('change', next => { if (next === 'active') { refresh(); } });
+    availabilityListeners.add(listener);
+    // An answer that landed between the first render and this effect.
+    if (availability) {listener(availability.value);}
+    void getSpotifyAvailability();
+    const sub = AppState.addEventListener('change', next => {
+      if (next === 'active') {void getSpotifyAvailability();}
+    });
     return () => {
-      cancelled = true;
+      availabilityListeners.delete(listener);
       sub.remove();
     };
   }, []);

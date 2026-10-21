@@ -13,11 +13,13 @@ const mockIn = jest.fn();
 const mockFrom = jest.fn((_table: string) => ({
   select: () => ({ in: (...a: unknown[]) => mockIn(...a) }),
 }));
+const mockGetSession = jest.fn();
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     functions: { invoke: (...a: unknown[]) => mockInvoke(...a) },
     rpc: (...a: unknown[]) => mockRpc(...a),
     from: (table: string) => mockFrom(table),
+    auth: { getSession: () => mockGetSession() },
   },
 }));
 
@@ -38,6 +40,8 @@ beforeEach(() => {
   mockRpc.mockReset();
   mockIn.mockReset();
   mockFrom.mockClear();
+  mockGetSession.mockReset();
+  mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'me' } } } });
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -168,9 +172,69 @@ describe('getSpotifyAvailability', () => {
   it('is OFF when the database function does not exist yet (migration not applied)', async () => {
     const { getSpotifyAvailability } = load();
     mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'not found' } });
-    mockInvoke.mockResolvedValue({ data: null, error: { message: 'not deployed' } });
+    mockInvoke.mockResolvedValue({ data: { search: false }, error: null });
     await expect(getSpotifyAvailability())
       .resolves.toEqual({ reposts: false, search: false, copiedLinks: false });
+  });
+
+  // The bug (2026-10-21): one failed check was cached as "off" for five minutes, so Home's
+  // "+ Track" skipped the Upload / Spotify chooser while the switch was ON.
+  it('a check that FAILED is not known (null), never "off"', async () => {
+    const { getSpotifyAvailability } = load();
+    mockRpc.mockRejectedValue(new Error('Network request failed'));
+    mockInvoke.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: null, search: null, copiedLinks: null });
+  });
+
+  it('a refused check (permission, not a missing function) is not known either', async () => {
+    const { getSpotifyAvailability } = load();
+    mockRpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'permission denied' } });
+    mockInvoke.mockResolvedValue({ data: { search: true }, error: null });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: null, search: true, copiedLinks: null });
+  });
+
+  it('asks again within seconds after a failure, not five minutes later', async () => {
+    const { getSpotifyAvailability } = load();
+    mockRpc.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'));
+    mockInvoke.mockResolvedValue({ data: { search: true }, error: null });
+    await getSpotifyAvailability();
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    await jest.advanceTimersByTimeAsync(16_000);
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: true, search: true, copiedLinks: true });
+  });
+
+  it('a failed refresh keeps the last real answer instead of forgetting it', async () => {
+    const { getSpotifyAvailability } = load();
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    mockInvoke.mockResolvedValue({ data: { search: true }, error: null });
+    await getSpotifyAvailability();
+    await jest.advanceTimersByTimeAsync(6 * 60 * 1000);
+    mockRpc.mockRejectedValue(new Error('offline'));
+    mockInvoke.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: true, search: true, copiedLinks: true });
+  });
+
+  it('keeps a real answer for minutes without asking again', async () => {
+    const { getSpotifyAvailability } = load();
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    mockInvoke.mockResolvedValue({ data: { search: true }, error: null });
+    await getSpotifyAvailability();
+    await jest.advanceTimersByTimeAsync(60_000);
+    await getSpotifyAvailability();
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing while signed out — every question would be refused', async () => {
+    const { getSpotifyAvailability } = load();
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+    await expect(getSpotifyAvailability())
+      .resolves.toEqual({ reposts: null, search: null, copiedLinks: null });
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 });
 

@@ -52,7 +52,7 @@ const CAPTION_MAX = 2000;
  * Two ways in, one screen:
  *  - from "+ Track" → Repost from Spotify: FIND the song — one box that searches Spotify
  *    as you type, or takes a pasted link and jumps straight to it;
- *  - from the Repost pill on a friend's Spotify repost: the song arrives LOCKED (no
+ *  - from "Repost this song" (⋯) on a friend's Spotify repost: the song arrives LOCKED (no
  *    search, no "Change song") and you only add your description.
  *
  * Deliberately not the Livil Repost screen with a flag: that screen is a clip editor built
@@ -64,6 +64,10 @@ export default function SpotifyRepostScreen() {
   const route = useRoute<Route>();
   const { showToast } = useToast();
   const availability = useSpotifyAvailability();
+  // Search is tried unless the server SAID it is off: a check that failed or has not
+  // answered yet must not turn this screen into paste-only. If Spotify then refuses the
+  // search itself, the box says so (SPOTIFY_SEARCH_BUSY).
+  const searchOn = availability.search !== false;
 
   const locked = route.params?.locked === true && !!route.params?.spotifyTrackId;
   const [pickedId, setPickedId] = useState<string | null>(route.params?.spotifyTrackId ?? null);
@@ -133,7 +137,7 @@ export default function SpotifyRepostScreen() {
       return () => { cancelled = true; };
     }
 
-    if (!availability.search) {
+    if (!searchOn) {
       setResults([]);
       setSearching(false);
       setHint('Search is not available right now. Paste a Spotify song link instead.');
@@ -164,7 +168,7 @@ export default function SpotifyRepostScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, pickedId, availability.search]);
+  }, [query, pickedId, searchOn]);
 
   const changeSong = useCallback(() => {
     setPickedId(null);
@@ -172,8 +176,9 @@ export default function SpotifyRepostScreen() {
   }, []);
 
   // The database refuses the insert while the switch is off; checking here as well turns
-  // that refusal into a clear message instead of an error after tapping.
-  const switchedOff = !availability.reposts;
+  // that refusal into a clear message instead of an error after tapping. Only a real "off"
+  // counts — not yet knowing is not a reason to block the button.
+  const switchedOff = availability.reposts === false;
   const canSubmit = !!pickedId && picked.status === 'ready' && !submitting && !switchedOff;
 
   const handleSubmit = useCallback(async () => {
@@ -195,7 +200,7 @@ export default function SpotifyRepostScreen() {
     }
   }, [pickedId, caption, submitting, showToast, navigation]);
 
-  const placeholder = availability.search ? 'Search Spotify or paste a link' : 'Paste a Spotify song link';
+  const placeholder = searchOn ? 'Search Spotify or paste a link' : 'Paste a Spotify song link';
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -249,7 +254,7 @@ export default function SpotifyRepostScreen() {
               }
             />
             <Text style={styles.helper}>
-              {availability.search
+              {searchOn
                 ? 'Type a song or artist, or paste a Spotify link to jump straight to it.'
                 : 'In Spotify, open the song → Share → Copy link, then paste it here.'}
             </Text>
