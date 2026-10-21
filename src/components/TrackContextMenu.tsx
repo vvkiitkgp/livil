@@ -21,6 +21,11 @@ export type TrackContextMenuProps = {
   onAddToQueue: (track: NowPlayingInfo) => void;
   onAddToPlaylist?: (track: NowPlayingInfo) => void;
   onGoToArtist?: (userId: string) => void;
+  /**
+   * "Repost/Story a clip of the song". Passed by the feed card (its header pill moved here, 2026-10-21) —
+   * the caller decides who may repost, so this menu does not need to know the rule.
+   */
+  onRepost?: () => void;
   /** Opens the report modal for the post. Hidden when the viewer is the post owner. */
   /** Share this post. Passed only for shareable posts (uploads) — the caller
    *  decides, so this menu does not need to know the rule. */
@@ -75,6 +80,7 @@ export default function TrackContextMenu({
   onAddToQueue,
   onAddToPlaylist,
   onGoToArtist,
+  onRepost,
   onSharePost,
   onReportPost,
   onDeletePost,
@@ -100,6 +106,11 @@ export default function TrackContextMenu({
   // Share sits at the top of the discretionary items, above the creator-only ones:
   // it applies to everyone and is the most likely reason to open this menu. Present
   // only when the caller passes a handler, which it does for uploads only.
+  if (onRepost) {
+    // Owner's words (2026-10-21): a Livil repost is a CLIP, and can go to a story — unlike a
+    // Spotify repost, whose own menu (SpotifyPostCard) keeps "Repost this song".
+    items.push({ id: 'repost', label: 'Repost/Story a clip of the song', icon: 'repost' });
+  }
   if (onSharePost) {
     items.push({ id: 'share-post', label: 'Share', icon: 'share' });
   }
@@ -154,6 +165,9 @@ export default function TrackContextMenu({
         case 'remove-from-album':
           onRemoveFromAlbum?.(track);
           break;
+        case 'repost':
+          onRepost?.();
+          break;
         case 'share-post':
           onSharePost?.();
           break;
@@ -165,7 +179,7 @@ export default function TrackContextMenu({
           break;
       }
     });
-  }, [track, onClose, runAfterDismiss, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onSharePost, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
+  }, [track, onClose, runAfterDismiss, onPlayNext, onAddToQueue, onAddToPlaylist, onGoToArtist, onRepost, onSharePost, onReportPost, onDeletePost, onAddToAlbum, onMoveToAlbum, onRemoveFromAlbum, postId]);
 
   if (!track) { return null; }
 

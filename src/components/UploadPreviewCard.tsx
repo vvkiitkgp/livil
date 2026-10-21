@@ -91,11 +91,6 @@ export default function UploadPreviewCard({
             </View>
           </View>
         </View>
-        <View style={styles.repostBtn} importantForAccessibility="no-hide-descendants">
-          <GradientBorder borderRadius={999} />
-          <Icon name="repost" size={14} color={COLORS.purpleNeon} />
-          <Text style={styles.repostBtnLabel}>Repost</Text>
-        </View>
         <View style={styles.moreBtn} importantForAccessibility="no-hide-descendants">
           <Icon name="overflow" size={18} color={COLORS.textSecondary} />
         </View>

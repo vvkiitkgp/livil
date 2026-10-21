@@ -22,7 +22,6 @@ import { useRelationships } from '../contexts/RelationshipContext';
 import UsernameBadges from './UsernameBadges';
 import ProgressiveImage from './ProgressiveImage';
 import { Icon } from './Icon';
-import { GradientBorder } from './GradientBorder';
 import { SpotifyLogo } from './SpotifyLogo';
 import type { PostCardProps } from './PostCard';
 import MentionText from './MentionText';
@@ -47,7 +46,8 @@ import { LikeHeart } from './LikeHeart';
  *    friends in chat only (ShareRepostSheet).
  *  - The action row: a grey-outlined box with Spotify's icon + a filled play disc (it opens
  *    Spotify), then the counters and Share packed on the right, as on a Livil card.
- *  - The Repost pill opens the Spotify repost screen with this song LOCKED in.
+ *  - "Repost this song" (in ⋯) opens the Spotify repost screen with this song LOCKED in.
+ *    The header keeps only "+ Add" (non-friends) and ⋯, so the name is never squeezed out.
  */
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -92,7 +92,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   const { showToast } = useToast();
   const spotifyId = post.spotifyTrackId ?? '';
   const meta = useSpotifyTrack(spotifyId || null);
-  // The Repost pill creates a new Spotify repost, so it follows the switch. Likes,
+  // "Repost this song" creates a new Spotify repost, so it follows the switch. Likes,
   // comments and "Play on Spotify" stay available on posts that already exist.
   const { reposts: repostsOn } = useSpotifyAvailability();
 
@@ -105,9 +105,9 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     return () => { cancelled = true; };
   }, []);
   const isOwner = !!viewerId && viewerId === post.author.id;
-  // No Repost pill on your own repost: it would only repost the same song again. Read from
-  // RelationshipContext (resolved once for the app), not `viewerId`, which arrives after the
-  // card draws and would flash the pill on every own repost.
+  // No "Repost this song" on your own repost: it would only repost the same song again.
+  // Read from RelationshipContext (resolved once for the app), not `viewerId`, which
+  // arrives after the card draws.
   const { meId } = useRelationships();
   const isOwnRepost = !!meId && meId === post.author.id;
 
@@ -162,16 +162,18 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }, [post.id, showToast, onDeleted]);
 
   const menuActions = useMemo<DetailAction[]>(() => {
-    const actions: DetailAction[] = [
-      { key: 'open', label: 'Open in Spotify', icon: 'externalLink', onPress: () => { void handleOpen(); } },
-    ];
+    const actions: DetailAction[] = [];
+    if (repostsOn && !isOwnRepost) {
+      actions.push({ key: 'repost', label: 'Repost this song', icon: 'repost', onPress: handleRepost });
+    }
+    actions.push({ key: 'open', label: 'Open in Spotify', icon: 'externalLink', onPress: () => { void handleOpen(); } });
     if (isOwner) {
       actions.push({ key: 'delete', label: 'Delete repost', icon: 'trash', destructive: true, onPress: () => setConfirmDelete(true) });
     } else if (viewerId) {
       actions.push({ key: 'report', label: 'Report post', icon: 'flag', onPress: () => setReportOpen(true) });
     }
     return actions;
-  }, [handleOpen, isOwner, viewerId]);
+  }, [handleOpen, handleRepost, isOwner, isOwnRepost, repostsOn, viewerId]);
 
   const track = meta.track;
   const title = meta.status === 'ready' ? track!.title : meta.status === 'loading' ? ' ' : 'Song unavailable';
@@ -204,7 +206,6 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             <View style={styles.nameRow}>
               <Text style={styles.displayName} numberOfLines={1}>{authorName}</Text>
               <UsernameBadges userId={author.id} size={15} />
-              <AddBadge userId={author.id} size="sm" />
             </View>
             <View style={styles.handleRow}>
               <Text style={styles.handleText} numberOfLines={1}>@{author.username}</Text>
@@ -213,13 +214,10 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             </View>
           </View>
         </TouchableOpacity>
-        {repostsOn && !isOwnRepost ? (
-          <TouchableOpacity style={styles.repostBtn} activeOpacity={0.85} accessibilityLabel="Repost" onPress={handleRepost}>
-            <GradientBorder borderRadius={999} />
-            <Icon name="repost" size={14} color={COLORS.purpleNeon} />
-            <Text style={styles.repostBtnLabel}>Repost</Text>
-          </TouchableOpacity>
-        ) : null}
+        {/* The name gets the row: on a small phone "+ Add" beside it and a Repost pill
+            squeezed it to a couple of letters (owner, 2026-10-21). So "+ Add" sits here —
+            it draws nothing for friends, pending requests or you — and Repost lives in ⋯. */}
+        <AddBadge userId={author.id} size="md" />
         <TouchableOpacity style={styles.moreBtn} onPress={() => setMenuOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="More options">
           <Icon name="overflow" size={18} color={COLORS.textSecondary} />
         </TouchableOpacity>
@@ -389,8 +387,6 @@ const styles = StyleSheet.create({
   handleText: { color: COLORS.textMuted, fontSize: 12, flexShrink: 1 },
   timeDot: { color: COLORS.textMuted, fontSize: 12 },
   timeText: { color: COLORS.textMuted, fontSize: 12 },
-  repostBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
-  repostBtnLabel: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
   moreBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center' },
   trackTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: -0.3, marginTop: 12 },
   artist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
