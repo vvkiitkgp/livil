@@ -42,6 +42,18 @@ jest.mock('../../../../lib/supabase', () => ({
   supabase: { auth: { getUser: (...a: unknown[]) => mockGetUser(...(a as [])) } },
 }));
 
+let mockSpotify = { reposts: true, search: true, copiedLinks: true };
+jest.mock('../../../services/spotify', () => ({
+  useSpotifyAvailability: () => mockSpotify,
+}));
+
+const mockDetectOn = jest.fn().mockResolvedValue(true);
+const mockSetDetect = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../../services/clipboard', () => ({
+  isCopiedLinkDetectionOn: (...a: unknown[]) => mockDetectOn(...(a as [])),
+  setCopiedLinkDetection: (...a: unknown[]) => mockSetDetect(...(a as [])),
+}));
+
 const mockShowToast = jest.fn();
 jest.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -94,6 +106,9 @@ describe('PrivacyDataScreen', () => {
     mockGetRepostsPublic.mockResolvedValue(true);
     mockUpdateRepostsPublic.mockResolvedValue(undefined);
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
+    mockSpotify = { reposts: true, search: true, copiedLinks: true };
+    mockDetectOn.mockResolvedValue(true);
+    mockSetDetect.mockResolvedValue(undefined);
   });
 
   it('labels the switch "Show what I\'m listening to"', async () => {
@@ -266,5 +281,41 @@ describe('PrivacyDataScreen', () => {
 
   it('names the data-protection contact', async () => {
     expect(texts(await mount()).join(' ')).toContain('@');
+  });
+
+  describe('"Detect copied Spotify links"', () => {
+    const detectSwitch = (t: TestRenderer.ReactTestRenderer) =>
+      switchFor(t, 'Detect copied Spotify links');
+
+    it('shows this phone\'s setting, on by default', async () => {
+      const tree = await mount();
+      expect(detectSwitch(tree)?.props.value).toBe(true);
+    });
+
+    it('saves a change on this phone', async () => {
+      const tree = await mount();
+      await act(async () => { detectSwitch(tree)!.props.onValueChange(false); });
+      expect(mockSetDetect).toHaveBeenCalledWith(false);
+      expect(detectSwitch(tree)?.props.value).toBe(false);
+    });
+
+    it('rolls back and warns when it could not be saved', async () => {
+      mockSetDetect.mockRejectedValueOnce(new Error('storage full'));
+      const tree = await mount();
+      await act(async () => { detectSwitch(tree)!.props.onValueChange(false); });
+      expect(detectSwitch(tree)?.props.value).toBe(true);
+      expect(mockShowToast).toHaveBeenCalledWith("Couldn't change this setting.", { kind: 'error' });
+    });
+
+    it('is gone while the server kill switch is off, or Spotify reposts are off', async () => {
+      mockSpotify = { reposts: true, search: true, copiedLinks: false };
+      let tree = await mount();
+      expect(detectSwitch(tree)).toBeUndefined();
+      expect(texts(tree)).not.toContain('Clipboard');
+
+      mockSpotify = { reposts: false, search: true, copiedLinks: true };
+      tree = await mount();
+      expect(detectSwitch(tree)).toBeUndefined();
+    });
   });
 });

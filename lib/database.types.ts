@@ -2906,6 +2906,7 @@ export type Database = {
         Args: { a: string; b: string }
         Returns: boolean
       }
+      spotify_copied_links_enabled: { Args: never; Returns: boolean }
       spotify_reposts_enabled: { Args: never; Returns: boolean }
       submit_account_exit_feedback: {
         Args: { p_note?: string; p_platform?: string; p_reason?: string }

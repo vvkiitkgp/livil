@@ -28,9 +28,14 @@ export type SpotifyAvailability = {
   reposts: boolean;
   /** Is Spotify search configured? Without it, only pasting a link works. */
   search: boolean;
+  /**
+   * The kill switch for "Repost the song you copied?" (spotify_copied_links_enabled()).
+   * Off: no clipboard check at all, and no "Detect copied Spotify links" row in Settings.
+   */
+  copiedLinks: boolean;
 };
 
-const UNAVAILABLE: SpotifyAvailability = { reposts: false, search: false };
+const UNAVAILABLE: SpotifyAvailability = { reposts: false, search: false, copiedLinks: false };
 
 async function call<T>(body: Record<string, unknown>): Promise<T | null> {
   try {
@@ -48,10 +53,12 @@ async function call<T>(body: Record<string, unknown>): Promise<T | null> {
 
 // ── Availability ────────────────────────────────────────────────────────────
 //
-// Two independent answers, asked in parallel:
-//   reposts — the switch, which lives in the DATABASE (spotify_reposts_enabled()), where it
-//             also refuses the insert. A missing function (migration not applied) is "off".
-//   search  — whether the edge function has Spotify credentials. Missing function → off.
+// Three independent answers, asked in parallel:
+//   reposts     — the switch, which lives in the DATABASE (spotify_reposts_enabled()), where it
+//                 also refuses the insert. A missing function (migration not applied) is "off".
+//   search      — whether the edge function has Spotify credentials. Missing function → off.
+//   copiedLinks — the kill switch for the copied-link check (spotify_copied_links_enabled(),
+//                 20261114000000). Same rule: a missing function is "off".
 //
 // Cached for a few minutes and re-asked when the app returns to the foreground, so the
 // owner flipping the switch reaches open apps without a restart — in either direction.
@@ -61,12 +68,14 @@ let availability: { value: SpotifyAvailability; at: number } | null = null;
 let availabilityInFlight: Promise<SpotifyAvailability> | null = null;
 
 async function fetchAvailability(): Promise<SpotifyAvailability> {
-  const [repostsRes, statusRes] = await Promise.all([
+  const [repostsRes, statusRes, copiedRes] = await Promise.all([
     Promise.resolve(supabase.rpc('spotify_reposts_enabled')).catch(() => null),
     call<{ search?: boolean }>({ action: 'status' }),
+    Promise.resolve(supabase.rpc('spotify_copied_links_enabled')).catch(() => null),
   ]);
   const reposts = repostsRes && !repostsRes.error ? repostsRes.data === true : false;
-  return { reposts, search: statusRes?.search === true };
+  const copiedLinks = copiedRes && !copiedRes.error ? copiedRes.data === true : false;
+  return { reposts, search: statusRes?.search === true, copiedLinks };
 }
 
 export function getSpotifyAvailability(): Promise<SpotifyAvailability> {
@@ -96,7 +105,10 @@ export function useSpotifyAvailability(): SpotifyAvailability {
     const refresh = () => {
       getSpotifyAvailability().then(v => {
         if (!cancelled) {
-          setValue(prev => (prev.reposts === v.reposts && prev.search === v.search ? prev : v));
+          setValue(prev => (
+            prev.reposts === v.reposts && prev.search === v.search
+              && prev.copiedLinks === v.copiedLinks ? prev : v
+          ));
         }
       });
     };
