@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 import ConfirmActionModal from './ConfirmActionModal';
 import {
   artistLine,
@@ -25,6 +25,8 @@ import { navigateWhenReady, navigationRef } from '../navigation/navigationRef';
 const READ_DELAY_MS = 500;
 /** Already on a screen for adding a Spotify song: the person is doing it themselves. */
 const SKIP_ON = new Set(['SpotifyRepost', 'AddToLivil']);
+/** Read fresh at each use: it changes while a check awaits (TypeScript would assume it can't). */
+const appStateNow = (): AppStateStatus => AppState.currentState;
 
 /**
  * "Repost the song you copied?" — when Livil opens (or comes back) with a Spotify song link on
@@ -58,37 +60,61 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
   const songShownRef = useRef(false);
   songShownRef.current = visible;
   const checkingRef = useRef(false);
-  // Clipboard texts already answered this session — in case clearing it did not stick.
+  // Android: clipboard texts already answered this session — in case clearing it did not stick.
   const answeredRef = useRef(new Set<string>());
   const textRef = useRef('');
+  // iPhone: a copied Spotify link, already allowed, whose song lookup failed (offline). Retried
+  // on the next return without reading the clipboard again — the copy is already used up, and a
+  // re-read would ask again. Memory only, like every clipboard text here.
+  const pendingRef = useRef<string | null>(null);
 
   const check = useCallback(async () => {
     if (!active || !reposts || checkingRef.current || shownRef.current) {return;}
+    // Not on screen (opened in the background, or a shade is down): starting a read here would
+    // use up the copy on an iPhone without the person seeing anything.
+    if (appStateNow() === 'background' || appStateNow() === 'inactive') {return;}
     const route = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
     if (route && SKIP_ON.has(route)) {return;}
     checkingRef.current = true;
     try {
-      const { text, askedToPaste } = await readCopiedText();
-      if (answeredRef.current.has(text)) {return;}
+      const read = await readCopiedText();
+      const { askedToPaste } = read;
+      let { text } = read;
+      if (text) {
+        pendingRef.current = null;
+      } else if (pendingRef.current) {
+        text = pendingRef.current;
+      }
+      // iPhone: the copy counter already stops a re-read, and this would swallow a deliberate
+      // re-copy of the same link (iOS asks, Allow, then nothing).
+      if (Platform.OS !== 'ios' && answeredRef.current.has(text)) {return;}
       const link = spotifyLinkInClipboard(text);
       if (!link) {
         // "Don't Allow" reads as '' — they said no, so there is nothing to explain.
         if (askedToPaste && text.trim() !== '' && !(await hasOpenedPasteSettings())
-          && AppState.currentState !== 'background') {
+          && appStateNow() !== 'background') {
+          shownRef.current = true;
           setSorryVisible(true);
         }
         return;
       }
       const id = link.id ?? (await resolveSpotifyLinkCached(link.shortUrl));
       const found = id ? await getSpotifyTrack(id) : null;
-      if (!found) {return;}
+      if (!found) {
+        if (Platform.OS === 'ios') { pendingRef.current = text; }
+        return;
+      }
       // Left the app while the song was being looked up.
-      if (AppState.currentState === 'background') {
+      if (appStateNow() === 'background') {
         forgetCheckedCopy();
         return;
       }
+      pendingRef.current = null;
       textRef.current = text;
       setTrack(found);
+      // Set now, not on the next render: a 'background' right after must see the question.
+      shownRef.current = true;
+      songShownRef.current = true;
       setVisible(true);
     } catch {
       // Nothing to offer — never an error over a clipboard.
@@ -103,14 +129,13 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
     let timer = setTimeout(() => { void check(); }, READ_DELAY_MS);
     const sub = AppState.addEventListener('change', state => {
       // 'inactive' (iOS only) is not leaving: Livil is still on screen, behind iOS's own "Allow
-      // Paste?" question — which this check sets off — or Control Center or the notification
-      // shade. Treating it as gone closed nothing but made the check drop its answer: Allow
-      // was tapped and no dialog followed (owner's iPhone, 2026-10-21).
+      // Paste?" question — which a running check sets off — or Control Center or the shade. It
+      // only cancels a check not yet started; treating it as gone made a running check drop its
+      // answer: Allow was tapped and no dialog followed (2026-10-21). 'active' re-arms it.
+      clearTimeout(timer);
       if (state === 'active') {
-        clearTimeout(timer);
         timer = setTimeout(() => { void check(); }, READ_DELAY_MS);
       } else if (state === 'background') {
-        clearTimeout(timer);
         // Gone without answering: ask again next time, and clear nothing.
         if (songShownRef.current) { forgetCheckedCopy(); }
         setVisible(false);
@@ -126,6 +151,7 @@ export default function SpotifyClipboardPrompt({ active }: { active: boolean }) 
   const answer = useCallback((repost: boolean) => {
     const id = track?.id;
     answeredRef.current.add(textRef.current);
+    pendingRef.current = null;
     clearCopiedText();
     setVisible(false);
     if (repost && id) { navigateWhenReady('SpotifyRepost', { spotifyTrackId: id }); }

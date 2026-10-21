@@ -3,6 +3,7 @@
  * Spotify song gets "Not a Spotify song" — even though the question itself made the app
  * 'inactive' while it was up (owner's iPhone, 2026-10-21: Allow, then nothing). It stays
  * quiet when iOS did not ask, when the person said no, and once Settings was opened from it.
+ * On an iPhone the copy is read at most once: a song whose lookup failed is retried from memory.
  */
 import React from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
@@ -11,13 +12,16 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 const YOUTUBE = 'https://music.youtube.com/watch?v=dQw4w9WgXcQ';
 const SPOTIFY = 'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b';
 
-let mockRead: (value: { text: string; askedToPaste: boolean }) => void;
+type MockCopied = { text: string; askedToPaste: boolean };
+let mockRead: (value: MockCopied) => void;
 let mockSettingsOpened = false;
+let mockLookup: (id: string) => Promise<{ id: string; title: string } | null>;
+const mockReadCopiedText = jest.fn(() => new Promise<MockCopied>(resolve => { mockRead = resolve; }));
 const mockOpenPasteSettings = jest.fn(async () => {});
 const mockForgetCheckedCopy = jest.fn();
 
 jest.mock('../../services/clipboard', () => ({
-  readCopiedText: () => new Promise(resolve => { mockRead = resolve; }),
+  readCopiedText: () => mockReadCopiedText(),
   hasOpenedPasteSettings: async () => mockSettingsOpened,
   openPasteSettings: () => mockOpenPasteSettings(),
   clearCopiedText: jest.fn(),
@@ -26,7 +30,7 @@ jest.mock('../../services/clipboard', () => ({
 jest.mock('../../services/spotify', () => ({
   useSpotifyAvailability: () => ({ reposts: true }),
   artistLine: () => 'Rick Astley',
-  getSpotifyTrack: async (id: string) => ({ id, title: 'Never Gonna Give You Up' }),
+  getSpotifyTrack: (id: string) => mockLookup(id),
   resolveSpotifyLinkCached: async () => null,
 }));
 jest.mock('../../navigation/navigationRef', () => ({
@@ -86,6 +90,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   appState = 'active';
   mockSettingsOpened = false;
+  mockLookup = async id => ({ id, title: 'Never Gonna Give You Up' });
+  mockReadCopiedText.mockClear();
   mockOpenPasteSettings.mockClear();
   mockForgetCheckedCopy.mockClear();
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, handler) => {
@@ -154,6 +160,61 @@ it('leaving Livil with the repost question up asks again next time; a pause does
   expect(mockForgetCheckedCopy).not.toHaveBeenCalled();
 
   await act(async () => { appState = 'background'; emit('background'); });
+  expect(texts(r)).toEqual([]);
+  expect(mockForgetCheckedCopy).toHaveBeenCalledTimes(1);
+});
+
+/** Leaves Livil and comes back, which starts the next check. */
+async function leaveAndReturn() {
+  await act(async () => { appState = 'background'; emit('background'); });
+  await act(async () => { appState = 'active'; emit('active'); });
+  await act(async () => { await jest.advanceTimersByTimeAsync(500); });
+}
+
+it('the return after iOS\'s question does not start a second read while the first waits', async () => {
+  await open();
+  await act(async () => { appState = 'inactive'; emit('inactive'); });
+  await act(async () => { appState = 'active'; emit('active'); });
+  await act(async () => { await jest.advanceTimersByTimeAsync(600); });
+  expect(mockReadCopiedText).toHaveBeenCalledTimes(1);
+});
+
+it('no check starts while a shade is down: the copy is not used up unseen', async () => {
+  await act(async () => { create(<SpotifyClipboardPrompt active />); });
+  await act(async () => { appState = 'inactive'; emit('inactive'); });
+  await act(async () => { await jest.advanceTimersByTimeAsync(600); });
+  expect(mockReadCopiedText).not.toHaveBeenCalled();
+});
+
+it('iPhone, Allow on a Spotify song while offline: the next return offers it, without reading again', async () => {
+  mockLookup = async () => null; // offline
+  const r = await open();
+  await act(async () => { mockRead({ text: SPOTIFY, askedToPaste: true }); });
+  expect(texts(r)).toEqual([]);
+
+  mockLookup = async id => ({ id, title: 'Never Gonna Give You Up' });
+  await leaveAndReturn();
+  await act(async () => { mockRead({ text: '', askedToPaste: false }); }); // same copy: not read
+  expect(texts(r)).toContain('Repost the song you copied?');
+});
+
+it('iPhone, the same Spotify link copied again after "Not now": offered again', async () => {
+  const r = await open();
+  await act(async () => { mockRead({ text: SPOTIFY, askedToPaste: true }); });
+  await press(r, 'Not now');
+
+  await leaveAndReturn();
+  await act(async () => { mockRead({ text: SPOTIFY, askedToPaste: true }); }); // a new copy
+  expect(texts(r)).toContain('Repost the song you copied?');
+});
+
+it('the song lookup finishes after Livil was left: the next open asks again', async () => {
+  let finish!: (track: { id: string; title: string }) => void;
+  mockLookup = () => new Promise(resolve => { finish = resolve; });
+  const r = await open();
+  await act(async () => { mockRead({ text: SPOTIFY, askedToPaste: true }); });
+  await act(async () => { appState = 'background'; emit('background'); });
+  await act(async () => { finish({ id: 'x', title: 'Never Gonna Give You Up' }); });
   expect(texts(r)).toEqual([]);
   expect(mockForgetCheckedCopy).toHaveBeenCalledTimes(1);
 });
