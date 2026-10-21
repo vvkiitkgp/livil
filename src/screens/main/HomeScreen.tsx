@@ -1343,15 +1343,16 @@ export default function HomeScreen() {
           <View style={styles.topBarActions}>
             {/* The same "+ Track" as the Profile top bar, at this bar's 38pt height so it
                 lines up with the messages button beside it. With Spotify reposts switched
-                on it asks what to add (ADR-0027); otherwise it goes straight to Upload. */}
+                on — or not known yet — it asks what to add (ADR-0027); only a real "off" from
+                the server goes straight to Upload. */}
             <Button
               label="Track"
               icon="add"
               variant="primary"
               size="sm"
               style={styles.uploadButton}
-              onPress={() => navigation.navigate(spotify.reposts ? 'AddToLivil' : 'Upload')}
-              accessibilityLabel={spotify.reposts ? 'Add a track' : 'Upload a track'}
+              onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
+              accessibilityLabel={spotify.reposts !== false ? 'Add a track' : 'Upload a track'}
             />
             <TouchableOpacity
               activeOpacity={0.85}

@@ -21,10 +21,12 @@ the Upstash secrets are set — all isolates share one Redis cache:
 
 - `tracks` reads every miss in ONE `MGET` (plus the shared back-off key), fetches what is
   still missing from Spotify at most 4 at a time, then writes the answers in one pipeline.
-- `search` caches each query for six hours (five minutes when nothing matched), under an
-  HMAC of the folded text — never the words typed.
-- A 429 writes `livil:spotify:v1:blocked-until`, so every isolate stops calling the Web API
-  for Spotify's `Retry-After`, not just the one that was told.
+- `search` NEVER touches Redis — no read, no write, not even for the same words again
+  (owner, 2026-10-21). Each isolate keeps its own answers in memory for six hours (five
+  minutes when nothing matched), under an HMAC of the folded text — never the words typed.
+- A 429 on a card lookup writes `livil:spotify:v1:blocked-until`, so every isolate stops
+  calling the Web API for Spotify's `Retry-After`, not just the one that was told. A 429 on
+  a search backs off that isolate only.
 
 Redis unset, failing or slower than 500 ms → the function behaves exactly as without it.
 

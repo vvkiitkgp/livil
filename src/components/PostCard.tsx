@@ -446,7 +446,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     openFullScreen();
   }, [isThisActive, post.id, post.clipStartSec, buildNowPlayingForThis, playback, openFullScreen]);
 
-  // Shared by the header's Repost pill and the repost counter in the stats row. A repost
+  // Shared by "Repost/Story a clip of the song" in ⋯ and the repost counter in the stats row. A repost
   // is always of the ORIGINAL (reposts of reposts are refused), seeded with this card's
   // clip so "repost what I'm hearing" starts from the same window.
   const handleRepost = useCallback(() => {
@@ -473,9 +473,9 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
-  // No Repost pill on your own repost: it would only repost the same song again. The id comes
-  // from RelationshipContext (resolved once for the app) rather than `viewerId`, which each
-  // card fetches after it draws — gating on that would flash the pill on every own repost.
+  // No repost item in ⋯ on your own repost: it would only repost the same song again. The
+  // id comes from RelationshipContext (resolved once for the app) rather than `viewerId`,
+  // which each card fetches after it draws.
   const { meId } = useRelationships();
   const isOwnRepost = post.kind === 'repost' && !!meId && meId === post.author.id;
   // An upload: the full share sheet. A repost: friends only (ShareRepostSheet).
@@ -680,12 +680,10 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               <Text style={styles.displayName} numberOfLines={1}>
                 {headerAuthor.displayName ?? headerAuthor.username}
               </Text>
-              {/* Badges sit with the NAME; AddBadge is an action and stays last. Sibling of
-                  the Text, never inside it — these are SVGs, and RN will not lay one out in
-                  a text run. displayName has flexShrink: 1, so a long name truncates and
-                  the badges stay whole. */}
+              {/* Badges sit with the NAME. Sibling of the Text, never inside it — these are
+                  SVGs, and RN will not lay one out in a text run. displayName has
+                  flexShrink: 1, so a long name truncates and the badges stay whole. */}
               <UsernameBadges userId={headerAuthor.id} size={15} />
-              <AddBadge userId={headerAuthor.id} size="sm" />
             </View>
             <View style={styles.handleRow}>
               <Text style={styles.handleText} numberOfLines={1}>
@@ -696,18 +694,11 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             </View>
           </View>
         </TouchableOpacity>
-        {isOwnRepost ? null : (
-          <TouchableOpacity
-            style={styles.repostBtn}
-            activeOpacity={0.85}
-            accessibilityLabel="Repost"
-            onPress={handleRepost}
-          >
-            <GradientBorder borderRadius={999} />
-            <Icon name="repost" size={14} color={COLORS.purpleNeon} />
-            <Text style={styles.repostBtnLabel}>Repost</Text>
-          </TouchableOpacity>
-        )}
+        {/* The name gets the row: on a small phone "+ Add" beside it and a Repost pill
+            squeezed it to a couple of letters (owner, 2026-10-21). So "+ Add" sits here —
+            it draws nothing for friends, pending requests or you — and Repost lives in ⋯
+            (and, on an upload, the repost counter below). */}
+        <AddBadge userId={headerAuthor.id} size="md" />
         <TouchableOpacity
           style={styles.moreBtn}
           onPress={() => setContextMenuVisible(true)}
@@ -912,7 +903,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
               0 — don't show it. Plays/views are intentionally removed here per
               product decision; the cumulative track plays live in FullScreenPlayer. */}
           {post.kind === 'upload' ? (
-            // Does exactly what the Repost pill in the header does — users reached for
+            // Does exactly what "Repost/Story a clip of the song" in ⋯ does — users reached for
             // this icon, next to the tappable like and comment, and nothing happened.
             <TouchableOpacity
               style={styles.statBtn}
@@ -991,6 +982,7 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         viewerId={viewerId}
         postId={post.id}
         postAuthorId={post.author.id}
+        onRepost={isOwnRepost ? undefined : handleRepost}
         onReportPost={() => setReportOpen(true)}
         onDeletePost={() => setConfirmDelete(true)}
         currentAlbumTitle={currentAlbum?.title ?? null}
@@ -1081,7 +1073,7 @@ const styles = StyleSheet.create({
    * Negative margins cancel the card's 14dp padding so the band spans its full inner
    * width, and the padding puts the content back. The top corners are rounded HERE
    * rather than by putting `overflow: 'hidden'` on the card: the card also hosts
-   * GradientBorder (the play button, the Repost pill), whose glow is drawn inward and
+   * GradientBorder (the play button), whose glow is drawn inward and
    * would be clipped by it — the trap the design notes name explicitly. 19 is the card's
    * 20dp radius less its 1dp border, the radius of the padding box the band sits in.
    */
@@ -1176,20 +1168,6 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 12,
     flexShrink: 1,
-  },
-  repostBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  repostBtnLabel: {
-    color: COLORS.purpleNeon,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.2,
   },
   moreBtn: {
     width: 32,

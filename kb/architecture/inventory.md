@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-450 TypeScript file(s) under `src/`, 93,752 lines.
+450 TypeScript file(s) under `src/`, 93,873 lines.
 
 ## Size hotspots
 
@@ -29,18 +29,18 @@ reading alone (Constitution P28).
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/ConversationScreen.tsx` | 2257 |
 | `src/screens/main/UploadScreen.tsx` | 2240 |
+| `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
-| `src/components/PostCard.tsx` | 1453 |
-| `src/screens/main/ProfileScreen.tsx` | 1428 |
+| `src/components/PostCard.tsx` | 1431 |
+| `src/screens/main/ProfileScreen.tsx` | 1429 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1001 |
 | `src/components/FloatingPlayer.tsx` | 926 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
@@ -104,26 +104,26 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,727 lines.
+50 file(s), 27,740 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2257 |
 | `src/screens/main/UploadScreen.tsx` | 2240 |
+| `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/screens/main/HomeScreen.tsx` | 1670 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
-| `src/screens/main/ProfileScreen.tsx` | 1428 |
+| `src/screens/main/ProfileScreen.tsx` | 1429 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1001 |
-| `src/screens/auth/BackstagePassOnboarding.tsx` | 799 |
+| `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 517 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 522 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
@@ -161,12 +161,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,478 lines.
+169 file(s), 33,461 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/components/PostCard.tsx` | 1453 |
+| `src/components/PostCard.tsx` | 1431 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
@@ -176,7 +176,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MediaPlayer.tsx` | 468 |
 | `src/components/QueueList.tsx` | 425 |
 | `src/components/ChatSongPicker.tsx` | 421 |
-| `src/components/SpotifyPostCard.tsx` | 421 |
+| `src/components/SpotifyPostCard.tsx` | 417 |
 | `src/components/DetailView.tsx` | 411 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/AddUserSheet.tsx` | 392 |
@@ -187,8 +187,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ActivityBubble.tsx` | 324 |
 | `src/components/CommentItem.tsx` | 321 |
 | `src/components/guide/primitives.tsx` | 319 |
+| `src/components/TrackContextMenu.tsx` | 307 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
-| `src/components/TrackContextMenu.tsx` | 293 |
 | `src/components/ChatSongCard.tsx` | 290 |
 | `src/components/Button.tsx` | 286 |
 | `src/components/InboxBanner.tsx` | 281 |
@@ -225,7 +225,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 186 |
-| `src/components/UploadPreviewCard.tsx` | 185 |
+| `src/components/UploadPreviewCard.tsx` | 180 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ChatReplySnippet.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
@@ -337,7 +337,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-102 file(s), 19,627 lines.
+102 file(s), 19,752 lines.
 
 | File | Lines |
 |---|---:|
@@ -349,15 +349,15 @@ case the call fails silently wherever its result is discarded.
 | `src/services/share.ts` | 551 |
 | `src/services/albums.ts` | 521 |
 | `src/services/profileService.ts` | 509 |
+| `src/services/spotify.ts` | 466 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
-| `src/services/spotify.ts` | 405 |
 | `src/services/playlists.ts` | 388 |
 | `src/services/messages.ts` | 386 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/uploads.ts` | 344 |
+| `src/services/__tests__/spotify.test.ts` | 330 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
-| `src/services/__tests__/spotify.test.ts` | 266 |
 | `src/services/conversations.ts` | 249 |
 | `src/services/gifs.ts` | 245 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |

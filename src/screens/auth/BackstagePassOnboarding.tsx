@@ -304,13 +304,19 @@ function PassHandoff({
         Seen signed-out by brand-new AND returning listeners, so the greeting
         depends on whether this install has ever had a session.
       */}
-      {returning === null ? null : (
+      {returning === null ? null : returning ? (
         <View style={styles.passCopy}>
-          <Kicker>{returning ? 'GOOD TO SEE YOU' : 'DOORS ARE OPEN'}</Kicker>
-          <Headline size={30} center>{returning ? 'WELCOME BACK' : 'YOUR NIGHT STARTS HERE'}</Headline>
+          <Kicker>GOOD TO SEE YOU</Kicker>
+          <Headline size={30} center>WELCOME BACK</Headline>
           {height >= 760 ? (
             <Text style={[styles.sub, styles.passSub]}>Share and explore music with friends.</Text>
           ) : null}
+        </View>
+      ) : (
+        // First-timers get the one line that says what Livil is (owner, 2026-10-21) —
+        // no kicker, and no sub line repeating it.
+        <View style={styles.passCopy}>
+          <Headline size={30} center>SHARE AND EXPLORE MUSIC WITH FRIENDS</Headline>
         </View>
       )}
       <View style={styles.ctaSlot}>
