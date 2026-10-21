@@ -60,7 +60,11 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
    cards' song details only — **search never reads or writes it**, not even for the same words
    again. A search is answered from the isolate's own memory or from Spotify, and a 429 on a
    search backs off that isolate alone. Accepted cost: more search calls reach Spotify, so a
-   busy spell can rate-limit us sooner (cards share the same Spotify allowance).
+   busy spell can rate-limit us sooner (cards share the same Spotify allowance). It also
+   means search does NOT honour a back-off that card lookups already shared: an isolate that
+   has not itself been told keeps sending searches during it — up to the per-user budget
+   (120/min) per signed-in account before its own first 429 stops it (security review,
+   2026-10-21). If that bites, the Redis-free fix is a smaller search-only budget.
 3. **Livil never plays it.** Tapping play pauses Livil (the single engine, ADR-0001) and opens
    `https://open.spotify.com/track/<id>`. Every queue builder filters with
    `isPlayableInLivil`; the database refuses Spotify posts in `playlist_posts`,
