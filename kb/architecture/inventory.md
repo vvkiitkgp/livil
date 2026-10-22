@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-21
+last_verified: 2026-10-22
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-450 TypeScript file(s) under `src/`, 93,873 lines.
+451 TypeScript file(s) under `src/`, 94,019 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/ConversationScreen.tsx` | 2257 |
-| `src/screens/main/UploadScreen.tsx` | 2240 |
+| `src/screens/main/UploadScreen.tsx` | 2242 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
@@ -38,16 +38,17 @@ reading alone (Constitution P28).
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
-| `src/screens/main/RepostScreen.tsx` | 1001 |
+| `src/screens/main/RepostScreen.tsx` | 1003 |
 | `src/components/FloatingPlayer.tsx` | 926 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 625 |
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 20 file(s) over the threshold against **31 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 21 file(s) over the threshold against **31 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -104,26 +105,26 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,740 lines.
+50 file(s), 27,855 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2257 |
-| `src/screens/main/UploadScreen.tsx` | 2240 |
+| `src/screens/main/UploadScreen.tsx` | 2242 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
 | `src/screens/main/ProfileScreen.tsx` | 1429 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
-| `src/screens/main/RepostScreen.tsx` | 1001 |
+| `src/screens/main/RepostScreen.tsx` | 1003 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 625 |
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 522 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
@@ -157,11 +158,11 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/AddToLivilScreen.tsx` | 135 |
+| `src/screens/main/AddToLivilScreen.tsx` | 143 |
 
 ## Components
 
-169 file(s), 33,461 lines.
+169 file(s), 33,458 lines.
 
 | File | Lines |
 |---|---:|
@@ -268,13 +269,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Choice.tsx` | 108 |
 | `src/components/FormInput.tsx` | 107 |
 | `src/components/HomeFeedTabs.tsx` | 107 |
-| `src/components/AddBadge.tsx` | 102 |
 | `src/components/LikedByLine.tsx` | 102 |
 | `src/components/__tests__/NotificationNudge.test.tsx` | 102 |
 | `src/components/NowPlayingPill.tsx` | 100 |
 | `src/components/__tests__/ChatGifPicker.test.tsx` | 100 |
 | `src/components/__tests__/CommentGifCard.test.tsx` | 100 |
 | `src/components/guide/cards.ts` | 100 |
+| `src/components/AddBadge.tsx` | 99 |
 | `src/components/ProgressiveImage.tsx` | 99 |
 | `src/components/CommentGifCard.tsx` | 98 |
 | `src/components/SettingsSection.tsx` | 93 |
