@@ -4,6 +4,18 @@
 import { supabase } from '../supabase';
 import { studioUrl } from '../basePath';
 import { isWeakPasswordError, WEAK_PASSWORD_MESSAGE } from '@shared/services/passwordPolicy';
+import {
+  APPLE_SCOPE,
+  APPLE_WEB_CLIENT_ID,
+  appleErrorKind,
+  appleFullName,
+  loadAppleId,
+  makeNonce,
+  makeState,
+  type AppleIdApi,
+  type AppleIdResponse,
+  type AppleNonce,
+} from './appleId';
 
 /** The public listing. Live in production, so it resolves for everyone. */
 export const PLAY_STORE_URL =
@@ -212,4 +224,113 @@ export async function signInWithGoogle(): Promise<SignInResult> {
     options: { redirectTo: studioUrl('/') },
   });
   return error ? { ok: false, message: error.message } : { ok: true };
+}
+
+/**
+ * Everything Apple's popup needs, built BEFORE the click: the script loaded and the nonce
+ * hashed. Both are async, and an `await` between the click and `AppleID.auth.signIn()`
+ * spends the click's user activation — Safari then blocks the popup.
+ *
+ * Single use: the nonce must not be replayed, so take a fresh one for every attempt.
+ */
+export type AppleSignInRequest = { api: AppleIdApi; nonce: AppleNonce; state: string };
+
+export async function prepareAppleSignIn(): Promise<AppleSignInRequest> {
+  const [api, nonce] = await Promise.all([loadAppleId(), makeNonce()]);
+  return { api, nonce, state: makeState() };
+}
+
+/** `message: null` means the person closed Apple's window — say nothing. */
+export type AppleSignInResult = { ok: true } | { ok: false; message: string | null };
+
+const APPLE_FAILED =
+  "Apple sign-in didn't go through. Try again, or sign in with your email and password.";
+
+/**
+ * Open Apple's window and exchange its identity token for a Supabase session.
+ *
+ * Call it straight from the click handler: `init` and `signIn` run before this function's
+ * first `await`, which is what keeps the popup inside the click's user activation.
+ *
+ * See `appleId.ts` for why this is Apple's JS popup rather than `signInWithOAuth`, and why
+ * an account made on the iPhone is the same account here.
+ */
+export async function signInWithApple(request: AppleSignInRequest): Promise<AppleSignInResult> {
+  const { api, nonce, state } = request;
+
+  let response: AppleIdResponse;
+  try {
+    api.auth.init({
+      clientId: APPLE_WEB_CLIENT_ID,
+      scope: APPLE_SCOPE,
+      // Must match a Return URL on the Services ID exactly. Apple accepts only registered
+      // https URLs, which is why this cannot work on a localhost dev server.
+      redirectURI: studioUrl('/'),
+      state,
+      nonce: nonce.hashed,
+      usePopup: true,
+    });
+    response = await api.auth.signIn();
+  } catch (e) {
+    const kind = appleErrorKind(e);
+    if (kind === 'cancelled') return { ok: false, message: null };
+    if (kind === 'popup-blocked') {
+      return {
+        ok: false,
+        message: "Your browser blocked Apple's sign-in window. Allow pop-ups for this site and try again.",
+      };
+    }
+    console.error('[auth] apple popup', e);
+    return { ok: false, message: APPLE_FAILED };
+  }
+
+  // The popup answers by postMessage; a state that does not round-trip is not our request.
+  if (!response.authorization?.id_token || response.authorization.state !== state) {
+    console.error('[auth] apple: missing token or state mismatch');
+    return { ok: false, message: APPLE_FAILED };
+  }
+
+  const { data, error } = await supabase.auth.signInWithIdToken({
+    provider: 'apple',
+    token: response.authorization.id_token,
+    // RAW here, hashed to Apple — see `makeNonce`.
+    nonce: nonce.raw,
+  });
+  if (error) {
+    // A 4xx here is a configuration or token problem ("Unacceptable audience", "Nonces
+    // mismatch"), not something the person can act on, so it is logged and not shown.
+    if (isTransportFailure(error)) return { ok: false, message: humanize(error) };
+    console.error('[auth] apple token', error);
+    return { ok: false, message: APPLE_FAILED };
+  }
+
+  await seedAppleDisplayName(data.user?.id, appleFullName(response.user));
+  return { ok: true };
+}
+
+/**
+ * Keep the name Apple shares — the ONE time it shares it.
+ *
+ * Same rule as `seedDisplayName` in the app's `appleAuth.ts`: Apple sends the name only on
+ * the first authorization of this Apple ID for Livil (iPhone and web count as one app), and
+ * it is not in the identity token, so `handle_new_user()` falls back to the email prefix —
+ * for "Hide My Email" a relay id. `username_set = false` limits the write to a profile still
+ * being created, so it cannot overwrite a name someone chose.
+ *
+ * Never throws: the person is already signed in, and a missing name is fixable in Edit
+ * Profile, so this must not turn a successful sign-in into an error.
+ */
+async function seedAppleDisplayName(userId: string | undefined, name: string | null) {
+  if (!userId || !name) return;
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      // 80 = `profiles_display_name_len`.
+      .update({ display_name: name.slice(0, 80) })
+      .eq('id', userId)
+      .eq('username_set', false);
+    if (error) console.error('[auth] apple display_name seed', error);
+  } catch (e) {
+    console.error('[auth] apple display_name seed', e);
+  }
 }

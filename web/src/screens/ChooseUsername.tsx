@@ -3,6 +3,7 @@ import { Button } from '../components/Button';
 import { TextField } from '../components/TextField';
 import { signOut } from '../auth/session';
 import { supabase } from '../supabase';
+import { appleClaimDisplayName } from '../auth/appleId';
 import {
   normalizeUsername,
   useUsernameAvailability,
@@ -43,7 +44,7 @@ export function ChooseUsername({ onClaimed }: { onClaimed: () => void }) {
 
     const { error: rpcError } = await supabase.rpc('claim_username', {
       p_username: cleaned,
-      p_display_name: displayName.trim() || undefined,
+      p_display_name: displayName.trim() || (await blankDisplayName(cleaned)),
     });
 
     setBusy(false);
@@ -107,4 +108,28 @@ export function ChooseUsername({ onClaimed }: { onClaimed: () => void }) {
       </form>
     </main>
   );
+}
+
+/**
+ * The display name to claim with when the name field is left blank.
+ *
+ * `undefined` (keep the profile's current name) for everyone except a Sign in with Apple
+ * account, which follows the app's rule (`appleDisplayName` in `ChooseUsernameScreen`): the
+ * name Apple shared if sign-in kept it, otherwise the username — never `handle_new_user`'s
+ * email-prefix fallback, which for "Hide My Email" is a relay id like `8kd93jf0q1`.
+ */
+async function blankDisplayName(username: string): Promise<string | undefined> {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  const providers = (user?.app_metadata?.providers as string[] | undefined) ?? [];
+  if (!user || !providers.includes('apple')) return undefined;
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', user.id)
+    .maybeSingle();
+  // Unreadable profile: the username is a safe name, and this must never block the claim.
+  if (error) return username;
+  return appleClaimDisplayName(profile?.display_name, user.email, username);
 }

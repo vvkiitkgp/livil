@@ -9,6 +9,7 @@ import {
   signUpWithPassword,
 } from '../auth/signIn';
 import { StoreBadges } from '../components/StoreBadges';
+import { AppleSignInButton } from '../components/AppleSignInButton';
 import {
   normalizeUsername,
   useUsernameAvailability,
@@ -278,6 +279,9 @@ export function SignIn({
         >
           Continue with Google
         </Button>
+        {/* Same account as the iPhone app's Apple sign-in. It is the only way in for anyone
+            who used "Hide My Email" there: they have no Livil password. */}
+        <AppleSignInButton onStart={() => setError(null)} onError={setError} />
 
         {!signingUp && (
           <button type="button" className="linkbtn" onClick={onForgotPassword}>
