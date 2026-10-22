@@ -1,6 +1,6 @@
 /**
  * "Play on Spotify". With the notice (feed, chat, search): it hands off only after the
- * notice. Without it (Repost from Spotify — an iOS sheet the notice cannot appear over):
+ * notice. Without it (Repost a song, SpotifyRepostScreen — an iOS sheet the notice cannot appear over):
  * straight to Spotify. Either way Livil pauses first and the open is counted once.
  */
 import React from 'react';

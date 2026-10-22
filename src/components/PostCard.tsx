@@ -694,8 +694,8 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             </View>
           </View>
         </TouchableOpacity>
-        {/* The name gets the row: on a small phone "+ Add" beside it and a Repost pill
-            squeezed it to a couple of letters (owner, 2026-10-21). So "+ Add" sits here —
+        {/* The name gets the row: on a small phone "+ Friend" beside it and a Repost pill
+            squeezed it to a couple of letters (owner, 2026-10-21). So "+ Friend" sits here —
             it draws nothing for friends, pending requests or you — and Repost lives in ⋯
             (and, on an upload, the repost counter below). */}
         <AddBadge userId={headerAuthor.id} size="md" />

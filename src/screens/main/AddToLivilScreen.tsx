@@ -8,6 +8,7 @@ import { haptics } from '../../utils/haptics';
 import { Icon, type IconName } from '../../components/Icon';
 import { GradientBorder } from '../../components/GradientBorder';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
+import { Logo } from '../../components/Logo';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -15,10 +16,12 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 /**
  * "What do you want to add?" — opened by "+ Track" on your profile and "+" on Home while
  * Spotify reposts are switched on (ADR-0027). With the switch off those buttons skip this
- * screen and go straight to Upload, exactly as before.
+ * screen and go straight to Upload, exactly as before. "Repost a song" searches Livil and
+ * Spotify together (SpotifyRepostScreen); a Livil pick moves on to the clip editor.
  *
- * `replace`, not `navigate`: the chooser is a fork in the road, not a step. Cancelling the
- * upload (or the repost) should land you back where you started, not on this screen.
+ * `push`, not `replace`: swapping one modal for another plays on iOS as this sheet closing
+ * and a new one opening (owner, 2026-10-22). Stacked, the next screen slides up over this
+ * one; Cancel there comes back here, and posting closes the whole flow (closeAddFlow).
  */
 export default function AddToLivilScreen() {
   const navigation = useNavigation<Nav>();
@@ -38,7 +41,7 @@ export default function AddToLivilScreen() {
 
       <View style={styles.intro}>
         <Text style={styles.title}>What do you want to add?</Text>
-        <Text style={styles.subtitle}>Share your own music, or a song you love from Spotify.</Text>
+        <Text style={styles.subtitle}>Share your own music, or repost a song you love.</Text>
       </View>
 
       <View style={styles.options}>
@@ -46,15 +49,20 @@ export default function AddToLivilScreen() {
           primary
           icon="upload"
           title="Upload a track"
-          body="Your own song or video, from your phone. Plays right here in Livil."
-          onPress={() => navigation.replace('Upload')}
+          body="For independent artists: singers, guitarists, drummers, DJs. Your own song or video, played right here in Livil."
+          onPress={() => navigation.push('Upload')}
         />
         <Option
           icon="repost"
-          title="Repost from Spotify"
-          body="Search Spotify or paste a song link. Your friends play it in Spotify."
-          footer={<SpotifyLogo size="xs" withName style={styles.logo} />}
-          onPress={() => navigation.replace('SpotifyRepost', undefined)}
+          title="Repost a song"
+          body="Say how you feel today, with a song."
+          footer={
+            <View style={styles.logos}>
+              <Logo size={30} color={COLORS.white} />
+              <SpotifyLogo size="xs" withName />
+            </View>
+          }
+          onPress={() => navigation.push('SpotifyRepost', undefined)}
         />
       </View>
     </SafeAreaView>
@@ -130,5 +138,5 @@ const styles = StyleSheet.create({
   optionText: { flex: 1, gap: 4 },
   optionTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
   optionBody: { color: COLORS.textSecondary, fontSize: 14, lineHeight: 20 },
-  logo: { marginTop: 4 },
+  logos: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
 });

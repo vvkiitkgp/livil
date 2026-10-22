@@ -20,9 +20,10 @@ import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { Button } from '../../components/Button';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
+import { Logo } from '../../components/Logo';
 import { useOpenInSpotify } from '../../hooks/useOpenInSpotify';
 import { useToast } from '../../contexts/ToastContext';
-import { createSpotifyRepost } from '../../services/posts';
+import { createSpotifyRepost, isPlayableInLivil, searchPosts, type FeedPost } from '../../services/posts';
 import {
   artistLine,
   rememberSpotifyTrack,
@@ -36,6 +37,7 @@ import {
 import { looksLikeSpotifyLink, parseSpotifyTrackId } from '../../utils/spotifyLinks';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 import type { RootStackParamList } from '../../navigation/types';
+import { closeAddFlow } from '../../navigation/closeAddFlow';
 import MentionSuggestions from '../../components/MentionSuggestions';
 import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
@@ -44,14 +46,43 @@ type Route = RouteProp<RootStackParamList, 'SpotifyRepost'>;
 
 const SEARCH_DEBOUNCE_MS = 350;
 const SEARCH_RESULTS = 8;
+const LIVIL_RESULTS = 5;
 const CAPTION_MAX = 2000;
 
+/** A Livil song in the search results: the original upload's post, once per track. */
+type LivilHit = { postId: string; trackId: string; title: string; artist: string; artUrl: string | null };
+
 /**
- * Repost a Spotify track (ADR-0027).
+ * Search returns uploads AND reposts of them. A repost is reposted through its original
+ * upload (as the card's own Repost does), so each song appears once, pointing at that post.
+ */
+function toLivilHits(posts: FeedPost[]): LivilHit[] {
+  const seen = new Set<string>();
+  const hits: LivilHit[] = [];
+  for (const post of posts) {
+    if (!isPlayableInLivil(post)) {continue;}
+    const postId = post.kind === 'repost' ? post.originalPostId : post.id;
+    if (!postId || seen.has(post.track.id)) {continue;}
+    seen.add(post.track.id);
+    const artist = post.kind === 'repost' ? post.originalAuthor : post.author;
+    hits.push({
+      postId,
+      trackId: post.track.id,
+      title: post.track.title,
+      artist: artist?.displayName || (artist ? `@${artist.username}` : ''),
+      artUrl: post.track.coverArtUrl ?? post.track.thumbnailUrl,
+    });
+  }
+  return hits;
+}
+
+/**
+ * Repost a song: Livil or Spotify (ADR-0027).
  *
  * Two ways in, one screen:
- *  - from "+ Track" → Repost from Spotify: FIND the song — one box that searches Spotify
- *    as you type, or takes a pasted link and jumps straight to it;
+ *  - from "+ Track" → Repost a song: FIND the song — one box that searches Livil and Spotify
+ *    as you type, or takes a pasted Spotify link and jumps straight to it. A Livil result
+ *    hands over to the Livil Repost screen (clip editor); a Spotify result stays here;
  *  - from "Repost this song" (⋯) on a friend's Spotify repost: the song arrives LOCKED (no
  *    search, no "Change song") and you only add your description.
  *
@@ -77,6 +108,8 @@ export default function SpotifyRepostScreen() {
   const [frameHeight, setFrameHeight] = useState(0);
   const [results, setResults] = useState<SpotifyTrack[]>([]);
   const [searching, setSearching] = useState(false);
+  const [livil, setLivil] = useState<LivilHit[]>([]);
+  const [livilSearching, setLivilSearching] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const mention = useMentionInput(caption, setCaption);
@@ -140,7 +173,7 @@ export default function SpotifyRepostScreen() {
     if (!searchOn) {
       setResults([]);
       setSearching(false);
-      setHint('Search is not available right now. Paste a Spotify song link instead.');
+      setHint("Spotify search isn't available right now. Paste a Spotify song link instead.");
       return;
     }
     if (text.length < 2) {
@@ -170,6 +203,39 @@ export default function SpotifyRepostScreen() {
     };
   }, [query, pickedId, searchOn]);
 
+  // Livil songs, searched alongside Spotify. Independent of the Spotify switches: Livil's
+  // own catalogue is always there. Not for a pasted link (that is a Spotify jump).
+  useEffect(() => {
+    const text = query.trim();
+    if (pickedId || text.length < 2 || looksLikeSpotifyLink(text)) {
+      setLivil([]);
+      setLivilSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setLivilSearching(true);
+    const timer = setTimeout(async () => {
+      // Over-fetch: reposts of one song collapse into a single row.
+      const found = await searchPosts(text, { limit: LIVIL_RESULTS * 3 }).catch(() => [] as FeedPost[]);
+      if (cancelled) {return;}
+      setLivil(toLivilHits(found).slice(0, LIVIL_RESULTS));
+      setLivilSearching(false);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, pickedId]);
+
+  // A Livil song is reposted on the Livil Repost screen (clip, caption, story). Pushed on
+  // top, not swapped in (a modal swap plays as close + reopen on iOS): Cancel there comes
+  // back to this search, and posting closes the whole "+ Track" flow (closeAddFlow).
+  const pickLivil = useCallback((hit: LivilHit) => {
+    haptics.select();
+    Keyboard.dismiss();
+    navigation.push('Repost', { originalPostId: hit.postId });
+  }, [navigation]);
+
   const changeSong = useCallback(() => {
     setPickedId(null);
     setTimeout(() => findRef.current?.focus(), 50);
@@ -188,7 +254,7 @@ export default function SpotifyRepostScreen() {
       await createSpotifyRepost(pickedId, caption);
       haptics.success();
       showToast("Reposted! It's live on your profile.", { kind: 'success' });
-      navigation.goBack();
+      closeAddFlow(navigation);
     } catch (e) {
       const raw = e instanceof Error ? e.message : '';
       // The column only exists once the migration is applied; say so plainly.
@@ -200,7 +266,10 @@ export default function SpotifyRepostScreen() {
     }
   }, [pickedId, caption, submitting, showToast, navigation]);
 
-  const placeholder = searchOn ? 'Search Spotify or paste a link' : 'Paste a Spotify song link';
+  const placeholder = searchOn ? 'Search songs or paste a Spotify link' : 'Search Livil or paste a Spotify link';
+  // "Nothing on Spotify" is only the whole story when Livil found nothing either.
+  const nothingAnywhere = !!hint && hint.startsWith('Nothing on Spotify') && livil.length === 0 && !livilSearching;
+  const shownHint = nothingAnywhere ? `No songs for "${query.trim()}" on Livil or Spotify.` : hint;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -208,7 +277,7 @@ export default function SpotifyRepostScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} disabled={submitting} style={styles.headerSide}>
           <Text style={[styles.headerCancel, submitting && styles.disabledText]}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{locked ? 'Repost' : 'Repost from Spotify'}</Text>
+        <Text style={styles.headerTitle}>{locked ? 'Repost' : 'Repost a song'}</Text>
         <View style={styles.headerSide} />
       </View>
 
@@ -255,17 +324,49 @@ export default function SpotifyRepostScreen() {
             />
             <Text style={styles.helper}>
               {searchOn
-                ? 'Type a song or artist, or paste a Spotify link to jump straight to it.'
-                : 'In Spotify, open the song → Share → Copy link, then paste it here.'}
+                ? 'Type a song or artist to search Livil and Spotify, or paste a Spotify link.'
+                : 'Search Livil songs. For Spotify: open the song → Share → Copy link, then paste it here.'}
             </Text>
 
-            {searching ? (
+            {(searching || livilSearching) && livil.length === 0 && results.length === 0 ? (
               <View style={styles.searching}>
                 <ActivityIndicator color={COLORS.purpleLight} />
               </View>
             ) : null}
 
-            {hint && !searching ? <Text style={styles.hint}>{hint}</Text> : null}
+            {/* Livil first: these play in Livil, and they are the artists Livil is for. */}
+            {livil.length > 0 ? (
+              <View style={styles.results}>
+                <View style={styles.resultsHeader}>
+                  <Text style={styles.sectionLabelInline}>On Livil</Text>
+                  <Logo size={34} color={COLORS.white} />
+                </View>
+                {livil.map(hit => (
+                  <Pressable
+                    key={hit.trackId}
+                    onPress={() => pickLivil(hit)}
+                    style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={hit.artist ? `${hit.title} by ${hit.artist}, on Livil` : `${hit.title}, on Livil`}
+                  >
+                    {hit.artUrl ? (
+                      <Image source={{ uri: hit.artUrl }} style={[styles.resultArt, styles.livilArt]} />
+                    ) : (
+                      <View style={[styles.resultArt, styles.livilArt, styles.artEmpty]}>
+                        <Icon name="musicNote" size={18} color={COLORS.textMuted} />
+                      </View>
+                    )}
+                    <View style={styles.resultText}>
+                      <Text style={styles.resultTitle} numberOfLines={1}>{hit.title}</Text>
+                      {hit.artist ? <Text style={styles.resultArtist} numberOfLines={1}>{hit.artist}</Text> : null}
+                    </View>
+                    <Icon name="disclosure" size={18} color={COLORS.textSecondary} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            {shownHint && !searching ? <Text style={styles.hint}>{shownHint}</Text> : null}
 
             {results.length > 0 ? (
               <View style={styles.results}>
@@ -473,6 +574,8 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   // Spotify artwork: small corner radius, nothing on top.
   resultArt: { width: 52, height: 52, borderRadius: 4, backgroundColor: COLORS.card },
+  // Livil covers use the app's own rounder corner, so the two lists read as two sources.
+  livilArt: { borderRadius: 10 },
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
   resultText: { flex: 1, minWidth: 0, gap: 3 },
   resultTitle: { color: COLORS.white, fontSize: 15, fontWeight: '700' },

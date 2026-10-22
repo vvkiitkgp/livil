@@ -204,7 +204,7 @@ export const SPOTIFY_SEARCH_BUSY =
 /**
  * The same search, but a FAILED search resolves to `null` instead of `[]`.
  *
- * For the one screen where Spotify search is the whole point (Repost from Spotify). There,
+ * For the one screen where Spotify search is the whole point (Repost a song, SpotifyRepostScreen). There,
  * "no matches" and "Spotify refused" must read differently: the function answers 502 when
  * Spotify turns a search down (e.g. the developer account's Premium lapsing), and showing
  * `Nothing on Spotify for "Taylor Swift"` for that looks like a broken feature — exactly
