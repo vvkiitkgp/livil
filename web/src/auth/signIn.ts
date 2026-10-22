@@ -12,6 +12,7 @@ import {
   loadAppleId,
   makeNonce,
   makeState,
+  setAppleSignInInFlight,
   type AppleIdApi,
   type AppleIdResponse,
   type AppleNonce,
@@ -290,22 +291,30 @@ export async function signInWithApple(request: AppleSignInRequest): Promise<Appl
     return { ok: false, message: APPLE_FAILED };
   }
 
-  const { data, error } = await supabase.auth.signInWithIdToken({
-    provider: 'apple',
-    token: response.authorization.id_token,
-    // RAW here, hashed to Apple — see `makeNonce`.
-    nonce: nonce.raw,
-  });
-  if (error) {
-    // A 4xx here is a configuration or token problem ("Unacceptable audience", "Nonces
-    // mismatch"), not something the person can act on, so it is logged and not shown.
-    if (isTransportFailure(error)) return { ok: false, message: humanize(error) };
-    console.error('[auth] apple token', error);
-    return { ok: false, message: APPLE_FAILED };
-  }
+  // `SIGNED_IN` fires inside `signInWithIdToken`, before the name below is saved. Holding the
+  // auth listener's reload (`mustDropAppleScript`) until then keeps that one-time name; the
+  // button reloads once this returns.
+  setAppleSignInInFlight(true);
+  try {
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: response.authorization.id_token,
+      // RAW here, hashed to Apple — see `makeNonce`.
+      nonce: nonce.raw,
+    });
+    if (error) {
+      // A 4xx here is a configuration or token problem ("Unacceptable audience", "Nonces
+      // mismatch"), not something the person can act on, so it is logged and not shown.
+      if (isTransportFailure(error)) return { ok: false, message: humanize(error) };
+      console.error('[auth] apple token', error);
+      return { ok: false, message: APPLE_FAILED };
+    }
 
-  await seedAppleDisplayName(data.user?.id, appleFullName(response.user));
-  return { ok: true };
+    await seedAppleDisplayName(data.user?.id, appleFullName(response.user));
+    return { ok: true };
+  } finally {
+    setAppleSignInInFlight(false);
+  }
 }
 
 /**

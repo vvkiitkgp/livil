@@ -154,13 +154,31 @@ export function appleClaimDisplayName(
 // ── Loading Apple's script ───────────────────────────────────────────────────────────────
 
 let loading: Promise<AppleIdApi> | null = null;
+let appleSignInInFlight = false;
+
+/** Set by `signInWithApple` for the span between Apple's answer and the name being saved. */
+export function setAppleSignInInFlight(active: boolean): void {
+  appleSignInInFlight = active;
+}
+
+/**
+ * Whether a sign-in on this page must reload it to get rid of Apple's script.
+ *
+ * True once the script has been requested, for every kind of sign-in (password, another
+ * tab) — except during an Apple sign-in itself, whose `SIGNED_IN` arrives before the
+ * one-time name is saved; that flow reloads on its own afterwards.
+ */
+export function mustDropAppleScript(): boolean {
+  return (loading !== null || window.AppleID !== undefined) && !appleSignInInFlight;
+}
 
 /**
  * Load Apple's script once, on the signed-out screen only.
  *
  * Third-party script runs with this origin's privileges, and the session lives in
- * localStorage, so it is loaded by the sign-in button and nowhere else — and a successful
- * Apple sign-in reloads the page (see `AppleSignInButton`), so it is not resident in the
+ * localStorage, so it is loaded by the sign-in button and nowhere else, and the page is
+ * reloaded on ANY sign-in once it has been loaded (`mustDropAppleScript`, used by the auth
+ * listener; the Apple button reloads after its own sign-in), so it is never resident in the
  * signed-in dashboard. A failed load is forgotten so the next click retries.
  */
 export function loadAppleId(): Promise<AppleIdApi> {

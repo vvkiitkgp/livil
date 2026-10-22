@@ -141,8 +141,9 @@ popup rather than `signInWithOAuth` for exactly that reason — Apple caps that 
 months, and an unrotated one silently ends web Apple sign-in. The popup is also the only
 web flow in which Apple shares the person's name. Its costs: it cannot run on localhost
 (Apple accepts only registered https return URLs, so the first real test is production),
-and it loads Apple's script, which is confined to the signed-out screen — a successful
-sign-in reloads the page so the script is not resident in the dashboard.
+and it loads Apple's script, which is confined to the signed-out screen — any sign-in on a
+page that loaded it (password, another tab, or Apple itself once the one-time name is saved)
+reloads the page, so the script is never resident in the dashboard.
 
 Invariants, all outside the repository:
 

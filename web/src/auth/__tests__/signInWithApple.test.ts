@@ -9,7 +9,7 @@
  */
 import { createHash, webcrypto } from 'crypto';
 import type { AppleIdApi, AppleIdConfig, AppleIdResponse } from '../appleId';
-import { makeNonce } from '../appleId';
+import { makeNonce, mustDropAppleScript } from '../appleId';
 
 const mockSignInWithIdToken = jest.fn();
 const mockUpdate = jest.fn();
@@ -160,4 +160,24 @@ it('writes nothing when Apple sends no name (every later sign-in)', async () => 
   const apple = fakeApple(async c => ok(c));
   await signInWithApple(await request(apple.api));
   expect(mockUpdate).not.toHaveBeenCalled();
+});
+
+it('holds the reload that drops Apple’s script until the one-time name is saved', async () => {
+  // Any SIGNED_IN on a page that loaded Apple's script reloads it (session.ts) — except the
+  // one inside an Apple sign-in, which arrives before the name Apple sends only once is saved.
+  const apple = fakeApple(async c => ok(c, { name: { firstName: 'Riya' } }));
+  window.AppleID = apple.api;
+  let duringSignIn: boolean | null = null;
+  mockSignInWithIdToken.mockImplementation(async () => {
+    duringSignIn = mustDropAppleScript();
+    return { data: { user: { id: 'user-1' } }, error: null };
+  });
+
+  expect(mustDropAppleScript()).toBe(true);
+  await signInWithApple(await request(apple.api));
+
+  expect(duringSignIn).toBe(false);
+  expect(mockUpdate).toHaveBeenCalled();
+  expect(mustDropAppleScript()).toBe(true);
+  delete window.AppleID;
 });
