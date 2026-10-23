@@ -129,7 +129,42 @@ detection is off (correct for React Native).
 |---|---|
 | **Email + password** | Also accepts a username, resolved to an email server-side first |
 | **Google** | Browser-based OAuth via the system browser, returning through the app's URL scheme |
+| **Apple — iPhone** | Native sheet → identity token with audience `com.livil` (the bundle id) → `signInWithIdToken`. iOS only (`src/services/appleAuth.ts`) |
+| **Apple — web** | Sign in with Apple JS popup → identity token with audience `com.livil.web` (a Services ID) → `signInWithIdToken` (`web/src/auth/appleId.ts`, `signIn.ts`) |
 | **Password reset** | Emailed recovery link → recovery gate → set new password |
+
+### Sign in with Apple: one account across iPhone and web
+
+Both Apple paths verify a token against Apple's public keys; neither uses Apple's OAuth
+redirect, so **there is no `.p8` client secret to configure or rotate**. The web uses the JS
+popup rather than `signInWithOAuth` for exactly that reason — Apple caps that secret at six
+months, and an unrotated one silently ends web Apple sign-in. The popup is also the only
+web flow in which Apple shares the person's name. Its costs: it cannot run on localhost
+(Apple accepts only registered https return URLs, so the first real test is production),
+and it loads Apple's script, which is confined to the signed-out screen — any sign-in on a
+page that loaded it (password, another tab, or Apple itself once the one-time name is saved)
+reloads the page, so the script is never resident in the dashboard.
+
+Invariants, all outside the repository:
+
+- **Supabase → Auth → Providers → Apple → Client IDs lists both `com.livil` and
+  `com.livil.web`.** Supabase rejects a token whose audience is not listed. Removing
+  `com.livil`, or switching the provider off, locks out every iPhone Apple account; removing
+  `com.livil.web` breaks only the web button.
+- **The `com.livil.web` Services ID is grouped under the `com.livil` App ID**, with domain
+  `livil-music.com` and return URL `https://livil-music.com/studio/` (what
+  `studioUrl('/')` produces; it must match exactly). Apple's `sub` — the id Supabase keys an
+  Apple identity on — is team-scoped, so the same Apple ID is the same `auth.users` row, the
+  same profile and the same relay address on both clients.
+- **Nonce:** Apple receives the SHA-256 of a random nonce and copies it into the token;
+  Supabase receives the raw value and hashes it before comparing. Same on both clients.
+
+"Hide My Email" accounts have no Livil password and a `@privaterelay.appleid.com` address,
+so the Apple button is their only way in on the web. Their name arrives once, on the first
+authorization for Livil on either client; both clients seed it into a profile that has not
+yet claimed a username, and neither lets the relay id become a display name. Livil's mail
+reaches a relay address only if the sender is registered with Apple's Private Email Relay
+Service (Apple Developer → Sign in with Apple for Email Communication).
 
 Two deliberate anti-enumeration behaviours, worth preserving:
 

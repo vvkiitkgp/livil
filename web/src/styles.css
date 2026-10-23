@@ -1364,6 +1364,16 @@ a.btn {
   background-clip: padding-box, border-box;
 }
 
+/* "Continue with Google": the app's look (SignInScreen) — Google's four brand colours on the
+   outline, diagonal like the purple ramp, and a white label. The purple ramp is Livil's and
+   never goes on Google's button. Use with variant="primary"; this repaints its outline. */
+.btn--google {
+  gap: 10px;
+  color: var(--white);
+  background-image: linear-gradient(var(--surface), var(--surface)),
+    linear-gradient(135deg, #4285f4, #ea4335, #fbbc05, #34a853);
+}
+
 .btn--secondary {
   color: var(--white);
   background: transparent;
@@ -1398,6 +1408,71 @@ a.btn {
 .btn[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* The sign-in card's buttons wear the app's corners (Button size lg, radius 14) rather than
+   the web's pills, so the card reads the same on both. Scoped to that card only. */
+.card--signin .btn,
+.card--signin .apple-btn {
+  border-radius: 14px;
+}
+
+/* ── Sign in with Apple ─────────────────────────────────────────────────────
+ * Apple's appearance rules, not the design system's — see AppleSignInButton.tsx. The
+ * white fill is the WHITE style Apple specifies on dark backgrounds; colours are fixed.
+ * Height matches `.btn--lg` beside it, and the logo file is drawn at exactly that height. */
+
+.apple-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* = .btn--lg: 13px padding x2 + 22.5px line + 1px border x2. */
+  height: 50.5px;
+  min-width: 140px;
+  /* Apple: at least 8% of the width clear beside the title. */
+  padding: 0 8%;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #000000;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.apple-btn__logo {
+  flex: none;
+  height: 100%;
+  width: auto;
+  aspect-ratio: 24 / 44;
+}
+
+.apple-btn__title {
+  white-space: nowrap;
+}
+
+/* The smallest phones (320px) leave the button ~230px wide, where a 15px title eats into
+   Apple's 8% side margin. Shrink the title rather than the margin — the app does the same. */
+@media (max-width: 340px) {
+  .apple-btn {
+    font-size: 13px;
+  }
+}
+
+.apple-btn:active:not([disabled]) {
+  opacity: 0.8;
+}
+
+.apple-btn:focus-visible {
+  outline: 2px solid var(--purple-neon);
+  outline-offset: 2px;
+}
+
+.apple-btn[disabled] {
+  opacity: 0.7;
+  cursor: progress;
 }
 
 

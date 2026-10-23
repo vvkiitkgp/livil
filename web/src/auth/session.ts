@@ -30,6 +30,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { nudgeWelcomeEmail } from '@shared/services/welcomeEmail';
 import { supabase } from '../supabase';
+import { mustDropAppleScript } from './appleId';
 
 export type AuthState =
   | { status: 'loading' }
@@ -95,7 +96,15 @@ export function useAuthState(): AuthState {
       .catch(() => apply({ status: 'error', retry }));
 
     // Covers the OAuth redirect landing, token refresh, and sign-out in another tab.
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      // A sign-in of ANY kind on a page that loaded Apple's script — password, or another
+      // tab — starts the dashboard from a clean page instead, so third-party code that ran
+      // beside the password field is not resident next to the session. Apple's own sign-in
+      // reloads itself once it has saved the name Apple sends only once.
+      if (event === 'SIGNED_IN' && mustDropAppleScript()) {
+        window.location.reload();
+        return;
+      }
       resolve(session)
         .then(apply)
         .catch(() => apply({ status: 'error', retry }));

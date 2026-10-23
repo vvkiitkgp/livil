@@ -9,6 +9,8 @@ import {
   signUpWithPassword,
 } from '../auth/signIn';
 import { StoreBadges } from '../components/StoreBadges';
+import { AppleSignInButton } from '../components/AppleSignInButton';
+import { GoogleGlyph } from '../components/GoogleGlyph';
 import {
   normalizeUsername,
   useUsernameAvailability,
@@ -145,11 +147,11 @@ export function SignIn({
   return (
     <main className="auth">
       <header className="auth__head">
-        <h1 className="wordmark">Livil for Creators</h1>
+        <h1 className="wordmark">Music Creators Login</h1>
         <p className="tagline">Upload your music from the machine you made it on.</p>
       </header>
 
-      <form className="card" onSubmit={onSubmit}>
+      <form className="card card--signin" onSubmit={onSubmit}>
         {signingUp && (
           <>
             <TextField
@@ -269,13 +271,21 @@ export function SignIn({
           <span>or</span>
         </div>
 
+        {/* Apple first, then Google — the app's order and look (SignInScreen). Apple: same
+            account as the iPhone app's Apple sign-in, and the only way in for anyone who used
+            "Hide My Email" there: they have no Livil password. */}
+        <AppleSignInButton onStart={() => setError(null)} onError={setError} />
+        {/* Google's four brand colours on the outline and the real "G", with a white label —
+            the purple ramp is Livil's and stays on Sign in. */}
         <Button
           type="button"
-          variant="secondary"
+          variant="primary"
           size="lg"
+          className="btn--google"
           busy={busy === 'google'}
           onClick={onGoogle}
         >
+          <GoogleGlyph />
           Continue with Google
         </Button>
 
@@ -304,15 +314,13 @@ export function SignIn({
           a button label and does not refute a claim. Keep a plain, literal statement of
           availability here for as long as the listing is public — naming BOTH stores: the
           App Store (iPhone) listing went live after Play, and a sentence naming only Play
-          reads as "not on iPhone". */}
+          reads as "not on iPhone". Trimmed 2026-10-23 (owner's text diet); "open to
+          everyone" is the part that refutes the cached "enrolled testers only" sentence. */}
       <section className="card card--muted">
-        <h2 className="card__title">Prefer the phone?</h2>
+        <h2 className="card__title">Here to listen and repost?</h2>
+        <p className="hint">Use the app on your phone.</p>
         <p className="hint">
-          The app is where you listen, follow and message. The studio is for publishing.
-        </p>
-        <p className="hint">
-          <strong>Livil is live on the App Store and Google Play</strong> — free on iPhone
-          and Android, and open to everyone. No invite, no waitlist, no tester list.
+          <strong>Livil is free on the App Store and Google Play</strong>, open to everyone.
         </p>
         {/* Both stores, always, as logo badges; the visitor's own platform goes first. */}
         <StoreBadges />
