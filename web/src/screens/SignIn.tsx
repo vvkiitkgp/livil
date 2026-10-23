@@ -317,8 +317,8 @@ export function SignIn({
           reads as "not on iPhone". Trimmed 2026-10-23 (owner's text diet); "open to
           everyone" is the part that refutes the cached "enrolled testers only" sentence. */}
       <section className="card card--muted">
-        <h2 className="card__title">Prefer the phone?</h2>
-        <p className="hint">Listen, follow and message in the app. Publish here.</p>
+        <h2 className="card__title">Here to listen and repost?</h2>
+        <p className="hint">Use the app on your phone.</p>
         <p className="hint">
           <strong>Livil is free on the App Store and Google Play</strong>, open to everyone.
         </p>
