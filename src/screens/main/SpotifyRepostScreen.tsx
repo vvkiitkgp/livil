@@ -80,7 +80,7 @@ function toLivilHits(posts: FeedPost[]): LivilHit[] {
  * Repost a song: Livil or Spotify (ADR-0027).
  *
  * Two ways in, one screen:
- *  - from "+ Track" → Repost a song: FIND the song — one box that searches Livil and Spotify
+ *  - from "+ Post" → Repost a song: FIND the song — one box that searches Livil and Spotify
  *    as you type, or takes a pasted Spotify link and jumps straight to it. A Livil result
  *    hands over to the Livil Repost screen (clip editor); a Spotify result stays here;
  *  - from "Repost this song" (⋯) on a friend's Spotify repost: the song arrives LOCKED (no
@@ -229,7 +229,7 @@ export default function SpotifyRepostScreen() {
 
   // A Livil song is reposted on the Livil Repost screen (clip, caption, story). Pushed on
   // top, not swapped in (a modal swap plays as close + reopen on iOS): Cancel there comes
-  // back to this search, and posting closes the whole "+ Track" flow (closeAddFlow).
+  // back to this search, and posting closes the whole "+ Post" flow (closeAddFlow).
   const pickLivil = useCallback((hit: LivilHit) => {
     haptics.select();
     Keyboard.dismiss();

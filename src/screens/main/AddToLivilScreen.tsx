@@ -14,7 +14,7 @@ import type { RootStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * "What do you want to add?" — opened by "+ Track" on your profile and "+" on Home while
+ * "What do you want to add?" — opened by "+ Post" on your profile and "+" on Home while
  * Spotify reposts are switched on (ADR-0027). With the switch off those buttons skip this
  * screen and go straight to Upload, exactly as before. "Repost a song" searches Livil and
  * Spotify together (SpotifyRepostScreen); a Livil pick moves on to the clip editor.

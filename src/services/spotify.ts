@@ -37,7 +37,7 @@ export type SpotifyAvailability = {
 // Every answer above is three-way: `true`, `false`, or `null` — NOT KNOWN YET (still
 // asking, signed out, offline, a timeout). `null` is falsy, so `if (a.reposts)` keeps
 // hiding a feature until the server says yes. An entry point that must never lose a
-// working feature to a failed check asks `!== false` instead: Home's "+ Track" used to
+// working feature to a failed check asks `!== false` instead: Home's "+ Post" used to
 // skip the Upload / Spotify chooser whenever the check had failed — and remembered that
 // "off" for five minutes (2026-10-21, a relative's phone).
 

@@ -824,16 +824,16 @@ export default function ProfileScreen() {
       <View style={styles.headerWrap} onLayout={pinned.onHeaderLayout}>
         <View style={styles.topBar}>
           <Button
-            label="Track"
+            label="Post"
             icon="add"
             variant="primary"
             size="sm"
-            // Home's 38pt "+ Track" (HomeScreen `uploadButton`), so the two read as one control.
+            // Home's 38pt "+ Post" (HomeScreen `uploadButton`), so the two read as one control.
             style={styles.addTrackButton}
-            // With Spotify reposts switched on — or not known yet — "+ Track" asks what to
+            // With Spotify reposts switched on — or not known yet — "+ Post" asks what to
             // add (ADR-0027); only a real "off" from the server goes straight to Upload.
             onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
-            accessibilityLabel={spotify.reposts !== false ? 'Add a track' : 'Upload a track'}
+            accessibilityLabel={spotify.reposts !== false ? 'Create a post' : 'Upload a track'}
           />
           <TouchableOpacity
             style={styles.headerIconBtn}
@@ -1131,7 +1131,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  /** Height only, matching Home's "+ Track": the pill itself is Button's `sm`. */
+  /** Height only, matching Home's "+ Post": the pill itself is Button's `sm`. */
   addTrackButton: { height: 38, paddingVertical: 0 },
   headerIconBtn: {
     width: 40,

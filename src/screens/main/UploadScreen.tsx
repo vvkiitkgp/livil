@@ -366,7 +366,7 @@ export default function UploadScreen() {
   const collaboratorCount = collaborators.length;
   const handleDismissSuccess = useCallback(() => {
     setShowSuccess(false);
-    // Opened from the "+ Track" chooser, this closes the chooser too.
+    // Opened from the "+ Post" chooser, this closes the chooser too.
     closeAddFlow(navigation);
   }, [navigation]);
 

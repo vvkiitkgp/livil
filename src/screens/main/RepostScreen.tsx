@@ -383,7 +383,7 @@ export default function RepostScreen() {
 
   const handleDismissSuccess = useCallback(() => {
     setShowSuccess(false);
-    // Opened from "+ Track" → Repost a song, this also closes the search and the chooser.
+    // Opened from "+ Post" → Repost a song, this also closes the search and the chooser.
     closeAddFlow(navigation);
   }, [navigation]);
 
