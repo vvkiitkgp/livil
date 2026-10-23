@@ -26,7 +26,12 @@ Xcode and uploaded to App Store Connect by hand, equally ungated.
 ## The process
 
 ```bash
-npm run prebuild:android     # bumps versionCode and the versionName patch digit
+# Once, when cutting the `release: x.y.z (code)` commit:
+npm run version:bump         # bumps versionCode + the versionName patch digit (build.gradle, appVersion.ts)
+# …then by hand in the same commit: MARKETING_VERSION / CURRENT_PROJECT_VERSION in
+# ios/livil.xcodeproj/project.pbxproj, softwareVersion in docs/index.html, the version line in CLAUDE.md
+
+# From that commit — builds only, never bumps:
 npm run build:android        # cd android && ./gradlew bundleRelease
 # → android/app/build/outputs/bundle/release/app-release.aab
 # → upload by hand in Play Console → Production (Closed testing first when a tester pass is wanted) → Create new release
@@ -36,9 +41,15 @@ That is the whole pipeline. **Nothing gates it.** No tests run, no lint, no type
 verification that the artifact is signed correctly. A release with a type error, a failing
 test, or a broken migration reaches the store exactly as easily as a good one.
 
-`prebuild:android` is **not chained** to `build:android`, so the version bump remains a
-manual, forgettable step. A duplicate versionCode is rejected by Play *after* the build and
-upload — the slowest possible place to find out.
+The bump is a **separate, deliberate step**, and the release commit already contains it — so a
+build from a release branch must not bump again. Run `npm run build:android` straight from
+that commit; running `version:bump` there would build a version nobody committed, out of step
+with the iOS build of the same release. (The bump was once the npm script `prebuild:android`,
+which npm runs automatically before `build:android` — so every build bumped a second time.
+It was renamed for exactly that reason; don't give it a `pre`/`post` name again.)
+`scripts/check-version-sync.mjs` fails CI when a committed copy drifts from `build.gradle`, but
+nothing checks the number against what the store has already used: a duplicate versionCode is
+rejected by Play *after* the build and upload — the slowest possible place to find out.
 
 ---
 
