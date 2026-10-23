@@ -147,7 +147,7 @@ export function SignIn({
   return (
     <main className="auth">
       <header className="auth__head">
-        <h1 className="wordmark">Livil for Creators</h1>
+        <h1 className="wordmark">Music Creators Login</h1>
         <p className="tagline">Upload your music from the machine you made it on.</p>
       </header>
 
