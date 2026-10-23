@@ -14,9 +14,9 @@ import type { RootStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * "What do you want to add?" — opened by "+ Post" on your profile and "+" on Home while
+ * "New Post" — opened by "+ Post" on Home and on your profile while
  * Spotify reposts are switched on (ADR-0027). With the switch off those buttons skip this
- * screen and go straight to Upload, exactly as before. "Repost a song" searches Livil and
+ * screen and go straight to Upload, exactly as before. "Search for a song" searches Livil and
  * Spotify together (SpotifyRepostScreen); a Livil pick moves on to the clip editor.
  *
  * `push`, not `replace`: swapping one modal for another plays on iOS as this sheet closing
@@ -40,7 +40,7 @@ export default function AddToLivilScreen() {
       </View>
 
       <View style={styles.intro}>
-        <Text style={styles.title}>What do you want to add?</Text>
+        <Text style={styles.title}>New Post</Text>
         <Text style={styles.subtitle}>Share your own music, or repost a song you love.</Text>
       </View>
 
@@ -54,8 +54,8 @@ export default function AddToLivilScreen() {
         />
         <Option
           icon="repost"
-          title="Repost a song"
-          body="Say how you feel today, with a song."
+          title="Search for a song"
+          body="Say how you feel today, with a song repost!"
           footer={
             <View style={styles.logos}>
               <Logo size={30} color={COLORS.white} />
