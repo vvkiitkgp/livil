@@ -6,7 +6,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { Icon, type IconName } from '../../components/Icon';
-import { GradientBorder } from '../../components/GradientBorder';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
 import { Logo } from '../../components/Logo';
 import type { RootStackParamList } from '../../navigation/types';
@@ -87,11 +86,12 @@ function Option({
   return (
     <Pressable
       onPress={() => { haptics.tap(); onPress(); }}
-      style={({ pressed }) => [styles.option, primary && styles.optionPrimary, pressed && styles.optionPressed]}
+      style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
       accessibilityRole="button"
       accessibilityLabel={title}
     >
-      {primary ? <GradientBorder borderRadius={20} /> : null}
+      {/* No glow border on the primary option any more (owner, 2026-10-23): both cards
+          share the plain grey outline; only the purple icon tile marks Upload. */}
       <View style={[styles.optionIcon, primary && styles.optionIconPrimary]}>
         <Icon name={icon} size={24} color={primary ? COLORS.purpleNeon : COLORS.white} />
       </View>
@@ -123,8 +123,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  // The gradient glow IS the border on the highlighted option; a grey one under it doubles up.
-  optionPrimary: { borderWidth: 0 },
   optionPressed: { opacity: 0.85 },
   optionIcon: {
     width: 52,
