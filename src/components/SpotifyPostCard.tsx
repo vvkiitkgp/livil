@@ -47,7 +47,7 @@ import { LikeHeart } from './LikeHeart';
  *  - The action row: a grey-outlined box with Spotify's icon + a filled play disc (it opens
  *    Spotify), then the counters and Share packed on the right, as on a Livil card.
  *  - "Repost this song" (in ⋯) opens the Spotify repost screen with this song LOCKED in.
- *    The header keeps only "+ Add" (non-friends) and ⋯, so the name is never squeezed out.
+ *    The header keeps only "+ Friend" (non-friends) and ⋯, so the name is never squeezed out.
  */
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -170,7 +170,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     if (isOwner) {
       actions.push({ key: 'delete', label: 'Delete repost', icon: 'trash', destructive: true, onPress: () => setConfirmDelete(true) });
     } else if (viewerId) {
-      actions.push({ key: 'report', label: 'Report post', icon: 'flag', onPress: () => setReportOpen(true) });
+      actions.push({ key: 'report', label: 'Report post', icon: 'flag', destructive: true, onPress: () => setReportOpen(true) });
     }
     return actions;
   }, [handleOpen, handleRepost, isOwner, isOwnRepost, repostsOn, viewerId]);
@@ -214,8 +214,8 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
             </View>
           </View>
         </TouchableOpacity>
-        {/* The name gets the row: on a small phone "+ Add" beside it and a Repost pill
-            squeezed it to a couple of letters (owner, 2026-10-21). So "+ Add" sits here —
+        {/* The name gets the row: on a small phone "+ Friend" beside it and a Repost pill
+            squeezed it to a couple of letters (owner, 2026-10-21). So "+ Friend" sits here —
             it draws nothing for friends, pending requests or you — and Repost lives in ⋯. */}
         <AddBadge userId={author.id} size="md" />
         <TouchableOpacity style={styles.moreBtn} onPress={() => setMenuOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="More options">

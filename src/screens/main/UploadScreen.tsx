@@ -31,6 +31,7 @@ import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
 import type { RootStackParamList } from '../../navigation/types';
+import { closeAddFlow } from '../../navigation/closeAddFlow';
 import {
   ROLES,
   getChipStyle,
@@ -365,7 +366,8 @@ export default function UploadScreen() {
   const collaboratorCount = collaborators.length;
   const handleDismissSuccess = useCallback(() => {
     setShowSuccess(false);
-    navigation.goBack();
+    // Opened from the "+ Post" chooser, this closes the chooser too.
+    closeAddFlow(navigation);
   }, [navigation]);
 
   useEffect(() => {

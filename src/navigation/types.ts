@@ -108,10 +108,11 @@ export type RootStackParamList = {
     seedClipEndSec?: number | null;
   };
   // ── Spotify reposts (ADR-0027)
-  // "+ Track" / Home "+" chooser: upload your own track, or repost from Spotify. Only shown
+  // "+ Post" / Home "+" chooser: upload your own track, or repost from Spotify. Only shown
   // while the server switch is on; otherwise those buttons go straight to Upload.
   AddToLivil: undefined;
-  // Repost a Spotify track. Without params: search Spotify or paste a link. With
+  // Repost a song. Without params: search Livil + Spotify or paste a Spotify link (a Livil
+  // pick replaces this screen with Repost, the clip editor). With
   // `spotifyTrackId`: that song is pre-picked; `locked` (reposting a friend's Spotify
   // repost) hides "Change song". No "From @x's repost" line: nothing about the source is
   // saved, so it read as a credit that never appeared (owner, 2026-10-19).

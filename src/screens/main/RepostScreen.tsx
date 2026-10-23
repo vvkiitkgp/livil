@@ -34,6 +34,7 @@ import { createRepost } from '../../services/posts';
 import { createStory } from '../../services/stories';
 import type { FeedPost } from '../../services/posts';
 import type { RootStackParamList } from '../../navigation/types';
+import { closeAddFlow } from '../../navigation/closeAddFlow';
 import { MIN_REPOST_CLIP_SECONDS } from '../../../shared/constants/media';
 import MentionSuggestions from '../../components/MentionSuggestions';
 import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
@@ -382,7 +383,8 @@ export default function RepostScreen() {
 
   const handleDismissSuccess = useCallback(() => {
     setShowSuccess(false);
-    navigation.goBack();
+    // Opened from "+ Post" → Repost a song, this also closes the search and the chooser.
+    closeAddFlow(navigation);
   }, [navigation]);
 
   const canSubmit = useMemo(() => {

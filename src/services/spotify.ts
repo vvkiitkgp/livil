@@ -37,7 +37,7 @@ export type SpotifyAvailability = {
 // Every answer above is three-way: `true`, `false`, or `null` — NOT KNOWN YET (still
 // asking, signed out, offline, a timeout). `null` is falsy, so `if (a.reposts)` keeps
 // hiding a feature until the server says yes. An entry point that must never lose a
-// working feature to a failed check asks `!== false` instead: Home's "+ Track" used to
+// working feature to a failed check asks `!== false` instead: Home's "+ Post" used to
 // skip the Upload / Spotify chooser whenever the check had failed — and remembered that
 // "off" for five minutes (2026-10-21, a relative's phone).
 
@@ -204,7 +204,7 @@ export const SPOTIFY_SEARCH_BUSY =
 /**
  * The same search, but a FAILED search resolves to `null` instead of `[]`.
  *
- * For the one screen where Spotify search is the whole point (Repost from Spotify). There,
+ * For the one screen where Spotify search is the whole point (Repost a song, SpotifyRepostScreen). There,
  * "no matches" and "Spotify refused" must read differently: the function answers 502 when
  * Spotify turns a search down (e.g. the developer account's Premium lapsing), and showing
  * `Nothing on Spotify for "Taylor Swift"` for that looks like a broken feature — exactly

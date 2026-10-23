@@ -19,7 +19,7 @@ export function useOpenInSpotify(
   options: {
     /**
      * Skip the "plays on Spotify" notice — for a screen where Spotify is the whole point
-     * (Repost from Spotify). Also REQUIRED there: that screen is an iOS modal sheet, and the
+     * (Repost a song, SpotifyRepostScreen). Also REQUIRED there: that screen is an iOS modal sheet, and the
      * notice is a Modal of its own, which iOS will not present over it — the tap did nothing
      * (owner report, 2026-10-19).
      */

@@ -299,7 +299,7 @@ function renderActions(p: ActionsProps) {
       <View style={styles.actionsCol}>
         <Text style={styles.muted}>You star this user.</Text>
         <Button
-          label="Add as Friend"
+          label="Send friend request"
           onPress={p.onAddFriend}
           variant="primary"
           size="md"
@@ -321,7 +321,7 @@ function renderActions(p: ActionsProps) {
   return (
     <View style={styles.actionsCol}>
       <Button
-        label="Add as Friend"
+        label="Send friend request"
         onPress={p.onAddFriend}
         variant="primary"
         size="md"
@@ -329,7 +329,7 @@ function renderActions(p: ActionsProps) {
         fullWidth
       />
       <Button
-        label="Add as Star"
+        label="Star the Artist"
         onPress={p.onAddStar}
         variant="secondary"
         size="md"
