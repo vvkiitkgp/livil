@@ -128,7 +128,7 @@ export default function TrackContextMenu({
     }
   }
   if (postId && onReportPost && !isOwner) {
-    items.push({ id: 'report-post', label: 'Report post', icon: 'flag' });
+    items.push({ id: 'report-post', label: 'Report post', icon: 'flag', destructive: true });
   }
   if (postId && onDeletePost && isOwner) {
     items.push({ id: 'delete-post', label: 'Delete post', icon: 'close', destructive: true });

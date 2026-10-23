@@ -163,8 +163,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  // Red, like the "Report post" row that opens this (owner, 2026-10-23).
   title: {
-    color: COLORS.white,
+    color: COLORS.error,
     fontSize: 20,
     fontWeight: '700',
     textAlign: 'center',

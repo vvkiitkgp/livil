@@ -170,7 +170,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
     if (isOwner) {
       actions.push({ key: 'delete', label: 'Delete repost', icon: 'trash', destructive: true, onPress: () => setConfirmDelete(true) });
     } else if (viewerId) {
-      actions.push({ key: 'report', label: 'Report post', icon: 'flag', onPress: () => setReportOpen(true) });
+      actions.push({ key: 'report', label: 'Report post', icon: 'flag', destructive: true, onPress: () => setReportOpen(true) });
     }
     return actions;
   }, [handleOpen, handleRepost, isOwner, isOwnRepost, repostsOn, viewerId]);
