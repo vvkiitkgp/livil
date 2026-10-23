@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-22
+last_verified: 2026-10-23
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-451 TypeScript file(s) under `src/`, 94,019 lines.
+451 TypeScript file(s) under `src/`, 94,017 lines.
 
 ## Size hotspots
 
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,855 lines.
+50 file(s), 27,853 lines.
 
 | File | Lines |
 |---|---:|
@@ -158,7 +158,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/AddToLivilScreen.tsx` | 143 |
+| `src/screens/main/AddToLivilScreen.tsx` | 141 |
 
 ## Components
 
