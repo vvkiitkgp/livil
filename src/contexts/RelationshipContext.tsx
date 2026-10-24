@@ -149,8 +149,8 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
     return () => { void supabase.removeChannel(channel); };
   }, [meId, refresh]);
 
-  // RealtimeConnectionGate closes the socket while the app is backgrounded, and realtime
-  // does not replay what it missed. A friend accepting your request while your phone was
+  // Realtime misses what happens while the app is backgrounded (the socket is closed on
+  // iOS, frozen or dropped on Android) and does not replay it. A friend accepting your request while your phone was
   // locked therefore never reached the subscription above: their profile kept saying
   // "Requested" until the app restarted. Refetch on return instead. Background → active
   // only: iOS reports 'inactive' for the app switcher and notification shade.

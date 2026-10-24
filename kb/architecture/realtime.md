@@ -57,6 +57,28 @@ teardown leaks a channel per mount and eventually exhausts the connection.
 Tables must also be added to the publication with `REPLICA IDENTITY FULL` for updates and
 deletes to carry usable payloads.
 
+### The socket while the app is backgrounded
+
+**Never call `supabase.realtime.disconnect()` to pause realtime.** In realtime-js 2.99
+`disconnect()` runs `channel.teardown()` on every channel: state `closed`, join push destroyed,
+`bindings = {}`. `connect()` afterwards opens a socket with nothing joined, and every
+subscription stays dead until its component re-runs its effect. An *unplanned* drop (network
+blip, heartbeat timeout) is different: the library errors the channels and rejoins them with
+their listeners. Both behaviours are pinned against the real library in
+`RealtimeConnectionGate.test.tsx`.
+
+`RealtimeConnectionGate` therefore closes the socket in the background **on iOS only**, where
+`background` means really leaving the app and every count refetches on return. **On Android
+it never closes it**: Android reports `background` on every pause of the activity (the
+notification-tap trampoline, the share sheet, a permission dialog), so the teardown killed
+Home's unread count and every other mounted subscription after the first one (fixed
+2026-10-24). The cost is the heartbeat during a background listen, as during a jam.
+
+Because the Android socket stays open, **a handler must not write seen-state from an event
+that arrives while backgrounded** — ask `seenMustWait()` (`src/utils/seenWhileAway.ts`) and
+mark on return. `ConversationScreen` (mark read, clear the chat's cards) and
+`ActivityCenterScreen` (`markActivityRead`) do; every other subscriber only reads.
+
 ---
 
 ## Jam Rooms
@@ -163,6 +185,12 @@ Details that exist for specific reasons:
 - Cold-start taps are recovered from both the FCM and notifee initial-notification paths, then
   routed through a navigation-ready queue — the navigator may not exist yet when the tap
   arrives.
+- **On Android, a tap on a backgrounded (alive) app reaches only `notifee.onBackgroundEvent`**
+  in `index.js` — notifee's tap activity runs before ours resumes — and
+  `getInitialNotification` is read once per process. So that handler routes the tap, through
+  `handleNotificationPress`, which also drops the cold-start duplicate, skips a chat already on
+  screen, and drops the push's `kind` (`message`) so `ConversationScreen` looks up dm/group
+  itself. iOS taps arrive through FCM's `onNotificationOpenedApp` and are unchanged.
 - **Push dispatch is fail-safe.** A failed notification must never break the message or like
   that triggered it.
 - **The caller names who and what kind; the server decides what it says.** The edge function

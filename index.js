@@ -4,12 +4,12 @@
 
 import 'text-encoding-polyfill';
 import 'react-native-gesture-handler';
-import {AppRegistry} from 'react-native';
+import {AppRegistry, Platform} from 'react-native';
 import {getMessaging, setBackgroundMessageHandler} from '@react-native-firebase/messaging';
 import notifee, {EventType} from '@notifee/react-native';
 import App from './App';
 import {name as appName} from './app.json';
-import {displayPushNotification} from './src/services/pushNotifications';
+import {displayPushNotification, handleNotificationPress} from './src/services/pushNotifications';
 import {startCrashReporting} from './src/services/crashReporting';
 
 // Before anything renders: installs Crashlytics' JS fatal-error handler, so a crash
@@ -28,11 +28,14 @@ setBackgroundMessageHandler(getMessaging(), async remoteMessage => {
   }
 });
 
-// Tap-while-backgrounded: we can't navigate from a headless task, but the
-// default press action brings the app to foreground where initPush()
-// reads notifee.getInitialNotification() and routes there.
+// Android hands a tap on a backgrounded app only to this handler (getInitialNotification
+// is read once, at launch), so route it here. iOS taps arrive through FCM's handlers.
+// See kb/architecture/realtime.md, Push notifications.
 notifee.onBackgroundEvent(async ({type, detail}) => {
-  if (type === EventType.PRESS && detail.notification?.data) {
+  if (type !== EventType.PRESS || !detail.notification?.data) { return; }
+  if (Platform.OS === 'android') {
+    handleNotificationPress(detail.notification);
+  } else {
     console.log('[push] background tap', detail.notification.data);
   }
 });
