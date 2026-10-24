@@ -2,12 +2,13 @@
  * The Play In-App Updates bridge is fail-safe. Pins: iOS never reaches the native module;
  * an Android build without it, or a Play API that rejects (debug / sideloaded build, no
  * Play Store), answers "nothing" instead of throwing — which is what sends the update
- * prompt to the store listing instead.
+ * prompt to the store listing instead. A check Play never answers counts as "nothing" too.
  */
 import { NativeModules, Platform } from 'react-native';
 import {
   checkPlayUpdate,
   completePlayUpdate,
+  PLAY_CHECK_TIMEOUT_MS,
   startPlayUpdate,
   subscribePlayInstallState,
 } from '../playInAppUpdate';
@@ -75,4 +76,16 @@ it('a rejection from Play (not installed from Play, no Play Store) never throws'
   await expect(checkPlayUpdate()).resolves.toBeNull();
   await expect(startPlayUpdate('immediate')).resolves.toBe('failed');
   await expect(completePlayUpdate()).resolves.toBe(false);
+});
+
+it('a check Play never answers gives up after the timeout', async () => {
+  jest.useFakeTimers();
+  try {
+    native.check.mockReturnValue(new Promise(() => {}));
+    const result = checkPlayUpdate();
+    jest.advanceTimersByTime(PLAY_CHECK_TIMEOUT_MS);
+    await expect(result).resolves.toBeNull();
+  } finally {
+    jest.useRealTimers();
+  }
 });

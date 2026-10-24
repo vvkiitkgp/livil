@@ -274,6 +274,42 @@ describe('Android — Google Play in-app updates', () => {
     expect(texts(r)).toContain('Update ready');
   });
 
+  it('a download that lands before the listener is attached is still announced', async () => {
+    mockPolicy = GENTLE;
+    mockPlayInfo = AVAILABLE;
+    mockStartPlay.mockImplementation(async () => {
+      // Play finishes the download before the subscription reaches native: no event, ever.
+      mockPlayInfo = { ...AVAILABLE, availability: 'in_progress', installStatus: 'downloaded' };
+      return 'accepted';
+    });
+    const r = await mount(77);
+    await act(async () => { await pressButton(r, 'Update'); });
+    expect(texts(r)).toContain('Update ready');
+  });
+
+  it('a double tap starts Play\'s flow once', async () => {
+    mockPolicy = GENTLE;
+    mockPlayInfo = AVAILABLE;
+    mockStartPlay.mockReturnValue(new Promise(() => {}));
+    const r = await mount(77);
+    await act(async () => {
+      void pressButton(r, 'Update');
+      void pressButton(r, 'Update');
+    });
+    expect(mockStartPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('coming back to the app unlocks a button stuck on a Play call that never answered', async () => {
+    mockPolicy = BLOCKING;
+    mockPlayInfo = AVAILABLE;
+    mockStartPlay.mockReturnValue(new Promise(() => {}));
+    const r = await mount(77);
+    await act(async () => { void pressButton(r, 'Update'); });
+    await act(async () => { appStateListener?.('active'); });
+    await act(async () => { void pressButton(r, 'Update'); });
+    expect(mockStartPlay).toHaveBeenCalledTimes(2);
+  });
+
   it('a failed download says so, and leaves no card', async () => {
     mockPolicy = GENTLE;
     mockPlayInfo = AVAILABLE;

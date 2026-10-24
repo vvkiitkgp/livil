@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-453 TypeScript file(s) under `src/`, 94,704 lines.
+453 TypeScript file(s) under `src/`, 94,800 lines.
 
 ## Size hotspots
 
@@ -162,7 +162,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,783 lines.
+169 file(s), 33,853 lines.
 
 | File | Lines |
 |---|---:|
@@ -180,13 +180,13 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SpotifyPostCard.tsx` | 417 |
 | `src/components/DetailView.tsx` | 411 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
+| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 393 |
 | `src/components/AddUserSheet.tsx` | 392 |
 | `src/components/SharePostSheet.tsx` | 372 |
 | `src/components/CopyrightMatchModal.tsx` | 370 |
-| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 357 |
+| `src/components/AppUpdatePrompt.tsx` | 362 |
 | `src/components/Icon.tsx` | 337 |
 | `src/components/PostLikersSheet.tsx` | 330 |
-| `src/components/AppUpdatePrompt.tsx` | 328 |
 | `src/components/ActivityBubble.tsx` | 324 |
 | `src/components/CommentItem.tsx` | 321 |
 | `src/components/guide/primitives.tsx` | 319 |

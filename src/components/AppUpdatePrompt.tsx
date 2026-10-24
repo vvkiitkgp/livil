@@ -88,12 +88,19 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
   const [verdict, setVerdict] = useState<PromptState>(NO_UPDATE);
   const verdictRef = useRef(verdict);
   verdictRef.current = verdict;
+  // Sets the ref at once, not on the next render: a Play event and an in-flight check() can
+  // both land between two renders, and each reads what the other just decided.
+  const show = useCallback((next: PromptState) => {
+    verdictRef.current = next;
+    setVerdict(next);
+  }, []);
   // The policy's own answer, kept while the card steps aside for a background download, so
   // "Update ready" knows whether it must block.
   const policyVerdictRef = useRef<UpdateVerdict>(NO_UPDATE);
   const lastCheckRef = useRef(0);
   const inFlightRef = useRef(false);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   // Android: following a Play background download, until it lands or fails.
   const [watchingDownload, setWatchingDownload] = useState(false);
 
@@ -115,22 +122,29 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
       if (Platform.OS === 'android' && next.kind !== 'none') {
         const play = await checkPlayUpdate();
         shown = promptWithPlay(next, play);
-        if (next.kind === 'soft' && isPlayDownloading(play)) {setWatchingDownload(true);}
+        if (isPlayDownloading(play)) {setWatchingDownload(true);}
       }
-      if (shown.kind === 'soft' && (await isUpdateSnoozed(shown.latestBuild))) {
-        setVerdict(NO_UPDATE);
-        return;
+      if (shown.kind === 'soft' && (await isUpdateSnoozed(shown.latestBuild))) {shown = NO_UPDATE;}
+      // A downloaded update stays downloaded until it is installed, so a Play snapshot taken
+      // just before the download landed must not take "Update ready" away again.
+      if (verdictRef.current.kind === 'ready' && next.kind !== 'none') {
+        shown = { kind: 'ready', blocking: next.kind === 'hard' };
       }
-      setVerdict(shown);
+      show(shown);
     } finally {
       inFlightRef.current = false;
     }
-  }, [build]);
+  }, [build, show]);
 
   useEffect(() => {
     void check();
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') {void check();}
+      if (state !== 'active') {return;}
+      // Back from Play's own screens: whatever Update was waiting on is over, so the button
+      // never stays locked on a Play call that will not answer.
+      busyRef.current = false;
+      setBusy(false);
+      void check();
     });
     return () => sub.remove();
   }, [check]);
@@ -139,25 +153,41 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
   // waits for the end. Native listens to Play only while this subscription is open.
   useEffect(() => {
     if (!watchingDownload) {return;}
-    return subscribePlayInstallState(status => {
+    let over = false;
+    const landed = () => {
+      if (over) {return;}
+      over = true;
+      setWatchingDownload(false);
+      show({ kind: 'ready', blocking: policyVerdictRef.current.kind === 'hard' });
+    };
+    const unsubscribe = subscribePlayInstallState(status => {
       if (status === 'downloaded') {
-        setWatchingDownload(false);
-        setVerdict({ kind: 'ready', blocking: policyVerdictRef.current.kind === 'hard' });
+        landed();
       } else if (status === 'failed' || status === 'canceled' || status === 'installed') {
+        over = true;
         setWatchingDownload(false);
         // Stood aside, not snoozed: the next launch or recheck offers the update again.
         if (status === 'failed') {showToast("The update didn't download. We'll try again later.", { kind: 'error' });}
       }
     });
-  }, [watchingDownload, showToast]);
+    // Play's listener reports CHANGES, never the current state: a download that finished
+    // before this subscription reached native would otherwise never be announced.
+    void checkPlayUpdate().then(play => {
+      if (play?.installStatus === 'downloaded') {landed();}
+    });
+    return () => {
+      over = true;
+      unsubscribe();
+    };
+  }, [watchingDownload, show, showToast]);
 
   const later = useCallback(() => {
     const v = verdictRef.current;
     if (v.kind === 'soft') {snoozeUpdate(v.latestBuild);}
     // "Update ready": not snoozed — a downloaded update is offered again at the next launch
     // or recheck (Google's guidance; until installed it is taking up storage).
-    setVerdict(NO_UPDATE);
-  }, []);
+    show(NO_UPDATE);
+  }, [show]);
 
   const openStore = useCallback(async () => {
     const { primary, fallback } = storeUrls();
@@ -169,8 +199,8 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
     // Gentle: stand down — they went to update, and coming back without doing it should
     // not be met by the same card. The next launch or recheck asks again if still behind.
     // Blocking: stays up until the build is new enough.
-    if (hasCancel(verdictRef.current)) {setVerdict(NO_UPDATE);}
-  }, []);
+    if (hasCancel(verdictRef.current)) {show(NO_UPDATE);}
+  }, [show]);
 
   /** Android: installs through Play. False = Play couldn't, so open the store listing. */
   const updateThroughPlay = useCallback(async (p: PromptState): Promise<boolean> => {
@@ -185,7 +215,7 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
     if (result === 'failed' || result === 'unavailable') {return false;}
     if (action === 'flexible' && result === 'accepted') {
       // Downloading in the background: step aside until it lands ("Update ready").
-      setVerdict(NO_UPDATE);
+      show(NO_UPDATE);
       setWatchingDownload(true);
       showToast('Downloading the update in the background.', { kind: 'info' });
       return true;
@@ -194,14 +224,18 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
     // the gentle prompt counts that as Later; the blocking one stays up.
     if (p.kind === 'soft') {later();}
     return true;
-  }, [later, showToast]);
+  }, [later, show, showToast]);
 
   const update = useCallback(async () => {
     if (Platform.OS === 'android') {
+      // A ref, not just `busy`: two taps inside one frame would start two Play flows.
+      if (busyRef.current) {return;}
+      busyRef.current = true;
       setBusy(true);
       try {
         if (await updateThroughPlay(verdictRef.current)) {return;}
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     }

@@ -92,38 +92,46 @@ class InAppUpdateModule(reactContext: ReactApplicationContext) :
             return
           }
         }
-    val activity = reactApplicationContext.currentActivity
-    if (activity == null) {
-      promise.reject("E_NO_ACTIVITY", "No foreground activity to start the update from")
-      return
-    }
     try {
       manager.appUpdateInfo
           .addOnSuccessListener { info ->
-            val options = AppUpdateOptions.defaultOptions(type)
-            val availability = info.updateAvailability()
-            val resuming =
-                type == AppUpdateType.IMMEDIATE &&
-                    availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
-            val startable =
-                availability == UpdateAvailability.UPDATE_AVAILABLE &&
-                    info.isUpdateTypeAllowed(options)
-            if (!resuming && !startable) {
-              promise.resolve("unavailable")
-              return@addOnSuccessListener
+            try {
+              // Read here, after the async fetch, not before it: by now the app may have gone
+              // to the background, and Android would refuse to launch Play's screen from a
+              // finishing or absent activity — leaving the promise unsettled.
+              val activity = reactApplicationContext.currentActivity
+              if (activity == null || activity.isFinishing) {
+                promise.reject("E_NO_ACTIVITY", "No foreground activity to start the update from")
+                return@addOnSuccessListener
+              }
+              val options = AppUpdateOptions.defaultOptions(type)
+              val availability = info.updateAvailability()
+              val resuming =
+                  type == AppUpdateType.IMMEDIATE &&
+                      availability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS
+              val startable =
+                  availability == UpdateAvailability.UPDATE_AVAILABLE &&
+                      info.isUpdateTypeAllowed(options)
+              if (!resuming && !startable) {
+                promise.resolve("unavailable")
+                return@addOnSuccessListener
+              }
+              manager
+                  .startUpdateFlow(info, activity, options)
+                  .addOnSuccessListener { resultCode ->
+                    promise.resolve(
+                        when (resultCode) {
+                          Activity.RESULT_OK -> "accepted"
+                          Activity.RESULT_CANCELED -> "cancelled"
+                          // ActivityResult.RESULT_IN_APP_UPDATE_FAILED, or anything new.
+                          else -> "failed"
+                        })
+                  }
+                  .addOnFailureListener { e -> promise.reject(errorCode(e), e.message, e) }
+            } catch (e: Exception) {
+              // This listener runs on the main thread: an escape here would crash the app.
+              promise.reject(errorCode(e), e.message, e)
             }
-            manager
-                .startUpdateFlow(info, activity, options)
-                .addOnSuccessListener { resultCode ->
-                  promise.resolve(
-                      when (resultCode) {
-                        Activity.RESULT_OK -> "accepted"
-                        Activity.RESULT_CANCELED -> "cancelled"
-                        // ActivityResult.RESULT_IN_APP_UPDATE_FAILED, or anything new.
-                        else -> "failed"
-                      })
-                }
-                .addOnFailureListener { e -> promise.reject(errorCode(e), e.message, e) }
           }
           .addOnFailureListener { e -> promise.reject(errorCode(e), e.message, e) }
     } catch (e: Exception) {

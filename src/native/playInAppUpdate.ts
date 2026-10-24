@@ -48,14 +48,27 @@ function nativeModule(): NativeInAppUpdate | null {
   return (NativeModules.LivilInAppUpdate as NativeInAppUpdate | undefined) ?? null;
 }
 
+/**
+ * Play's client has no timeout of its own: a connection to the Play Store service that binds
+ * but never connects leaves the call pending forever. The prompt awaits this check (on the
+ * blocking card, behind its only button), so a check that hangs counts as "can't ask Play".
+ */
+export const PLAY_CHECK_TIMEOUT_MS = 5000;
+
 /** What Play knows about an update for this install, or null when it cannot be asked. */
 export async function checkPlayUpdate(): Promise<PlayUpdateInfo | null> {
   const native = nativeModule();
   if (!native) {return null;}
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await native.check();
+    return await Promise.race([
+      native.check(),
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), PLAY_CHECK_TIMEOUT_MS); }),
+    ]);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
