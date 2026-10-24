@@ -125,6 +125,9 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     // Animated GIFs in comments (ADR-0031). Same version as the Fresco in React Native 0.85.3.
     implementation("com.facebook.fresco:animated-gif:3.6.0")
+    // Google Play In-App Updates: the update prompt downloads and installs inside the app
+    // (InAppUpdateModule.kt). 2.1.0 is the latest release and the first with Android 14 support.
+    implementation("com.google.android.play:app-update:2.1.0")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

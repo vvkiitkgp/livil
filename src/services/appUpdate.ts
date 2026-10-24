@@ -7,6 +7,7 @@ import {
   PLAY_STORE_APP_URL,
   PLAY_STORE_WEB_URL,
 } from '../constants/links';
+import type { PlayUpdateInfo } from '../native/playInAppUpdate';
 
 /**
  * The app-update prompt's rules (migration 20261018000000_app_update_policy.sql).
@@ -38,6 +39,60 @@ export function decideUpdate(policy: UpdatePolicy | null, build: number): Update
     return { kind: 'soft', latestBuild: policy.latestBuild, message: policy.message };
   }
   return NO_UPDATE;
+}
+
+// ── Google Play In-App Updates (Android only) ──────────────────────────────────
+// On Android the prompt installs through Play inside the app (src/native/playInAppUpdate.ts)
+// instead of sending people to the store page: the gentle prompt runs Play's "flexible"
+// flow (downloads in the background while Livil keeps playing, then "Restart"), the blocking
+// prompt runs the "immediate" flow (Play's full-screen updater). Whenever Play cannot do it —
+// debug or sideloaded build, no Play Store, the release not yet visible to Play on this
+// device — the prompt opens the store listing exactly as before. The policy row still
+// decides WHETHER to prompt; Play only decides HOW the update is installed.
+
+/** What the prompt shows. `ready` (Android): Play has downloaded the update; Restart installs it. */
+export type PromptState = UpdateVerdict | { kind: 'ready'; blocking: boolean };
+
+/** What tapping Update does. `store` is the pre-Play behaviour: open the store listing. */
+export type UpdateAction = 'flexible' | 'immediate' | 'restart' | 'store';
+
+/** Play is fetching an update this app started — Play's own notification shows the progress. */
+export function isPlayDownloading(play: PlayUpdateInfo | null): boolean {
+  return play?.installStatus === 'pending' || play?.installStatus === 'downloading';
+}
+
+/**
+ * Pure: the policy's verdict, adjusted for what Play reports (null = Play can't be asked,
+ * which leaves the verdict untouched).
+ *  - An update Play has already downloaded → "Update ready — Restart", whatever the row says
+ *    about nudging; it stays blocking if the row blocks this build.
+ *  - A GENTLE update Play is still downloading → nothing yet. The download's completion
+ *    brings up "Update ready"; asking again mid-download would offer a second download.
+ */
+export function promptWithPlay(verdict: UpdateVerdict, play: PlayUpdateInfo | null): PromptState {
+  if (verdict.kind === 'none' || !play) {return verdict;}
+  if (play.installStatus === 'downloaded') {return { kind: 'ready', blocking: verdict.kind === 'hard' };}
+  if (verdict.kind === 'soft' && isPlayDownloading(play)) {return NO_UPDATE;}
+  return verdict;
+}
+
+/**
+ * Pure: which Play flow the Update button runs.
+ *  - gentle → flexible; immediate if Play allows only that (they did tap Update); else store.
+ *  - blocking → immediate, including RESUMING one left half-way (Play reports it
+ *    "in_progress", and Google requires the app to resume it); else store.
+ *  - a downloaded update → restart, which installs it.
+ */
+export function chooseUpdateAction(kind: 'soft' | 'hard', play: PlayUpdateInfo | null): UpdateAction {
+  if (!play) {return 'store';}
+  if (play.installStatus === 'downloaded') {return 'restart';}
+  if (kind === 'hard') {
+    if (play.availability === 'in_progress') {return 'immediate';}
+    return play.availability === 'available' && play.immediateAllowed ? 'immediate' : 'store';
+  }
+  if (play.availability !== 'available') {return 'store';}
+  if (play.flexibleAllowed) {return 'flexible';}
+  return play.immediateAllowed ? 'immediate' : 'store';
 }
 
 /** This platform's policy row, or null on ANY failure (no row, no table, offline). Never throws. */
