@@ -76,6 +76,18 @@ export async function getConversationDetails(
   return toConversationDetails(row, (creator as CreatorProfile | null) ?? null);
 }
 
+/** The chat's kind, for a route that arrived without one (a notification tap). Null on failure. */
+export async function getConversationKind(conversationId: string): Promise<ConversationKind | null> {
+  const { data, error } = await db
+    .from('conversations')
+    .select('kind')
+    .eq('id', conversationId)
+    .maybeSingle();
+  if (error || !data) { return null; }
+  const { kind } = data as { kind: string };
+  return kind === 'dm' || kind === 'group' ? kind : null;
+}
+
 export async function listConversations(): Promise<ConversationSummary[]> {
   const { data, error } = await db.rpc('list_my_conversations');
   if (error) { throw error; }

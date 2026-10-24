@@ -1,16 +1,21 @@
 /**
- * The gate closes the realtime socket in the background to stop it polling
+ * On iOS the gate closes the realtime socket in the background to stop it polling
  * through a whole background listening session. The risk it carries is the
  * mirror image: a socket that closes and never reopens looks like "chat just
  * stopped working", silently and only after the user has switched apps once.
  *
  * So these pin both directions, plus the jam exemption — dropping the socket
  * mid-jam would desync every participant.
+ *
+ * On Android it must never close it: `disconnect()` destroys every channel's
+ * listeners (pinned against the real library at the bottom), and Android reports
+ * 'background' on every pause — a notification tap, the share sheet, a permission
+ * dialog. These tests mock the client, which is how that went unnoticed.
  */
 
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 let appStateListener: ((state: string) => void) | undefined;
 jest.spyOn(AppState, 'addEventListener').mockImplementation(((
@@ -49,10 +54,17 @@ function send(state: string) {
   act(() => { appStateListener?.(state); });
 }
 
+const realOS = Platform.OS;
+
 beforeEach(() => {
   mockConnect.mockClear();
   mockDisconnect.mockClear();
   mockActiveJam = null;
+  Platform.OS = 'ios';
+});
+
+afterAll(() => {
+  Platform.OS = realOS;
 });
 
 describe('RealtimeConnectionGate', () => {
@@ -107,3 +119,78 @@ describe('RealtimeConnectionGate', () => {
     expect(mockDisconnect).not.toHaveBeenCalled();
   });
 });
+
+describe('RealtimeConnectionGate on Android', () => {
+  beforeEach(() => { Platform.OS = 'android'; });
+
+  it('never closes the socket — a pause would kill every live subscription', () => {
+    mount();
+    send('background'); // e.g. the notification-tap trampoline, the share sheet
+    send('active');
+    send('background');
+    expect(mockDisconnect).not.toHaveBeenCalled();
+    expect(mockConnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('realtime-js disconnect() (the real library, why Android must not call it)', () => {
+  // jest.mock above replaces lib/supabase, not the library itself.
+  const { RealtimeClient } = jest.requireActual('@supabase/realtime-js');
+
+  class FakeSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onclose: ((e: unknown) => void) | null = null;
+    onerror: ((e: unknown) => void) | null = null;
+    onmessage: ((e: unknown) => void) | null = null;
+    binaryType = 'arraybuffer';
+    send() {}
+    close() {
+      this.readyState = 3;
+      this.onclose?.({ code: 1000 });
+    }
+  }
+
+  it('wipes every channel listener, so connect() alone brings back nothing', () => {
+    const client = new RealtimeClient('wss://example.supabase.co/realtime/v1', {
+      params: { apikey: 'anon' },
+      transport: FakeSocket,
+    });
+    const channel = client
+      .channel('home:unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {});
+    channel.subscribe();
+    expect(Object.keys(channel.bindings)).toContain('postgres_changes');
+
+    client.disconnect();
+
+    // If this starts failing, the library stopped tearing channels down on
+    // disconnect() and RealtimeConnectionGate's Android exemption can be revisited.
+    expect(channel.state).toBe('closed');
+    expect(channel.bindings).toEqual({});
+  });
+
+  it('keeps them through an unplanned drop, which it rejoins by itself', () => {
+    const client = new RealtimeClient('wss://example.supabase.co/realtime/v1', {
+      params: { apikey: 'anon' },
+      transport: FakeSocket,
+    });
+    const channel = client
+      .channel('home:unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {});
+    channel.subscribe();
+
+    // What Android now relies on: the socket dying under us (radio off, server
+    // timeout) leaves the channel errored-with-listeners, queued to rejoin.
+    client.conn.close();
+
+    expect(channel.state).toBe('errored');
+    expect(Object.keys(channel.bindings)).toContain('postgres_changes');
+    client.disconnect(); // stop the library's reconnect timers
+  });
+});
+

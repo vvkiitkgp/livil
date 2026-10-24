@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Linking, Platform, PermissionsAndroid } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../theme/colors';
-import { navigateWhenReady } from '../navigation/navigationRef';
+import { navigateWhenReady, navigationRef } from '../navigation/navigationRef';
 import { LIVIL_NOTIFICATION_ID_PREFIX } from './appBadge';
 import { getActiveConversation, pingConversation } from './activeConversation';
 import type { RootStackParamList } from '../navigation/types';
@@ -439,6 +439,58 @@ export function handleNotificationData(data: Record<string, string> | undefined)
 }
 
 /**
+ * The card most recently routed by handleNotificationPress, so the same tap reported
+ * twice is routed once. Forgotten when a card is (re)displayed under that id — a new
+ * message in a chat whose card was just tapped is a new tap, not a repeat.
+ */
+let lastPress: { id: string; at: number } | null = null;
+const PRESS_REPEAT_MS = 10_000;
+
+/**
+ * A tap on a card notifee displayed. On an Android cold start notifee hands the SAME tap to
+ * index.js's background handler (as a PRESS event) and to getInitialNotification. Both
+ * usually land before the navigator is up and collapse into navigateWhenReady's one pending
+ * slot — but if one lands after, the chat would open twice. So a repeat of the card just
+ * routed is dropped.
+ *
+ * Android chat taps also: do nothing when that chat is already on screen (navigating would
+ * replace its params), and drop the push's `kind` ('message'), which would otherwise land
+ * as the chat's own dm/group kind — ConversationScreen looks the real one up instead.
+ * iOS keeps routing exactly as before.
+ */
+export function handleNotificationPress(
+  notification: { id?: string; data?: Record<string, unknown> } | undefined,
+): void {
+  if (!notification?.data) return;
+  const { id } = notification;
+  const now = Date.now();
+  if (id && lastPress?.id === id && now - lastPress.at < PRESS_REPEAT_MS) return;
+  lastPress = id ? { id, at: now } : null;
+  const data = notification.data as Record<string, string>;
+  if (Platform.OS === 'android' && data.route === 'Conversation') {
+    if (isOpenChat(data.conversationId)) return;
+    const chat = { ...data };
+    delete chat.kind;
+    handleNotificationData(chat);
+    return;
+  }
+  handleNotificationData(data);
+}
+
+/** Whether the chat on screen right now is `conversationId`. */
+function isOpenChat(conversationId: string | undefined): boolean {
+  if (!conversationId || !navigationRef.isReady()) return false;
+  const current = navigationRef.getCurrentRoute();
+  return current?.name === 'Conversation'
+    && (current.params as { conversationId?: string } | undefined)?.conversationId === conversationId;
+}
+
+/** A card is being (re)displayed under `id`: a tap on it is a new tap. */
+function forgetPress(id: string): void {
+  if (lastPress?.id === id) lastPress = null;
+}
+
+/**
  * Kinds that represent a chat-style interaction. For these we use Android
  * MessagingStyle so the notification renders WhatsApp/Telegram-like: a
  * circular avatar inline, the sender's display name as the title, and the
@@ -556,6 +608,7 @@ export async function displayPushNotification(
     // the raw player's hashCode. See LIVIL_NOTIFICATION_ID_PREFIX.
     const conversationId = data.conversationId ?? data.actorUserId ?? 'default';
     const notifId = `${LIVIL_NOTIFICATION_ID_PREFIX}chat:${conversationId}`;
+    forgetPress(notifId);
 
     let prior: Array<{ text: string; timestamp: number }> = [];
     try {
@@ -608,6 +661,7 @@ export async function displayPushNotification(
   // earlier card (never quiet: each is a new message), so an unread morning nudge
   // and its evening one are one card, not two.
   const sharedCard = cardIdFor(kind, data.collapseId);
+  if (sharedCard) forgetPress(sharedCard);
 
   await notifee.displayNotification({
     // Prefixed so appBadge.ts can clear it; sequenced so two notifications that
@@ -714,7 +768,10 @@ export function initPush(): void {
   // displayed. Routes through the same handleNotificationData path the
   // FCM auto-display tap used to.
   const offNotifee = notifee.onForegroundEvent(({ type, detail }) => {
-    if (type === EventType.PRESS) {
+    if (type !== EventType.PRESS) return;
+    if (Platform.OS === 'android') {
+      handleNotificationPress(detail.notification);
+    } else {
       handleNotificationData(detail.notification?.data as Record<string, string> | undefined);
     }
   });
@@ -734,11 +791,11 @@ export function initPush(): void {
 
   // Cold-start tap on a notifee-rendered notification: app was killed,
   // user tapped, Android launched MainActivity, notifee preserved the
-  // tapped notification's data here.
+  // tapped notification's data here. Read ONCE per process — a tap on a
+  // backgrounded app reaches index.js's background handler instead. On
+  // Android that handler is handed this same tap too, hence the press router.
   void notifee.getInitialNotification().then(initial => {
-    if (initial?.notification?.data) {
-      handleNotificationData(initial.notification.data as Record<string, string>);
-    }
+    handleNotificationPress(initial?.notification);
   });
 }
 

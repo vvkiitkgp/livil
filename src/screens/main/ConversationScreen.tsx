@@ -51,6 +51,8 @@ import {
 import {
   markAsRead,
   getOtherMemberReadAt,
+  getConversationKind,
+  type ConversationKind,
 } from '../../services/conversations';
 import NowPlayingPill from '../../components/NowPlayingPill';
 import { useListeningNow } from '../../hooks/useListeningNow';
@@ -76,6 +78,7 @@ import ChatSongPicker, { MusicToggleIcon, type PickedSong } from '../../componen
 import { rememberSpotifyTrack, useSpotifyAvailability } from '../../services/spotify';
 import { findSpotifyLinkInText, spotifyTrackUrl } from '../../utils/spotifyLinks';
 import { haptics } from '../../utils/haptics';
+import { seenMustWait } from '../../utils/seenWhileAway';
 import { profileHandleIfExactLink } from '../../utils/shareLinks';
 import { supabase } from '../../../lib/supabase';
 import AddBadge from '../../components/AddBadge';
@@ -580,7 +583,20 @@ async function markReadAndRefreshBadge(conversationId: string): Promise<void> {
 export default function ConversationScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { conversationId, title, kind } = route.params;
+  const { conversationId, title, kind: kindParam } = route.params;
+  // Opened from a notification on Android, the chat arrives without its kind
+  // (handleNotificationPress drops the push's own `kind`, which is not the chat's): look
+  // it up. Every in-app route passes it, so this never runs for them.
+  const [fetchedKind, setFetchedKind] = useState<{ id: string; kind: ConversationKind } | null>(null);
+  const kind = kindParam ?? (fetchedKind?.id === conversationId ? fetchedKind.kind : undefined);
+  useEffect(() => {
+    if (kindParam) { return; }
+    let cancelled = false;
+    void getConversationKind(conversationId).then(k => {
+      if (!cancelled && k) { setFetchedKind({ id: conversationId, kind: k }); }
+    });
+    return () => { cancelled = true; };
+  }, [conversationId, kindParam]);
   const isGroup = kind === 'group';
 
   const { nowPlaying, queueRef, activePostId, handlersRef, requestPlay, setNowPlaying, markSeekTarget } =
@@ -821,6 +837,21 @@ export default function ConversationScreen() {
   // Merging (not replacing) keeps older pages the user scrolled back through,
   // and the cursor. Retried once: the resume path fires the instant iOS wakes
   // the app, when the first request typically fails.
+  // Mark this chat read and clear its notifications — unless seenMustWait() (Android,
+  // backgrounded: the socket stays open there, so messages land with nobody looking).
+  // Then it is remembered and done on the way back: resume, or focus for a chat that
+  // was under another screen.
+  const missedSeenRef = useRef(false);
+  const markSeenOrWait = useCallback(() => {
+    if (seenMustWait()) {
+      missedSeenRef.current = true;
+      return;
+    }
+    missedSeenRef.current = false;
+    void markReadAndRefreshBadge(conversationId);
+    void clearConversationNotifications(conversationId);
+  }, [conversationId]);
+
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
   const refreshLatest = useCallback(async (reason: string) => {
@@ -840,22 +871,24 @@ export default function ConversationScreen() {
       }
       // After the fetch, not before: a read marker sent in the first instant
       // after resume can fail the same way the load did.
-      void markReadAndRefreshBadge(conversationId);
-      void clearConversationNotifications(conversationId);
+      markSeenOrWait();
     } catch (err) {
       console.warn(`[chat] catch-up (${reason}) failed`, err);
     }
-  }, [conversationId, scrollToLatest]);
+  }, [conversationId, scrollToLatest, markSeenOrWait]);
 
   // This chat is "the open chat" while it is the focused screen, so a push for
   // it pings refreshLatest instead of showing a banner (see activeConversation).
+  // Coming back to it also marks what arrived while the app was away and this
+  // chat sat under another screen — the resume path skips an unfocused chat.
   useFocusEffect(
     useCallback(() => {
       setActiveConversation(conversationId);
+      if (missedSeenRef.current) { markSeenOrWait(); }
       return () => {
         if (getActiveConversation() === conversationId) { setActiveConversation(null); }
       };
-    }, [conversationId]),
+    }, [conversationId, markSeenOrWait]),
   );
 
   useEffect(
@@ -941,12 +974,10 @@ export default function ConversationScreen() {
         // mount, so the SENDER's "Seen" indicator wouldn't catch up to
         // messages that arrive while both are actively chatting. Skip our
         // own outbound — markAsRead for our own message is a no-op and
-        // wastes a round trip.
+        // wastes a round trip. The push for this message may already be on
+        // screen while the user is reading it here, hence the clear.
         if (msg.senderId && msg.senderId !== myId) {
-          void markReadAndRefreshBadge(conversationId);
-          // The push for this message may already be on screen while the user
-          // is reading it here.
-          void clearConversationNotifications(conversationId);
+          markSeenOrWait();
         }
       },
       async messageId => {
@@ -984,13 +1015,15 @@ export default function ConversationScreen() {
     );
 
     return () => unsubscribeFromConversation(conversationId);
-  }, [conversationId, myId, scrollToLatest, refreshLatest]);
+  }, [conversationId, myId, scrollToLatest, refreshLatest, markSeenOrWait]);
 
   // For groups: fetch member count. For DMs: resolve the other member (their avatar,
   // and whose listening status the now-playing pill follows).
   const headerLoadedRef = useRef(false);
   useEffect(() => {
-    if (headerLoadedRef.current) { return; }
+    // Not before the kind is known: the DM branch latches headerLoadedRef, so guessing
+    // "DM" for a group would leave it with one member's face for good.
+    if (!kind || headerLoadedRef.current) { return; }
     if (isGroup) {
       // Fetch member count for group header subtitle
       db
@@ -1019,7 +1052,7 @@ export default function ConversationScreen() {
           if (avatarUrl) { setOtherUserAvatarUrl(avatarUrl); }
         });
     }
-  }, [conversationId, myId, isGroup]);
+  }, [conversationId, myId, isGroup, kind]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) { return; }

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -28,6 +30,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { respondToCredit } from '../../services/tracks';
 import { useToast } from '../../contexts/ToastContext';
+import { seenMustWait } from '../../utils/seenWhileAway';
 
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -99,18 +102,32 @@ export default function ActivityCenterScreen() {
   // triggers a refetch (so we pick up the joined display fields the row alone
   // doesn't carry) and a mark-read pass (so notifications seen while the
   // screen is open don't linger in the unread badge).
+  //
+  // Except while seenMustWait() (Android, backgrounded — the socket stays open there):
+  // a like landing with the phone in a pocket is marked on return instead.
   useEffect(() => {
     if (!meId) { return; }
     let cancelled = false;
+    let unseenWhileAway = false;
     const refresh = async () => {
       try {
         const fresh = await listActivity();
         if (!cancelled) { setItems(fresh); }
-        void markActivityRead();
+        if (seenMustWait()) {
+          unseenWhileAway = true;
+        } else {
+          unseenWhileAway = false;
+          void markActivityRead();
+        }
       } catch {
         // silent — next event will retry
       }
     };
+    const appStateSub = Platform.OS === 'android'
+      ? AppState.addEventListener('change', state => {
+        if (state === 'active' && unseenWhileAway) { void refresh(); }
+      })
+      : null;
     const channel = supabase
       .channel(`activity:${meId}`)
       .on(
@@ -126,6 +143,7 @@ export default function ActivityCenterScreen() {
       .subscribe();
     return () => {
       cancelled = true;
+      appStateSub?.remove();
       void supabase.removeChannel(channel);
     };
   }, [meId]);

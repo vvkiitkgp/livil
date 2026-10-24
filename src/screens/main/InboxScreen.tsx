@@ -301,8 +301,8 @@ export default function InboxScreen() {
       )
       .subscribe(status => {
         console.log('[realtime] inbox status', status);
-        // Joined AGAIN after the socket dropped (a network blip, or RealtimeConnectionGate
-        // closing it while backgrounded): events in the gap were never delivered, so
+        // Joined AGAIN after the socket dropped (a network blip, or the app frozen in the
+        // background): events in the gap were never delivered, so
         // re-read. The first join needs nothing — focus already loaded the list.
         if (status === 'SUBSCRIBED') {
           if (joinedOnce) { void refreshFromNetwork(); }
@@ -315,8 +315,8 @@ export default function InboxScreen() {
     };
   }, [myId, refreshFromNetwork]);
 
-  // Back in the foreground: re-read the list. RealtimeConnectionGate closes the socket
-  // while the app is backgrounded (delivery there is push's job), so a message that
+  // Back in the foreground: re-read the list. Realtime misses what arrives while the app
+  // is backgrounded (closed on iOS, frozen on Android; delivery there is push's job), so a message that
   // arrived meanwhile — the push you just tapped past — never reached this screen, and
   // focus does not fire (the inbox never lost it). Home re-counts unread the same way.
   useEffect(() => {

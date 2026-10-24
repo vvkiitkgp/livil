@@ -1,41 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useJam } from '../contexts/JamContext';
 
 /**
- * Closes the Supabase realtime websocket while the app is backgrounded, and
- * reopens it on return.
- *
- * WHY
- * Every realtime feature — chat, activity, friendships, jam — multiplexes over a
- * SINGLE socket, which sends a keepalive every ~25s for as long as it is open.
- * That poll costs nothing while the app is frozen (Android stops React Native's
- * timer clock at `onHostPause`, so the heartbeat interval simply does not fire),
- * but there is one case where the app is backgrounded and NOT frozen: playing
- * music. The playback service holds the process up for the whole listening
- * session, so a two-hour listen was ~290 heartbeat round-trips plus every
- * postgres_changes event, on a radio that would otherwise idle between audio
- * buffer fills.
- *
- * Backgrounded is also exactly when we do not need the socket: message and
- * activity delivery to a backgrounded app is push notifications' job (FCM →
- * `displayPushNotification`), not realtime's.
- *
- * WHY THERE IS NO GRACE PERIOD
- * The obvious refinement — wait ~30s before disconnecting, so app-switching does
- * not churn — cannot work. A `setTimeout` scheduled as the app backgrounds is
- * frozen by the same timer clock, so it would fire on RETURN rather than while
- * away. Disconnect is therefore immediate, and the reconnect is cheap: one
- * websocket handshake plus the channels' own rejoin.
- *
- * HOW THE REJOIN WORKS (do not "help" it by re-subscribing)
- * `disconnect()` closes the socket, which errors every channel and schedules its
- * rejoin timer. Those timers are frozen with everything else and fire on resume,
- * putting each channel into `joining`; our `connect()` then opens the socket and
- * `_onConnOpen` re-sends the join for anything in that state. Calling
- * `channel.subscribe()` again would NOT help — it only rejoins a channel in
- * `closed` state, and a socket drop leaves them `errored`.
+ * iOS only: closes the realtime socket while the app is backgrounded (a background listen
+ * otherwise keeps a heartbeat going) and reopens it on return. Never on Android: there
+ * 'background' fires on every pause, and `disconnect()` destroys every channel's listeners.
+ * See kb/architecture/realtime.md, "The socket while the app is backgrounded".
  */
 export default function RealtimeConnectionGate() {
   const { activeJam } = useJam();
@@ -50,6 +22,8 @@ export default function RealtimeConnectionGate() {
   const suspendedRef = useRef(false);
 
   useEffect(() => {
+    if (Platform.OS !== 'ios') { return; }
+
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         if (!suspendedRef.current) { return; }
