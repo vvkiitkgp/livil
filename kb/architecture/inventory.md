@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-23
+last_verified: 2026-10-24
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-451 TypeScript file(s) under `src/`, 94,018 lines.
+454 TypeScript file(s) under `src/`, 94,405 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/screens/main/ConversationScreen.tsx` | 2257 |
+| `src/screens/main/ConversationScreen.tsx` | 2290 |
 | `src/screens/main/UploadScreen.tsx` | 2242 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
@@ -105,11 +105,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,853 lines.
+50 file(s), 27,904 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 2257 |
+| `src/screens/main/ConversationScreen.tsx` | 2290 |
 | `src/screens/main/UploadScreen.tsx` | 2242 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
@@ -131,9 +131,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignInScreen.tsx` | 379 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 359 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 336 |
+| `src/screens/main/ActivityCenterScreen.tsx` | 335 |
 | `src/screens/main/__tests__/SearchScreen.test.tsx` | 324 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 322 |
-| `src/screens/main/ActivityCenterScreen.tsx` | 317 |
 | `src/screens/auth/FirstRunGuideScreen.tsx` | 307 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 299 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 292 |
@@ -162,7 +162,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,459 lines.
+169 file(s), 33,520 lines.
 
 | File | Lines |
 |---|---:|
@@ -221,6 +221,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SpotifyClipboardPrompt.tsx` | 201 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
 | `src/components/GradientBorder.tsx` | 198 |
+| `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 197 |
 | `src/components/auth/AuthStep.tsx` | 195 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
@@ -264,7 +265,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SpotifyTrackSheet.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 114 |
-| `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 110 |
 | `src/components/guide/__tests__/timeline.test.ts` | 109 |
 | `src/components/Choice.tsx` | 108 |
 | `src/components/FormInput.tsx` | 107 |
@@ -283,7 +283,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/auth/usernameCheck.tsx` | 89 |
 | `src/components/MutualsLine.tsx` | 87 |
-| `src/components/RealtimeConnectionGate.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
 | `src/components/SpotifyLogo.tsx` | 81 |
@@ -310,6 +309,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/FirstHundredBadge.tsx` | 63 |
 | `src/components/__tests__/ConfirmActionModal.test.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
+| `src/components/RealtimeConnectionGate.tsx` | 61 |
 | `src/components/RoundTickButton.tsx` | 61 |
 | `src/components/guide/timeline.ts` | 60 |
 | `src/components/VerifiedBadge.tsx` | 58 |
@@ -338,13 +338,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-102 file(s), 19,752 lines.
+103 file(s), 19,986 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/tracks.ts` | 1492 |
 | `src/services/posts.ts` | 1328 |
-| `src/services/pushNotifications.ts` | 925 |
+| `src/services/pushNotifications.ts` | 982 |
 | `src/services/activity.ts` | 715 |
 | `src/services/comments.ts` | 620 |
 | `src/services/share.ts` | 551 |
@@ -359,7 +359,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/spotify.test.ts` | 330 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
-| `src/services/conversations.ts` | 249 |
+| `src/services/conversations.ts` | 261 |
 | `src/services/gifs.ts` | 245 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
 | `src/services/__tests__/commentSongs.test.ts` | 230 |
@@ -383,6 +383,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/appBadge.ts` | 166 |
+| `src/services/__tests__/pushNotificationPress.test.ts` | 165 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/clipboard.ts` | 149 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 144 |
@@ -507,7 +508,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-67 file(s), 5,290 lines.
+69 file(s), 5,331 lines.
 
 | File | Lines |
 |---|---:|
@@ -565,6 +566,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/returningListener.ts` | 30 |
 | `src/utils/__tests__/likeCount.test.ts` | 29 |
 | `src/utils/__tests__/returningListener.test.ts` | 29 |
+| `src/utils/__tests__/seenWhileAway.test.ts` | 29 |
 | `src/utils/playbackErrors.ts` | 28 |
 | `src/utils/__tests__/passwordPolicy.test.ts` | 27 |
 | `src/utils/__tests__/chatGif.test.ts` | 25 |
@@ -577,6 +579,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/likeCount.ts` | 20 |
 | `src/utils/likedBy.ts` | 20 |
 | `src/utils/retryOnce.ts` | 17 |
+| `src/utils/seenWhileAway.ts` | 12 |
 | `src/utils/gifIds.ts` | 7 |
 
 ## Dependencies
