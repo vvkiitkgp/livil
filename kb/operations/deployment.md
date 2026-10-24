@@ -99,6 +99,22 @@ the iOS build for days after Android is live. `message` optionally replaces the 
 the iOS row must never mention another platform's store (guideline 2.3.10). Migration
 `20261018000000_app_update_policy.sql` has the full rules.
 
+**On Android the prompt installs through Google Play inside the app** (Play In-App Updates,
+`InAppUpdateModule.kt` → `src/native/playInAppUpdate.ts`; the rules are in
+`src/services/appUpdate.ts`). Gentle → Play's *flexible* flow: the download runs in the
+background and the card returns as "Update ready — Restart". Blocking → Play's *immediate*
+(full-screen) flow. The row still decides *whether* to prompt; Play only decides *how*. When
+Play cannot do it — a debug or sideloaded build, no Play Store, or the release not yet visible
+to Play on that device — Update opens the store listing as before. iOS is untouched.
+
+Play offers an in-app update only to an install that came **from Google Play**, so a local
+debug or `adb install` build always takes the store-listing fallback. To see the real flow,
+use **internal app sharing** (Play Console → Internal app sharing): install a lower
+`versionCode` from one sharing link, then open a link for a higher one in the Play Store app
+(don't install it) — Play now offers that higher build to the installed one. Raise the
+`android` row's `latest_build` (or `minimum_build`, for the immediate flow) above the
+installed build to make the prompt appear.
+
 Step 6 matters more than it looks. The riskiest parts of this app — the media session, native
 auto-advance, background behaviour — **cannot be exercised by any automated check that exists
 today**, and several only misbehave in release builds or when backgrounded.

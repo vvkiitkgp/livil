@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-23
+last_verified: 2026-10-24
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-451 TypeScript file(s) under `src/`, 94,018 lines.
+453 TypeScript file(s) under `src/`, 94,800 lines.
 
 ## Size hotspots
 
@@ -162,7 +162,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,459 lines.
+169 file(s), 33,853 lines.
 
 | File | Lines |
 |---|---:|
@@ -180,9 +180,11 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SpotifyPostCard.tsx` | 417 |
 | `src/components/DetailView.tsx` | 411 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
+| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 393 |
 | `src/components/AddUserSheet.tsx` | 392 |
 | `src/components/SharePostSheet.tsx` | 372 |
 | `src/components/CopyrightMatchModal.tsx` | 370 |
+| `src/components/AppUpdatePrompt.tsx` | 362 |
 | `src/components/Icon.tsx` | 337 |
 | `src/components/PostLikersSheet.tsx` | 330 |
 | `src/components/ActivityBubble.tsx` | 324 |
@@ -212,7 +214,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/cardsPlayer.tsx` | 212 |
 | `src/components/CommentReportModal.tsx` | 211 |
 | `src/components/__tests__/GifPicker.test.tsx` | 211 |
-| `src/components/AppUpdatePrompt.tsx` | 210 |
 | `src/components/MentionSuggestions.tsx` | 206 |
 | `src/components/AddToAlbumSheet.tsx` | 205 |
 | `src/components/FriendPickerStrip.tsx` | 204 |
@@ -244,7 +245,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 154 |
 | `src/components/NotificationNudge.tsx` | 154 |
-| `src/components/__tests__/AppUpdatePrompt.test.tsx` | 151 |
 | `src/components/__tests__/CommentSongCard.test.tsx` | 151 |
 | `src/components/onboarding/StageLamp.tsx` | 151 |
 | `src/components/JamExitModal.tsx` | 150 |
@@ -338,7 +338,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-102 file(s), 19,752 lines.
+102 file(s), 19,929 lines.
 
 | File | Lines |
 |---|---:|
@@ -359,6 +359,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/spotify.test.ts` | 330 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
+| `src/services/__tests__/appUpdate.test.ts` | 263 |
 | `src/services/conversations.ts` | 249 |
 | `src/services/gifs.ts` | 245 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
@@ -385,8 +386,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/appBadge.ts` | 166 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/clipboard.ts` | 149 |
+| `src/services/appUpdate.ts` | 147 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 144 |
-| `src/services/__tests__/appUpdate.test.ts` | 141 |
 | `src/services/jamSuggestions.ts` | 139 |
 | `src/services/appleAuth.ts` | 131 |
 | `src/services/__tests__/sweepAbandonedUploads.test.ts` | 127 |
@@ -402,7 +403,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/feedImpressions.ts` | 100 |
 | `src/services/crashReporting.ts` | 93 |
 | `src/services/mediaPicks.ts` | 93 |
-| `src/services/appUpdate.ts` | 92 |
 | `src/services/recentlyPlayed.ts` | 92 |
 | `src/services/__tests__/getBlockedChannelIds.test.ts` | 91 |
 | `src/services/waveform.ts` | 89 |

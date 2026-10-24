@@ -1,16 +1,38 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, BackHandler, Keyboard, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  AppState,
+  BackHandler,
+  Keyboard,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { COLORS } from '../theme/colors';
 import { APP_VERSION_CODE } from '../constants/appVersion';
+import { useToast } from '../contexts/ToastContext';
 import {
+  chooseUpdateAction,
   decideUpdate,
   fetchUpdatePolicy,
+  isPlayDownloading,
   isUpdateSnoozed,
   NO_UPDATE,
+  promptWithPlay,
   snoozeUpdate,
   storeUrls,
+  type PromptState,
   type UpdateVerdict,
 } from '../services/appUpdate';
+import {
+  checkPlayUpdate,
+  completePlayUpdate,
+  startPlayUpdate,
+  subscribePlayInstallState,
+} from '../native/playInAppUpdate';
 import { Button } from './Button';
 import { Logo } from './Logo';
 
@@ -31,6 +53,13 @@ import { Logo } from './Logo';
  * immediate while blocking — so lowering `minimum_build` unblocks without a restart).
  * FAIL-OPEN only while nothing is known: a recheck that cannot read the policy keeps the last
  * answer, so a dropped connection (or airplane mode) never lifts a known block.
+ *
+ * ANDROID installs through Google Play inside the app (In-App Updates; the rules are in
+ * src/services/appUpdate.ts): Update on the gentle prompt starts a background download and
+ * the card steps aside; when the download lands it returns as "Update ready — Restart".
+ * Update on the blocking prompt opens Play's full-screen updater, with this card still
+ * underneath if they back out of it. When Play can't do it, Update opens the store listing,
+ * as it always has — and as it still does on iOS, which none of the Play paths touch.
  */
 const RECHECK_MS = 30 * 60 * 1000;
 
@@ -43,18 +72,42 @@ const COPY = {
     title: 'Please update Livil',
     body: 'This version no longer works.',
   },
+  ready: {
+    title: 'Update ready',
+    body: 'Restart Livil to finish updating.',
+  },
 } as const;
 
+/** Whether the card offers a way out (Later, back, a tap outside). Never while blocking. */
+function hasCancel(p: PromptState): boolean {
+  return p.kind === 'soft' || (p.kind === 'ready' && !p.blocking);
+}
+
 export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }) {
-  const [verdict, setVerdict] = useState<UpdateVerdict>(NO_UPDATE);
+  const { showToast } = useToast();
+  const [verdict, setVerdict] = useState<PromptState>(NO_UPDATE);
   const verdictRef = useRef(verdict);
   verdictRef.current = verdict;
+  // Sets the ref at once, not on the next render: a Play event and an in-flight check() can
+  // both land between two renders, and each reads what the other just decided.
+  const show = useCallback((next: PromptState) => {
+    verdictRef.current = next;
+    setVerdict(next);
+  }, []);
+  // The policy's own answer, kept while the card steps aside for a background download, so
+  // "Update ready" knows whether it must block.
+  const policyVerdictRef = useRef<UpdateVerdict>(NO_UPDATE);
   const lastCheckRef = useRef(0);
   const inFlightRef = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  // Android: following a Play background download, until it lands or fails.
+  const [watchingDownload, setWatchingDownload] = useState(false);
 
   const check = useCallback(async () => {
     if (inFlightRef.current) {return;}
-    if (verdictRef.current.kind !== 'hard' && Date.now() - lastCheckRef.current < RECHECK_MS) {return;}
+    const blocking = verdictRef.current.kind !== 'none' && !hasCancel(verdictRef.current);
+    if (!blocking && Date.now() - lastCheckRef.current < RECHECK_MS) {return;}
     inFlightRef.current = true;
     try {
       const policy = await fetchUpdatePolicy();
@@ -63,31 +116,80 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
       if (!policy) {return;}
       lastCheckRef.current = Date.now();
       const next = decideUpdate(policy, build);
-      if (next.kind === 'soft' && (await isUpdateSnoozed(next.latestBuild))) {
-        setVerdict(NO_UPDATE);
-        return;
+      policyVerdictRef.current = next;
+      let shown: PromptState = next;
+      // Play is asked only when the row says this build is behind — never for the up-to-date.
+      if (Platform.OS === 'android' && next.kind !== 'none') {
+        const play = await checkPlayUpdate();
+        shown = promptWithPlay(next, play);
+        if (isPlayDownloading(play)) {setWatchingDownload(true);}
       }
-      setVerdict(next);
+      if (shown.kind === 'soft' && (await isUpdateSnoozed(shown.latestBuild))) {shown = NO_UPDATE;}
+      // A downloaded update stays downloaded until it is installed, so a Play snapshot taken
+      // just before the download landed must not take "Update ready" away again.
+      if (verdictRef.current.kind === 'ready' && next.kind !== 'none') {
+        shown = { kind: 'ready', blocking: next.kind === 'hard' };
+      }
+      show(shown);
     } finally {
       inFlightRef.current = false;
     }
-  }, [build]);
+  }, [build, show]);
 
   useEffect(() => {
     void check();
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') {void check();}
+      if (state !== 'active') {return;}
+      // Back from Play's own screens: whatever Update was waiting on is over, so the button
+      // never stays locked on a Play call that will not answer.
+      busyRef.current = false;
+      setBusy(false);
+      void check();
     });
     return () => sub.remove();
   }, [check]);
 
+  // Android: the background download. Play's own notification shows progress; this only
+  // waits for the end. Native listens to Play only while this subscription is open.
+  useEffect(() => {
+    if (!watchingDownload) {return;}
+    let over = false;
+    const landed = () => {
+      if (over) {return;}
+      over = true;
+      setWatchingDownload(false);
+      show({ kind: 'ready', blocking: policyVerdictRef.current.kind === 'hard' });
+    };
+    const unsubscribe = subscribePlayInstallState(status => {
+      if (status === 'downloaded') {
+        landed();
+      } else if (status === 'failed' || status === 'canceled' || status === 'installed') {
+        over = true;
+        setWatchingDownload(false);
+        // Stood aside, not snoozed: the next launch or recheck offers the update again.
+        if (status === 'failed') {showToast("The update didn't download. We'll try again later.", { kind: 'error' });}
+      }
+    });
+    // Play's listener reports CHANGES, never the current state: a download that finished
+    // before this subscription reached native would otherwise never be announced.
+    void checkPlayUpdate().then(play => {
+      if (play?.installStatus === 'downloaded') {landed();}
+    });
+    return () => {
+      over = true;
+      unsubscribe();
+    };
+  }, [watchingDownload, show, showToast]);
+
   const later = useCallback(() => {
     const v = verdictRef.current;
     if (v.kind === 'soft') {snoozeUpdate(v.latestBuild);}
-    setVerdict(NO_UPDATE);
-  }, []);
+    // "Update ready": not snoozed — a downloaded update is offered again at the next launch
+    // or recheck (Google's guidance; until installed it is taking up storage).
+    show(NO_UPDATE);
+  }, [show]);
 
-  const update = useCallback(async () => {
+  const openStore = useCallback(async () => {
     const { primary, fallback } = storeUrls();
     try {
       await Linking.openURL(primary);
@@ -97,8 +199,48 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
     // Gentle: stand down — they went to update, and coming back without doing it should
     // not be met by the same card. The next launch or recheck asks again if still behind.
     // Blocking: stays up until the build is new enough.
-    if (verdictRef.current.kind === 'soft') {setVerdict(NO_UPDATE);}
-  }, []);
+    if (hasCancel(verdictRef.current)) {show(NO_UPDATE);}
+  }, [show]);
+
+  /** Android: installs through Play. False = Play couldn't, so open the store listing. */
+  const updateThroughPlay = useCallback(async (p: PromptState): Promise<boolean> => {
+    if (p.kind === 'none') {return false;}
+    const action = p.kind === 'ready' ? 'restart' : chooseUpdateAction(p.kind, await checkPlayUpdate());
+    if (action === 'restart') {
+      // Play takes over the screen and restarts the app; on success this rarely returns.
+      return completePlayUpdate();
+    }
+    if (action === 'store') {return false;}
+    const result = await startPlayUpdate(action);
+    if (result === 'failed' || result === 'unavailable') {return false;}
+    if (action === 'flexible' && result === 'accepted') {
+      // Downloading in the background: step aside until it lands ("Update ready").
+      show(NO_UPDATE);
+      setWatchingDownload(true);
+      showToast('Downloading the update in the background.', { kind: 'info' });
+      return true;
+    }
+    // Declined in Play's own dialog ("No thanks"), or an immediate update that returned:
+    // the gentle prompt counts that as Later; the blocking one stays up.
+    if (p.kind === 'soft') {later();}
+    return true;
+  }, [later, show, showToast]);
+
+  const update = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      // A ref, not just `busy`: two taps inside one frame would start two Play flows.
+      if (busyRef.current) {return;}
+      busyRef.current = true;
+      setBusy(true);
+      try {
+        if (await updateThroughPlay(verdictRef.current)) {return;}
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
+    await openStore();
+  }, [openStore, updateThroughPlay]);
 
   // On appearing: put the keyboard away — iOS draws it above the whole app, so a focused
   // composer or sign-in field restored on foreground would cover the buttons with no way to
@@ -114,7 +256,7 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
   useEffect(() => {
     if (verdict.kind === 'none') {return;}
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (verdictRef.current.kind === 'soft') {later();}
+      if (hasCancel(verdictRef.current)) {later();}
       return true;
     });
     return () => sub.remove();
@@ -122,6 +264,9 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
 
   if (verdict.kind === 'none') {return null;}
   const copy = COPY[verdict.kind];
+  const cancellable = hasCancel(verdict);
+  // The row's custom message describes the release; "Update ready" says what to do next.
+  const body = verdict.kind === 'ready' ? copy.body : verdict.message ?? copy.body;
 
   return (
     // accessibilityViewIsModal on the BACKDROP: it hides the element's siblings — the app
@@ -130,7 +275,7 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
       {/* A tap outside the card is the "Later" button, exactly. A sibling BEHIND the card,
           not its parent, so taps on the card never reach it. Hidden from screen readers: the
           button itself is the accessible way out. */}
-      {verdict.kind !== 'soft' ? null : (
+      {!cancellable ? null : (
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={later}
@@ -146,10 +291,17 @@ export function AppUpdatePrompt({ build = APP_VERSION_CODE }: { build?: number }
         </View>
 
         <Text style={styles.title} accessibilityRole="header">{copy.title}</Text>
-        <Text style={styles.body}>{verdict.message ?? copy.body}</Text>
+        <Text style={styles.body}>{body}</Text>
 
-        <Button label="Update" onPress={() => { void update(); }} variant="primary" size="md" fullWidth />
-        {verdict.kind === 'soft' ? (
+        <Button
+          label={verdict.kind === 'ready' ? 'Restart' : 'Update'}
+          onPress={() => { void update(); }}
+          variant="primary"
+          size="md"
+          fullWidth
+          busy={busy}
+        />
+        {cancellable ? (
           <Button label="Later" onPress={later} variant="ghost" size="md" fullWidth style={styles.later} />
         ) : null}
       </View>
