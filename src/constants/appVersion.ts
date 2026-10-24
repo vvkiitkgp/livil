@@ -3,7 +3,7 @@
  *
  * Mirrors versionName/versionCode from android/app/build.gradle, which is the
  * source of truth. Regenerate with `npm run version:sync`; the release bump
- * (`npm run prebuild:android`) rewrites it automatically.
+ * (`npm run version:bump`) rewrites it automatically.
  */
 export const APP_VERSION_NAME = '2.1.4';
 export const APP_VERSION_CODE = 78;

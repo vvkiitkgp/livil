@@ -11,10 +11,17 @@
  *
  * Two modes:
  *   node scripts/bump-version.mjs         → bump patch + versionCode, then sync
+ *                                            (`npm run version:bump`)
  *   node scripts/bump-version.mjs --sync  → sync only, no bump
+ *                                            (`npm run version:sync`)
  *
  * `--sync` is what CI runs to assert the committed constant has not drifted
  * from build.gradle.
+ *
+ * The bump is deliberately NOT wired as an npm `pre` hook. It used to be
+ * `prebuild:android`, which npm runs automatically before `build:android` — so
+ * building from a release commit that already contained the bump bumped it a
+ * second time, and the AAB shipped a version nobody had committed or reviewed.
  */
 import fs from 'fs';
 import path from 'path';
@@ -52,7 +59,7 @@ const generated = `/**
  *
  * Mirrors versionName/versionCode from android/app/build.gradle, which is the
  * source of truth. Regenerate with \`npm run version:sync\`; the release bump
- * (\`npm run prebuild:android\`) rewrites it automatically.
+ * (\`npm run version:bump\`) rewrites it automatically.
  */
 export const APP_VERSION_NAME = '${versionName}';
 export const APP_VERSION_CODE = ${versionCode};

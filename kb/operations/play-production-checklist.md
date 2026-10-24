@@ -224,7 +224,7 @@ production, and several are new-ish requirements that closed testing did not enf
       `android/app/build.gradle` for the next build. Everything up to 67 is spent — a
       reused code is rejected at upload, and a code is spent even if the release it
       belonged to was discarded. Bump with `npm run version:sync` after editing
-      `build.gradle`, NOT `npm run prebuild:android` — that one bumps the patch and
+      `build.gradle`, NOT `npm run version:bump` — that one bumps the patch and
       the code again, so it would silently ship a different number than the one you
       reviewed.
 - [ ] `cd android && ./gradlew bundleRelease` → upload
