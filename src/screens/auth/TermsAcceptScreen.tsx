@@ -1,14 +1,17 @@
 /**
- * Terms acceptance — scrollwrap.
+ * Terms acceptance — clickwrap.
  *
- * The Accept button stays disabled until the user has scrolled to the end. That is the
- * strongest consumer-facing consent pattern there is: nobody can claim they never saw
- * a term when the button was physically unreachable until the text had been passed.
+ * The full text is on screen and Accept is enabled from the start. It used to stay
+ * disabled until the reader had scrolled to the end (scrollwrap); the owner dropped
+ * that on 2026-10-26 to keep sign-up easy while the app is young, and because the gate
+ * was flaky on Android (a throttled onScroll could miss the frames that reached the
+ * bottom, so the button stayed off until the user scrolled again). ADR-0018 already
+ * ruled that the recorded acceptance row is the improvement and the scroll only a
+ * preference until counsel says otherwise. If counsel asks for scrollwrap back, gate on
+ * onScrollEndDrag / onMomentumScrollEnd as well as onScroll, not on onScroll alone.
  *
- * It matters here more than it would elsewhere, because these Terms do not merely set
- * rules — they take a LICENCE to the user's own music. A deliberate scroll and tap is
- * much better evidence of a deliberate grant than a line of small print beside a
- * button.
+ * These Terms take a LICENCE to the user's own music, so the tap must stay deliberate:
+ * a full-width button under the text, never a pre-ticked box or an auto-accept.
  *
  * There is no "Decline". Declining is closing the app or deleting the account, both of
  * which are always available; a decline button here would land the user in a state
@@ -19,20 +22,17 @@
  * cannot drift, which is what makes the recorded acceptance meaningful — it attests to
  * a version whose exact text is hashed in the database.
  */
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   Linking,
-  type NativeSyntheticEvent,
-  type NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../theme/colors';
 import { Button } from '../../components/Button';
-import { Icon } from '../../components/Icon';
 import { TERMS_SECTIONS, TERMS_VERSION, TERMS_EFFECTIVE } from '../../constants/termsContent';
 import { TERMS_URL } from '../../constants/links';
 import { recordTermsAcceptance, type AcceptanceSource } from '../../services/terms';
@@ -46,48 +46,9 @@ type Props = {
   onAccepted: () => void;
 };
 
-/**
- * How close to the bottom counts as "read it".
- *
- * Not zero: momentum scrolling routinely stops a pixel or two short, and a button that
- * refuses to enable when the user is visibly at the end reads as broken. 24 is small
- * enough that nothing meaningful is still hidden.
- */
-const BOTTOM_THRESHOLD = 24;
-
 export default function TermsAcceptScreen({ userId, source, onAccepted }: Props) {
   const { showToast } = useToast();
-  const [reachedEnd, setReachedEnd] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Once reached, stays reached. Scrolling back up to re-read must not re-disable the
-  // button — that would punish exactly the careful reader this screen is for.
-  const reachedRef = useRef(false);
-
-  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (reachedRef.current) { return; }
-    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    const distanceToEnd = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-    if (distanceToEnd <= BOTTOM_THRESHOLD) {
-      reachedRef.current = true;
-      setReachedEnd(true);
-    }
-  }, []);
-
-  /**
-   * If the whole document fits without scrolling there is nothing to scroll TO, and
-   * waiting for a scroll event that will never arrive would strand the user on a
-   * permanently disabled button. Unlikely with terms this long, but a short future
-   * revision or a very large display would hit it.
-   */
-  const handleContentSizeChange = useCallback((_w: number, h: number) => {
-    if (reachedRef.current) { return; }
-    if (h <= viewportRef.current + BOTTOM_THRESHOLD) {
-      reachedRef.current = true;
-      setReachedEnd(true);
-    }
-  }, []);
-
-  const viewportRef = useRef(0);
 
   const handleAccept = useCallback(async () => {
     setBusy(true);
@@ -120,12 +81,6 @@ export default function TermsAcceptScreen({ userId, source, onAccepted }: Props)
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        onScroll={handleScroll}
-        onContentSizeChange={handleContentSizeChange}
-        onLayout={e => { viewportRef.current = e.nativeEvent.layout.height; }}
-        // 16ms would fire on every frame for a value we compare against a threshold;
-        // 100ms is four times more often than a finger can reach the end.
-        scrollEventThrottle={100}
       >
         {TERMS_SECTIONS.map((section, i) => (
           <View key={i} style={styles.section}>
@@ -144,20 +99,12 @@ export default function TermsAcceptScreen({ userId, source, onAccepted }: Props)
       </ScrollView>
 
       <View style={styles.footer}>
-        {!reachedEnd ? (
-          <View style={styles.hintRow}>
-            <Icon name="arrowDown" size={14} color={COLORS.textMuted} />
-            <Text style={styles.hint}>Scroll to the end to continue</Text>
-          </View>
-        ) : null}
-
         <Button
           label={source === 'reaccept' ? 'Accept updated terms' : 'Accept and continue'}
           onPress={handleAccept}
           variant="primary"
           size="lg"
           fullWidth
-          disabled={!reachedEnd}
           busy={busy}
         />
 
@@ -216,14 +163,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  hintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  hint: { fontSize: 12, color: COLORS.textMuted },
   exit: {
     fontSize: 11,
     lineHeight: 16,

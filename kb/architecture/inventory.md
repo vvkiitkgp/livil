@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-24
+last_verified: 2026-10-25
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-454 TypeScript file(s) under `src/`, 94,405 lines.
+454 TypeScript file(s) under `src/`, 94,344 lines.
 
 ## Size hotspots
 
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,904 lines.
+50 file(s), 27,843 lines.
 
 | File | Lines |
 |---|---:|
@@ -145,7 +145,6 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 261 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 259 |
-| `src/screens/auth/TermsAcceptScreen.tsx` | 236 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 234 |
 | `src/screens/main/FollowingScreen.tsx` | 231 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 227 |
@@ -157,6 +156,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/PostDetailScreen.tsx` | 202 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
+| `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/AddToLivilScreen.tsx` | 141 |
 
