@@ -619,10 +619,30 @@ export default function ConversationScreen() {
   // path is covered by one handler: the header button, the iOS interactive
   // swipe-back, and the Android hardware back. We never block removal here, only
   // dismiss.
-  useEffect(
-    () => navigation.addListener('beforeRemove', () => { KeyboardController.dismiss(); }),
-    [navigation],
-  );
+  //
+  // `beforeRemove` alone is too late for the iOS swipe-back, though: native-stack
+  // only dispatches the pop (and so `beforeRemove`) from `onDismissed`, after the
+  // screen has left the window. The composer carries KeyboardGestureArea's
+  // invisible accessory view, whose resign keyboard-controller postpones by a
+  // frame; on iOS 26+ UIKit resigns only as it detaches the screen, so the
+  // postponed resign lands on a detached view and fails. Fabric then recycles
+  // that still-focused text view into the next conversation, where a tap never
+  // reaches `becomeFirstResponder`: only the Paste/AutoFill callout appears and
+  // the keyboard opens on the SECOND tap (keyboard-controller #1675, fixed
+  // natively by #1678 in a later release). Resigning when the screen starts to
+  // disappear (`transitionStart` with `closing`, from `onWillDisappear`) does it
+  // while the input is still in the window. It also covers a screen pushed on
+  // top of the chat, which detaches the composer the same way.
+  useEffect(() => {
+    const unsubRemove = navigation.addListener('beforeRemove', () => { KeyboardController.dismiss(); });
+    const unsubTransition = navigation.addListener('transitionStart', e => {
+      if (e.data.closing) KeyboardController.dismiss();
+    });
+    return () => {
+      unsubRemove();
+      unsubTransition();
+    };
+  }, [navigation]);
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
