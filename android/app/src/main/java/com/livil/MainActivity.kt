@@ -7,6 +7,7 @@ import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
+import com.swmansion.rnscreens.fragment.restoration.RNScreensFragmentFactory
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ReactActivity() {
@@ -19,6 +20,13 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Must run before super.onCreate so it can swap SplashTheme -> AppTheme.
     val splash = installSplashScreen()
+    // When Android kills the backgrounded process (or "Don't keep activities"
+    // is on) and the user returns, super.onCreate tries to rebuild the old
+    // react-native-screens fragments from savedInstanceState, which throws
+    // "Screen fragments should never be restored". The factory swaps them for
+    // fragments that remove themselves; React then renders the navigator
+    // fresh. Must be set before super.onCreate, which does the restoring.
+    supportFragmentManager.fragmentFactory = RNScreensFragmentFactory()
     super.onCreate(savedInstanceState)
 
     // Registered after super.onCreate so android.R.id.content exists (the
