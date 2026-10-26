@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-454 TypeScript file(s) under `src/`, 94,542 lines.
+456 TypeScript file(s) under `src/`, 95,244 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/ConversationScreen.tsx` | 2317 |
-| `src/screens/main/UploadScreen.tsx` | 2242 |
+| `src/screens/main/UploadScreen.tsx` | 2264 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
@@ -105,12 +105,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,870 lines.
+50 file(s), 27,892 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2317 |
-| `src/screens/main/UploadScreen.tsx` | 2242 |
+| `src/screens/main/UploadScreen.tsx` | 2264 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1469 |
@@ -338,11 +338,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-103 file(s), 20,129 lines.
+105 file(s), 20,809 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/tracks.ts` | 1492 |
+| `src/services/tracks.ts` | 1542 |
 | `src/services/posts.ts` | 1328 |
 | `src/services/pushNotifications.ts` | 982 |
 | `src/services/activity.ts` | 715 |
@@ -352,14 +352,16 @@ case the call fails silently wherever its result is discarded.
 | `src/services/profileService.ts` | 509 |
 | `src/services/spotify.ts` | 506 |
 | `src/services/__tests__/spotify.test.ts` | 433 |
-| `src/services/__tests__/stagedUpload.test.ts` | 408 |
+| `src/services/__tests__/stagedUpload.test.ts` | 410 |
 | `src/services/playlists.ts` | 388 |
 | `src/services/messages.ts` | 386 |
+| `src/services/mediaCompression.ts` | 374 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/uploads.ts` | 344 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/conversations.ts` | 261 |
+| `src/services/__tests__/mediaCompression.test.ts` | 254 |
 | `src/services/gifs.ts` | 245 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
 | `src/services/__tests__/commentSongs.test.ts` | 230 |
@@ -611,10 +613,12 @@ version is not the version running (Constitution P52).
 | `react-native` | `0.85.3` | 0.85.3 |
 | `react-native-app-auth` | `^8.4.0` | 8.4.0 |
 | `react-native-audio-api` | `0.12.2` | 0.12.2 |
+| `react-native-compressor` | `2.0.4` | 2.0.4 |
 | `react-native-gesture-handler` | `^2.24.0` | **2.31.2** |
 | `react-native-haptic-feedback` | `3.0.0` | 3.0.0 |
 | `react-native-image-crop-picker` | `^0.51.1` | 0.51.1 |
 | `react-native-keyboard-controller` | `^1.21.9` | 1.21.9 |
+| `react-native-nitro-modules` | `0.35.10` | 0.35.10 |
 | `react-native-reanimated` | `^4.4.0` | 4.4.0 |
 | `react-native-safe-area-context` | `^5.8.0` | 5.8.0 |
 | `react-native-screens` | `^4.11.0` | **4.25.2** |

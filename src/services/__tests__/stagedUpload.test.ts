@@ -145,7 +145,9 @@ describe('stageMediaUpload', () => {
     expect(mockScan).toHaveBeenCalledTimes(1);
     // The whole song, not one excerpt: the check runs behind the remaining steps.
     expect(mockScan).toHaveBeenCalledWith(expect.anything(), 't1', { fullSong: true });
-    expect(progress[0]).toBe('uploading');
+    // Compressed for streaming first (mediaCompression.ts), then uploaded, then checked.
+    expect(progress[0]).toBe('preparing');
+    expect(progress).toContain('uploading');
     expect(progress[progress.length - 1]).toBe('checking');
     expect(mockDb.deletedTracks).toEqual([]);
   });
@@ -175,9 +177,8 @@ describe('stageMediaUpload', () => {
   });
 
   it('sends nothing when dropped while the row was being created', async () => {
-    // Still wanted at sign-in, dropped by the time the row exists.
-    let checks = 0;
-    const droppedAfterInsert = () => ++checks > 1;
+    // Still wanted at sign-in and through the preparation, dropped by the time the row exists.
+    const droppedAfterInsert = () => mockDb.trackInserts.length > 0;
     await expect(stageMediaUpload(CLIP, 'video', () => {}, droppedAfterInsert)).rejects.toBeInstanceOf(StagingAbandonedError);
 
     expect(mockUpload).not.toHaveBeenCalled();
@@ -233,6 +234,7 @@ describe('publishStagedTrack', () => {
     userId: 'me',
     mediaKind: 'audio',
     mediaUrl: 'https://cdn/me/t1/audio',
+    file: SONG,
     scan: MATCH as never,
     declaration: OWNED,
   };

@@ -21,6 +21,7 @@ import { recordUploadConsent } from '../../shared/services/uploadConsent';
 import { TERMS_VERSION } from '../constants/termsContent';
 import { APP_VERSION_NAME } from '../constants/appVersion';
 import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
+import { prepareMediaForUpload } from './mediaCompression';
 import { resolveAuthorById, resolveAuthorDisplay, type AuthorDisplay } from '../utils/authorDisplay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -542,6 +543,21 @@ export async function createTrack(
     throw new Error('You must be signed in to upload a track.');
   }
 
+  // The song or video is compressed for streaming before anything is written (see
+  // mediaCompression.ts) — a minutes-long re-encode must not sit behind a placeholder row.
+  // Remembered per file, so one already prepared for the early upload is reused here.
+  const plan = planFromInput(input);
+  if (plan.audio) {
+    plan.audio = await prepareMediaForUpload(plan.audio, 'audio', {
+      onProgress: f => onProgress?.({ stage: 'preparing', fraction: f ?? 0 }),
+    });
+  }
+  if (plan.video) {
+    plan.video = await prepareMediaForUpload(plan.video, 'video', {
+      onProgress: f => onProgress?.({ stage: 'preparing', fraction: f ?? 0 }),
+    });
+  }
+
   const description = input.description?.trim() ? input.description.trim() : null;
 
   // Insert the track row up front so we have an id to scope storage paths to.
@@ -568,7 +584,6 @@ export async function createTrack(
   }
 
   const trackId = inserted.id;
-  const plan = planFromInput(input);
   const weights = computeWeights(plan);
 
   let audioFrac = 0;
@@ -618,6 +633,7 @@ export async function createTrack(
       trackId,
       userId: user.id,
       input,
+      uploadedAudio: plan.audio,
       description,
       tags,
       urls: { audioUrl, videoUrl, coverArtUrl, thumbnailUrl },
@@ -641,6 +657,7 @@ async function finishTrack({
   trackId,
   userId,
   input,
+  uploadedAudio,
   description,
   tags,
   urls,
@@ -650,6 +667,11 @@ async function finishTrack({
   trackId: string;
   userId: string;
   input: CreateTrackInput;
+  /**
+   * The song as it was UPLOADED — the compressed copy when there is one — so the waveform
+   * is computed from the same bytes listeners hear. Undefined for a video.
+   */
+  uploadedAudio?: PickedFile;
   description: string | null;
   tags: string[];
   urls: { audioUrl?: string; videoUrl?: string; coverArtUrl?: string; thumbnailUrl?: string };
@@ -745,7 +767,7 @@ async function finishTrack({
   // and the lazy remote path can't safely re-fetch a video either, so video
   // posts intentionally have no envelope (the wave stays decorative).
   if (input.mode === 'audio') {
-    kickoffWaveformAnalysisFromLocalFile(trackId, input.audio);
+    kickoffWaveformAnalysisFromLocalFile(trackId, uploadedAudio ?? input.audio);
   }
 
   // The uploader's own credit goes in with everybody else's. `accepted` because it is
@@ -907,12 +929,14 @@ export type StagedUpload = {
   mediaKind: 'audio' | 'video';
   /** The song's `audio_url` or the video's `video_url`. */
   mediaUrl: string;
+  /** The local file that was uploaded — the compressed copy when there is one. */
+  file: PickedFile;
   scan: ScanResult;
   /** What the uploader answered at the copyright question; null when nothing matched. */
   declaration: RightsDeclaration | null;
 };
 
-export type StageProgress = { stage: 'uploading' | 'checking'; fraction: number };
+export type StageProgress = { stage: 'preparing' | 'uploading' | 'checking'; fraction: number };
 
 /** The screen dropped this file (picked another, removed it, left) before staging finished. */
 export class StagingAbandonedError extends Error {
@@ -954,6 +978,19 @@ export async function stageMediaUpload(
   }
   if (isAbandoned()) { throw new StagingAbandonedError(); }
 
+  // Compressed for streaming first (mediaCompression.ts), before any row exists: a video
+  // can take minutes to re-encode, and the screen may move on meanwhile — then there is
+  // nothing to remove. `signal` cancels the re-encode; any other failure keeps the original.
+  onProgress({ stage: 'preparing', fraction: 0 });
+  let uploadFile: PickedFile;
+  try {
+    uploadFile = await prepareMediaUploadFor(file, mediaKind, onProgress, signal);
+  } catch (err) {
+    if (isAbandoned() || signal?.aborted) { throw new StagingAbandonedError(); }
+    throw err;
+  }
+  if (isAbandoned()) { throw new StagingAbandonedError(); }
+
   const { data: inserted, error: insertError } = await supabase
     .from('tracks')
     .insert({
@@ -988,7 +1025,7 @@ export async function stageMediaUpload(
     // that is a full copy of a possibly 300 MB video) or sending any of it.
     if (isAbandoned()) { throw new StagingAbandonedError(); }
     onProgress({ stage: 'uploading', fraction: 0 });
-    const mediaUrl = await uploadTrackFile(file, mediaKind, trackId, user.id, accessToken, f => {
+    const mediaUrl = await uploadTrackFile(uploadFile, mediaKind, trackId, user.id, accessToken, f => {
       onProgress({ stage: 'uploading', fraction: f });
     }, signal);
     if (isAbandoned()) { throw new StagingAbandonedError(); }
@@ -1007,7 +1044,7 @@ export async function stageMediaUpload(
     const scan = await scanUpload(supabase, trackId, { fullSong: true });
     if (isAbandoned()) { throw new StagingAbandonedError(); }
 
-    return { trackId, userId: user.id, mediaKind, mediaUrl, scan, declaration: null };
+    return { trackId, userId: user.id, mediaKind, mediaUrl, file: uploadFile, scan, declaration: null };
   } catch (err) {
     const abandoned = isAbandoned();
     await discard({ keepReference: abandoned });
@@ -1016,6 +1053,18 @@ export async function stageMediaUpload(
     if (abandoned) { throw new StagingAbandonedError(); }
     throw err;
   }
+}
+
+function prepareMediaUploadFor(
+  file: PickedFile,
+  mediaKind: 'audio' | 'video',
+  onProgress: (p: StageProgress) => void,
+  signal?: AbortSignal,
+): Promise<PickedFile> {
+  return prepareMediaForUpload(file, mediaKind, {
+    onProgress: f => onProgress({ stage: 'preparing', fraction: f ?? 0 }),
+    signal,
+  });
 }
 
 /** Remove a staged upload that will not be posted. Never throws. */
@@ -1130,6 +1179,7 @@ export async function publishStagedTrack(
       trackId: staged.trackId,
       userId: staged.userId,
       input,
+      uploadedAudio: staged.mediaKind === 'audio' ? staged.file : undefined,
       description,
       tags,
       urls: staged.mediaKind === 'audio'

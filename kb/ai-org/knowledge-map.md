@@ -16,16 +16,16 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-83 document(s) under `kb/`.
+84 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 83 |
-| Drift-proof (tier 1 + 4) | 50 |
+| Documents | 84 |
+| Drift-proof (tier 1 + 4) | 51 |
 | Hand-maintained (tier 3 + 5) | 26 |
-| Past freshness SLA | 21 |
+| Past freshness SLA | 20 |
 | Private-content stubs | 6 |
 
 Tiers 1 and 4 cannot drift by construction — the first is regenerated, the second is never
@@ -42,7 +42,6 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/auth.md` | principal-security | 2026-07-21 | 90d |
 | `architecture/backend.md` | principal-data | 2026-07-21 | 90d |
 | `architecture/client.md` | principal-client | 2026-07-21 | 90d |
-| `architecture/media-pipeline.md` | principal-playback | 2026-07-21 | 90d |
 | `architecture/overview.md` | chief-architect | 2026-07-20 | 90d |
 | `architecture/playback.md` | principal-playback | 2026-07-21 | 90d |
 | `architecture/realtime.md` | principal-realtime | 2026-07-21 | 90d |
@@ -92,7 +91,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `architecture/auth.md` ⚠️ | principal-security | P-SE, SR, BE, CR | 2026-07-21 | 90d |
 | `architecture/backend.md` ⚠️ | principal-data | P-DA, BE, CR, QA | 2026-07-21 | 90d |
 | `architecture/client.md` ⚠️ | principal-client | P-CL, FE, RF, CR | 2026-07-21 | 90d |
-| `architecture/media-pipeline.md` ⚠️ | principal-playback | P-PB, P-DA, BE, P-SE | 2026-07-21 | 90d |
+| `architecture/media-pipeline.md` | principal-playback | P-PB, P-DA, BE, P-SE | 2026-10-26 | 90d |
 | `architecture/overview.md` ⚠️ | chief-architect | ALL | 2026-07-20 | 90d |
 | `architecture/playback.md` ⚠️ | principal-playback | P-PB, P-PF, CR, QA, FE | 2026-07-21 | 90d |
 | `architecture/post-sharing.md` | chief-architect | P-CL, P-SE, P-DA, P-PF, FE, BE | 2026-10-19 | 90d |
@@ -157,6 +156,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0030-new-on-livil-is-for-you-filtered-to-uploads.md` | chief-architect | ALL | 2026-10-14 | 9999d |
 | `decisions/0031-gifs-in-comments.md` | chief-architect | ALL | 2026-10-16 | 9999d |
 | `decisions/0032-music-score.md` | chief-architect | ALL | 2026-10-18 | 9999d |
+| `decisions/0034-on-device-upload-compression.md` | chief-architect | ALL | 2026-10-26 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -170,7 +170,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 40 |
+| chief-architect | 41 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |

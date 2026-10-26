@@ -1,0 +1,788 @@
+diff --git a/node_modules/react-native-compressor/android/build.gradle b/node_modules/react-native-compressor/android/build.gradle
+index 21bb364..1ee15db 100644
+--- a/node_modules/react-native-compressor/android/build.gradle
++++ b/node_modules/react-native-compressor/android/build.gradle
+@@ -114,7 +114,6 @@ android {
+ repositories {
+   mavenCentral()
+   google()
+-  maven { url "https://jitpack.io" }
+ }
+ 
+ def kotlin_version = getExtOrDefault("kotlinVersion")
+@@ -131,6 +130,8 @@ dependencies {
+   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4"
+   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
+   implementation 'org.mp4parser:isoparser:1.9.56'
+-  implementation 'com.github.kaushik-naik:TAndroidLame:277c2ab4b0'
+-  implementation 'javazoom:jlayer:1.0.1'
++  // Livil patch: the LAME/MP3 audio path is gone (AacTranscoder.kt uses the platform
++  // codecs), so its two dependencies go with it. TAndroidLame also declared
++  // `android:allowBackup="true"` in its manifest, which the merger refused against the
++  // app's `false`.
+ }
+diff --git a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AacTranscoder.kt b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AacTranscoder.kt
+new file mode 100644
+index 0000000..9cb9a9c
+--- /dev/null
++++ b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AacTranscoder.kt
+@@ -0,0 +1,339 @@
++package com.reactnativecompressor.Audio
++
++import android.media.AudioFormat
++import android.media.MediaCodec
++import android.media.MediaCodecInfo
++import android.media.MediaExtractor
++import android.media.MediaFormat
++import android.media.MediaMuxer
++import android.os.Build
++import com.reactnativecompressor.Video.VideoCompressor.utils.StreamableVideo
++import java.io.File
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++
++/**
++ * Livil patch: transcode any audio Android can demux to AAC-LC in an MP4 container (.m4a),
++ * with the `moov` atom moved to the front so playback can start before the download ends.
++ *
++ * Replaces the LAME → MP3 path that shipped with the library. That path read WAV through a
++ * 16-bit-only reader (a 24-bit master was decoded as 16-bit → noise), rejected
++ * WAVE_FORMAT_EXTENSIBLE (most DAW exports), decoded nothing but MP3 for other inputs, and
++ * its stereo read had an indexing bug. MediaExtractor + MediaCodec handle WAV (8/16/24/32-bit
++ * and float), FLAC, MP3, AAC, Ogg and Opus with the platform's own codecs. AIFF has no
++ * extractor on Android, so it throws here and the caller keeps the original file.
++ */
++object AacTranscoder {
++  private const val TIMEOUT_US = 10_000L
++  private const val PCM_BYTES_PER_SAMPLE = 2
++
++  // API-31 constants, spelled out so this compiles against older compileSdks too.
++  private const val ENCODING_PCM_24BIT_PACKED = 21
++  private const val ENCODING_PCM_32BIT = 22
++
++  /**
++   * @param inputPath  a plain filesystem path (no `file://`)
++   * @param outputPath where the .m4a goes; overwritten
++   * @param bitrate    AAC bitrate in bits per second
++   * @return outputPath
++   */
++  @JvmStatic
++  fun transcode(inputPath: String, outputPath: String, bitrate: Int): String {
++    val extractor = MediaExtractor()
++    extractor.setDataSource(inputPath)
++    val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
++      extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
++    } ?: run {
++      extractor.release()
++      throw IllegalArgumentException("No audio track in $inputPath")
++    }
++    extractor.selectTrack(trackIndex)
++    val inputFormat = extractor.getTrackFormat(trackIndex)
++    val inputMime = inputFormat.getString(MediaFormat.KEY_MIME)!!
++    val isRaw = inputMime == MediaFormat.MIMETYPE_AUDIO_RAW
++
++    val muxerPath = "$outputPath.muxing"
++    File(muxerPath).delete()
++    File(outputPath).delete()
++
++    var decoder: MediaCodec? = null
++    var encoder: MediaCodec? = null
++    var muxer: MediaMuxer? = null
++    var muxerStarted = false
++    try {
++      // The PCM the encoder will be fed. For a raw (WAV) source it is the track format
++      // itself; for anything else it is whatever the decoder announces on its first output.
++      var pcm: PcmFormat? = if (isRaw) PcmFormat.from(inputFormat) else null
++
++      if (!isRaw) {
++        decoder = MediaCodec.createDecoderByType(inputMime).also {
++          it.configure(inputFormat, null, null, 0)
++          it.start()
++        }
++      }
++      muxer = MediaMuxer(muxerPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
++      var muxerTrack = -1
++
++      // 16-bit interleaved PCM waiting to be fed to the encoder, in frames (all channels).
++      var pending = ByteBuffer.allocate(256 * 1024).order(ByteOrder.LITTLE_ENDIAN).also { it.limit(0) }
++      var framesFed = 0L
++
++      // Raw PCM is read straight out of the extractor in chunks of this size.
++      val rawChunk: ByteBuffer? = if (isRaw) ByteBuffer.allocate(maxOf(inputFormat.maxInputSizeOr(64 * 1024), 64 * 1024)) else null
++
++      var sourceDone = false   // every sample handed to the decoder (or, raw, into `pending`)
++      var decoderDone = false  // decoder has produced its EOS (always true for raw)
++      var encoderInputDone = false
++      var encoderDone = false
++      val info = MediaCodec.BufferInfo()
++
++      fun ensureEncoder(format: PcmFormat): MediaCodec {
++        encoder?.let { return it }
++        if (format.channels !in 1..2) {
++          throw IllegalArgumentException("Unsupported channel count ${format.channels}")
++        }
++        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
++        val encFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, format.sampleRate, format.channels).apply {
++          setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
++          setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
++          setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
++        }
++        enc.configure(encFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
++        enc.start()
++        encoder = enc
++        return enc
++      }
++
++      fun appendPcm(src: ByteBuffer, format: PcmFormat) {
++        val converted = toPcm16(src, format)
++        if (pending.remaining() + converted.remaining() > pending.capacity()) {
++          val grown = ByteBuffer.allocate(maxOf(pending.capacity() * 2, pending.remaining() + converted.remaining()))
++            .order(ByteOrder.LITTLE_ENDIAN)
++          grown.put(pending)
++          grown.flip()
++          pending = grown
++        } else {
++          pending.compact()
++          pending.flip()
++        }
++        // Append after the current contents.
++        val limit = pending.limit()
++        pending.limit(limit + converted.remaining())
++        pending.position(limit)
++        pending.put(converted)
++        pending.position(0)
++      }
++
++      while (!encoderDone) {
++        // 1. Source → decoder (or straight into `pending` for raw PCM).
++        if (!sourceDone) {
++          if (isRaw) {
++            val chunk = rawChunk!!
++            chunk.clear()
++            val read = extractor.readSampleData(chunk, 0)
++            if (read < 0) {
++              sourceDone = true
++              decoderDone = true
++            } else {
++              chunk.position(0)
++              chunk.limit(read)
++              appendPcm(chunk, pcm!!)
++              extractor.advance()
++            }
++          } else {
++            val dec = decoder!!
++            val inIndex = dec.dequeueInputBuffer(TIMEOUT_US)
++            if (inIndex >= 0) {
++              val inBuf = dec.getInputBuffer(inIndex)!!
++              val read = extractor.readSampleData(inBuf, 0)
++              if (read < 0) {
++                dec.queueInputBuffer(inIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
++                sourceDone = true
++              } else {
++                dec.queueInputBuffer(inIndex, 0, read, extractor.sampleTime, 0)
++                extractor.advance()
++              }
++            }
++          }
++        }
++
++        // 2. Decoder → `pending`.
++        if (!isRaw && !decoderDone) {
++          val dec = decoder!!
++          val outIndex = dec.dequeueOutputBuffer(info, TIMEOUT_US)
++          when {
++            outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> pcm = PcmFormat.from(dec.outputFormat)
++            outIndex >= 0 -> {
++              if (pcm == null) pcm = PcmFormat.from(dec.outputFormat)
++              val outBuf = dec.getOutputBuffer(outIndex)!!
++              if (info.size > 0) {
++                outBuf.position(info.offset)
++                outBuf.limit(info.offset + info.size)
++                appendPcm(outBuf, pcm!!)
++              }
++              dec.releaseOutputBuffer(outIndex, false)
++              if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) decoderDone = true
++            }
++          }
++        }
++
++        // 3. `pending` → encoder. The encoder is created on the first PCM, when the sample
++        //    rate and channel count are finally known.
++        val format = pcm
++        if (format != null && !encoderInputDone) {
++          val enc = ensureEncoder(format)
++          val frameBytes = format.channels * PCM_BYTES_PER_SAMPLE
++          while (true) {
++            if (pending.remaining() < frameBytes && !decoderDone) break
++            val inIndex = enc.dequeueInputBuffer(if (pending.remaining() >= frameBytes) TIMEOUT_US else 0L)
++            if (inIndex < 0) break
++            val inBuf = enc.getInputBuffer(inIndex)!!
++            inBuf.clear()
++            val frames = minOf(inBuf.capacity() / frameBytes, pending.remaining() / frameBytes)
++            val ptsUs = framesFed * 1_000_000L / format.sampleRate
++            if (frames > 0) {
++              val bytes = frames * frameBytes
++              val slice = pending.duplicate()
++              slice.limit(pending.position() + bytes)
++              inBuf.put(slice)
++              pending.position(pending.position() + bytes)
++              framesFed += frames
++              enc.queueInputBuffer(inIndex, 0, bytes, ptsUs, 0)
++            } else {
++              // Nothing left and the source is finished: close the encoder's input.
++              enc.queueInputBuffer(inIndex, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
++              encoderInputDone = true
++              break
++            }
++          }
++        }
++
++        // 4. Encoder → muxer.
++        val enc = encoder
++        if (enc != null) {
++          while (true) {
++            val outIndex = enc.dequeueOutputBuffer(info, 0L)
++            if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
++              muxerTrack = muxer.addTrack(enc.outputFormat)
++              muxer.start()
++              muxerStarted = true
++              continue
++            }
++            if (outIndex < 0) break
++            val outBuf = enc.getOutputBuffer(outIndex)!!
++            val isConfig = info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
++            if (info.size > 0 && !isConfig && muxerStarted) {
++              outBuf.position(info.offset)
++              outBuf.limit(info.offset + info.size)
++              muxer.writeSampleData(muxerTrack, outBuf, info)
++            }
++            enc.releaseOutputBuffer(outIndex, false)
++            if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
++              encoderDone = true
++              break
++            }
++          }
++        } else if (sourceDone && decoderDone && pending.remaining() == 0) {
++          throw IllegalStateException("Decoded no audio from $inputPath")
++        }
++      }
++    } finally {
++      try { decoder?.stop() } catch (_: Throwable) {}
++      try { decoder?.release() } catch (_: Throwable) {}
++      try { encoder?.stop() } catch (_: Throwable) {}
++      try { encoder?.release() } catch (_: Throwable) {}
++      try { if (muxerStarted) muxer?.stop() } catch (_: Throwable) {}
++      try { muxer?.release() } catch (_: Throwable) {}
++      try { extractor.release() } catch (_: Throwable) {}
++    }
++
++    val muxed = File(muxerPath)
++    if (!muxed.exists() || muxed.length() <= 32) {
++      muxed.delete()
++      throw IllegalStateException("AAC output is empty")
++    }
++    // `moov` to the front (qt-faststart), reusing the video pipeline's rewriter. If that
++    // fails for any reason the muxer's own output is still a valid .m4a — keep it.
++    val faststart = try {
++      StreamableVideo.start(`in` = muxed, out = File(outputPath))
++    } catch (_: Throwable) {
++      false
++    }
++    if (faststart && File(outputPath).length() > 32) {
++      muxed.delete()
++    } else {
++      File(outputPath).delete()
++      if (!muxed.renameTo(File(outputPath))) {
++        throw IllegalStateException("Could not place the AAC output")
++      }
++    }
++    return outputPath
++  }
++
++  private fun MediaFormat.maxInputSizeOr(fallback: Int): Int =
++    if (containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) getInteger(MediaFormat.KEY_MAX_INPUT_SIZE) else fallback
++
++  class PcmFormat(val sampleRate: Int, val channels: Int, val encoding: Int) {
++    companion object {
++      fun from(format: MediaFormat): PcmFormat {
++        val encoding = if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
++          format.getInteger(MediaFormat.KEY_PCM_ENCODING)
++        } else {
++          AudioFormat.ENCODING_PCM_16BIT
++        }
++        return PcmFormat(
++          sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE),
++          channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT),
++          encoding = encoding,
++        )
++      }
++    }
++  }
++
++  /** Any PCM layout the platform hands out → 16-bit signed little-endian, interleaved. */
++  private fun toPcm16(src: ByteBuffer, format: PcmFormat): ByteBuffer {
++    val input = src.slice().order(ByteOrder.LITTLE_ENDIAN)
++    return when (format.encoding) {
++      AudioFormat.ENCODING_PCM_16BIT -> input
++      AudioFormat.ENCODING_PCM_8BIT -> {
++        val out = ByteBuffer.allocate(input.remaining() * 2).order(ByteOrder.LITTLE_ENDIAN)
++        while (input.hasRemaining()) {
++          out.putShort((((input.get().toInt() and 0xFF) - 128) shl 8).toShort())
++        }
++        out.flip()
++        out
++      }
++      AudioFormat.ENCODING_PCM_FLOAT -> {
++        val count = input.remaining() / 4
++        val out = ByteBuffer.allocate(count * 2).order(ByteOrder.LITTLE_ENDIAN)
++        for (i in 0 until count) {
++          val v = input.getFloat().coerceIn(-1f, 1f)
++          out.putShort((v * 32767f).toInt().toShort())
++        }
++        out.flip()
++        out
++      }
++      ENCODING_PCM_24BIT_PACKED -> {
++        val count = input.remaining() / 3
++        val out = ByteBuffer.allocate(count * 2).order(ByteOrder.LITTLE_ENDIAN)
++        for (i in 0 until count) {
++          input.get() // low byte
++          out.put(input.get())
++          out.put(input.get())
++        }
++        out.flip()
++        out
++      }
++      ENCODING_PCM_32BIT -> {
++        val count = input.remaining() / 4
++        val out = ByteBuffer.allocate(count * 2).order(ByteOrder.LITTLE_ENDIAN)
++        for (i in 0 until count) {
++          out.putShort((input.getInt() shr 16).toShort())
++        }
++        out.flip()
++        out
++      }
++      else -> throw IllegalArgumentException("Unsupported PCM encoding ${format.encoding}")
++    }
++  }
++}
+diff --git a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AudioCompressor.kt b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AudioCompressor.kt
+index 9292d3e..410ee65 100644
+--- a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AudioCompressor.kt
++++ b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Audio/AudioCompressor.kt
+@@ -1,30 +1,26 @@
+ package com.reactnativecompressor.Audio
+ 
+-
+-import android.annotation.SuppressLint
++import android.net.Uri
+ import com.facebook.react.bridge.Promise
+ import com.facebook.react.bridge.ReactApplicationContext
+ import com.facebook.react.bridge.ReadableMap
+-import com.naman14.androidlame.LameBuilder
+-import com.naman14.androidlame.WaveReader
+ import com.reactnativecompressor.Utils.MediaCache
+ import com.reactnativecompressor.Utils.Utils
+-import com.reactnativecompressor.Utils.Utils.addLog
+-import javazoom.jl.converter.Converter
+-import javazoom.jl.decoder.JavaLayerException
+-import java.io.BufferedOutputStream
+ import java.io.File
+-import java.io.FileNotFoundException
+-import java.io.FileOutputStream
+-import java.io.IOException
+ 
++/**
++ * Livil patch: `Audio.compress` produces AAC-LC in an `.m4a` (MP4) container — the same
++ * format the library produces on iOS — instead of LAME MP3. See [AacTranscoder] for why.
++ *
++ * Contract kept from upstream: resolves a `file://` URI. Changed from upstream: a failure
++ * REJECTS (as iOS does) instead of resolving the input path, so a caller can tell the two
++ * apart and keep the original file itself.
++ */
+ class AudioCompressor {
+   companion object {
+-    val TAG="AudioMain"
+-    private const val OUTPUT_STREAM_BUFFER = 8192
++    /** Still referenced by `Utils.addLog`. */
++    const val TAG = "AudioMain"
+ 
+-    var outputStream: BufferedOutputStream? = null
+-    var waveReader: WaveReader? = null
+     @JvmStatic
+     fun CompressAudio(
+       fileUrl: String,
+@@ -32,233 +28,29 @@ class AudioCompressor {
+       context: ReactApplicationContext,
+       promise: Promise,
+     ) {
+-      val realPath = Utils.getRealPath(fileUrl, context)
+-      var _fileUrl=realPath
+-      val filePathWithoutFileUri = realPath!!.replace("file://", "")
+-      try {
+-        var wavPath=filePathWithoutFileUri;
+-        var isNonWav:Boolean=false
+-        if (fileUrl.endsWith(".mp4", ignoreCase = true))
+-        {
+-          addLog("mp4 file found")
+-          val mp3Path= Utils.generateCacheFilePath("mp3", context)
+-          AudioExtractor().genVideoUsingMuxer(fileUrl, mp3Path, -1, -1, true, false)
+-          _fileUrl=Utils.slashifyFilePath(mp3Path)
+-          wavPath= Utils.generateCacheFilePath("wav", context)
+-          try {
+-            val converter = Converter()
+-            converter.convert(mp3Path, wavPath)
+-          } catch (e: JavaLayerException) {
+-            addLog("JavaLayerException error"+e.localizedMessage)
+-            e.printStackTrace();
+-          }
+-          isNonWav=true
+-        }
+-        else if (!fileUrl.endsWith(".wav", ignoreCase = true))
+-        {
+-          addLog("non wav file found")
+-          wavPath= Utils.generateCacheFilePath("wav", context)
+-          try {
+-          val converter = Converter()
+-          converter.convert(filePathWithoutFileUri, wavPath)
+-        } catch (e: JavaLayerException) {
+-          addLog("JavaLayerException error"+e.localizedMessage)
+-          e.printStackTrace();
+-        }
+-          isNonWav=true
+-        }
+-
+-
+-        autoCompressHelper(wavPath,filePathWithoutFileUri, optionMap,context) { mp3Path, finished ->
+-          if (finished) {
+-            val returnableFilePath:String="file://$mp3Path"
+-            addLog("finished: " + returnableFilePath)
+-            MediaCache.removeCompletedImagePath(fileUrl)
+-            if(isNonWav)
+-            {
+-              File(wavPath).delete()
+-            }
+-            promise.resolve(returnableFilePath)
+-          } else {
+-            addLog("error: "+mp3Path)
+-            promise.resolve(_fileUrl)
+-          }
+-        }
+-      } catch (e: Exception) {
+-        promise.resolve(_fileUrl)
+-      }
+-    }
+-
+-    @SuppressLint("WrongConstant")
+-    private fun autoCompressHelper(
+-      fileUrl: String,
+-      actualFileUrl: String,
+-      optionMap: ReadableMap,
+-      context: ReactApplicationContext,
+-      completeCallback: (String, Boolean) -> Unit
+-    ) {
+-
+-      val options = AudioHelper.fromMap(optionMap)
+-      val quality = options.quality
+-
+-      var isCompletedCallbackTriggered:Boolean=false
+-      try {
+-        var mp3Path = Utils.generateCacheFilePath("mp3", context)
+-        val input = File(fileUrl)
+-        val output = File(mp3Path)
+-
+-        val CHUNK_SIZE = 8192
+-      addLog("Initialising wav reader")
+-
+-      waveReader = WaveReader(input)
+-
+-      try {
+-        waveReader!!.openWave()
+-      } catch (e: IOException) {
+-        e.printStackTrace()
+-      }
+-
+-      addLog("Intitialising encoder")
+-
+-
+-        // for bitrate
+-        var audioBitrate:Int
+-        if(options.bitrate != -1)
+-        {
+-          audioBitrate= options.bitrate/1000
+-        }
+-        else
+-        {
+-          audioBitrate=AudioHelper.getDestinationBitrateByQuality(actualFileUrl, quality!!)
+-          Utils.addLog("dest bitrate: $audioBitrate")
+-        }
+-
+-        var androidLame = LameBuilder();
+-        androidLame.setOutBitrate(audioBitrate)
+-
+-        // for channels
+-        var audioChannels:Int
+-        if(options.channels != -1){
+-          audioChannels= options.channels!!
+-        }
+-        else
+-        {
+-          audioChannels=waveReader!!.channels
+-        }
+-        androidLame.setOutChannels(audioChannels)
+-
+-        // for sample rate
+-        androidLame.setInSampleRate(waveReader!!.sampleRate)
+-        var audioSampleRate:Int
+-        if(options.samplerate != -1){
+-          audioSampleRate= options.samplerate!!
+-        }
+-        else
+-        {
+-          audioSampleRate=waveReader!!.sampleRate
+-        }
+-        androidLame.setOutSampleRate(audioSampleRate)
+-        val androidLameBuild=androidLame.build()
+-
+       try {
+-        outputStream = BufferedOutputStream(FileOutputStream(output), OUTPUT_STREAM_BUFFER)
+-      } catch (e: FileNotFoundException) {
+-        e.printStackTrace()
+-      }
+-
+-      var bytesRead = 0
+-
+-      val buffer_l = ShortArray(CHUNK_SIZE)
+-      val buffer_r = ShortArray(CHUNK_SIZE)
+-      val mp3Buf = ByteArray(CHUNK_SIZE)
+-
+-      val channels = waveReader!!.channels
+-
+-      addLog("started encoding")
+-      while (true) {
+-        try {
+-          if (channels == 2) {
+-
+-            bytesRead = waveReader!!.read(buffer_l, buffer_r, CHUNK_SIZE)
+-            addLog("bytes read=$bytesRead")
+-
+-            if (bytesRead > 0) {
+-
+-              var bytesEncoded = 0
+-              bytesEncoded = androidLameBuild.encode(buffer_l, buffer_r, bytesRead, mp3Buf)
+-              addLog("bytes encoded=$bytesEncoded")
+-
+-              if (bytesEncoded > 0) {
+-                try {
+-                  addLog("writing mp3 buffer to outputstream with $bytesEncoded bytes")
+-                  outputStream!!.write(mp3Buf, 0, bytesEncoded)
+-                } catch (e: IOException) {
+-                  e.printStackTrace()
+-                }
+-
+-              }
+-
+-            } else
+-              break
+-          } else {
+-
+-            bytesRead = waveReader!!.read(buffer_l, CHUNK_SIZE)
+-            addLog("bytes read=$bytesRead")
+-
+-            if (bytesRead > 0) {
+-              var bytesEncoded = 0
+-
+-              bytesEncoded = androidLameBuild.encode(buffer_l, buffer_l, bytesRead, mp3Buf)
+-              addLog("bytes encoded=$bytesEncoded")
+-
+-              if (bytesEncoded > 0) {
+-                try {
+-                  addLog("writing mp3 buffer to outputstream with $bytesEncoded bytes")
+-                  outputStream!!.write(mp3Buf, 0, bytesEncoded)
+-                } catch (e: IOException) {
+-                  e.printStackTrace()
+-                }
+-
+-              }
+-
+-            } else
+-              break
+-          }
+-
+-
+-        } catch (e: IOException) {
+-          e.printStackTrace()
+-        }
+-
+-      }
+-
+-      addLog("flushing final mp3buffer")
+-      val outputMp3buf = androidLameBuild.flush(mp3Buf)
+-      addLog("flushed $outputMp3buf bytes")
+-      if (outputMp3buf > 0) {
+-        try {
+-          addLog("writing final mp3buffer to outputstream")
+-          outputStream!!.write(mp3Buf, 0, outputMp3buf)
+-          addLog("closing output stream")
+-          outputStream!!.close()
+-          completeCallback(output.absolutePath, true)
+-          isCompletedCallbackTriggered=true
+-        } catch (e: IOException) {
+-          completeCallback(e.localizedMessage, false)
+-          e.printStackTrace()
+-        }
+-      }
+-
+-      } catch (e: IOException) {
+-        completeCallback(e.localizedMessage, false)
+-      }
+-      if(!isCompletedCallbackTriggered)
+-      {
+-        completeCallback("something went wrong", false)
++        val realPath = Utils.getRealPath(fileUrl, context)
++          ?: throw IllegalArgumentException("Could not resolve $fileUrl")
++        // Uri.parse(...).path decodes percent-escapes ("My%20Song.wav"), unlike a plain
++        // replace("file://", "") — the same as the video path does.
++        val inputPath = Uri.parse(realPath).path ?: throw IllegalArgumentException("Bad path $realPath")
++        if (!File(inputPath).exists()) {
++          throw IllegalArgumentException("File not found: $inputPath")
++        }
++        val options = AudioHelper.fromMap(optionMap)
++        val bitrate = if (options.bitrate != -1) {
++          options.bitrate
++        } else {
++          // Quality presets are in kbps on this platform.
++          AudioHelper.getDestinationBitrateByQuality(inputPath, options.quality ?: "medium") * 1000
++        }
++        val outputPath = Utils.generateCacheFilePath("m4a", context)
++        val result = AacTranscoder.transcode(inputPath, outputPath, bitrate)
++        MediaCache.removeCompletedImagePath(fileUrl)
++        promise.resolve("file://$result")
++      } catch (e: Throwable) {
++        promise.reject("COMPRESS_AUDIO_FAILED", e.message ?: "Audio compression failed", e)
+       }
+     }
+-
+-
+-
+   }
+ }
+diff --git a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressionProfile.kt b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressionProfile.kt
+index 0fb8453..fd3e323 100644
+--- a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressionProfile.kt
++++ b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressionProfile.kt
+@@ -53,9 +53,13 @@ object VideoCompressionProfileFactory {
+         sourceFrameRate: Int,
+         maxSize: Float,
+         requestedBitrate: Float,
++        // Livil patch: an upper bound on the output frame rate (0 = the library's own cap).
++        // A 60 fps phone recording is encoded at 30 fps for streaming, as iOS already does
++        // through its video composition.
++        maxFrameRate: Int = 0,
+     ): VideoCompressionProfile {
+         val dimensions = scaleWithin(sourceWidth, sourceHeight, maxSize.roundToInt())
+-        val frameRate = normalizeFrameRate(sourceFrameRate)
++        val frameRate = normalizeFrameRate(sourceFrameRate, maxFrameRate)
+         val bitrate = if (requestedBitrate > 0f) {
+             requestedBitrate.roundToInt().coerceAtLeast(1)
+         } else {
+@@ -99,12 +103,13 @@ object VideoCompressionProfileFactory {
+         return Pair(width, height)
+     }
+ 
+-    private fun normalizeFrameRate(sourceFrameRate: Int): Int {
++    private fun normalizeFrameRate(sourceFrameRate: Int, maxFrameRate: Int = 0): Int {
++        val cap = if (maxFrameRate > 0) minOf(maxFrameRate, MAX_FRAME_RATE) else MAX_FRAME_RATE
+         if (sourceFrameRate <= 0) {
+-            return DEFAULT_FRAME_RATE
++            return minOf(DEFAULT_FRAME_RATE, cap)
+         }
+ 
+-        return sourceFrameRate.coerceIn(1, MAX_FRAME_RATE)
++        return sourceFrameRate.coerceIn(1, cap)
+     }
+ 
+     private fun estimateBitrate(
+diff --git a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressorHelper.kt b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressorHelper.kt
+index d4c4629..83ea195 100644
+--- a/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressorHelper.kt
++++ b/node_modules/react-native-compressor/android/src/main/java/com/reactnativecompressor/Video/VideoCompressorHelper.kt
+@@ -29,6 +29,8 @@ class VideoCompressorHelper {
+     var progressDivider: Int? = 0
+     var minimumFileSizeForCompress = 0.0f
+     var stripAudio = false
++    // Livil patch: see VideoCompressionProfileFactory.createManual.
++    var maxFrameRate = 0
+ 
+     companion object {
+         private var _reactContext: ReactApplicationContext? = null
+@@ -89,6 +91,7 @@ class VideoCompressorHelper {
+                     "bitrate" -> options.bitrate = map.getDouble(key).toFloat()
+                     "progressDivider" -> options.progressDivider = map.getInt(key)
+                     "stripAudio" -> options.stripAudio = map.getBoolean(key)
++                    "maxFrameRate" -> options.maxFrameRate = map.getInt(key)
+                 }
+             }
+             return options
+@@ -148,6 +151,7 @@ class VideoCompressorHelper {
+                     sourceFrameRate = frameRate,
+                     maxSize = options.maxSize,
+                     requestedBitrate = options.bitrate,
++                    maxFrameRate = options.maxFrameRate,
+                 )
+                 Utils.compressVideo(
+                     srcPath!!,
+diff --git a/node_modules/react-native-compressor/lib/commonjs/Video/index.js b/node_modules/react-native-compressor/lib/commonjs/Video/index.js
+index 6312afd..1ca6894 100644
+--- a/node_modules/react-native-compressor/lib/commonjs/Video/index.js
++++ b/node_modules/react-native-compressor/lib/commonjs/Video/index.js
+@@ -35,6 +35,9 @@ const Video = {
+     if (options?.stripAudio) {
+       modifiedOptions.stripAudio = options.stripAudio;
+     }
++    if (options?.maxFrameRate) {
++      modifiedOptions.maxFrameRate = options.maxFrameRate;
++    }
+     if (options?.getCancellationId) {
+       options?.getCancellationId(uuid);
+     }
+diff --git a/node_modules/react-native-compressor/lib/module/Video/index.js b/node_modules/react-native-compressor/lib/module/Video/index.js
+index 8cd85d8..5c12e9f 100644
+--- a/node_modules/react-native-compressor/lib/module/Video/index.js
++++ b/node_modules/react-native-compressor/lib/module/Video/index.js
+@@ -30,6 +30,9 @@ const Video = {
+     if (options?.stripAudio) {
+       modifiedOptions.stripAudio = options.stripAudio;
+     }
++    if (options?.maxFrameRate) {
++      modifiedOptions.maxFrameRate = options.maxFrameRate;
++    }
+     if (options?.getCancellationId) {
+       options?.getCancellationId(uuid);
+     }
+diff --git a/node_modules/react-native-compressor/src/Video/index.tsx b/node_modules/react-native-compressor/src/Video/index.tsx
+index 563a015..57a862e 100644
+--- a/node_modules/react-native-compressor/src/Video/index.tsx
++++ b/node_modules/react-native-compressor/src/Video/index.tsx
+@@ -18,6 +18,11 @@ type videoCompresssionType = {
+    * Default: false
+    */
+   stripAudio?: boolean;
++  /***
++   * Livil patch (Android): cap the output frame rate, e.g. 30 for a 60 fps source.
++   * iOS already renders through a 30 fps video composition.
++   */
++  maxFrameRate?: number;
+ };
+ 
+ export type VideoCompressorType = {
+@@ -56,6 +61,9 @@ const Video: VideoCompressorType = {
+     if (options?.stripAudio) {
+       modifiedOptions.stripAudio = options.stripAudio;
+     }
++    if (options?.maxFrameRate) {
++      modifiedOptions.maxFrameRate = options.maxFrameRate;
++    }
+     if (options?.getCancellationId) {
+       options?.getCancellationId(uuid);
+     }

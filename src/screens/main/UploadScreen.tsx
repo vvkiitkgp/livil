@@ -120,6 +120,8 @@ type StagingToken = {
 /** The early upload + copyright check of the song or video — see the effect that runs it. */
 type Staging =
   | { status: 'idle' }
+  /** Being compressed for streaming (mediaCompression.ts). The fraction is 0 until known. */
+  | { status: 'preparing'; fraction: number }
   | { status: 'uploading'; fraction: number }
   | { status: 'checking' }
   | { status: 'ready'; staged: StagedUpload }
@@ -595,13 +597,19 @@ export default function UploadScreen() {
     };
     stagingTokenRef.current = token;
     const abandoned = () => token.abandoned;
-    setStaging({ status: 'uploading', fraction: 0 });
+    setStaging({ status: 'preparing', fraction: 0 });
     const promise = stageMediaUpload(
       stagedFile,
       mode,
       p => {
         if (abandoned()) { return; }
-        setStaging(p.stage === 'checking' ? { status: 'checking' } : { status: 'uploading', fraction: p.fraction });
+        setStaging(
+          p.stage === 'checking'
+            ? { status: 'checking' }
+            : p.stage === 'preparing'
+              ? { status: 'preparing', fraction: p.fraction }
+              : { status: 'uploading', fraction: p.fraction },
+        );
       },
       abandoned,
       token.controller.signal,
@@ -1002,6 +1010,12 @@ export default function UploadScreen() {
         if (mode !== 'video' || video === confirmedVideo) { return null; }
         icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
         text = 'When you tap Next, it uploads and is checked against known recordings.';
+        break;
+      case 'preparing':
+        // A song is quick; a long video re-encodes for a while and reports how far along.
+        text = staging.fraction > 0
+          ? `Preparing your ${what} for streaming · ${Math.round(staging.fraction * 100)}%`
+          : `Preparing your ${what} for streaming…`;
         break;
       case 'uploading':
         text = `Uploading your ${what} · ${Math.round(staging.fraction * 100)}%`;
@@ -1434,7 +1448,7 @@ export default function UploadScreen() {
           : staging.staged.scan.status === 'complete'
             ? 'No match with known recordings'
             : "Couldn't check yet — it's checked again when you post"
-      : staging.status === 'uploading' || staging.status === 'checking'
+      : staging.status === 'preparing' || staging.status === 'uploading' || staging.status === 'checking'
         ? 'Still checking — finishes when you post'
         : 'Checked when you post';
 
@@ -1571,7 +1585,9 @@ export default function UploadScreen() {
   const progressLabel = awaitingStaging
     ? staging.status === 'checking'
       ? 'Checking it against known recordings…'
-      : `Uploading your ${mode === 'audio' ? 'song' : 'video'}…`
+      : staging.status === 'preparing'
+        ? `Preparing your ${mode === 'audio' ? 'song' : 'video'} for streaming…`
+        : `Uploading your ${mode === 'audio' ? 'song' : 'video'}…`
     : progressStage === 'preparing'
       ? 'Preparing files…'
       : progressStage === 'checking'
@@ -1579,9 +1595,15 @@ export default function UploadScreen() {
         : progressStage === 'finalizing'
           ? 'Saving track…'
           : 'Uploading…';
+  // A percentage where one is known: the upload, and a video being re-encoded (a song is
+  // too quick to report). Otherwise the bar shows a spinner.
   const progressPct = awaitingStaging
-    ? (staging.status === 'uploading' ? Math.round(staging.fraction * 100) : null)
-    : progressStage === 'uploading' ? Math.round(progressFraction * 100) : null;
+    ? staging.status === 'uploading' || (staging.status === 'preparing' && staging.fraction > 0)
+      ? Math.round(staging.fraction * 100)
+      : null
+    : progressStage === 'uploading' || (progressStage === 'preparing' && progressFraction > 0)
+      ? Math.round(progressFraction * 100)
+      : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
