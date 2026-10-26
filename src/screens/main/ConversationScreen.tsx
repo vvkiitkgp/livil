@@ -15,6 +15,7 @@ import {
   Image,
   ActivityIndicator,
   Pressable,
+  Platform,
   ScrollViewProps,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -633,8 +634,14 @@ export default function ConversationScreen() {
   // disappear (`transitionStart` with `closing`, from `onWillDisappear`) does it
   // while the input is still in the window. It also covers a screen pushed on
   // top of the chat, which detaches the composer the same way.
+  //
+  // iOS only. The bug is UIKit's, and on Android the extra dismiss broke the
+  // open chat: after a send (and sometimes mid-typing) the composer dropped
+  // behind a keyboard that stayed up, and typing went nowhere until the
+  // keyboard was closed and the field tapped again.
   useEffect(() => {
     const unsubRemove = navigation.addListener('beforeRemove', () => { KeyboardController.dismiss(); });
+    if (Platform.OS !== 'ios') return unsubRemove;
     const unsubTransition = navigation.addListener('transitionStart', e => {
       if (e.data.closing) KeyboardController.dismiss();
     });
