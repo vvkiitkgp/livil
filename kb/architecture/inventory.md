@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-25
+last_verified: 2026-10-26
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-454 TypeScript file(s) under `src/`, 94,344 lines.
+454 TypeScript file(s) under `src/`, 94,515 lines.
 
 ## Size hotspots
 
@@ -162,7 +162,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,520 lines.
+169 file(s), 33,548 lines.
 
 | File | Lines |
 |---|---:|
@@ -176,8 +176,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/PickThree.tsx` | 483 |
 | `src/components/MediaPlayer.tsx` | 468 |
 | `src/components/QueueList.tsx` | 425 |
+| `src/components/SpotifyPostCard.tsx` | 425 |
 | `src/components/ChatSongPicker.tsx` | 421 |
-| `src/components/SpotifyPostCard.tsx` | 417 |
 | `src/components/DetailView.tsx` | 411 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
 | `src/components/AddUserSheet.tsx` | 392 |
@@ -200,9 +200,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentSongCard.tsx` | 241 |
 | `src/components/ShareProfileSheet.tsx` | 240 |
 | `src/components/StoryReportModal.tsx` | 239 |
+| `src/components/PostGridCard.tsx` | 237 |
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
-| `src/components/PostGridCard.tsx` | 229 |
 | `src/components/RepostChatCard.tsx` | 228 |
 | `src/components/PostReportModal.tsx` | 217 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
@@ -236,12 +236,12 @@ case the call fails silently wherever its result is discarded.
 | `src/components/GroupAvatarCluster.tsx` | 170 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 170 |
 | `src/components/guide/__tests__/pickSongs.test.ts` | 170 |
+| `src/components/__tests__/PostGridCard.test.tsx` | 169 |
 | `src/components/ProfileTabBar.tsx` | 167 |
 | `src/components/guide/pickSongs.ts` | 167 |
 | `src/components/FullScreenFrame.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
-| `src/components/__tests__/PostGridCard.test.tsx` | 158 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 154 |
 | `src/components/NotificationNudge.tsx` | 154 |
@@ -285,7 +285,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MutualsLine.tsx` | 87 |
 | `src/components/Scrim.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
-| `src/components/SpotifyLogo.tsx` | 81 |
+| `src/components/SpotifyLogo.tsx` | 82 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
 | `src/components/PostCardSkeleton.tsx` | 79 |
 | `src/components/UsernameBadges.tsx` | 78 |
@@ -338,7 +338,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-103 file(s), 19,986 lines.
+103 file(s), 20,129 lines.
 
 | File | Lines |
 |---|---:|
@@ -350,13 +350,13 @@ case the call fails silently wherever its result is discarded.
 | `src/services/share.ts` | 551 |
 | `src/services/albums.ts` | 521 |
 | `src/services/profileService.ts` | 509 |
-| `src/services/spotify.ts` | 466 |
+| `src/services/spotify.ts` | 506 |
+| `src/services/__tests__/spotify.test.ts` | 433 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/playlists.ts` | 388 |
 | `src/services/messages.ts` | 386 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/uploads.ts` | 344 |
-| `src/services/__tests__/spotify.test.ts` | 330 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/conversations.ts` | 261 |
