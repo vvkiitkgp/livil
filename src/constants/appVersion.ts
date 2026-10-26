@@ -5,8 +5,8 @@
  * source of truth. Regenerate with `npm run version:sync`; the release bump
  * (`npm run version:bump`) rewrites it automatically.
  */
-export const APP_VERSION_NAME = '2.1.5';
-export const APP_VERSION_CODE = 79;
+export const APP_VERSION_NAME = '2.1.6';
+export const APP_VERSION_CODE = 80;
 
 /** Rendered in the Settings footer, e.g. "Livil v1.1.13 (59)". */
 export const APP_VERSION_LABEL = `Livil v${APP_VERSION_NAME} (${APP_VERSION_CODE})`;
