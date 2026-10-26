@@ -1,0 +1,59 @@
+name: transcode-media
+
+# ADR-0033 — heavy uploads buffer on phones; this job swaps them for streaming-friendly
+# renditions. It runs scripts/transcode-media.mjs against PRODUCTION as the service role.
+#
+# WHY A WORKFLOW: Supabase edge functions cannot run ffmpeg (2 s CPU cap, no binary — see
+# CLAUDE.md, "Edge function for decode: ruled out"). This repository is public, so Actions
+# minutes are free, ffmpeg ships on the ubuntu image, and there is no server to keep alive.
+#
+# WHAT IT DOES: every run looks at tracks nobody has looked at yet (transcode_status IS
+# NULL), probes each file, and re-encodes the heavy ones — video to H.264 ≤1080p 30 fps
+# with the sound track copied untouched, lossless/oversized audio to AAC 256k. The
+# rendition is uploaded NEXT TO the original (video.h264.mp4 / audio.aac.m4a in the same
+# <uploader>/<track>/ folder) and the track row is pointed at it; original_media_url keeps
+# the upload. Nothing is ever deleted. Database rule: 20261115000000_tracks_transcode_renditions.sql.
+#
+# WHEN: GitHub's schedule floor is 5 minutes and runs land a few minutes late under load,
+# so a fresh upload plays as the heavy original for ~5–10 min, then switches. For "right
+# now", a database webhook can fire `repository_dispatch` (type transcode-media).
+#
+# SECURITY: SUPABASE_SERVICE_ROLE_KEY is injected only on schedule / manual / dispatch runs,
+# which execute the DEFAULT branch's copy of the script. Do NOT add `pull_request` here —
+# the runner would execute a PR's copy of the script with the production key.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [transcode-media]
+
+permissions:
+  contents: read
+
+# One worker at a time; a run that starts while another is busy waits for it.
+concurrency:
+  group: transcode-media
+  cancel-in-progress: false
+
+jobs:
+  transcode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.11.0'
+
+      - name: ffmpeg
+        run: |
+          command -v ffmpeg >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q ffmpeg; }
+          ffmpeg -version | head -1
+
+      - name: Transcode heavy uploads
+        env:
+          SUPABASE_URL: https://fqzrmqnlgjeuxzinbqvs.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/transcode-media.mjs
