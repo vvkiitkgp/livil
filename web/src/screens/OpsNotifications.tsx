@@ -192,38 +192,40 @@ export function OpsNotifications() {
           <span className="hint">India time. Each one is skipped when there is nothing to say.</span>
         </div>
         {slots === null ? <div className="skeleton skeleton--rows" /> : (
-          <table className="table">
-            <tbody>
-              {slots.map(s => (
-                <tr key={s.slot}>
-                  <td className="num">{slotWhen(s)}</td>
-                  <td>
-                    <span className="table__title">{SLOT_LABELS[s.slot]}</span>
-                    {s.pool !== 'digest' && !s.enabled && (
-                      <div className="hint">
-                        Start only once the app release with the “{NEW_MUSIC_SLOTS.has(s.slot) ? 'New music' : 'Mood reminders'}” switch is out (App Store rule).
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    <span className="onoff" data-on={s.enabled || undefined}>
-                      {s.enabled ? onLabel(s) : 'Not sending'}
-                    </span>
-                  </td>
-                  <td className="num">
-                    <Button
-                      size="sm"
-                      variant={s.enabled ? 'secondary' : 'primary'}
-                      busy={busy === `slot:${s.slot}`}
-                      onClick={() => toggleSlot(s)}
-                    >
-                      {s.enabled ? 'Stop sending' : 'Start sending'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="tablewrap">
+            <table className="table">
+              <tbody>
+                {slots.map(s => (
+                  <tr key={s.slot}>
+                    <td className="num">{slotWhen(s)}</td>
+                    <td className="table__text">
+                      <span className="table__title">{SLOT_LABELS[s.slot]}</span>
+                      {s.pool !== 'digest' && !s.enabled && (
+                        <div className="hint">
+                          Start only once the app release with the “{NEW_MUSIC_SLOTS.has(s.slot) ? 'New music' : 'Mood reminders'}” switch is out (App Store rule).
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span className="onoff" data-on={s.enabled || undefined}>
+                        {s.enabled ? onLabel(s) : 'Not sending'}
+                      </span>
+                    </td>
+                    <td className="num">
+                      <Button
+                        size="sm"
+                        variant={s.enabled ? 'secondary' : 'primary'}
+                        busy={busy === `slot:${s.slot}`}
+                        onClick={() => toggleSlot(s)}
+                      >
+                        {s.enabled ? 'Stop sending' : 'Start sending'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
@@ -267,7 +269,7 @@ export function OpsNotifications() {
                 {inPool.map(m => (
                   <tr key={m.id} data-off={!m.active || undefined}>
                     <td className="num">{m.position}</td>
-                    <td>
+                    <td className="table__text">
                       <span className="table__title">{m.title}</span>
                       <div className="hint">{m.body}</div>
                       <div className="rowactions">
@@ -375,7 +377,7 @@ export function OpsNotifications() {
                   <tr key={s.id}>
                     <td>{formatDate(s.createdAt)} <span className="hint">{new Date(s.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></td>
                     <td>{SLOT_LABELS[s.slot]}</td>
-                    <td>
+                    <td className="table__text">
                       <span className="table__title">{s.position ? `#${s.position} ` : ''}{s.exampleTitle ?? '—'}</span>
                       {s.exampleBody && <div className="hint">{s.exampleBody}</div>}
                     </td>
