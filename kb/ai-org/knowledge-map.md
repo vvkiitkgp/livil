@@ -16,14 +16,14 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-83 document(s) under `kb/`.
+84 document(s) under `kb/`.
 
 ## Health
 
 | Metric | Count |
 |---|---:|
-| Documents | 83 |
-| Drift-proof (tier 1 + 4) | 50 |
+| Documents | 84 |
+| Drift-proof (tier 1 + 4) | 51 |
 | Hand-maintained (tier 3 + 5) | 26 |
 | Past freshness SLA | 21 |
 | Private-content stubs | 6 |
@@ -63,7 +63,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | Document | Owner | Consumers | Verified | SLA |
 |---|---|---|---|---|
 | `ai-org/knowledge-map.md` | chief-architect | DS, CA | 2026-10-26 | 9999d |
-| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-10-21 | 9999d |
+| `architecture/data-model.md` | principal-data | P-DA, BE, QA, DC | 2026-10-26 | 9999d |
 | `architecture/inventory.md` | principal-client | ALL | 2026-10-26 | 9999d |
 | `architecture/rpc-reference.md` 🔒 | principal-data | P-DA, P-SE, SR, BE | 2026-10-21 | 9999d |
 | `security/rls-policies.md` 🔒 | principal-security | P-SE, SR, P-DA, QA | 2026-10-17 | 9999d |
@@ -157,6 +157,7 @@ content, so the hand-maintained count is the number worth keeping small.
 | `decisions/0030-new-on-livil-is-for-you-filtered-to-uploads.md` | chief-architect | ALL | 2026-10-14 | 9999d |
 | `decisions/0031-gifs-in-comments.md` | chief-architect | ALL | 2026-10-16 | 9999d |
 | `decisions/0032-music-score.md` | chief-architect | ALL | 2026-10-18 | 9999d |
+| `decisions/0033-transcode-uploads-server-side.md` | chief-architect | ALL | 2026-10-26 | 9999d |
 | `decisions/TEMPLATE.md` | chief-architect | ALL | 2026-07-21 | 9999d |
 | `incidents/README.md` 🔒 | chief-architect | ALL | 2026-07-21 | 9999d |
 
@@ -170,7 +171,7 @@ content, so the hand-maintained count is the number worth keeping small.
 
 | Owner | Documents |
 |---|---:|
-| chief-architect | 40 |
+| chief-architect | 41 |
 | human | 1 |
 | principal-client | 9 |
 | principal-data | 10 |
