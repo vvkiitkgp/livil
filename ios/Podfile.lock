@@ -106,6 +106,29 @@ PODS:
     - nanopb/encode (= 3.30910.0)
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
+  - NitroModules (0.35.10):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-callinvoker
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - PromisesObjC (2.4.1)
   - PromisesSwift (2.4.1):
     - PromisesObjC (= 2.4.1)
@@ -1511,6 +1534,29 @@ PODS:
   - react-native-app-auth (8.4.0):
     - AppAuth (>= 1.7.6)
     - React-Core
+  - react-native-compressor (2.0.4):
+    - hermes-engine
+    - NitroModules
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-document-picker (10.1.7):
     - hermes-engine
     - RCTRequired
@@ -2770,6 +2816,7 @@ DEPENDENCIES:
   - GoogleUtilities
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - nanopb
+  - NitroModules (from `../node_modules/react-native-nitro-modules`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTSwiftUI (from `../node_modules/react-native/ReactApple/RCTSwiftUI`)
@@ -2809,6 +2856,7 @@ DEPENDENCIES:
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - React-mutationobservernativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)
   - react-native-app-auth (from `../node_modules/react-native-app-auth`)
+  - react-native-compressor (from `../node_modules/react-native-compressor`)
   - "react-native-document-picker (from `../node_modules/@react-native-documents/picker`)"
   - react-native-keyboard-controller (from `../node_modules/react-native-keyboard-controller`)
   - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
@@ -2893,6 +2941,8 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v250829098.0.10
+  NitroModules:
+    :path: "../node_modules/react-native-nitro-modules"
   RCTDeprecation:
     :path: "../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
   RCTRequired:
@@ -2969,6 +3019,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
   react-native-app-auth:
     :path: "../node_modules/react-native-app-auth"
+  react-native-compressor:
+    :path: "../node_modules/react-native-compressor"
   react-native-document-picker:
     :path: "../node_modules/@react-native-documents/picker"
   react-native-keyboard-controller:
@@ -3100,8 +3152,9 @@ SPEC CHECKSUMS:
   FirebaseSessions: 380475216987a33191364c241772d36b24e4e393
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
   GoogleUtilities: 4e0c2ad9fa0d0d18b5c4df8bf57b461cba35b0bb
-  hermes-engine: 4d06ba4a8a553fbfb4ff12a112fba352eb0ca07b
+  hermes-engine: 8d84293ddc85b86b71858c19f00362fcece56fdf
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
+  NitroModules: 994eaa7fc39d1fb4b76bb61054312c9796c4a649
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
   PromisesSwift: 217dea0fd5d2ad65222a109c48698add13cc1c5b
   RCTDeprecation: a4c521821fab57cbb125b36effe84d897d0dfa12
@@ -3112,7 +3165,7 @@ SPEC CHECKSUMS:
   React: e2dc35338068bbd299c66f043ae0d7f25de8499e
   React-callinvoker: 28b25d21b124c26cebaea713ba7d801b9351dc48
   React-Core: 02ed7d2ffb70437bdf2aba074a13078a7b0b9ff0
-  React-Core-prebuilt: 15fe32c2b6e0ef32810e5dc9db290d64da928b9f
+  React-Core-prebuilt: 0c88b69d064de1561c6686b1c83c6d49d20e9af5
   React-CoreModules: b3a5a42dadcde3b5d47b325bd912eb2ced89e146
   React-cxxreact: fe8f88dda044e5905e99a00f41b7a874c3908716
   React-debug: 92944dc4d89f56d640e75498266cbde557a48189
@@ -3142,6 +3195,7 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: ab33a818d339f5a1da308893c11b487be66121a8
   React-mutationobservernativemodule: a42d1626651ccd7d0dc02a56e69d4ec77c248893
   react-native-app-auth: e25699baefe53d43c81dc3e3f1f4f19f8e782ab2
+  react-native-compressor: 063fbf8c51e4b8e38dbf2a1b9b97991e6583238e
   react-native-document-picker: caf6e3dfe4f15da98b7082c9413bde2f19d0a0f1
   react-native-keyboard-controller: d4796248609d4c03cd6b5f73a9fd083d7c5f33d6
   react-native-netinfo: 2f906d5d9a639090ed1c079135d6485a95f749f1
@@ -3181,7 +3235,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 25c9c516839be2c5e3d3344f95dc7da5f7e63fc2
   ReactCodegen: c8f81e6c6f762dcf442a6203a1fb58f7dafc8014
   ReactCommon: 7dfc3250793bf36cf221096ff59e1179e13eef7f
-  ReactNativeDependencies: 4f02c3419d1c69bde84b3124322b3469ab37bc31
+  ReactNativeDependencies: 68c74a72073517184146ec434ed3f3bbb702684b
   RNAppleAuthentication: a89c9804592b38ed4ab11f0aee68d05ba12ad432
   RNAudioAPI: c3fe7f14a833280b34e9f9cbba436d94ba56a2d5
   RNCAsyncStorage: d0aafe51ea74a65afce26acb739a4ea975a7a884
