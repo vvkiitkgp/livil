@@ -114,6 +114,109 @@ describe('getSpotifyTrack', () => {
   });
 });
 
+describe('useSpotifyTrack — a failed lookup is retried, not shown as "unavailable"', () => {
+  // A failed call used to say "Song unavailable" at once and keep saying it until the card
+  // remounted: two edge-runtime 503s left a feed of real songs "unavailable" (2026-10-26).
+  const FAILED = { data: null, error: { message: 'Edge Function returned a non-2xx status code' } };
+  const answer = (tracks: Record<string, unknown>) => ({ data: { tracks }, error: null });
+
+  // The hook, React and the renderer from ONE fresh registry — a hook from an isolated
+  // module needs the React that module sees.
+  function mount(ids: string[]) {
+    let mod!: typeof import('../spotify');
+    let React!: typeof import('react');
+    let TestRenderer!: typeof import('react-test-renderer');
+    jest.isolateModules(() => {
+      mod = require('../spotify');
+      React = require('react');
+      TestRenderer = require('react-test-renderer');
+    });
+    const status: Record<string, string> = {};
+    function Card({ id }: { id: string }) {
+      status[id] = mod.useSpotifyTrack(id).status;
+      return null;
+    }
+    const tree = (cardIds: string[], keyPrefix = '') =>
+      React.createElement(React.Fragment, null,
+        cardIds.map(id => React.createElement(Card, { key: keyPrefix + id, id })));
+    let root!: import('react-test-renderer').ReactTestRenderer;
+    TestRenderer.act(() => { root = TestRenderer.create(tree(ids)); });
+    const advance = (ms: number) => TestRenderer.act(async () => { await jest.advanceTimersByTimeAsync(ms); });
+    return { mod, status, root, tree, advance, act: TestRenderer.act };
+  }
+
+  it('keeps the card loading after a failure and asks again — then shows the song', async () => {
+    mockInvoke.mockResolvedValueOnce(FAILED).mockResolvedValueOnce(answer({ [ID_A]: TRACK_A }));
+    const { mod, status, advance } = mount([ID_A]);
+    await advance(100);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(status[ID_A]).toBe('loading');
+
+    await advance(mod.TRACK_RETRY_DELAYS_MS[0] + 100);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(status[ID_A]).toBe('ready');
+  });
+
+  it('says "unavailable" only once every retry has failed — and the next mount asks again', async () => {
+    mockInvoke.mockResolvedValue(FAILED);
+    const { mod, status, root, tree, advance, act } = mount([ID_A]);
+    const delays = mod.TRACK_RETRY_DELAYS_MS;
+    await advance(100);
+    for (const wait of delays.slice(0, -1)) {
+      await advance(wait + 100);
+      expect(status[ID_A]).toBe('loading');
+    }
+    await advance(delays[delays.length - 1] + 100);
+    expect(mockInvoke).toHaveBeenCalledTimes(1 + delays.length);
+    expect(status[ID_A]).toBe('unavailable');
+
+    // Not remembered: a fresh card for the same song asks, and gets it.
+    mockInvoke.mockResolvedValue(answer({ [ID_A]: TRACK_A }));
+    act(() => { root.update(tree([ID_A], 'remount-')); });
+    expect(status[ID_A]).toBe('loading');
+    await advance(100);
+    expect(status[ID_A]).toBe('ready');
+  });
+
+  it('shows "no such song" at once and never retries it', async () => {
+    mockInvoke.mockResolvedValue(answer({ [ID_A]: null }));
+    const { status, advance } = mount([ID_A]);
+    await advance(100);
+    expect(status[ID_A]).toBe('unavailable');
+    await advance(60_000);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries an id the server left out (its "try again later")', async () => {
+    mockInvoke.mockResolvedValueOnce(answer({})).mockResolvedValueOnce(answer({ [ID_A]: TRACK_A }));
+    const { mod, status, advance } = mount([ID_A]);
+    await advance(100);
+    expect(status[ID_A]).toBe('loading');
+    await advance(mod.TRACK_RETRY_DELAYS_MS[0] + 100);
+    expect(status[ID_A]).toBe('ready');
+  });
+
+  it('cards that failed together retry together, in ONE call', async () => {
+    mockInvoke.mockResolvedValueOnce(FAILED).mockResolvedValueOnce(answer({ [ID_A]: TRACK_A, [ID_B]: TRACK_A }));
+    const { mod, status, advance } = mount([ID_A, ID_B]);
+    await advance(100);
+    await advance(mod.TRACK_RETRY_DELAYS_MS[0] + 100);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockInvoke.mock.calls[1][1].body).toEqual({ action: 'tracks', ids: [ID_A, ID_B] });
+    expect(status[ID_A]).toBe('ready');
+    expect(status[ID_B]).toBe('ready');
+  });
+
+  it('a card that is gone stops retrying', async () => {
+    mockInvoke.mockResolvedValue(FAILED);
+    const { root, advance, act } = mount([ID_A]);
+    await advance(100);
+    act(() => { root.unmount(); });
+    await advance(60_000);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('stand-in answers (no artists)', () => {
   // While Spotify limits the server, it answers with oEmbed: title and artwork, no artists.
   // Kept for the session, every card said "Spotify" until the app restarted (2026-10-19).

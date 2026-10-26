@@ -176,8 +176,8 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }, [handleOpen, handleRepost, isOwner, isOwnRepost, repostsOn, viewerId]);
 
   const track = meta.track;
-  const title = meta.status === 'ready' ? track!.title : meta.status === 'loading' ? ' ' : 'Song unavailable';
-  const artist = meta.status === 'ready' ? artistLine(track) : meta.status === 'loading' ? ' ' : 'Open it in Spotify to see it';
+  const title = meta.status === 'ready' ? track!.title : meta.status === 'loading' ? ' ' : "Sorry, sometimes we can't load the song details";
+  const artist = meta.status === 'ready' ? artistLine(track) : meta.status === 'loading' ? ' ' : 'But you can still play on Spotify';
 
   return (
     <View style={styles.card}>
@@ -240,12 +240,19 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         {track?.imageUrl ? (
           <Image source={{ uri: track.imageUrl }} style={styles.art} resizeMode="cover" />
         ) : (
-          <View style={[styles.art, styles.artEmpty]}>
-            {meta.status === 'loading' ? (
-              <ActivityIndicator color={COLORS.purpleLight} />
-            ) : (
-              <Icon name="musicNote" size={40} color={COLORS.textMuted} />
-            )}
+          // No artwork (still loading, or the lookup failed): the Spotify mark, which says
+          // where a tap goes. Its background is near-black because Spotify Green may only sit
+          // on black or white. pointerEvents="none" so the spinner / mark never takes the
+          // tap for itself — the whole square opens Spotify (owner report, 2026-10-26: a tap
+          // on the empty art did nothing while ▶ worked).
+          <View style={[styles.art, styles.artEmpty, meta.status !== 'loading' && styles.artFallback]}>
+            <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+              {meta.status === 'loading' ? (
+                <ActivityIndicator color={COLORS.purpleLight} />
+              ) : (
+                <SpotifyLogo size="lg" />
+              )}
+            </View>
           </View>
         )}
       </DoubleTapLike>
@@ -396,6 +403,7 @@ const styles = StyleSheet.create({
   // Spotify's mobile guideline: artwork corners rounded no more than 4px.
   art: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: COLORS.card },
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
+  artFallback: { backgroundColor: COLORS.bg },
   // Same safety-net wrap as PostCard's actionRow: counters drop a line rather than overlap.
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 12, columnGap: 14, rowGap: 6 },
   // As PostCard's: play on the left, the actions packed together on the right.

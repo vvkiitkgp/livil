@@ -10,6 +10,7 @@ import { feedPostToNowPlaying, type FeedPost } from '../services/posts';
 import { useSpotifyTrack } from '../services/spotify';
 import { haptics } from '../utils/haptics';
 import { SPOTIFY_GREEN } from './spotifyLogoArtwork';
+import { SpotifyLogo } from './SpotifyLogo';
 
 // Same geometry as ProfileGridCard (Albums / Playlists): 2 columns, 16 px sides, 12 px gap,
 // so every grid on a profile lines up.
@@ -133,7 +134,7 @@ function SpotifyGridCard({ spotifyTrackId }: { spotifyTrackId: string }) {
   const meta = useSpotifyTrack(spotifyTrackId);
   const openSpotify = useOpenInSpotify('feed');
   const track = meta.status === 'ready' ? meta.track : null;
-  const title = track ? track.title : meta.status === 'loading' ? ' ' : 'Song unavailable';
+  const title = track ? track.title : meta.status === 'loading' ? ' ' : "Song didn't load";
   const artist = track ? track.artists.join(', ') : ' ';
 
   return (
@@ -143,9 +144,15 @@ function SpotifyGridCard({ spotifyTrackId }: { spotifyTrackId: string }) {
       accessibilityRole="button"
       accessibilityLabel={track ? `Open ${track.title} in Spotify` : 'Open in Spotify'}
     >
-      <View style={[styles.art, styles.spotifyArt]}>
+      <View style={[styles.art, styles.spotifyArt, meta.status === 'unavailable' && styles.spotifyArtFallback]}>
         {track?.imageUrl ? (
           <Image source={{ uri: track.imageUrl }} style={styles.artImage} resizeMode="cover" />
+        ) : meta.status === 'unavailable' ? (
+          // The lookup failed: the Spotify mark says where a tap goes (as on SpotifyPostCard),
+          // on near-black because Spotify Green may only sit on black or white.
+          <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+            <SpotifyLogo size="lg" />
+          </View>
         ) : null}
       </View>
       <Text style={styles.title} numberOfLines={1}>{title}</Text>
@@ -185,6 +192,7 @@ const styles = StyleSheet.create({
   artImage: { width: '100%', height: '100%' },
   // Spotify: corners no rounder than 4 (its guidelines), and no fill of ours behind the art.
   spotifyArt: { borderRadius: 4, backgroundColor: COLORS.card },
+  spotifyArtFallback: { backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
   videoBadge: {
     position: 'absolute',
     top: 8,
