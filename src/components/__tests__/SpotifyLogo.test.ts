@@ -11,7 +11,7 @@ import {
   SPOTIFY_ICON_PATHS,
 } from '../spotifyLogoArtwork';
 
-const SIZES = ['xs', 'sm', 'md'] as const;
+const SIZES = ['xs', 'sm', 'md', 'lg'] as const;
 
 describe('SpotifyLogo sizes', () => {
   it.each(SIZES)('the icon is at least 21px at size %s', size => {

@@ -295,7 +295,10 @@ function cachedTrack(id: string): { track: SpotifyTrack | null } | undefined {
   }
   return entry;
 }
-const waiters = new Map<string, Array<(t: SpotifyTrack | null) => void>>();
+/** One attempt: an ANSWER (a track, or null for "Spotify has no such track") or a failure. */
+type TrackLookup = { answered: true; track: SpotifyTrack | null } | { answered: false };
+
+const waiters = new Map<string, Array<(r: TrackLookup) => void>>();
 let pending = new Set<string>();
 /** Ids whose call is in flight — a second card asking for one waits on that call. */
 const inflight = new Set<string>();
@@ -315,23 +318,24 @@ async function flush(): Promise<void> {
       ids: chunk,
     });
     for (const id of chunk) {
-      const answered = res?.tracks && id in res.tracks;
-      const track = answered ? res!.tracks![id] ?? null : null;
-      // A failed CALL is not an answer: leave it uncached so the next mount retries.
-      if (answered) { cacheTrack(id, track); }
+      // A failed CALL is not an answer, and neither is an id the server left out (its
+      // "try again later"): neither is cached, so the next ask retries.
+      const result: TrackLookup = res?.tracks && id in res.tracks
+        ? { answered: true, track: res.tracks[id] ?? null }
+        : { answered: false };
+      if (result.answered) { cacheTrack(id, result.track); }
       inflight.delete(id);
       const list = waiters.get(id) ?? [];
       waiters.delete(id);
-      list.forEach(resolve => resolve(track));
+      list.forEach(resolve => resolve(result));
     }
   }
 }
 
-/** Metadata for one track; batched with other requests made in the same moment. */
-export function getSpotifyTrack(id: string): Promise<SpotifyTrack | null> {
-  if (!SPOTIFY_ID_RE.test(id)) {return Promise.resolve(null);}
+function lookupSpotifyTrack(id: string): Promise<TrackLookup> {
+  if (!SPOTIFY_ID_RE.test(id)) {return Promise.resolve({ answered: true, track: null });}
   const hit = cachedTrack(id);
-  if (hit) {return Promise.resolve(hit.track);}
+  if (hit) {return Promise.resolve({ answered: true, track: hit.track });}
   return new Promise(resolve => {
     const list = waiters.get(id) ?? [];
     list.push(resolve);
@@ -340,6 +344,27 @@ export function getSpotifyTrack(id: string): Promise<SpotifyTrack | null> {
     if (!flushTimer) { flushTimer = setTimeout(() => { void flush(); }, BATCH_WINDOW_MS); }
   });
 }
+
+/**
+ * Metadata for one track; batched with other requests made in the same moment. One
+ * attempt: `null` is either "no such track" or a failed call. Cards use useSpotifyTrack,
+ * which tells the two apart and retries the second.
+ */
+export function getSpotifyTrack(id: string): Promise<SpotifyTrack | null> {
+  return lookupSpotifyTrack(id).then(r => (r.answered ? r.track : null));
+}
+
+/**
+ * After a failed lookup a card asks again after each of these waits, showing "loading"
+ * meanwhile; only when the last retry fails too does it say "Song unavailable" (still not
+ * cached, so the next mount asks again). Cards that failed in the same call retry at the
+ * same moment, so the batcher folds their retries into one call as well.
+ *
+ * WHY: a failed call used to show "Song unavailable" at once and keep it until the card
+ * remounted — on 2026-10-26 two 503s from the edge runtime itself
+ * (SUPABASE_EDGE_RUNTIME_SERVICE_DEGRADED) left a feed of real songs saying "unavailable".
+ */
+export const TRACK_RETRY_DELAYS_MS: readonly number[] = [2_000, 5_000, 15_000];
 
 export type SpotifyTrackState =
   | { status: 'loading'; track: null }
@@ -369,13 +394,28 @@ export function useSpotifyTrack(id: string | null): SpotifyTrackState {
   useEffect(() => {
     if (!id) {return;}
     let cancelled = false;
-    getSpotifyTrack(id).then(track => {
-      if (cancelled) {return;}
-      // `null` here is either a real "no such track" or a failed call; only the former is
-      // cached (see flush), so a later mount retries the latter.
-      setEntry({ id, state: track ? { status: 'ready', track } : { status: 'unavailable', track: null } });
-    });
-    return () => { cancelled = true; };
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = (retriesDone: number) => {
+      lookupSpotifyTrack(id).then(result => {
+        if (cancelled) {return;}
+        if (result.answered) {
+          const track = result.track;
+          setEntry({ id, state: track ? { status: 'ready', track } : { status: 'unavailable', track: null } });
+          return;
+        }
+        const wait = TRACK_RETRY_DELAYS_MS[retriesDone];
+        if (wait === undefined) {
+          setEntry({ id, state: { status: 'unavailable', track: null } });
+          return;
+        }
+        retryTimer = setTimeout(() => attempt(retriesDone + 1), wait);
+      });
+    };
+    attempt(0);
+    return () => {
+      cancelled = true;
+      if (retryTimer) { clearTimeout(retryTimer); }
+    };
   }, [id]);
 
   return current;

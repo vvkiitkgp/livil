@@ -33,7 +33,8 @@ import {
  *
  * Clear space (half the icon's height around the mark) is the CALLER's margin to keep.
  */
-const SIZES = { xs: 21, sm: 22, md: 24 } as const;
+// `lg` is the stand-in drawn where a song's artwork failed to load.
+const SIZES = { xs: 21, sm: 22, md: 24, lg: 48 } as const;
 
 /** Rendered width × height for a size; exported so the guideline minimums are testable. */
 export function spotifyLogoBox(

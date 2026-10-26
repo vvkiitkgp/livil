@@ -27,11 +27,12 @@ const mockOpenFullScreen = jest.fn();
 jest.mock('../../hooks/usePlayFullScreen', () => ({ usePlayFullScreen: () => mockOpenFullScreen }));
 const mockOpenSpotify = jest.fn(async () => {});
 jest.mock('../../hooks/useOpenInSpotify', () => ({ useOpenInSpotify: () => mockOpenSpotify }));
+const KESARIYA = { id: 's1', title: 'Kesariya', artists: ['Arijit Singh', 'Pritam'], album: null, imageUrl: 'https://i/a.jpg', durationMs: 1 };
+const mockSpotifyState: { current: { status: string; track: typeof KESARIYA | null } } = {
+  current: { status: 'ready', track: KESARIYA },
+};
 jest.mock('../../services/spotify', () => ({
-  useSpotifyTrack: () => ({
-    status: 'ready',
-    track: { id: 's1', title: 'Kesariya', artists: ['Arijit Singh', 'Pritam'], album: null, imageUrl: 'https://i/a.jpg', durationMs: 1 },
-  }),
+  useSpotifyTrack: () => mockSpotifyState.current,
 }));
 jest.mock('../../services/posts', () => ({
   feedPostToNowPlaying: (p: { id: string }) => ({ postId: p.id, fromHelper: true }),
@@ -87,6 +88,7 @@ function render(el: React.ReactElement) {
 }
 
 beforeEach(() => {
+  mockSpotifyState.current = { status: 'ready', track: KESARIYA };
   mockPlayback.activePostId = null;
   mockPlayback.nowPlaying = null;
   mockPlayback.handlersRef.current = null;
@@ -146,6 +148,15 @@ describe('Spotify and removed originals', () => {
     tap(tree);
     expect(mockOpenSpotify).toHaveBeenCalledWith('s1');
     expect(mockPlayback.requestPlay).not.toHaveBeenCalled();
+  });
+
+  it("a song that didn't load says so, shows Spotify's mark, and still opens Spotify", () => {
+    mockSpotifyState.current = { status: 'unavailable', track: null };
+    const tree = render(<PostGridCard post={basePost({ id: 'sp', kind: 'repost', spotifyTrackId: 's1', originalPostId: null })} />);
+    expect(texts(tree)[0]).toBe("Song didn't load");
+    expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Spotify')).not.toHaveLength(0);
+    tap(tree);
+    expect(mockOpenSpotify).toHaveBeenCalledWith('s1');
   });
 
   it('shows a deleted original as removed, with nothing to tap', () => {
