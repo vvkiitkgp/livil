@@ -76,6 +76,13 @@ jobs:
       - name: Knowledge base generator tests
         run: npm run test:kb
 
+      # The transcoder (ADR-0033) is .mjs outside the jest project as well. What it decides
+      # — which uploads to re-encode, which to leave alone, that the sound track is copied,
+      # that the rendition lands in the folder the database insists on — is what keeps a
+      # production job from quietly degrading or quietly doing nothing.
+      - name: Transcoder decision tests
+        run: node --test scripts/__tests__/transcode-media.test.mjs
+
   knowledge-base:
     name: knowledge base
     runs-on: ubuntu-latest
@@ -497,6 +504,16 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/chat-write-rules.test.sql
+
+      # Streaming renditions (20261115000000, ADR-0033): only the service role may swap a
+      # frozen media URL, only for a rendition in the same bucket folder, only while
+      # recording the original; clients stay frozen and cannot write the ledger.
+      - name: Transcode renditions tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/transcode-renditions.test.sql
 
       # A credit names somebody, so answering it is the one write a collaborator gets on a
       # track that is not theirs. Asserts that the write is status-only (the previous policy

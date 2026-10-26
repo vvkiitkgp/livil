@@ -2061,12 +2061,16 @@ export type Database = {
           lyrics: string | null
           lyrics_format: string | null
           media_kind: string
+          original_media_url: string | null
           tags: string[] | null
           taken_down_at: string | null
           taken_down_by: string | null
           taken_down_reason: string | null
           thumbnail_url: string | null
           title: string
+          transcode_error: string | null
+          transcode_status: string | null
+          transcoded_at: string | null
           uploader_id: string
           video_url: string | null
           waveform_peaks: Json | null
@@ -2082,12 +2086,16 @@ export type Database = {
           lyrics?: string | null
           lyrics_format?: string | null
           media_kind: string
+          original_media_url?: string | null
           tags?: string[] | null
           taken_down_at?: string | null
           taken_down_by?: string | null
           taken_down_reason?: string | null
           thumbnail_url?: string | null
           title: string
+          transcode_error?: string | null
+          transcode_status?: string | null
+          transcoded_at?: string | null
           uploader_id: string
           video_url?: string | null
           waveform_peaks?: Json | null
@@ -2103,12 +2111,16 @@ export type Database = {
           lyrics?: string | null
           lyrics_format?: string | null
           media_kind?: string
+          original_media_url?: string | null
           tags?: string[] | null
           taken_down_at?: string | null
           taken_down_by?: string | null
           taken_down_reason?: string | null
           thumbnail_url?: string | null
           title?: string
+          transcode_error?: string | null
+          transcode_status?: string | null
+          transcoded_at?: string | null
           uploader_id?: string
           video_url?: string | null
           waveform_peaks?: Json | null

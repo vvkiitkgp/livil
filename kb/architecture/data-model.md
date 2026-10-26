@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-21
+last_verified: 2026-10-26
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 168 migration(s) in `supabase/migrations/`.
+Reconstructed from 169 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -1492,6 +1492,10 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `taken_down_at` | `timestamptz` | `20260923010000_track_takedown.sql` |
 | `taken_down_by` | `uuid` | `20260923010000_track_takedown.sql` |
 | `taken_down_reason` | `text check (taken_down_reason is null or char_length(taken_down_reason) <= 1000)` | `20260923010000_track_takedown.sql` |
+| `transcode_status` | `text` | `20261115000000_tracks_transcode_renditions.sql` |
+| `transcoded_at` | `timestamptz` | `20261115000000_tracks_transcode_renditions.sql` |
+| `transcode_error` | `text` | `20261115000000_tracks_transcode_renditions.sql` |
+| `original_media_url` | `text` | `20261115000000_tracks_transcode_renditions.sql` |
 
 **Indexes**
 
@@ -1507,6 +1511,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_track_scans_drop_unanswered` — AFTER DELETE (`20260923090000_an_unanswered_scan_is_not_a_record.sql`)
 - `trg_tracks_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
 - `trg_tracks_keep_created_at` — before update of created_at (`20261105000000_server_time_on_writes.sql`)
+- `trg_tracks_keep_transcode_ledger` — before insert or update (`20261115000000_tracks_transcode_renditions.sql`)
 
 ### `user_last_seen`
 
@@ -1643,6 +1648,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_track_scans_drop_unanswered` | `tracks` | AFTER DELETE | `20260923090000_an_unanswered_scan_is_not_a_record.sql` |
 | `trg_tracks_stamp_created_at` | `tracks` | before insert | `20261105000000_server_time_on_writes.sql` |
 | `trg_tracks_keep_created_at` | `tracks` | before update of created_at | `20261105000000_server_time_on_writes.sql` |
+| `trg_tracks_keep_transcode_ledger` | `tracks` | before insert or update | `20261115000000_tracks_transcode_renditions.sql` |
 
 ## Related
 
