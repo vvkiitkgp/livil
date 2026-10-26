@@ -1819,6 +1819,7 @@ a.btn {
 }
 
 .panel__title {
+  flex: none;
   margin: 0;
   font-size: var(--text-md);
   letter-spacing: var(--tracking-cta);
@@ -1996,6 +1997,19 @@ a.btn {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: bottom;
+}
+
+/* A cell of prose (a message, a "start only once…" note) that wraps and takes the row's
+   spare width. Every other cell keeps `nowrap`, so without this one long sentence set the
+   table's width and pushed the status and button columns past the panel's edge. */
+.table td.table__text {
+  width: 100%;
+  min-width: 240px;
+  white-space: normal;
+}
+
+.table td.table__text .table__title {
+  max-width: none;
 }
 
 .table__title:hover {
