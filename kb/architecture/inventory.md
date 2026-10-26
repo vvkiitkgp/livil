@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-25
+last_verified: 2026-10-26
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-454 TypeScript file(s) under `src/`, 94,344 lines.
+454 TypeScript file(s) under `src/`, 94,371 lines.
 
 ## Size hotspots
 
@@ -27,7 +27,7 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/screens/main/ConversationScreen.tsx` | 2290 |
+| `src/screens/main/ConversationScreen.tsx` | 2317 |
 | `src/screens/main/UploadScreen.tsx` | 2242 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
@@ -105,11 +105,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,843 lines.
+50 file(s), 27,870 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 2290 |
+| `src/screens/main/ConversationScreen.tsx` | 2317 |
 | `src/screens/main/UploadScreen.tsx` | 2242 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
