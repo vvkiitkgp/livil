@@ -1,7 +1,7 @@
 /**
- * The "Did you like the song? Repost it on Livil" card that follows a hand-off to Spotify:
- * a native timed notification, only while the person is away, capped, and gone the moment
- * Livil is in front again.
+ * The "Like or comment on Riya's repost" card that follows a hand-off to Spotify from
+ * a friend's repost: a native timed notification, only while the person is away, capped,
+ * and gone the moment Livil is in front again.
  */
 const mockCreateTrigger = jest.fn(async (..._a: unknown[]) => 'id');
 const mockCancel = jest.fn(async (_id: string) => {});
@@ -64,6 +64,8 @@ import {
 
 const ID = '0VjIjW4GlUZAMYd2vXMi3b';
 const OTHER = '4uLU6hMCjMI75M1A2tKUQC';
+const RIYA = { spotifyTrackId: ID, postId: 'post-riya', authorName: 'Riya' };
+const SAM = { spotifyTrackId: OTHER, postId: 'post-sam', authorName: 'Sam' };
 
 type Shown = { id: string; title: string; body: string; data: Record<string, string>; android: Record<string, unknown> };
 const shown = (call = 0): Shown => mockCreateTrigger.mock.calls[call][0] as Shown;
@@ -82,14 +84,15 @@ beforeEach(() => {
 afterEach(() => { jest.restoreAllMocks(); });
 
 describe('scheduling', () => {
-  it('schedules a silent card 3 s out whose tap opens Repost with that song', async () => {
+  it("schedules a silent card 3 s out, named after the reposter, whose tap opens their post", async () => {
     const before = Date.now();
-    await scheduleSpotifyReturnNudge(ID);
+    await scheduleSpotifyReturnNudge(RIYA);
     expect(mockCreateTrigger).toHaveBeenCalledTimes(1);
     const card = shown();
     expect(card.id).toBe(SPOTIFY_RETURN_NOTIFICATION_ID);
-    expect(card.title).toBe('Did you like the song?');
-    expect(card.data).toEqual({ route: 'SpotifyRepost', spotifyTrackId: ID });
+    expect(card.title).toBe('Like or comment on Riya’s repost');
+    expect(card.body).toBe('Tap to come back to Livil');
+    expect(card.data).toEqual({ route: 'PostDetail', postId: 'post-riya' });
     expect(card.android.channelId).toBe('spotify_return');
     expect(card.android.badgeCount).toBe(0);
     expect(trigger().timestamp).toBeGreaterThanOrEqual(before + SPOTIFY_RETURN_DELAY_MS);
@@ -100,61 +103,69 @@ describe('scheduling', () => {
     expect(mockCreateChannel.mock.calls[0][0]).not.toHaveProperty('sound');
   });
 
-  it('names the song when it is already known', async () => {
+  it("first name only, and a name ending in s reads as Chris’ repost", async () => {
+    await scheduleSpotifyReturnNudge({ ...RIYA, authorName: 'Riya Sharma' });
+    expect(shown().title).toBe('Like or comment on Riya’s repost');
+    await scheduleSpotifyReturnNudge({ ...SAM, authorName: 'Chris Evans' });
+    expect(shown(1).title).toBe('Like or comment on Chris’ repost');
+  });
+
+  it('shows the song artwork when it is already known', async () => {
     mockPeek.mockReturnValue({ title: 'Blinding Lights', imageUrl: 'https://i.scdn.co/x.jpg' });
-    await scheduleSpotifyReturnNudge(ID);
-    expect(shown().title).toBe('Did you like “Blinding Lights”?');
+    await scheduleSpotifyReturnNudge(RIYA);
     expect(shown().android.largeIcon).toBe('https://i.scdn.co/x.jpg');
   });
 
   it('nothing without the phone permission, or with Livil notifications switched off', async () => {
     mockGranted.mockResolvedValue(false);
-    await scheduleSpotifyReturnNudge(ID);
+    await scheduleSpotifyReturnNudge(RIYA);
     mockGranted.mockResolvedValue(true);
     mockStatus.mockResolvedValue('off');
     mockOffFor.mockResolvedValue(true);
-    await scheduleSpotifyReturnNudge(ID);
+    await scheduleSpotifyReturnNudge(RIYA);
     expect(mockCreateTrigger).not.toHaveBeenCalled();
   });
 
-  it('rejects anything that is not a Spotify id', async () => {
-    await scheduleSpotifyReturnNudge('not-a-spotify-id');
+  it('rejects a bad Spotify id, a missing post, or a blank name', async () => {
+    await scheduleSpotifyReturnNudge({ ...RIYA, spotifyTrackId: 'not-a-spotify-id' });
+    await scheduleSpotifyReturnNudge({ ...RIYA, postId: '' });
+    await scheduleSpotifyReturnNudge({ ...RIYA, authorName: '  ' });
     expect(mockCreateTrigger).not.toHaveBeenCalled();
   });
 
   it('a notifee failure is swallowed — the hand-off already happened', async () => {
     mockCreateTrigger.mockRejectedValueOnce(new Error('no notifee'));
-    await expect(scheduleSpotifyReturnNudge(ID)).resolves.toBeUndefined();
+    await expect(scheduleSpotifyReturnNudge(RIYA)).resolves.toBeUndefined();
   });
 });
 
 describe('the cap', () => {
-  it('not twice for the same song, and at most three a day', async () => {
-    await scheduleSpotifyReturnNudge(ID);
-    await scheduleSpotifyReturnNudge(ID);
+  it('not twice for the same repost, and at most three a day', async () => {
+    await scheduleSpotifyReturnNudge(RIYA);
+    await scheduleSpotifyReturnNudge(RIYA);
     expect(mockCreateTrigger).toHaveBeenCalledTimes(1);
-    await scheduleSpotifyReturnNudge(OTHER);
-    await scheduleSpotifyReturnNudge(ID);
+    await scheduleSpotifyReturnNudge(SAM);
+    await scheduleSpotifyReturnNudge(RIYA);
     expect(mockCreateTrigger).toHaveBeenCalledTimes(SPOTIFY_RETURN_DAILY_CAP);
-    await scheduleSpotifyReturnNudge(OTHER);
+    await scheduleSpotifyReturnNudge(SAM);
     expect(mockCreateTrigger).toHaveBeenCalledTimes(SPOTIFY_RETURN_DAILY_CAP);
-    expect(JSON.parse(mockStore.get(SPOTIFY_RETURN_STORAGE_KEY) ?? '{}')).toMatchObject({ count: 3, lastTrackId: ID });
+    expect(JSON.parse(mockStore.get(SPOTIFY_RETURN_STORAGE_KEY) ?? '{}')).toMatchObject({ count: 3, lastPostId: 'post-riya' });
   });
 
   it('resets with the day (pure helpers)', () => {
-    const full = { day: '2026-10-27', count: 3, lastTrackId: ID };
-    expect(mayNudge(full, OTHER, '2026-10-27')).toBe(false);
-    expect(mayNudge(full, ID, '2026-10-28')).toBe(true);
-    expect(nextLog(full, ID, '2026-10-28')).toEqual({ day: '2026-10-28', count: 1, lastTrackId: ID });
-    expect(nextLog({ day: '2026-10-28', count: 1, lastTrackId: ID }, OTHER, '2026-10-28')).toEqual({
-      day: '2026-10-28', count: 2, lastTrackId: OTHER,
+    const full = { day: '2026-10-27', count: 3, lastPostId: 'post-riya' };
+    expect(mayNudge(full, 'post-sam', '2026-10-27')).toBe(false);
+    expect(mayNudge(full, 'post-riya', '2026-10-28')).toBe(true);
+    expect(nextLog(full, 'post-riya', '2026-10-28')).toEqual({ day: '2026-10-28', count: 1, lastPostId: 'post-riya' });
+    expect(nextLog({ day: '2026-10-28', count: 1, lastPostId: 'post-riya' }, 'post-sam', '2026-10-28')).toEqual({
+      day: '2026-10-28', count: 2, lastPostId: 'post-sam',
     });
   });
 });
 
 describe('coming back', () => {
   it('returning to Livil cancels the card, fired or not', async () => {
-    await scheduleSpotifyReturnNudge(ID);
+    await scheduleSpotifyReturnNudge(RIYA);
     expect(mockAppStateHandler).not.toBeNull();
     mockAppStateHandler!('active');
     await Promise.resolve();
@@ -164,7 +175,7 @@ describe('coming back', () => {
   it('back before the checks finished: no card is created at all', async () => {
     let release!: () => void;
     mockGranted.mockImplementationOnce(() => new Promise<boolean>(r => { release = () => r(true); }));
-    const pending = scheduleSpotifyReturnNudge(ID);
+    const pending = scheduleSpotifyReturnNudge(RIYA);
     await Promise.resolve();
     mockAppStateHandler!('active');
     release();

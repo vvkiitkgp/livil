@@ -18,9 +18,9 @@ jest.mock('../../services/spotify', () => ({
   openInSpotify: (id: string) => mockOpen(id),
   recordSpotifyOpen: (id: string, source: string) => mockRecord(id, source),
 }));
-const mockNudge = jest.fn(async (_id: string) => {});
+const mockNudge = jest.fn(async (_ctx: unknown) => {});
 jest.mock('../../services/spotifyReturnNudge', () => ({
-  scheduleSpotifyReturnNudge: (id: string) => mockNudge(id),
+  scheduleSpotifyReturnNudge: (ctx: unknown) => mockNudge(ctx),
 }));
 const mockRequestNotice = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('../../components/OnboardingNotice', () => ({
@@ -30,9 +30,10 @@ jest.mock('../../components/OnboardingNotice', () => ({
 import { useOpenInSpotify } from '../useOpenInSpotify';
 
 const ID = '0VjIjW4GlUZAMYd2vXMi3b';
+const RIYA = { spotifyTrackId: ID, postId: 'post-riya', authorName: 'Riya' };
 
-function hook(options?: { notice?: boolean; returnNudge?: boolean }) {
-  let open!: (id: string) => Promise<void>;
+function hook(options?: { notice?: boolean }) {
+  let open!: (id: string, nudge?: typeof RIYA) => Promise<void>;
   function Probe() { open = useOpenInSpotify('search', options); return null; }
   act(() => { TestRenderer.create(<Probe />); });
   return () => open;
@@ -59,22 +60,22 @@ it('without the notice: pauses Livil and opens Spotify at once, counted once', a
   expect(mockRecord).toHaveBeenCalledWith(ID, 'search');
 });
 
-it('once Spotify opened, the "tap to come back" card is scheduled for that song', async () => {
+it("opened from a friend's repost: the \"come back and like or comment\" card is scheduled for it", async () => {
   const open = hook({ notice: false });
-  await act(async () => { await open()(ID); });
-  expect(mockNudge).toHaveBeenCalledWith(ID);
+  await act(async () => { await open()(ID, RIYA); });
+  expect(mockNudge).toHaveBeenCalledWith(RIYA);
 });
 
 it('no card when Spotify could not be opened — there is nothing to come back from', async () => {
   mockOpen.mockImplementation(async () => false);
   const open = hook({ notice: false });
-  await act(async () => { await open()(ID); });
+  await act(async () => { await open()(ID, RIYA); });
   expect(mockRecord).not.toHaveBeenCalled();
   expect(mockNudge).not.toHaveBeenCalled();
 });
 
-it('returnNudge: false (the Repost screen) hands off without a card', async () => {
-  const open = hook({ notice: false, returnNudge: false });
+it('no repost context (Search, Library, chat, the Repost screen, your own repost): no card', async () => {
+  const open = hook({ notice: false });
   await act(async () => { await open()(ID); });
   expect(mockOpen).toHaveBeenCalledWith(ID);
   expect(mockNudge).not.toHaveBeenCalled();

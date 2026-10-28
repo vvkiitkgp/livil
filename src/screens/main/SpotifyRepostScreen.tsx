@@ -121,7 +121,7 @@ export default function SpotifyRepostScreen() {
   const picked = useSpotifyTrack(pickedId);
   // No notice here: this screen IS about Spotify, and iOS cannot show it over this sheet.
   // No return card either: they are already reposting it.
-  const listenOnSpotify = useOpenInSpotify('search', { notice: false, returnNudge: false });
+  const listenOnSpotify = useOpenInSpotify('search', { notice: false });
 
   const pick = useCallback((track: SpotifyTrack) => {
     haptics.select();

@@ -4,6 +4,7 @@ import { COLORS } from '../theme/colors';
 import { Icon } from './Icon';
 import CoverFallback from './CoverFallback';
 import { usePlayback } from '../contexts/PlaybackContext';
+import { useRelationships } from '../contexts/RelationshipContext';
 import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
 import { useOpenInSpotify } from '../hooks/useOpenInSpotify';
 import { feedPostToNowPlaying, type FeedPost } from '../services/posts';
@@ -54,7 +55,7 @@ function relativeTime(iso: string): string {
  */
 export default function PostGridCard({ post, plays }: { post: FeedPost; plays?: number | null }) {
   if (post.spotifyTrackId) {
-    return <SpotifyGridCard spotifyTrackId={post.spotifyTrackId} />;
+    return <SpotifyGridCard post={post} spotifyTrackId={post.spotifyTrackId} />;
   }
   // The original upload was deleted (original_post_id set null): nothing left to play.
   if (post.kind === 'repost' && post.originalPostId === null) {
@@ -130,16 +131,22 @@ function LivilGridCard({ post, plays }: { post: FeedPost; plays?: number | null 
  * Spotify's design rules apply to its artwork here as on the feed card (SpotifyPostCard):
  * full square, small corners, nothing drawn on it. A tap hands the song to Spotify.
  */
-function SpotifyGridCard({ spotifyTrackId }: { spotifyTrackId: string }) {
+function SpotifyGridCard({ post, spotifyTrackId }: { post: FeedPost; spotifyTrackId: string }) {
   const meta = useSpotifyTrack(spotifyTrackId);
   const openSpotify = useOpenInSpotify('feed');
+  // Someone else's grid: the hand-off is followed by the "come back and like or comment"
+  // card (spotifyReturnNudge). Your own grid is not.
+  const { meId } = useRelationships();
+  const nudge = meId && meId !== post.author.id
+    ? { spotifyTrackId, postId: post.id, authorName: post.author.displayName ?? post.author.username }
+    : undefined;
   const track = meta.status === 'ready' ? meta.track : null;
   const title = track ? track.title : meta.status === 'loading' ? ' ' : "Song didn't load";
   const artist = track ? track.artists.join(', ') : ' ';
 
   return (
     <Pressable
-      onPress={() => { void openSpotify(spotifyTrackId); }}
+      onPress={() => { void openSpotify(spotifyTrackId, nudge); }}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={track ? `Open ${track.title} in Spotify` : 'Open in Spotify'}

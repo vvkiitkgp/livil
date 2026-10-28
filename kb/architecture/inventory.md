@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-456 TypeScript file(s) under `src/`, 94,967 lines.
+456 TypeScript file(s) under `src/`, 95,019 lines.
 
 ## Size hotspots
 
@@ -162,7 +162,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-169 file(s), 33,548 lines.
+169 file(s), 33,571 lines.
 
 | File | Lines |
 |---|---:|
@@ -175,8 +175,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 483 |
 | `src/components/MediaPlayer.tsx` | 468 |
+| `src/components/SpotifyPostCard.tsx` | 430 |
 | `src/components/QueueList.tsx` | 425 |
-| `src/components/SpotifyPostCard.tsx` | 425 |
 | `src/components/ChatSongPicker.tsx` | 421 |
 | `src/components/DetailView.tsx` | 411 |
 | `src/components/onboarding/BackstagePass.tsx` | 400 |
@@ -197,10 +197,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/OnboardingNotice.tsx` | 276 |
 | `src/components/guide/cardsPeople.tsx` | 272 |
 | `src/components/__tests__/SpotifyClipboardPrompt.test.tsx` | 246 |
+| `src/components/PostGridCard.tsx` | 244 |
 | `src/components/CommentSongCard.tsx` | 241 |
 | `src/components/ShareProfileSheet.tsx` | 240 |
 | `src/components/StoryReportModal.tsx` | 239 |
-| `src/components/PostGridCard.tsx` | 237 |
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/RepostChatCard.tsx` | 228 |
@@ -229,6 +229,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 186 |
 | `src/components/UploadPreviewCard.tsx` | 180 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
+| `src/components/__tests__/PostGridCard.test.tsx` | 180 |
 | `src/components/ChatReplySnippet.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/ProfileLinkCard.tsx` | 173 |
@@ -236,7 +237,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/GroupAvatarCluster.tsx` | 170 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 170 |
 | `src/components/guide/__tests__/pickSongs.test.ts` | 170 |
-| `src/components/__tests__/PostGridCard.test.tsx` | 169 |
 | `src/components/ProfileTabBar.tsx` | 167 |
 | `src/components/guide/pickSongs.ts` | 167 |
 | `src/components/FullScreenFrame.tsx` | 166 |
@@ -338,7 +338,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-105 file(s), 20,511 lines.
+105 file(s), 20,541 lines.
 
 | File | Lines |
 |---|---:|
@@ -372,10 +372,10 @@ case the call fails silently wherever its result is discarded.
 | `src/services/stories.ts` | 215 |
 | `src/services/__tests__/commentGifs.test.ts` | 213 |
 | `src/services/__tests__/waveform.test.ts` | 212 |
+| `src/services/spotifyReturnNudge.ts` | 212 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
-| `src/services/spotifyReturnNudge.ts` | 193 |
-| `src/services/__tests__/spotifyReturnNudge.test.ts` | 181 |
+| `src/services/__tests__/spotifyReturnNudge.test.ts` | 192 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/gifs.test.ts` | 178 |
 | `src/services/__tests__/appBadge.test.ts` | 177 |
@@ -472,7 +472,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-31 file(s), 2,154 lines.
+31 file(s), 2,153 lines.
 
 | File | Lines |
 |---|---:|
@@ -482,8 +482,8 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/__tests__/useRunAfterDismiss.test.tsx` | 98 |
 | `src/hooks/useListeningNow.ts` | 93 |
 | `src/hooks/useRecentSearches.ts` | 85 |
+| `src/hooks/__tests__/useOpenInSpotify.test.tsx` | 83 |
 | `src/hooks/useGroupFaces.ts` | 83 |
-| `src/hooks/__tests__/useOpenInSpotify.test.tsx` | 82 |
 | `src/hooks/useNewOnLivilDot.ts` | 81 |
 | `src/hooks/usePlayFullScreen.ts` | 80 |
 | `src/hooks/useSwitchFade.ts` | 80 |
@@ -493,8 +493,8 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/__tests__/useProfileTabCache.test.tsx` | 63 |
 | `src/hooks/__tests__/useSwitchFade.test.tsx` | 63 |
 | `src/hooks/useProfileTabCache.ts` | 63 |
-| `src/hooks/useOpenInSpotify.ts` | 62 |
 | `src/hooks/usePinnedTabsScroll.ts` | 61 |
+| `src/hooks/useOpenInSpotify.ts` | 60 |
 | `src/hooks/useRecentSearchOpens.ts` | 60 |
 | `src/hooks/useMentionInput.ts` | 59 |
 | `src/hooks/usePlayRecentlyPlayed.ts` | 56 |

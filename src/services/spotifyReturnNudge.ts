@@ -1,8 +1,11 @@
 /**
- * "Did you like the song? Repost it on Livil" — a local notification a few seconds after a
- * hand-off to Spotify, the way Blinkit's "Tap to return" card follows a hand-off to a
- * payment app. Android will not let an app bring itself back to the front, so a tappable
- * card is the one way back that is one tap away.
+ * "Like or comment on Riya's repost — Tap to come back to Livil": a local notification
+ * a few seconds after a hand-off to Spotify from SOMEONE ELSE's repost, the way Blinkit's
+ * "Tap to return" card follows a hand-off to a payment app. Its one job is engagement on
+ * the friend's repost, so a tap opens that post (PostDetail) and it exists only for a post
+ * by someone else — Search, Library, chat and the person's own reposts get no card. Android
+ * will not let an app bring itself back to the front, so a tappable card is the one way
+ * back that is one tap away.
  *
  * It exists only while the person is away:
  *   • scheduled as a NATIVE timed notification (notifee trigger), never a JS timer — React
@@ -39,7 +42,16 @@ export const SPOTIFY_RETURN_DELAY_MS = 3_000;
 export const SPOTIFY_RETURN_DAILY_CAP = 3;
 export const SPOTIFY_RETURN_STORAGE_KEY = 'livil.spotifyReturnNudge.v1';
 
-type NudgeLog = { day: string; count: number; lastTrackId: string | null };
+type NudgeLog = { day: string; count: number; lastPostId: string | null };
+
+/** What the card is about: the friend's repost the song was opened from. */
+export type SpotifyReturnNudgeContext = {
+  spotifyTrackId: string;
+  /** The repost's post id — where a tap lands. */
+  postId: string;
+  /** The reposter, as shown on the card (display name, else username). */
+  authorName: string;
+};
 
 /** Local calendar day, so the cap resets at the person's midnight. */
 function today(now = new Date()): string {
@@ -52,29 +64,29 @@ async function readLog(): Promise<NudgeLog> {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<NudgeLog>;
       if (typeof parsed.day === 'string' && typeof parsed.count === 'number') {
-        return { day: parsed.day, count: parsed.count, lastTrackId: parsed.lastTrackId ?? null };
+        return { day: parsed.day, count: parsed.count, lastPostId: parsed.lastPostId ?? null };
       }
     }
   } catch {
     // Unreadable is the same as empty.
   }
-  return { day: today(), count: 0, lastTrackId: null };
+  return { day: today(), count: 0, lastPostId: null };
 }
 
 /**
- * Whether a card for `trackId` may be shown now, given what has been shown already. Pure,
- * so the cap is testable: not the song just nudged about (coming back and reopening the
- * same song is not a second chance to ask), and not past the daily cap.
+ * Whether a card for `postId` may be shown now, given what has been shown already. Pure,
+ * so the cap is testable: not the repost just nudged about (coming back and reopening the
+ * same one is not a second chance to ask), and not past the daily cap.
  */
-export function mayNudge(log: NudgeLog, trackId: string, day = today()): boolean {
-  if (log.day === day && log.lastTrackId === trackId) {return false;}
+export function mayNudge(log: NudgeLog, postId: string, day = today()): boolean {
+  if (log.day === day && log.lastPostId === postId) {return false;}
   if (log.day === day && log.count >= SPOTIFY_RETURN_DAILY_CAP) {return false;}
   return true;
 }
 
-export function nextLog(log: NudgeLog, trackId: string, day = today()): NudgeLog {
+export function nextLog(log: NudgeLog, postId: string, day = today()): NudgeLog {
   const count = log.day === day ? log.count + 1 : 1;
-  return { day, count, lastTrackId: trackId };
+  return { day, count, lastPostId: postId };
 }
 
 /** Both the person's choices: the phone's permission, and Livil's own Notifications switch. */
@@ -93,7 +105,7 @@ function ensureChannel(): Promise<void> {
   channelReady ??= notifee.createChannel({
     id: SPOTIFY_RETURN_CHANNEL_ID,
     name: 'Back from Spotify',
-    description: 'A reminder to repost a song you opened in Spotify',
+    description: "A reminder to like or comment on a friend's repost you opened in Spotify",
     // HIGH so it drops in over Spotify like Blinkit's card; silent so it never cuts into the
     // song. `badge: false` keeps it off the launcher count — it is not an unread anything.
     importance: AndroidImportance.HIGH,
@@ -107,8 +119,8 @@ function ensureChannel(): Promise<void> {
 }
 
 let appStateInstalled = false;
-/** The track the pending (or shown) card is about; null when there is none. */
-let pendingTrackId: string | null = null;
+/** The post the pending (or shown) card is about; null when there is none. */
+let pendingPostId: string | null = null;
 /** Bumped on every return to the foreground, so a schedule still mid-checks can tell. */
 let returns = 0;
 
@@ -132,7 +144,7 @@ function installReturnCancel(): void {
  * left behind when the OS closed Livil while the person was still in Spotify.
  */
 export async function clearSpotifyReturnNudge(): Promise<void> {
-  pendingTrackId = null;
+  pendingPostId = null;
   try {
     await notifee.cancelNotification(SPOTIFY_RETURN_NOTIFICATION_ID);
   } catch (e) {
@@ -140,34 +152,41 @@ export async function clearSpotifyReturnNudge(): Promise<void> {
   }
 }
 
+/** "Riya’s", "Chris’" — the first name only ("Riya Sharma" → "Riya"), as it reads on the card. */
+function possessive(name: string): string {
+  const first = name.split(/\s+/)[0];
+  return /s$/i.test(first) ? `${first}’` : `${first}’s`;
+}
+
 /**
- * Called right after Spotify was opened for `trackId`. Schedules the card for
- * SPOTIFY_RETURN_DELAY_MS from now; a tap opens Repost with that song picked
- * (route SpotifyRepost, the same path a push tap takes — handleNotificationData).
+ * Called right after Spotify was opened from a friend's repost. Schedules the card for
+ * SPOTIFY_RETURN_DELAY_MS from now; a tap opens that post (route PostDetail, the same path
+ * a push tap takes — handleNotificationData).
  */
-export async function scheduleSpotifyReturnNudge(trackId: string): Promise<void> {
-  if (!SPOTIFY_ID_RE.test(trackId)) {return;}
+export async function scheduleSpotifyReturnNudge(ctx: SpotifyReturnNudgeContext): Promise<void> {
+  const { spotifyTrackId, postId } = ctx;
+  const authorName = ctx.authorName.trim();
+  if (!SPOTIFY_ID_RE.test(spotifyTrackId) || !postId || !authorName) {return;}
   try {
     installReturnCancel();
     const returnsAtStart = returns;
     if (!(await allowed())) {return;}
     const log = await readLog();
-    if (!mayNudge(log, trackId)) {return;}
+    if (!mayNudge(log, postId)) {return;}
     // A second hand-off before the first card showed: that one is stale now.
-    if (pendingTrackId && pendingTrackId !== trackId) {await clearSpotifyReturnNudge();}
+    if (pendingPostId && pendingPostId !== postId) {await clearSpotifyReturnNudge();}
     await ensureChannel();
     // Back already, while the checks above ran? Then the cancel on 'active' has fired and
     // a trigger created now would outlive it — show nothing.
     if (returns !== returnsAtStart) {return;}
-    const track = peekSpotifyTrack(trackId);
-    const title = track?.title ? `Did you like “${track.title}”?` : 'Did you like the song?';
-    pendingTrackId = trackId;
+    const track = peekSpotifyTrack(spotifyTrackId);
+    pendingPostId = postId;
     await notifee.createTriggerNotification(
       {
         id: SPOTIFY_RETURN_NOTIFICATION_ID,
-        title,
-        body: 'Repost it on Livil · Tap to come back',
-        data: { route: 'SpotifyRepost', spotifyTrackId: trackId },
+        title: `Like or comment on ${possessive(authorName)} repost`,
+        body: 'Tap to come back to Livil',
+        data: { route: 'PostDetail', postId },
         android: {
           channelId: SPOTIFY_RETURN_CHANNEL_ID,
           importance: AndroidImportance.HIGH,
@@ -184,9 +203,9 @@ export async function scheduleSpotifyReturnNudge(trackId: string): Promise<void>
       },
       { type: TriggerType.TIMESTAMP, timestamp: Date.now() + SPOTIFY_RETURN_DELAY_MS },
     );
-    await AsyncStorage.setItem(SPOTIFY_RETURN_STORAGE_KEY, JSON.stringify(nextLog(log, trackId)));
+    await AsyncStorage.setItem(SPOTIFY_RETURN_STORAGE_KEY, JSON.stringify(nextLog(log, postId)));
   } catch (e) {
-    pendingTrackId = null;
+    pendingPostId = null;
     console.warn('[spotifyReturn] schedule failed', e);
   }
 }

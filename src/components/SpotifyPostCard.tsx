@@ -127,7 +127,12 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
   }, [navigation, author.id]);
 
   const openSpotify = useOpenInSpotify('feed');
-  const handleOpen = useCallback(() => openSpotify(spotifyId), [openSpotify, spotifyId]);
+  // The "come back and like or comment" card follows only a hand-off from someone ELSE's
+  // repost — there is nothing to engage with on your own.
+  const handleOpen = useCallback(
+    () => openSpotify(spotifyId, isOwnRepost ? undefined : { spotifyTrackId: spotifyId, postId: post.id, authorName }),
+    [openSpotify, spotifyId, isOwnRepost, post.id, authorName],
+  );
   const handleArtTap = useCallback(() => { void handleOpen(); }, [handleOpen]);
 
   const handleRepost = useCallback(() => {
