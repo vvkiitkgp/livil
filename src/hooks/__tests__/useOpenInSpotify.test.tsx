@@ -18,6 +18,10 @@ jest.mock('../../services/spotify', () => ({
   openInSpotify: (id: string) => mockOpen(id),
   recordSpotifyOpen: (id: string, source: string) => mockRecord(id, source),
 }));
+const mockNudge = jest.fn(async (_id: string) => {});
+jest.mock('../../services/spotifyReturnNudge', () => ({
+  scheduleSpotifyReturnNudge: (id: string) => mockNudge(id),
+}));
 const mockRequestNotice = jest.fn(async (..._a: unknown[]) => {});
 jest.mock('../../components/OnboardingNotice', () => ({
   requestNotice: (...a: unknown[]) => mockRequestNotice(...a),
@@ -27,14 +31,17 @@ import { useOpenInSpotify } from '../useOpenInSpotify';
 
 const ID = '0VjIjW4GlUZAMYd2vXMi3b';
 
-function hook(options?: { notice?: boolean }) {
+function hook(options?: { notice?: boolean; returnNudge?: boolean }) {
   let open!: (id: string) => Promise<void>;
   function Probe() { open = useOpenInSpotify('search', options); return null; }
   act(() => { TestRenderer.create(<Probe />); });
   return () => open;
 }
 
-beforeEach(() => { mockPause.mockClear(); mockOpen.mockClear(); mockRecord.mockClear(); mockRequestNotice.mockClear(); });
+beforeEach(() => {
+  mockPause.mockClear(); mockOpen.mockClear(); mockRecord.mockClear(); mockRequestNotice.mockClear();
+  mockNudge.mockClear(); mockOpen.mockImplementation(async () => true);
+});
 
 it('with the notice: nothing opens until the notice says go', async () => {
   const open = hook();
@@ -50,4 +57,25 @@ it('without the notice: pauses Livil and opens Spotify at once, counted once', a
   expect(mockPause).toHaveBeenCalledTimes(1);
   expect(mockOpen).toHaveBeenCalledWith(ID);
   expect(mockRecord).toHaveBeenCalledWith(ID, 'search');
+});
+
+it('once Spotify opened, the "tap to come back" card is scheduled for that song', async () => {
+  const open = hook({ notice: false });
+  await act(async () => { await open()(ID); });
+  expect(mockNudge).toHaveBeenCalledWith(ID);
+});
+
+it('no card when Spotify could not be opened — there is nothing to come back from', async () => {
+  mockOpen.mockImplementation(async () => false);
+  const open = hook({ notice: false });
+  await act(async () => { await open()(ID); });
+  expect(mockRecord).not.toHaveBeenCalled();
+  expect(mockNudge).not.toHaveBeenCalled();
+});
+
+it('returnNudge: false (the Repost screen) hands off without a card', async () => {
+  const open = hook({ notice: false, returnNudge: false });
+  await act(async () => { await open()(ID); });
+  expect(mockOpen).toHaveBeenCalledWith(ID);
+  expect(mockNudge).not.toHaveBeenCalled();
 });

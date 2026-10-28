@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-26
+last_verified: 2026-10-28
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-454 TypeScript file(s) under `src/`, 94,542 lines.
+456 TypeScript file(s) under `src/`, 94,967 lines.
 
 ## Size hotspots
 
@@ -44,7 +44,7 @@ reading alone (Constitution P28).
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 625 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,870 lines.
+50 file(s), 27,871 lines.
 
 | File | Lines |
 |---|---:|
@@ -121,7 +121,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
-| `src/screens/main/SpotifyRepostScreen.tsx` | 625 |
+| `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
@@ -338,7 +338,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-103 file(s), 20,129 lines.
+105 file(s), 20,511 lines.
 
 | File | Lines |
 |---|---:|
@@ -349,8 +349,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/comments.ts` | 620 |
 | `src/services/share.ts` | 551 |
 | `src/services/albums.ts` | 521 |
+| `src/services/spotify.ts` | 514 |
 | `src/services/profileService.ts` | 509 |
-| `src/services/spotify.ts` | 506 |
 | `src/services/__tests__/spotify.test.ts` | 433 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/playlists.ts` | 388 |
@@ -374,6 +374,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/waveform.test.ts` | 212 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
+| `src/services/spotifyReturnNudge.ts` | 193 |
+| `src/services/__tests__/spotifyReturnNudge.test.ts` | 181 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/gifs.test.ts` | 178 |
 | `src/services/__tests__/appBadge.test.ts` | 177 |
@@ -470,7 +472,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-31 file(s), 2,116 lines.
+31 file(s), 2,154 lines.
 
 | File | Lines |
 |---|---:|
@@ -481,6 +483,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useListeningNow.ts` | 93 |
 | `src/hooks/useRecentSearches.ts` | 85 |
 | `src/hooks/useGroupFaces.ts` | 83 |
+| `src/hooks/__tests__/useOpenInSpotify.test.tsx` | 82 |
 | `src/hooks/useNewOnLivilDot.ts` | 81 |
 | `src/hooks/usePlayFullScreen.ts` | 80 |
 | `src/hooks/useSwitchFade.ts` | 80 |
@@ -490,12 +493,11 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/__tests__/useProfileTabCache.test.tsx` | 63 |
 | `src/hooks/__tests__/useSwitchFade.test.tsx` | 63 |
 | `src/hooks/useProfileTabCache.ts` | 63 |
+| `src/hooks/useOpenInSpotify.ts` | 62 |
 | `src/hooks/usePinnedTabsScroll.ts` | 61 |
 | `src/hooks/useRecentSearchOpens.ts` | 60 |
 | `src/hooks/useMentionInput.ts` | 59 |
 | `src/hooks/usePlayRecentlyPlayed.ts` | 56 |
-| `src/hooks/__tests__/useOpenInSpotify.test.tsx` | 54 |
-| `src/hooks/useOpenInSpotify.ts` | 52 |
 | `src/hooks/useTrackWaveform.ts` | 52 |
 | `src/hooks/useRunAfterDismiss.ts` | 50 |
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |

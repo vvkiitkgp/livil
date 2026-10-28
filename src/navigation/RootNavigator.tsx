@@ -82,6 +82,7 @@ import {
   requestPushPermissionInteractive,
   deferPushPrompt,
 } from '../services/pushNotifications';
+import { clearSpotifyReturnNudge } from '../services/spotifyReturnNudge';
 import { clearAppBadge } from '../services/appBadge';
 import { markSignedInHere } from '../utils/returningListener';
 
@@ -311,6 +312,9 @@ export default function RootNavigator() {
 
   useEffect(() => {
     initPush();
+    // A "tap to come back" card left in the tray when the OS closed Livil while the person
+    // was still in Spotify: they are back now, by whatever route.
+    void clearSpotifyReturnNudge();
   }, []);
 
   // Remember that this install has had a session, so the signed-out onboarding can

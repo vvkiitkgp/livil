@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { openInSpotify, recordSpotifyOpen, type SpotifyOpenSource } from '../services/spotify';
+import { scheduleSpotifyReturnNudge } from '../services/spotifyReturnNudge';
 import { requestNotice } from '../components/OnboardingNotice';
 import { haptics } from '../utils/haptics';
 
@@ -24,9 +25,16 @@ export function useOpenInSpotify(
      * (owner report, 2026-10-19).
      */
     notice?: boolean;
+    /**
+     * Skip the "Did you like the song? Repost it on Livil" card that follows the person
+     * into Spotify (spotifyReturnNudge). Off on the Repost screen itself: they are already
+     * reposting it, and a tap on the card would open a second Repost screen.
+     */
+    returnNudge?: boolean;
   } = {},
 ): (spotifyTrackId: string) => Promise<void> {
   const notice = options.notice ?? true;
+  const returnNudge = options.returnNudge ?? true;
   const playback = usePlayback();
   const { showToast } = useToast();
 
@@ -40,7 +48,9 @@ export function useOpenInSpotify(
     if (!opened) { showToast("Couldn't open Spotify.", { kind: 'error' }); return; }
     // Counted only once Spotify actually opened — "Stay on Livil" and failures are not plays.
     recordSpotifyOpen(spotifyTrackId, source);
-  }, [playback, showToast, source]);
+    // The way back: a card a few seconds later, gone the moment Livil is in front again.
+    if (returnNudge) { void scheduleSpotifyReturnNudge(spotifyTrackId); }
+  }, [playback, returnNudge, showToast, source]);
 
   return useCallback(async (spotifyTrackId: string) => {
     haptics.tap();
