@@ -21,7 +21,7 @@ import { readMediaMeta, startPublish } from './publish';
 import type { PendingCollaborator } from '@shared/constants/roles';
 import { embeddedCoverFrom } from './embeddedArt';
 import type { PairedItem } from './files';
-import { MIN_TRACK_SECONDS, tooShortMessage } from '@shared/constants/media';
+import { trackLengthError } from '@shared/constants/media';
 
 /**
  * How many uploads run at once.
@@ -310,10 +310,11 @@ export function useUploadQueue() {
         patch(item.id, { status: 'failed', error: 'Choose what you did on this track.' });
         return;
       }
-      // Early, from the metadata probe, so a too-short file fails before uploading.
-      // publish.ts re-checks for files whose probe hadn't finished yet.
-      if (item.duration !== null && item.duration < MIN_TRACK_SECONDS) {
-        patch(item.id, { status: 'failed', error: tooShortMessage(item.duration) });
+      // Early, from the metadata probe, so a too-short or too-long file fails before
+      // uploading. publish.ts re-checks for files whose probe hadn't finished yet.
+      const lengthError = trackLengthError(item.duration);
+      if (lengthError) {
+        patch(item.id, { status: 'failed', error: lengthError });
         return;
       }
       patch(item.id, {
