@@ -172,7 +172,9 @@ export async function scheduleSpotifyReturnNudge(ctx: SpotifyReturnNudgeContext)
     const returnsAtStart = returns;
     if (!(await allowed())) {return;}
     const log = await readLog();
-    if (!mayNudge(log, postId)) {return;}
+    // Dev builds skip the cap so the card can be tried more than three times a day; the
+    // cap itself is covered by tests. Release builds always honour it.
+    if (!__DEV__ && !mayNudge(log, postId)) {return;}
     // A second hand-off before the first card showed: that one is stale now.
     if (pendingPostId && pendingPostId !== postId) {await clearSpotifyReturnNudge();}
     await ensureChannel();

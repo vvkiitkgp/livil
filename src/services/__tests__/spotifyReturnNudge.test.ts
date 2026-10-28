@@ -140,6 +140,10 @@ describe('scheduling', () => {
 });
 
 describe('the cap', () => {
+  // Jest runs with __DEV__ true; the cap applies to release builds only.
+  beforeEach(() => { (globalThis as { __DEV__?: boolean }).__DEV__ = false; });
+  afterEach(() => { (globalThis as { __DEV__?: boolean }).__DEV__ = true; });
+
   it('not twice for the same repost, and at most three a day', async () => {
     await scheduleSpotifyReturnNudge(RIYA);
     await scheduleSpotifyReturnNudge(RIYA);
@@ -150,6 +154,12 @@ describe('the cap', () => {
     await scheduleSpotifyReturnNudge(SAM);
     expect(mockCreateTrigger).toHaveBeenCalledTimes(SPOTIFY_RETURN_DAILY_CAP);
     expect(JSON.parse(mockStore.get(SPOTIFY_RETURN_STORAGE_KEY) ?? '{}')).toMatchObject({ count: 3, lastPostId: 'post-riya' });
+  });
+
+  it('a dev build skips the cap, so it can be tried again and again', async () => {
+    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+    for (let i = 0; i < 5; i += 1) { await scheduleSpotifyReturnNudge(RIYA); }
+    expect(mockCreateTrigger).toHaveBeenCalledTimes(5);
   });
 
   it('resets with the day (pure helpers)', () => {

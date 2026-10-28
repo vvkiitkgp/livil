@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-456 TypeScript file(s) under `src/`, 95,019 lines.
+456 TypeScript file(s) under `src/`, 95,031 lines.
 
 ## Size hotspots
 
@@ -338,7 +338,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-105 file(s), 20,541 lines.
+105 file(s), 20,553 lines.
 
 | File | Lines |
 |---|---:|
@@ -370,12 +370,12 @@ case the call fails silently wherever its result is discarded.
 | `src/services/listeningStatus.ts` | 223 |
 | `src/services/__tests__/authorMapping.test.ts` | 221 |
 | `src/services/stories.ts` | 215 |
+| `src/services/spotifyReturnNudge.ts` | 214 |
 | `src/services/__tests__/commentGifs.test.ts` | 213 |
 | `src/services/__tests__/waveform.test.ts` | 212 |
-| `src/services/spotifyReturnNudge.ts` | 212 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
+| `src/services/__tests__/spotifyReturnNudge.test.ts` | 202 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
-| `src/services/__tests__/spotifyReturnNudge.test.ts` | 192 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/gifs.test.ts` | 178 |
 | `src/services/__tests__/appBadge.test.ts` | 177 |
