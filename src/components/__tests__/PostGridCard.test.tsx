@@ -27,6 +27,8 @@ const mockOpenFullScreen = jest.fn();
 jest.mock('../../hooks/usePlayFullScreen', () => ({ usePlayFullScreen: () => mockOpenFullScreen }));
 const mockOpenSpotify = jest.fn(async () => {});
 jest.mock('../../hooks/useOpenInSpotify', () => ({ useOpenInSpotify: () => mockOpenSpotify }));
+const mockMe = { current: 'me' as string | null };
+jest.mock('../../contexts/RelationshipContext', () => ({ useRelationships: () => ({ meId: mockMe.current }) }));
 const KESARIYA = { id: 's1', title: 'Kesariya', artists: ['Arijit Singh', 'Pritam'], album: null, imageUrl: 'https://i/a.jpg', durationMs: 1 };
 const mockSpotifyState: { current: { status: string; track: typeof KESARIYA | null } } = {
   current: { status: 'ready', track: KESARIYA },
@@ -146,8 +148,17 @@ describe('Spotify and removed originals', () => {
     const tree = render(<PostGridCard post={basePost({ id: 'sp', kind: 'repost', spotifyTrackId: 's1', originalPostId: null })} plays={5} />);
     expect(texts(tree)).toEqual(['Kesariya', 'Arijit Singh, Pritam', 'Plays on Spotify']);
     tap(tree);
-    expect(mockOpenSpotify).toHaveBeenCalledWith('s1');
+    // Riya's grid, not mine: the hand-off is followed by the "come back and like or comment" card.
+    expect(mockOpenSpotify).toHaveBeenCalledWith('s1', { spotifyTrackId: 's1', postId: 'sp', authorName: 'Riya Sharma' });
     expect(mockPlayback.requestPlay).not.toHaveBeenCalled();
+  });
+
+  it('my own grid hands the song to Spotify with no card to come back to', () => {
+    mockMe.current = 'riya';
+    const tree = render(<PostGridCard post={basePost({ id: 'sp', kind: 'repost', spotifyTrackId: 's1', originalPostId: null })} />);
+    tap(tree);
+    expect(mockOpenSpotify).toHaveBeenCalledWith('s1', undefined);
+    mockMe.current = 'me';
   });
 
   it("a song that didn't load says so, shows Spotify's mark, and still opens Spotify", () => {
@@ -156,7 +167,7 @@ describe('Spotify and removed originals', () => {
     expect(texts(tree)[0]).toBe("Song didn't load");
     expect(tree.root.findAll(n => n.props.accessibilityLabel === 'Spotify')).not.toHaveLength(0);
     tap(tree);
-    expect(mockOpenSpotify).toHaveBeenCalledWith('s1');
+    expect(mockOpenSpotify).toHaveBeenCalledWith('s1', expect.objectContaining({ postId: 'sp' }));
   });
 
   it('shows a deleted original as removed, with nothing to tap', () => {

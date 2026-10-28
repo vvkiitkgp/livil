@@ -295,6 +295,14 @@ function cachedTrack(id: string): { track: SpotifyTrack | null } | undefined {
   }
   return entry;
 }
+/**
+ * The cached track for `id`, or null when nothing is cached (a lookup is never started).
+ * For callers that merely decorate — the return-to-Livil card names the song if it can.
+ */
+export function peekSpotifyTrack(id: string): SpotifyTrack | null {
+  return cachedTrack(id)?.track ?? null;
+}
+
 /** One attempt: an ANSWER (a track, or null for "Spotify has no such track") or a failure. */
 type TrackLookup = { answered: true; track: SpotifyTrack | null } | { answered: false };
 

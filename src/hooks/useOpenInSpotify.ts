@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useToast } from '../contexts/ToastContext';
 import { openInSpotify, recordSpotifyOpen, type SpotifyOpenSource } from '../services/spotify';
+import { scheduleSpotifyReturnNudge, type SpotifyReturnNudgeContext } from '../services/spotifyReturnNudge';
 import { requestNotice } from '../components/OnboardingNotice';
 import { haptics } from '../utils/haptics';
 
@@ -25,12 +26,17 @@ export function useOpenInSpotify(
      */
     notice?: boolean;
   } = {},
-): (spotifyTrackId: string) => Promise<void> {
+): (spotifyTrackId: string, nudge?: SpotifyReturnNudgeContext) => Promise<void> {
   const notice = options.notice ?? true;
   const playback = usePlayback();
   const { showToast } = useToast();
 
-  const handOff = useCallback(async (spotifyTrackId: string) => {
+  /**
+   * `nudge` — the friend's repost the song was opened from, when there is one: it schedules
+   * the "Like or comment on Riya's repost" card that follows the person into Spotify
+   * (spotifyReturnNudge). Callers pass it only for a post by someone else.
+   */
+  const handOff = useCallback(async (spotifyTrackId: string, nudge?: SpotifyReturnNudgeContext) => {
     if (playback.activePostId) {
       // The same pause the in-app pause button uses; pauseAll is the fallback when the
       // engine has not registered its handlers yet.
@@ -40,12 +46,14 @@ export function useOpenInSpotify(
     if (!opened) { showToast("Couldn't open Spotify.", { kind: 'error' }); return; }
     // Counted only once Spotify actually opened — "Stay on Livil" and failures are not plays.
     recordSpotifyOpen(spotifyTrackId, source);
+    // The way back: a card a few seconds later, gone the moment Livil is in front again.
+    if (nudge) { void scheduleSpotifyReturnNudge(nudge); }
   }, [playback, showToast, source]);
 
-  return useCallback(async (spotifyTrackId: string) => {
+  return useCallback(async (spotifyTrackId: string, nudge?: SpotifyReturnNudgeContext) => {
     haptics.tap();
-    if (!notice) { await handOff(spotifyTrackId); return; }
+    if (!notice) { await handOff(spotifyTrackId, nudge); return; }
     // Resolves once the notice is up (or straight after handing off, if dismissed).
-    await requestNotice('spotify', () => { void handOff(spotifyTrackId); });
+    await requestNotice('spotify', () => { void handOff(spotifyTrackId, nudge); });
   }, [handOff, notice]);
 }
