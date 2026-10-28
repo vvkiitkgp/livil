@@ -2,8 +2,8 @@
  * "Like or comment on Riya's repost — Tap to come back to Livil": a local notification
  * a few seconds after a hand-off to Spotify from SOMEONE ELSE's repost, the way Blinkit's
  * "Tap to return" card follows a hand-off to a payment app. Its one job is engagement on
- * the friend's repost, so a tap opens that post (PostDetail) and it exists only for a post
- * by someone else — Search, Library, chat and the person's own reposts get no card. Android
+ * the friend's repost, so a tap simply brings Livil back to where the person left it — the
+ * repost is right there on screen — and it exists only for a post by someone else — Search, Library, chat and the person's own reposts get no card. Android
  * will not let an app bring itself back to the front, so a tappable card is the one way
  * back that is one tap away.
  *
@@ -47,7 +47,7 @@ type NudgeLog = { day: string; count: number; lastPostId: string | null };
 /** What the card is about: the friend's repost the song was opened from. */
 export type SpotifyReturnNudgeContext = {
   spotifyTrackId: string;
-  /** The repost's post id — where a tap lands. */
+  /** The repost's post id — keys the cap, so the same repost is not nudged twice running. */
   postId: string;
   /** The reposter, as shown on the card (display name, else username). */
   authorName: string;
@@ -160,8 +160,9 @@ function possessive(name: string): string {
 
 /**
  * Called right after Spotify was opened from a friend's repost. Schedules the card for
- * SPOTIFY_RETURN_DELAY_MS from now; a tap opens that post (route PostDetail, the same path
- * a push tap takes — handleNotificationData).
+ * SPOTIFY_RETURN_DELAY_MS from now. A tap only brings Livil to the front, back on the
+ * screen the person left: the data carries no `route`, so handleNotificationData (the
+ * path every tap takes) navigates nowhere.
  */
 export async function scheduleSpotifyReturnNudge(ctx: SpotifyReturnNudgeContext): Promise<void> {
   const { spotifyTrackId, postId } = ctx;
@@ -188,7 +189,7 @@ export async function scheduleSpotifyReturnNudge(ctx: SpotifyReturnNudgeContext)
         id: SPOTIFY_RETURN_NOTIFICATION_ID,
         title: `Like or comment on ${possessive(authorName)} repost`,
         body: 'Tap to come back to Livil',
-        data: { route: 'PostDetail', postId },
+        data: { kind: 'spotify_return', postId },
         android: {
           channelId: SPOTIFY_RETURN_CHANNEL_ID,
           importance: AndroidImportance.HIGH,

@@ -84,7 +84,7 @@ beforeEach(() => {
 afterEach(() => { jest.restoreAllMocks(); });
 
 describe('scheduling', () => {
-  it("schedules a silent card 3 s out, named after the reposter, whose tap opens their post", async () => {
+  it("schedules a silent card 3 s out, named after the reposter, whose tap only brings Livil back", async () => {
     const before = Date.now();
     await scheduleSpotifyReturnNudge(RIYA);
     expect(mockCreateTrigger).toHaveBeenCalledTimes(1);
@@ -92,7 +92,8 @@ describe('scheduling', () => {
     expect(card.id).toBe(SPOTIFY_RETURN_NOTIFICATION_ID);
     expect(card.title).toBe('Like or comment on Riya’s repost');
     expect(card.body).toBe('Tap to come back to Livil');
-    expect(card.data).toEqual({ route: 'PostDetail', postId: 'post-riya' });
+    // No `route`: handleNotificationData navigates nowhere, so the tap just foregrounds Livil.
+    expect(card.data).not.toHaveProperty('route');
     expect(card.android.channelId).toBe('spotify_return');
     expect(card.android.badgeCount).toBe(0);
     expect(trigger().timestamp).toBeGreaterThanOrEqual(before + SPOTIFY_RETURN_DELAY_MS);
