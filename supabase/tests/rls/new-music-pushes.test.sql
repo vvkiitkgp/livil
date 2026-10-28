@@ -127,6 +127,9 @@ insert into tracks (id, uploader_id, title, media_kind, audio_url, video_url) va
   ('d2000000-0000-0000-0000-000000000006', 'd1000000-0000-0000-0000-000000000009', 'Video Thing',   'video', null, 'https://example.invalid/6.mp4'),
   ('d2000000-0000-0000-0000-000000000007', 'd1000000-0000-0000-0000-000000000009', 'Matched',       'audio', 'https://example.invalid/7.mp3', null)
 on conflict do nothing;
+-- The transcoder has looked at the one to announce (an mp3 needs no light copy). Since
+-- 20261116000000 a drop waits for that look — section 9 covers the waiting itself.
+update tracks set transcode_status = 'skipped' where id = 'd2000000-0000-0000-0000-000000000001';
 
 insert into track_copyright_scans (track_id, provider, scanned_media_url, status, match_found, completed_at) values
   ('d2000000-0000-0000-0000-000000000004', 'audd', 'https://example.invalid/4.mp3', 'complete', false, now()),
@@ -193,6 +196,36 @@ update posts set created_at = now() - interval '5 minutes' where id = 'd3000000-
 select pg_temp.assert('8b  a second upload by the same artist the same day is not announced',
   push_run_new_drops() = 0
     and not exists (select 1 from push_sends where post_id = 'd3000000-0000-0000-0000-000000000003'), true);
+
+-- ── 9. A drop waits for its light copy (20261116000000) ─────────────────────
+-- DEV uploads a raw 4K video 10 minutes ago; the transcoder has not looked at it yet.
+insert into tracks (id, uploader_id, title, media_kind, audio_url, video_url) values
+  ('d2000000-0000-0000-0000-000000000008', 'd1000000-0000-0000-0000-000000000009', 'Raw 4K', 'video', null, 'https://example.invalid/8.mov');
+insert into posts (id, author_id, kind, track_id, created_at) values
+  ('d3000000-0000-0000-0000-000000000009', 'd1000000-0000-0000-0000-000000000009', 'upload', 'd2000000-0000-0000-0000-000000000008', now() - interval '10 minutes');
+select pg_temp.assert('9a  an upload the transcoder has not looked at is held back',
+  push_run_new_drops() = 0
+    and not exists (select 1 from push_sends where post_id = 'd3000000-0000-0000-0000-000000000009'), true);
+
+-- The light copy lands: announced on the very next run.
+update tracks set transcode_status = 'done' where id = 'd2000000-0000-0000-0000-000000000008';
+-- (The send-row check is its own statement: inside the one that calls the function it
+-- would read the statement's starting snapshot and miss the row just written.)
+select pg_temp.assert('9b  …and is announced as soon as the light copy is in place',
+  push_run_new_drops() = 1, true);
+select pg_temp.assert('9b2 …with a send row of its own',
+  exists (select 1 from push_sends where post_id = 'd3000000-0000-0000-0000-000000000009'), true);
+
+-- STRANGER's own upload, never looked at (the transcoder is down): a drop is delayed by
+-- that, never cancelled — 30 minutes old, it goes out anyway.
+insert into tracks (id, uploader_id, title, media_kind, audio_url, video_url) values
+  ('d2000000-0000-0000-0000-000000000009', 'd1000000-0000-0000-0000-000000000004', 'Stuck', 'audio', 'https://example.invalid/9.wav', null);
+insert into posts (id, author_id, kind, track_id, created_at) values
+  ('d3000000-0000-0000-0000-000000000010', 'd1000000-0000-0000-0000-000000000004', 'upload', 'd2000000-0000-0000-0000-000000000009', now() - interval '31 minutes');
+select pg_temp.assert('9c  a 30-minute-old upload is announced even if the transcoder never came',
+  push_run_new_drops() = 1, true);
+select pg_temp.assert('9c2 …with a send row of its own',
+  exists (select 1 from push_sends where post_id = 'd3000000-0000-0000-0000-000000000010'), true);
 
 -- ── 3. The roundup ──────────────────────────────────────────────────────────
 -- STRANGER knows nobody: DEV's clean audio counts; unscanned, video and matched do not;
