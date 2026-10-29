@@ -89,9 +89,15 @@ Test encode on the owner's Mac: the 127 MB video → **7.5 MB** (1080×1920, 30 
 ## Consequences
 
 - Every upload plays as the heavy original for ~5–10 minutes (GitHub's schedule floor plus
-  queue delay), then switches on the next feed load. A database webhook calling
-  `repository_dispatch` (type `transcode-media`) brings that to ~1 minute; it needs a
-  GitHub token stored on the Supabase side and is deliberately a follow-up.
+  queue delay), then switches on the next feed load — when the schedule fires. GitHub runs a `schedule`
+  best-effort (observed here: every 4–7 hours, not 5 minutes), so since 20261117000000 an
+  upload post rings the doorbell itself: an AFTER INSERT trigger on `posts` sends a
+  `workflow_dispatch` (`ref: main`) through pg_net with a Vault token, at most once a minute
+  (a burst of uploads collapses to one call; a pg_cron flush sends the held one next minute)
+  (`github_transcode_dispatch_token`, fine-grained, "Actions: write" only — not
+  `repository_dispatch`, whose `contents: write` token could push to this public repo).
+  The schedule stays as the backstop; a missing secret or a failed call is a WARNING and
+  never fails the upload.
 - Storage holds two copies of each heavy upload. Originals could be pruned later; today
   nothing deletes them, by design.
 - Production now depends on a GitHub repository secret (`SUPABASE_SERVICE_ROLE_KEY`). The

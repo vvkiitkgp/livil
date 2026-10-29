@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-27
+last_verified: 2026-10-29
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 170 migration(s) in `supabase/migrations/`.
+Reconstructed from 171 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-62 table(s).
+63 table(s).
 
 ### `account_exit_feedback`
 
@@ -941,6 +941,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_posts_spotify_switch_guard` — before insert (`20261013000000_spotify_reposts.sql`)
 - `trg_posts_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
 - `trg_posts_keep_created_at` — before update of created_at (`20261105000000_server_time_on_writes.sql`)
+- `trg_posts_transcode_dispatch` — after insert (`20261117000000_transcode_dispatch_on_upload.sql`)
 
 ### `profile_badges`
 
@@ -1513,6 +1514,18 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 - `trg_tracks_keep_created_at` — before update of created_at (`20261105000000_server_time_on_writes.sql`)
 - `trg_tracks_keep_transcode_ledger` — before insert or update (`20261115000000_tracks_transcode_renditions.sql`)
 
+### `transcode_dispatch_state`
+
+RLS enabled · defined in `20261117000000_transcode_dispatch_on_upload.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `integer primary key default 1 check (id = 1)` |
+| `last_dispatched_at` | `timestamptz` |
+| `pending` | `boolean not null default false` |
+| `pending_since` | `timestamptz` |
+| `dispatches` | `bigint not null default 0` |
+
 ### `user_last_seen`
 
 RLS enabled · defined in `20260925010000_last_seen_is_ops_only.sql`
@@ -1624,6 +1637,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_posts_spotify_switch_guard` | `posts` | before insert | `20261013000000_spotify_reposts.sql` |
 | `trg_posts_stamp_created_at` | `posts` | before insert | `20261105000000_server_time_on_writes.sql` |
 | `trg_posts_keep_created_at` | `posts` | before update of created_at | `20261105000000_server_time_on_writes.sql` |
+| `trg_posts_transcode_dispatch` | `posts` | after insert | `20261117000000_transcode_dispatch_on_upload.sql` |
 | `trg_profile_badges_no_orphan_revoke` | `profile_badges` | before update | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_orphan_delete` | `profile_badges` | before delete | `20260920000000_badge_slot_reclaim_split.sql` |
 | `trg_profile_badges_no_truncate` | `profile_badges` | before truncate | `20260920000000_badge_slot_reclaim_split.sql` |
