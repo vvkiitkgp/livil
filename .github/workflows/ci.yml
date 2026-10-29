@@ -515,6 +515,16 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/transcode-renditions.test.sql
 
+      # An upload post asks GitHub to run the transcoder now (workflow_dispatch through
+      # pg_net, token from Vault); reposts and a missing secret send nothing, and a
+      # failing call never fails the upload.
+      - name: Transcode dispatch-on-upload tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/transcode-dispatch.test.sql
+
       # A credit names somebody, so answering it is the one write a collaborator gets on a
       # track that is not theirs. Asserts that the write is status-only (the previous policy
       # let a tagged user rewrite their own role), that an answer is final, and that being
