@@ -204,6 +204,16 @@ dashboard settings, storage rules, and the web app (`web/`, Vercel — also inst
 - **New columns must be nullable or have a default**, so inserts from old apps (which
   don't send them) keep working. New `NOT NULL` without a default breaks every old
   upload/sign-up.
+- **Every new table's migration must GRANT its own access.** From 2026-10-30 Supabase no
+  longer auto-grants `anon`/`authenticated`/`service_role` on new tables or sequences in
+  `public` (tables created before then keep their grants). Without explicit grants the app
+  gets `permission denied` in production — and CI's migration replay will NOT catch it,
+  because `ci.yml` blanket-grants every table after the replay. In the same migration as
+  the `create table`: `grant select, insert, update, delete on public.<t> to authenticated;`
+  and `… to service_role;` — narrowed to what the app actually does, RLS still on, `anon`
+  only when logged-out access is genuinely needed, and `grant usage` on any
+  `serial`/`bigserial` sequence. A server-only table gets no `authenticated` grant, on
+  purpose — say so in a comment.
 - **Tightening rules (RLS, CHECK constraints, triggers that reject) needs a check against
   what old apps actually send.** A stricter policy that the new app satisfies can still
   make the current app's writes fail — that is a production outage for everyone who
@@ -718,7 +728,54 @@ Keystore: `android/app/livil-release.keystore` (alias: `livil`, credentials in `
 
 ## Environment
 
-- **Node**: v20.11.0
+- **Node**: v22.22.3 (`.nvmrc` pins 22.11.0; `engines.node >=22.11.0`)
 - **Java**: 17.0.9 Temurin (via SDKMAN)
 - **Android SDK**: `/Users/vamsi/Library/Android/sdk`
 - **Emulator**: Medium Phone API 35 (Android 15, arm64)
+
+---
+
+## My Life TODO (Notion) — read-only reference
+
+My personal planner is the Notion page **"Life TODO"**:
+https://app.notion.com/p/408649111cec8176a5d2f714b85af305 (page id `40864911-1cec-8176-a5d2-f714b85af305`).
+It holds my daily schedule, routine, and backlogs for Life / LiViL / Job Search.
+
+**Two separate to-do lists — don't mix them:**
+- **Life TODO (Notion)** = the high-level plan. In this repo, treat it as **READ-ONLY**:
+  read it to see what I planned (e.g. "which LiViL task is next?", "what's on my Life TODO?").
+  **Only write to it when I explicitly say** "add to / update / mark done in my Life TODO".
+- **Your own working to-do list in Claude Code** = the detailed, step-by-step breakdown of the
+  task we're coding right now (use Claude Code's built-in task list). Create and update it
+  freely. Never copy these detailed steps into the Life TODO.
+
+**Strict scope — read and write THIS page only** (plus its own inline "Schedule" database,
+`collection://da14e7b6-3c79-4915-920a-380765b5c707`).
+- Fetch/update only the page id above and that database. Never search, fetch, read, or edit
+  any other Notion page, database, memory, or workspace content (no Notion search,
+  recent/shared/private page lists, backlinks, or memory tools). Don't create, move,
+  duplicate, or delete pages.
+- If something would need another page, stop and ask me to paste it instead.
+
+**Page layout (keep it):** Today's Schedule (inline **Schedule** database — Timeline,
+Calendar and List views; columns Task, When (datetime range +05:30), Done, Area =
+Routine/Life/LiViL/Job Search) → Daily Routine (rows created each morning, Area = Routine:
+9 AM–12 PM 💼 Job search work, 10:30–11 AM 🔁 Call Mom, 2–6 PM 🎵 Work on LiViL, 5–6 PM
+🔁 Call a friend) → Backlog (🌱 Life / 🎵 LiViL / 💼 Job Search checklists)
+→ Done Log (one toggle per date `YYYY-MM-DD`, newest on top; never delete entries) →
+"Instructions for Claude (CLAUDE.md)" toggle (don't edit).
+
+**Keep Life TODO entries BRIEF.** When I ask you to add something to my Life TODO, write one
+short line, ~2–6 words, no explanation or sub-steps — e.g. `Chat: typing indicator`,
+`🐛 Repost caption "See more"`. All detail goes in your own Claude Code task list, never here.
+
+**Common actions (only when I ask to change the Life TODO)**
+- *Add a task* → unchecked to-do in the right Backlog section (tasks from this repo go under
+  LiViL). If I give a date/time, create a Schedule row instead.
+- *Schedule something* → Schedule row; Task starts with an emoji; default duration 1 hour
+  if I don't say. Overlaps are fine (I multitask) — never shift other tasks.
+- *Plan today* → log yesterday's Done rows in the Done Log, put unfinished non-routine ones
+  back in the Backlog, create today's 🔁 routine rows, show me today + the Backlog, and add
+  the ones I pick as Schedule rows (removing them from the Backlog).
+- *Mark done* → tick Done on the Schedule row.
+- Timezone: Asia/Calcutta (IST).
