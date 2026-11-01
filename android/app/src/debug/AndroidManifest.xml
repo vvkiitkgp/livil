@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Editor prototype (Record → Magic Tune). DEBUG BUILDS ONLY: release builds do not ask
+         for the microphone until the feature ships (ADR-0036: the permission and its
+         wording land in the same release as the first mic prompt). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <application
         android:usesCleartextTraffic="true"
         tools:targetApi="28"

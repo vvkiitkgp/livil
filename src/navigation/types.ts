@@ -19,7 +19,11 @@ export type AppTabParamList = {
 export type RootStackParamList = {
   Auth: undefined;
   App: undefined;
-  Upload: undefined;
+  /**
+   * `studio`: a finished Editor mix (developer builds only, ADR-0036). Upload shows it on the
+   * song step and uploads nothing until the artist moves on from that step.
+   */
+  Upload: { studio?: StudioMix } | undefined;
   CollaboratorPicker: {
     /**
      * Roles already credited here, as `${userId}|${role}` (or `custom:${name}|${role}`).
@@ -111,6 +115,12 @@ export type RootStackParamList = {
   // "+ Post" / Home "+" chooser: upload your own track, or repost from Spotify. Only shown
   // while the server switch is on; otherwise those buttons go straight to Upload.
   AddToLivil: undefined;
+  // Record → Magic Tune → Editor (internal code name "Studio", ADR-0034..0036). PROTOTYPE:
+  // reachable only from the __DEV__ tile on AddToLivil; nothing is saved or posted.
+  /** The Editor (developer builds only). `draftId` reopens a draft saved on this phone. */
+  Studio: { draftId?: string } | undefined;
+  /** Editor drafts saved on this phone (developer builds only, like Studio). */
+  Drafts: undefined;
   // Repost a song. Without params: search Livil + Spotify or paste a Spotify link (a Livil
   // pick replaces this screen with Repost, the clip editor). With
   // `spotifyTrackId`: that song is pre-picked; `locked` (reposting a friend's Spotify
@@ -128,4 +138,16 @@ export type RootStackParamList = {
     startAuthorIndex: number;
     startStoryIndex?: number;
   };
+};
+
+/** An Editor mix rendered to a lossless file on this phone, handed to Upload. */
+export type StudioMix = {
+  uri: string;
+  name: string;
+  size: number;
+  durationSec: number;
+  /** The draft it came from — deleted once the post succeeds (ADR-0036 §6). */
+  draftId: string;
+  /** Pre-fills the title when the draft has a real name. */
+  title: string | null;
 };

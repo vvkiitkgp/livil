@@ -2060,6 +2060,7 @@ export type Database = {
           id: string
           lyrics: string | null
           lyrics_format: string | null
+          made_with_livil: boolean
           media_kind: string
           original_media_url: string | null
           tags: string[] | null
@@ -2085,6 +2086,7 @@ export type Database = {
           id?: string
           lyrics?: string | null
           lyrics_format?: string | null
+          made_with_livil?: boolean
           media_kind: string
           original_media_url?: string | null
           tags?: string[] | null
@@ -2110,6 +2112,7 @@ export type Database = {
           id?: string
           lyrics?: string | null
           lyrics_format?: string | null
+          made_with_livil?: boolean
           media_kind?: string
           original_media_url?: string | null
           tags?: string[] | null

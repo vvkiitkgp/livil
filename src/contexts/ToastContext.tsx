@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FullWindowOverlay } from 'react-native-screens';
 import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import { Icon, type IconName } from '../components/Icon';
@@ -103,32 +104,37 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {toast && palette ? (
-        <View
-          pointerEvents="box-none"
-          style={[styles.layer, { paddingTop: insets.top + HEADER_OFFSET }]}
-        >
-          <Animated.View
-            style={[
-              styles.toast,
-              {
-                borderColor: palette.border,
-                opacity,
-                transform: [{ translateY }],
-              },
-            ]}
+        // iOS: in a window above everything. Drawn as a plain sibling of the app, a toast sat
+        // BEHIND any `presentation: 'modal'` screen (the Editor, Upload) — "Save does nothing"
+        // was its error toast, hidden under the Editor (2026-10-31). Elsewhere it's a no-op.
+        <FullWindowOverlay>
+          <View
+            pointerEvents="box-none"
+            style={[styles.layer, { paddingTop: insets.top + HEADER_OFFSET }]}
           >
-            <Pressable onPress={hide} style={styles.pressable}>
-              <View style={styles.glyph}>
-                <Icon name={palette.icon} size={15} color={palette.glyph} />
-              </View>
-              {/* Two lines, not one: a sentence like "Only friends can message each other.
-                  Add Riya as a friend to chat." was cut off mid-name on a phone. */}
-              <Text style={styles.message} numberOfLines={2}>
-                {toast.message}
-              </Text>
-            </Pressable>
-          </Animated.View>
-        </View>
+            <Animated.View
+              style={[
+                styles.toast,
+                {
+                  borderColor: palette.border,
+                  opacity,
+                  transform: [{ translateY }],
+                },
+              ]}
+            >
+              <Pressable onPress={hide} style={styles.pressable}>
+                <View style={styles.glyph}>
+                  <Icon name={palette.icon} size={15} color={palette.glyph} />
+                </View>
+                {/* Two lines, not one: a sentence like "Only friends can message each other.
+                    Add Riya as a friend to chat." was cut off mid-name on a phone. */}
+                <Text style={styles.message} numberOfLines={2}>
+                  {toast.message}
+                </Text>
+              </Pressable>
+            </Animated.View>
+          </View>
+        </FullWindowOverlay>
       ) : null}
     </ToastContext.Provider>
   );

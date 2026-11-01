@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-10-29
+last_verified: 2026-11-01
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 171 migration(s) in `supabase/migrations/`.
+Reconstructed from 172 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -1497,6 +1497,7 @@ RLS enabled · defined in `00000000000000_baseline_schema.sql`
 | `transcoded_at` | `timestamptz` | `20261115000000_tracks_transcode_renditions.sql` |
 | `transcode_error` | `text` | `20261115000000_tracks_transcode_renditions.sql` |
 | `original_media_url` | `text` | `20261115000000_tracks_transcode_renditions.sql` |
+| `made_with_livil` | `boolean not null default false` | `20261118000000_tracks_made_with_livil.sql` |
 
 **Indexes**
 

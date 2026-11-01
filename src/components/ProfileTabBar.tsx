@@ -2,14 +2,20 @@ import React, { type ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { GradientBorder } from './GradientBorder';
+import { Icon } from './Icon';
 
-export type ProfileTab = 'reposts' | 'uploads' | 'albums' | 'playlists';
+export type ProfileTab = 'reposts' | 'uploads' | 'drafts' | 'albums' | 'playlists';
 
 export type TabCounts = {
   reposts: number;
   uploads: number;
   albums: number;
   playlists: number;
+  /**
+   * Editor drafts — ON THIS PHONE, own profile only (ADR-0036 §9). Never fetched for anyone
+   * else's profile, so it is simply absent there.
+   */
+  drafts?: number;
 };
 
 type TabSpec = { key: ProfileTab; label: string };
@@ -17,6 +23,7 @@ type TabSpec = { key: ProfileTab; label: string };
 const ORDER: TabSpec[] = [
   { key: 'reposts', label: 'Reposts' },
   { key: 'uploads', label: 'Uploads' },
+  { key: 'drafts', label: 'Drafts' },
   { key: 'albums', label: 'Albums' },
   { key: 'playlists', label: 'Playlists' },
 ];
@@ -28,6 +35,8 @@ const WEIGHTED: ProfileTab[] = ['reposts', 'uploads'];
  * Tab visibility rule (locked in during design):
  *   Reposts + Playlists  → always render (they're universal affordances).
  *   Uploads + Albums     → render only when count > 0.
+ *   Drafts               → only when there are drafts, and only on your OWN profile (its
+ *                          count is never given for anyone else's).
  *
  * For Reposts and Playlists we still render even when the count is 0 — they
  * show an in-tab empty state. This keeps the navigation predictable: a tab
@@ -44,12 +53,12 @@ const WEIGHTED: ProfileTab[] = ['reposts', 'uploads'];
 export function visibleTabsFor(counts: TabCounts): TabSpec[] {
   const visible = ORDER.filter(t => {
     if (t.key === 'reposts' || t.key === 'playlists') { return true; }
-    return counts[t.key] > 0;
+    return (counts[t.key] ?? 0) > 0;
   });
 
   const weighted = visible
     .filter(t => WEIGHTED.includes(t.key))
-    .sort((a, b) => counts[b.key] - counts[a.key]);
+    .sort((a, b) => (counts[b.key] ?? 0) - (counts[a.key] ?? 0));
 
   let next = 0;
   return visible.map(t => (WEIGHTED.includes(t.key) ? weighted[next++]! : t));
@@ -96,7 +105,7 @@ export default function ProfileTabBar({
       >
         {visible.map(tab => {
           const isActive = tab.key === active;
-          const c = counts[tab.key];
+          const c = counts[tab.key] ?? 0;
           return (
             <Pressable
               key={tab.key}
@@ -111,6 +120,9 @@ export default function ProfileTabBar({
               ]}
             >
               {isActive ? <GradientBorder borderRadius={999} /> : null}
+              {tab.key === 'drafts' ? (
+                <Icon name="lock" size={12} color={isActive ? COLORS.purpleNeon : COLORS.textSecondary} />
+              ) : null}
               <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
               <Text style={[styles.count, isActive && styles.countActive]}>{c}</Text>
             </Pressable>

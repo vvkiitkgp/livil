@@ -715,6 +715,12 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
           {post.track.title}
         </Text>
       </View>
+      {post.track.madeWithLivil ? (
+        <View style={styles.madeWith} accessibilityLabel="Made with Livil: recorded and produced in the Livil Editor">
+          <Icon name="ai" size={11} color={COLORS.purpleLight} />
+          <Text style={styles.madeWithText}>Made with Livil</Text>
+        </View>
+      ) : null}
       {post.caption ? (
         <MentionText text={post.caption} style={styles.caption} numberOfLines={4} />
       ) : null}
@@ -1177,6 +1183,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // A small indicator, so outlined (no-fill rule): purple border, light label.
+  madeWith: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: COLORS.purple,
+  },
+  madeWithText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
   titleBlock: {
     marginTop: 12,
     flexDirection: 'row',

@@ -41,6 +41,8 @@ export type CreateTrackInput =
       collaborators: PendingCollaborator[];
       /** Tags. Normalized on the way in by `shared/constants/tags.ts` — see the insert. */
       tags?: string[];
+      /** Made in the Livil Editor: sets `tracks.made_with_livil` ("Made with Livil" pill). */
+      madeWithLivil?: boolean;
       /** Track length in seconds, captured from the upload preview's onLoad.
        *  Saved to duration_seconds so feed/profile cards show the length before
        *  the post is ever played. Omit/null if not yet known (backfills on play). */
@@ -693,6 +695,12 @@ async function finishTrack({
 
   if (updateError) {
     throw new Error(`Failed to finalize track: ${updateError.message}`);
+  }
+  // The "Made with Livil" label, on its own and best-effort: a database without the column
+  // yet (migration 20261118000000) must cost the pill, never the post.
+  if (input.mode === 'audio' && input.madeWithLivil) {
+    const { error: labelError } = await supabase.from('tracks').update({ made_with_livil: true }).eq('id', trackId);
+    if (labelError) console.log('[LIVIL][upload] made_with_livil not set', labelError.message);
   }
 
   // ── Copyright scan ───────────────────────────────────────────────────────

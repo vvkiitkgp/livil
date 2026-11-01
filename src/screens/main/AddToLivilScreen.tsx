@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,6 +8,7 @@ import { haptics } from '../../utils/haptics';
 import { Icon, type IconName } from '../../components/Icon';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
 import { Logo } from '../../components/Logo';
+import { useMyDrafts } from '../../hooks/useMyDrafts';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -24,6 +25,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 export default function AddToLivilScreen() {
   const navigation = useNavigation<Nav>();
+  const { drafts } = useMyDrafts();
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -43,7 +45,7 @@ export default function AddToLivilScreen() {
         <Text style={styles.subtitle}>Share your own music, or repost a song you love.</Text>
       </View>
 
-      <View style={styles.options}>
+      <ScrollView contentContainerStyle={styles.options}>
         <Option
           primary
           icon="upload"
@@ -63,7 +65,27 @@ export default function AddToLivilScreen() {
           }
           onPress={() => navigation.push('SpotifyRepost', undefined)}
         />
-      </View>
+        {/* PROTOTYPE (2026-10-30): Record → Magic Tune → Editor. Developer builds only until
+            Magic Tune is ready to ship (owner: the first release waits for it). */}
+        {__DEV__ && (
+          <Option
+            icon="mic"
+            title="Record"
+            body="Sing it, Magic Tune it, add a beat."
+            onPress={() => navigation.push('Studio')}
+          />
+        )}
+        {__DEV__ && (
+          <Option
+            icon="pencilLine"
+            title="Drafts"
+            body={drafts.length
+              ? `${drafts.length} saved on this phone. Pick up where you left off.`
+              : 'Songs you save in the Editor wait here, on this phone.'}
+            onPress={() => navigation.push('Drafts')}
+          />
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -112,7 +134,7 @@ const styles = StyleSheet.create({
   intro: { paddingHorizontal: 20, paddingTop: 8, gap: 8 },
   title: { color: COLORS.white, fontSize: 28, fontWeight: '800', letterSpacing: -0.4 },
   subtitle: { color: COLORS.textSecondary, fontSize: 15, lineHeight: 22 },
-  options: { paddingHorizontal: 16, paddingTop: 28, gap: 14 },
+  options: { paddingHorizontal: 16, paddingTop: 28, paddingBottom: 24, gap: 14 },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
