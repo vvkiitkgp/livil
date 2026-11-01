@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FeedPost } from '../services/posts';
+import { useNowPlayingCommentsSync } from './useNowPlayingCommentsSync';
 import {
   addCommentsDelta,
   withCommentsDelta,
@@ -33,10 +34,14 @@ export function useCommentsCountDeltas(posts: ReadonlyArray<Pick<FeedPost, 'id' 
     setCommentsPostId(null);
   }, []);
 
+  // The same change, for the full-screen player when this post is what's playing.
+  const syncPlayer = useNowPlayingCommentsSync();
+
   const applyDelta = useCallback((postId: string, delta: number) => {
     const base = postsRef.current.find(p => p.id === postId)?.commentsCount ?? null;
     setDeltas(prev => addCommentsDelta(prev, postId, delta, base));
-  }, []);
+    syncPlayer(postId, delta);
+  }, [syncPlayer]);
 
   /**
    * After a pull-to-refresh: the counts just fetched include every change, so forget them.

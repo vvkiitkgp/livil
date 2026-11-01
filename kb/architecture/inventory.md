@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-10-28
+last_verified: 2026-11-01
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-456 TypeScript file(s) under `src/`, 95,033 lines.
+458 TypeScript file(s) under `src/`, 95,156 lines.
 
 ## Size hotspots
 
@@ -48,7 +48,7 @@ reading alone (Constitution P28).
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 21 file(s) over the threshold against **31 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 21 file(s) over the threshold against **33 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -105,7 +105,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-50 file(s), 27,871 lines.
+50 file(s), 27,873 lines.
 
 | File | Lines |
 |---|---:|
@@ -152,8 +152,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/FriendRequestsScreen.tsx` | 223 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 204 |
+| `src/screens/main/PostDetailScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 202 |
-| `src/screens/main/PostDetailScreen.tsx` | 202 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
@@ -450,11 +450,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-15 file(s), 3,411 lines.
+15 file(s), 3,416 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 1027 |
+| `src/contexts/PlaybackContext.tsx` | 1032 |
 | `src/contexts/JamRealtimeContext.tsx` | 487 |
 | `src/contexts/RelationshipContext.tsx` | 379 |
 | `src/contexts/JamSuggestionsContext.tsx` | 200 |
@@ -472,7 +472,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-31 file(s), 2,153 lines.
+33 file(s), 2,228 lines.
 
 | File | Lines |
 |---|---:|
@@ -489,7 +489,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useSwitchFade.ts` | 80 |
 | `src/hooks/__tests__/useNewOnLivilDot.test.tsx` | 78 |
 | `src/hooks/usePostLike.ts` | 77 |
-| `src/hooks/useCommentsCountDeltas.ts` | 64 |
+| `src/hooks/useCommentsCountDeltas.ts` | 69 |
 | `src/hooks/__tests__/useProfileTabCache.test.tsx` | 63 |
 | `src/hooks/__tests__/useSwitchFade.test.tsx` | 63 |
 | `src/hooks/useProfileTabCache.ts` | 63 |
@@ -502,15 +502,17 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useRunAfterDismiss.ts` | 50 |
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |
 | `src/hooks/__tests__/usePinnedTabsScroll.test.tsx` | 48 |
+| `src/hooks/__tests__/useNowPlayingCommentsSync.test.tsx` | 45 |
 | `src/hooks/__tests__/useProfileLayout.test.tsx` | 45 |
 | `src/hooks/useImageAspect.ts` | 37 |
 | `src/hooks/useProfileLayout.ts` | 35 |
 | `src/hooks/useTrackPlaysTotals.ts` | 30 |
 | `src/hooks/useOpenMention.ts` | 27 |
+| `src/hooks/useNowPlayingCommentsSync.ts` | 25 |
 
 ## Utilities
 
-69 file(s), 5,331 lines.
+69 file(s), 5,372 lines.
 
 | File | Lines |
 |---|---:|
@@ -543,6 +545,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/chatTime.ts` | 82 |
 | `src/utils/likeStore.ts` | 82 |
 | `src/utils/__tests__/recentSearches.test.ts` | 78 |
+| `src/utils/__tests__/commentsDelta.test.ts` | 76 |
 | `src/utils/__tests__/chatTime.test.ts` | 73 |
 | `src/utils/authorDisplay.ts` | 72 |
 | `src/utils/recentSearches.ts` | 72 |
@@ -550,8 +553,8 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/errorMessages.ts` | 68 |
 | `src/utils/__tests__/mentions.test.ts` | 62 |
 | `src/utils/__tests__/recentSearchOpens.test.ts` | 58 |
+| `src/utils/commentsDelta.ts` | 58 |
 | `src/utils/__tests__/inboxFilter.test.ts` | 56 |
-| `src/utils/__tests__/commentsDelta.test.ts` | 53 |
 | `src/utils/recentSearchOpens.ts` | 52 |
 | `src/utils/__tests__/homeTabsPin.test.ts` | 49 |
 | `src/utils/mutualsText.ts` | 48 |
@@ -559,7 +562,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/chatGif.ts` | 44 |
 | `src/utils/shareLinkGate.ts` | 44 |
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
-| `src/utils/commentsDelta.ts` | 40 |
 | `src/utils/homeTabsPin.ts` | 39 |
 | `src/utils/inboxFilter.ts` | 39 |
 | `src/utils/__tests__/friendOrder.test.ts` | 37 |
