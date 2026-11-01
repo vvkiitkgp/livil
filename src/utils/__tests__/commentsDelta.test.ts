@@ -50,3 +50,26 @@ describe('comment-count deltas', () => {
     expect(withCommentsDelta(post(1), pending.p1).commentsCount).toBe(0);
   });
 });
+
+describe('playerCommentsTarget — which count the full-screen player moves', () => {
+  const { playerCommentsTarget } = require('../commentsDelta');
+  const upload = { postId: 'up1', kind: 'upload' as const, originalPostId: null };
+  const repost = { postId: 'rp1', kind: 'repost' as const, originalPostId: 'up1' };
+
+  it("moves the upload's count for a comment on the upload that is playing", () => {
+    expect(playerCommentsTarget(upload, 'up1')).toEqual({ isOriginal: false });
+  });
+
+  it("moves the original's count when a repost of it is playing", () => {
+    expect(playerCommentsTarget(repost, 'up1')).toEqual({ isOriginal: true });
+  });
+
+  it("ignores the repost's own comments (the player shows the original's)", () => {
+    expect(playerCommentsTarget(repost, 'rp1')).toBeNull();
+  });
+
+  it('ignores other posts and an empty player', () => {
+    expect(playerCommentsTarget(upload, 'other')).toBeNull();
+    expect(playerCommentsTarget(null, 'up1')).toBeNull();
+  });
+});

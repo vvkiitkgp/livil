@@ -1024,3 +1024,8 @@ export function usePlayback(): PlaybackContextValue {
   if (!ctx) { throw new Error('usePlayback must be used inside <PlaybackProvider>'); }
   return ctx;
 }
+
+/** `usePlayback`, or null outside a <PlaybackProvider> (hooks that also run in isolated tests). */
+export function usePlaybackIfAny(): PlaybackContextValue | null {
+  return useContext(PlaybackContext);
+}

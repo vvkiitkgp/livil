@@ -37,3 +37,21 @@ export function withCommentsDelta<T extends { commentsCount: number }>(
   if (pending.base !== null && pending.base !== post.commentsCount) { return post; }
   return { ...post, commentsCount: Math.max(post.commentsCount + pending.delta, 0) };
 }
+
+/** The parts of the now-playing post that decide which post its player counts comments for. */
+export type NowPlayingPostRef = { postId: string; kind: 'upload' | 'repost'; originalPostId: string | null };
+
+/**
+ * Whether a comment change on `postId` should move the count the full-screen player shows for
+ * what is playing — and which of its two counts. The player shows a REPOST's original upload
+ * (getEffectivePost in FullScreenPlayer): a comment on that original moves the
+ * `originalCommentsCount` (isOriginal true); a comment on the repost itself moves nothing the
+ * player shows. For an upload, a comment on it moves `commentsCount`. null = not playing.
+ */
+export function playerCommentsTarget(nowPlaying: NowPlayingPostRef | null, postId: string): { isOriginal: boolean } | null {
+  if (!nowPlaying) { return null; }
+  if (nowPlaying.kind === 'repost' && nowPlaying.originalPostId) {
+    return nowPlaying.originalPostId === postId ? { isOriginal: true } : null;
+  }
+  return nowPlaying.postId === postId ? { isOriginal: false } : null;
+}

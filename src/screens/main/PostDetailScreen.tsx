@@ -18,6 +18,7 @@ import PostCard from '../../components/PostCard';
 import CommentsSheet from '../../components/CommentsSheet';
 import PostLikersSheet from '../../components/PostLikersSheet';
 import { fetchPostById, type FeedPost } from '../../services/posts';
+import { useNowPlayingCommentsSync } from '../../hooks/useNowPlayingCommentsSync';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PostDetail'>;
 
@@ -46,6 +47,7 @@ export default function PostDetailScreen({ navigation, route }: Props) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [likersOpen, setLikersOpen] = useState(false);
   const [commentsDelta, setCommentsDelta] = useState(0);
+  const syncPlayer = useNowPlayingCommentsSync();
   // A ref, not state: flipping state re-ran the effect below, whose cleanup cancelled
   // the very timer that was about to open the sheet — so it never opened.
   const arrivalHandledRef = useRef(false);
@@ -165,7 +167,7 @@ export default function PostDetailScreen({ navigation, route }: Props) {
         visible={commentsOpen && post !== null}
         postId={commentsOpen ? postId : null}
         onClose={() => setCommentsOpen(false)}
-        onCommentsCountChange={delta => setCommentsDelta(d => d + delta)}
+        onCommentsCountChange={delta => { setCommentsDelta(d => d + delta); syncPlayer(postId, delta); }}
         highlightCommentId={openComments ? highlightCommentId ?? null : null}
       />
       <PostLikersSheet
