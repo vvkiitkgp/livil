@@ -3,6 +3,8 @@ import { findSpotifyLinkInText } from '../utils/spotifyLinks';
 import { sendPush } from './pushDispatch';
 import { profileHandleIfExactLink } from '../utils/shareLinks';
 import type { ChatGif } from '../utils/chatGif';
+import { chatMediaFrom, chatMediaPushText } from '../utils/chatMedia';
+import { noteServerTime } from '../utils/serverClock';
 
 const db = supabase as any;
 
@@ -68,7 +70,11 @@ async function dispatchMessagePush(
       // same words the inbox line uses (message_preview, 20261017000000).
       const sharedHandle = profileHandleIfExactLink(payload.body);
       const spotifyLink = sharedHandle ? null : findSpotifyLinkInText(payload.body);
-      bodyPreview = sharedHandle
+      // A 5-minute photo/video (PROP-0011): never the upgrade line its body carries.
+      const media = chatMediaFrom(payload.metadata);
+      bodyPreview = media
+        ? chatMediaPushText(media.type)
+        : sharedHandle
         ? `👤 Shared @${sharedHandle}'s profile`
         // A direct track link only: a spotify.link short link may be an album or a playlist,
         // and the inbox line leaves those as typed for the same reason.
@@ -262,8 +268,14 @@ export async function fetchMessages(
 
 export type SendMessagePayload =
   // `metadata` only for a GIF (src/utils/chatGif.ts): still a text message, body '🎞 GIF' —
-  // or for a shared Spotify repost (src/utils/repostShare.ts), body its Spotify link.
-  | { kind: 'text'; body: string; replyToId?: string; metadata?: { gif: ChatGif } | { repost_post_id: string } }
+  // or for a shared Spotify repost (src/utils/repostShare.ts), body its Spotify link —
+  // or for a 5-minute photo/video (src/utils/chatMedia.ts), body its upgrade line.
+  | {
+      kind: 'text';
+      body: string;
+      replyToId?: string;
+      metadata?: { gif: ChatGif } | { repost_post_id: string } | { media: Record<string, unknown> };
+    }
   // `repost_post_id`: sent from a repost (src/utils/repostShare.ts); `post_id` is still the upload.
   | { kind: 'track_share'; metadata: { track_id: string; post_id?: string; title: string; artist_name: string; cover_art_url: string | null; repost_post_id?: string } }
   | { kind: 'sticker'; metadata: { sticker_id: string; sticker_url: string } }
@@ -291,6 +303,7 @@ export async function sendMessage(
     insert.metadata = payload.metadata;
   }
 
+  const sentAt = Date.now();
   const { data, error } = await db
     .from('messages')
     .insert(insert)
@@ -299,6 +312,9 @@ export async function sendMessage(
 
   if (error) { throw error; }
   const row = data as { id: string; created_at: string };
+  // created_at is the server's clock (trg_messages_stamp_created_at): keeps countdowns honest
+  // on a phone whose clock is off (src/utils/serverClock.ts).
+  noteServerTime(row.created_at, sentAt, Date.now());
 
   const raw: RawMessage = {
     id: row.id,

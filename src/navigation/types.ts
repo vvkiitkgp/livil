@@ -1,3 +1,5 @@
+import type { ChatMessage } from '../services/messages';
+
 export type AuthStackParamList = {
   Onboarding: undefined;
   SignIn: undefined;
@@ -96,6 +98,11 @@ export type RootStackParamList = {
   // ── Chat
   Inbox: undefined;
   Conversation: { conversationId: string; title: string; kind?: 'dm' | 'group' };
+  // Disappearing photos full screen (PROP-0011): the sender's live photos in this chat, oldest
+  // first, and the one tapped. Whole messages — plain JSON; the viewer needs each one's
+  // metadata, sender and created_at.
+  // `origin`: the tap point in window coordinates; the photo grows out of it.
+  ChatMediaViewer: { messages: ChatMessage[]; index: number; origin?: { x: number; y: number } };
   NewConversation: undefined;
   GroupInfo: { conversationId: string };
   FriendRequests: undefined;

@@ -1,6 +1,7 @@
 import ImagePicker, { type Image as CroppedImage } from 'react-native-image-crop-picker';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../../lib/supabase';
 import { AVATARS_BUCKET } from './profileService';
+import { pickCroppedPhoto } from './mediaPicks';
 
 export type AlbumSummary = {
   id: string;
@@ -435,10 +436,11 @@ function isPickerCancel(err: unknown): boolean {
   return code === 'E_PICKER_CANCELLED' || code === 'E_PERMISSION_MISSING';
 }
 
+/** On iPhone: Apple's own photo picker, then the square crop (mediaPicks.pickCroppedPhoto). */
 export async function pickAlbumCoverFromLibrary(): Promise<PickedAlbumCover | null> {
   try {
-    const img: CroppedImage = await ImagePicker.openPicker(ALBUM_COVER_CROP_OPTIONS);
-    return { uri: img.path, mime: img.mime || 'image/jpeg' };
+    const img = await pickCroppedPhoto(ALBUM_COVER_CROP_OPTIONS);
+    return img ? { uri: img.path, mime: img.mime || 'image/jpeg' } : null;
   } catch (err) {
     if (isPickerCancel(err)) { return null; }
     throw err;

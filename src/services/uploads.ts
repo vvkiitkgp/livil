@@ -178,6 +178,7 @@ function uploadFileUriWithProgress(
   accessToken: string,
   onProgress: UploadProgressCallback,
   signal?: AbortSignal,
+  bucket: string = TRACKS_MEDIA_BUCKET,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     // Stopped by the caller before it started (the screen moved on): send nothing.
@@ -186,7 +187,7 @@ function uploadFileUriWithProgress(
       return;
     }
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${TRACKS_MEDIA_BUCKET}/${path}`, true);
+    xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, true);
     xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
     xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
     xhr.setRequestHeader('x-upsert', 'false');
@@ -311,6 +312,28 @@ function uploadFileUriWithProgress(
  * nothing reaches for it by accident.
  */
 export const __uploadFileUriWithProgressForTest = uploadFileUriWithProgress;
+
+export const CHAT_MEDIA_BUCKET = 'chat-media';
+
+/**
+ * A disappearing chat photo or video (PROP-0011) into the PRIVATE `chat-media` bucket, streamed
+ * the same way. `path` is `<conversation_id>/<uuid>.<ext>`; the bucket's insert policy checks
+ * that the caller may write in that chat. There is no public URL — nobody reads it by path;
+ * recipients get a short-lived link from the `chat-media` function.
+ */
+export function uploadChatMediaObject(
+  path: string,
+  fileUri: string,
+  fileName: string,
+  contentType: string,
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const kind: TrackMediaKind = contentType.startsWith('video/') ? 'video' : 'cover';
+  return uploadFileUriWithProgress(
+    path, kind, fileUri, fileName, contentType, accessToken, () => {}, signal, CHAT_MEDIA_BUCKET,
+  );
+}
 
 export async function uploadTrackFile(
   file: PickedFile,

@@ -28,6 +28,10 @@ import {
   BellSlash,
   Broadcast,
   Camera,
+  DownloadSimple,
+  Image as PhImage,
+  Timer,
+  VideoCamera,
   CaretDown,
   CaretLeft,
   CaretLineLeft,
@@ -136,7 +140,9 @@ export type IconName =
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
   | 'warningTriangle' | 'camera' | 'document' | 'broadcast' | 'signOut'
-  | 'offline';
+  | 'offline'
+  // 5-minute photos and videos in chat
+  | 'timer' | 'gallery' | 'video' | 'download';
 
 type PhComponent = React.ComponentType<PhProps>;
 
@@ -300,6 +306,12 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   upload: [UploadSimple, 'bold'],
   // The "No internet connection" pill (OfflineBanner).
   offline: [WifiSlash, 'bold'],
+  // 5-minute photos and videos in chat (PROP-0011): the countdown bubble, the gallery row,
+  // a video bubble, and the viewer's Save to phone.
+  timer: [Timer, 'regular'],
+  gallery: [PhImage, 'regular'],
+  video: [VideoCamera, 'regular'],
+  download: [DownloadSimple, 'bold'],
 };
 
 export interface IconProps {

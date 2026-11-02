@@ -225,7 +225,9 @@ jobs:
           create table if not exists storage.buckets (id text primary key, name text, public boolean);
           create table if not exists storage.objects (
             id uuid default gen_random_uuid() primary key,
-            bucket_id text, name text, owner uuid);
+            bucket_id text, name text, owner uuid,
+            -- The chat-media sweep (20261118000000) deletes by age, as production's does.
+            created_at timestamptz default now());
           create or replace function storage.foldername(name text) returns text[]
             language sql immutable as $$ select string_to_array(name, '/') $$;
           create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true)
@@ -504,6 +506,16 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/chat-write-rules.test.sql
+
+      # 5-minute photos and videos (20261118000000, PROP-0011): uploads only into a chat you
+      # may write in, a private bucket with no client reads, saves only by a non-sender
+      # member while the file exists, and a sweep that sees only expired objects.
+      - name: Chat media tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/chat-media.test.sql
 
       # Streaming renditions (20261115000000, ADR-0033): only the service role may swap a
       # frozen media URL, only for a rendition in the same bucket folder, only while
@@ -1086,7 +1098,7 @@ jobs:
           create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
           create or replace function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
           create table if not exists storage.buckets (id text primary key, name text, public boolean);
-          create table if not exists storage.objects (id uuid default gen_random_uuid() primary key, bucket_id text, name text, owner uuid);
+          create table if not exists storage.objects (id uuid default gen_random_uuid() primary key, bucket_id text, name text, owner uuid, created_at timestamptz default now());
           create or replace function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
           create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void language sql as $$ select $$;
           do $$ begin
