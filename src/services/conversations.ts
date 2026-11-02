@@ -88,8 +88,23 @@ export async function getConversationKind(conversationId: string): Promise<Conve
   return kind === 'dm' || kind === 'group' ? kind : null;
 }
 
+/** Set once list_my_conversations_v2 answered "no such function" (20261119010000 not applied). */
+let listV2Missing = false;
+
+/**
+ * The chat list. list_my_conversations_v2 (20261119010000) is each person's own view: a
+ * deleted chat stays out until a new message, a cleared one previews only what came after,
+ * and messages deleted for me are not its preview or unread. Until it exists, v1 — same
+ * columns, everyone's shared preview.
+ */
 export async function listConversations(): Promise<ConversationSummary[]> {
-  const { data, error } = await db.rpc('list_my_conversations');
+  let res = listV2Missing ? null : await db.rpc('list_my_conversations_v2');
+  if (res && isMissingFunction(res.error)) {
+    listV2Missing = true;
+    res = null;
+  }
+  if (!res) { res = await db.rpc('list_my_conversations'); }
+  const { data, error } = res;
   if (error) { throw error; }
   return (data ?? []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
@@ -217,6 +232,7 @@ export async function markConversationsDelivered(
 export function __resetDeliveredForTest(): void {
   deliveredMissing = false;
   deliveredUpTo.clear();
+  listV2Missing = false;
 }
 
 export async function markAsRead(conversationId: string): Promise<void> {
@@ -229,6 +245,16 @@ export async function markAsRead(conversationId: string): Promise<void> {
     .update({ last_read_at: new Date().toISOString() })
     .eq('conversation_id', conversationId)
     .eq('user_id', me);
+}
+
+/**
+ * Clear chat (`hide` false): I no longer see anything sent up to now; the chat stays in my
+ * list. Delete chat (`hide` true): the same, and the chat leaves my list until a new message
+ * arrives. Mine only — nobody else's chat changes. Throws on failure.
+ */
+export async function clearConversation(conversationId: string, hide: boolean): Promise<void> {
+  const { error } = await db.rpc('clear_conversation', { p_conversation_id: conversationId, p_hide: hide });
+  if (error) { throw error; }
 }
 
 export async function leaveConversation(conversationId: string): Promise<void> {

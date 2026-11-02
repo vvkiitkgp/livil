@@ -285,6 +285,15 @@ export function pinChatMedia(messageId: string): () => void {
 }
 
 /**
+ * The message was deleted for everyone (20261119010000): its downloaded copy is deleted now,
+ * and it is never fetched again — the chat-media function refuses a link for it anyway.
+ */
+export function forgetChatMedia(messageId: string): void {
+  wanted.delete(messageId);
+  drop(messageId);
+}
+
+/**
  * The local copy of a message's photo/video, or null when there is none or it has expired.
  * A pure read — nothing is deleted here (that is drop()'s job), so it is safe during render.
  */

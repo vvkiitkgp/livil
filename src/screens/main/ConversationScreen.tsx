@@ -40,6 +40,10 @@ import {
   sendMessage,
   addReaction,
   removeReaction,
+  deleteMessageForEveryone,
+  deleteMessageForMe,
+  getChatDeletionAvailable,
+  noteConversationCleared,
   type ChatMessage,
   type SendMessagePayload,
 } from '../../services/messages';
@@ -56,8 +60,11 @@ import {
   getOtherMemberReadAt,
   getConversationKind,
   markConversationDelivered,
+  clearConversation,
   type ConversationKind,
 } from '../../services/conversations';
+import { applyServerDeletes, asDeleted, markDeletedIn, withoutMessage } from '../../utils/chatDelete';
+import DetailActionSheet, { type DetailAction } from '../../components/DetailActionSheet';
 import { chatReceipts, type ReceiptStatus } from '../../utils/chatReceipts';
 import NowPlayingPill from '../../components/NowPlayingPill';
 import { useListeningNow } from '../../hooks/useListeningNow';
@@ -115,6 +122,7 @@ import { serverNow } from '../../utils/serverClock';
 import { getMyUserId } from '../../services/session';
 import {
   fetchChatMediaSavers,
+  forgetChatMedia,
   localChatMedia,
   prefetchChatMedia,
   queueChatMediaPrefetch,
@@ -359,6 +367,33 @@ function MessageBubble({
   // checkChatLink become links; anything else stays plain text (utils/chatLinks.ts).
   const textParts = useMemo(() => (visibleText ? splitChatLinks(visibleText) : null), [visibleText]);
   const hasLinks = !!textParts && textParts.some(p => p.link);
+
+  // Deleted for everyone: a quiet placeholder. No words (the server erased them), no
+  // reactions, no reply; a long-press offers only "Delete for me".
+  if (msg.deletedAt && !isSystem) {
+    return (
+      <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+        {!isMe ? <View style={styles.senderAvatarGap} /> : null}
+        <View style={[styles.bubbleColumn, isMe && styles.bubbleColumnMe]}>
+          {!isMe && showName ? (
+            <Text style={styles.senderName}>{msg.senderDisplayName || msg.senderUsername}</Text>
+          ) : null}
+          <Pressable
+            onLongPress={() => onLongPress(msg)}
+            accessibilityLabel={isMe ? 'You deleted this message' : 'This message was deleted'}
+            style={[styles.bubble, styles.bubbleDeleted]}
+          >
+            <View style={styles.deletedRow}>
+              <Icon name="tombstone" size={14} color={COLORS.textMuted} />
+              <Text style={styles.deletedText}>
+                {isMe ? 'You deleted this message' : 'This message was deleted'}
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   if (isSystem) {
     return (
@@ -622,11 +657,14 @@ function MessageMenu({
   onPick,
   onClose,
   actions,
+  showReactions = true,
 }: {
   visible: boolean;
   onPick: (emoji: string) => void;
   onClose: () => void;
   actions: MessageMenuAction[];
+  /** Off for a deleted message: there is nothing left to react to. */
+  showReactions?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -636,6 +674,7 @@ function MessageMenu({
     <Pressable style={styles.reactionPickerOverlay} onPress={onClose}>
       <View style={styles.reactionPickerCard}>
         {/* Quick row */}
+        {showReactions ? (
         <View style={styles.reactionPickerRow}>
           {QUICK_REACTIONS.map(emoji => (
             <TouchableOpacity
@@ -655,6 +694,7 @@ function MessageMenu({
             <Text style={styles.reactionPickerMoreIcon}>+</Text>
           </TouchableOpacity>
         </View>
+        ) : null}
 
         {/* Expanded emoji grid */}
         {expanded && (
@@ -675,7 +715,7 @@ function MessageMenu({
         {/* What can be done with the message. Hidden while the full emoji grid is open, so
             the card never outgrows a small screen. */}
         {!expanded && actions.length > 0 ? (
-          <View style={styles.menuActions}>
+          <View style={[styles.menuActions, !showReactions && styles.menuActionsAlone]}>
             {actions.map(a => (
               <Pressable
                 key={a.key}
@@ -1031,6 +1071,13 @@ export default function ConversationScreen() {
     return 'not-friends';
   }, [kind, otherUserId, rel]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
+  // Deleting (20261119010000): offered only once the backend answers that it has it.
+  const [deletionOn, setDeletionOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void getChatDeletionAvailable().then(on => { if (alive) { setDeletionOn(on); } });
+    return () => { alive = false; };
+  }, []);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   // When the user taps a reply quote we scroll to the original and pulse it
   // for ~1.5s. Cleared by the timer or by a fresh tap.
@@ -1196,7 +1243,8 @@ export default function ConversationScreen() {
       const added = latest.filter(m => !onScreen.has(m.id)).length;
       // In server order, not on top: a catch-up can bring an older message in after newer
       // ones (utils/chatOrder.ts).
-      setMessages(prev => mergeNewestFirst(prev, latest));
+      // …and a message deleted meanwhile becomes its placeholder (merging only adds).
+      setMessages(prev => applyServerDeletes(mergeNewestFirst(prev, latest), latest));
       void markConversationDelivered(conversationId, latest[0]?.createdAt ?? null);
       if (added > 0) {
         console.log(`[chat] catch-up (${reason}) added ${added} message(s)`);
@@ -1352,6 +1400,16 @@ export default function ConversationScreen() {
         );
       },
       () => { void refreshLatest('realtime'); },
+      (messageId, deletedAt) => {
+        // Deleted for everyone by its sender: the placeholder, here and in the saved copy,
+        // and its downloaded photo/video (if any) is deleted from this phone.
+        setMessages(prev => markDeletedIn(prev, messageId, deletedAt));
+        const shown = messagesRef.current.find(m => m.id === messageId);
+        if (shown) { void messageCache.patchMessage(conversationId, asDeleted(shown, deletedAt)); }
+        forgetChatMedia(messageId);
+        setReplyingTo(r => (r?.id === messageId ? null : r));
+        setReactionTarget(t => (t?.id === messageId ? null : t));
+      },
     );
 
     return () => unsubscribeFromConversation(conversationId);
@@ -1918,11 +1976,102 @@ export default function ConversationScreen() {
   }, [showToast]);
 
   const handleLongPress = useCallback((msg: ChatMessage) => {
+    // A deleted message has nothing to react to; without deleting, nothing to offer at all.
+    if (msg.deletedAt && !deletionOn) { return; }
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
     // its threshold, so activation feels consistent across gestures.
     haptics.impact();
     setReactionTarget(msg);
+  }, [deletionOn]);
+
+  // ── Deleting a message ─────────────────────────────────────────────────────
+  const [deleteAsk, setDeleteAsk] = useState<{ msg: ChatMessage; everyone: boolean } | null>(null);
+  // The dialog keeps its words while it fades out.
+  const shownDeleteAskRef = useRef(deleteAsk);
+  if (deleteAsk) { shownDeleteAskRef.current = deleteAsk; }
+  const [deletingMsg, setDeletingMsg] = useState(false);
+  const askDelete = useCallback(async (msg: ChatMessage, everyone: boolean) => {
+    setReactionTarget(null);
+    if (KeyboardController.isVisible()) {
+      await KeyboardController.dismiss().catch(() => {});
+    }
+    setDeleteAsk({ msg, everyone });
   }, []);
+  /**
+   * Waits for the server (the button shows it is busy) rather than hiding the message first:
+   * a delete that silently failed would put the words back on the next open.
+   */
+  const confirmDelete = useCallback(async () => {
+    const ask = deleteAsk;
+    if (!ask || deletingMsg) { return; }
+    setDeletingMsg(true);
+    const { msg, everyone } = ask;
+    try {
+      if (everyone) {
+        await deleteMessageForEveryone(msg.id);
+        const at = new Date().toISOString();
+        setMessages(prev => markDeletedIn(prev, msg.id, at));
+        void messageCache.patchMessage(conversationId, asDeleted(msg, at));
+        forgetChatMedia(msg.id);
+      } else {
+        await deleteMessageForMe(msg.id);
+        setMessages(prev => withoutMessage(prev, msg.id));
+        void messageCache.removeMessage(conversationId, msg.id);
+      }
+      setReplyingTo(r => (r?.id === msg.id ? null : r));
+      setDeleteAsk(null);
+    } catch (e) {
+      console.warn(`[chat] delete (${everyone ? 'everyone' : 'me'}) failed`, e);
+      setDeleteAsk(null);
+      showToast("Couldn't delete that message. Please try again.", { kind: 'error' });
+    } finally {
+      setDeletingMsg(false);
+    }
+  }, [deleteAsk, deletingMsg, conversationId, showToast]);
+
+  // ── Clear chat / Delete chat (the header's options) ────────────────────────
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [chatAsk, setChatAsk] = useState<'clear' | 'delete' | null>(null);
+  const shownChatAskRef = useRef(chatAsk);
+  if (chatAsk) { shownChatAskRef.current = chatAsk; }
+  const [clearingChat, setClearingChat] = useState(false);
+  const openChatMenu = useCallback(async () => {
+    if (KeyboardController.isVisible()) {
+      await KeyboardController.dismiss().catch(() => {});
+    }
+    setChatMenuOpen(true);
+  }, []);
+  const chatMenuActions = useMemo<DetailAction[]>(() => [
+    { key: 'clear', label: 'Clear chat', icon: 'eraser', onPress: () => setChatAsk('clear') },
+    { key: 'delete', label: 'Delete chat', icon: 'trash', destructive: true, onPress: () => setChatAsk('delete') },
+  ], []);
+  const confirmChatAsk = useCallback(async () => {
+    const ask = chatAsk;
+    if (!ask || clearingChat) { return; }
+    setClearingChat(true);
+    try {
+      await clearConversation(conversationId, ask === 'delete');
+      noteConversationCleared(conversationId, new Date().toISOString());
+      void messageCache.setMessages(conversationId, []);
+      setChatAsk(null);
+      if (ask === 'delete') {
+        void messageCache.removeFromInbox(conversationId);
+        showToast('Chat deleted', { kind: 'success' });
+        if (navigation.canGoBack()) { navigation.goBack(); }
+      } else {
+        setMessages([]);
+        setNextCursor(null);
+        setReplyingTo(null);
+        showToast('Chat cleared', { kind: 'success' });
+      }
+    } catch (e) {
+      console.warn(`[chat] ${ask} chat failed`, e);
+      setChatAsk(null);
+      showToast(ask === 'delete' ? "Couldn't delete this chat. Please try again." : "Couldn't clear this chat. Please try again.", { kind: 'error' });
+    } finally {
+      setClearingChat(false);
+    }
+  }, [chatAsk, clearingChat, conversationId, navigation, showToast]);
 
   const handleReactionToggle = useCallback(async (msg: ChatMessage, emoji: string) => {
     const myCurrentReaction = msg.reactions.find(r => r.users.includes(myId));
@@ -1987,8 +2136,26 @@ export default function ConversationScreen() {
         },
       });
     }
+    if (deletionOn && !msg.id.startsWith('opt-') && msg.kind !== 'system') {
+      if (msg.senderId === myId && !msg.deletedAt) {
+        actions.push({
+          key: 'delete-everyone',
+          label: 'Delete for everyone',
+          icon: 'trash',
+          destructive: true,
+          onPress: () => { void askDelete(msg, true); },
+        });
+      }
+      actions.push({
+        key: 'delete-me',
+        label: 'Delete for me',
+        icon: 'trash',
+        destructive: true,
+        onPress: () => { void askDelete(msg, false); },
+      });
+    }
     return actions;
-  }, [reactionTarget, showToast]);
+  }, [reactionTarget, showToast, deletionOn, myId, askDelete]);
 
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
@@ -2205,6 +2372,17 @@ export default function ConversationScreen() {
             <Icon name="info" size={20} color={COLORS.purpleLight} />
           </TouchableOpacity>
         )}
+        {deletionOn ? (
+          <TouchableOpacity
+            style={styles.infoBtn}
+            activeOpacity={0.7}
+            onPress={() => { void openChatMenu(); }}
+            accessibilityRole="button"
+            accessibilityLabel="Chat options"
+          >
+            <Icon name="overflow" size={22} color={COLORS.purpleLight} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {otherListening ? (
@@ -2508,6 +2686,50 @@ export default function ConversationScreen() {
         onPick={handlePickReaction}
         onClose={() => setReactionTarget(null)}
         actions={menuActions}
+        showReactions={!reactionTarget?.deletedAt}
+      />
+
+      <ConfirmActionModal
+        visible={!!deleteAsk}
+        title={shownDeleteAskRef.current?.everyone ? 'Delete for everyone?' : 'Delete for you?'}
+        message={
+          shownDeleteAskRef.current?.everyone
+            ? "It's removed for everyone in this chat. Anyone who already read it has seen it."
+            : isGroup
+              ? "It's removed for you only. Everyone else still sees it."
+              : `It's removed for you only. ${title || 'They'} still sees it.`
+        }
+        icon="trash"
+        tone="destructive"
+        confirmLabel="Delete"
+        busy={deletingMsg}
+        onConfirm={() => { void confirmDelete(); }}
+        onCancel={() => setDeleteAsk(null)}
+      />
+
+      <DetailActionSheet
+        visible={chatMenuOpen}
+        onClose={() => setChatMenuOpen(false)}
+        actions={chatMenuActions}
+      />
+      <ConfirmActionModal
+        visible={!!chatAsk}
+        title={shownChatAskRef.current === 'delete' ? 'Delete this chat?' : 'Clear this chat?'}
+        message={
+          shownChatAskRef.current === 'delete'
+            ? (isGroup
+              ? 'It leaves your chats until someone sends a new message. You stay in the group.'
+              : 'It leaves your chats until someone sends a new message. Only for you.')
+            : (isGroup
+              ? 'Messages are removed for you only. Everyone else still sees them.'
+              : `Messages are removed for you only. ${title || 'They'} still sees them.`)
+        }
+        icon={shownChatAskRef.current === 'delete' ? 'trash' : 'eraser'}
+        tone="destructive"
+        confirmLabel={shownChatAskRef.current === 'delete' ? 'Delete' : 'Clear'}
+        busy={clearingChat}
+        onConfirm={() => { void confirmChatAsk(); }}
+        onCancel={() => setChatAsk(null)}
       />
 
       <ConfirmActionModal
@@ -2716,6 +2938,14 @@ const styles = StyleSheet.create({
   // white sent text.
   bubbleText: { color: COLORS.white, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
+  // "This message was deleted": an outline, never a fill — there is nothing in it.
+  bubbleDeleted: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  deletedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deletedText: { color: COLORS.textMuted, fontSize: 14, fontStyle: 'italic' },
   // A link in a message: underlined, white on my purple bubble, light purple on theirs.
   linkText: { textDecorationLine: 'underline' },
   linkTextMe: { color: COLORS.white },
@@ -2896,6 +3126,8 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
   },
+  // A deleted message's menu has no reactions above the rows.
+  menuActionsAlone: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   menuAction: {
     flexDirection: 'row',
     alignItems: 'center',

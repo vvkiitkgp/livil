@@ -291,6 +291,16 @@ export default function InboxScreen() {
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload: { new?: { deleted_at?: string | null } }) => {
+          // A message was deleted for everyone: its chat's line now reads "This message was
+          // deleted" (20261119010000). Messages are never otherwise updated.
+          if (!payload.new?.deleted_at) { return; }
+          void refreshFromNetwork();
+        },
+      )
+      .on(
+        'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `user_id=eq.${myId}` },
         (payload: { new?: { conversation_id?: string; last_read_at?: string | null } }) => {
           // My own last_read_at moved → unread badge for that row should

@@ -47,6 +47,7 @@ import {
   DotsSixVertical,
   DotsThree,
   Envelope,
+  Eraser,
   Eye,
   EyeSlash,
   Faders,
@@ -117,7 +118,7 @@ export type IconName =
   | 'play' | 'playCircle' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
-  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown' | 'copy'
+  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown' | 'copy' | 'eraser'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'messages' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle' | 'upload'
@@ -206,6 +207,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   link: [LinkSimple, 'bold'],
   // Copy a chat message's text (the message long-press menu).
   copy: [Copy, 'regular'],
+  // Clear a chat's messages (the conversation's options menu).
+  eraser: [Eraser, 'regular'],
   tombstone: [Prohibit, 'regular'],
   // Same glyph as `tombstone`, deliberately a separate name: one marks removed
   // content, the other is the block action. They only happen to look alike.

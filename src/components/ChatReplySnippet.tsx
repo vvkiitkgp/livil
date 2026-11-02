@@ -44,6 +44,11 @@ export function ChatReplySnippet({
     return <Text style={textStyle} numberOfLines={1}>Tap to view</Text>;
   }
 
+  // Deleted for everyone: its words are gone, so the quote says so (never the old words).
+  if (message.deletedAt) {
+    return <Text style={textStyle} numberOfLines={1}>Deleted message</Text>;
+  }
+
   if (message.kind === 'track_share' && message.metadata?.title) {
     return (
       <SongRow

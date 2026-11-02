@@ -17,7 +17,7 @@ policy declared in the migration set and flags tables that are unpoliced or read
 anyone. Publishing that in a public repository would be publishing a map of where the
 authorization perimeter is thin.
 
-Scope: 127 policy/policies across 48 table(s).
+Scope: 130 policy/policies across 50 table(s).
 
 | | |
 |---|---|
