@@ -31,7 +31,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import {
@@ -126,6 +126,8 @@ import { ChatMediaBubbleContent, ChatMediaSavedBy, useChatMediaLeft } from '../.
 import ChatMediaSourceSheet, { type ChatMediaSource } from '../../components/ChatMediaSourceSheet';
 import ChatMediaPreview from '../../components/ChatMediaPreview';
 import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
+import { copyText } from '../../services/clipboard';
+import { copyableText } from '../../utils/chatCopy';
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -566,14 +568,29 @@ function MessageBubble({
   );
 }
 
-function ReactionPicker({
+/** A row under the reactions in the long-press menu (Copy, …). */
+type MessageMenuAction = {
+  key: string;
+  label: string;
+  icon: IconName;
+  destructive?: boolean;
+  onPress: () => void;
+};
+
+/**
+ * The long-press menu: quick reactions on top (the "+" opens every emoji), then what can be
+ * done with the message — `actions`, built for the pressed message by the screen.
+ */
+function MessageMenu({
   visible,
   onPick,
   onClose,
+  actions,
 }: {
   visible: boolean;
   onPick: (emoji: string) => void;
   onClose: () => void;
+  actions: MessageMenuAction[];
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -618,6 +635,27 @@ function ReactionPicker({
             ))}
           </View>
         )}
+
+        {/* What can be done with the message. Hidden while the full emoji grid is open, so
+            the card never outgrows a small screen. */}
+        {!expanded && actions.length > 0 ? (
+          <View style={styles.menuActions}>
+            {actions.map(a => (
+              <Pressable
+                key={a.key}
+                onPress={a.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={a.label}
+                style={({ pressed }) => [styles.menuAction, pressed && styles.menuActionPressed]}
+              >
+                <Icon name={a.icon} size={20} color={a.destructive ? COLORS.error : COLORS.white} />
+                <Text style={[styles.menuActionLabel, a.destructive && styles.menuActionLabelDanger]}>
+                  {a.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -1854,6 +1892,33 @@ export default function ConversationScreen() {
     }
   }, [myId, conversationId]);
 
+  // The long-press menu's rows for the pressed message.
+  const menuActions = useMemo<MessageMenuAction[]>(() => {
+    const msg = reactionTarget;
+    if (!msg) { return []; }
+    const actions: MessageMenuAction[] = [];
+    const copyable = copyableText(msg);
+    if (copyable) {
+      actions.push({
+        key: 'copy',
+        label: 'Copy',
+        icon: 'copy',
+        onPress: () => {
+          setReactionTarget(null);
+          try {
+            copyText(copyable);
+            haptics.select();
+            showToast('Copied', { kind: 'success' });
+          } catch (e) {
+            console.warn('[chat] copy failed', e);
+            showToast("Couldn't copy that message.", { kind: 'error' });
+          }
+        },
+      });
+    }
+    return actions;
+  }, [reactionTarget, showToast]);
+
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
     // Lighter tick for the selection itself, so choosing an emoji doesn't feel
@@ -2363,10 +2428,11 @@ export default function ConversationScreen() {
         </KeyboardGestureArea>
       )}
 
-      <ReactionPicker
+      <MessageMenu
         visible={!!reactionTarget}
         onPick={handlePickReaction}
         onClose={() => setReactionTarget(null)}
+        actions={menuActions}
       />
 
       <ChatMediaSourceSheet
@@ -2729,6 +2795,24 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.purpleDim,
   },
   reactionPickerMoreIcon: { color: COLORS.textSecondary, fontSize: 20, fontWeight: '600' },
+  // Long-press menu rows (Copy, …) under the reactions.
+  menuActions: {
+    marginTop: 6,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
+  menuAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    borderRadius: 12,
+  },
+  menuActionPressed: { backgroundColor: COLORS.surface },
+  menuActionLabel: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  menuActionLabelDanger: { color: COLORS.error },
   emojiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

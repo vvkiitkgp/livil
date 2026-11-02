@@ -23,6 +23,7 @@ import {
   ArrowUp,
   ArrowsClockwise,
   Clock,
+  Copy,
   ArrowsInSimple,
   Bell,
   BellSlash,
@@ -116,7 +117,7 @@ export type IconName =
   | 'play' | 'playCircle' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
-  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
+  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown' | 'copy'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'messages' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle' | 'upload'
@@ -203,6 +204,8 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   externalLink: [ArrowSquareOut, 'regular'],
   // A profile link (livil-music.com/@you) shown in the Share profile sheet.
   link: [LinkSimple, 'bold'],
+  // Copy a chat message's text (the message long-press menu).
+  copy: [Copy, 'regular'],
   tombstone: [Prohibit, 'regular'],
   // Same glyph as `tombstone`, deliberately a separate name: one marks removed
   // content, the other is the block action. They only happen to look alike.
