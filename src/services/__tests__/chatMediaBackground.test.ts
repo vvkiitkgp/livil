@@ -36,6 +36,7 @@ import {
   startChatMediaHousekeeping,
 } from '../chatMedia';
 import { chatMediaMetadata } from '../../utils/chatMedia';
+import { setActiveConversation } from '../activeConversation';
 import type { ChatMessage } from '../messages';
 
 const CONV = '6f1d2c3b-4a59-4e6f-8a7b-9c0d1e2f3a4b';
@@ -114,13 +115,16 @@ function leave(): void {
   onChange('background');
 }
 
+/** Back in the app, past the pause the photos wait for (the chat reloads its messages first). */
 async function comeBack(): Promise<void> {
   setState('active');
   onChange('active');
+  await new Promise(resolve => setTimeout(resolve, 1600));
   for (let i = 0; i < 5; i++) { await flush(); }
 }
 
-it('deletes every downloaded photo when Livil is left, and fetches the live ones again on return', async () => {
+it('deletes every downloaded photo when Livil is left, and fetches the open chat\'s again on return', async () => {
+  setActiveConversation(CONV);
   const msg = photoFromRiya('11111111-2222-4333-8444-555555555555');
   expect(await prefetchChatMedia(msg)).toBe(`file:///phone/chat-media/${msg.id}/media.jpg`);
   expect(localChatMedia(msg.id)).not.toBeNull();
@@ -134,9 +138,27 @@ it('deletes every downloaded photo when Livil is left, and fetches the live ones
   expect(await prefetchChatMedia(msg)).toBeNull();
   expect(mockInvoke).not.toHaveBeenCalled();
 
+  // Not straight away: the chat's own messages go first.
+  setState('active');
+  onChange('active');
+  await flush();
+  expect(mockInvoke).not.toHaveBeenCalled();
+
   await comeBack();
   expect(mockInvoke).toHaveBeenCalledTimes(1);
   expect(localChatMedia(msg.id)).toBe(`file:///phone/chat-media/${msg.id}/media.jpg`);
+});
+
+it('leaves a chat that is not open for when it opens, instead of downloading it on return', async () => {
+  setActiveConversation(null);
+  const msg = photoFromRiya('55555555-6666-4777-8888-999999999999');
+  await prefetchChatMedia(msg);
+
+  leave();
+  mockInvoke.mockClear();
+  await comeBack();
+  expect(mockInvoke).not.toHaveBeenCalled();
+  expect(localChatMedia(msg.id)).toBeNull();
 });
 
 it('deletes a download that finishes after Livil was left, instead of keeping it', async () => {

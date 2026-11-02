@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { sendMessage, type ChatMessage } from './messages';
+import { sendPush } from './pushDispatch';
+import { getActiveConversation } from './activeConversation';
 import { studioFiles } from './studioFiles';
 import { uploadChatMediaObject } from './uploads';
 import {
@@ -25,7 +27,7 @@ import { noteServerTime, serverNow } from '../utils/serverClock';
  *   expiry   — every local copy is deleted at created_at + 20 min (server time), and ALL of
  *              them the moment the app is left (background); the ones still live are fetched
  *              again on return. Anything left behind (the app was killed) is swept on launch.
- *   saves    — "Saved to phone by": who saved which photo/video.
+ *   saves    — "Saved to phone by": who saved which photo/video, and a push to the chat.
  *
  * Fail-safe throughout: a missing function, a failed link or download just means "not
  * ready"; nothing here throws into a render.
@@ -144,6 +146,14 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const inflight = new Map<string, Promise<string | null>>();
 /** Every live photo the app has asked for — what restore() fetches again on return. */
 const wanted = new Map<string, ChatMessage>();
+/**
+ * After a return, the open chat first reloads its own messages (ConversationScreen's resume
+ * refresh); photos wait this long, so they never compete with it for the network.
+ */
+const RESTORE_DELAY_MS = 1500;
+let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+/** queueChatMediaPrefetch's line: one quiet download at a time. */
+let quietLine: Promise<unknown> = Promise.resolve();
 /** Copies wipe() leaves alone for now (pinChatMedia). */
 const pinned = new Set<string>();
 const listeners = new Set<() => void>();
@@ -208,20 +218,57 @@ function keep(messageId: string, copy: LocalCopy): void {
 
 /** The app was left: every copy is deleted now, except a pinned one (until it is released). */
 function wipe(): void {
+  if (restoreTimer) {
+    clearTimeout(restoreTimer);
+    restoreTimer = null;
+  }
   for (const id of [...copies.keys()]) {
     if (!pinned.has(id)) { drop(id); }
   }
 }
 
-/** Back in the app: fetch again every photo still in its window. */
+/**
+ * Back in the app: fetch again the OPEN chat's photos still in their window — a moment after
+ * the return and one at a time (queueChatMediaPrefetch), so the chat's new messages and the
+ * chat list catch up first. Another chat's photos are fetched when that chat opens
+ * (ConversationScreen), the viewer fetches its own photo, and a tap fetches at once.
+ */
 function restore(): void {
-  for (const [id, msg] of [...wanted]) {
-    if (serverNow() >= chatMediaExpiresAt(msg.createdAt)) {
-      wanted.delete(id);
-    } else {
-      void prefetchChatMedia(msg);
+  if (restoreTimer) { clearTimeout(restoreTimer); }
+  restoreTimer = setTimeout(() => {
+    restoreTimer = null;
+    const open = getActiveConversation();
+    for (const [id, msg] of [...wanted]) {
+      if (serverNow() >= chatMediaExpiresAt(msg.createdAt)) {
+        wanted.delete(id);
+      } else if (msg.conversationId === open) {
+        queueChatMediaPrefetch(msg);
+      }
     }
-  }
+  }, RESTORE_DELAY_MS);
+}
+
+/**
+ * prefetchChatMedia for photos nobody is waiting on yet — a chat's photos as it opens, the
+ * open chat's after a return — ONE AT A TIME, so a burst of downloads never competes with the
+ * chat's own messages for the network. A tap or the viewer calls prefetchChatMedia directly
+ * and goes first; a queued photo that is already here by its turn costs nothing.
+ */
+export function queueChatMediaPrefetch(msg: ChatMessage): void {
+  quietLine = quietLine.then(() => settleWithin(prefetchChatMedia(msg), QUIET_STEP_MAX_MS));
+}
+
+/** A stalled download must not hold up the line behind it. */
+const QUIET_STEP_MAX_MS = 20_000;
+
+function settleWithin<T>(job: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), ms);
+    job.then(
+      v => { clearTimeout(timer); resolve(v); },
+      () => { clearTimeout(timer); resolve(null); },
+    );
+  });
 }
 
 /**
@@ -482,12 +529,76 @@ export async function fetchChatMediaSavers(messageIds: string[]): Promise<Record
   return out;
 }
 
-/** Record that I saved this photo/video to my phone. A repeat save is fine. */
-export async function recordChatMediaSave(messageId: string, myId: string): Promise<void> {
-  const { error } = await db
-    .from('chat_media_saves')
-    .upsert({ message_id: messageId, user_id: myId }, { onConflict: 'message_id,user_id', ignoreDuplicates: true });
-  if (error) { console.warn('[chat-media] could not record save', error.message); }
+/**
+ * Record that I saved this photo/video to my phone. A repeat save is fine. False when it was
+ * refused (my own photo, or past its window — chat_media_saves' insert policy) or failed.
+ */
+export async function recordChatMediaSave(messageId: string, myId: string): Promise<boolean> {
+  try {
+    const { error } = await db
+      .from('chat_media_saves')
+      .upsert({ message_id: messageId, user_id: myId }, { onConflict: 'message_id,user_id', ignoreDuplicates: true });
+    if (error) { console.warn('[chat-media] could not record save', error.message); }
+    return !error;
+  } catch (e) {
+    console.warn('[chat-media] could not record save', e);
+    return false;
+  }
+}
+
+/**
+ * Tells the chat I saved this photo/video: every other member gets a push — the sender
+ * "📸 Saved your photo", anyone else in a group "📸 Saved @arjun's photo".
+ *
+ * Sent as a chat `message` push, which every shipped app already shows and opens to the chat
+ * (and which needs no new send-push kind). send-push titles it — the saver in a DM, the
+ * group's name with an "@saver: " prefix in a group — checks that both people are members of
+ * the conversation, and honours each recipient's chat-notification switch. Call it only for a
+ * save that was recorded. Fire-and-forget; never throws.
+ */
+export async function notifyChatMediaSaved(
+  message: ChatMessage,
+  myId: string,
+  /** My display name or handle: the title of the DM the notification opens. */
+  myName: string,
+): Promise<void> {
+  const media = chatMediaFrom(message.metadata);
+  if (!media || !myId) { return; }
+  try {
+    const [convRes, membersRes] = await Promise.all([
+      db.from('conversations').select('kind, name').eq('id', message.conversationId).maybeSingle(),
+      db
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', message.conversationId)
+        .neq('user_id', myId),
+    ]);
+    const conv = convRes.data as { kind: 'dm' | 'group'; name: string | null } | null;
+    const members = (membersRes.data ?? []) as Array<{ user_id: string }>;
+    if (!conv || members.length === 0) { return; }
+    const isGroup = conv.kind === 'group';
+    const noun = media.type === 'video' ? 'video' : 'photo';
+    const theirs = message.senderUsername ? `@${message.senderUsername}'s ${noun}` : `a ${noun}`;
+    await Promise.all(
+      members.map(m =>
+        sendPush({
+          recipientUserId: m.user_id,
+          kind: 'message',
+          body: m.user_id === message.senderId ? `📸 Saved your ${noun}` : `📸 Saved ${theirs}`,
+          data: {
+            route: 'Conversation',
+            // No `kind` here, as in dispatchMessagePush (messages.ts).
+            params: {
+              conversationId: message.conversationId,
+              title: isGroup ? (conv.name ?? 'Group chat') : myName,
+            },
+          },
+        }),
+      ),
+    );
+  } catch (e) {
+    console.warn('[chat-media] save notification failed', e);
+  }
 }
 
 /** New saves as they happen (RLS limits delivery to chats I am in). Returns unsubscribe. */

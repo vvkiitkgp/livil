@@ -103,7 +103,7 @@ export type RootStackParamList = {
   // metadata, sender and created_at.
   // `origin`: the tap point in window coordinates; the photo grows out of it.
   // `myId`: the viewer's own user — Save to phone is for recipients only.
-  ChatMediaViewer: { messages: ChatMessage[]; index: number; origin?: { x: number; y: number }; myId?: string };
+  ChatMediaViewer: { messages: ChatMessage[]; index: number; origin?: { x: number; y: number }; myId?: string; myName?: string };
   NewConversation: undefined;
   GroupInfo: { conversationId: string };
   FriendRequests: undefined;

@@ -22,6 +22,7 @@ import { COLORS } from '../../theme/colors';
 import { useChatMediaLeft } from '../../components/ChatMediaBubble';
 import {
   fetchChatMediaSavers,
+  notifyChatMediaSaved,
   pinChatMedia,
   prefetchChatMedia,
   recordChatMediaSave,
@@ -99,6 +100,7 @@ export default function ChatMediaViewerScreen() {
   const [stage, setStage] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const fitted = useMemo(() => fitIn(stage, media), [stage, media]);
   const myId = params.myId ?? '';
+  const myName = params.myName ?? '';
 
   // Android: no screenshots or recording of the window while a photo is open.
   useEffect(() => {
@@ -129,8 +131,8 @@ export default function ChatMediaViewerScreen() {
     });
     return () => { cancelled = true; };
   }, [message, myId]);
-  // The sender has the original; only a recipient saves, and only a copy that is a file.
-  const canSave = !!message && !!myId && message.senderId !== myId
+  // Anyone in the chat, the sender included — from a copy that is a file.
+  const canSave = !!message && !!myId
     && chatMediaKit.available && !!uri && uri.startsWith('file://');
   const isSaved = !!message && savedIds.has(message.id);
   const onSave = useCallback(async () => {
@@ -145,11 +147,17 @@ export default function ChatMediaViewerScreen() {
     if (result === 'saved') {
       setSavedIds(prev => new Set(prev).add(message.id));
       flash('Saved to your phone', true);
-      void recordChatMediaSave(message.id, myId);
+      // Someone else's photo: marked "Saved to phone by" and announced to the chat. Your own
+      // is just saved (the database records only a recipient's save).
+      if (message.senderId !== myId) {
+        void recordChatMediaSave(message.id, myId).then(recorded => {
+          if (recorded) { void notifyChatMediaSaved(message, myId, myName); }
+        });
+      }
     } else {
       flash(result === 'denied' ? 'Allow Livil to add photos in Settings' : "Couldn't save this photo", false);
     }
-  }, [message, uri, saving, isSaved, myId, flash]);
+  }, [message, uri, saving, isSaved, myId, myName, flash]);
 
   // ── Motion state ──────────────────────────────────────────────────────────────
   // `open` 0→1 grows the photo out of the tap point (0: there, tiny; 1: in place). `shade`

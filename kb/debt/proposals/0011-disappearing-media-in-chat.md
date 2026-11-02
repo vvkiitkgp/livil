@@ -33,8 +33,12 @@ anywhere: the running timer on the bubble teaches the rule.
 - Recipients' apps **download it as soon as it arrives**, so it opens instantly and offline.
   Open and reopen freely until the 20 minutes are up — **the sender too** (owner, 2026-11-02).
 - While it is open, **screenshots and screen recording are blocked**.
-- The viewer has **Save to phone**. A save is announced in the chat under the bubble:
-  "Saved to phone by" + the saver's avatar.
+- The viewer has **Save to phone**, for everyone in the chat (the sender too). A recipient's
+  save is announced in the chat under the bubble ("Saved to phone by" + the saver's avatar)
+  and by a push to every other member: the sender gets "📸 Saved your photo", anyone else in a
+  group "📸 Saved @arjun's photo". It is a chat `message` push (`notifyChatMediaSaved`), so
+  every shipped app shows it and opens the chat, and send-push needs no new kind. The
+  sender's own save is not recorded or announced (the insert policy refuses it).
 - At 20 minutes the server deletes the file and every app deletes its downloaded copy. The
   bubble turns to *Expired* and does nothing on tap. The **metadata stays forever**: type,
   size, dimensions, duration, sent time, who saved it.
@@ -177,7 +181,7 @@ of our own are less risk than four dependencies.
 |---|---|
 | 1. Backend | **Applied + deployed** (`20261118000000`, `…01` grants; `…02` 20 minutes: written, not yet applied). `20261118000000_chat_media.sql` (local replay + `supabase/tests/rls/chat-media.test.sql`, 25 checks; weakening the 6-minute save rule fails #10) and `supabase/functions/chat-media` (16 Deno tests). |
 | 2. App, photo path | **Built.** Camera button (only when `status` says enabled), sheet, gallery photo, preview, send, running-timer bubble, Expired, "Saved to phone by" (display + realtime), received-photo prefetch (in memory), viewer that closes itself at 5:00, push and inbox text. "Camera" opens the system camera for a photo until step 4. No Save button until step 3. |
-| 3. Native (part) | **Built on `feat/chat-media-secure-save`.** Capture blocking — iPhone: `LivilSecureImage` draws the photo in a secure-text-field canvas (screenshots/recordings show a "Photo hidden" card); Android: `FLAG_SECURE` on the window while the viewer is open. Save to phone — `LivilChatMedia.saveToPhotos` (iOS add-only Photos access, `NSPhotoLibraryAddUsageDescription`; Android MediaStore → Pictures/Livil, `WRITE_EXTERNAL_STORAGE` ≤ API 28), then `chat_media_saves` so the chat shows "Saved to phone by". Recipients only. |
+| 3. Native (part) | **Built on `feat/chat-media-secure-save`.** Capture blocking — iPhone: `LivilSecureImage` draws the photo in a secure-text-field canvas (screenshots/recordings show a "Photo hidden" card); Android: `FLAG_SECURE` on the window while the viewer is open. Save to phone — `LivilChatMedia.saveToPhotos` (iOS add-only Photos access, `NSPhotoLibraryAddUsageDescription`; Android MediaStore → Pictures/Livil, `WRITE_EXTERNAL_STORAGE` ≤ API 28), then `chat_media_saves` so the chat shows "Saved to phone by", and a push to the other members (`notifyChatMediaSaved`; tests `chatMediaSaveNotify.test.ts`). Everyone can save; only a recipient's save is recorded and announced. |
 | 4–6 | Camera next release; video not started. |
 
 ## Tests
