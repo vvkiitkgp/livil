@@ -102,7 +102,8 @@ export type RootStackParamList = {
   // first, and the one tapped. Whole messages — plain JSON; the viewer needs each one's
   // metadata, sender and created_at.
   // `origin`: the tap point in window coordinates; the photo grows out of it.
-  ChatMediaViewer: { messages: ChatMessage[]; index: number; origin?: { x: number; y: number } };
+  // `myId`: the viewer's own user — Save to phone is for recipients only.
+  ChatMediaViewer: { messages: ChatMessage[]; index: number; origin?: { x: number; y: number }; myId?: string };
   NewConversation: undefined;
   GroupInfo: { conversationId: string };
   FriendRequests: undefined;

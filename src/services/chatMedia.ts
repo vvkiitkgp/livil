@@ -22,8 +22,9 @@ import { noteServerTime, serverNow } from '../utils/serverClock';
  *   prefetch — the app fetches the file as soon as the message is seen and keeps it as a FILE
  *              in its private folder, so it opens instantly and offline. The link comes from
  *              the `chat-media` function and lives only for the time left.
- *   expiry   — every local copy is deleted at created_at + 20 min (server time); expired ones
- *              left behind while the app slept are deleted on launch and on every return.
+ *   expiry   — every local copy is deleted at created_at + 20 min (server time), and ALL of
+ *              them the moment the app is left (background); the ones still live are fetched
+ *              again on return. Anything left behind (the app was killed) is swept on launch.
  *   saves    — "Saved to phone by": who saved which photo/video.
  *
  * Fail-safe throughout: a missing function, a failed link or download just means "not
@@ -120,8 +121,12 @@ export function useChatMediaEnabled(): boolean {
 // FILES under the app's private folder (`<root>/chat-media/<messageId>/`, via the app's own
 // file module — src/services/studioFiles.ts; never backed up), so the picture is decoded
 // natively and never travels through JS as text again. A build without that module holds the
-// photo in memory instead. Either way the copy is deleted at expiry: by a timer while the app
-// runs, and by sweepPhone() on launch and on every return (timers do not run while it sleeps).
+// photo in memory instead. Either way the copy is deleted at expiry by a timer while the app
+// is open, and EVERY copy is deleted as soon as the app is left (wipe()): a phone does not
+// reliably run an app's timers once it is in the background, so a timed delete there would be
+// a promise we cannot keep (the owner chose this over a native timed delete, 2026-11-02). The
+// photos still in their window are fetched again on return (restore()), so they keep opening
+// instantly while the app is in use. sweepPhone() on launch catches a run that was killed.
 
 const DIR = 'chat-media';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -137,7 +142,16 @@ type LocalCopy = {
 const copies = new Map<string, LocalCopy>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const inflight = new Map<string, Promise<string | null>>();
+/** Every live photo the app has asked for — what restore() fetches again on return. */
+const wanted = new Map<string, ChatMessage>();
+/** Copies wipe() leaves alone for now (pinChatMedia). */
+const pinned = new Set<string>();
 const listeners = new Set<() => void>();
+
+/** Left the app. Android also reports this under its own dialogs, e.g. a permission prompt. */
+function away(): boolean {
+  return AppState.currentState === 'background';
+}
 
 function notify(): void {
   listeners.forEach(l => l());
@@ -171,10 +185,13 @@ function drop(messageId: string): void {
   notify();
 }
 
-/** Holds a copy until it expires; one already expired is deleted at once. */
+/**
+ * Holds a copy until it expires. One already expired is deleted at once — and so is one that
+ * arrives while the app is in the background (a download that finished after wipe()).
+ */
 function keep(messageId: string, copy: LocalCopy): void {
   const left = copy.expiresAt - serverNow();
-  if (left <= 0) {
+  if (left <= 0 || away()) {
     if (copy.onDisk) { void studioFiles.remove(`${DIR}/${messageId}`).catch(() => false); }
     copy.onDrop?.();
     return;
@@ -182,8 +199,42 @@ function keep(messageId: string, copy: LocalCopy): void {
   const timer = timers.get(messageId);
   if (timer) { clearTimeout(timer); }
   copies.set(messageId, copy);
-  timers.set(messageId, setTimeout(() => drop(messageId), left));
+  timers.set(messageId, setTimeout(() => {
+    wanted.delete(messageId);
+    drop(messageId);
+  }, left));
   notify();
+}
+
+/** The app was left: every copy is deleted now, except a pinned one (until it is released). */
+function wipe(): void {
+  for (const id of [...copies.keys()]) {
+    if (!pinned.has(id)) { drop(id); }
+  }
+}
+
+/** Back in the app: fetch again every photo still in its window. */
+function restore(): void {
+  for (const [id, msg] of [...wanted]) {
+    if (serverNow() >= chatMediaExpiresAt(msg.createdAt)) {
+      wanted.delete(id);
+    } else {
+      void prefetchChatMedia(msg);
+    }
+  }
+}
+
+/**
+ * Keeps one copy through a wipe until the returned release() — for Save, whose Android 7–9
+ * permission dialog puts the app in the background for a moment. Released while the app is
+ * still in the background → deleted then.
+ */
+export function pinChatMedia(messageId: string): () => void {
+  pinned.add(messageId);
+  return () => {
+    pinned.delete(messageId);
+    if (away()) { drop(messageId); }
+  };
 }
 
 /**
@@ -279,8 +330,9 @@ async function sweepPhone(): Promise<void> {
 
 let housekeeping = false;
 /**
- * Starts the clean-up: a sweep now and on every return to the foreground. Called once at app
- * start (App.tsx); repeat calls do nothing.
+ * Starts the clean-up: a sweep now; every copy deleted when the app is left; a sweep and the
+ * live photos fetched again on every return. Called once at app start (App.tsx); repeat calls
+ * do nothing.
  */
 export function startChatMediaHousekeeping(): void {
   if (housekeeping) { return; }
@@ -288,7 +340,11 @@ export function startChatMediaHousekeeping(): void {
   void loadLastKnown();
   void sweepPhone();
   AppState.addEventListener('change', next => {
-    if (next === 'active') { void sweepPhone(); }
+    if (next === 'background') {
+      wipe();
+    } else if (next === 'active') {
+      void sweepPhone().then(restore);
+    }
   });
 }
 
@@ -296,7 +352,8 @@ export function startChatMediaHousekeeping(): void {
  * Fetch a photo/video now, while it exists, so it opens instantly — and offline — later.
  * Sender and recipients alike: the `link` function serves any member of the chat. Idempotent
  * and quiet: already held, in flight, expired, deleted, or not media → nothing happens.
- * Resolves to the local URI or null.
+ * In the background nothing is fetched (it would only be wiped); the photo is remembered and
+ * fetched on return. Resolves to the local URI or null.
  */
 export function prefetchChatMedia(msg: ChatMessage): Promise<string | null> {
   const media = chatMediaFrom(msg.metadata);
@@ -306,6 +363,8 @@ export function prefetchChatMedia(msg: ChatMessage): Promise<string | null> {
   if (serverNow() >= chatMediaExpiresAt(msg.createdAt)) { return Promise.resolve(null); }
   // Videos wait for a native download: their bytes are too big to pass through JS.
   if (media.type !== 'photo') { return Promise.resolve(null); }
+  wanted.set(msg.id, msg);
+  if (away()) { return Promise.resolve(null); }
   const running = inflight.get(msg.id);
   if (running) { return running; }
 
@@ -374,6 +433,7 @@ export async function sendChatMedia(
     senderInfo,
   );
   // The sender keeps the file it just sent, for the same 20 minutes.
+  wanted.set(message.id, message);
   keep(message.id, { uri: picked.uri, expiresAt: chatMediaExpiresAt(message.createdAt), onDisk: false, onDrop: onExpire });
   return message;
 }

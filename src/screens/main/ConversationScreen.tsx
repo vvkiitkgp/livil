@@ -1406,8 +1406,8 @@ export default function ConversationScreen() {
       // `messages` is newest first; the viewer goes oldest → newest.
       .reverse();
     const index = Math.max(0, fromSender.findIndex(m => m.id === msg.id));
-    navigation.navigate('ChatMediaViewer', { messages: fromSender, index, origin });
-  }, [navigation]);
+    navigation.navigate('ChatMediaViewer', { messages: fromSender, index, origin, myId });
+  }, [navigation, myId]);
 
   /**
    * "Tap to view". Downloaded → the viewer opens at once. Still downloading → a spinner in
@@ -1437,7 +1437,8 @@ export default function ConversationScreen() {
   }, [handleOpenChatMedia, navigation, showToast]);
 
   // Photos are fetched the moment they are on screen, so they open instantly — and offline —
-  // for as long as they exist. Your own included: this phone holds what it just sent, but
+  // for as long as they exist (leaving the app deletes them; they are fetched again on
+  // return — services/chatMedia.ts). Your own included: this phone holds what it just sent, but
   // not what you sent from another device or before a restart. Quiet and idempotent.
   useEffect(() => {
     for (const m of messages) {

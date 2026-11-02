@@ -20,6 +20,7 @@
 		A1B2C3D4E5F60718293A4B5F /* LivilPasteboard.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* LivilPasteboard.m */; };
 		B2C3D4E5F6071829304A5B6F /* LivilStudioFiles.m in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6071829304A5B6E /* LivilStudioFiles.m */; };
 		C3D4E5F60718293A4B5C6D7F /* LivilPhotoPicker.m in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718293A4B5C6D7E /* LivilPhotoPicker.m */; };
+		D4E5F60718293A4B5C6D7E90 /* LivilChatMedia.m in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F60718293A4B5C6D7E8F /* LivilChatMedia.m */; };
 		B8B2F2DDD8F578D86EB76732 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 561141FE479ED60BE31C013C /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
@@ -42,6 +43,7 @@
 		A1B2C3D4E5F60718293A4B5E /* LivilPasteboard.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilPasteboard.m; path = livil/LivilPasteboard.m; sourceTree = "<group>"; };
 		B2C3D4E5F6071829304A5B6E /* LivilStudioFiles.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilStudioFiles.m; path = livil/LivilStudioFiles.m; sourceTree = "<group>"; };
 		C3D4E5F60718293A4B5C6D7E /* LivilPhotoPicker.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilPhotoPicker.m; path = livil/LivilPhotoPicker.m; sourceTree = "<group>"; };
+		D4E5F60718293A4B5C6D7E8F /* LivilChatMedia.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LivilChatMedia.m; path = livil/LivilChatMedia.m; sourceTree = "<group>"; };
 		E3E337CF3E28A727C95A141D /* livil.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = livil/livil.entitlements; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -68,6 +70,7 @@
 				A1B2C3D4E5F60718293A4B5E /* LivilPasteboard.m */,
 				B2C3D4E5F6071829304A5B6E /* LivilStudioFiles.m */,
 				C3D4E5F60718293A4B5C6D7E /* LivilPhotoPicker.m */,
+				D4E5F60718293A4B5C6D7E8F /* LivilChatMedia.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -323,6 +326,7 @@
 				A1B2C3D4E5F60718293A4B5F /* LivilPasteboard.m in Sources */,
 				B2C3D4E5F6071829304A5B6F /* LivilStudioFiles.m in Sources */,
 				C3D4E5F60718293A4B5C6D7F /* LivilPhotoPicker.m in Sources */,
+				D4E5F60718293A4B5C6D7E90 /* LivilChatMedia.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

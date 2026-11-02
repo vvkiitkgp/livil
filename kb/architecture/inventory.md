@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-524 TypeScript file(s) under `src/`, 106,542 lines.
+526 TypeScript file(s) under `src/`, 106,993 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 2622 |
+| `src/screens/main/ConversationScreen.tsx` | 2623 |
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/UploadScreen.tsx` | 2281 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
@@ -110,11 +110,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 33,921 lines.
+75 file(s), 34,060 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 2622 |
+| `src/screens/main/ConversationScreen.tsx` | 2623 |
 | `src/screens/main/UploadScreen.tsx` | 2281 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
@@ -132,8 +132,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/InboxScreen.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
+| `src/screens/main/ChatMediaViewerScreen.tsx` | 589 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
-| `src/screens/main/ChatMediaViewerScreen.tsx` | 451 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
 | `src/screens/studio/RecordPanel.tsx` | 391 |
@@ -372,7 +372,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-108 file(s), 21,415 lines.
+109 file(s), 21,658 lines.
 
 | File | Lines |
 |---|---:|
@@ -385,7 +385,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/albums.ts` | 523 |
 | `src/services/spotify.ts` | 514 |
 | `src/services/profileService.ts` | 511 |
-| `src/services/chatMedia.ts` | 450 |
+| `src/services/chatMedia.ts` | 510 |
 | `src/services/__tests__/spotify.test.ts` | 433 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/messages.ts` | 402 |
@@ -412,6 +412,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/spotifyReturnNudge.test.ts` | 203 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
 | `src/services/drafts.ts` | 189 |
+| `src/services/__tests__/chatMediaBackground.test.ts` | 183 |
 | `src/services/mediaPicks.ts` | 183 |
 | `src/services/__tests__/tags.test.ts` | 180 |
 | `src/services/__tests__/gifs.test.ts` | 178 |
