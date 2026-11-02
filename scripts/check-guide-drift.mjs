@@ -36,7 +36,7 @@ const GUIDE_DIR = /^src\/components\/guide\//;
 const ACK = /^\s*Guide:\s*reviewed\b/im;
 
 const args = process.argv.slice(2);
-const range = args[args.indexOf('--range') + 1];
+let range = args[args.indexOf('--range') + 1];
 
 function sh(cmd) {
   return execSync(cmd, { encoding: 'utf8' }).trim();
@@ -54,8 +54,10 @@ function changedFiles() {
     sh(`git cat-file -e ${base}^{commit}`);
   } catch {
     console.log(`note  base ${base.slice(0, 8)} is unreachable — falling back to HEAD~1`);
+    // The ack lookup reads commit messages from the same range, so it must fall back too.
+    range = 'HEAD~1..HEAD';
     try {
-      return sh('git diff --name-only HEAD~1..HEAD').split('\n').filter(Boolean);
+      return sh(`git diff --name-only ${range}`).split('\n').filter(Boolean);
     } catch {
       return [];
     }

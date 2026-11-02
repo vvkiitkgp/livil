@@ -66,6 +66,7 @@ import {
   Lock,
   MagnifyingGlass,
   MinusCircle,
+  Metronome,
   Microphone,
   MusicNote,
   MusicNotes,
@@ -130,7 +131,7 @@ export type IconName =
   // layout switches (profile Reposts / Uploads: list ↔ grid)
   | 'layoutList' | 'layoutGrid'
   // role icons
-  | 'mic' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
+  | 'mic' | 'metronome' | 'drum' | 'piano' | 'guitar' | 'faders' | 'pencilLine' | 'note'
   | 'star' | 'handshake' | 'handTap' | 'zoomOut' | 'wave' | 'ai' | 'seal'
   // settings
   | 'bell' | 'bellOff' | 'shield' | 'gift' | 'support' | 'instagram'
@@ -252,6 +253,7 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   lock: [Lock, 'fill'],
   // roles
   mic: [Microphone, 'fill'],
+  metronome: [Metronome, 'fill'],
   piano: [PianoKeys, 'fill'],
   guitar: [Guitar, 'fill'],
   faders: [Faders, 'fill'],

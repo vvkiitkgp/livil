@@ -27,6 +27,11 @@ export type TrackMedia = {
    *  Lets the feed seek bar place clip markers and park the progress handle at
    *  clip-start *before* playback loads the real duration. */
   durationSeconds: number | null;
+  /**
+   * Made in the Livil Editor — the card shows a "Made with Livil" pill. A label the
+   * uploader's app sets, never proof (migration 20261118000000). Absent = false.
+   */
+  madeWithLivil?: boolean;
 };
 
 /**
@@ -110,6 +115,7 @@ type RawPostRow = {
     cover_art_url: string | null;
     thumbnail_url: string | null;
     duration_seconds: number | null;
+    made_with_livil?: boolean | null;
     uploader_id?: string | null;
     collaborators?: Array<{
       user_id: string | null;
@@ -156,6 +162,7 @@ const POST_SELECT = `
     cover_art_url,
     thumbnail_url,
     duration_seconds,
+    made_with_livil,
     uploader_id,
     collaborators:track_collaborators (
       user_id,
@@ -228,6 +235,7 @@ function toTrack(row: RawPostRow['track']): TrackMedia {
     coverArtUrl: row.cover_art_url,
     thumbnailUrl: row.thumbnail_url,
     durationSeconds: row.duration_seconds,
+    madeWithLivil: row.made_with_livil === true,
   };
 }
 

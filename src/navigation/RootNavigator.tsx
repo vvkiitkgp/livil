@@ -86,6 +86,16 @@ import { clearSpotifyReturnNudge } from '../services/spotifyReturnNudge';
 import { clearAppBadge } from '../services/appBadge';
 import { markSignedInHere } from '../utils/returningListener';
 
+// PROTOTYPE (Record → Magic Tune → Editor): developer builds only. In a release bundle
+// `__DEV__` is the constant false, Metro folds this to `null` before collecting
+// dependencies, and the whole Editor (screens + DSP) is left out of the store app.
+const StudioScreen: React.ComponentType | null = __DEV__
+  ? require('../screens/studio/StudioScreen').default
+  : null;
+const DraftsScreen: React.ComponentType | null = __DEV__
+  ? require('../screens/studio/DraftsScreen').default
+  : null;
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const { width } = Dimensions.get('window');
 
@@ -729,6 +739,28 @@ export default function RootNavigator() {
                 animation: 'slide_from_bottom',
               }}
             />
+            {DraftsScreen && (
+              <Stack.Screen
+                name="Drafts"
+                component={DraftsScreen}
+                options={{
+                  presentation: 'modal',
+                  gestureEnabled: false,
+                  animation: 'slide_from_bottom',
+                }}
+              />
+            )}
+            {StudioScreen && (
+              <Stack.Screen
+                name="Studio"
+                component={StudioScreen}
+                options={{
+                  presentation: 'modal',
+                  gestureEnabled: false,
+                  animation: 'slide_from_bottom',
+                }}
+              />
+            )}
             <Stack.Screen
               name="SpotifyRepost"
               component={SpotifyRepostScreen}

@@ -1,0 +1,28 @@
+diff --git a/node_modules/react-native-audio-api/ios/audioapi/ios/core/utils/IOSRecorderCallback.mm b/node_modules/react-native-audio-api/ios/audioapi/ios/core/utils/IOSRecorderCallback.mm
+index 5362dde..23d6d49 100644
+--- a/node_modules/react-native-audio-api/ios/audioapi/ios/core/utils/IOSRecorderCallback.mm
++++ b/node_modules/react-native-audio-api/ios/audioapi/ios/core/utils/IOSRecorderCallback.mm
+@@ -202,8 +202,6 @@ static inline void freeOwnedAudioBufferList(const AudioBufferList *bufferList)
+       return;
+     }
+ 
+-    size_t outputFrameCount = ceil(numFrames * (sampleRate_ / bufferFormat_.sampleRate));
+-
+     for (size_t i = 0; i < bufferFormat_.channelCount; ++i) {
+       memcpy(
+           converterInputBuffer_.mutableAudioBufferList->mBuffers[i].mData,
+@@ -229,8 +227,13 @@ static inline void freeOwnedAudioBufferList(const AudioBufferList *bufferList)
+       return converterInputBuffer_;
+     };
+ 
++    // LIVIL PATCH: keep exactly the frames the converter wrote. Upstream overwrote frameLength
++    // with the nominal ratio and pushed ceil(numFrames * ratio) frames, so whenever the
++    // converter produced fewer (it does, chunk to chunk) one stale sample was appended every
++    // hardware buffer (~23 ms) — an audible tick, 14 times a second, in every recording.
++    converterOutputBuffer_.frameLength = 0;
+     [converter_ convertToBuffer:converterOutputBuffer_ error:&error withInputFromBlock:inputBlock];
+-    converterOutputBuffer_.frameLength = sampleRate_ / bufferFormat_.sampleRate * numFrames;
++    size_t outputFrameCount = converterOutputBuffer_.frameLength;
+ 
+     if (error != nil) {
+       invokeOnErrorCallback(

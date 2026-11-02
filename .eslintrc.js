@@ -11,6 +11,7 @@ module.exports = {
   // kb/standards/coding.md as guidance, not here.
   rules: {
     'no-second-media-session': 'error',
+    'no-hermes-conditional-await-nullish': 'error',
 
     // `void promise();` is this codebase's marker for a deliberate fire-and-forget
     // call — the idiom @typescript-eslint/no-floating-promises accepts. The preset

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, keepLocalCopy, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
 
@@ -75,6 +75,8 @@ import UploadPreviewCard, { type UploadPreviewAuthor } from '../../components/Up
 import { GradientFill } from '../../components/GradientFill';
 import { supabase } from '../../../lib/supabase';
 import { getMyProfile } from '../../services/profileService';
+import { deleteDraft } from '../../services/drafts';
+import { getMyUserId } from '../../services/session';
 import MentionSuggestions from '../../components/MentionSuggestions';
 import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
@@ -217,14 +219,22 @@ function pickErrorMessage(err: unknown): string {
 export default function UploadScreen() {
   const navigation = useNavigation<UploadNavigation>();
   const playback = usePlayback();
+  // An Editor mix arrives already chosen (ADR-0036): the song step opens with it, and nothing
+  // is uploaded until the artist moves on from that step (`studioConfirmed`).
+  const studio = useRoute<RouteProp<RootStackParamList, 'Upload'>>().params?.studio ?? null;
+  const studioFile = useMemo<PickedFile | null>(
+    () => (studio ? { uri: studio.uri, name: studio.name, type: 'audio/flac', size: studio.size } : null),
+    [studio],
+  );
+  const [studioConfirmed, setStudioConfirmed] = useState(false);
 
   const [mode, setMode] = useState<PostMode>('audio');
-  const [audio, setAudio] = useState<PickedFile | null>(null);
+  const [audio, setAudio] = useState<PickedFile | null>(studioFile);
   const [video, setVideo] = useState<PickedFile | null>(null);
   const [cover, setCover] = useState<PickedFile | null>(null);
   const [thumbnail, setThumbnail] = useState<PickedFile | null>(null);
 
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(studio?.title ?? '');
   const [description, setDescription] = useState('');
   const mention = useMentionInput(description, setDescription);
 
@@ -583,7 +593,9 @@ export default function UploadScreen() {
   // The video the artist has moved on from (their "yes, this one"). Compared by identity, so
   // a newly picked video is unconfirmed until they move on again.
   const [confirmedVideo, setConfirmedVideo] = useState<PickedFile | null>(null);
-  const stagedFile = mode === 'audio' ? audio : video && confirmedVideo === video ? video : null;
+  const stagedFile = mode === 'audio'
+    ? (audio && (audio !== studioFile || studioConfirmed) ? audio : null)
+    : video && confirmedVideo === video ? video : null;
 
   useEffect(() => {
     if (!stagedFile) { return; }
@@ -678,7 +690,7 @@ export default function UploadScreen() {
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   // FIELD_CLEARANCE, plus the @ list's height while the description's list is open.
   const mentionRoom = useMentionListRoom(scrollRef, FIELD_CLEARANCE);
-  const [step, setStep] = useState<StepKey>('type');
+  const [step, setStep] = useState<StepKey>(studio ? 'media' : 'type');
   const [reviewing, setReviewing] = useState(false);
 
   const mediaFile = mode === 'audio' ? audio : video;
@@ -744,7 +756,9 @@ export default function UploadScreen() {
   // this one": the video's early upload and check start then (see the staging effect).
   const confirmVideo = useCallback(() => {
     if (mode === 'video' && video) { setConfirmedVideo(video); }
-  }, [mode, video]);
+    // The same "yes, this one" for an Editor mix: its upload and check start now.
+    if (mode === 'audio' && studioFile && audio === studioFile) { setStudioConfirmed(true); }
+  }, [mode, video, audio, studioFile]);
 
   const openStep = useCallback((key: StepKey) => {
     // Forward only: going back to step 1 (e.g. to switch to a song) is not a "yes".
@@ -854,6 +868,8 @@ export default function UploadScreen() {
             tags,
             durationSeconds: previewDurationSec,
             streamingGrantAccepted: grantedStreaming,
+            // The Editor's own mix, unchanged — not a file the artist swapped in on this screen.
+            madeWithLivil: !!studioFile && audio === studioFile,
           }
         : {
             mode: 'video',
@@ -899,6 +915,11 @@ export default function UploadScreen() {
       if (selectedAlbum && result?.trackId) {
         addTrackToAlbum(selectedAlbum.id, result.trackId).catch(() => {});
       }
+      // The Editor draft this mix came from is done with — only now, once the post exists
+      // (ADR-0036 §6: a failed or cancelled post keeps the draft).
+      if (studio && result?.trackId) {
+        void getMyUserId().then(me => (me ? deleteDraft(me, studio.draftId) : undefined)).catch(() => {});
+      }
       // Fires with the success modal, not with the upload finishing — the
       // buzz and the confirmation land together.
       haptics.success();
@@ -920,7 +941,7 @@ export default function UploadScreen() {
       setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum]);
+  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum, studio, studioFile]);
 
   // ── Pieces ───────────────────────────────────────────────────────────────────
 
@@ -940,6 +961,9 @@ export default function UploadScreen() {
 
   const renderFileSlot = (slot: FileSlot) => {
     const file = fileFor(slot.kind);
+    // The Editor's own mix is what this post IS: it can't be swapped or removed here (go back
+    // to the draft to change it), and the post is labelled "Made with Livil" because of it.
+    const fromEditor = slot.kind === 'audio' && !!studioFile && file === studioFile;
     return (
       <View style={styles.fileRow}>
         <View style={styles.fileText}>
@@ -957,7 +981,12 @@ export default function UploadScreen() {
             <Text style={styles.fileDescription}>{slot.description}</Text>
           )}
         </View>
-        {file ? (
+        {fromEditor ? (
+          <View style={styles.fromEditor}>
+            <Icon name="ai" size={12} color={COLORS.purpleLight} />
+            <Text style={styles.fromEditorText}>From the Editor</Text>
+          </View>
+        ) : file ? (
           <View style={styles.fileActions}>
             <Button
               label="Change"
@@ -1129,10 +1158,11 @@ export default function UploadScreen() {
         number={1}
         title="Audio or video"
         hint="What are you posting?"
-        summary={mode === 'audio' ? 'Song' : 'Video'}
+        summary={studio ? 'Song · made in the Editor' : mode === 'audio' ? 'Song' : 'Video'}
         state={stepState('type')}
         onOpen={() => openStep('type')}
-        disabled={submitting}
+        // An Editor post is a song: no switching it to a video.
+        disabled={submitting || !!studio}
       >
         <View style={styles.typeGroup}>
           {typeCard('audio', 'Song', 'An audio file, with cover art', 'musicNote')}
@@ -1151,6 +1181,12 @@ export default function UploadScreen() {
         disabled={submitting}
       >
         {renderFileSlot(mediaSlot)}
+        {mode === 'audio' && studioFile && audio === studioFile && !studioConfirmed ? (
+          <Text style={styles.studioNote}>
+            Your mix from the Editor, lossless (FLAC). It starts uploading when you tap Next, and
+            an outside service checks it for copyright.
+          </Text>
+        ) : null}
         {renderStagingStatus()}
         {renderInlinePlayer()}
         {renderNext(
@@ -1756,6 +1792,9 @@ export default function UploadScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  fromEditor: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 24, borderRadius: 12, borderWidth: 1, borderColor: COLORS.purple },
+  fromEditorText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  studioNote: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 10 },
   studioCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,

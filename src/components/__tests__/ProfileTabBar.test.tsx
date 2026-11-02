@@ -32,6 +32,21 @@ describe('visibleTabsFor — visibility', () => {
   });
 });
 
+describe('visibleTabsFor — drafts', () => {
+  it('shows Drafts beside Uploads only when there are some', () => {
+    expect(keys(counts({ uploads: 3, drafts: 2 }))).toEqual(['uploads', 'reposts', 'drafts', 'playlists']);
+    expect(keys(counts({ drafts: 0 }))).not.toContain('drafts');
+  });
+
+  it("never shows on someone else's profile (no drafts count given)", () => {
+    expect(keys(counts({ uploads: 3 }))).not.toContain('drafts');
+  });
+
+  it('never opens a profile on Drafts', () => {
+    expect(initialTabFor(counts({ drafts: 9 }))).not.toBe('drafts');
+  });
+});
+
 describe('visibleTabsFor — order follows the counts', () => {
   it('leads with Uploads for an artist', () => {
     expect(keys(counts({ uploads: 12, reposts: 2 }))[0]).toBe('uploads');

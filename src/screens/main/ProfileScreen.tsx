@@ -71,6 +71,8 @@ import PostGridCard from '../../components/PostGridCard';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
 import { useProfileLayout, type ProfileLayout } from '../../hooks/useProfileLayout';
 import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
+import { useMyDrafts } from '../../hooks/useMyDrafts';
+import { DraftsList } from '../../components/DraftsList';
 import { usePinnedTabsScroll } from '../../hooks/usePinnedTabsScroll';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -116,7 +118,9 @@ type ListItem =
   // Who can see my reposts (ADR-0028) — the owner's reminder, with a way to change it.
   | { kind: 'audience'; key: string }
   | { kind: 'album-row'; a: AlbumSummary; b: AlbumSummary | null; key: string }
-  | { kind: 'playlist-row'; a: UserPlaylist; b: UserPlaylist | null; key: string };
+  | { kind: 'playlist-row'; a: UserPlaylist; b: UserPlaylist | null; key: string }
+  /** The whole Drafts tab — few rows, all on this phone, so one item. */
+  | { kind: 'drafts'; key: string };
 
 // Group an array into pairs for 2-column grid rendering inside a FlatList
 // that's otherwise single-column (so it can sit alongside post rows and the
@@ -214,7 +218,10 @@ export default function ProfileScreen() {
   // Provisional only — the real default is resolved from the tab counts on the initial
   // load, so that the selected pill is always the first pill. See initialTabFor.
   const [tab, setTab] = useState<ProfileTab>('reposts');
-  const [tabCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
+  const [serverCounts, setTabCounts] = useState<TabCounts>({ reposts: 0, uploads: 0, albums: 0, playlists: 0 });
+  // Drafts live on this phone (ADR-0036 §9) and are never fetched for anyone else's profile.
+  const { drafts, remove: removeDraft } = useMyDrafts();
+  const tabCounts = useMemo<TabCounts>(() => ({ ...serverCounts, drafts: drafts.length }), [serverCounts, drafts.length]);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const comments = useCommentsCountDeltas(posts);
   const clearCommentDeltas = comments.clearDeltas;
@@ -398,6 +405,9 @@ export default function ProfileScreen() {
           if (!isCurrent()) { return; }
           setPosts(fresh);
           setEndReached(fresh.length < PAGE_SIZE);
+        } else if (activeTab === 'drafts') {
+          // From useMyDrafts — on this phone, nothing to fetch.
+          setEndReached(true);
         } else if (activeTab === 'albums') {
           const fresh = await fetchAlbumsByUser(me);
           if (!isCurrent()) { return; }
@@ -512,6 +522,12 @@ export default function ProfileScreen() {
     [pillTab, tab, tabCounts, refresh, playback, pinned, fade, tabCache],
   );
 
+  // The last draft was deleted (or saved drafts went away): the Drafts pill disappears, so
+  // move off it rather than strand the reader on a tab the bar no longer shows.
+  useEffect(() => {
+    if (tab === 'drafts' && pillTab === null && drafts.length === 0) { handleTabChange(initialTabFor(serverCounts)); }
+  }, [tab, pillTab, drafts.length, serverCounts, handleTabChange]);
+
   const handleRefresh = useCallback(async () => {
     // Acknowledge the pull the moment it fires — the spinner is at the top
     // of the screen, often under the user's own thumb.
@@ -597,6 +613,9 @@ export default function ProfileScreen() {
       }
       return [...top, { kind: 'empty', key: '__empty__' }];
     }
+    if (tab === 'drafts') {
+      return drafts.length > 0 ? [head, { kind: 'drafts', key: '__drafts__' }] : [head, { kind: 'empty', key: '__empty__' }];
+    }
     if (tab === 'albums') {
       if (albums.length === 0) { return [head, { kind: 'empty', key: '__empty__' }]; }
       return [head, ...pairs(albums).map<ListItem>(([a, b], i) => ({
@@ -608,7 +627,7 @@ export default function ProfileScreen() {
     return [head, ...pairs(playlists).map<ListItem>(([a, b], i) => ({
       kind: 'playlist-row', a, b, key: `playlist-row-${i}`,
     }))];
-  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic, layout]);
+  }, [tab, posts, albums, playlists, loading, deletedIds, blocked, removals, repostsPublic, layout, drafts.length]);
 
   // Each upload's song total plays, for the grid's cards (Uploads only — never on reposts).
   const uploadPlays = useTrackPlaysTotals(posts, tab === 'uploads' && layout === 'grid');
@@ -716,6 +735,7 @@ export default function ProfileScreen() {
         const tabEmpty = {
           reposts: { title: 'No reposts yet', body: 'Repost a track from the player and it lands here.' },
           uploads: { title: 'No uploads yet', body: 'Upload a track and it will land here as a Creator post.' },
+          drafts: { title: 'No drafts', body: 'Save from the Editor and your draft waits here, on this phone.' },
           albums: { title: 'No albums yet', body: 'Group your tracks into an album to ship a release.' },
           playlists: { title: 'No playlists yet', body: 'Add posts from the player using the + button to start your first.' },
         }[tab];
@@ -726,6 +746,17 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.emptyTitle}>{tabEmpty.title}</Text>
             <Text style={styles.emptyBody}>{tabEmpty.body}</Text>
+          </View>
+        );
+      }
+      if (item.kind === 'drafts') {
+        return (
+          <View style={styles.draftsWrap}>
+            <DraftsList
+              drafts={drafts}
+              onOpen={id => navigation.navigate('Studio', { draftId: id })}
+              onDelete={removeDraft}
+            />
           </View>
         );
       }
@@ -796,7 +827,7 @@ export default function ProfileScreen() {
     // re-rendered after the delete started and the button sat there looking idle while
     // the request was in flight.
     [tab, tabCounts, handleTabChange, comments, handlePostDeleted, goToAlbum, goToPlaylist,
-     removingId, repostsPublic, navigation, layout, changeLayout, uploadPlays, pillTab, pendingLayout],
+     removingId, repostsPublic, navigation, layout, changeLayout, uploadPlays, pillTab, pendingLayout, drafts, removeDraft],
   );
 
   // Everything under the tab row fades with a switch; the pinned row itself never does.
@@ -1112,6 +1143,7 @@ const AVATAR_RING_D = 116;
 
 const styles = StyleSheet.create({
   // Same as the gap between cards (PostCard's marginBottom).
+  draftsWrap: { paddingHorizontal: 16, paddingTop: 14 },
   firstUnderTabs: { paddingTop: 14 },
   container: {
     flex: 1,

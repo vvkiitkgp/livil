@@ -757,6 +757,7 @@ export default function UserProfileScreen() {
         const tabEmpty = {
           reposts: 'No reposts yet',
           uploads: 'No uploads yet',
+          drafts: '', // never shown: drafts exist only on your own profile
           albums: 'No albums yet',
           playlists: 'No playlists yet',
         }[tab];
