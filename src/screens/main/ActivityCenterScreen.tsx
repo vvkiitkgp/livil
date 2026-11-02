@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -56,6 +56,11 @@ export default function ActivityCenterScreen() {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  // The read state as it was when this visit opened: the updated_at of the newest notification
+  // already read (utils/activitySeen.ts). Captured once, from the first page and BEFORE
+  // markActivityRead; a refresh that returns everything read never moves it. Leaving and
+  // coming back remounts the screen, so next time "Seen" is under the newest.
+  const [readBoundary, setReadBoundary] = useState<string | null>(null);
   // The row this visit opens on: the oldest new notification, or null (nothing new → rest).
   const [openTargetId, setOpenTargetId] = useState<string | null>(null);
   // Rows drawn on the first pass: enough to reach the target, so all of it gets measured.
@@ -79,7 +84,9 @@ export default function ActivityCenterScreen() {
         if (!cancelled) {
           // The read state as it was when this visit opened — from the first page, BEFORE
           // markActivityRead below (utils/activitySeen.ts).
-          const { firstUnseenIndex } = activityOpenPoint(activityRes, readBoundaryAt(activityRes));
+          const boundary = readBoundaryAt(activityRes);
+          const { firstUnseenIndex } = activityOpenPoint(activityRes, boundary);
+          setReadBoundary(boundary);
           setOpenTargetId(firstUnseenIndex === null ? null : activityRes[firstUnseenIndex]!.id);
           setInitialRows(Math.max(12, (firstUnseenIndex ?? 0) + 2));
           setPositioned(firstUnseenIndex === null);
@@ -96,6 +103,13 @@ export default function ActivityCenterScreen() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // "Seen", like a person's chat: under the newest notification you had already read before
+  // this visit — the 4th from the end when 3 are new; under the newest when nothing is.
+  const seenId = useMemo(() => {
+    const { seenIndex } = activityOpenPoint(items, readBoundary);
+    return seenIndex === null ? null : items[seenIndex]!.id;
+  }, [items, readBoundary]);
 
   // ── Opening on the first new notification ────────────────────────────────
   // Its offset is computed from the rows' MEASURED heights (onLayout), the newest down to the
@@ -288,10 +302,11 @@ export default function ActivityCenterScreen() {
                 : false}
             />
           </SwipeRevealRow>
+          {item.id === seenId ? <Text style={styles.seenLabel}>Seen</Text> : null}
         </View>
       );
     },
-    [handleActorPress, handlePostPress, handleRespondToCredit, answering, items, onRowLayout],
+    [handleActorPress, handlePostPress, handleRespondToCredit, answering, items, onRowLayout, seenId],
   );
 
   return (
@@ -380,6 +395,16 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 8 },
   hidden: { opacity: 0 },
+  // The chat's read-receipt footer (ConversationScreen readStatus), set under the bot's
+  // bubble: past the row's 12 padding, the bot's 28 avatar and the 6 gap.
+  seenLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    marginLeft: 12 + 28 + 6 + 4,
+    marginTop: -2,
+    marginBottom: 4,
+  },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
   emptyLogo: { marginBottom: 4 },
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },
