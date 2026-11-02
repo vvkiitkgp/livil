@@ -1969,7 +1969,10 @@ export default function ConversationScreen() {
   // whether they have the app open is deliberately not indicated anywhere. Groups
   // are skipped: a group has no single person to show.
   const listeningIds = useMemo(() => (!isGroup && otherUserId ? [otherUserId] : []), [isGroup, otherUserId]);
-  const otherListening = useListeningNow(listeningIds).get(otherUserId ?? '') ?? null;
+  // Re-read on return from a screen opened over the chat (a profile, the player).
+  const [listeningFocus, setListeningFocus] = useState(0);
+  useFocusEffect(useCallback(() => { setListeningFocus(n => n + 1); }, []));
+  const otherListening = useListeningNow(listeningIds, listeningFocus).get(otherUserId ?? '') ?? null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>

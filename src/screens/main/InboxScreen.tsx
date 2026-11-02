@@ -343,7 +343,11 @@ export default function InboxScreen() {
       .map(c => c.otherUserId as string),
     [conversations],
   );
-  const listening = useListeningNow(dmUserIds);
+  // Re-read who is listening on every visit: this screen stays mounted under the chats it
+  // opens, and a listener whose app was swiped away never says "stopped".
+  const [listeningFocus, setListeningFocus] = useState(0);
+  useFocusEffect(useCallback(() => { setListeningFocus(n => n + 1); }, []));
+  const listening = useListeningNow(dmUserIds, listeningFocus);
   const vibes = useChatVibes(conversations);
 
   // The group picture reshuffles once per VISIT (not per render): a new random

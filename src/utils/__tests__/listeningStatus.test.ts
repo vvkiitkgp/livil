@@ -1,7 +1,11 @@
 import {
+  LISTENING_EXPIRY_GRACE_MS,
   LISTENING_HEARTBEAT_MS,
   LISTENING_LIVE_WINDOW_MS,
+  dropExpiredListeners,
+  listeningExpiryAt,
   listeningTrackFor,
+  nextListeningCheckMs,
   planListeningWrite,
   type ListeningTrack,
   type ReportedListening,
@@ -83,5 +87,60 @@ describe('listeningTrackFor', () => {
   it('falls back to the repost itself when the original is gone', () => {
     expect(listeningTrackFor({ ...base, postId: 'rp1', kind: 'repost', originalPostId: null }).postId)
       .toBe('rp1');
+  });
+});
+
+// The chat list kept a listener's bars up after their iPhone app was swiped away (owner,
+// 2026-11-02): a killed app never writes "stopped", so the viewer's own expiry is all there is.
+describe('listeningExpiryAt', () => {
+  const NOW = 5_000_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it('a fresh heartbeat keeps the listener up for one full window', () => {
+    expect(listeningExpiryAt(iso(NOW), NOW, NOW)).toBe(NOW + LISTENING_LIVE_WINDOW_MS);
+  });
+
+  it('a heartbeat delivered late keeps them up only for what is left of its window', () => {
+    // Written 100 s ago (buffered while the app was frozen): 50 s left, not another 150.
+    expect(listeningExpiryAt(iso(NOW - 100_000), NOW, NOW)).toBe(NOW + 50_000);
+  });
+
+  it('a heartbeat older than the window is already over', () => {
+    expect(listeningExpiryAt(iso(NOW - 200_000), NOW, NOW)).toBe(NOW);
+  });
+
+  it('works on this phone\'s clock when it differs from the server\'s', () => {
+    // Phone 3 minutes slow; the server stamped it 10 s ago by the server's clock.
+    const phoneNow = NOW - 180_000;
+    expect(listeningExpiryAt(iso(NOW - 10_000), phoneNow, NOW)).toBe(phoneNow + 140_000);
+  });
+
+  it('never more than one window from now, even for a stamp from the future', () => {
+    expect(listeningExpiryAt(iso(NOW + 60_000), NOW, NOW)).toBe(NOW + LISTENING_LIVE_WINDOW_MS);
+  });
+
+  it('without a known server clock or a readable stamp, one window from receipt (as before)', () => {
+    expect(listeningExpiryAt(iso(NOW - 100_000), NOW, null)).toBe(NOW + LISTENING_LIVE_WINDOW_MS);
+    expect(listeningExpiryAt(null, NOW, NOW)).toBe(NOW + LISTENING_LIVE_WINDOW_MS);
+    expect(listeningExpiryAt('not a time', NOW, NOW)).toBe(NOW + LISTENING_LIVE_WINDOW_MS);
+  });
+});
+
+describe('dropExpiredListeners / nextListeningCheckMs', () => {
+  const riya = { expiresAtMs: 1_000 };
+  const sam = { expiresAtMs: 5_000 };
+
+  it('drops only the expired, and keeps the same map when nobody expired', () => {
+    const map = new Map([['riya', riya], ['sam', sam]]);
+    expect([...dropExpiredListeners(map, 1_000).keys()]).toEqual(['sam']);
+    expect(dropExpiredListeners(map, 999)).toBe(map);
+  });
+
+  it('looks again just after the soonest expiry, and not at all for an empty list', () => {
+    const map = new Map([['riya', riya], ['sam', sam]]);
+    expect(nextListeningCheckMs(map, 400)).toBe(600 + LISTENING_EXPIRY_GRACE_MS);
+    // Already past: look at once (plus the grace), never a negative wait.
+    expect(nextListeningCheckMs(map, 2_000)).toBe(LISTENING_EXPIRY_GRACE_MS);
+    expect(nextListeningCheckMs(new Map(), 0)).toBeNull();
   });
 });

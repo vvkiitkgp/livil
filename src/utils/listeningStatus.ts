@@ -97,3 +97,50 @@ export function planListeningWrite(
   }
   return { kind: 'none' };
 }
+
+// ── Viewer side: when to stop showing someone ───────────────────────────────
+
+/** Extra wait after an expiry before looking, so a timer that fires on the dot still finds it gone. */
+export const LISTENING_EXPIRY_GRACE_MS = 250;
+
+/**
+ * When to stop showing a listener whose row was just re-stamped, on THIS phone's clock.
+ *
+ * From the row's server-stamped `updated_at` when the server's clock is known here
+ * (`serverNowMs`), so a heartbeat that arrives LATE — events buffered while Android froze the
+ * app, delivered in a burst on return — keeps the listener up only for what is left of their
+ * window, not a fresh 150 s from the moment it arrived. Never more than one window from now.
+ * Without a known server clock (or a readable stamp) it is one window from now, as before:
+ * this phone's own clock can be minutes off, and trusting it would hide live listeners.
+ */
+export function listeningExpiryAt(
+  updatedAtIso: string | null | undefined,
+  nowMs: number,
+  serverNowMs: number | null,
+): number {
+  const stamped = updatedAtIso ? Date.parse(updatedAtIso) : NaN;
+  if (serverNowMs === null || !Number.isFinite(stamped)) {
+    return nowMs + LISTENING_LIVE_WINDOW_MS;
+  }
+  const leftMs = stamped + LISTENING_LIVE_WINDOW_MS - serverNowMs;
+  return nowMs + Math.min(LISTENING_LIVE_WINDOW_MS, Math.max(0, leftMs));
+}
+
+/** The listeners still live at `nowMs`. The SAME map when nobody expired, so nothing re-renders. */
+export function dropExpiredListeners<T extends { expiresAtMs: number }>(
+  map: Map<string, T>,
+  nowMs: number,
+): Map<string, T> {
+  const next = new Map([...map].filter(([, e]) => e.expiresAtMs > nowMs));
+  return next.size === map.size ? map : next;
+}
+
+/** How long to wait before looking for expired listeners again; null when there is nobody to drop. */
+export function nextListeningCheckMs<T extends { expiresAtMs: number }>(
+  map: Map<string, T>,
+  nowMs: number,
+): number | null {
+  if (map.size === 0) { return null; }
+  const soonest = Math.min(...[...map.values()].map(e => e.expiresAtMs));
+  return Math.max(0, soonest - nowMs) + LISTENING_EXPIRY_GRACE_MS;
+}
