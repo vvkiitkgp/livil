@@ -43,6 +43,20 @@ export const studioFiles = {
     }
   },
 
+  /**
+   * Writes already-base64 data to `rel`, in slices like writeBytes (each a multiple of 4
+   * characters, so every slice decodes on its own). Used by disappearing chat photos
+   * (src/services/chatMedia.ts), which arrive as base64 from FileReader.
+   */
+  async writeBase64(rel: string, base64: string): Promise<void> {
+    const n = need();
+    const SLICE = 4 * 64 * 1024;
+    if (base64.length === 0) { await n.writeBase64(rel, '', false); return; }
+    for (let at = 0; at < base64.length; at += SLICE) {
+      await n.writeBase64(rel, base64.slice(at, at + SLICE), at > 0);
+    }
+  },
+
   writeText: (rel: string, text: string) => need().writeText(rel, text),
   readText: (rel: string) => need().readText(rel),
   listDirs: (rel: string) => need().listDirs(rel),

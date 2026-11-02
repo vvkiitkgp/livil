@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-11-01
+last_verified: 2026-11-02
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 172 migration(s) in `supabase/migrations/`.
+Reconstructed from 175 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-63 table(s).
+65 table(s).
 
 ### `account_exit_feedback`
 
@@ -205,6 +205,34 @@ RLS enabled · defined in `20260808100000_blocked_users.sql`
 **Triggers**
 
 - `trg_suggestion_dismissals_on_block` — after insert (`20261008000000_suggestions_follow_friendship.sql`)
+
+### `chat_media_config`
+
+RLS enabled · defined in `20261118000000_chat_media.sql`
+
+| Column | Definition |
+|---|---|
+| `id` | `integer primary key default 1 check (id = 1)` |
+| `function_url` | `text not null` |
+| `anon_key` | `text not null` |
+
+### `chat_media_saves`
+
+RLS enabled · realtime · defined in `20261118000000_chat_media.sql`
+
+| Column | Definition |
+|---|---|
+| `message_id` | `uuid not null references public.messages(id) on delete cascade` |
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `saved_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (message_id, user_id)`
+
+**Indexes**
+
+- `chat_media_saves_message_idx` `(message_id)`
 
 ### `conversation_members`
 
@@ -1579,6 +1607,7 @@ Tables published to `supabase_realtime`. Row changes stream to subscribers, gate
 same row-level security policies that gate ordinary reads.
 
 - `activity_notifications`
+- `chat_media_saves`
 - `conversation_members`
 - `friendships`
 - `jam_suggestions`

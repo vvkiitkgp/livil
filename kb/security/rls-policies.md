@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-security
 consumers: [P-SE, SR, P-DA, QA]
-last_verified: 2026-10-17
+last_verified: 2026-11-02
 verify_every: 9999d
 verified_by: generated
 visibility: private-content
@@ -17,7 +17,7 @@ policy declared in the migration set and flags tables that are unpoliced or read
 anyone. Publishing that in a public repository would be publishing a map of where the
 authorization perimeter is thin.
 
-Scope: 125 policy/policies across 47 table(s).
+Scope: 127 policy/policies across 48 table(s).
 
 | | |
 |---|---|

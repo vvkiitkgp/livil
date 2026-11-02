@@ -110,6 +110,10 @@ jobs:
         run: |
           deno test --no-config \
             supabase/functions/gifs/index.test.ts
+      - name: chat-media tests
+        run: |
+          deno test --no-config \
+            supabase/functions/chat-media/index.test.ts
 
       # The LIVE check. Gated OFF for pull_request so the account-level PAT is never exposed to
       # PR-branch-controlled code — see the SECURITY note on the triggers above.

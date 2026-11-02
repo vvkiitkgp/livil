@@ -4,6 +4,7 @@ import ImagePicker, {
 } from 'react-native-image-crop-picker';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
 import { TRACKS_MEDIA_BUCKET } from './uploads';
+import { pickCroppedPhoto } from './mediaPicks';
 import type { ExitReasonId } from '../../shared/constants/exitFeedback';
 
 export const AVATARS_BUCKET = 'avatars';
@@ -306,10 +307,11 @@ export async function updatePrivateProfile(
   if (error) {throw error;}
 }
 
+/** On iPhone: Apple's own photo picker, then the circle crop (mediaPicks.pickCroppedPhoto). */
 export async function pickAvatarFromLibrary(): Promise<PickedAvatar | null> {
   try {
-    const image = await ImagePicker.openPicker(AVATAR_CROP_OPTIONS);
-    return toPickedAvatar(image);
+    const image = await pickCroppedPhoto(AVATAR_CROP_OPTIONS);
+    return image ? toPickedAvatar(image) : null;
   } catch (err) {
     if (isCancelError(err)) {return null;}
     throw err;

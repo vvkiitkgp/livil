@@ -40,6 +40,7 @@ import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
 import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
+import ChatMediaViewerScreen from '../screens/main/ChatMediaViewerScreen';
 import NewConversationScreen from '../screens/main/NewConversationScreen';
 import GroupInfoScreen from '../screens/main/GroupInfoScreen';
 import JamRoomScreen from '../screens/main/JamRoomScreen';
@@ -935,6 +936,18 @@ export default function RootNavigator() {
               name="Conversation"
               component={ConversationScreen}
               options={{ animation: 'slide_from_right' }}
+            />
+            {/* A disappearing photo (PROP-0011). A screen, not an RN Modal, so the screenshot
+                block covers it on Android; transparent, so swiping it down shows the chat.
+                No stack animation: the screen grows the photo out of the tap itself. */}
+            <Stack.Screen
+              name="ChatMediaViewer"
+              component={ChatMediaViewerScreen}
+              options={{
+                presentation: 'transparentModal',
+                gestureEnabled: false,
+                animation: 'none',
+              }}
             />
             <Stack.Screen
               name="NewConversation"

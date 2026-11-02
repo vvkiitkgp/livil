@@ -14,6 +14,7 @@ import {navigationRef, flushPendingNavigation, setCurrentRoute} from './src/navi
 import {hideNativeSplash} from './src/native/splashScreen';
 import {ErrorBoundary} from './src/components/ErrorBoundary';
 import {noteScreen, reportRenderError} from './src/services/crashReporting';
+import {startChatMediaHousekeeping} from './src/services/chatMedia';
 
 const AppTheme = {
   ...DarkTheme,
@@ -65,6 +66,12 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     const id = requestAnimationFrame(() => hideNativeSplash());
     return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Disappearing chat photos (PROP-0011): delete any copy that expired while the app was closed or
+  // asleep, now and on every return to the foreground.
+  useEffect(() => {
+    startChatMediaHousekeeping();
   }, []);
 
   return (

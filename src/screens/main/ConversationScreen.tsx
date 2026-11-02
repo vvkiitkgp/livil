@@ -17,6 +17,7 @@ import {
   Pressable,
   Platform,
   ScrollViewProps,
+  type GestureResponderEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -98,6 +99,30 @@ import CommentGifCard from '../../components/CommentGifCard';
 import { MAX_GIF_QUERY_LENGTH, rememberGif, useGifsEnabled, type Gif } from '../../services/gifs';
 import { GIF_LABEL } from '../../services/comments';
 import { chatGifFrom, chatGifMetadata } from '../../utils/chatGif';
+import {
+  chatMediaFrom,
+  chatMediaLabel,
+  chatMediaLeftMs,
+  chatMediaMetadata,
+  formatLeft,
+  randomUuid,
+} from '../../utils/chatMedia';
+import { serverNow } from '../../utils/serverClock';
+import {
+  fetchChatMediaSavers,
+  localChatMedia,
+  prefetchChatMedia,
+  sendChatMedia,
+  subscribeChatMediaSaves,
+  useChatMediaEnabled,
+  type ChatMediaSaver,
+  type PickedChatMedia,
+} from '../../services/chatMedia';
+import { cleanPickedFile, pickChatPhoto } from '../../services/mediaPicks';
+import { ChatMediaBubbleContent, ChatMediaSavedBy, useChatMediaLeft } from '../../components/ChatMediaBubble';
+import ChatMediaSourceSheet, { type ChatMediaSource } from '../../components/ChatMediaSourceSheet';
+import ChatMediaPreview from '../../components/ChatMediaPreview';
+import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -215,6 +240,9 @@ function MessageBubble({
   onOpenSharedProfile,
   onOpenSharedRepost,
   onOpenReposterProfile,
+  mediaSavers,
+  mediaLoading,
+  onOpenChatMedia,
 }: {
   msg: ChatMessage;
   isMe: boolean;
@@ -222,6 +250,12 @@ function MessageBubble({
   conversationTitle: string;
   repliedTo: ChatMessage | null;
   isHighlighted: boolean;
+  /** Who saved this message's disappearing photo/video to their phone (PROP-0011). */
+  mediaSavers: ChatMediaSaver[] | undefined;
+  /** Tapped while still downloading: the bubble shows a spinner until it opens. */
+  mediaLoading: boolean;
+  /** `origin`: where the bubble was tapped, in window coordinates — the photo grows from there. */
+  onOpenChatMedia: (msg: ChatMessage, origin: { x: number; y: number }) => void;
   onReply: () => void;
   onReplyQuotePress: (originalId: string) => void;
   onLongPress: (msg: ChatMessage) => void;
@@ -237,6 +271,13 @@ function MessageBubble({
   // A GIF is a text message carrying the GIF in metadata (src/utils/chatGif.ts); its body is
   // '🎞 GIF', what older builds show, so the text is hidden here.
   const chatGif = msg.kind === 'text' ? chatGifFrom(msg.metadata) : null;
+  // A disappearing photo/video (PROP-0011, src/utils/chatMedia.ts): a text message whose metadata
+  // names the file; its body is the upgrade line older builds show, so the text is hidden.
+  // Sender and recipients open it alike, only while it exists — an expired one does nothing.
+  const chatMedia = msg.kind === 'text' ? chatMediaFrom(msg.metadata) : null;
+  const mediaLeftMs = useChatMediaLeft(chatMedia ? msg.createdAt : null);
+  const mediaExpired = chatMedia !== null && (mediaLeftMs ?? 0) <= 0;
+  const canOpenMedia = chatMedia !== null && !mediaExpired && !msg.id.startsWith('opt-');
   const hasTrackMeta = msg.kind === 'track_share' && !!msg.metadata;
   /**
    * A shared track opens the post. `track_share` bubbles rendered cover art and a title
@@ -268,7 +309,7 @@ function MessageBubble({
   // it; the song card underneath is only its fallback. Read off song bubbles only, so a
   // stray key on any other message is ignored.
   const sharedRepostId = isSongBubble ? sharedRepostIdFrom(msg.metadata) : null;
-  const visibleText = chatGif
+  const visibleText = chatGif || chatMedia
     ? null
     : spotifyLink?.id && msg.body
       ? msg.body.replace(spotifyLink.match, '').trim()
@@ -326,9 +367,13 @@ function MessageBubble({
           <Pressable
             onLongPress={() => onLongPress(msg)}
             onPress={
+              chatMedia
+                ? (canOpenMedia
+                  ? (e: GestureResponderEvent) => onOpenChatMedia(msg, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })
+                  : undefined)
               // A repost card handles its own taps — and when it falls back to the plain song
               // card, that card's artwork plays. The bubble's 8px rim does nothing.
-              sharedRepostId
+              : sharedRepostId
                 ? undefined
                 : sharedPostId
                 ? () => onPlaySharedPost(sharedPostId)
@@ -341,9 +386,13 @@ function MessageBubble({
             // can't reach them. Off for song bubbles; touch long-press is unaffected, and
             // the card's buttons carry the long-press too.
             accessible={isSongBubble ? false : undefined}
-            accessibilityRole={(sharedPostId && !sharedRepostId) || sharedProfileHandle ? 'button' : undefined}
+            accessibilityRole={(sharedPostId && !sharedRepostId) || sharedProfileHandle || canOpenMedia ? 'button' : undefined}
             accessibilityLabel={
-              sharedRepostId
+              chatMedia
+                ? (mediaExpired
+                  ? `${chatMedia.type === 'video' ? 'Video' : 'Photo'}, expired`
+                  : `${chatMedia.type === 'video' ? 'Video' : 'Photo'}, ${formatLeft(mediaLeftMs ?? 0)} left`)
+              : sharedRepostId
                 ? undefined
                 : sharedPostId
                 ? `Play ${msg.metadata!.title as string}`
@@ -358,6 +407,9 @@ function MessageBubble({
               isSongBubble ? styles.bubbleSong : isMe ? styles.bubbleMe : styles.bubbleThem,
               hasStickerMeta || chatGif ? styles.bubbleSticker : null,
               sharedProfileHandle ? styles.bubbleProfileCard : null,
+              chatMedia
+                ? (mediaExpired ? styles.bubbleMediaExpired : isMe ? styles.bubbleMedia : styles.bubbleMediaThem)
+                : null,
               isHighlighted && styles.bubbleHighlighted,
             ]}
           >
@@ -430,6 +482,10 @@ function MessageBubble({
               />
             ) : null}
 
+            {chatMedia ? (
+              <ChatMediaBubbleContent media={chatMedia} isMe={isMe} leftMs={mediaLeftMs ?? 0} loading={mediaLoading} />
+            ) : null}
+
             {hasStickerMeta && (
               <Image
                 source={{ uri: msg.metadata!.sticker_url as string }}
@@ -482,6 +538,7 @@ function MessageBubble({
             </View>
           )}
         </View>
+        {chatMedia && mediaSavers ? <ChatMediaSavedBy savers={mediaSavers} alignEnd={isMe} /> : null}
         </SwipeReplyRow>
       </View>
     </View>
@@ -690,6 +747,13 @@ export default function ConversationScreen() {
   // GIF search in the composer, the same way (owner, 2026-10-19). Shown only while the gifs
   // function answers `enabled`.
   const gifsOn = useGifsEnabled();
+  // Disappearing photos and videos (PROP-0011): the camera button, its sheet, the picked photo
+  // waiting in the preview, and who saved what.
+  const chatMediaOn = useChatMediaEnabled();
+  const [mediaSheetOpen, setMediaSheetOpen] = useState(false);
+  const [pendingMedia, setPendingMedia] = useState<{ media: PickedChatMedia; source: ChatMediaSource } | null>(null);
+  const [mediaSavers, setMediaSavers] = useState<Record<string, ChatMediaSaver[]>>({});
+  const { runAfterDismiss: runAfterMediaSheet, onDismiss: onMediaSheetDismiss } = useRunAfterDismiss();
   const [gifMode, setGifMode] = useState(false);
   const [gifQuery, setGifQuery] = useState('');
   const searchMode = songMode || gifMode;
@@ -1229,6 +1293,186 @@ export default function ConversationScreen() {
    *   Spotify → a plain text message holding the track's URL: this app draws it as the
    *            Spotify card, an older app shows the link. Nothing new on the server.
    */
+  // ── Disappearing photos and videos (PROP-0011) ────────────────────────────
+
+  /**
+   * Camera button → the sheet, at once. The keyboard goes first when it is up (the sheet is a
+   * modal); waiting on a dismiss when it is already down only delayed the sheet.
+   */
+  const openMediaSheet = useCallback(async () => {
+    setReplyingTo(null);
+    if (KeyboardController.isVisible()) {
+      await KeyboardController.dismiss().catch(() => {});
+    }
+    setMediaSheetOpen(true);
+  }, []);
+
+  /**
+   * Camera / gallery → the native screen, once the sheet has closed (on iOS it opens into
+   * nothing otherwise — useRunAfterDismiss), then the preview.
+   */
+  const pickMedia = useCallback((source: ChatMediaSource) => {
+    setMediaSheetOpen(false);
+    runAfterMediaSheet(async () => {
+      try {
+        const media = await pickChatPhoto(source);
+        if (media) { setPendingMedia({ media, source }); }
+      } catch (e) {
+        console.warn('[chat] pick media failed', e);
+        showToast(source === 'camera' ? "Couldn't open the camera." : "Couldn't open your photos.", { kind: 'error' });
+      }
+    });
+  }, [runAfterMediaSheet, showToast]);
+
+  /** Retake / pick again from where the photo came from, without leaving the preview. */
+  const retakeMedia = useCallback(async () => {
+    if (!pendingMedia) { return; }
+    const { source, media: previous } = pendingMedia;
+    try {
+      const media = await pickChatPhoto(source);
+      if (media) {
+        cleanPickedFile(previous.uri);
+        setPendingMedia({ media, source });
+      }
+    } catch (e) {
+      console.warn('[chat] retake failed', e);
+    }
+  }, [pendingMedia]);
+
+  /** ✕ on the preview: the photo is thrown away, file included. */
+  const discardMedia = useCallback(() => {
+    if (pendingMedia) { cleanPickedFile(pendingMedia.media.uri); }
+    setPendingMedia(null);
+  }, [pendingMedia]);
+
+  /**
+   * Send from the preview. The bubble appears at once (optimistic) while the file uploads;
+   * the message itself is sent only after the upload, so a recipient never gets a bubble
+   * whose file is not there.
+   */
+  const handleSendMedia = useCallback(async () => {
+    if (!pendingMedia) { return; }
+    const { media } = pendingMedia;
+    setPendingMedia(null);
+    const placeholderObject = `${conversationId}/${randomUuid()}.jpg`;
+    const metadata = chatMediaMetadata({ ...media, object: placeholderObject });
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      conversationId,
+      senderId: myId,
+      kind: 'text',
+      body: chatMediaLabel(media.type),
+      metadata,
+      replyToId: null,
+      createdAt: new Date().toISOString(),
+      deletedAt: null,
+      senderUsername: null,
+      senderDisplayName: null,
+      senderAvatarUrl: null,
+      reactions: [],
+    };
+    setMessages(prev => [optimistic, ...prev]);
+    setTimeout(scrollToLatest, 50);
+    try {
+      // The picker's file is this phone's copy for the 20 minutes, then it is deleted.
+      const real = await sendChatMedia(conversationId, media, myProfile, () => cleanPickedFile(media.uri));
+      setMessages(prev => prev.map(m => (m.id === optimistic.id ? real : m)));
+      void messageCache.prependMessages(conversationId, [real]);
+    } catch (err) {
+      console.warn('[chat] media send failed', err);
+      cleanPickedFile(media.uri);
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      showToast(
+        media.type === 'video' ? "Couldn't send that video. Please try again." : "Couldn't send that photo. Please try again.",
+        { kind: 'error' },
+      );
+    }
+  }, [pendingMedia, conversationId, myId, myProfile, showToast, scrollToLatest]);
+
+  /**
+   * Opens the viewer on this photo, with the same sender's other live photos in this chat
+   * (oldest first) so a tap moves on to the next one, as in stories.
+   */
+  const handleOpenChatMedia = useCallback((msg: ChatMessage, origin: { x: number; y: number }) => {
+    const now = serverNow();
+    const fromSender = messagesRef.current
+      .filter(m =>
+        m.senderId === msg.senderId
+        && !m.deletedAt
+        && !m.id.startsWith('opt-')
+        && m.kind === 'text'
+        && chatMediaFrom(m.metadata) !== null
+        && (m.id === msg.id || chatMediaLeftMs(m.createdAt, now) > 0))
+      // `messages` is newest first; the viewer goes oldest → newest.
+      .reverse();
+    const index = Math.max(0, fromSender.findIndex(m => m.id === msg.id));
+    navigation.navigate('ChatMediaViewer', { messages: fromSender, index, origin });
+  }, [navigation]);
+
+  /**
+   * "Tap to view". Downloaded → the viewer opens at once. Still downloading → a spinner in
+   * THIS bubble until it is ready, then the viewer opens (never onto a full-screen spinner).
+   */
+  const [openingMediaId, setOpeningMediaId] = useState<string | null>(null);
+  const openingMediaRef = useRef<string | null>(null);
+  const handleTapChatMedia = useCallback((msg: ChatMessage, origin: { x: number; y: number }) => {
+    if (localChatMedia(msg.id)) {
+      handleOpenChatMedia(msg, origin);
+      return;
+    }
+    if (openingMediaRef.current === msg.id) { return; }
+    openingMediaRef.current = msg.id;
+    setOpeningMediaId(msg.id);
+    void prefetchChatMedia(msg).then(uri => {
+      // A later tap on another photo took over, or this one already finished.
+      if (openingMediaRef.current !== msg.id) { return; }
+      openingMediaRef.current = null;
+      setOpeningMediaId(null);
+      if (uri) {
+        if (navigation.isFocused()) { handleOpenChatMedia(msg, origin); }
+      } else if (chatMediaLeftMs(msg.createdAt, serverNow()) > 0) {
+        showToast("Couldn't open this photo. Please try again.", { kind: 'error' });
+      }
+    });
+  }, [handleOpenChatMedia, navigation, showToast]);
+
+  // Photos are fetched the moment they are on screen, so they open instantly — and offline —
+  // for as long as they exist. Your own included: this phone holds what it just sent, but
+  // not what you sent from another device or before a restart. Quiet and idempotent.
+  useEffect(() => {
+    for (const m of messages) {
+      if (m.kind === 'text' && chatMediaFrom(m.metadata)) {
+        void prefetchChatMedia(m);
+      }
+    }
+  }, [messages]);
+
+  // "Saved to phone by": loaded for every media message on screen, and kept live.
+  const mediaIdsKey = useMemo(
+    () => messages
+      .filter(m => !m.id.startsWith('opt-') && m.kind === 'text' && chatMediaFrom(m.metadata))
+      .map(m => m.id)
+      .join(','),
+    [messages],
+  );
+  useEffect(() => {
+    if (!mediaIdsKey) { return; }
+    let cancelled = false;
+    void fetchChatMediaSavers(mediaIdsKey.split(',')).then(found => {
+      if (!cancelled) { setMediaSavers(found); }
+    });
+    return () => { cancelled = true; };
+  }, [mediaIdsKey]);
+  useEffect(() => {
+    if (!chatMediaOn) { return; }
+    return subscribeChatMediaSaves(messageId => {
+      if (!messagesRef.current.some(m => m.id === messageId)) { return; }
+      void fetchChatMediaSavers([messageId]).then(found => {
+        setMediaSavers(prev => ({ ...prev, ...found }));
+      });
+    });
+  }, [chatMediaOn]);
+
   const handlePickSong = useCallback(async (song: PickedSong) => {
     closeSongSearch();
     KeyboardController.dismiss();
@@ -1500,6 +1744,9 @@ export default function ConversationScreen() {
               onOpenSharedProfile={handleOpenSharedProfile}
               onOpenSharedRepost={handleOpenSharedRepost}
               onOpenReposterProfile={handleOpenReposterProfile}
+              mediaSavers={mediaSavers[item.id]}
+              mediaLoading={openingMediaId === item.id}
+              onOpenChatMedia={handleTapChatMedia}
             />
             {isLatestOutgoing && latestOutgoingStatus ? (
               <Text style={styles.readStatus}>
@@ -1514,7 +1761,7 @@ export default function ConversationScreen() {
         </>
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, handleOpenSharedRepost, handleOpenReposterProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch],
+    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, handleOpenSharedRepost, handleOpenReposterProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch, mediaSavers, openingMediaId, handleTapChatMedia],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1859,6 +2106,19 @@ export default function ConversationScreen() {
                     {MAX_CHARS - text.length}
                   </Text>
                 )}
+                {/* Disappearing photos and videos (PROP-0011): inside the box, right edge, only
+                    while it is empty — a fourth round button would squeeze the box. */}
+                {chatMediaOn && !searchMode && text.length === 0 ? (
+                  <Pressable
+                    onPress={() => { void openMediaSheet(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Send a photo or video"
+                    hitSlop={4}
+                    style={({ pressed }) => [styles.mediaBtn, pressed && styles.mediaBtnPressed]}
+                  >
+                    <Icon name="camera" size={20} color={COLORS.textSecondary} weight="regular" />
+                  </Pressable>
+                ) : null}
               </View>
               {searchMode ? (
                 <TouchableOpacity
@@ -1896,6 +2156,20 @@ export default function ConversationScreen() {
         visible={!!reactionTarget}
         onPick={handlePickReaction}
         onClose={() => setReactionTarget(null)}
+      />
+
+      <ChatMediaSourceSheet
+        visible={mediaSheetOpen}
+        onClose={() => setMediaSheetOpen(false)}
+        onDismiss={onMediaSheetDismiss}
+        onPick={pickMedia}
+      />
+      <ChatMediaPreview
+        media={pendingMedia?.media ?? null}
+        recipientName={title}
+        onClose={discardMedia}
+        onRetake={() => { void retakeMedia(); }}
+        onSend={() => { void handleSendMedia(); }}
       />
     </SafeAreaView>
   );
@@ -2041,6 +2315,25 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: PROFILE_CARD_RADIUS,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  // Disappearing photo/video bubbles (PROP-0011). Sent: the usual purple bubble. Received: the
+  // surface bubble with a neon hairline, so "tap me" reads before the words do. Expired: an
+  // outline only — nothing left to open. Chat sent bubbles are exempt from the no-fill rule.
+  bubbleMedia: { paddingLeft: 8, paddingRight: 16, paddingVertical: 8 },
+  bubbleMediaThem: {
+    paddingLeft: 8,
+    paddingRight: 18,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.45)',
+  },
+  bubbleMediaExpired: {
+    paddingLeft: 8,
+    paddingRight: 18,
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   // White on both sides (owner, 2026-10-19): grey received text read as faded next to the
   // white sent text.
@@ -2284,6 +2577,18 @@ const styles = StyleSheet.create({
   },
   stickyComposer: { paddingTop: SONG_POPOVER_SPACE, marginTop: -SONG_POPOVER_SPACE },
   inputWrap: { flex: 1 },
+  // The camera button sits inside the message box, on its right edge (shown only while the
+  // box is empty, so it never covers typed text).
+  mediaBtn: {
+    position: 'absolute',
+    right: 2,
+    top: 0,
+    bottom: 0,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaBtnPressed: { opacity: 0.6 },
   musicBtn: {
     width: 38,
     height: 38,
