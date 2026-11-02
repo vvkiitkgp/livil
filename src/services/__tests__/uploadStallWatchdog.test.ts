@@ -24,7 +24,31 @@ jest.mock('../../../lib/supabase', () => ({
   supabase: {},
 }));
 
-import { RESPONSE_TIMEOUT_MS, STALL_TIMEOUT_MS } from '../uploads';
+// The phone's connection, driven by the tests: the first call is the network the upload
+// starts on, every later one a switch (as `subscribeToNetworkChange` promises).
+type Snapshot = { type: string; offline: boolean };
+const mockNetwork = {
+  listeners: [] as Array<(s: Snapshot) => void>,
+  unsubscribed: 0,
+  emit(s: Snapshot) { this.listeners.forEach(l => l(s)); },
+};
+jest.mock('../network', () => ({
+  subscribeToNetworkChange: (l: (s: Snapshot) => void) => {
+    mockNetwork.listeners.push(l);
+    l({ type: 'wifi', offline: false });
+    return () => {
+      mockNetwork.unsubscribed += 1;
+      mockNetwork.listeners = mockNetwork.listeners.filter(x => x !== l);
+    };
+  },
+}));
+
+import {
+  NETWORK_CHANGE_STALL_MS,
+  RESPONSE_TIMEOUT_MS,
+  STALL_TIMEOUT_MS,
+} from '../uploads';
+import { isUploadNetworkError } from '../../utils/uploadRecovery';
 
 /** The smallest fake that behaves like the parts of XHR the uploader touches. */
 class FakeXHR {
@@ -43,7 +67,12 @@ class FakeXHR {
 
   open() {}
   setRequestHeader() {}
-  send() { this.sent = true; FakeXHR.last = this; }
+  send() {
+    if (FakeXHR.throwOnSend) { throw new Error('Could not read the file.'); }
+    this.sent = true;
+    FakeXHR.last = this;
+  }
+  static throwOnSend = false;
   abort() { this.aborted = true; this.onabort?.(); }
 
   /** Drive a progress tick the way a healthy upload would. */
@@ -58,6 +87,10 @@ describe('upload stall watchdog', () => {
 
   beforeEach(() => {
     FakeXHR.last = undefined;
+    FakeXHR.throwOnSend = false;
+    mockNetwork.listeners = [];
+    mockNetwork.unsubscribed = 0;
+    jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.useFakeTimers();
     (global as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXHR;
     jest.isolateModules(() => {
@@ -78,6 +111,7 @@ describe('upload stall watchdog', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.resetModules();
+    jest.restoreAllMocks();
   });
 
   it('rejects when the connection goes quiet, instead of hanging forever', async () => {
@@ -147,6 +181,89 @@ describe('upload stall watchdog', () => {
     // A watchdog that outlives its request would abort the NEXT one.
     expect(jest.getTimerCount()).toBe(0);
   });
+
+  it('a stall is a connection failure the screen can retry, not a cancel', async () => {
+    const failed = uploadFile(() => {}).catch((e: unknown) => e);
+
+    xhr().tick(10);
+    jest.advanceTimersByTime(STALL_TIMEOUT_MS + 1);
+
+    expect(isUploadNetworkError(await failed)).toBe(true);
+  });
+
+  it('a dropped connection is a connection failure too', async () => {
+    const failed = uploadFile(() => {}).catch((e: unknown) => e);
+
+    xhr().tick(10);
+    xhr().onerror?.();
+
+    const err = await failed;
+    expect(isUploadNetworkError(err)).toBe(true);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  // React Native's XHR dispatches only `progress` on `xhr.upload` — never `loadend`. The
+  // response budget used to hang off `onloadend` alone, so on a phone the 45s stall window
+  // stayed armed while storage wrote the file, and a healthy upload could die at 100%.
+  it('gives the server its full answer time on React Native, where upload.onloadend never fires', async () => {
+    const p = uploadFile(() => {});
+    const failed = p.catch((e: Error) => e.message);
+
+    xhr().tick(50);
+    xhr().tick(100);                      // the last byte — and NO onloadend after it
+
+    jest.advanceTimersByTime(STALL_TIMEOUT_MS + 1_000);
+    expect(xhr().aborted).toBe(false);
+
+    jest.advanceTimersByTime(RESPONSE_TIMEOUT_MS);
+    expect(xhr().aborted).toBe(true);
+    await expect(failed).resolves.toMatch(/connection stalled/i);
+  });
+
+  it('after a Wi-Fi → mobile data switch, a dead upload is given up on sooner', async () => {
+    const failed = uploadFile(() => {}).catch((e: unknown) => e);
+
+    xhr().tick(30);
+    mockNetwork.emit({ type: 'cellular', offline: false });
+    jest.advanceTimersByTime(NETWORK_CHANGE_STALL_MS + 1);
+
+    expect(xhr().aborted).toBe(true);
+    expect(isUploadNetworkError(await failed)).toBe(true);
+    expect(NETWORK_CHANGE_STALL_MS).toBeLessThan(STALL_TIMEOUT_MS);
+  });
+
+  it('…but an upload that keeps moving after the switch is left alone', async () => {
+    const p = uploadFile(() => {});
+    let settled = false;
+    void p.then(() => { settled = true; }, () => { settled = true; });
+
+    xhr().tick(30);
+    mockNetwork.emit({ type: 'cellular', offline: false });
+    jest.advanceTimersByTime(NETWORK_CHANGE_STALL_MS - 1_000);
+    xhr().tick(31);                       // the old socket is fine: the normal window is back
+    jest.advanceTimersByTime(STALL_TIMEOUT_MS - 1_000);
+
+    expect(xhr().aborted).toBe(false);
+    expect(settled).toBe(false);
+  });
+
+  it('stops watching the network once the request ends', async () => {
+    const p = uploadFile(() => {});
+    xhr().tick(100);
+    xhr().onload?.();
+    await p;
+
+    expect(mockNetwork.listeners).toHaveLength(0);
+    expect(mockNetwork.unsubscribed).toBe(1);
+  });
+
+  it('a request that cannot even start rejects at once, with nothing left running', async () => {
+    FakeXHR.throwOnSend = true;
+
+    await expect(uploadFile(() => {})).rejects.toThrow('Could not read the file.');
+    expect(jest.getTimerCount()).toBe(0);
+    expect(mockNetwork.listeners).toHaveLength(0);
+  });
 });
 
 // The upload screen stops an early upload when the artist swaps or removes the file. Without
@@ -157,6 +274,8 @@ describe('stopping an upload from outside', () => {
 
   beforeEach(() => {
     FakeXHR.last = undefined;
+    FakeXHR.throwOnSend = false;
+    jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.useFakeTimers();
     (global as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXHR;
     jest.isolateModules(() => {
@@ -172,6 +291,7 @@ describe('stopping an upload from outside', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.resetModules();
+    jest.restoreAllMocks();
   });
 
   it('ends the request mid-way, reported as a cancel, with nothing left running', async () => {

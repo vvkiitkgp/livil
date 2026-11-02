@@ -57,3 +57,41 @@ describe('subscribeToOffline', () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe('subscribeToNetworkChange', () => {
+  afterEach(() => { jest.resetModules(); });
+
+  it('reports the network, then only real switches — not signal-strength noise', () => {
+    type State = { isConnected: boolean | null; isInternetReachable?: boolean | null; type?: string };
+    let listener: (s: State) => void = () => {};
+    jest.doMock('@react-native-community/netinfo', () => ({
+      __esModule: true,
+      default: {
+        configure: () => {},
+        addEventListener: (l: (s: State) => void) => { listener = l; return () => {}; },
+      },
+    }));
+    const { subscribeToNetworkChange } = require('../network');
+    const seen: Array<{ type: string; offline: boolean }> = [];
+    subscribeToNetworkChange((s: { type: string; offline: boolean }) => seen.push(s));
+
+    listener({ isConnected: true, isInternetReachable: true, type: 'wifi' });
+    listener({ isConnected: true, isInternetReachable: true, type: 'wifi' }); // strength only
+    listener({ isConnected: true, isInternetReachable: true, type: 'cellular' });
+    listener({ isConnected: false, isInternetReachable: false, type: 'none' });
+
+    expect(seen).toEqual([
+      { type: 'wifi', offline: false },
+      { type: 'cellular', offline: false },
+      { type: 'none', offline: true },
+    ]);
+  });
+
+  it('is a no-op on a build without NetInfo', () => {
+    jest.doMock('@react-native-community/netinfo', () => {
+      throw new Error('NativeModule.RNCNetInfo is null');
+    });
+    const { subscribeToNetworkChange } = require('../network');
+    expect(() => subscribeToNetworkChange(() => {})()).not.toThrow();
+  });
+});

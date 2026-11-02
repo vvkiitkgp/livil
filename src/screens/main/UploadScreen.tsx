@@ -62,6 +62,8 @@ import {
 } from '../../../shared/services/copyrightScan';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
+import { useIsOffline } from '../../services/network';
+import { autoRetryDelay, interruptionCopy, isUploadNetworkError } from '../../utils/uploadRecovery';
 import { MIN_TRACK_SECONDS, tooShortMessage } from '../../../shared/constants/media';
 import { pickSquareImageFromGallery, pickVideoFromGallery } from '../../services/mediaPicks';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
@@ -125,7 +127,8 @@ type Staging =
   | { status: 'uploading'; fraction: number }
   | { status: 'checking' }
   | { status: 'ready'; staged: StagedUpload }
-  | { status: 'failed' };
+  /** `network`: the connection stopped it (retried by itself once, and offers Try again). */
+  | { status: 'failed'; network: boolean; reason: string };
 
 /**
  * Where the desktop studio lives.
@@ -587,6 +590,29 @@ export default function UploadScreen() {
   const stagingTokenRef = useRef<StagingToken | null>(null);
   const [awaitingStaging, setAwaitingStaging] = useState(false);
 
+  // ── When the connection stops an upload ──────────────────────────────────────
+  //
+  // A failure the connection caused (`UploadNetworkError`: a stall, a dropped connection, a
+  // step that got no answer) is retried ONCE by itself, a few seconds after the phone is
+  // online — at once if it still is, else when it comes back — and after that offers Try
+  // again. Never a silent freeze: there is always a message, and a button unless the retry
+  // is about to start. Retrying starts from 0%: a request that broke cannot be resumed
+  // (see `kb/architecture/media-pipeline.md`).
+  //
+  // Two uploaders can be stopped this way — the early upload and Post — and they must never
+  // both re-send the file. Post owns retrying from the moment it is tapped: the early
+  // upload never retries by itself while Post is running or has an interruption showing.
+  // (A Post that finds an early upload running waits for it instead of starting another.)
+  const offline = useIsOffline();
+  /** Bumped to start the early upload again (Try again, or the automatic retry). */
+  const [stagingAttempt, setStagingAttempt] = useState(0);
+  /** The file whose early upload has used its one automatic retry. */
+  const [stagingAutoRetriedFile, setStagingAutoRetriedFile] = useState<PickedFile | null>(null);
+  /** Post stopped by the connection: shown in place of the Post button, with Try again. */
+  const [postFailure, setPostFailure] = useState<{ reason: string } | null>(null);
+  const [postAutoRetried, setPostAutoRetried] = useState(false);
+  const lastStagedFileRef = useRef<PickedFile | null>(null);
+
   // Uploads staged on an earlier visit whose app was killed before they were posted.
   useEffect(() => { void sweepStagedUploads(); }, []);
 
@@ -607,6 +633,10 @@ export default function UploadScreen() {
     };
     stagingTokenRef.current = token;
     const abandoned = () => token.abandoned;
+    // Same file as the last run: this is Try again or the automatic retry, not a new pick.
+    const again = lastStagedFileRef.current === stagedFile;
+    lastStagedFileRef.current = stagedFile;
+    console.log(`[LIVIL][upload] staging: ${again ? 'starting again from 0%' : 'starting'} (${mode})`);
     setStaging({ status: 'uploading', fraction: 0 });
     const promise = stageMediaUpload(
       stagedFile,
@@ -626,8 +656,13 @@ export default function UploadScreen() {
       })
       .catch((err: unknown) => {
         if (err instanceof StagingAbandonedError || abandoned()) { return null; }
-        console.log('[LIVIL][upload] early upload failed', err);
-        setStaging({ status: 'failed' });
+        const network = isUploadNetworkError(err);
+        console.log(`[LIVIL][upload] early upload failed (${network ? 'connection' : 'other'})`, err);
+        setStaging({
+          status: 'failed',
+          network,
+          reason: err instanceof Error ? err.message : 'The upload stopped.',
+        });
         return null;
       });
     token.promise = promise;
@@ -642,7 +677,29 @@ export default function UploadScreen() {
       setStaging({ status: 'idle' });
       if (staged) { void discardStagedUpload(staged); }
     };
-  }, [mode, stagedFile]);
+    // `stagingAttempt` starts the same file again (Try again / the automatic retry).
+  }, [mode, stagedFile, stagingAttempt]);
+
+  const stagingAutoUsed = !!stagedFile && stagingAutoRetriedFile === stagedFile;
+  const stagingNetworkFailure = staging.status === 'failed' && staging.network;
+
+  // The early upload's one automatic retry (see "When the connection stops an upload").
+  useEffect(() => {
+    if (!stagingNetworkFailure || submitting || postFailure || !stagedFile) { return; }
+    const delay = autoRetryDelay({ network: true, offline, autoRetryUsed: stagingAutoUsed });
+    if (delay == null) { return; }
+    const t = setTimeout(() => {
+      console.log('[LIVIL][upload] staging: retrying by itself (connection is back)');
+      setStagingAutoRetriedFile(stagedFile);
+      setStagingAttempt(n => n + 1);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [stagingNetworkFailure, submitting, postFailure, stagedFile, offline, stagingAutoUsed]);
+
+  const retryStagingNow = useCallback(() => {
+    console.log('[LIVIL][upload] staging: Try again tapped');
+    setStagingAttempt(n => n + 1);
+  }, []);
 
   // The staged song matched a known recording and the artist has not answered yet.
   const needsAnswer =
@@ -833,8 +890,11 @@ export default function UploadScreen() {
 
   const canSubmit = !submitting && missing.length === 0;
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (opts?: { auto?: boolean }) => {
     setPreviewPaused(true);
+    // A tap (Post or Try again) earns a fresh automatic retry; the retry itself does not.
+    setPostFailure(null);
+    if (!opts?.auto) { setPostAutoRetried(false); }
     if (missing.length > 0) {
       setError(`Still needed: ${missing.map(m => m.label).join(', ')}.`);
       return;
@@ -889,10 +949,15 @@ export default function UploadScreen() {
       const token = stagingTokenRef.current;
       let staged = token && !token.abandoned ? token.staged : null;
       if (token && !token.abandoned && !staged && token.promise) {
+        console.log('[LIVIL][upload] post: waiting for the early upload to finish');
         setAwaitingStaging(true);
         staged = await token.promise;
         setAwaitingStaging(false);
-        if (token.abandoned) { return; } // backed out at the question: the file is gone
+        if (token.abandoned) {
+          // Backed out at the question: the file is gone, and that path set its own notice.
+          console.log('[LIVIL][upload] post: stopped — the early upload was cancelled at the copyright question');
+          return;
+        }
       }
       if (token && staged) {
         // Post owns it now: leaving the screen must not remove it mid-publish. The
@@ -903,11 +968,13 @@ export default function UploadScreen() {
           result = await publishStagedTrack(staged, input, onProgress, askAboutMatch);
         } catch (err) {
           // Removed with everything else by the failed publish — so a retry goes the
-          // classic way, uploading everything at Post.
-          setStaging({ status: 'failed' });
+          // classic way, uploading everything at Post. Not a `network` failure here even when
+          // the connection caused it: Post owns that retry, and the early upload is gone.
+          setStaging({ status: 'failed', network: false, reason: '' });
           throw err;
         }
       } else {
+        if (token) { console.log('[LIVIL][upload] post: no early upload to use — uploading everything now'); }
         result = await createTrack(input, onProgress, askAboutMatch);
       }
       // Tag into the selected album if the user picked one. Fire-and-forget —
@@ -930,9 +997,18 @@ export default function UploadScreen() {
       // as an error would tell someone who just decided not to publish that something
       // went wrong — the form stays as it was, ready to edit or abandon.
       if (err instanceof UploadCancelledError) {
+        console.log('[LIVIL][upload] post: cancelled at the copyright question');
+        return;
+      }
+      // The connection, not the post, failed: the interruption block takes the Post
+      // button's place (with Try again) instead of a dead-end error at the top.
+      if (isUploadNetworkError(err)) {
+        console.log(`[LIVIL][upload] post: interrupted at "${err.step}"`);
+        setPostFailure({ reason: err.message });
         return;
       }
       const message = err instanceof Error ? err.message : 'Something went wrong.';
+      console.log('[LIVIL][upload] post failed', message);
       setError(message);
     } finally {
       // Clears whether the upload finished, failed, or was cancelled — and drops any
@@ -942,6 +1018,22 @@ export default function UploadScreen() {
       setSubmitting(false);
     }
   }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum, studio, studioFile]);
+
+  // Post's one automatic retry. Through a ref, so the timer always runs the current form.
+  // Only on the Preview page, where its progress is shown — never behind the steps.
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+  useEffect(() => {
+    if (!postFailure || submitting || !reviewing) { return; }
+    const delay = autoRetryDelay({ network: true, offline, autoRetryUsed: postAutoRetried });
+    if (delay == null) { return; }
+    const t = setTimeout(() => {
+      console.log('[LIVIL][upload] post: retrying by itself (connection is back)');
+      setPostAutoRetried(true);
+      void handleSubmitRef.current({ auto: true });
+    }, delay);
+    return () => clearTimeout(t);
+  }, [postFailure, submitting, reviewing, offline, postAutoRetried]);
 
   // ── Pieces ───────────────────────────────────────────────────────────────────
 
@@ -1057,10 +1149,36 @@ export default function UploadScreen() {
             ? 'Uploaded · no match with known recordings'
             : "Uploaded · couldn't check it yet, it's checked again when you post";
         break;
-      case 'failed':
-        icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
-        text = "Couldn't upload it yet — it will upload when you post.";
-        break;
+      case 'failed': {
+        if (!staging.network) {
+          icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
+          text = "Couldn't upload it yet — it will upload when you post.";
+          break;
+        }
+        // Once Post has been tapped it owns retrying, so this one no longer retries by itself.
+        const copy = interruptionCopy({
+          offline,
+          autoRetryUsed: stagingAutoUsed || !!postFailure,
+          reason: staging.reason,
+        });
+        return (
+          <View style={styles.matchCard}>
+            <View style={styles.interruptHead}>
+              {copy.showTryAgain
+                ? <Icon name="offline" size={16} color={COLORS.warning} />
+                : <ActivityIndicator size="small" color={COLORS.warning} />}
+              <Text style={styles.matchTitle}>{copy.title}</Text>
+            </View>
+            <Text style={styles.matchBody}>{copy.body}</Text>
+            {copy.showTryAgain ? (
+              <>
+                <Text style={styles.stagingText}>Or carry on — it uploads when you post.</Text>
+                <Button label="Try again" onPress={retryStagingNow} variant="primary" size="sm" />
+              </>
+            ) : null}
+          </View>
+        );
+      }
       default:
         return null;
     }
@@ -1597,6 +1715,32 @@ export default function UploadScreen() {
     </>
   );
 
+  // Post stopped by the connection: where the progress bar was, so it is seen at once.
+  const renderPostInterrupted = (reason: string) => {
+    const copy = interruptionCopy({ offline, autoRetryUsed: postAutoRetried, reason });
+    return (
+      <View style={styles.footerStack}>
+        <View style={styles.interruptHead}>
+          {copy.showTryAgain
+            ? <Icon name="offline" size={18} color={COLORS.warning} />
+            : <ActivityIndicator size="small" color={COLORS.purpleLight} />}
+          <Text style={styles.progressLabel}>{copy.title}</Text>
+        </View>
+        <Text style={styles.interruptBody}>{copy.body}</Text>
+        {copy.showTryAgain ? (
+          <Button
+            label="Try again"
+            onPress={() => { void handleSubmit(); }}
+            variant="primary"
+            size="lg"
+            fullWidth
+            disabled={!canSubmit}
+          />
+        ) : null}
+      </View>
+    );
+  };
+
   const headerBack = () => {
     if (submitting) { return; }
     if (reviewing) { setReviewing(false); return; }
@@ -1717,6 +1861,8 @@ export default function UploadScreen() {
                 <ActivityIndicator color={COLORS.purpleLight} style={styles.progressSpinner} />
               ) : null}
             </View>
+          ) : postFailure ? (
+            renderPostInterrupted(postFailure.reason)
           ) : (
             <View style={styles.footerStack}>
               <Button
@@ -2220,6 +2366,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   matchTitle: { color: COLORS.warning, fontSize: 14, fontWeight: '700' },
+  interruptHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  interruptBody: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   matchBody: { color: COLORS.white, fontSize: 13, lineHeight: 18 },
 
   // ── Preview page ──
