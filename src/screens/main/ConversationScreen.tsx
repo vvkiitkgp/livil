@@ -93,7 +93,8 @@ import ChatTimeSeparator from '../../components/ChatTimeSeparator';
 import SwipeRevealRow from '../../components/SwipeRevealRow';
 import SwipeReplyRow from '../../components/SwipeReplyRow';
 import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
-import { formatChatTimestamp, formatChatTimeOnly, shouldShowTimeSeparator } from '../../utils/chatTime';
+import { formatChatTimestamp, formatChatTimeOnly, sameChatRun, shouldShowTimeSeparator } from '../../utils/chatTime';
+import { mergeNewestFirst, settlePending } from '../../utils/chatOrder';
 import ChatGifPicker from '../../components/ChatGifPicker';
 import CommentGifCard from '../../components/CommentGifCard';
 import { MAX_GIF_QUERY_LENGTH, rememberGif, useGifsEnabled, type Gif } from '../../services/gifs';
@@ -108,10 +109,12 @@ import {
   randomUuid,
 } from '../../utils/chatMedia';
 import { serverNow } from '../../utils/serverClock';
+import { getMyUserId } from '../../services/session';
 import {
   fetchChatMediaSavers,
   localChatMedia,
   prefetchChatMedia,
+  queueChatMediaPrefetch,
   sendChatMedia,
   subscribeChatMediaSaves,
   useChatMediaEnabled,
@@ -220,6 +223,17 @@ function JamInviteBubble({
   );
 }
 
+/** Same savers for the same messages: a lookup that changed nothing must not re-render the list. */
+function sameSavers(a: Record<string, ChatMediaSaver[]>, b: Record<string, ChatMediaSaver[]>): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) { return false; }
+  return keys.every(k => {
+    const x = a[k];
+    const y = b[k];
+    return !!y && x.length === y.length && x.every((s, i) => s.userId === y[i].userId);
+  });
+}
+
 /** A GIF in a chat bubble: a little larger than in a comment. */
 const CHAT_GIF_MAX_W = 220;
 const CHAT_GIF_MAX_H = 260;
@@ -243,9 +257,15 @@ function MessageBubble({
   mediaSavers,
   mediaLoading,
   onOpenChatMedia,
+  showName,
+  showAvatar,
 }: {
   msg: ChatMessage;
   isMe: boolean;
+  /** First bubble of this person's run: their name above it. */
+  showName: boolean;
+  /** Last bubble of this person's run: their photo beside it (a same-width gap otherwise). */
+  showAvatar: boolean;
   conversationId: string;
   conversationTitle: string;
   repliedTo: ChatMessage | null;
@@ -334,7 +354,8 @@ function MessageBubble({
 
   return (
     <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
-      {!isMe && (
+      {!isMe && !showAvatar && <View style={styles.senderAvatarGap} />}
+      {!isMe && showAvatar && (
         <View style={styles.senderAvatarWrap}>
           {msg.senderAvatarUrl ? (
             <Image source={{ uri: msg.senderAvatarUrl }} style={styles.senderAvatar} />
@@ -349,7 +370,7 @@ function MessageBubble({
       )}
 
       <View style={[styles.bubbleColumn, isMe && styles.bubbleColumnMe]}>
-        {!isMe && (
+        {!isMe && showName && (
           <View style={styles.senderNameRow}>
             <Text style={styles.senderName}>
               {msg.senderDisplayName || msg.senderUsername}
@@ -638,6 +659,142 @@ async function markReadAndRefreshBadge(conversationId: string): Promise<void> {
   requestBadgeRefresh();
 }
 
+/** What a chat row can do. One stable object per chat (rowActions), so it never breaks MessageRow's memo. */
+type RowActions = {
+  onReply: (msg: ChatMessage) => void;
+  onReplyQuotePress: (originalId: string) => void;
+  onLongPress: (msg: ChatMessage) => void;
+  onReactionToggle: (msg: ChatMessage, emoji: string) => void;
+  onPlaySharedPost: (postId: string) => void;
+  onRepostSharedPost: (postId: string) => void;
+  onOpenSharedProfile: (username: string) => void;
+  onOpenSharedRepost: (postId: string) => void;
+  onOpenReposterProfile: (userId: string) => void;
+  onOpenChatMedia: (msg: ChatMessage, origin: { x: number; y: number }) => void;
+};
+
+type MessageRowProps = {
+  item: ChatMessage;
+  isMe: boolean;
+  showSep: boolean;
+  showName: boolean;
+  showAvatar: boolean;
+  conversationId: string;
+  conversationTitle: string;
+  repliedTo: ChatMessage | null;
+  isHighlighted: boolean;
+  /** Only on my latest outgoing message (a DM's Sending / Delivered / Seen). */
+  readStatus: 'sending' | 'delivered' | 'seen' | null;
+  mediaSavers: ChatMediaSaver[] | undefined;
+  mediaLoading: boolean;
+  actions: RowActions;
+};
+
+/**
+ * One chat row: time separator, swipe-to-see-time, the bubble, the read status. Memoised,
+ * so a change to the list re-renders only the rows it touches. Without it, every new page,
+ * message or status re-rendered every bubble (with its gestures and animated styles): on the
+ * owner's Android test phone that held the JS thread for ~3 s after a chat's messages had
+ * already arrived, so the newest message showed seconds late (CPU profile, 2026-11-03).
+ */
+const MessageRow = React.memo(function ChatRow({
+  item,
+  isMe,
+  showSep,
+  showName,
+  showAvatar,
+  conversationId,
+  conversationTitle,
+  repliedTo,
+  isHighlighted,
+  readStatus,
+  mediaSavers,
+  mediaLoading,
+  actions,
+}: MessageRowProps) {
+  return (
+    <>
+      {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
+      <SwipeRevealRow timestamp={formatChatTimeOnly(item.createdAt)}>
+        <MessageBubble
+          msg={item}
+          isMe={isMe}
+          // A run of one person's bubbles: name on the first, photo beside the last.
+          showName={showName}
+          showAvatar={showAvatar}
+          conversationId={conversationId}
+          conversationTitle={conversationTitle}
+          repliedTo={repliedTo}
+          isHighlighted={isHighlighted}
+          onReply={() => actions.onReply(item)}
+          onReplyQuotePress={actions.onReplyQuotePress}
+          onLongPress={actions.onLongPress}
+          onReactionToggle={actions.onReactionToggle}
+          onPlaySharedPost={actions.onPlaySharedPost}
+          onRepostSharedPost={actions.onRepostSharedPost}
+          onOpenSharedProfile={actions.onOpenSharedProfile}
+          onOpenSharedRepost={actions.onOpenSharedRepost}
+          onOpenReposterProfile={actions.onOpenReposterProfile}
+          mediaSavers={mediaSavers}
+          mediaLoading={mediaLoading}
+          onOpenChatMedia={actions.onOpenChatMedia}
+        />
+        {readStatus ? (
+          <Text style={styles.readStatus}>
+            {readStatus === 'seen' ? 'Seen' : readStatus === 'delivered' ? 'Delivered' : 'Sending…'}
+          </Text>
+        ) : null}
+      </SwipeRevealRow>
+    </>
+  );
+}, sameRow);
+
+/**
+ * MessageRow's memo test. A refetch hands back NEW objects for unchanged messages, so the
+ * message (and the one it replies to) is compared by what a bubble shows, everything else
+ * by identity.
+ */
+function sameRow(a: MessageRowProps, b: MessageRowProps): boolean {
+  return (
+    sameMessage(a.item, b.item)
+    && (a.repliedTo === b.repliedTo || (!!a.repliedTo && !!b.repliedTo && sameMessage(a.repliedTo, b.repliedTo)))
+    && a.isMe === b.isMe
+    && a.showSep === b.showSep
+    && a.showName === b.showName
+    && a.showAvatar === b.showAvatar
+    && a.conversationId === b.conversationId
+    && a.conversationTitle === b.conversationTitle
+    && a.isHighlighted === b.isHighlighted
+    && a.readStatus === b.readStatus
+    && a.mediaSavers === b.mediaSavers
+    && a.mediaLoading === b.mediaLoading
+    && a.actions === b.actions
+  );
+}
+
+function sameMessage(a: ChatMessage, b: ChatMessage): boolean {
+  if (a === b) { return true; }
+  return (
+    a.id === b.id
+    && a.kind === b.kind
+    && a.body === b.body
+    && a.createdAt === b.createdAt
+    && a.deletedAt === b.deletedAt
+    && a.replyToId === b.replyToId
+    && a.senderId === b.senderId
+    && a.senderUsername === b.senderUsername
+    && a.senderDisplayName === b.senderDisplayName
+    && a.senderAvatarUrl === b.senderAvatarUrl
+    && JSON.stringify(a.metadata) === JSON.stringify(b.metadata)
+    && a.reactions.length === b.reactions.length
+    && a.reactions.every((r, i) => {
+      const o = b.reactions[i];
+      return r.emoji === o.emoji && r.count === o.count && r.reactedByMe === o.reactedByMe
+        && r.users.join() === o.users.join();
+    })
+  );
+}
+
 export default function ConversationScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -753,6 +910,8 @@ export default function ConversationScreen() {
   const [mediaSheetOpen, setMediaSheetOpen] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<{ media: PickedChatMedia; source: ChatMediaSource } | null>(null);
   const [mediaSavers, setMediaSavers] = useState<Record<string, ChatMediaSaver[]>>({});
+  /** The first page came back from the network (or failed): photo downloads may start. */
+  const [firstPageIn, setFirstPageIn] = useState(false);
   const { runAfterDismiss: runAfterMediaSheet, onDismiss: onMediaSheetDismiss } = useRunAfterDismiss();
   const [gifMode, setGifMode] = useState(false);
   const [gifQuery, setGifQuery] = useState('');
@@ -763,6 +922,8 @@ export default function ConversationScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [myId, setMyId] = useState<string>('');
   const [myProfile, setMyProfile] = useState<{ username: string | null; displayName: string | null; avatarUrl: string | null }>({ username: null, displayName: null, avatarUrl: null });
+  const myProfileRef = useRef(myProfile);
+  myProfileRef.current = myProfile;
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [otherUserId, setOtherUserId] = useState<string | null>(null);
   const [otherUserAvatarUrl, setOtherUserAvatarUrl] = useState<string | null>(null);
@@ -862,8 +1023,10 @@ export default function ConversationScreen() {
     let cancelled = false;
 
     // ── Profile (fire-and-forget, non-blocking) ──────────────────────────────
-    supabase.auth.getUser().then(async ({ data }) => {
-      const uid = data?.user?.id ?? '';
+    // The id from the session on the phone, at once: a server round trip here (`getUser()`)
+    // left myId empty for the first second, so the chat's realtime channel joined twice.
+    getMyUserId().catch(() => null).then(async found => {
+      const uid = found ?? '';
       if (!cancelled) { setMyId(uid); }
       if (uid) {
         const { data: prof } = await db
@@ -882,11 +1045,20 @@ export default function ConversationScreen() {
     });
 
     // ── Messages: start network fetch immediately, read cache in parallel ────
+    const openedAt = Date.now();
+    let serverPageIn = false;
     const networkPromise = fetchFirstPageWithRetry(conversationId);
 
-    // Show cached messages instantly (no spinner if cache hit)
+    // Show cached messages instantly (no spinner if cache hit) — but never AFTER the server's
+    // page: on Android the saved copy can be the slower of the two, and showing it then put
+    // the older page back, hiding the newest message until a catch-up (2026-11-03).
     messageCache.getMessages(conversationId).then(cached => {
-      if (!cancelled && cached && cached.length > 0) {
+      if (cancelled) { return; }
+      if (serverPageIn) {
+        console.log(`[chat] open: saved copy came after the server page (${Date.now() - openedAt} ms) — ignored`);
+        return;
+      }
+      if (cached && cached.length > 0) {
         setMessages(cached);
         setLoading(false);
       }
@@ -896,9 +1068,12 @@ export default function ConversationScreen() {
     networkPromise
       .then(({ messages: msgs, nextCursor: cursor }) => {
         if (!cancelled) {
+          serverPageIn = true;
+          console.log(`[chat] open: server page in ${Date.now() - openedAt} ms`);
           setMessages(msgs);
           setNextCursor(cursor);
           setLoading(false);
+          setFirstPageIn(true);
           // Write-through: persist first page so next open is instant
           void messageCache.setMessages(conversationId, msgs);
         }
@@ -906,6 +1081,7 @@ export default function ConversationScreen() {
       .catch((err: unknown) => {
         if (!cancelled) {
           setLoading(false);
+          setFirstPageIn(true);
           console.warn('[chat] fetchMessages failed', err);
           showToast("Couldn't load messages. Please try again.", { kind: 'error' });
         }
@@ -951,11 +1127,9 @@ export default function ConversationScreen() {
       if (!aliveRef.current) { return; }
       const onScreen = new Set(messagesRef.current.map(m => m.id));
       const added = latest.filter(m => !onScreen.has(m.id)).length;
-      setMessages(prev => {
-        const known = new Set(prev.map(m => m.id));
-        const fresh = latest.filter(m => !known.has(m.id));
-        return fresh.length === 0 ? prev : [...fresh, ...prev];
-      });
+      // In server order, not on top: a catch-up can bring an older message in after newer
+      // ones (utils/chatOrder.ts).
+      setMessages(prev => mergeNewestFirst(prev, latest));
       if (added > 0) {
         console.log(`[chat] catch-up (${reason}) added ${added} message(s)`);
         setTimeout(scrollToLatest, 50);
@@ -1054,8 +1228,8 @@ export default function ConversationScreen() {
             console.log(`[realtime] ConversationScreen duplicate id=${msg.id} — skipping`);
             return prev;
           }
-          console.log(`[realtime] ConversationScreen setMessages prepending id=${msg.id} (was ${prev.length} msgs)`);
-          return [msg, ...prev];
+          console.log(`[realtime] ConversationScreen setMessages adding id=${msg.id} (was ${prev.length} msgs)`);
+          return mergeNewestFirst(prev, [msg]);
         });
         setTimeout(scrollToLatest, 50);
         // Keep cache warm so the next open of this conversation shows the new msg
@@ -1145,20 +1319,28 @@ export default function ConversationScreen() {
     }
   }, [conversationId, myId, isGroup, kind]);
 
+  // Refs, not state: onEndReached can fire again before a re-render, and with state both
+  // calls passed the guard and fetched — and appended — the same page: every bubble twice,
+  // and a late duplicate brought "load more" back after "No older messages" (2026-11-03).
+  const loadingMoreRef = useRef(false);
+  const nextCursorRef = useRef(nextCursor);
+  nextCursorRef.current = nextCursor;
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore) { return; }
+    const cursor = nextCursorRef.current;
+    if (!cursor || loadingMoreRef.current) { return; }
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const { messages: older, nextCursor: cursor } = await fetchMessages(
-        conversationId,
-        nextCursor,
-      );
-      setMessages(prev => [...prev, ...older]);
-      setNextCursor(cursor);
+      const { messages: older, nextCursor: next } = await fetchMessages(conversationId, cursor);
+      // Merged, not appended: anything already on screen is skipped.
+      setMessages(prev => mergeNewestFirst(prev, older));
+      nextCursorRef.current = next;
+      setNextCursor(next);
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [conversationId, nextCursor, loadingMore]);
+  }, [conversationId]);
 
   const sendDisabled = !text.trim() || sending;
 
@@ -1196,7 +1378,7 @@ export default function ConversationScreen() {
         : { kind: 'text', body };
       const real = await sendMessage(conversationId, payload, myProfile);
       setMessages(prev =>
-        prev.map(m => (m.id === optimistic.id ? real : m)),
+        settlePending(prev, optimistic.id, real),
       );
       // Update cache: replace optimistic with the confirmed message
       void messageCache.prependMessages(conversationId, [real]);
@@ -1275,7 +1457,7 @@ export default function ConversationScreen() {
     setTimeout(scrollToLatest, 50);
     try {
       const real = await sendMessage(conversationId, payload, myProfile);
-      setMessages(prev => prev.map(m => (m.id === optimistic.id ? real : m)));
+      setMessages(prev => settlePending(prev, optimistic.id, real));
       void messageCache.prependMessages(conversationId, [real]);
     } catch (err) {
       console.warn('[chat] gif send failed', err);
@@ -1376,7 +1558,7 @@ export default function ConversationScreen() {
     try {
       // The picker's file is this phone's copy for the 20 minutes, then it is deleted.
       const real = await sendChatMedia(conversationId, media, myProfile, () => cleanPickedFile(media.uri));
-      setMessages(prev => prev.map(m => (m.id === optimistic.id ? real : m)));
+      setMessages(prev => settlePending(prev, optimistic.id, real));
       void messageCache.prependMessages(conversationId, [real]);
     } catch (err) {
       console.warn('[chat] media send failed', err);
@@ -1406,8 +1588,12 @@ export default function ConversationScreen() {
       // `messages` is newest first; the viewer goes oldest → newest.
       .reverse();
     const index = Math.max(0, fromSender.findIndex(m => m.id === msg.id));
-    navigation.navigate('ChatMediaViewer', { messages: fromSender, index, origin });
-  }, [navigation]);
+    // myName titles the chat a save notification opens (a DM is named after the person).
+    // Read from a ref: as a dependency, the profile arriving re-rendered every bubble on open.
+    const me = myProfileRef.current;
+    const myName = me.displayName || me.username || '';
+    navigation.navigate('ChatMediaViewer', { messages: fromSender, index, origin, myId, myName });
+  }, [navigation, myId]);
 
   /**
    * "Tap to view". Downloaded → the viewer opens at once. Still downloading → a spinner in
@@ -1437,15 +1623,19 @@ export default function ConversationScreen() {
   }, [handleOpenChatMedia, navigation, showToast]);
 
   // Photos are fetched the moment they are on screen, so they open instantly — and offline —
-  // for as long as they exist. Your own included: this phone holds what it just sent, but
+  // for as long as they exist (leaving the app deletes them; they are fetched again on
+  // return — services/chatMedia.ts). Your own included: this phone holds what it just sent, but
   // not what you sent from another device or before a restart. Quiet and idempotent.
+  // One at a time (queueChatMediaPrefetch), and only once the chat's own first page is in, so
+  // they never hold up its messages.
   useEffect(() => {
+    if (!firstPageIn) { return; }
     for (const m of messages) {
       if (m.kind === 'text' && chatMediaFrom(m.metadata)) {
-        void prefetchChatMedia(m);
+        queueChatMediaPrefetch(m);
       }
     }
-  }, [messages]);
+  }, [messages, firstPageIn]);
 
   // "Saved to phone by": loaded for every media message on screen, and kept live.
   const mediaIdsKey = useMemo(
@@ -1459,7 +1649,9 @@ export default function ConversationScreen() {
     if (!mediaIdsKey) { return; }
     let cancelled = false;
     void fetchChatMediaSavers(mediaIdsKey.split(',')).then(found => {
-      if (!cancelled) { setMediaSavers(found); }
+      // Unchanged (most chats: nobody saved anything) → keep the same object, or every
+      // bubble re-renders for nothing while the chat opens.
+      if (!cancelled) { setMediaSavers(prev => (sameSavers(prev, found) ? prev : found)); }
     });
     return () => { cancelled = true; };
   }, [mediaIdsKey]);
@@ -1535,7 +1727,7 @@ export default function ConversationScreen() {
 
     try {
       const real = await sendMessage(conversationId, payload, myProfile);
-      setMessages(prev => prev.map(m => (m.id === optimistic.id ? real : m)));
+      setMessages(prev => settlePending(prev, optimistic.id, real));
       void messageCache.prependMessages(conversationId, [real]);
     } catch (err) {
       console.warn('[chat] song send failed', err);
@@ -1711,6 +1903,38 @@ export default function ConversationScreen() {
     [insets.bottom, onContentInsetChange],
   );
 
+  // The latest handlers, read by rowActions at call time: rowActions itself never changes, so
+  // passing it keeps MessageRow's memo intact (see MessageRow).
+  const latestRowActions = useRef<RowActions | null>(null);
+  latestRowActions.current = {
+    // Arming a reply leaves song search: a picked song can't be a reply.
+    onReply: msg => { closeSongSearch(); closeGifSearch(); setReplyingTo(msg); },
+    onReplyQuotePress: handleReplyQuotePress,
+    onLongPress: handleLongPress,
+    onReactionToggle: handleReactionToggle,
+    onPlaySharedPost: handlePlaySharedPost,
+    onRepostSharedPost: handleRepostSharedPost,
+    onOpenSharedProfile: handleOpenSharedProfile,
+    onOpenSharedRepost: handleOpenSharedRepost,
+    onOpenReposterProfile: handleOpenReposterProfile,
+    onOpenChatMedia: handleTapChatMedia,
+  };
+  const rowActions = useMemo<RowActions>(() => {
+    const now = () => latestRowActions.current!;
+    return {
+      onReply: msg => now().onReply(msg),
+      onReplyQuotePress: id => now().onReplyQuotePress(id),
+      onLongPress: msg => now().onLongPress(msg),
+      onReactionToggle: (msg, emoji) => now().onReactionToggle(msg, emoji),
+      onPlaySharedPost: id => now().onPlaySharedPost(id),
+      onRepostSharedPost: id => now().onRepostSharedPost(id),
+      onOpenSharedProfile: username => now().onOpenSharedProfile(username),
+      onOpenSharedRepost: id => now().onOpenSharedRepost(id),
+      onOpenReposterProfile: userId => now().onOpenReposterProfile(userId),
+      onOpenChatMedia: (msg, origin) => now().onOpenChatMedia(msg, origin),
+    };
+  }, []);
+
   const renderItem = useCallback(
     ({ item, index }: { item: ChatMessage; index: number }) => {
       // FlatList is inverted, so `messages` is ordered newest→oldest.
@@ -1719,49 +1943,26 @@ export default function ConversationScreen() {
       // bubble when this row begins a new time group (oldest msg, or a
       // gap of more than ~1h since the previous one).
       const prev = messages[index + 1] ?? null;
-      const showSep = shouldShowTimeSeparator(item.createdAt, prev?.createdAt ?? null);
-      const repliedTo = item.replyToId ? messagesById.get(item.replyToId) ?? null : null;
-      const isHighlighted = item.id === highlightedMessageId;
-      const isLatestOutgoing = latestOutgoing?.id === item.id;
+      const next = index > 0 ? messages[index - 1] : null;
       return (
-        <>
-          {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
-          <SwipeRevealRow timestamp={formatChatTimeOnly(item.createdAt)}>
-            <MessageBubble
-              msg={item}
-              isMe={item.senderId === myId}
-              conversationId={conversationId}
-              conversationTitle={title}
-              repliedTo={repliedTo}
-              isHighlighted={isHighlighted}
-              // Arming a reply leaves song search: a picked song can't be a reply.
-              onReply={() => { closeSongSearch(); closeGifSearch(); setReplyingTo(item); }}
-              onReplyQuotePress={handleReplyQuotePress}
-              onLongPress={handleLongPress}
-              onReactionToggle={handleReactionToggle}
-              onPlaySharedPost={handlePlaySharedPost}
-              onRepostSharedPost={handleRepostSharedPost}
-              onOpenSharedProfile={handleOpenSharedProfile}
-              onOpenSharedRepost={handleOpenSharedRepost}
-              onOpenReposterProfile={handleOpenReposterProfile}
-              mediaSavers={mediaSavers[item.id]}
-              mediaLoading={openingMediaId === item.id}
-              onOpenChatMedia={handleTapChatMedia}
-            />
-            {isLatestOutgoing && latestOutgoingStatus ? (
-              <Text style={styles.readStatus}>
-                {latestOutgoingStatus === 'seen'
-                  ? 'Seen'
-                  : latestOutgoingStatus === 'delivered'
-                    ? 'Delivered'
-                    : 'Sending…'}
-              </Text>
-            ) : null}
-          </SwipeRevealRow>
-        </>
+        <MessageRow
+          item={item}
+          isMe={item.senderId === myId}
+          showSep={shouldShowTimeSeparator(item.createdAt, prev?.createdAt ?? null)}
+          showName={!prev || !sameChatRun(prev, item)}
+          showAvatar={!next || !sameChatRun(item, next)}
+          conversationId={conversationId}
+          conversationTitle={title}
+          repliedTo={item.replyToId ? messagesById.get(item.replyToId) ?? null : null}
+          isHighlighted={item.id === highlightedMessageId}
+          readStatus={latestOutgoing?.id === item.id ? latestOutgoingStatus : null}
+          mediaSavers={mediaSavers[item.id]}
+          mediaLoading={openingMediaId === item.id}
+          actions={rowActions}
+        />
       );
     },
-    [myId, conversationId, title, handleLongPress, handleReactionToggle, handlePlaySharedPost, handleRepostSharedPost, handleOpenSharedProfile, handleOpenSharedRepost, handleOpenReposterProfile, messages, messagesById, highlightedMessageId, handleReplyQuotePress, latestOutgoing, latestOutgoingStatus, closeSongSearch, closeGifSearch, mediaSavers, openingMediaId, handleTapChatMedia],
+    [myId, conversationId, title, messages, messagesById, highlightedMessageId, latestOutgoing, latestOutgoingStatus, mediaSavers, openingMediaId, rowActions],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -1952,11 +2153,18 @@ export default function ConversationScreen() {
                     </Text>
                   </View>
                 }
+                // The top of the chat (the list is inverted): a spinner while older messages
+                // load, else a hint that there are more, else that this is the beginning. The
+                // end line waits for the server's first page: a cached page has no cursor yet.
                 ListFooterComponent={
                   loadingMore ? (
                     <View style={styles.loadMoreSpinner}>
                       <ActivityIndicator size="small" color={COLORS.purpleLight} />
                     </View>
+                  ) : messages.length === 0 ? null : nextCursor ? (
+                    <Text style={styles.historyHint}>Pull to load more</Text>
+                  ) : firstPageIn ? (
+                    <Text style={styles.historyHint}>No older messages</Text>
                   ) : null
                 }
               />
@@ -2256,6 +2464,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   loadMoreSpinner: { paddingVertical: 16, alignItems: 'center' },
+  // Same height as loadMoreSpinner (16 + 20 + 16), so swapping hint ↔ spinner never nudges
+  // the messages under it.
+  historyHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
   // Bubbles
   bubbleRow: {
     flexDirection: 'row',
@@ -2265,6 +2482,7 @@ const styles = StyleSheet.create({
   },
   bubbleRowMe: { flexDirection: 'row-reverse' },
   senderAvatarWrap: {},
+  senderAvatarGap: { width: 28 },
   senderAvatar: { width: 28, height: 28, borderRadius: 14 },
   senderAvatarPlaceholder: {
     width: 28,

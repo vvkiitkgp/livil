@@ -12,6 +12,7 @@
 
 import {
   CHAT_TIME_GAP_MS,
+  sameChatRun,
   shouldShowTimeSeparator,
 } from '../chatTime';
 
@@ -68,5 +69,26 @@ describe('shouldShowTimeSeparator', () => {
         oneMinute,
       ),
     ).toBe(true);
+  });
+});
+
+describe('runs of bubbles (name on the first, photo beside the last)', () => {
+  const at = (iso: string, senderId: string | null, kind = 'text') => ({ senderId, kind, createdAt: iso });
+
+  it('joins back-to-back messages from the same person', () => {
+    expect(sameChatRun(at('2026-11-03T00:20:00Z', 'dark_knight'), at('2026-11-03T00:20:30Z', 'dark_knight'))).toBe(true);
+  });
+
+  it('starts a new run when someone else speaks', () => {
+    expect(sameChatRun(at('2026-11-03T00:20:00Z', 'dark_knight'), at('2026-11-03T00:20:30Z', 'riya'))).toBe(false);
+  });
+
+  it('starts a new run after a time separator, even from the same person', () => {
+    expect(sameChatRun(at('2026-11-03T00:20:00Z', 'dark_knight'), at('2026-11-03T02:20:00Z', 'dark_knight'))).toBe(false);
+  });
+
+  it('lets a system line or a jam invite break a run', () => {
+    expect(sameChatRun(at('2026-11-03T00:20:00Z', 'dark_knight', 'system'), at('2026-11-03T00:20:30Z', 'dark_knight'))).toBe(false);
+    expect(sameChatRun(at('2026-11-03T00:20:00Z', 'dark_knight'), at('2026-11-03T00:20:30Z', 'dark_knight', 'jam_invite'))).toBe(false);
   });
 });

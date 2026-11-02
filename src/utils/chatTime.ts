@@ -25,6 +25,25 @@ export function shouldShowTimeSeparator(
   return Math.abs(b - a) >= gapMs;
 }
 
+/**
+ * Whether `later` continues `earlier`'s run of bubbles — the same person, back to back, with
+ * no time separator between them. A run shows its sender's name once, on its first bubble,
+ * and their photo once, beside its last (Instagram). System lines and jam invites are drawn
+ * without either, so they break a run instead of swallowing its name or photo.
+ */
+export function sameChatRun(
+  earlier: { senderId: string | null; kind: string; createdAt: string },
+  later: { senderId: string | null; kind: string; createdAt: string },
+): boolean {
+  const plain = (m: { kind: string }) => m.kind !== 'system' && m.kind !== 'jam_invite';
+  return (
+    plain(earlier)
+    && plain(later)
+    && earlier.senderId === later.senderId
+    && !shouldShowTimeSeparator(later.createdAt, earlier.createdAt)
+  );
+}
+
 function formatTimeOfDay(d: Date): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
@@ -34,7 +53,21 @@ function formatTimeOfDay(d: Date): string {
 // group's date. Matches Instagram, whose swipe gesture reveals only the time
 // (and keeps it from truncating in the narrow reveal slot).
 export function formatChatTimeOnly(iso: string): string {
-  return formatTimeOfDay(new Date(iso));
+  return cachedTimeOfDay(iso);
+}
+
+// toLocaleTimeString is slow on the phone (Hermes on Android: ~7% of a chat's open time in a
+// CPU profile, 2026-11-03), and a chat formats every bubble's time on every render. A
+// message's time of day never changes, so each one is formatted once.
+const timeOfDay = new Map<string, string>();
+function cachedTimeOfDay(iso: string): string {
+  let text = timeOfDay.get(iso);
+  if (text === undefined) {
+    if (timeOfDay.size >= 2000) { timeOfDay.clear(); }
+    text = formatTimeOfDay(new Date(iso));
+    timeOfDay.set(iso, text);
+  }
+  return text;
 }
 
 function isSameCalendarDay(a: Date, b: Date): boolean {
@@ -53,7 +86,7 @@ function isSameCalendarDay(a: Date, b: Date): boolean {
 //   - older, different year  →  "Mar 5, 2024, 12:34 PM"
 export function formatChatTimestamp(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
-  const time = formatTimeOfDay(d);
+  const time = cachedTimeOfDay(iso);
 
   if (isSameCalendarDay(d, now)) {
     return time;

@@ -33,8 +33,12 @@ anywhere: the running timer on the bubble teaches the rule.
 - Recipients' apps **download it as soon as it arrives**, so it opens instantly and offline.
   Open and reopen freely until the 20 minutes are up — **the sender too** (owner, 2026-11-02).
 - While it is open, **screenshots and screen recording are blocked**.
-- The viewer has **Save to phone**. A save is announced in the chat under the bubble:
-  "Saved to phone by" + the saver's avatar.
+- The viewer has **Save to phone**, for everyone in the chat (the sender too). A recipient's
+  save is announced in the chat under the bubble ("Saved to phone by" + the saver's avatar)
+  and by a push to every other member: the sender gets "📸 Saved your photo", anyone else in a
+  group "📸 Saved @arjun's photo". It is a chat `message` push (`notifyChatMediaSaved`), so
+  every shipped app shows it and opens the chat, and send-push needs no new kind. The
+  sender's own save is not recorded or announced (the insert policy refuses it).
 - At 20 minutes the server deletes the file and every app deletes its downloaded copy. The
   bubble turns to *Expired* and does nothing on tap. The **metadata stays forever**: type,
   size, dimensions, duration, sent time, who saved it.
@@ -120,7 +124,7 @@ SQL cannot mint a Storage signed URL, hence a function (ADR-0004 exception, like
 | Prefetch | On a media message on screen and inside the window: `link` → written as a FILE under the app's private folder (`<root>/chat-media/<message_id>/`, via the existing `LivilStudioFiles` module — no new native code for photos). Tapped before it is ready: a spinner in the bubble, the viewer opens when it is. Sender keeps the picker's file. |
 | Bubble | `ChatMediaBubble`: countdown (server-time offset), Expired, "Saved to phone by" avatars. |
 | Viewer | New route `ChatMediaViewer` (`transparentModal`) — **a navigation screen, not an RN `<Modal>`**: an Android Modal is its own Dialog window, which `FLAG_SECURE` on the Activity does not cover. Photo from the local copy; Save button. Opens by growing out of the tap point and closes back into it. Tap = the sender's next live photo sliding in from the right (left third: previous, from the left; past the last: close), swipe down = close, pinch = Instagram-style zoom around the fingers (a finger left down drags it; all fingers up → back to 100%). An expiring photo moves on to the next. |
-| Expiry | A timer deletes local files at expiry; a sweep at launch and on every return to the foreground deletes any left behind. Deleting while the app sleeps in the background: open owner decision (delete on backgrounding vs. a native timed delete). |
+| Expiry | A timer deletes local files at expiry while the app is open. **Leaving the app deletes every local copy at once** (`AppState` → `background`), and on return the photos still in their window are fetched again, so they keep opening instantly while the app is in use; nothing is fetched while backgrounded, and a download that lands then is deleted, not kept. Owner decision 2026-11-02, over a native timed delete: phones do not reliably run an app's timers in the background, and iOS cannot at all. Android also reports `background` under its own dialogs, so Save pins its copy through the Android 7–9 storage-permission prompt (`pinChatMedia`). A sweep at launch deletes anything a killed run left behind. Tests: `src/services/__tests__/chatMediaBackground.test.ts`. |
 | Inbox preview | `message_preview()` gains the two labels → "📷 Sent a photo" / "🎬 Sent a video". |
 
 ### Video playback — through the single engine
@@ -177,7 +181,8 @@ of our own are less risk than four dependencies.
 |---|---|
 | 1. Backend | **Applied + deployed** (`20261118000000`, `…01` grants; `…02` 20 minutes: written, not yet applied). `20261118000000_chat_media.sql` (local replay + `supabase/tests/rls/chat-media.test.sql`, 25 checks; weakening the 6-minute save rule fails #10) and `supabase/functions/chat-media` (16 Deno tests). |
 | 2. App, photo path | **Built.** Camera button (only when `status` says enabled), sheet, gallery photo, preview, send, running-timer bubble, Expired, "Saved to phone by" (display + realtime), received-photo prefetch (in memory), viewer that closes itself at 5:00, push and inbox text. "Camera" opens the system camera for a photo until step 4. No Save button until step 3. |
-| 3–6 | Not started. |
+| 3. Native (part) | **Built on `feat/chat-media-secure-save`.** Capture blocking — iPhone: `LivilSecureImage` draws the photo in a secure-text-field canvas (screenshots/recordings show a "Photo hidden" card); Android: `FLAG_SECURE` on the window while the viewer is open. Save to phone — `LivilChatMedia.saveToPhotos` (iOS add-only Photos access, `NSPhotoLibraryAddUsageDescription`; Android MediaStore → Pictures/Livil, `WRITE_EXTERNAL_STORAGE` ≤ API 28), then `chat_media_saves` so the chat shows "Saved to phone by", and a push to the other members (`notifyChatMediaSaved`; tests `chatMediaSaveNotify.test.ts`). Everyone can save; only a recipient's save is recorded and announced. |
+| 4–6 | Camera next release; video not started. |
 
 ## Tests
 

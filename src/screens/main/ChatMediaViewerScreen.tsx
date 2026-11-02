@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, AppState, Image, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,7 +20,15 @@ import type { RootStackParamList } from '../../navigation/types';
 import Icon from '../../components/Icon';
 import { COLORS } from '../../theme/colors';
 import { useChatMediaLeft } from '../../components/ChatMediaBubble';
-import { prefetchChatMedia, useLocalChatMedia } from '../../services/chatMedia';
+import {
+  fetchChatMediaSavers,
+  notifyChatMediaSaved,
+  pinChatMedia,
+  prefetchChatMedia,
+  recordChatMediaSave,
+  useLocalChatMedia,
+} from '../../services/chatMedia';
+import { chatMediaKit, SecureImage } from '../../native/chatMediaKit';
 import { chatMediaFrom, chatMediaLeftMs, formatLeft, type ChatMedia } from '../../utils/chatMedia';
 import { serverNow } from '../../utils/serverClock';
 import { MIN_ZOOM, pinchZoom, zoomAround } from '../../utils/zoomMath';
@@ -67,6 +75,10 @@ function fitIn(stage: { w: number; h: number }, media: ChatMedia | null): { w: n
  *   swipe down  — closes; the chat shows through as it goes.
  *   pinch       — Instagram-style: zooms around your fingers while you pinch; keep a finger
  *                 down to drag the zoomed photo; lift every finger and it springs back to 100%.
+ *   save        — recipients only: adds the photo to the phone's gallery and records the save,
+ *                 so the chat shows "Saved to phone by" (src/native/chatMediaKit.ts).
+ *   capture     — screenshots and screen recording never get the photo: on iPhone it is drawn
+ *                 in <SecureImage>, on Android the window is FLAG_SECURE while this is open.
  *
  * Shows the copy the chat already fetched, so it opens instantly and offline; one that is not
  * there yet is fetched now. A photo whose 20 minutes run out moves on to the next (or closes).
@@ -87,6 +99,65 @@ export default function ChatMediaViewerScreen() {
   const sender = message ? message.senderDisplayName || message.senderUsername || '' : '';
   const [stage, setStage] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const fitted = useMemo(() => fitIn(stage, media), [stage, media]);
+  const myId = params.myId ?? '';
+  const myName = params.myName ?? '';
+
+  // Android: no screenshots or recording of the window while a photo is open.
+  useEffect(() => {
+    chatMediaKit.setSecure(true);
+    return () => chatMediaKit.setSecure(false);
+  }, []);
+
+  // ── Save to phone ───────────────────────────────────────────────────────────
+  const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (noticeTimer.current) { clearTimeout(noticeTimer.current); } }, []);
+  /** A short banner under the header. (The app's toast sits behind this modal on iPhone.) */
+  const flash = useCallback((text: string, ok: boolean) => {
+    if (noticeTimer.current) { clearTimeout(noticeTimer.current); }
+    setNotice({ text, ok });
+    noticeTimer.current = setTimeout(() => setNotice(null), 2200);
+  }, []);
+  // Already saved by me (an earlier visit)? The button starts as done.
+  useEffect(() => {
+    if (!message || !myId || message.senderId === myId) { return; }
+    let cancelled = false;
+    void fetchChatMediaSavers([message.id]).then(found => {
+      if (!cancelled && found[message.id]?.some(s => s.userId === myId)) {
+        setSavedIds(prev => new Set(prev).add(message.id));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [message, myId]);
+  // Anyone in the chat, the sender included — from a copy that is a file.
+  const canSave = !!message && !!myId
+    && chatMediaKit.available && !!uri && uri.startsWith('file://');
+  const isSaved = !!message && savedIds.has(message.id);
+  const onSave = useCallback(async () => {
+    if (!message || !uri || saving || isSaved) { return; }
+    setSaving(true);
+    // Android 7–9 asks for storage access first, and its dialog counts as leaving the app —
+    // which deletes every copy (services/chatMedia.ts). Keep this one until the save is done.
+    const release = pinChatMedia(message.id);
+    const result = await chatMediaKit.saveToPhotos(uri);
+    release();
+    setSaving(false);
+    if (result === 'saved') {
+      setSavedIds(prev => new Set(prev).add(message.id));
+      flash('Saved to your phone', true);
+      // Someone else's photo: marked "Saved to phone by" and announced to the chat. Your own
+      // is just saved (the database records only a recipient's save).
+      if (message.senderId !== myId) {
+        void recordChatMediaSave(message.id, myId).then(recorded => {
+          if (recorded) { void notifyChatMediaSaved(message, myId, myName); }
+        });
+      }
+    } else {
+      flash(result === 'denied' ? 'Allow Livil to add photos in Settings' : "Couldn't save this photo", false);
+    }
+  }, [message, uri, saving, isSaved, myId, myName, flash]);
 
   // ── Motion state ──────────────────────────────────────────────────────────────
   // `open` 0→1 grows the photo out of the tap point (0: there, tiny; 1: in place). `shade`
@@ -173,14 +244,23 @@ export default function ChatMediaViewerScreen() {
     if (d === 1) { close(); }
   }, [index, items, close, goTo]);
 
-  // Not fetched yet (opened straight after arriving): fetch now. Nothing to show: move on.
+  // Not fetched yet (opened straight after arriving), or deleted because the app was left:
+  // fetch now, or on return (nothing is fetched in the background). Nothing to show: move on.
   useEffect(() => {
     if (!message || uri) { return; }
     let cancelled = false;
-    void prefetchChatMedia(message).then(found => {
-      if (!cancelled && !found) { step(1); }
-    });
-    return () => { cancelled = true; };
+    const fetchNow = () => {
+      if (AppState.currentState === 'background') { return; }
+      void prefetchChatMedia(message).then(found => {
+        if (!cancelled && !found && AppState.currentState !== 'background') { step(1); }
+      });
+    };
+    fetchNow();
+    const sub = AppState.addEventListener('change', next => { if (next === 'active') { fetchNow(); } });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   // Only a change of photo, or of whether its copy is here, matters.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message?.id, uri === null]);
@@ -354,6 +434,27 @@ export default function ChatMediaViewerScreen() {
           <Text style={styles.name} numberOfLines={1}>{sender}</Text>
           {message ? <TimeLeft createdAt={message.createdAt} /> : null}
         </View>
+        {canSave ? (
+          <Pressable
+            onPress={() => { void onSave(); }}
+            disabled={saving || isSaved}
+            accessibilityRole="button"
+            accessibilityLabel={isSaved ? 'Saved to phone' : 'Save to phone'}
+            accessibilityState={{ disabled: saving || isSaved }}
+            hitSlop={8}
+            style={({ pressed }) => [styles.round, isSaved && styles.roundDone, pressed && styles.pressed]}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Icon
+                name={isSaved ? 'check' : 'download'}
+                size={20}
+                color={isSaved ? COLORS.purpleNeon : COLORS.white}
+              />
+            )}
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={close}
           accessibilityRole="button"
@@ -365,6 +466,19 @@ export default function ChatMediaViewerScreen() {
         </Pressable>
       </Animated.View>
 
+      {notice ? (
+        <View
+          style={[styles.notice, { top: insets.top + 64 }]}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+        >
+          <View style={[styles.noticeDot, notice.ok ? styles.noticeDotOk : styles.noticeDotErr]}>
+            <Icon name={notice.ok ? 'check' : 'error'} size={13} color={notice.ok ? COLORS.success : COLORS.error} />
+          </View>
+          <Text style={styles.noticeText}>{notice.text}</Text>
+        </View>
+      ) : null}
+
       <GestureDetector gesture={gestures}>
         <View style={[styles.stage, { marginBottom: insets.bottom }]} onLayout={onStageLayout}>
           {message && imageSource && media && fitted.w > 0 ? (
@@ -374,16 +488,27 @@ export default function ChatMediaViewerScreen() {
               exiting={navigated ? slideOut : undefined}
             >
               <Animated.View style={[{ width: fitted.w, height: fitted.h }, photoStyle]}>
-                <Image
-                  source={imageSource}
-                  style={styles.photo}
-                  resizeMode="contain"
-                  onLoad={() => setDrawnId(message.id)}
-                  // A copy that will not decode must not leave the viewer waiting to pop.
-                  onError={() => setDrawnId(message.id)}
-                  accessibilityLabel={`Photo from ${sender}`}
-                  accessibilityIgnoresInvertColors
-                />
+                {SecureImage && uri?.startsWith('file://') ? (
+                  // iPhone: drawn where screenshots and recordings cannot see it.
+                  <SecureImage
+                    uri={uri}
+                    style={styles.photo}
+                    onLoad={() => setDrawnId(message.id)}
+                    accessible
+                    accessibilityLabel={`Photo from ${sender}`}
+                  />
+                ) : (
+                  <Image
+                    source={imageSource}
+                    style={styles.photo}
+                    resizeMode="contain"
+                    onLoad={() => setDrawnId(message.id)}
+                    // A copy that will not decode must not leave the viewer waiting to pop.
+                    onError={() => setDrawnId(message.id)}
+                    accessibilityLabel={`Photo from ${sender}`}
+                    accessibilityIgnoresInvertColors
+                  />
+                )}
               </Animated.View>
             </Animated.View>
           ) : (
@@ -444,7 +569,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Saved: the purple ring and check of design screen 11.
+  roundDone: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: COLORS.purpleNeon },
   pressed: { opacity: 0.6 },
+  notice: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  noticeDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  noticeDotOk: { backgroundColor: 'rgba(0, 200, 83, 0.15)' },
+  noticeDotErr: { backgroundColor: COLORS.errorBg },
+  noticeText: { color: COLORS.white, fontSize: 14, fontWeight: '500', flexShrink: 1 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   photo: { width: '100%', height: '100%' },
 });

@@ -77,6 +77,10 @@
 	     named only the first two. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Livil needs access to your photos so you can pick a profile picture, cover art for your music, or a video to upload.</string>
+	<!-- Add-only (LivilChatMedia.m saveToPhotos): asked the first time someone taps Save on a
+	     photo sent to them in chat. Livil can add that photo; it never reads the library. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Livil saves a photo to your library only when you tap Save on a photo someone sent you in a chat.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>

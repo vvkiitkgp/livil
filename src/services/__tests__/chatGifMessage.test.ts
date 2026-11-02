@@ -15,7 +15,10 @@ jest.mock('../../../lib/supabase', () => {
   };
   return {
     supabase: {
-      auth: { getUser: async () => ({ data: { user: { id: 'me' } } }) },
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'me' } } }),
+        getSession: async () => ({ data: { session: { user: { id: 'me' } } }, error: null }),
+      },
       from: (table: string) => {
         if (table === 'messages') {
           return {

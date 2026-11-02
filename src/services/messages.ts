@@ -5,6 +5,7 @@ import { profileHandleIfExactLink } from '../utils/shareLinks';
 import type { ChatGif } from '../utils/chatGif';
 import { chatMediaFrom, chatMediaPushText } from '../utils/chatMedia';
 import { noteServerTime } from '../utils/serverClock';
+import { getMyUserId } from './session';
 
 const db = supabase as any;
 
@@ -210,8 +211,9 @@ export async function fetchMessages(
   cursor?: string,
   limit = 30,
 ): Promise<{ messages: ChatMessage[]; nextCursor: string | null }> {
-  const { data: userData } = await supabase.auth.getUser();
-  const myId = userData?.user?.id ?? '';
+  // From the session on the phone, alongside the page — not a server round trip in front of
+  // it (`getUser()`), which on a slow connection added a second or more to opening a chat.
+  const myIdPromise = getMyUserId().catch(() => null);
 
   let query = db
     .from('messages')
@@ -236,23 +238,19 @@ export async function fetchMessages(
     return { messages: [], nextCursor: null };
   }
 
-  // Batch-fetch sender profiles
+  // Sender profiles and the page's reactions, together: each is one round trip.
   const senderIds = [...new Set(slice.map(r => r.sender_id).filter(Boolean))] as string[];
-  const { data: profileData } = await db
-    .from('profiles')
-    .select('id, username, display_name, avatar_url')
-    .in('id', senderIds);
+  const msgIds = slice.map(r => r.id);
+  const [{ data: profileData }, { data: rxnData }, myId] = await Promise.all([
+    db.from('profiles').select('id, username, display_name, avatar_url').in('id', senderIds),
+    db.from('message_reactions').select('message_id, user_id, emoji').in('message_id', msgIds),
+    myIdPromise.then(id => id ?? ''),
+  ]);
   const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
   for (const p of (profileData ?? []) as { id: string; username: string; display_name: string | null; avatar_url: string | null }[]) {
     profileMap.set(p.id, p);
   }
 
-  // Batch-fetch reactions for this page
-  const msgIds = slice.map(r => r.id);
-  const { data: rxnData } = await db
-    .from('message_reactions')
-    .select('message_id, user_id, emoji')
-    .in('message_id', msgIds);
   const rawReactions = (rxnData ?? []) as RawReaction[];
 
   const withProfiles: RawMessage[] = slice.map(r => ({
@@ -286,8 +284,9 @@ export async function sendMessage(
   payload: SendMessagePayload,
   senderInfo?: { username: string | null; displayName: string | null; avatarUrl: string | null },
 ): Promise<ChatMessage> {
-  const { data: userData } = await supabase.auth.getUser();
-  const myId = userData?.user?.id ?? '';
+  // From the session on the phone: no server round trip before the insert (RLS still checks
+  // sender_id against the token).
+  const myId = (await getMyUserId()) ?? '';
 
   const insert: Record<string, unknown> = {
     conversation_id: conversationId,

@@ -7,8 +7,9 @@ import com.facebook.react.uimanager.ViewManager
 
 class SplashScreenPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
-      // StudioFilesModule rides along here: one package for the app's own small modules.
-      listOf(SplashScreenModule(reactContext), StudioFilesModule(reactContext))
+      // StudioFilesModule and ChatMediaModule ride along here: one package for the app's own
+      // small modules.
+      listOf(SplashScreenModule(reactContext), StudioFilesModule(reactContext), ChatMediaModule(reactContext))
 
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
       emptyList()
