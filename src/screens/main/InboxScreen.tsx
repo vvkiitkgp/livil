@@ -18,6 +18,7 @@ import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
 import {
   listConversations,
+  markConversationsDelivered,
   type ConversationSummary,
 } from '../../services/conversations';
 import { messageCache } from '../../services/messageCache';
@@ -191,6 +192,8 @@ export default function InboxScreen() {
       const data = await listConversations();
       setConversations(data);
       void messageCache.setInbox(data);
+      // The list carries every chat's newest message: "Delivered" for whoever sent it.
+      void markConversationsDelivered(data);
     } catch {
       // Network failed — leave whatever is showing. The next event or
       // focus will retry; no value in surfacing transient blips here.
@@ -221,6 +224,7 @@ export default function InboxScreen() {
       const data = await networkPromise;
       setConversations(data);
       void messageCache.setInbox(data); // write-through, fire-and-forget
+      void markConversationsDelivered(data);
     } catch {
       // Network failed — leave whatever is showing (cached or empty)
     } finally {
@@ -265,6 +269,12 @@ export default function InboxScreen() {
     if (!myId) { return; }
     console.log('[realtime] inbox subscribing', { myId });
     let joinedOnce = false;
+    // My own rows also change when this phone stamps "Delivered" (last_delivered_at), which
+    // changes nothing on this list — and the first stamp after an update touches every chat
+    // at once. So an update whose last_read_at is the one already seen is skipped, and the
+    // rest are gathered into one refresh.
+    const readSeen = new Map<string, string | null>();
+    let memberRefresh: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel(`inbox:${myId}`)
       .on(
@@ -282,11 +292,22 @@ export default function InboxScreen() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `user_id=eq.${myId}` },
-        () => {
+        (payload: { new?: { conversation_id?: string; last_read_at?: string | null } }) => {
           // My own last_read_at moved → unread badge for that row should
           // drop. Refetch picks up the new server-computed unread count.
+          const row = payload.new;
+          if (row?.conversation_id) {
+            const before = readSeen.get(row.conversation_id);
+            const now = row.last_read_at ?? null;
+            readSeen.set(row.conversation_id, now);
+            if (before !== undefined && before === now) { return; }
+          }
           console.log('[realtime] inbox got own conversation_members UPDATE');
-          void refreshFromNetwork();
+          if (memberRefresh) { clearTimeout(memberRefresh); }
+          memberRefresh = setTimeout(() => {
+            memberRefresh = null;
+            void refreshFromNetwork();
+          }, 300);
         },
       )
       .on(
@@ -311,6 +332,7 @@ export default function InboxScreen() {
       });
     return () => {
       console.log('[realtime] inbox unsubscribing');
+      if (memberRefresh) { clearTimeout(memberRefresh); }
       void supabase.removeChannel(channel);
     };
   }, [myId, refreshFromNetwork]);

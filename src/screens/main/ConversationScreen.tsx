@@ -55,8 +55,10 @@ import {
   markAsRead,
   getOtherMemberReadAt,
   getConversationKind,
+  markConversationDelivered,
   type ConversationKind,
 } from '../../services/conversations';
+import { chatReceipts, type ReceiptStatus } from '../../utils/chatReceipts';
 import NowPlayingPill from '../../components/NowPlayingPill';
 import { useListeningNow } from '../../hooks/useListeningNow';
 import {
@@ -239,6 +241,13 @@ function sameSavers(a: Record<string, ChatMediaSaver[]>, b: Record<string, ChatM
     return !!y && x.length === y.length && x.every((s, i) => s.userId === y[i].userId);
   });
 }
+
+const RECEIPT_LABEL: Record<ReceiptStatus, string> = {
+  seen: 'Seen',
+  delivered: 'Delivered',
+  sent: 'Sent',
+  sending: 'Sending…',
+};
 
 /** A GIF in a chat bubble: a little larger than in a comment. */
 const CHAT_GIF_MAX_W = 220;
@@ -750,8 +759,8 @@ type MessageRowProps = {
   conversationTitle: string;
   repliedTo: ChatMessage | null;
   isHighlighted: boolean;
-  /** Only on my latest outgoing message (a DM's Sending / Delivered / Seen). */
-  readStatus: 'sending' | 'delivered' | 'seen' | null;
+  /** A DM's Sending / Sent / Delivered / Seen, on the one message each applies to (utils/chatReceipts.ts). */
+  readStatus: ReceiptStatus | null;
   mediaSavers: ChatMediaSaver[] | undefined;
   mediaLoading: boolean;
   actions: RowActions;
@@ -810,7 +819,7 @@ const MessageRow = React.memo(function ChatRow({
         />
         {readStatus ? (
           <Text style={styles.readStatus}>
-            {readStatus === 'seen' ? 'Seen' : readStatus === 'delivered' ? 'Delivered' : 'Sending…'}
+            {RECEIPT_LABEL[readStatus]}
           </Text>
         ) : null}
       </SwipeRevealRow>
@@ -1028,10 +1037,12 @@ export default function ConversationScreen() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Other DM participant's last_read_at — drives the Instagram-style
-  // "Seen / Delivered" indicator under the most recent outgoing message.
-  // Null until the first fetch resolves (we render nothing until then).
+  // The other DM participant's last_read_at and last_delivered_at — how far they have read,
+  // and how far their app has received (utils/chatReceipts.ts). Null until fetched; the
+  // delivered stamp stays null when their app never writes it (an old build) or the
+  // migration is not applied, and the receipts then fall back to today's "Delivered".
   const [otherReadAt, setOtherReadAt] = useState<string | null>(null);
+  const [otherDeliveredAt, setOtherDeliveredAt] = useState<string | null>(null);
 
   // Memoised lookup so MessageBubble can render the quoted-context strip for
   // any message whose `replyToId` resolves into the loaded list. Falls back
@@ -1043,28 +1054,13 @@ export default function ConversationScreen() {
     return map;
   }, [messages]);
 
-  // The most recent OUTGOING message — the only one that gets a
-  // Sending/Delivered/Seen footer (Instagram convention). messages is
-  // ordered newest→oldest, so this is the first match.
-  const latestOutgoing = useMemo<ChatMessage | null>(() => {
-    for (const m of messages) {
-      if (m.senderId === myId && m.kind !== 'system' && !m.deletedAt) { return m; }
-    }
-    return null;
-  }, [messages, myId]);
-
-  // Status string for the footer. Optimistic (id starts with `opt-`) means
-  // the server hasn't confirmed yet — show "Sending…". Once confirmed and
-  // the other party's last_read_at meets/exceeds the message createdAt, it
-  // upgrades to "Seen". In between: "Delivered".
-  const latestOutgoingStatus = useMemo<'sending' | 'delivered' | 'seen' | null>(() => {
-    if (kind !== 'dm' || !latestOutgoing) { return null; }
-    if (latestOutgoing.id.startsWith('opt-')) { return 'sending'; }
-    if (otherReadAt && new Date(otherReadAt).getTime() >= new Date(latestOutgoing.createdAt).getTime()) {
-      return 'seen';
-    }
-    return 'delivered';
-  }, [kind, latestOutgoing, otherReadAt]);
+  // Seen under my last message they have read, Delivered under my last one that reached
+  // their phone, Sent / Sending… under my newest when it is neither — DMs only (a group has
+  // no single reader). Message id → label.
+  const receipts = useMemo<Map<string, ReceiptStatus>>(
+    () => (kind === 'dm' ? chatReceipts(messages, myId, otherReadAt, otherDeliveredAt) : new Map()),
+    [kind, messages, myId, otherReadAt, otherDeliveredAt],
+  );
 
   const handleReplyQuotePress = useCallback((originalId: string) => {
     const idx = messages.findIndex(m => m.id === originalId);
@@ -1143,6 +1139,8 @@ export default function ConversationScreen() {
           setNextCursor(cursor);
           setLoading(false);
           setFirstPageIn(true);
+          // This phone now holds the chat up to its newest message: "Delivered" for the sender.
+          void markConversationDelivered(conversationId, msgs[0]?.createdAt ?? null);
           // Write-through: persist first page so next open is instant
           void messageCache.setMessages(conversationId, msgs);
         }
@@ -1199,6 +1197,7 @@ export default function ConversationScreen() {
       // In server order, not on top: a catch-up can bring an older message in after newer
       // ones (utils/chatOrder.ts).
       setMessages(prev => mergeNewestFirst(prev, latest));
+      void markConversationDelivered(conversationId, latest[0]?.createdAt ?? null);
       if (added > 0) {
         console.log(`[chat] catch-up (${reason}) added ${added} message(s)`);
         setTimeout(scrollToLatest, 50);
@@ -1251,7 +1250,10 @@ export default function ConversationScreen() {
     let cancelled = false;
     void (async () => {
       const row = await getOtherMemberReadAt(conversationId);
-      if (!cancelled && row) { setOtherReadAt(row.lastReadAt); }
+      if (!cancelled && row) {
+        setOtherReadAt(row.lastReadAt);
+        setOtherDeliveredAt(row.lastDeliveredAt);
+      }
     })();
     console.log('[realtime] conv-read subscribing', { conversationId });
     const channel = supabase
@@ -1264,13 +1266,14 @@ export default function ConversationScreen() {
           table: 'conversation_members',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: { new: { user_id?: string; last_read_at?: string | null } }) => {
+        (payload: { new: { user_id?: string; last_read_at?: string | null; last_delivered_at?: string | null } }) => {
           const row = payload.new;
           if (!row || !row.user_id || row.user_id === myId) { return; }
           if (row.last_read_at) {
             console.log('[realtime] conv-read got other last_read_at', row.last_read_at);
             setOtherReadAt(row.last_read_at);
           }
+          if (row.last_delivered_at) { setOtherDeliveredAt(row.last_delivered_at); }
         },
       )
       .subscribe(status => {
@@ -1311,6 +1314,9 @@ export default function ConversationScreen() {
         // wastes a round trip. The push for this message may already be on
         // screen while the user is reading it here, hence the clear.
         if (msg.senderId && msg.senderId !== myId) {
+          // Received, whether or not anyone is looking (Android keeps the socket open in
+          // the background): "Delivered" now; "Seen" may have to wait.
+          void markConversationDelivered(conversationId, msg.createdAt);
           markSeenOrWait();
         }
       },
@@ -2089,14 +2095,14 @@ export default function ConversationScreen() {
           conversationTitle={title}
           repliedTo={item.replyToId ? messagesById.get(item.replyToId) ?? null : null}
           isHighlighted={item.id === highlightedMessageId}
-          readStatus={latestOutgoing?.id === item.id ? latestOutgoingStatus : null}
+          readStatus={receipts.get(item.id) ?? null}
           mediaSavers={mediaSavers[item.id]}
           mediaLoading={openingMediaId === item.id}
           actions={rowActions}
         />
       );
     },
-    [myId, conversationId, title, messages, messagesById, highlightedMessageId, latestOutgoing, latestOutgoingStatus, mediaSavers, openingMediaId, rowActions],
+    [myId, conversationId, title, messages, messagesById, highlightedMessageId, receipts, mediaSavers, openingMediaId, rowActions],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -2751,8 +2757,8 @@ const styles = StyleSheet.create({
   },
   replyQuoteAuthorThem: { color: COLORS.purpleLight },
   replyQuoteAuthor: { fontSize: 12, fontWeight: '700' },
-  // Read-receipt footer below the latest outgoing DM message — small,
-  // muted, right-aligned to sit under the bubble.
+  // Read-receipt footer (Seen / Delivered / Sent / Sending…) under the outgoing DM message
+  // it applies to — small, muted, right-aligned to sit under the bubble.
   readStatus: {
     alignSelf: 'flex-end',
     color: COLORS.textSecondary,

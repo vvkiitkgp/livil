@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 175 migration(s) in `supabase/migrations/`.
+Reconstructed from 176 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -250,6 +250,12 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 
 - `primary key (conversation_id, user_id)`
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `last_delivered_at` | `timestamptz` | `20261119000000_chat_delivered_receipts.sql` |
+
 **Indexes**
 
 - `(unnamed)` `(user_id)`
@@ -257,6 +263,7 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `trg_conversation_members_freeze_identity` — before update (`20260722000000_liv10_authorization_guards.sql`)
+- `trg_conversation_members_delivered_forward` — before update (`20261119000000_chat_delivered_receipts.sql`)
 
 ### `conversations`
 
@@ -1624,6 +1631,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_badge_kinds_guard_reclaim` | `badge_kinds` | before update | `20260919000000_profile_badges_first_100.sql` |
 | `trg_suggestion_dismissals_on_block` | `blocked_users` | after insert | `20261008000000_suggestions_follow_friendship.sql` |
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
+| `trg_conversation_members_delivered_forward` | `conversation_members` | before update | `20261119000000_chat_delivered_receipts.sql` |
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |

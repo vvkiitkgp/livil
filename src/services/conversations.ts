@@ -131,27 +131,92 @@ export async function createGroup(
   return data as string;
 }
 
-// For a DM conversation, returns the other participant's last_read_at —
-// the timestamp the chat UI compares against the latest outgoing message
-// to decide whether to show "Seen". Returns null if the conversation has
-// no other member (shouldn't happen for DMs) or the call fails.
+// For a DM conversation, the other participant's last_read_at and last_delivered_at — the
+// stamps the chat compares its outgoing messages against for "Seen" and "Delivered"
+// (utils/chatReceipts.ts). lastDeliveredAt is null when unknown: their app never stamps it,
+// or the column is not there yet (20261119000000 not applied — then the old select is used,
+// so "Seen" keeps working). Null overall if there is no other member or the call fails.
 export async function getOtherMemberReadAt(
   conversationId: string,
-): Promise<{ userId: string; lastReadAt: string | null } | null> {
+): Promise<{ userId: string; lastReadAt: string | null; lastDeliveredAt: string | null } | null> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;
   if (!me) { return null; }
 
-  const { data, error } = await db
+  const read = (columns: string) => db
     .from('conversation_members')
-    .select('user_id, last_read_at')
+    .select(columns)
     .eq('conversation_id', conversationId)
     .neq('user_id', me)
     .limit(1)
     .maybeSingle();
+  let res = await read('user_id, last_read_at, last_delivered_at');
+  if (res.error) { res = await read('user_id, last_read_at'); }
+  const { data, error } = res;
   if (error || !data) { return null; }
-  const row = data as { user_id: string; last_read_at: string | null };
-  return { userId: row.user_id, lastReadAt: row.last_read_at };
+  const row = data as { user_id: string; last_read_at: string | null; last_delivered_at?: string | null };
+  return { userId: row.user_id, lastReadAt: row.last_read_at, lastDeliveredAt: row.last_delivered_at ?? null };
+}
+
+// ── "Delivered": this app received a chat's messages (20261119000000) ─────────
+// Fire-and-forget and never throws. A missing function (migration not applied yet) turns
+// delivery stamping off until the next launch, so it is asked once, not on every message.
+let deliveredMissing = false;
+/** Newest time stamped per chat this session, so an unchanged chat is not stamped again. */
+const deliveredUpTo = new Map<string, number>();
+
+function isMissingFunction(error: { code?: string } | null | undefined): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
+}
+
+/** This app has received `conversationId`'s messages up to `upToIso` (the newest one's created_at). */
+export async function markConversationDelivered(conversationId: string, upToIso: string | null): Promise<void> {
+  if (deliveredMissing || !upToIso) { return; }
+  const upTo = Date.parse(upToIso);
+  if (!Number.isFinite(upTo) || upTo <= (deliveredUpTo.get(conversationId) ?? -Infinity)) { return; }
+  deliveredUpTo.set(conversationId, upTo);
+  try {
+    const { error } = await db.rpc('mark_conversation_delivered', {
+      p_conversation_id: conversationId,
+      p_up_to: upToIso,
+    });
+    if (isMissingFunction(error)) { deliveredMissing = true; }
+    else if (error) { deliveredUpTo.delete(conversationId); }
+  } catch {
+    deliveredUpTo.delete(conversationId);
+  }
+}
+
+/**
+ * The chat list loaded: this app received every chat's newest message (it shows it). Only
+ * when a one-to-one chat has something newer than this session already stamped — the stamp
+ * is itself an update the chat list listens for. Groups are never stamped (receipts are
+ * one-to-one only, and the server skips them too).
+ */
+export async function markConversationsDelivered(
+  conversations: ReadonlyArray<{ id: string; kind?: ConversationKind; lastMessageAt: string | null }>,
+): Promise<void> {
+  if (deliveredMissing) { return; }
+  const fresh = conversations.filter(c => {
+    if (c.kind === 'group') { return false; }
+    const t = c.lastMessageAt ? Date.parse(c.lastMessageAt) : NaN;
+    return Number.isFinite(t) && t > (deliveredUpTo.get(c.id) ?? -Infinity);
+  });
+  if (fresh.length === 0) { return; }
+  for (const c of fresh) { deliveredUpTo.set(c.id, Date.parse(c.lastMessageAt!)); }
+  try {
+    const { error } = await db.rpc('mark_conversations_delivered');
+    if (isMissingFunction(error)) { deliveredMissing = true; }
+    else if (error) { for (const c of fresh) { deliveredUpTo.delete(c.id); } }
+  } catch {
+    for (const c of fresh) { deliveredUpTo.delete(c.id); }
+  }
+}
+
+/** Test-only. */
+export function __resetDeliveredForTest(): void {
+  deliveredMissing = false;
+  deliveredUpTo.clear();
 }
 
 export async function markAsRead(conversationId: string): Promise<void> {
