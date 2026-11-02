@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-529 TypeScript file(s) under `src/`, 107,604 lines.
+532 TypeScript file(s) under `src/`, 108,681 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2840 |
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/screens/main/UploadScreen.tsx` | 2281 |
+| `src/screens/main/UploadScreen.tsx` | 2429 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1470 |
@@ -110,12 +110,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 34,285 lines.
+75 file(s), 34,433 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 2840 |
-| `src/screens/main/UploadScreen.tsx` | 2281 |
+| `src/screens/main/UploadScreen.tsx` | 2429 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1470 |
@@ -372,11 +372,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-110 file(s), 21,898 lines.
+111 file(s), 22,546 lines.
 
 | File | Lines |
 |---|---:|
-| `src/services/tracks.ts` | 1500 |
+| `src/services/tracks.ts` | 1639 |
 | `src/services/posts.ts` | 1336 |
 | `src/services/pushNotifications.ts` | 982 |
 | `src/services/activity.ts` | 715 |
@@ -386,17 +386,19 @@ case the call fails silently wherever its result is discarded.
 | `src/services/albums.ts` | 523 |
 | `src/services/spotify.ts` | 514 |
 | `src/services/profileService.ts` | 511 |
+| `src/services/uploads.ts` | 462 |
 | `src/services/__tests__/spotify.test.ts` | 433 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/messages.ts` | 401 |
 | `src/services/playlists.ts` | 388 |
 | `src/services/jamRooms.ts` | 368 |
-| `src/services/uploads.ts` | 367 |
+| `src/services/__tests__/uploadStallWatchdog.test.ts` | 317 |
 | `src/services/jamRealtime.ts` | 277 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/conversations.ts` | 261 |
 | `src/services/gifs.ts` | 245 |
 | `src/services/__tests__/publishTrackCredits.test.ts` | 235 |
+| `src/services/__tests__/uploadNetworkSteps.test.ts` | 232 |
 | `src/services/__tests__/commentSongs.test.ts` | 230 |
 | `src/services/__tests__/pushScheduled.test.ts` | 230 |
 | `src/services/__tests__/deleteMyAccount.test.ts` | 229 |
@@ -411,7 +413,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/chatMediaBackground.test.ts` | 205 |
 | `src/services/__tests__/copyrightDeclaration.test.ts` | 205 |
 | `src/services/__tests__/spotifyReturnNudge.test.ts` | 203 |
-| `src/services/__tests__/uploadStallWatchdog.test.ts` | 197 |
 | `src/services/drafts.ts` | 189 |
 | `src/services/mediaPicks.ts` | 183 |
 | `src/services/__tests__/tags.test.ts` | 180 |
@@ -439,9 +440,11 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/pushRegistration.test.ts` | 110 |
 | `src/services/__tests__/pushLikeCard.test.ts` | 109 |
 | `src/services/messageCache.ts` | 109 |
+| `src/services/network.ts` | 107 |
 | `src/services/__tests__/chatMediaSaveNotify.test.ts` | 105 |
 | `src/services/__tests__/shareNativeFallback.test.ts` | 104 |
 | `src/services/feedImpressions.ts` | 100 |
+| `src/services/__tests__/network.test.ts` | 98 |
 | `src/services/crashReporting.ts` | 93 |
 | `src/services/appUpdate.ts` | 92 |
 | `src/services/recentlyPlayed.ts` | 92 |
@@ -453,7 +456,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/__tests__/crashReporting.test.ts` | 86 |
 | `src/services/groupFaces.ts` | 86 |
-| `src/services/network.ts` | 83 |
 | `src/services/__tests__/submitExitFeedback.test.ts` | 81 |
 | `src/services/googleAuth.ts` | 79 |
 | `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
@@ -466,7 +468,6 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/sharedRepostAuthor.test.ts` | 66 |
 | `src/services/mutuals.ts` | 66 |
 | `src/services/activeConversation.ts` | 62 |
-| `src/services/__tests__/network.test.ts` | 60 |
 | `src/services/__tests__/waveformLosslessGuard.test.ts` | 59 |
 | `src/services/__tests__/chatGifMessage.test.ts` | 57 |
 | `src/services/teamMessages.ts` | 57 |
@@ -552,7 +553,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-103 file(s), 9,306 lines.
+105 file(s), 9,587 lines.
 
 | File | Lines |
 |---|---:|
@@ -571,9 +572,11 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
 | `src/utils/magicTune/pitch.ts` | 152 |
+| `src/utils/uploadRecovery.ts` | 145 |
 | `src/utils/shareLinks.ts` | 140 |
 | `src/utils/groupFaces.ts` | 139 |
 | `src/utils/mentions.ts` | 138 |
+| `src/utils/__tests__/uploadRecovery.test.ts` | 136 |
 | `src/utils/__tests__/authorDisplay.test.ts` | 135 |
 | `src/utils/chatMedia.ts` | 134 |
 | `src/utils/drums.ts` | 134 |
