@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Linking,
   Pressable,
   Platform,
   ScrollViewProps,
@@ -128,6 +129,9 @@ import ChatMediaPreview from '../../components/ChatMediaPreview';
 import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
 import { copyText } from '../../services/clipboard';
 import { copyableText } from '../../utils/chatCopy';
+import { splitChatLinks, type CheckedLink } from '../../utils/chatLinks';
+import { openLivilLink } from '../../services/livilLinks';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -259,6 +263,8 @@ function MessageBubble({
   mediaSavers,
   mediaLoading,
   onOpenChatMedia,
+  onOpenLink,
+  onCopyLink,
   showName,
   showAvatar,
 }: {
@@ -288,6 +294,10 @@ function MessageBubble({
   onOpenSharedRepost: (postId: string) => void;
   /** A friends-only repost the viewer may not see opens its reposter's profile instead. */
   onOpenReposterProfile: (userId: string) => void;
+  /** A link in the text, tapped (already checked: utils/chatLinks.ts). */
+  onOpenLink: (link: CheckedLink) => void;
+  /** A link in the text, long-pressed: its text goes on the clipboard. */
+  onCopyLink: (text: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   // A GIF is a text message carrying the GIF in metadata (src/utils/chatGif.ts); its body is
@@ -336,6 +346,10 @@ function MessageBubble({
     : spotifyLink?.id && msg.body
       ? msg.body.replace(spotifyLink.match, '').trim()
       : msg.body;
+  // Links in the words: underlined, tap to open, long-press to copy. Only http(s) that pass
+  // checkChatLink become links; anything else stays plain text (utils/chatLinks.ts).
+  const textParts = useMemo(() => (visibleText ? splitChatLinks(visibleText) : null), [visibleText]);
+  const hasLinks = !!textParts && textParts.some(p => p.link);
 
   if (isSystem) {
     return (
@@ -465,7 +479,20 @@ function MessageBubble({
               />
             ) : msg.kind === 'text' && visibleText ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
-                {visibleText}
+                {hasLinks
+                  ? textParts!.map((part, i) => (part.link ? (
+                    <Text
+                      key={i}
+                      style={[styles.linkText, isMe ? styles.linkTextMe : styles.linkTextThem]}
+                      onPress={() => onOpenLink(part.link!)}
+                      onLongPress={() => onCopyLink(part.text)}
+                      accessibilityRole="link"
+                      accessibilityHint={`Opens ${part.link.host}. Long-press to copy.`}
+                    >
+                      {part.text}
+                    </Text>
+                  ) : part.text))
+                  : visibleText}
               </Text>
             ) : null}
 
@@ -709,6 +736,8 @@ type RowActions = {
   onOpenSharedRepost: (postId: string) => void;
   onOpenReposterProfile: (userId: string) => void;
   onOpenChatMedia: (msg: ChatMessage, origin: { x: number; y: number }) => void;
+  onOpenLink: (link: CheckedLink) => void;
+  onCopyLink: (text: string) => void;
 };
 
 type MessageRowProps = {
@@ -776,6 +805,8 @@ const MessageRow = React.memo(function ChatRow({
           mediaSavers={mediaSavers}
           mediaLoading={mediaLoading}
           onOpenChatMedia={actions.onOpenChatMedia}
+          onOpenLink={actions.onOpenLink}
+          onCopyLink={actions.onCopyLink}
         />
         {readStatus ? (
           <Text style={styles.readStatus}>
@@ -1846,6 +1877,40 @@ export default function ConversationScreen() {
     navigation.navigate('UserProfile', { userId: target.userId });
   }, [navigation, showToast]);
 
+  // ── Links in messages (utils/chatLinks.ts) ───────────────────────────────
+  // Livil and open.spotify.com open at once — a Livil post or profile inside the app, the way
+  // an incoming link does. Any other site asks first, naming its real host.
+  const [pendingLink, setPendingLink] = useState<CheckedLink | null>(null);
+  // The dialog keeps its words while it fades out after a choice.
+  const shownLinkRef = useRef<CheckedLink | null>(null);
+  if (pendingLink) { shownLinkRef.current = pendingLink; }
+  const openOutside = useCallback((href: string) => {
+    Linking.openURL(href).catch(() => {
+      showToast("Couldn't open that link.", { kind: 'error' });
+    });
+  }, [showToast]);
+  const handleOpenLink = useCallback(async (link: CheckedLink) => {
+    if (link.trust === 'livil' && (await openLivilLink(link.href))) { return; }
+    if (link.trust) {
+      openOutside(link.href);
+      return;
+    }
+    if (KeyboardController.isVisible()) {
+      await KeyboardController.dismiss().catch(() => {});
+    }
+    setPendingLink(link);
+  }, [openOutside]);
+  const handleCopyLink = useCallback((linkText: string) => {
+    try {
+      copyText(linkText);
+      haptics.select();
+      showToast('Link copied', { kind: 'success' });
+    } catch (e) {
+      console.warn('[chat] copy link failed', e);
+      showToast("Couldn't copy that link.", { kind: 'error' });
+    }
+  }, [showToast]);
+
   const handleLongPress = useCallback((msg: ChatMessage) => {
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
     // its threshold, so activation feels consistent across gestures.
@@ -1983,6 +2048,8 @@ export default function ConversationScreen() {
     onOpenSharedRepost: handleOpenSharedRepost,
     onOpenReposterProfile: handleOpenReposterProfile,
     onOpenChatMedia: handleTapChatMedia,
+    onOpenLink: handleOpenLink,
+    onCopyLink: handleCopyLink,
   };
   const rowActions = useMemo<RowActions>(() => {
     const now = () => latestRowActions.current!;
@@ -1997,6 +2064,8 @@ export default function ConversationScreen() {
       onOpenSharedRepost: id => now().onOpenSharedRepost(id),
       onOpenReposterProfile: userId => now().onOpenReposterProfile(userId),
       onOpenChatMedia: (msg, origin) => now().onOpenChatMedia(msg, origin),
+      onOpenLink: link => now().onOpenLink(link),
+      onCopyLink: linkText => now().onCopyLink(linkText),
     };
   }, []);
 
@@ -2435,6 +2504,21 @@ export default function ConversationScreen() {
         actions={menuActions}
       />
 
+      <ConfirmActionModal
+        visible={!!pendingLink}
+        title="Open this link?"
+        message={shownLinkRef.current ? `It opens ${shownLinkRef.current.host}, outside Livil.` : undefined}
+        icon="externalLink"
+        tone="primary"
+        confirmLabel="Open"
+        onConfirm={() => {
+          const link = pendingLink;
+          setPendingLink(null);
+          if (link) { openOutside(link.href); }
+        }}
+        onCancel={() => setPendingLink(null)}
+      />
+
       <ChatMediaSourceSheet
         visible={mediaSheetOpen}
         onClose={() => setMediaSheetOpen(false)}
@@ -2626,6 +2710,10 @@ const styles = StyleSheet.create({
   // white sent text.
   bubbleText: { color: COLORS.white, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
+  // A link in a message: underlined, white on my purple bubble, light purple on theirs.
+  linkText: { textDecorationLine: 'underline' },
+  linkTextMe: { color: COLORS.white },
+  linkTextThem: { color: COLORS.purpleLight },
   // Brief pulse applied when the user taps a reply quote pointing at this
   // bubble — same purple tint as the comment-row highlight in CommentsSheet.
   bubbleHighlighted: {
