@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-11-02
+last_verified: 2026-11-05
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-532 TypeScript file(s) under `src/`, 108,366 lines.
+532 TypeScript file(s) under `src/`, 108,458 lines.
 
 ## Size hotspots
 
@@ -192,7 +192,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-174 file(s), 34,427 lines.
+174 file(s), 34,502 lines.
 
 | File | Lines |
 |---|---:|
@@ -235,6 +235,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/AppleSignInButton.tsx` | 233 |
 | `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/RepostChatCard.tsx` | 228 |
+| `src/components/__tests__/MentionText.test.tsx` | 218 |
 | `src/components/PostReportModal.tsx` | 217 |
 | `src/components/__tests__/WaveformScrubber.test.ts` | 217 |
 | `src/components/GifPicker.tsx` | 216 |
@@ -253,6 +254,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/__tests__/RealtimeConnectionGate.test.tsx` | 197 |
 | `src/components/auth/AuthStep.tsx` | 195 |
+| `src/components/MentionText.tsx` | 191 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
@@ -268,11 +270,9 @@ case the call fails silently wherever its result is discarded.
 | `src/components/GroupAvatarCluster.tsx` | 170 |
 | `src/components/__tests__/OnboardingNotice.test.tsx` | 170 |
 | `src/components/guide/__tests__/pickSongs.test.ts` | 170 |
-| `src/components/MentionText.tsx` | 169 |
 | `src/components/guide/pickSongs.ts` | 167 |
 | `src/components/FullScreenFrame.tsx` | 166 |
 | `src/components/RemovedContentCard.tsx` | 165 |
-| `src/components/__tests__/MentionText.test.tsx` | 165 |
 | `src/components/__tests__/ProfileBadges.test.tsx` | 159 |
 | `src/components/TabAvatar.tsx` | 155 |
 | `src/components/ErrorBoundary.tsx` | 154 |
@@ -553,18 +553,18 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-105 file(s), 9,735 lines.
+105 file(s), 9,752 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/audioFx/master.ts` | 447 |
 | `src/utils/synth.ts` | 253 |
 | `src/utils/audioFile/flac.ts` | 234 |
+| `src/utils/__tests__/captionFit.test.ts` | 226 |
 | `src/utils/__tests__/playTracker.test.ts` | 226 |
 | `src/utils/searchRanking.ts` | 219 |
-| `src/utils/__tests__/captionFit.test.ts` | 216 |
+| `src/utils/captionFit.ts` | 217 |
 | `src/utils/__tests__/searchRanking.test.ts` | 212 |
-| `src/utils/captionFit.ts` | 210 |
 | `src/utils/haptics.ts` | 201 |
 | `src/utils/__tests__/magicTune.test.ts` | 195 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |

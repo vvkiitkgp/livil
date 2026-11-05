@@ -14,10 +14,12 @@ import { COLORS } from '../theme/colors';
 import { MENTION_TEXT_STYLE } from '../utils/mentions';
 import {
   MEASURE_FIT,
+  SEE_LESS_LABEL,
   SEE_MORE_ELLIPSIS,
   SEE_MORE_LABEL,
   advanceFit,
   captionPieces,
+  forgetCaptionExpanded,
   isCaptionExpanded,
   piecesUpTo,
   rememberCaptionExpanded,
@@ -33,8 +35,10 @@ import { useOpenMention } from '../hooks/useOpenMention';
  *
  * With `numberOfLines`, a caption that runs longer shows "… See more" at the end of its last
  * line, and a tap anywhere on it opens the whole caption in place (owner, 2026-11-02 — the
- * feed cards used to stop at line 4 with no way to read the rest). Tags stay tappable either
- * way. Without `numberOfLines` the whole caption is shown.
+ * feed cards used to stop at line 4 with no way to read the rest). The opened caption ends
+ * with "See less", and only those words close it, so a tap while reading never snaps it shut
+ * (owner, 2026-11-05). Tags stay tappable either way. Without `numberOfLines` the whole caption
+ * is shown, with neither.
  *
  * How it decides (pure steps in utils/captionFit.ts): the caption is laid out a second time,
  * invisibly and without a line limit, and `onTextLayout` reports its lines. Only if there are
@@ -44,7 +48,7 @@ import { useOpenMention } from '../hooks/useOpenMention';
  * feed never jumps when the "See more" arrives.
  *
  * `expandId` (the post id) remembers an opened caption for the app session, so a card the
- * list unmounts and mounts again comes back open.
+ * list unmounts and mounts again comes back open. "See less" forgets it.
  */
 function MentionText({
   text,
@@ -59,8 +63,11 @@ function MentionText({
 }) {
   const openMention = useOpenMention();
   const pieces = useMemo(() => captionPieces(text), [text]);
-  const [openedHere, setOpenedHere] = useState(false);
-  const open = openedHere || isCaptionExpanded(expandId);
+  // null until tapped on this mount: a card the list mounts again goes by what was remembered.
+  // (A plain false could not close that card: "See less" would set false over false, and React
+  // would not render it again.)
+  const [openedHere, setOpenedHere] = useState<boolean | null>(null);
+  const open = openedHere ?? isCaptionExpanded(expandId);
   const maxLines = numberOfLines && numberOfLines > 0 ? numberOfLines : 0;
   const collapsible = maxLines > 0 && !open;
 
@@ -90,6 +97,11 @@ function MentionText({
   const expand = useCallback(() => {
     rememberCaptionExpanded(expandId);
     setOpenedHere(true);
+  }, [expandId]);
+
+  const collapse = useCallback(() => {
+    forgetCaptionExpanded(expandId);
+    setOpenedHere(false);
   }, [expandId]);
 
   const renderPieces = (list: CaptionPiece[], live: boolean) =>
@@ -122,6 +134,8 @@ function MentionText({
   // Tappable while it might be cut — including before the measuring settles — so the rest of
   // a caption is never out of reach. A caption that fits takes no tap at all.
   const canExpand = collapsible && fit.phase !== 'whole';
+  // A caption measured as fitting has no shorter state to go back to.
+  const canCollapse = open && fit.phase !== 'whole';
 
   return (
     <View>
@@ -151,6 +165,14 @@ function MentionText({
         {collapsible && fit.phase === 'cut'
           ? [...renderPieces(piecesUpTo(pieces, fit.cut), true), suffix]
           : renderPieces(pieces, true)}
+        {canCollapse ? (
+          <Text key="see-less">
+            {' '}
+            <Text style={styles.seeMore} onPress={collapse} accessibilityRole="button">
+              {SEE_LESS_LABEL}
+            </Text>
+          </Text>
+        ) : null}
       </Text>
     </View>
   );

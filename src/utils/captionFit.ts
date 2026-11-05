@@ -26,6 +26,8 @@ import { parseMentions } from './mentions';
 export const SEE_MORE_ELLIPSIS = '… ';
 export const SEE_MORE_LABEL = 'See more';
 export const SEE_MORE_LENGTH = SEE_MORE_ELLIPSIS.length + SEE_MORE_LABEL.length;
+/** Ends an opened caption; the only part of it that closes it again (MentionText). */
+export const SEE_LESS_LABEL = 'See less';
 
 /** Checking passes allowed before the last cut is taken as it is (see `nextCut`). */
 export const MAX_FIT_TRIES = 6;
@@ -202,6 +204,11 @@ export function rememberCaptionExpanded(id: string | undefined): void {
     const oldest = expanded.values().next().value;
     if (oldest !== undefined) { expanded.delete(oldest); }
   }
+}
+
+/** "See less": the caption stays closed when the list mounts its card again. */
+export function forgetCaptionExpanded(id: string | undefined): void {
+  if (id) { expanded.delete(id); }
 }
 
 export function __resetCaptionExpansionForTest(): void {

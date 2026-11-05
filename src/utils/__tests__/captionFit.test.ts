@@ -8,6 +8,7 @@ import {
   advanceFit,
   captionPieces,
   firstCut,
+  forgetCaptionExpanded,
   isCaptionExpanded,
   nextCut,
   piecesUpTo,
@@ -204,6 +205,15 @@ describe('remembered expansion', () => {
     expect(isCaptionExpanded('p2')).toBe(false);
     rememberCaptionExpanded(undefined);
     expect(isCaptionExpanded(undefined)).toBe(false);
+  });
+
+  it('forgets a post closed with "See less", and only that post', () => {
+    rememberCaptionExpanded('p1');
+    rememberCaptionExpanded('p2');
+    forgetCaptionExpanded('p1');
+    forgetCaptionExpanded(undefined);
+    expect(isCaptionExpanded('p1')).toBe(false);
+    expect(isCaptionExpanded('p2')).toBe(true);
   });
 
   it('is bounded: the oldest is forgotten first', () => {

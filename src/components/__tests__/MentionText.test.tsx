@@ -1,12 +1,17 @@
 /**
  * A feed caption: 4 lines, then "… See more" — only when it really is longer — and a tap
- * opens the rest in place. Tags stay tappable collapsed and open. The phone's own text layout
- * is played here by firing `onTextLayout` on the invisible measuring copy.
+ * opens the rest in place, ending in "See less". Tags stay tappable collapsed and open. The
+ * phone's own text layout is played here by firing `onTextLayout` on the invisible measuring copy.
  */
 import React from 'react';
 import TestRenderer, { act, type ReactTestInstance } from 'react-test-renderer';
 import { Text } from 'react-native';
-import { __resetCaptionExpansionForTest } from '../../utils/captionFit';
+import {
+  SEE_LESS_LABEL,
+  SEE_MORE_ELLIPSIS,
+  SEE_MORE_LABEL,
+  __resetCaptionExpansionForTest,
+} from '../../utils/captionFit';
 
 const mockOpenMention = jest.fn();
 jest.mock('../../hooks/useOpenMention', () => ({ useOpenMention: () => mockOpenMention }));
@@ -44,6 +49,9 @@ function shown(node: ReactTestInstance): string {
 
 const byId = (r: TestRenderer.ReactTestRenderer, id: string) =>
   r.root.findAll(n => n.type === Text && n.props.testID === id);
+
+const seeLess = (r: TestRenderer.ReactTestRenderer) =>
+  r.root.findAll(n => n.type === Text && shown(n) === SEE_LESS_LABEL && !!n.props.onPress)[0];
 
 /** Play the phone: lay out whatever the measuring copy holds until it stops asking. */
 function settleLayout(r: TestRenderer.ReactTestRenderer) {
@@ -94,9 +102,44 @@ it('a long caption ends its 4th line with "… See more", and a tap opens all of
 
   act(() => { caption!.props.onPress(); });
   [caption] = byId(r, 'caption');
-  expect(shown(caption!)).toBe(LONG);
+  expect(shown(caption!)).toBe(`${LONG} ${SEE_LESS_LABEL}`);
   expect(caption!.props.numberOfLines).toBeUndefined();
   expect(caption!.props.onPress).toBeUndefined();
+});
+
+it('"See less" closes an opened caption back to its 4 lines, and only those words do', () => {
+  const r = render(<MentionText text={LONG} numberOfLines={4} expandId="p1" />);
+  settleLayout(r);
+  const collapsed = shown(byId(r, 'caption')[0]!);
+  act(() => { byId(r, 'caption')[0]!.props.onPress(); });
+
+  // The caption around the words takes no tap.
+  expect(byId(r, 'caption')[0]!.props.onPress).toBeUndefined();
+  act(() => { seeLess(r)!.props.onPress(); });
+
+  const [caption] = byId(r, 'caption');
+  expect(shown(caption!)).toBe(collapsed);
+  expect(caption!.props.numberOfLines).toBe(4);
+  expect(typeof caption!.props.onPress).toBe('function');
+  expect(seeLess(r)).toBeUndefined();
+});
+
+it('"See less" closes a card the list mounted again, and it comes back closed after that', () => {
+  const first = render(<MentionText text={LONG} numberOfLines={4} expandId="p1" />);
+  settleLayout(first);
+  act(() => { byId(first, 'caption')[0]!.props.onPress(); });
+  act(() => { first.unmount(); });
+
+  const again = render(<MentionText text={LONG} numberOfLines={4} expandId="p1" />);
+  act(() => { seeLess(again)!.props.onPress(); });
+  expect(byId(again, 'caption')[0]!.props.numberOfLines).toBe(4);
+  settleLayout(again);
+  expect(shown(byId(again, 'caption')[0]!).endsWith(SEE_MORE_ELLIPSIS + SEE_MORE_LABEL)).toBe(true);
+  act(() => { again.unmount(); });
+
+  const third = render(<MentionText text={LONG} numberOfLines={4} expandId="p1" />);
+  expect(byId(third, 'caption')[0]!.props.numberOfLines).toBe(4);
+  expect(seeLess(third)).toBeUndefined();
 });
 
 it('before the measuring settles, the caption is the plain 4-line text and already tappable', () => {
@@ -136,7 +179,7 @@ it('an opened caption comes back open when the list remounts the card', () => {
   act(() => { first.unmount(); });
 
   const again = render(<MentionText text={LONG} numberOfLines={4} expandId="p1" />);
-  expect(shown(byId(again, 'caption')[0]!)).toBe(LONG);
+  expect(shown(byId(again, 'caption')[0]!)).toBe(`${LONG} ${SEE_LESS_LABEL}`);
   expect(byId(again, 'caption-measure')).toHaveLength(0);
 
   // A different post is not affected.
@@ -161,4 +204,14 @@ it('without numberOfLines (the post page) the whole caption shows, nothing measu
   expect(caption!.props.numberOfLines).toBeUndefined();
   expect(caption!.props.onPress).toBeUndefined();
   expect(byId(r, 'caption-measure')).toHaveLength(0);
+});
+
+it('the post page has no "See less", even for a caption opened in the feed', () => {
+  const feed = render(<MentionText text={LONG} numberOfLines={4} expandId="p1" />);
+  settleLayout(feed);
+  act(() => { byId(feed, 'caption')[0]!.props.onPress(); });
+
+  const page = render(<MentionText text={LONG} expandId="p1" />);
+  expect(shown(byId(page, 'caption')[0]!)).toBe(LONG);
+  expect(seeLess(page)).toBeUndefined();
 });
