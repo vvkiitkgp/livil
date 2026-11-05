@@ -49,6 +49,9 @@ export function mentionedUsernames(text: string, max = 5): string[] {
   return out;
 }
 
+/** How a tappable @username looks in a comment or a caption. */
+export const MENTION_TEXT_STYLE: TextStyle = { color: COLORS.purpleLight, fontWeight: '600' };
+
 /**
  * Render a comment body with @mentions as tappable purple <Text>. Caller
  * provides `onMentionPress(username)` to navigate to the profile.
@@ -67,7 +70,7 @@ export function renderCommentBody(
       Text,
       {
         key: i,
-        style: [baseStyle, { color: COLORS.purpleLight, fontWeight: '600' }],
+        style: [baseStyle, MENTION_TEXT_STYLE],
         onPress: () => onMentionPress(c.value),
       },
       `@${c.value}`,
