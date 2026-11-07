@@ -21,6 +21,7 @@ import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
 import AddPhotoScreen from '../screens/auth/AddPhotoScreen';
 import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
 import UploadScreen from '../screens/main/UploadScreen';
+import DraftsScreen from '../screens/studio/DraftsScreen';
 import RepostScreen from '../screens/main/RepostScreen';
 import AddToLivilScreen from '../screens/main/AddToLivilScreen';
 import SpotifyRepostScreen from '../screens/main/SpotifyRepostScreen';
@@ -92,9 +93,6 @@ import { markSignedInHere } from '../utils/returningListener';
 // dependencies, and the whole Editor (screens + DSP) is left out of the store app.
 const StudioScreen: React.ComponentType | null = __DEV__
   ? require('../screens/studio/StudioScreen').default
-  : null;
-const DraftsScreen: React.ComponentType | null = __DEV__
-  ? require('../screens/studio/DraftsScreen').default
   : null;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -740,17 +738,15 @@ export default function RootNavigator() {
                 animation: 'slide_from_bottom',
               }}
             />
-            {DraftsScreen && (
-              <Stack.Screen
-                name="Drafts"
-                component={DraftsScreen}
-                options={{
-                  presentation: 'modal',
-                  gestureEnabled: false,
-                  animation: 'slide_from_bottom',
-                }}
-              />
-            )}
+            <Stack.Screen
+              name="Drafts"
+              component={DraftsScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
             {StudioScreen && (
               <Stack.Screen
                 name="Studio"

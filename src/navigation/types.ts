@@ -25,7 +25,8 @@ export type RootStackParamList = {
    * `studio`: a finished Editor mix (developer builds only, ADR-0036). Upload shows it on the
    * song step and uploads nothing until the artist moves on from that step.
    */
-  Upload: { studio?: StudioMix } | undefined;
+  /** `draftId` reopens an upload draft saved from this screen (DraftsList). */
+  Upload: { studio?: StudioMix; draftId?: string } | undefined;
   CollaboratorPicker: {
     /**
      * Roles already credited here, as `${userId}|${role}` (or `custom:${name}|${role}`).

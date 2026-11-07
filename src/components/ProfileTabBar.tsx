@@ -12,7 +12,7 @@ export type TabCounts = {
   albums: number;
   playlists: number;
   /**
-   * Editor drafts — ON THIS PHONE, own profile only (ADR-0036 §9). Never fetched for anyone
+   * Drafts — ON THIS PHONE, own profile only (ADR-0036 §9). Never fetched for anyone
    * else's profile, so it is simply absent there.
    */
   drafts?: number;

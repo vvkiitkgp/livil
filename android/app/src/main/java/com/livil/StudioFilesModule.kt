@@ -1,5 +1,6 @@
 package com.livil
 
+import android.net.Uri
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -8,6 +9,8 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import kotlin.concurrent.thread
 
 /**
  * On-device storage for Editor drafts (ADR-0036 §9). Drafts never leave the phone.
@@ -97,6 +100,30 @@ class StudioFilesModule(reactContext: ReactApplicationContext) :
   @ReactMethod
   fun remove(rel: String, promise: Promise) =
       withPath(rel, promise) { file -> promise.resolve(file.exists() && file.deleteRecursively()) }
+
+  /**
+   * A picked file (`file://` or `content://`) into the drafts folder, on disk, so a long video
+   * never crosses the bridge. Only `toRel` has to be inside the root. On its own thread: a big
+   * copy must not hold up every other native module.
+   */
+  @ReactMethod
+  fun copyIn(fromUri: String, toRel: String, promise: Promise) {
+    val to = resolve(toRel) ?: return promise.reject("E_PATH", "Not a path inside the drafts folder")
+    thread {
+      val tmp = File(to.parentFile, to.name + ".tmp")
+      try {
+        to.parentFile?.mkdirs()
+        val input = reactApplicationContext.contentResolver.openInputStream(Uri.parse(fromUri))
+            ?: throw IOException("Could not read the file")
+        input.use { source -> FileOutputStream(tmp).use { source.copyTo(it) } }
+        if (!tmp.renameTo(to)) { to.delete(); tmp.renameTo(to) }
+        promise.resolve(true)
+      } catch (e: Exception) {
+        tmp.delete()
+        promise.reject("E_IO", e.message, e)
+      }
+    }
+  }
 
   @ReactMethod
   fun freeBytes(promise: Promise) {

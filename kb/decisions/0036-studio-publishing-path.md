@@ -110,6 +110,11 @@ Facts. **Verified by reading unless marked:**
      the deletion. Deletion from the web or by email cannot reach the phone, and that is accepted.
    - Refuse to start a take with less than about 250 MB free. Running out of disk mid-take saves
      what was recorded.
+   - **Upload drafts share this folder and these rules (owner, 2026-11-06):** `upload.json`
+     beside the artist's own copy of each picked file, by relative name, listed with the Editor's
+     drafts. Unlike the Editor they ship in the store app. They never store the streaming
+     permission or a copyright answer, and nothing in one was uploaded: reopening starts the
+     upload again. A post that succeeds deletes its draft; a failed one keeps it.
    - Takes are recorded as **WAV**: an M4A cut off by a crash mid-take may be unplayable
      (inferred), while WAV can be recovered.
    - List, delete-within-root, free-bytes and exclude-from-backup come from **a small app-owned

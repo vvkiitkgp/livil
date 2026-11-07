@@ -4,8 +4,11 @@ import {
   isSafeDraftPath,
   isSafeId,
   parseDraftFile,
+  parseUploadDraftFile,
+  storedFileName,
   summaryOf,
   toDraftFile,
+  UPLOAD_DRAFT_SCHEMA_VERSION,
 } from '../../screens/studio/draftFormat';
 import type { Project, VoiceLane } from '../../screens/studio/studioEngine';
 import { DEFAULT_FX } from '../audioFx/effects';
@@ -106,5 +109,59 @@ describe('draft names', () => {
     expect(displayTitle('Draft · 2 Nov, 0:59')).toBe('Draft · 2 Nov, 12:59 am');
     expect(displayTitle('Draft · 2 Nov, 12:59 am')).toBe('Draft · 2 Nov, 12:59 am');
     expect(displayTitle('Late night')).toBe('Late night');
+  });
+});
+
+describe('upload draft format', () => {
+  const pick = (file: string) => ({ file, name: 'a.mov', type: 'video/quicktime', size: 10 });
+  const good = () => ({
+    schemaVersion: UPLOAD_DRAFT_SCHEMA_VERSION,
+    kind: 'upload',
+    id: 'draft1',
+    title: 'Song',
+    createdAt: '2026-11-06T06:00:00.000Z',
+    updatedAt: '2026-11-06T06:00:00.000Z',
+    durationSec: 35,
+    form: {
+      mode: 'video',
+      description: '',
+      tags: ['a'],
+      uploaderRoles: ['Guitar'],
+      collaborators: [],
+      album: null,
+      media: pick('media-abc.mov'),
+      picture: null,
+    },
+  });
+  const withForm = (form: object) => JSON.stringify({ ...good(), form: { ...good().form, ...form } });
+
+  it('reads back a good file', () => {
+    expect(parseUploadDraftFile(JSON.stringify(good()))?.form.media?.file).toBe('media-abc.mov');
+  });
+
+  it.each(['../media-abc.mov', '/etc/passwd', 'media-a/b.mov', 'other.mov', 'media-..'])(
+    'refuses a file path that could leave the draft: %s',
+    file => {
+      expect(parseUploadDraftFile(withForm({ media: pick(file) }))).toBeNull();
+    },
+  );
+
+  it('refuses what this build cannot open', () => {
+    expect(parseUploadDraftFile('not json')).toBeNull();
+    expect(parseUploadDraftFile(JSON.stringify({ ...good(), schemaVersion: 99 }))).toBeNull();
+    expect(parseUploadDraftFile(JSON.stringify({ ...good(), kind: 'editor' }))).toBeNull();
+    expect(parseUploadDraftFile(JSON.stringify({ ...good(), id: '../x' }))).toBeNull();
+    expect(parseUploadDraftFile(withForm({ mode: 'gif' }))).toBeNull();
+  });
+
+  it('drops malformed fields rather than passing them to the form', () => {
+    const d = parseUploadDraftFile(withForm({ tags: ['ok', 3], album: { id: 7 }, collaborators: 'x', description: 5 }));
+    expect(d?.form).toMatchObject({ tags: ['ok'], album: null, collaborators: [], description: '' });
+  });
+
+  it('names a stored file safely, keeping a sensible extension only', () => {
+    expect(storedFileName('media', 'IMG_5632.mov', 'u1')).toBe('media-u1.mov');
+    expect(storedFileName('picture', null, 'u1')).toBe('picture-u1');
+    expect(storedFileName('media', 'evil.../../x', 'u1')).toBe('media-u1');
   });
 });

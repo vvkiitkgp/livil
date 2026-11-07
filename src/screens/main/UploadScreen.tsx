@@ -15,7 +15,7 @@ import {
   type TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardController, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, keepLocalCopy, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
@@ -27,6 +27,7 @@ import FormInput from '../../components/FormInput';
 import TagInput from '../../components/TagInput';
 import { EMOTION_TAGS } from '../../../shared/constants/tags';
 import { Button } from '../../components/Button';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
@@ -77,7 +78,14 @@ import UploadPreviewCard, { type UploadPreviewAuthor } from '../../components/Up
 import { GradientFill } from '../../components/GradientFill';
 import { supabase } from '../../../lib/supabase';
 import { getMyProfile } from '../../services/profileService';
-import { deleteDraft } from '../../services/drafts';
+import { useToast } from '../../contexts/ToastContext';
+import {
+  deleteDraft,
+  loadUploadDraft,
+  newDraftId,
+  saveUploadDraft,
+  uploadDraftsAvailable,
+} from '../../services/drafts';
 import { getMyUserId } from '../../services/session';
 import MentionSuggestions from '../../components/MentionSuggestions';
 import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
@@ -224,7 +232,11 @@ export default function UploadScreen() {
   const playback = usePlayback();
   // An Editor mix arrives already chosen (ADR-0036): the song step opens with it, and nothing
   // is uploaded until the artist moves on from that step (`studioConfirmed`).
-  const studio = useRoute<RouteProp<RootStackParamList, 'Upload'>>().params?.studio ?? null;
+  const routeParams = useRoute<RouteProp<RootStackParamList, 'Upload'>>().params;
+  const studio = routeParams?.studio ?? null;
+  // An upload draft being reopened, saved earlier from this screen's leave dialog.
+  const openedDraftId = routeParams?.draftId ?? null;
+  const { showToast } = useToast();
   const studioFile = useMemo<PickedFile | null>(
     () => (studio ? { uri: studio.uri, name: studio.name, type: 'audio/flac', size: studio.size } : null),
     [studio],
@@ -281,6 +293,9 @@ export default function UploadScreen() {
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(!!openedDraftId);
 
   // The copyright question, if the scan raised one. `createTrack` awaits the promise
   // below, so the upload genuinely pauses here rather than racing the modal — holding
@@ -747,7 +762,7 @@ export default function UploadScreen() {
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   // FIELD_CLEARANCE, plus the @ list's height while the description's list is open.
   const mentionRoom = useMentionListRoom(scrollRef, FIELD_CLEARANCE);
-  const [step, setStep] = useState<StepKey>(studio ? 'media' : 'type');
+  const [step, setStep] = useState<StepKey>(studio || openedDraftId ? 'media' : 'type');
   const [reviewing, setReviewing] = useState(false);
 
   const mediaFile = mode === 'audio' ? audio : video;
@@ -835,24 +850,100 @@ export default function UploadScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [confirmVideo]);
 
+  // A reopened draft skips what is already filled in (credits are optional, so never missing).
+  const stepsAhead = STEP_ORDER.slice(STEP_ORDER.indexOf(step) + 1);
+  const nextStep = openedDraftId ? stepsAhead.find(k => k !== 'credits' && !stepDone[k]) : stepsAhead[0];
   const goNext = useCallback(() => {
-    const i = STEP_ORDER.indexOf(step);
-    if (i >= STEP_ORDER.length - 1) { openPreview(); return; }
-    openStep(STEP_ORDER[i + 1]);
-  }, [step, openStep, openPreview]);
+    if (!nextStep) { openPreview(); return; }
+    openStep(nextStep);
+  }, [nextStep, openStep, openPreview]);
 
-  // Android back on the Preview page returns to the steps, as the header arrow does —
-  // never out of the screen with everything filled in. Mid-upload it does nothing.
+  // The signed-in user, looked up once per visit like the Editor's: a draft must save with no
+  // signal, when a lookup at that moment may not answer.
+  const ownerRef = useRef<string | null>(null);
+  const owner = useCallback(async (): Promise<string | null> => {
+    if (!ownerRef.current) { ownerRef.current = await getMyUserId().catch(() => null); }
+    return ownerRef.current;
+  }, []);
+  useEffect(() => { void owner(); }, [owner]);
+
+  // A reopened draft fills the form in. Nothing was uploaded, so its upload starts as a new
+  // pick's would.
+  const draftRef = useRef<{ id: string; createdAt: string; durationSec: number } | null>(null);
+  useEffect(() => {
+    if (!openedDraftId) { return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const userId = await owner();
+        if (!userId) { throw new Error('No signed-in user'); }
+        const { draft, media, picture } = await loadUploadDraft(userId, openedDraftId);
+        if (cancelled) { return; }
+        const f = draft.form;
+        draftRef.current = { id: draft.id, createdAt: draft.createdAt, durationSec: draft.durationSec };
+        setMode(f.mode);
+        if (f.mode === 'audio') {
+          setAudio(media);
+          setCover(picture);
+        } else {
+          setVideo(media);
+          setThumbnail(picture);
+        }
+        setTitle(draft.title);
+        setDescription(f.description);
+        setTags(f.tags);
+        setUploaderRoles(f.uploaderRoles);
+        setCollaborators(f.collaborators);
+        setSelectedAlbum(f.album);
+        setDraftLoading(false);
+      } catch (err) {
+        if (cancelled) { return; }
+        console.log('[LIVIL][upload] draft would not open', err);
+        showToast("This draft can't be opened.", { kind: 'error' });
+        navigation.goBack();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [openedDraftId, owner, showToast, navigation]);
+
+  // Anything leaving the screen would lose: for a reopened draft, changes since it opened; else
+  // whatever is filled in. An Editor mix arrives chosen and stays in its draft, so on its own it
+  // doesn't count.
+  const formSnapshot = JSON.stringify([
+    mode, mediaFile?.uri, imageFile?.uri, title, description, tags, uploaderRoles, collaborators, selectedAlbum?.id,
+  ]);
+  const openedSnapshotRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openedDraftId && !draftLoading && openedSnapshotRef.current === null) {
+      openedSnapshotRef.current = formSnapshot;
+    }
+  }, [openedDraftId, draftLoading, formSnapshot]);
+  const hasWork = openedDraftId
+    ? openedSnapshotRef.current !== null && formSnapshot !== openedSnapshotRef.current
+    : Boolean(
+      video || cover || thumbnail || (audio && audio !== studioFile)
+      || title.trim() !== (studio?.title ?? '').trim() || description.trim()
+      || collaborators.length || tags.length || uploaderRoles.length || selectedAlbum,
+    );
+  const askToDiscard = useCallback(async () => {
+    await KeyboardController.dismiss();
+    setConfirmDiscard(true);
+  }, []);
+
+  // Android back on the Preview page returns to the steps, as the header arrow does; from the
+  // steps it leaves the screen, asking first if that would lose anything. Mid-upload it does
+  // nothing.
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         if (submitting) { return true; }
-        if (!reviewing) { return false; }
-        setReviewing(false);
+        if (reviewing) { setReviewing(false); return true; }
+        if (!hasWork) { return false; }
+        void askToDiscard();
         return true;
       });
       return () => sub.remove();
-    }, [reviewing, submitting]),
+    }, [reviewing, submitting, hasWork, askToDiscard]),
   );
 
   // Who the preview card and player say posted it.
@@ -987,6 +1078,10 @@ export default function UploadScreen() {
       if (studio && result?.trackId) {
         void getMyUserId().then(me => (me ? deleteDraft(me, studio.draftId) : undefined)).catch(() => {});
       }
+      // Same for an upload draft: posted, it is done with. A failed post keeps it.
+      if (openedDraftId && result?.trackId) {
+        void owner().then(id => (id ? deleteDraft(id, openedDraftId) : undefined)).catch(() => {});
+      }
       // Fires with the success modal, not with the upload finishing — the
       // buzz and the confirmation land together.
       haptics.success();
@@ -1017,7 +1112,7 @@ export default function UploadScreen() {
       setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum, studio, studioFile]);
+  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum, studio, studioFile, openedDraftId, owner]);
 
   // Post's one automatic retry. Through a ref, so the timer always runs the current form.
   // Only on the Preview page, where its progress is shown — never behind the steps.
@@ -1040,7 +1135,7 @@ export default function UploadScreen() {
   const renderNext = (label: string, enabled: boolean, why: string) => (
     <View style={styles.nextWrap}>
       <Button
-        label={label}
+        label={openedDraftId ? 'Next' : label}
         onPress={goNext}
         variant="primary"
         size="md"
@@ -1744,7 +1839,46 @@ export default function UploadScreen() {
   const headerBack = () => {
     if (submitting) { return; }
     if (reviewing) { setReviewing(false); return; }
+    if (hasWork) { void askToDiscard(); return; }
     navigation.goBack();
+  };
+
+  // An Editor mix already has its own draft, in the Editor.
+  const canSaveDraft = uploadDraftsAvailable() && !studio;
+  const leaveUpload = () => {
+    setConfirmDiscard(false);
+    navigation.goBack();
+  };
+  const saveAsDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const userId = await owner();
+      if (!userId) { throw new Error('No signed-in user'); }
+      const existing = draftRef.current;
+      await saveUploadDraft(userId, {
+        id: existing?.id ?? newDraftId(),
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        durationSec: previewDurationSec ?? existing?.durationSec ?? 0,
+        title,
+        mode,
+        description,
+        tags,
+        uploaderRoles,
+        collaborators,
+        album: selectedAlbum,
+        media: mediaFile,
+        picture: imageFile,
+      });
+      console.log('[LIVIL][upload] saved as a draft');
+      showToast('Saved to your drafts.', { kind: 'success' });
+      leaveUpload();
+    } catch (err) {
+      console.log('[LIVIL][upload] draft not saved', err);
+      const message = err instanceof Error && /space/.test(err.message) ? err.message : "Couldn't save the draft. Try again.";
+      showToast(message, { kind: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
   };
 
   const barPercent = reviewing ? 100 : Math.round((doneCount / STEP_ORDER.length) * 100);
@@ -1827,7 +1961,9 @@ export default function UploadScreen() {
           ? <View style={styles.stagingBanner}>{renderStagingStatus()}</View>
           : null}
 
-        {reviewing ? renderPreview() : renderSteps()}
+        {draftLoading
+          ? <ActivityIndicator color={COLORS.purpleLight} style={styles.progressSpinner} />
+          : reviewing ? renderPreview() : renderSteps()}
 
         <View style={styles.scrollSpacer} />
         </View>
@@ -1911,6 +2047,35 @@ export default function UploadScreen() {
           </View>
         </View>
       </Modal>
+
+      {canSaveDraft ? (
+        <ConfirmActionModal
+          visible={confirmDiscard}
+          title={openedDraftId ? 'Save your changes?' : 'Save this as a draft?'}
+          message={openedDraftId
+            ? 'If you discard them, your draft stays as it was.'
+            : "If you discard it, everything you've filled in is lost. Drafts stay on this phone."}
+          tone="primary"
+          icon="pencilLine"
+          confirmLabel="Save draft"
+          altLabel={openedDraftId ? 'Discard changes' : 'Discard'}
+          onAlt={leaveUpload}
+          cancelLabel="Keep editing"
+          busy={savingDraft}
+          onConfirm={() => { void saveAsDraft(); }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      ) : (
+        <ConfirmActionModal
+          visible={confirmDiscard}
+          title="Discard this upload?"
+          message="Everything you've filled in will be lost."
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          onConfirm={leaveUpload}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
 
       <AddToAlbumSheet
         visible={albumSheetOpen}

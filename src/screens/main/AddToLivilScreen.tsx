@@ -75,13 +75,13 @@ export default function AddToLivilScreen() {
             onPress={() => navigation.push('Studio')}
           />
         )}
-        {__DEV__ && (
+        {(__DEV__ || drafts.length > 0) && (
           <Option
             icon="pencilLine"
             title="Drafts"
             body={drafts.length
               ? `${drafts.length} saved on this phone. Pick up where you left off.`
-              : 'Songs you save in the Editor wait here, on this phone.'}
+              : 'Uploads and songs you save wait here, on this phone.'}
             onPress={() => navigation.push('Drafts')}
           />
         )}
