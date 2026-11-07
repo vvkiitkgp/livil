@@ -47,7 +47,15 @@ export type PostCardProps = {
    * should drop the post from its local list so the card unmounts.
    */
   onDeleted?: (postId: string) => void;
+  /**
+   * Show the whole caption, never "… See more". For the post's own page (PostDetail), where
+   * the post is the whole screen; feed and profile cards stop at 4 lines and expand on tap.
+   */
+  fullCaption?: boolean;
 };
+
+/** A feed card's caption stops here; "… See more" opens the rest (MentionText). */
+const CAPTION_LINES = 4;
 
 function formatCount(n: number): string {
   if (n < 1000) {return String(n);}
@@ -121,7 +129,7 @@ function creditsSummary(credits: FeedPost['credits']): string {
   return `with ${first} and ${rest} other${rest === 1 ? '' : 's'}`;
 }
 
-function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
+function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardProps) {
   const playback = usePlayback();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
@@ -722,7 +730,14 @@ function PostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
         </View>
       ) : null}
       {post.caption ? (
-        <MentionText text={post.caption} style={styles.caption} numberOfLines={4} />
+        // Up to 2,000 characters: 4 lines, then "… See more" opens the rest in place.
+        // Outside the artwork's DoubleTapLike, so a tap here never plays or likes.
+        <MentionText
+          text={post.caption}
+          style={styles.caption}
+          numberOfLines={fullCaption ? undefined : CAPTION_LINES}
+          expandId={post.id}
+        />
       ) : null}
 
       {/* Credits — faces only. A track's collaborators are part of what the post IS, and
