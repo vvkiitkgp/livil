@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-582 TypeScript file(s) under `src/`, 115,330 lines.
+585 TypeScript file(s) under `src/`, 115,429 lines.
 
 ## Size hotspots
 
@@ -582,7 +582,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-123 file(s), 11,544 lines.
+125 file(s), 11,584 lines.
 
 | File | Lines |
 |---|---:|
@@ -695,6 +695,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/seenWhileAway.test.ts` | 29 |
 | `src/utils/playbackErrors.ts` | 28 |
 | `src/utils/__tests__/passwordPolicy.test.ts` | 27 |
+| `src/utils/__tests__/swipeBack.test.ts` | 27 |
 | `src/utils/audioClean/index.ts` | 27 |
 | `src/utils/chatCopy.ts` | 26 |
 | `src/utils/__tests__/chatGif.test.ts` | 25 |
@@ -707,6 +708,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/likeCount.ts` | 20 |
 | `src/utils/likedBy.ts` | 20 |
 | `src/utils/retryOnce.ts` | 17 |
+| `src/utils/swipeBack.ts` | 13 |
 | `src/utils/seenWhileAway.ts` | 12 |
 | `src/utils/gifIds.ts` | 7 |
 
