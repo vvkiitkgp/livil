@@ -87,7 +87,7 @@ const ACTION_ICON_SIZE = 26;
 /** Share's paper plane, drawn smaller inside an ACTION_ICON_SIZE box — see PostCard's. */
 const SHARE_ICON_SIZE = 22;
 
-function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
+function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useToast();
   const spotifyId = post.spotifyTrackId ?? '';
@@ -230,7 +230,15 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted }: PostCardProps) {
 
       <Text style={styles.trackTitle} numberOfLines={2}>{title}</Text>
       <Text style={styles.artist} numberOfLines={1}>{artist}</Text>
-      {post.caption ? <MentionText text={post.caption} style={styles.caption} numberOfLines={4} /> : null}
+      {/* 4 lines, then "… See more" opens the rest in place (as on PostCard). */}
+      {post.caption ? (
+        <MentionText
+          text={post.caption}
+          style={styles.caption}
+          numberOfLines={fullCaption ? undefined : 4}
+          expandId={post.id}
+        />
+      ) : null}
 
       {/* Artwork exactly as Spotify supplies it — nothing drawn on top, so a double tap likes
           WITHOUT the heart burst (the action row's heart fills in). Tapping it opens the song,

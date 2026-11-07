@@ -147,6 +147,8 @@ export default function PostDetailScreen({ navigation, route }: Props) {
               post={shown}
               onCommentsPress={() => setCommentsOpen(true)}
               onDeleted={handleDeleted}
+              // The post's own page: the whole caption, no "… See more".
+              fullCaption
             />
           ) : (
             <View style={styles.empty}>

@@ -26,8 +26,8 @@ type Props = {
   /** Pass null to hide the secondary button (one-button mode). */
   cancelLabel?: string | null;
   /**
-   * An optional third choice between the two, e.g. "Discard" in "Save draft / Discard / Keep
-   * editing". The backdrop and back button stay Cancel — never this one.
+   * An optional third choice between the two that throws work away, e.g. "Discard" in "Save
+   * draft / Discard / Keep editing". The backdrop and back button stay Cancel — never this one.
    */
   altLabel?: string;
   onAlt?: () => void;
@@ -127,10 +127,11 @@ export default function ConfirmActionModal({
             <Button
               label={altLabel}
               onPress={onAlt}
-              variant="secondary"
+              variant="destructive"
               size="md"
               disabled={busy}
               fullWidth
+              haptic="warning"
               style={styles.dismiss}
             />
           ) : null}

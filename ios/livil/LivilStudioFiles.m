@@ -173,6 +173,30 @@ RCT_EXPORT_METHOD(remove:(NSString *)rel
   resolve(@(YES));
 }
 
+// A picked file into the drafts folder, on disk, so a long video never crosses the bridge.
+// `fromUri` is the file:// URI the picker handed back; only `to` has to be inside the root.
+RCT_EXPORT_METHOD(copyIn:(NSString *)fromUri
+                  to:(NSString *)toRel
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  RESOLVE_OR_REJECT(to, toRel);
+  NSURL *from = [NSURL URLWithString:fromUri];
+  if (!from.isFileURL) { reject(@"E_PATH", @"Not a file on this phone", nil); return; }
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSError *error = nil;
+  if (!EnsureRoot(&error) ||
+      ![fm createDirectoryAtPath:[to stringByDeletingLastPathComponent]
+     withIntermediateDirectories:YES attributes:nil error:&error]) {
+    reject(@"E_COPY", error.localizedDescription, error); return;
+  }
+  if ([fm fileExistsAtPath:to]) [fm removeItemAtPath:to error:nil];
+  if (![fm copyItemAtURL:from toURL:[NSURL fileURLWithPath:to] error:&error]) {
+    reject(@"E_COPY", error.localizedDescription, error); return;
+  }
+  resolve(@(YES));
+}
+
 RCT_EXPORT_METHOD(freeBytes:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject)
 {
   NSURL *docs = [NSURL fileURLWithPath:NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject];

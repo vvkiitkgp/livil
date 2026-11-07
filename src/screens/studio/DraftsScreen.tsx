@@ -10,8 +10,8 @@ import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 
 /**
- * "Drafts" from + Post: every Editor draft on this phone, each with Edit. Developer builds
- * only, like the Editor itself (registered under `__DEV__` in RootNavigator).
+ * "Drafts" from + Post: every draft on this phone, each with Edit. Upload drafts only in the
+ * store app, while the Editor is developer-only (see `useMyDrafts`).
  */
 export default function DraftsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -29,11 +29,17 @@ export default function DraftsScreen() {
 
       <ScrollView contentContainerStyle={styles.body}>
         {drafts.length > 0 ? (
-          <DraftsList drafts={drafts} onOpen={id => navigation.push('Studio', { draftId: id })} onDelete={remove} />
+          <DraftsList
+            drafts={drafts}
+            onOpen={d => (d.uploadKind
+              ? navigation.push('Upload', { draftId: d.id })
+              : navigation.push('Studio', { draftId: d.id }))}
+            onDelete={remove}
+          />
         ) : (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No drafts yet</Text>
-            <Text style={styles.emptyBody}>Tap Save in the Editor and your song waits here.</Text>
+            <Text style={styles.emptyBody}>Save an upload as a draft and it waits here.</Text>
             <Text style={styles.emptyNote}>{DRAFTS_ON_PHONE_NOTE}</Text>
           </View>
         )}

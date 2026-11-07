@@ -2,7 +2,7 @@
 tier: 3
 owner: principal-playback
 consumers: [P-PB, P-DA, BE, P-SE]
-last_verified: 2026-07-21
+last_verified: 2026-11-02
 verify_every: 90d
 verified_by: manual
 visibility: public
@@ -51,6 +51,43 @@ human-readable messages.
 **Uploads are not resumable.** `tus`-style resumable clients buffer whole files in memory in
 React Native, which is the problem we were avoiding. A dropped connection means restarting from
 zero. This is a known limitation, accepted deliberately.
+
+### When the connection fails mid-upload
+
+React Native's Android networking has **no time limits at all** (connect, read and write
+timeouts are 0 in its OkHttp client) and supabase-js sets none — so any request over a dead
+connection can wait for many minutes. Every network step of an upload is therefore bounded:
+
+| Step | Limit | Where |
+|---|---|---|
+| The file itself | **idle** 45 s (`STALL_TIMEOUT_MS`), re-armed on every progress event; 15 s (`NETWORK_CHANGE_STALL_MS`) right after a Wi-Fi ↔ mobile-data switch | `uploads.ts` |
+| Storage's answer after the last byte | 120 s (`RESPONSE_TIMEOUT_MS`), entered from the progress event that reaches the total — **React Native never fires `xhr.upload.onloadend`** | `uploads.ts` |
+| Sign-in check, track-row insert, saving the URL | 20 s each (`NETWORK_STEP_TIMEOUT_MS`); a row that lands after the time-out is deleted | `tracks.ts` |
+| Clean-up after a failure | 10 s (`CLEANUP_TIMEOUT_MS`); what is unfinished stays remembered for `sweepStagedUploads` | `tracks.ts` |
+
+The clean-up limit is the subtle one: the failure path used to `await` the delete and the
+storage removal **before** rethrowing, over the same dead connection — so the screen kept
+showing "Uploading · 0%" after the stall watchdog had already given up.
+
+A failure the connection caused is an `UploadNetworkError` (`src/utils/uploadRecovery.ts`);
+a server refusal (too big, wrong format) is a plain `Error`. Only the first is retried: once,
+automatically, 3 s after the phone is online (at once if it still is, else when NetInfo says it
+is back), then by a **Try again** button. The screen shows "Waiting for connection…" /
+"Upload interrupted" instead of a frozen percentage. Post owns retrying once tapped, so the
+early upload and Post never both re-send the file. Each retry starts from 0% under a new track
+id, so a request whose file did land cannot collide with it.
+
+Every stage logs a `[LIVIL][upload]` line (start, first bytes out, all bytes sent, stall,
+network switch, each bounded step with its duration, retry, success/failure with the stage
+name), so a freeze on a device shows where it stopped.
+
+**A true resume needs a new native module.** Supabase's resumable (TUS) endpoint takes the file
+in 6 MB chunks, and nothing installed can read a byte range of a file without loading the whole
+file: React Native's `fetch(file://)` → `Blob.slice()` holds the entire file in native memory
+(a 500 MB video would be killed for memory), and none of the installed native modules slices
+files. The cheapest safe route is a ~100-line in-repo native module (Kotlin + Swift) that
+copies one byte range to a temp file, sent with an XHR `{ uri }` body — a native rebuild and a
+store release, no backend change. Until then, retry-from-zero is what happens.
 
 ---
 
@@ -129,7 +166,7 @@ Stated plainly so nobody assumes capabilities that are not here.
 | **Transcoding** | Whatever was uploaded is what plays. No normalised codecs, bitrates, or containers |
 | **Signed or expiring URLs** | Anyone with a URL can fetch the media indefinitely, regardless of app-level visibility |
 | **A CDN we control** | Caching and geography are whatever the storage provider does |
-| **Resumable upload** | A dropped connection restarts from zero |
+| **Resumable upload** | A dropped connection restarts from zero — automatically once, then via Try again (see [When the connection fails mid-upload](#when-the-connection-fails-mid-upload)) |
 | **Server-side media validation** | Content type comes from the client picker; no server-side allowlist is declared in this repo |
 | **Thumbnail/preview generation** | Cover art is uploaded, not derived |
 

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
-/** The two fields of NetInfo's state this app reads. */
+/** The fields of NetInfo's state this app reads. */
 export type NetworkState = {
   isConnected: boolean | null;
   isInternetReachable?: boolean | null;
+  /** 'wifi', 'cellular', 'none', 'unknown'… — read only to notice a switch mid-upload. */
+  type?: string | null;
 };
 
 type NetInfoModule = {
@@ -57,6 +59,28 @@ export function subscribeToOffline(listener: (offline: boolean) => void): () => 
     if (offline === last) { return; }
     last = offline;
     listener(offline);
+  });
+}
+
+/** The connection's kind and whether it is offline: what an upload watches for a switch. */
+export type NetworkSnapshot = { type: string; offline: boolean };
+
+/**
+ * Calls `listener` with the current connection, then each time its KIND changes (Wi-Fi →
+ * mobile data) or it goes on/offline. NetInfo also fires on detail-only changes (signal
+ * strength, cell generation); those are dropped, so a listener can treat every call after
+ * the first as a real switch.
+ */
+export function subscribeToNetworkChange(listener: (snapshot: NetworkSnapshot) => void): () => void {
+  const mod = loadNetInfo();
+  if (!mod) { return () => {}; }
+  let last: string | null = null;
+  return mod.addEventListener(state => {
+    const snapshot = { type: state.type ?? 'unknown', offline: isOfflineState(state) };
+    const key = `${snapshot.type}|${snapshot.offline}`;
+    if (key === last) { return; }
+    last = key;
+    listener(snapshot);
   });
 }
 

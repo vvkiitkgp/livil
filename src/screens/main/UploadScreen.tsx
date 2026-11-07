@@ -15,7 +15,7 @@ import {
   type TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareScrollView, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardController, type KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { pick, keepLocalCopy, types, errorCodes, isErrorWithCode } from '@react-native-documents/picker';
@@ -27,6 +27,7 @@ import FormInput from '../../components/FormInput';
 import TagInput from '../../components/TagInput';
 import { EMOTION_TAGS } from '../../../shared/constants/tags';
 import { Button } from '../../components/Button';
+import ConfirmActionModal from '../../components/ConfirmActionModal';
 import { COLORS } from '../../theme/colors';
 import { haptics } from '../../utils/haptics';
 import { GradientBorder } from '../../components/GradientBorder';
@@ -62,6 +63,8 @@ import {
 } from '../../../shared/services/copyrightScan';
 import { addTrackToAlbum } from '../../services/albums';
 import { MAX_UPLOAD_BYTES, tooLargeMessage } from '../../services/uploads';
+import { useIsOffline } from '../../services/network';
+import { autoRetryDelay, interruptionCopy, isUploadNetworkError } from '../../utils/uploadRecovery';
 import { MIN_TRACK_SECONDS, tooShortMessage } from '../../../shared/constants/media';
 import { pickSquareImageFromGallery, pickVideoFromGallery } from '../../services/mediaPicks';
 import type { PickedFile, TrackMediaKind } from '../../services/uploads';
@@ -75,7 +78,14 @@ import UploadPreviewCard, { type UploadPreviewAuthor } from '../../components/Up
 import { GradientFill } from '../../components/GradientFill';
 import { supabase } from '../../../lib/supabase';
 import { getMyProfile } from '../../services/profileService';
-import { deleteDraft } from '../../services/drafts';
+import { useToast } from '../../contexts/ToastContext';
+import {
+  deleteDraft,
+  loadUploadDraft,
+  newDraftId,
+  saveUploadDraft,
+  uploadDraftsAvailable,
+} from '../../services/drafts';
 import { getMyUserId } from '../../services/session';
 import MentionSuggestions from '../../components/MentionSuggestions';
 import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
@@ -125,7 +135,8 @@ type Staging =
   | { status: 'uploading'; fraction: number }
   | { status: 'checking' }
   | { status: 'ready'; staged: StagedUpload }
-  | { status: 'failed' };
+  /** `network`: the connection stopped it (retried by itself once, and offers Try again). */
+  | { status: 'failed'; network: boolean; reason: string };
 
 /**
  * Where the desktop studio lives.
@@ -221,7 +232,11 @@ export default function UploadScreen() {
   const playback = usePlayback();
   // An Editor mix arrives already chosen (ADR-0036): the song step opens with it, and nothing
   // is uploaded until the artist moves on from that step (`studioConfirmed`).
-  const studio = useRoute<RouteProp<RootStackParamList, 'Upload'>>().params?.studio ?? null;
+  const routeParams = useRoute<RouteProp<RootStackParamList, 'Upload'>>().params;
+  const studio = routeParams?.studio ?? null;
+  // An upload draft being reopened, saved earlier from this screen's leave dialog.
+  const openedDraftId = routeParams?.draftId ?? null;
+  const { showToast } = useToast();
   const studioFile = useMemo<PickedFile | null>(
     () => (studio ? { uri: studio.uri, name: studio.name, type: 'audio/flac', size: studio.size } : null),
     [studio],
@@ -278,6 +293,9 @@ export default function UploadScreen() {
   const [progressStage, setProgressStage] = useState<CreateTrackStage>('preparing');
   const [progressFraction, setProgressFraction] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(!!openedDraftId);
 
   // The copyright question, if the scan raised one. `createTrack` awaits the promise
   // below, so the upload genuinely pauses here rather than racing the modal — holding
@@ -587,6 +605,29 @@ export default function UploadScreen() {
   const stagingTokenRef = useRef<StagingToken | null>(null);
   const [awaitingStaging, setAwaitingStaging] = useState(false);
 
+  // ── When the connection stops an upload ──────────────────────────────────────
+  //
+  // A failure the connection caused (`UploadNetworkError`: a stall, a dropped connection, a
+  // step that got no answer) is retried ONCE by itself, a few seconds after the phone is
+  // online — at once if it still is, else when it comes back — and after that offers Try
+  // again. Never a silent freeze: there is always a message, and a button unless the retry
+  // is about to start. Retrying starts from 0%: a request that broke cannot be resumed
+  // (see `kb/architecture/media-pipeline.md`).
+  //
+  // Two uploaders can be stopped this way — the early upload and Post — and they must never
+  // both re-send the file. Post owns retrying from the moment it is tapped: the early
+  // upload never retries by itself while Post is running or has an interruption showing.
+  // (A Post that finds an early upload running waits for it instead of starting another.)
+  const offline = useIsOffline();
+  /** Bumped to start the early upload again (Try again, or the automatic retry). */
+  const [stagingAttempt, setStagingAttempt] = useState(0);
+  /** The file whose early upload has used its one automatic retry. */
+  const [stagingAutoRetriedFile, setStagingAutoRetriedFile] = useState<PickedFile | null>(null);
+  /** Post stopped by the connection: shown in place of the Post button, with Try again. */
+  const [postFailure, setPostFailure] = useState<{ reason: string } | null>(null);
+  const [postAutoRetried, setPostAutoRetried] = useState(false);
+  const lastStagedFileRef = useRef<PickedFile | null>(null);
+
   // Uploads staged on an earlier visit whose app was killed before they were posted.
   useEffect(() => { void sweepStagedUploads(); }, []);
 
@@ -607,6 +648,10 @@ export default function UploadScreen() {
     };
     stagingTokenRef.current = token;
     const abandoned = () => token.abandoned;
+    // Same file as the last run: this is Try again or the automatic retry, not a new pick.
+    const again = lastStagedFileRef.current === stagedFile;
+    lastStagedFileRef.current = stagedFile;
+    console.log(`[LIVIL][upload] staging: ${again ? 'starting again from 0%' : 'starting'} (${mode})`);
     setStaging({ status: 'uploading', fraction: 0 });
     const promise = stageMediaUpload(
       stagedFile,
@@ -626,8 +671,13 @@ export default function UploadScreen() {
       })
       .catch((err: unknown) => {
         if (err instanceof StagingAbandonedError || abandoned()) { return null; }
-        console.log('[LIVIL][upload] early upload failed', err);
-        setStaging({ status: 'failed' });
+        const network = isUploadNetworkError(err);
+        console.log(`[LIVIL][upload] early upload failed (${network ? 'connection' : 'other'})`, err);
+        setStaging({
+          status: 'failed',
+          network,
+          reason: err instanceof Error ? err.message : 'The upload stopped.',
+        });
         return null;
       });
     token.promise = promise;
@@ -642,7 +692,29 @@ export default function UploadScreen() {
       setStaging({ status: 'idle' });
       if (staged) { void discardStagedUpload(staged); }
     };
-  }, [mode, stagedFile]);
+    // `stagingAttempt` starts the same file again (Try again / the automatic retry).
+  }, [mode, stagedFile, stagingAttempt]);
+
+  const stagingAutoUsed = !!stagedFile && stagingAutoRetriedFile === stagedFile;
+  const stagingNetworkFailure = staging.status === 'failed' && staging.network;
+
+  // The early upload's one automatic retry (see "When the connection stops an upload").
+  useEffect(() => {
+    if (!stagingNetworkFailure || submitting || postFailure || !stagedFile) { return; }
+    const delay = autoRetryDelay({ network: true, offline, autoRetryUsed: stagingAutoUsed });
+    if (delay == null) { return; }
+    const t = setTimeout(() => {
+      console.log('[LIVIL][upload] staging: retrying by itself (connection is back)');
+      setStagingAutoRetriedFile(stagedFile);
+      setStagingAttempt(n => n + 1);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [stagingNetworkFailure, submitting, postFailure, stagedFile, offline, stagingAutoUsed]);
+
+  const retryStagingNow = useCallback(() => {
+    console.log('[LIVIL][upload] staging: Try again tapped');
+    setStagingAttempt(n => n + 1);
+  }, []);
 
   // The staged song matched a known recording and the artist has not answered yet.
   const needsAnswer =
@@ -690,7 +762,7 @@ export default function UploadScreen() {
   const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
   // FIELD_CLEARANCE, plus the @ list's height while the description's list is open.
   const mentionRoom = useMentionListRoom(scrollRef, FIELD_CLEARANCE);
-  const [step, setStep] = useState<StepKey>(studio ? 'media' : 'type');
+  const [step, setStep] = useState<StepKey>(studio || openedDraftId ? 'media' : 'type');
   const [reviewing, setReviewing] = useState(false);
 
   const mediaFile = mode === 'audio' ? audio : video;
@@ -778,24 +850,100 @@ export default function UploadScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [confirmVideo]);
 
+  // A reopened draft skips what is already filled in (credits are optional, so never missing).
+  const stepsAhead = STEP_ORDER.slice(STEP_ORDER.indexOf(step) + 1);
+  const nextStep = openedDraftId ? stepsAhead.find(k => k !== 'credits' && !stepDone[k]) : stepsAhead[0];
   const goNext = useCallback(() => {
-    const i = STEP_ORDER.indexOf(step);
-    if (i >= STEP_ORDER.length - 1) { openPreview(); return; }
-    openStep(STEP_ORDER[i + 1]);
-  }, [step, openStep, openPreview]);
+    if (!nextStep) { openPreview(); return; }
+    openStep(nextStep);
+  }, [nextStep, openStep, openPreview]);
 
-  // Android back on the Preview page returns to the steps, as the header arrow does —
-  // never out of the screen with everything filled in. Mid-upload it does nothing.
+  // The signed-in user, looked up once per visit like the Editor's: a draft must save with no
+  // signal, when a lookup at that moment may not answer.
+  const ownerRef = useRef<string | null>(null);
+  const owner = useCallback(async (): Promise<string | null> => {
+    if (!ownerRef.current) { ownerRef.current = await getMyUserId().catch(() => null); }
+    return ownerRef.current;
+  }, []);
+  useEffect(() => { void owner(); }, [owner]);
+
+  // A reopened draft fills the form in. Nothing was uploaded, so its upload starts as a new
+  // pick's would.
+  const draftRef = useRef<{ id: string; createdAt: string; durationSec: number } | null>(null);
+  useEffect(() => {
+    if (!openedDraftId) { return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const userId = await owner();
+        if (!userId) { throw new Error('No signed-in user'); }
+        const { draft, media, picture } = await loadUploadDraft(userId, openedDraftId);
+        if (cancelled) { return; }
+        const f = draft.form;
+        draftRef.current = { id: draft.id, createdAt: draft.createdAt, durationSec: draft.durationSec };
+        setMode(f.mode);
+        if (f.mode === 'audio') {
+          setAudio(media);
+          setCover(picture);
+        } else {
+          setVideo(media);
+          setThumbnail(picture);
+        }
+        setTitle(draft.title);
+        setDescription(f.description);
+        setTags(f.tags);
+        setUploaderRoles(f.uploaderRoles);
+        setCollaborators(f.collaborators);
+        setSelectedAlbum(f.album);
+        setDraftLoading(false);
+      } catch (err) {
+        if (cancelled) { return; }
+        console.log('[LIVIL][upload] draft would not open', err);
+        showToast("This draft can't be opened.", { kind: 'error' });
+        navigation.goBack();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [openedDraftId, owner, showToast, navigation]);
+
+  // Anything leaving the screen would lose: for a reopened draft, changes since it opened; else
+  // whatever is filled in. An Editor mix arrives chosen and stays in its draft, so on its own it
+  // doesn't count.
+  const formSnapshot = JSON.stringify([
+    mode, mediaFile?.uri, imageFile?.uri, title, description, tags, uploaderRoles, collaborators, selectedAlbum?.id,
+  ]);
+  const openedSnapshotRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openedDraftId && !draftLoading && openedSnapshotRef.current === null) {
+      openedSnapshotRef.current = formSnapshot;
+    }
+  }, [openedDraftId, draftLoading, formSnapshot]);
+  const hasWork = openedDraftId
+    ? openedSnapshotRef.current !== null && formSnapshot !== openedSnapshotRef.current
+    : Boolean(
+      video || cover || thumbnail || (audio && audio !== studioFile)
+      || title.trim() !== (studio?.title ?? '').trim() || description.trim()
+      || collaborators.length || tags.length || uploaderRoles.length || selectedAlbum,
+    );
+  const askToDiscard = useCallback(async () => {
+    await KeyboardController.dismiss();
+    setConfirmDiscard(true);
+  }, []);
+
+  // Android back on the Preview page returns to the steps, as the header arrow does; from the
+  // steps it leaves the screen, asking first if that would lose anything. Mid-upload it does
+  // nothing.
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         if (submitting) { return true; }
-        if (!reviewing) { return false; }
-        setReviewing(false);
+        if (reviewing) { setReviewing(false); return true; }
+        if (!hasWork) { return false; }
+        void askToDiscard();
         return true;
       });
       return () => sub.remove();
-    }, [reviewing, submitting]),
+    }, [reviewing, submitting, hasWork, askToDiscard]),
   );
 
   // Who the preview card and player say posted it.
@@ -833,8 +981,11 @@ export default function UploadScreen() {
 
   const canSubmit = !submitting && missing.length === 0;
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (opts?: { auto?: boolean }) => {
     setPreviewPaused(true);
+    // A tap (Post or Try again) earns a fresh automatic retry; the retry itself does not.
+    setPostFailure(null);
+    if (!opts?.auto) { setPostAutoRetried(false); }
     if (missing.length > 0) {
       setError(`Still needed: ${missing.map(m => m.label).join(', ')}.`);
       return;
@@ -889,10 +1040,15 @@ export default function UploadScreen() {
       const token = stagingTokenRef.current;
       let staged = token && !token.abandoned ? token.staged : null;
       if (token && !token.abandoned && !staged && token.promise) {
+        console.log('[LIVIL][upload] post: waiting for the early upload to finish');
         setAwaitingStaging(true);
         staged = await token.promise;
         setAwaitingStaging(false);
-        if (token.abandoned) { return; } // backed out at the question: the file is gone
+        if (token.abandoned) {
+          // Backed out at the question: the file is gone, and that path set its own notice.
+          console.log('[LIVIL][upload] post: stopped — the early upload was cancelled at the copyright question');
+          return;
+        }
       }
       if (token && staged) {
         // Post owns it now: leaving the screen must not remove it mid-publish. The
@@ -903,11 +1059,13 @@ export default function UploadScreen() {
           result = await publishStagedTrack(staged, input, onProgress, askAboutMatch);
         } catch (err) {
           // Removed with everything else by the failed publish — so a retry goes the
-          // classic way, uploading everything at Post.
-          setStaging({ status: 'failed' });
+          // classic way, uploading everything at Post. Not a `network` failure here even when
+          // the connection caused it: Post owns that retry, and the early upload is gone.
+          setStaging({ status: 'failed', network: false, reason: '' });
           throw err;
         }
       } else {
+        if (token) { console.log('[LIVIL][upload] post: no early upload to use — uploading everything now'); }
         result = await createTrack(input, onProgress, askAboutMatch);
       }
       // Tag into the selected album if the user picked one. Fire-and-forget —
@@ -920,6 +1078,10 @@ export default function UploadScreen() {
       if (studio && result?.trackId) {
         void getMyUserId().then(me => (me ? deleteDraft(me, studio.draftId) : undefined)).catch(() => {});
       }
+      // Same for an upload draft: posted, it is done with. A failed post keeps it.
+      if (openedDraftId && result?.trackId) {
+        void owner().then(id => (id ? deleteDraft(id, openedDraftId) : undefined)).catch(() => {});
+      }
       // Fires with the success modal, not with the upload finishing — the
       // buzz and the confirmation land together.
       haptics.success();
@@ -930,9 +1092,18 @@ export default function UploadScreen() {
       // as an error would tell someone who just decided not to publish that something
       // went wrong — the form stays as it was, ready to edit or abandon.
       if (err instanceof UploadCancelledError) {
+        console.log('[LIVIL][upload] post: cancelled at the copyright question');
+        return;
+      }
+      // The connection, not the post, failed: the interruption block takes the Post
+      // button's place (with Try again) instead of a dead-end error at the top.
+      if (isUploadNetworkError(err)) {
+        console.log(`[LIVIL][upload] post: interrupted at "${err.step}"`);
+        setPostFailure({ reason: err.message });
         return;
       }
       const message = err instanceof Error ? err.message : 'Something went wrong.';
+      console.log('[LIVIL][upload] post failed', message);
       setError(message);
     } finally {
       // Clears whether the upload finished, failed, or was cancelled — and drops any
@@ -941,14 +1112,30 @@ export default function UploadScreen() {
       setPendingMatch(null);
       setSubmitting(false);
     }
-  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum, studio, studioFile]);
+  }, [missing, previewDurationSec, mode, title, description, audio, cover, uploaderRoles, collaborators, tags, grantedStreaming, askAboutMatch, video, thumbnail, selectedAlbum, studio, studioFile, openedDraftId, owner]);
+
+  // Post's one automatic retry. Through a ref, so the timer always runs the current form.
+  // Only on the Preview page, where its progress is shown — never behind the steps.
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+  useEffect(() => {
+    if (!postFailure || submitting || !reviewing) { return; }
+    const delay = autoRetryDelay({ network: true, offline, autoRetryUsed: postAutoRetried });
+    if (delay == null) { return; }
+    const t = setTimeout(() => {
+      console.log('[LIVIL][upload] post: retrying by itself (connection is back)');
+      setPostAutoRetried(true);
+      void handleSubmitRef.current({ auto: true });
+    }, delay);
+    return () => clearTimeout(t);
+  }, [postFailure, submitting, reviewing, offline, postAutoRetried]);
 
   // ── Pieces ───────────────────────────────────────────────────────────────────
 
   const renderNext = (label: string, enabled: boolean, why: string) => (
     <View style={styles.nextWrap}>
       <Button
-        label={label}
+        label={openedDraftId ? 'Next' : label}
         onPress={goNext}
         variant="primary"
         size="md"
@@ -1057,10 +1244,36 @@ export default function UploadScreen() {
             ? 'Uploaded · no match with known recordings'
             : "Uploaded · couldn't check it yet, it's checked again when you post";
         break;
-      case 'failed':
-        icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
-        text = "Couldn't upload it yet — it will upload when you post.";
-        break;
+      case 'failed': {
+        if (!staging.network) {
+          icon = <Icon name="info" size={16} color={COLORS.textSecondary} />;
+          text = "Couldn't upload it yet — it will upload when you post.";
+          break;
+        }
+        // Once Post has been tapped it owns retrying, so this one no longer retries by itself.
+        const copy = interruptionCopy({
+          offline,
+          autoRetryUsed: stagingAutoUsed || !!postFailure,
+          reason: staging.reason,
+        });
+        return (
+          <View style={styles.matchCard}>
+            <View style={styles.interruptHead}>
+              {copy.showTryAgain
+                ? <Icon name="offline" size={16} color={COLORS.warning} />
+                : <ActivityIndicator size="small" color={COLORS.warning} />}
+              <Text style={styles.matchTitle}>{copy.title}</Text>
+            </View>
+            <Text style={styles.matchBody}>{copy.body}</Text>
+            {copy.showTryAgain ? (
+              <>
+                <Text style={styles.stagingText}>Or carry on — it uploads when you post.</Text>
+                <Button label="Try again" onPress={retryStagingNow} variant="primary" size="sm" />
+              </>
+            ) : null}
+          </View>
+        );
+      }
       default:
         return null;
     }
@@ -1597,10 +1810,75 @@ export default function UploadScreen() {
     </>
   );
 
+  // Post stopped by the connection: where the progress bar was, so it is seen at once.
+  const renderPostInterrupted = (reason: string) => {
+    const copy = interruptionCopy({ offline, autoRetryUsed: postAutoRetried, reason });
+    return (
+      <View style={styles.footerStack}>
+        <View style={styles.interruptHead}>
+          {copy.showTryAgain
+            ? <Icon name="offline" size={18} color={COLORS.warning} />
+            : <ActivityIndicator size="small" color={COLORS.purpleLight} />}
+          <Text style={styles.progressLabel}>{copy.title}</Text>
+        </View>
+        <Text style={styles.interruptBody}>{copy.body}</Text>
+        {copy.showTryAgain ? (
+          <Button
+            label="Try again"
+            onPress={() => { void handleSubmit(); }}
+            variant="primary"
+            size="lg"
+            fullWidth
+            disabled={!canSubmit}
+          />
+        ) : null}
+      </View>
+    );
+  };
+
   const headerBack = () => {
     if (submitting) { return; }
     if (reviewing) { setReviewing(false); return; }
+    if (hasWork) { void askToDiscard(); return; }
     navigation.goBack();
+  };
+
+  // An Editor mix already has its own draft, in the Editor.
+  const canSaveDraft = uploadDraftsAvailable() && !studio;
+  const leaveUpload = () => {
+    setConfirmDiscard(false);
+    navigation.goBack();
+  };
+  const saveAsDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const userId = await owner();
+      if (!userId) { throw new Error('No signed-in user'); }
+      const existing = draftRef.current;
+      await saveUploadDraft(userId, {
+        id: existing?.id ?? newDraftId(),
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        durationSec: previewDurationSec ?? existing?.durationSec ?? 0,
+        title,
+        mode,
+        description,
+        tags,
+        uploaderRoles,
+        collaborators,
+        album: selectedAlbum,
+        media: mediaFile,
+        picture: imageFile,
+      });
+      console.log('[LIVIL][upload] saved as a draft');
+      showToast('Saved to your drafts.', { kind: 'success' });
+      leaveUpload();
+    } catch (err) {
+      console.log('[LIVIL][upload] draft not saved', err);
+      const message = err instanceof Error && /space/.test(err.message) ? err.message : "Couldn't save the draft. Try again.";
+      showToast(message, { kind: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
   };
 
   const barPercent = reviewing ? 100 : Math.round((doneCount / STEP_ORDER.length) * 100);
@@ -1683,7 +1961,9 @@ export default function UploadScreen() {
           ? <View style={styles.stagingBanner}>{renderStagingStatus()}</View>
           : null}
 
-        {reviewing ? renderPreview() : renderSteps()}
+        {draftLoading
+          ? <ActivityIndicator color={COLORS.purpleLight} style={styles.progressSpinner} />
+          : reviewing ? renderPreview() : renderSteps()}
 
         <View style={styles.scrollSpacer} />
         </View>
@@ -1717,6 +1997,8 @@ export default function UploadScreen() {
                 <ActivityIndicator color={COLORS.purpleLight} style={styles.progressSpinner} />
               ) : null}
             </View>
+          ) : postFailure ? (
+            renderPostInterrupted(postFailure.reason)
           ) : (
             <View style={styles.footerStack}>
               <Button
@@ -1765,6 +2047,35 @@ export default function UploadScreen() {
           </View>
         </View>
       </Modal>
+
+      {canSaveDraft ? (
+        <ConfirmActionModal
+          visible={confirmDiscard}
+          title={openedDraftId ? 'Save your changes?' : 'Save this as a draft?'}
+          message={openedDraftId
+            ? 'If you discard them, your draft stays as it was.'
+            : "If you discard it, everything you've filled in is lost. Drafts stay on this phone."}
+          tone="primary"
+          icon="pencilLine"
+          confirmLabel="Save draft"
+          altLabel={openedDraftId ? 'Discard changes' : 'Discard'}
+          onAlt={leaveUpload}
+          cancelLabel="Keep editing"
+          busy={savingDraft}
+          onConfirm={() => { void saveAsDraft(); }}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      ) : (
+        <ConfirmActionModal
+          visible={confirmDiscard}
+          title="Discard this upload?"
+          message="Everything you've filled in will be lost."
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          onConfirm={leaveUpload}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
 
       <AddToAlbumSheet
         visible={albumSheetOpen}
@@ -2220,6 +2531,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   matchTitle: { color: COLORS.warning, fontSize: 14, fontWeight: '700' },
+  interruptHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  interruptBody: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   matchBody: { color: COLORS.white, fontSize: 13, lineHeight: 18 },
 
   // ── Preview page ──

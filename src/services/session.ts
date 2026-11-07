@@ -1,3 +1,4 @@
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
 /**
@@ -27,6 +28,28 @@ export function isConnectionFailure(error: unknown): boolean {
     name === 'AuthRetryableFetchError' ||
     /network request failed|failed to fetch|networkerror/i.test(typeof message === 'string' ? message : '')
   );
+}
+
+/**
+ * The session to start the app with, given what `getSession()` answered. It reports a refresh it
+ * could not make as "no session", but the login is still saved and is refreshed once it can be:
+ * that person is not signed out. Any other "no session" is real.
+ */
+export async function startupSession(
+  loaded: Session | null,
+  error: unknown,
+  readSaved: () => Promise<Session | null>,
+): Promise<Session | null> {
+  if (loaded || !isConnectionFailure(error)) { return loaded; }
+  return readSaved();
+}
+
+/**
+ * Whether an auth event should be ignored. A failed refresh also arrives as INITIAL_SESSION with
+ * no session; only SIGNED_OUT (a sign-out, or the server refusing the login) ends a login.
+ */
+export function isFailedRefreshEvent(event: AuthChangeEvent, session: Session | null): boolean {
+  return !session && event !== 'SIGNED_OUT';
 }
 
 /**

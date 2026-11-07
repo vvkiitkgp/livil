@@ -18,12 +18,15 @@ type Native = {
   move(from: string, to: string): Promise<boolean>;
   remove(rel: string): Promise<boolean>;
   freeBytes(): Promise<number>;
+  copyIn(fromUri: string, toRel: string): Promise<boolean>;
 };
 
 const native: Native | undefined = NativeModules.LivilStudioFiles;
 
 export const studioFiles = {
   available: !!native,
+  /** False on a build made before `copyIn` existed, like `available`: hide what needs it. */
+  canCopyIn: typeof native?.copyIn === 'function',
 
   /** Absolute path of the drafts root — for `file://` URIs (decoding, uploading). */
   root: () => need().root(),
@@ -63,6 +66,9 @@ export const studioFiles = {
   move: (from: string, to: string) => need().move(from, to),
   remove: (rel: string) => need().remove(rel),
   freeBytes: () => need().freeBytes(),
+
+  /** Copies a picked file to `rel`, on disk: a long video never crosses the bridge. */
+  copyIn: (fromUri: string, rel: string) => need().copyIn(fromUri, rel),
 };
 
 function need(): Native {

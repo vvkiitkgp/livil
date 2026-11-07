@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import { keepLocalCopy } from '@react-native-documents/picker';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '../../lib/supabase';
 import { canonicalContentType } from '../../shared/services/media';
+import { UploadNetworkError } from '../utils/uploadRecovery';
+import { subscribeToNetworkChange, type NetworkSnapshot } from './network';
 
 export const TRACKS_MEDIA_BUCKET = 'tracks-media';
 
@@ -50,6 +52,25 @@ export const STALL_TIMEOUT_MS = 45_000;
  * than STALL_TIMEOUT_MS for exactly that reason.
  */
 export const RESPONSE_TIMEOUT_MS = 120_000;
+
+/**
+ * The stall window right after the phone switches network (Wi-Fi → mobile data, or on/off).
+ *
+ * A request keeps the socket it opened on the OLD network. If that network is gone the socket
+ * may say nothing at all — no error, no progress — so the upload would sit out the full
+ * STALL_TIMEOUT_MS before anyone noticed. After a switch, a socket that is still alive shows
+ * progress within seconds (and every progress event restores the normal window), so a
+ * shorter window here only ends uploads that are really dead.
+ */
+export const NETWORK_CHANGE_STALL_MS = 15_000;
+
+/** One `[LIVIL][upload]` line. Never the access token — paths and numbers only. */
+function log(...parts: unknown[]): void {
+  console.log('[LIVIL][upload]', ...parts);
+}
+
+const secondsSince = (t: number) => `${((Date.now() - t) / 1000).toFixed(1)}s`;
+const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 /** User-facing "this file is too big" copy, tailored to the media kind. */
 export function tooLargeMessage(kind: TrackMediaKind): string {
@@ -142,6 +163,11 @@ function describeReadFailure(originalUri: string, underlying: unknown): Error {
  */
 export async function resolveReadableUri(file: PickedFile): Promise<string> {
   if (Platform.OS === 'android' && file.uri.startsWith('content://')) {
+    // Logged with its time: the screen already says "Uploading · 0%" here, and for a file
+    // that lives in Google Drive this copy is a download — the one step before the upload
+    // that has no time limit, because a large file legitimately takes a while.
+    const startedAt = Date.now();
+    log('copying the picked file into the app before sending it');
     try {
       const [result] = await keepLocalCopy({
         files: [{ uri: file.uri, fileName: file.name ?? 'upload' }],
@@ -150,8 +176,10 @@ export async function resolveReadableUri(file: PickedFile): Promise<string> {
       if (result.status !== 'success') {
         throw new Error(result.copyError);
       }
+      log(`copied in ${secondsSince(startedAt)}`);
       return result.localUri;
     } catch (err) {
+      log(`copy failed after ${secondsSince(startedAt)}`, err);
       throw describeReadFailure(file.uri, err);
     }
   }
@@ -209,6 +237,11 @@ function uploadFileUriWithProgress(
     // moved for STALL_MS, which a healthy upload never triggers no matter how slow.
     let stalled = false;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
+    // What the request is doing, for the logs and for which window applies.
+    let phase: 'connecting' | 'sending' | 'answer' = 'connecting';
+    let percent = 0;
+    const startedAt = Date.now();
+    let lastProgressAt = startedAt;
     // The caller's stop (a swapped or removed file) ends the request at once, instead of
     // letting a file nobody wants finish uploading over mobile data before it is deleted.
     const onCallerAbort = () => xhr.abort();
@@ -216,40 +249,85 @@ function uploadFileUriWithProgress(
     const clearWatchdog = () => {
       if (watchdog) { clearTimeout(watchdog); watchdog = undefined; }
     };
-    // Every way the request ends: the watchdog and the caller's stop both go.
-    const settle = () => {
-      clearWatchdog();
-      signal?.removeEventListener('abort', onCallerAbort);
-    };
     const armWatchdog = (ms: number) => {
       clearWatchdog();
       watchdog = setTimeout(() => {
         stalled = true;
+        log(`stalled at ${percent}% (${phase}): nothing moved for ${secondsSince(lastProgressAt)} — stopping`, path);
         // Aborting routes into `onabort`, which reads `stalled` to tell a dead connection
         // apart from a user cancelling.
         xhr.abort();
       }, ms);
     };
 
-    xhr.upload.onprogress = event => {
-      armWatchdog(STALL_TIMEOUT_MS);
-      if (event.lengthComputable && event.total > 0) {
-        onProgress(event.loaded / event.total);
-      }
+    // A Wi-Fi → mobile data switch (or a drop) mid-upload: logged, and while bytes are still
+    // going out the stall window shortens to NETWORK_CHANGE_STALL_MS — see there. The first
+    // call is the network the upload started on, not a change.
+    let network: NetworkSnapshot | null = null;
+    const describe = (n: NetworkSnapshot) => (n.offline ? `${n.type} (offline)` : n.type);
+    const stopWatchingNetwork = subscribeToNetworkChange(next => {
+      const prev = network;
+      network = next;
+      if (!prev) { return; }
+      log(`network changed ${describe(prev)} → ${describe(next)} at ${percent}% (${phase})`, path);
+      if (phase !== 'answer') { armWatchdog(NETWORK_CHANGE_STALL_MS); }
+    });
+
+    // Every way the request ends: the watchdog, the caller's stop and the network watch go.
+    const settle = () => {
+      clearWatchdog();
+      signal?.removeEventListener('abort', onCallerAbort);
+      stopWatchingNetwork();
     };
 
-    // Once the last byte is sent, progress events stop and the server starts writing the
-    // object — which for a large file legitimately takes longer than the stall window.
-    // Re-arm with the response budget so this phase is covered without being cut short.
-    xhr.upload.onloadend = () => armWatchdog(RESPONSE_TIMEOUT_MS);
+    // The response budget, once the last byte is out: progress events stop there while
+    // storage writes the object, which for a large file legitimately takes longer than the
+    // stall window.
+    const enterAnswerPhase = () => {
+      if (phase === 'answer') { return; }
+      phase = 'answer';
+      log(`all bytes sent after ${secondsSince(startedAt)} — waiting for storage to answer`, path);
+    };
+
+    xhr.upload.onprogress = event => {
+      lastProgressAt = Date.now();
+      if (phase === 'connecting') {
+        phase = 'sending';
+        log(
+          `first bytes out after ${secondsSince(startedAt)}`
+          + (event.lengthComputable && event.total > 0 ? ` (${megabytes(event.total)})` : ''),
+          path,
+        );
+      }
+      if (event.lengthComputable && event.total > 0) {
+        percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        onProgress(Math.min(1, event.loaded / event.total));
+        // React Native never fires `upload.onloadend` (its XHR dispatches only `progress` on
+        // `xhr.upload`), so the end of the body is read off the progress event that reaches
+        // the total. Without this the 45s stall window stayed armed while storage wrote a
+        // large file, and a healthy upload could be killed at 100%.
+        if (event.loaded >= event.total) { enterAnswerPhase(); }
+      }
+      // Still idle-based in the answer phase: should Android's total (read from the stream's
+      // `available()`) ever come up short, bytes that keep moving keep the request alive.
+      armWatchdog(phase === 'answer' ? RESPONSE_TIMEOUT_MS : STALL_TIMEOUT_MS);
+    };
+
+    // Standard XHR (and the tests) fire this; React Native does not — see `onprogress`.
+    xhr.upload.onloadend = () => {
+      enterAnswerPhase();
+      armWatchdog(RESPONSE_TIMEOUT_MS);
+    };
 
     xhr.onload = () => {
       settle();
       if (xhr.status >= 200 && xhr.status < 300) {
+        log(`stored (HTTP ${xhr.status}) after ${secondsSince(startedAt)}`, path);
         onProgress(1);
         resolve();
         return;
       }
+      log(`storage refused it (HTTP ${xhr.status}) after ${secondsSince(startedAt)}`, path);
       // Supabase rejects oversized files with "The object exceeded the maximum allowed size"
       // (HTTP 400 or 413). Surface friendly, kind-aware copy instead of that raw server text —
       // "object" is Supabase's word for a stored file and means nothing to a user.
@@ -279,17 +357,25 @@ function uploadFileUriWithProgress(
     };
     xhr.onerror = () => {
       settle();
-      reject(new Error('Network error during upload.'));
+      log(`connection failed at ${percent}% (${phase}) after ${secondsSince(startedAt)}`, path);
+      reject(new UploadNetworkError(
+        'upload',
+        'The connection dropped and the upload stopped. Check your signal and try again.',
+      ));
     };
     xhr.onabort = () => {
       settle();
       // Worth distinguishing: "aborted" reads as something the user did, and someone
       // whose signal died would be left wondering what they pressed.
-      reject(new Error(
-        stalled
-          ? 'The connection stalled and the upload stopped. Check your signal and try again.'
-          : 'Upload aborted.',
-      ));
+      if (stalled) {
+        reject(new UploadNetworkError(
+          'upload',
+          'The connection stalled and the upload stopped. Check your signal and try again.',
+        ));
+        return;
+      }
+      log(`stopped by the app at ${percent}%`, path);
+      reject(new Error('Upload aborted.'));
     };
 
     // Field order matters: cacheControl before the file part, mirroring supabase-js — storage-api's
@@ -300,7 +386,16 @@ function uploadFileUriWithProgress(
     // Armed before the first byte: a connection that never opens at all produces no
     // progress event, so without this the watchdog would never start.
     armWatchdog(STALL_TIMEOUT_MS);
-    xhr.send(formData);
+    log(`sending to ${bucket}`, path);
+    try {
+      xhr.send(formData);
+    } catch (err) {
+      // React Native builds the request body inside `send`; a throw there would otherwise
+      // leave the watchdog and the network watch running for a request that never existed.
+      settle();
+      log('could not start the request', path, err);
+      reject(err instanceof Error ? err : new Error('Upload failed to start.'));
+    }
   });
 }
 

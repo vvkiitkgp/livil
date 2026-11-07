@@ -2,24 +2,33 @@ import { decodeAudioData } from 'react-native-audio-api';
 import {
   isSafeId,
   parseDraftFile,
+  parseUploadDraftFile,
+  storedFileName,
   summaryOf,
   toDraftFile,
+  uploadDraftSummary,
+  UPLOAD_DRAFT_SCHEMA_VERSION,
   type DraftSummary,
+  type StoredPick,
+  type UploadDraftFile,
 } from '../screens/studio/draftFormat';
 import type { Project, VoiceLane } from '../screens/studio/studioEngine';
 import { encodeWav16 } from '../utils/audioFile/wav';
 import { studioFiles } from './studioFiles';
+import type { PickedFile } from './uploads';
 
 /**
- * Editor drafts — ON THIS PHONE ONLY (ADR-0036 §9, owner 2026-10-31). Nothing here touches
- * the network or Supabase: a draft is private because it never leaves the device, not because
- * of a rule somewhere. Each user has their own folder; only the signed-in user's is listed.
+ * Drafts, from the Editor and from Upload — ON THIS PHONE ONLY (ADR-0036 §9, owner 2026-10-31).
+ * Nothing here touches the network or Supabase: a draft is private because it never leaves the
+ * device, not because of a rule somewhere. Each user has their own folder; only the signed-in
+ * user's is listed.
  */
 
 /** Keep this much free beyond the draft itself, so saving never fills the phone. */
 const SPARE_BYTES = 100 * 1024 * 1024;
 
 export const draftsAvailable = () => studioFiles.available;
+export const uploadDraftsAvailable = () => studioFiles.available && studioFiles.canCopyIn;
 
 export function newDraftId(): string {
   return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -111,6 +120,8 @@ export async function listDrafts(userId: string): Promise<DraftSummary[]> {
     const names = all.filter(n => isSafeId(n));
     const out: DraftSummary[] = [];
     for (const name of names) {
+      const upload = await readUploadDraft(userId, name);
+      if (upload) { out.push(uploadDraftSummary(upload)); continue; }
       const text = await studioFiles.readText(`${userId}/${name}/project.json`).catch((e: unknown) => {
         console.log(`[LIVIL][DRAFTS] ${name}: project.json unreadable`, e);
         return '';
@@ -185,4 +196,103 @@ export async function loadDraft(
 export async function deleteDraft(userId: string, id: string): Promise<void> {
   if (!isSafeId(userId) || !isSafeId(id)) return;
   await studioFiles.remove(`${userId}/${id}`);
+}
+
+// ─── Upload drafts ───────────────────────────────────────────────────────────
+
+export type UploadDraftInput = Omit<UploadDraftFile['form'], 'media' | 'picture'> & {
+  id: string;
+  createdAt: string;
+  title: string;
+  durationSec: number;
+  media: PickedFile | null;
+  picture: PickedFile | null;
+};
+
+/**
+ * Saves (or re-saves) an upload as a draft, in line with every other draft write.
+ *
+ * Not the Editor's swap of a whole folder: that would copy a 100 MB video again on every save.
+ * A file already in the draft stays where it is, and the JSON (written atomically by the native
+ * side) only ever names files that are fully there, so a crash mid-save leaves the previous
+ * version intact.
+ */
+export function saveUploadDraft(userId: string, input: UploadDraftInput): Promise<void> {
+  const run = saveChain.then(() => saveUploadDraftNow(userId, input));
+  saveChain = run.catch(() => undefined);
+  return run;
+}
+
+async function saveUploadDraftNow(userId: string, input: UploadDraftInput): Promise<void> {
+  if (!isSafeId(userId) || !isSafeId(input.id)) throw new Error('Bad draft id');
+  const dir = `${userId}/${input.id}`;
+  const own = `file://${await studioFiles.root()}/${dir}/`;
+  const previous = await readUploadDraft(userId, input.id);
+
+  const bytes = [input.media, input.picture].reduce(
+    (n, p) => n + (p && !p.uri.startsWith(own) ? (p.size ?? 0) : 0),
+    0,
+  );
+  const free = await studioFiles.freeBytes().catch(() => Infinity);
+  if (free < bytes + SPARE_BYTES) throw new Error('Not enough space on this phone to save the draft.');
+
+  const { media: pickedMedia, picture: pickedPicture, id, createdAt, title, durationSec, ...form } = input;
+  const writeJson = (media: StoredPick | null, picture: StoredPick | null) => {
+    const file: UploadDraftFile = {
+      schemaVersion: UPLOAD_DRAFT_SCHEMA_VERSION,
+      kind: 'upload',
+      id,
+      title,
+      createdAt,
+      updatedAt: new Date().toISOString(),
+      durationSec,
+      form: { ...form, media, picture },
+    };
+    return studioFiles.writeText(`${dir}/upload.json`, JSON.stringify(file));
+  };
+  const store = async (slot: 'media' | 'picture', p: PickedFile | null): Promise<StoredPick | null> => {
+    if (!p) return null;
+    const inDraft = p.uri.startsWith(own);
+    const file = inDraft ? p.uri.slice(own.length) : storedFileName(slot, p.name, newDraftId());
+    // The iPhone cropper hands back a bare path; every other pick is already a URI.
+    if (!inDraft) await studioFiles.copyIn(p.uri.startsWith('/') ? `file://${encodeURI(p.uri)}` : p.uri, `${dir}/${file}`);
+    return { file, name: p.name, type: p.type, size: p.size };
+  };
+
+  // Listed (so deletable) from the first moment: an app killed during a long copy leaves a draft
+  // short of its file, not a hidden folder nobody can ever remove.
+  if (!previous) await writeJson(null, null);
+  try {
+    const media = await store('media', pickedMedia);
+    const picture = await store('picture', pickedPicture);
+    await writeJson(media, picture);
+    for (const old of [previous?.form.media, previous?.form.picture]) {
+      if (old && old.file !== media?.file && old.file !== picture?.file) {
+        await studioFiles.remove(`${dir}/${old.file}`).catch(() => false);
+      }
+    }
+  } catch (e) {
+    if (!previous) await studioFiles.remove(dir).catch(() => false);
+    throw e;
+  }
+}
+
+async function readUploadDraft(userId: string, id: string): Promise<UploadDraftFile | null> {
+  const text = await studioFiles.readText(`${userId}/${id}/upload.json`).catch(() => '');
+  const d = text ? parseUploadDraftFile(text) : null;
+  return d && d.id === id ? d : null;
+}
+
+/** Opens an upload draft: what was filled in, and its files as the form holds them. */
+export async function loadUploadDraft(
+  userId: string,
+  id: string,
+): Promise<{ draft: UploadDraftFile; media: PickedFile | null; picture: PickedFile | null }> {
+  if (!isSafeId(userId) || !isSafeId(id)) throw new Error('Bad draft id');
+  const draft = await readUploadDraft(userId, id);
+  if (!draft) throw new Error("This draft can't be opened.");
+  const base = `file://${await studioFiles.root()}/${userId}/${id}/`;
+  const pick = (s: StoredPick | null): PickedFile | null =>
+    (s ? { uri: base + s.file, name: s.name, type: s.type, size: s.size } : null);
+  return { draft, media: pick(draft.form.media), picture: pick(draft.form.picture) };
 }

@@ -6,6 +6,7 @@
  */
 import { HEADROOM } from '../../utils/audioFx/effects';
 import { sanitizeSynths } from '../../utils/synth';
+import type { PendingCollaborator } from '../../constants/roles';
 import type { Project, TuneChoice, VoiceLane } from './studioEngine';
 
 export const DRAFT_SCHEMA_VERSION = 1;
@@ -37,6 +38,8 @@ export type DraftSummary = Pick<DraftFile, 'id' | 'title' | 'updatedAt' | 'durat
   voiceCount: number;
   /** Synth parts, plus the drums when there is a beat. */
   instrumentCount: number;
+  /** Set on an upload draft, which opens in Upload rather than the Editor. */
+  uploadKind?: 'audio' | 'video';
 };
 
 /** A path a draft may point at: relative, inside its own folder, a plain .wav name. */
@@ -131,5 +134,101 @@ export function summaryOf(d: DraftFile): DraftSummary {
     id: d.id, title: d.title, updatedAt: d.updatedAt, durationSec: d.durationSec,
     voiceCount: p.voices.length,
     instrumentCount: (p.synths?.length ?? 0) + (beat ? 1 : 0),
+  };
+}
+
+// ─── Upload drafts ───────────────────────────────────────────────────────────
+
+export const UPLOAD_DRAFT_SCHEMA_VERSION = 1;
+
+/** A picked file as a draft keeps it: the draft's own copy, by name inside its folder. */
+export type StoredPick = { file: string; name: string | null; type: string | null; size: number | null };
+
+/**
+ * An upload saved before posting: the same `<userId>/<draftId>/` folder as an Editor draft, with
+ * `upload.json` instead of `project.json`. Holds what the artist filled in, never the streaming
+ * permission or a copyright answer: those are given for the post, when it is posted. Nothing
+ * here was uploaded, so reopening a draft starts its upload again.
+ */
+export type UploadDraftFile = {
+  schemaVersion: number;
+  kind: 'upload';
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  durationSec: number;
+  form: {
+    mode: 'audio' | 'video';
+    description: string;
+    tags: string[];
+    uploaderRoles: string[];
+    collaborators: PendingCollaborator[];
+    album: { id: string; title: string } | null;
+    media: StoredPick | null;
+    picture: StoredPick | null;
+  };
+};
+
+/** A file name a draft may point at: inside its own folder, nothing a path could abuse. */
+export function isSafeUploadFile(name: unknown): name is string {
+  return typeof name === 'string' && /^(media|picture)-[A-Za-z0-9_-]+(\.[A-Za-z0-9]{1,8})?$/.test(name);
+}
+
+/** The name a picked file is stored under; keeps its extension, which the upload path uses. */
+export function storedFileName(slot: 'media' | 'picture', pickedName: string | null, unique: string): string {
+  const ext = /\.([A-Za-z0-9]{1,8})$/.exec(pickedName ?? '')?.[1];
+  return `${slot}-${unique}${ext ? `.${ext}` : ''}`;
+}
+
+const stringsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []);
+
+function parsePick(p: StoredPick | null | undefined): StoredPick | null | undefined {
+  if (p === null) return null;
+  if (!p || !isSafeUploadFile(p.file)) return undefined;
+  return {
+    file: p.file,
+    name: typeof p.name === 'string' ? p.name : null,
+    type: typeof p.type === 'string' ? p.type : null,
+    size: typeof p.size === 'number' ? p.size : null,
+  };
+}
+
+/** Parses and checks an upload.json; null when it isn't a draft this build can open safely. */
+export function parseUploadDraftFile(text: string): UploadDraftFile | null {
+  let d: UploadDraftFile;
+  try { d = JSON.parse(text) as UploadDraftFile; } catch { return null; }
+  if (!d || d.schemaVersion !== UPLOAD_DRAFT_SCHEMA_VERSION || d.kind !== 'upload' || !isSafeId(d.id)) return null;
+  const f = d.form;
+  if (!f || (f.mode !== 'audio' && f.mode !== 'video')) return null;
+  const media = parsePick(f.media);
+  const picture = parsePick(f.picture);
+  if (media === undefined || picture === undefined) return null;
+  return {
+    ...d,
+    title: typeof d.title === 'string' ? d.title : '',
+    durationSec: typeof d.durationSec === 'number' && d.durationSec > 0 ? d.durationSec : 0,
+    form: {
+      mode: f.mode,
+      description: typeof f.description === 'string' ? f.description : '',
+      tags: stringsOf(f.tags),
+      uploaderRoles: stringsOf(f.uploaderRoles),
+      collaborators: Array.isArray(f.collaborators) ? f.collaborators.filter(c => typeof c?.role === 'string') : [],
+      album: typeof f.album?.id === 'string' && typeof f.album?.title === 'string' ? f.album : null,
+      media,
+      picture,
+    },
+  };
+}
+
+export function uploadDraftSummary(d: UploadDraftFile): DraftSummary {
+  return {
+    id: d.id,
+    title: d.title.trim() || d.form.media?.name?.replace(/\.[^.]+$/, '').trim() || 'Untitled upload',
+    updatedAt: d.updatedAt,
+    durationSec: d.durationSec,
+    voiceCount: 0,
+    instrumentCount: 0,
+    uploadKind: d.form.mode,
   };
 }

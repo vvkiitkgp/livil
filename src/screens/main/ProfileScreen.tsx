@@ -735,7 +735,7 @@ export default function ProfileScreen() {
         const tabEmpty = {
           reposts: { title: 'No reposts yet', body: 'Repost a track from the player and it lands here.' },
           uploads: { title: 'No uploads yet', body: 'Upload a track and it will land here as a Creator post.' },
-          drafts: { title: 'No drafts', body: 'Save from the Editor and your draft waits here, on this phone.' },
+          drafts: { title: 'No drafts', body: 'Save an upload as a draft and it waits here, on this phone.' },
           albums: { title: 'No albums yet', body: 'Group your tracks into an album to ship a release.' },
           playlists: { title: 'No playlists yet', body: 'Add posts from the player using the + button to start your first.' },
         }[tab];
@@ -754,7 +754,9 @@ export default function ProfileScreen() {
           <View style={styles.draftsWrap}>
             <DraftsList
               drafts={drafts}
-              onOpen={id => navigation.navigate('Studio', { draftId: id })}
+              onOpen={d => (d.uploadKind
+                ? navigation.navigate('Upload', { draftId: d.id })
+                : navigation.navigate('Studio', { draftId: d.id }))}
               onDelete={removeDraft}
             />
           </View>
