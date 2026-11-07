@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-586 TypeScript file(s) under `src/`, 115,620 lines.
+592 TypeScript file(s) under `src/`, 116,444 lines.
 
 ## Size hotspots
 
@@ -38,9 +38,9 @@ reading alone (Constitution P28).
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/studio/studioEngine.ts` | 1095 |
+| `src/components/FloatingPlayer.tsx` | 1083 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1003 |
-| `src/components/FloatingPlayer.tsx` | 926 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
@@ -191,7 +191,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-184 file(s), 35,876 lines.
+187 file(s), 36,405 lines.
 
 | File | Lines |
 |---|---:|
@@ -199,7 +199,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1497 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 926 |
+| `src/components/FloatingPlayer.tsx` | 1083 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 483 |
@@ -291,11 +291,14 @@ case the call fails silently wherever its result is discarded.
 | `src/components/StoryCard.tsx` | 132 |
 | `src/components/UploadStep.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
+| `src/components/PlayerCloseTarget.tsx` | 129 |
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 129 |
 | `src/components/DoubleTapLike.tsx` | 127 |
 | `src/components/OfflineBanner.tsx` | 127 |
 | `src/components/HomeFeedTabs.tsx` | 125 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
+| `src/components/__tests__/FloatingPlayer.slideOut.test.tsx` | 122 |
+| `src/components/__tests__/PlayerCloseTarget.test.tsx` | 121 |
 | `src/components/ProfilePhotoViewer.tsx` | 120 |
 | `src/components/ProfileGridCard.tsx` | 118 |
 | `src/components/SpotifyTrackSheet.tsx` | 117 |
@@ -515,11 +518,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-17 file(s), 4,142 lines.
+18 file(s), 4,293 lines.
 
 | File | Lines |
 |---|---:|
-| `src/contexts/PlaybackContext.tsx` | 1032 |
+| `src/contexts/PlaybackContext.tsx` | 1058 |
 | `src/contexts/__tests__/UnreadBadgeContext.test.tsx` | 489 |
 | `src/contexts/JamRealtimeContext.tsx` | 487 |
 | `src/contexts/RelationshipContext.tsx` | 381 |
@@ -530,6 +533,7 @@ case the call fails silently wherever its result is discarded.
 | `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/RelationshipContext.test.tsx` | 163 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
+| `src/contexts/__tests__/PlaybackContext.closePlayer.test.tsx` | 125 |
 | `src/contexts/__tests__/PlaybackContext.jamListenerGuard.test.tsx` | 125 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |
 | `src/contexts/__tests__/ToastContext.test.tsx` | 78 |
@@ -583,7 +587,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-125 file(s), 11,622 lines.
+127 file(s), 11,766 lines.
 
 | File | Lines |
 |---|---:|
@@ -652,6 +656,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/chatDelete.test.ts` | 76 |
 | `src/utils/__tests__/commentsDelta.test.ts` | 76 |
 | `src/utils/magicTune/psola.ts` | 76 |
+| `src/utils/__tests__/playerCloseGesture.test.ts` | 75 |
 | `src/utils/audioClean/breath.ts` | 74 |
 | `src/utils/chatReceipts.ts` | 74 |
 | `src/utils/homeTabsPin.ts` | 73 |
@@ -659,6 +664,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/punycode.ts` | 72 |
 | `src/utils/recentSearches.ts` | 72 |
 | `src/utils/__tests__/chatOrder.test.ts` | 69 |
+| `src/utils/playerCloseGesture.ts` | 69 |
 | `src/utils/__tests__/likeStore.test.ts` | 68 |
 | `src/utils/__tests__/synth.test.ts` | 68 |
 | `src/utils/errorMessages.ts` | 68 |

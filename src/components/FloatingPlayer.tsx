@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,16 +17,28 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
+import { navigationRef } from '../navigation/navigationRef';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
 import { useJamRealtime } from '../contexts/JamRealtimeContext';
 import { useJamSuggestions } from '../contexts/JamSuggestionsContext';
 import JamPillAvatar from './JamPillAvatar';
+import JamExitModal from './JamExitModal';
+import PlayerCloseTarget from './PlayerCloseTarget';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
+import { endJamRoom, leaveJamRoom } from '../services/jamRooms';
 import { useTrackWaveform } from '../hooks/useTrackWaveform';
 import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
+import {
+  CLOSE_OVERDRAG,
+  closeHintRemainingMs,
+  closeTargetBottom,
+  closeTargetTravel,
+  isOverCloseTarget,
+  shouldRevealCloseTarget,
+} from '../utils/playerCloseGesture';
 import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
 import WaveVisualizer from './WaveVisualizer';
@@ -61,6 +73,8 @@ const OPEN_FS_DIST  = 80;
 const OPEN_FS_VEL   = 500;
 const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
+// The circle shrinks while it sits on the X, so the X's countdown ring shows around it.
+const CIRCLE_ON_X_SCALE = 0.72;
 // Delay (ms) before the pill morphs open, so the FS player opens first and the
 // pill then pops up. Close stays instant (matches the FS collapse).
 const OPEN_MORPH_DELAY = 220;
@@ -152,6 +166,7 @@ export default function FloatingPlayer() {
 
   const tabBarH      = Platform.OS === 'ios' ? 84 : 64 + insets.bottom;
   const playerBottom = Math.max(SCREEN_H * 0.10, tabBarH + 56);
+  const closeDy      = closeTargetTravel(playerBottom, R, insets.bottom);
 
   const {
     nowPlaying, isStoryViewerOpen, isRepostOpen,
@@ -165,9 +180,10 @@ export default function FloatingPlayer() {
     repeatMode, cycleRepeatMode,
     setNowPlaying, requestPlay, resumePlay, setQueue,
     reportPaused, playSourceRef,
+    closePlayer,
   } = usePlayback();
 
-  const { activeJam } = useJam();
+  const { activeJam, clearActiveJam } = useJam();
   const { isHost } = useJamRealtime();
   // The host's jam pill counts new suggestions while they browse elsewhere.
   const { unreadCount: suggestsUnread } = useJamSuggestions();
@@ -212,6 +228,7 @@ export default function FloatingPlayer() {
   // ─── Slide in / out ───────────────────────────────────────────────────────────
   const slideAnim  = useRef(new Animated.Value(0)).current;
   const wasVisible = useRef(false);
+  const [, renderAfterSlideOut] = useReducer((n: number) => n + 1, 0);
   // While a story/repost owns the screen the pill must be treated as HIDDEN — not
   // just `return null`ed below. During a story the single engine's nowPlaying IS
   // the story, so without this `shouldShow` stayed true, slideAnim sat at the
@@ -226,7 +243,9 @@ export default function FloatingPlayer() {
       Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, bounciness: 6 }).start();
     } else if (!shouldShow && wasVisible.current) {
       wasVisible.current = false;
-      Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+      // The hidden offset only moves the player down onto the tab bar, and `wasVisible` is a ref,
+      // so it takes a render after the slide to remove it. Without one the wave stays on screen.
+      Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => renderAfterSlideOut());
     }
   }, [shouldShow, slideAnim]);
 
@@ -297,6 +316,88 @@ export default function FloatingPlayer() {
     Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
     Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
   ]).start();
+
+  // ─── Close: hold the circle on the X ─────────────────────────────────────────
+  const [closeStage, setCloseStage] = useState<'hidden' | 'shown' | 'holding'>('hidden');
+  const closeAllowedRef  = useRef(false);  // decided when a drag starts
+  const closeRevealedRef = useRef(false);  // the X appeared during this drag
+  const closeHoldingRef  = useRef(false);  // the circle is on the X
+  const closeFiredRef    = useRef(false);  // the hold finished: the rest of this touch does nothing
+  const closeRevealedAtRef = useRef(0);
+  const closeHideTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The jam the exit dialog is about, so a jam ending under it can't leave it armed for the next.
+  const [jamExitRoomId, setJamExitRoomId] = useState<string | null>(null);
+  const [jamExitBusy, setJamExitBusy] = useState(false);
+
+  // A close leaves the circle shrunk away on the X. Put it back before the player next shows.
+  useEffect(() => {
+    if (!shouldShow) { return; }
+    circleX.setValue(0);
+    circleY.setValue(0);
+    scaleAnim.setValue(1);
+  }, [shouldShow, circleX, circleY, scaleAnim]);
+
+  const cancelCloseHide = () => {
+    if (closeHideTimerRef.current) {
+      clearTimeout(closeHideTimerRef.current);
+      closeHideTimerRef.current = null;
+    }
+  };
+  useEffect(() => () => {
+    if (closeHideTimerRef.current) { clearTimeout(closeHideTimerRef.current); }
+  }, []);
+
+  // The finger left without finishing the hold. The circle springs back straight away, but the
+  // X and its hint stay until they have been up long enough to read. Back to 'shown', never
+  // left on 'holding': that would keep the countdown running with no finger on the X.
+  const settleCloseTarget = () => {
+    const remaining = closeHintRemainingMs(closeRevealedAtRef.current, Date.now());
+    if (remaining === 0) {
+      setCloseStage('hidden');
+      return;
+    }
+    setCloseStage('shown');
+    closeHideTimerRef.current = setTimeout(() => {
+      closeHideTimerRef.current = null;
+      setCloseStage('hidden');
+    }, remaining);
+  };
+
+  const finishCloseHold = () => {
+    closeFiredRef.current = true;
+    closeHoldingRef.current = false;
+    setCloseStage('hidden');
+    haptics.success();
+    if (activeJam) {
+      // Ending a jam stops the music for everyone, so even a full hold asks first.
+      console.log('[LIVIL][FP] held on X in a jam → asking first');
+      springBack();
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
+      setJamExitRoomId(activeJam.jamRoomId);
+      return;
+    }
+    console.log('[LIVIL][FP] held on X → closePlayer');
+    Animated.timing(scaleAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => closePlayer());
+  };
+
+  const confirmJamExit = async () => {
+    if (!activeJam || jamExitBusy) { return; }
+    setJamExitBusy(true);
+    try {
+      if (isHost) {
+        await endJamRoom(activeJam.jamRoomId, activeJam.conversationId);
+      } else {
+        await leaveJamRoom(activeJam.jamRoomId);
+      }
+    } catch (err) {
+      // Non-fatal, as in the Jam room's own exit: still clear local state.
+      console.log('[LIVIL][FP] jam exit error:', (err as Error)?.message);
+    }
+    clearActiveJam();
+    closePlayer();
+    setJamExitBusy(false);
+    setJamExitRoomId(null);
+  };
 
   // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
   const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
@@ -569,6 +670,9 @@ export default function FloatingPlayer() {
     .activeOffsetX([-10, 10])
     .activeOffsetY([-10, 10])
     .onBegin(() => {
+      closeFiredRef.current = false;
+      closeRevealedRef.current = false;
+      closeHoldingRef.current = false;
       scaleAnim.stopAnimation();
       Animated.spring(scaleAnim, { toValue: 1.22, useNativeDriver: true, bounciness: 14, speed: 28 }).start();
     })
@@ -576,6 +680,9 @@ export default function FloatingPlayer() {
       // Any real drag = the user discovered the circle is movable → stop the
       // wiggle hint forever (also interrupts an in-flight wiggle via stopAnimation).
       markDragLearned();
+      // Full screen uses the down-drag to minimise, and the Jam room has its own exit.
+      const inJamRoom = navigationRef.isReady() && navigationRef.getCurrentRoute()?.name === 'JamRoom';
+      closeAllowedRef.current = !isFullScreenOpen && !inJamRoom;
       if (jamLocked) { return; }
       circleX.stopAnimation(); circleY.stopAnimation();
     })
@@ -583,11 +690,39 @@ export default function FloatingPlayer() {
       // Movement only. The drag used to also scrub — 2x while held right, a rewind timer
       // while held left — which made one gesture mean two things and, because the rewind
       // wrote positionRef on a 250ms timer, gave the playhead a second writer.
-      circleX.setValue(Math.max(-MAX_DRAG,      Math.min(MAX_DRAG,       e.translationX)));
-      circleY.setValue(Math.max(-MAX_DRAG_Y_UP, Math.min(MAX_DRAG_Y_DOWN, e.translationY)));
+      if (closeFiredRef.current) { return; }
+      const maxDown = closeAllowedRef.current ? closeDy + CLOSE_OVERDRAG : MAX_DRAG_Y_DOWN;
+      const dx = Math.max(-MAX_DRAG,      Math.min(MAX_DRAG, e.translationX));
+      const dy = Math.max(-MAX_DRAG_Y_UP, Math.min(maxDown,  e.translationY));
+      if (closeAllowedRef.current && !closeRevealedRef.current && shouldRevealCloseTarget(dx, dy)) {
+        closeRevealedRef.current = true;
+        closeRevealedAtRef.current = Date.now();
+        cancelCloseHide();
+        setCloseStage('shown');
+      }
+      if (closeRevealedRef.current) {
+        const over = isOverCloseTarget(dx, dy, closeDy, closeHoldingRef.current);
+        if (over !== closeHoldingRef.current) {
+          closeHoldingRef.current = over;
+          setCloseStage(over ? 'holding' : 'shown');
+          Animated.spring(scaleAnim, { toValue: over ? CIRCLE_ON_X_SCALE : 1.22, useNativeDriver: true, bounciness: 0, speed: 40 }).start();
+          if (over) {
+            Animated.parallel([
+              Animated.spring(circleX, { toValue: 0,       useNativeDriver: true, bounciness: 0, speed: 40 }),
+              Animated.spring(circleY, { toValue: closeDy, useNativeDriver: true, bounciness: 0, speed: 40 }),
+            ]).start();
+          }
+        }
+        if (over) { return; }
+      }
+      circleX.setValue(dx);
+      circleY.setValue(dy);
     })
     .onEnd((e) => {
+      if (closeFiredRef.current) { return; }
       springBack();
+      // The X showed, so this drag was about closing. Backing out must not also skip a song.
+      if (closeRevealedRef.current) { return; }
       // ── X-grid ── The swipe belongs to exactly ONE quadrant by its dominant
       // axis, so a left/right swipe can never also trigger open/close (the old
       // bug where a leftward "previous" swipe with a little downward drift would
@@ -618,6 +753,10 @@ export default function FloatingPlayer() {
       }
     })
     .onFinalize(() => {
+      closeHoldingRef.current = false;
+      if (closeFiredRef.current) { return; }
+      // Only a drag that showed the X: a tap while the hint lingers must not cut it short.
+      if (closeRevealedRef.current) { settleCloseTarget(); }
       springBack();
       scaleAnim.stopAnimation();
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
@@ -638,152 +777,170 @@ export default function FloatingPlayer() {
 
 
   return (
-    <Animated.View
-      style={[styles.container, { bottom: playerBottom, opacity: immersiveOpacity, transform: [{ translateY }] }]}
-      pointerEvents={(shouldShow && !isImmersive) ? 'box-none' : 'none'}
-    >
-      {/* ── Bar → Pill ── */}
+    <>
+      {/* Below the circle, which is dragged on top of it. */}
+      <PlayerCloseTarget
+        visible={closeStage !== 'hidden' && shouldShow && !isFullScreenOpen}
+        holding={closeStage === 'holding' && shouldShow}
+        bottom={closeTargetBottom(insets.bottom)}
+        onHoldComplete={finishCloseHold}
+      />
+
       <Animated.View
-        style={[styles.barBase, {
-          top: barTop,
-          height: barHeight,
-          borderRadius: barRadius,
-          backgroundColor: barBg,
-          borderColor: barBorderC,
-          left: barSideMargin,
-          right: barSideMargin,
-        }]}
+        style={[styles.container, { bottom: playerBottom, opacity: immersiveOpacity, transform: [{ translateY }] }]}
+        pointerEvents={(shouldShow && !isImmersive) ? 'box-none' : 'none'}
       >
-        <Animated.View style={[styles.pillContent, { opacity: contentOpacity }]}>
-
-          {/* ── LEFT ── */}
-          <View style={styles.pillLeft}>
-            {/* Shuffle — fullscreen only (state 1 & 2) */}
-            {isFullScreenOpen && (
-              <TouchableOpacity
-                onPress={() => { haptics.select(); toggleShuffle(); }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <ShuffleGlyph active={shuffleEnabled} />
-              </TouchableOpacity>
-            )}
-            {/* Music icon + Avatar — jam only (state 1 & 3) */}
-            {activeJam && <Icon name="musicNote" size={13} color={COLORS.white} />}
-            {activeJam && (
-              <View style={styles.avatarWrap}>
-                {/* Same faces as the chat list: a group's members, or the DM partner. */}
-                <JamPillAvatar
-                  conversationId={activeJam.conversationId}
-                  title={activeJam.conversationTitle}
-                  size={AV}
-                />
-                <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
-                {suggestsUnread > 0 && isHost ? (
-                  <View style={styles.suggestBadge}>
-                    <Text style={styles.suggestBadgeText}>{suggestsUnread > 9 ? '9+' : suggestsUnread}</Text>
-                  </View>
-                ) : null}
-              </View>
-            )}
-          </View>
-
-          {/* Centre gap — circle sits here */}
-          <View style={styles.circleSpacer} />
-
-          {/* ── RIGHT ── */}
-          <View style={styles.pillRight}>
-            {/* ↑ Jam button — jam only (state 1 & 3) */}
-            {activeJam && (
-              <TouchableOpacity
-                style={styles.returnChip}
-                activeOpacity={0.75}
-                onPress={() => {
-                  // The full-screen player is an overlay above every screen, so the jam
-                  // room would open UNDER it. Minimise first, then go to the room.
-                  if (isFullScreenOpen) { closeFullScreenPlayer(); }
-                  navigation.navigate('JamRoom', {
-                    jamRoomId: activeJam.jamRoomId,
-                    conversationId: activeJam.conversationId,
-                  });
-                }}
-              >
-                <Text style={styles.returnText}>↑ Jam</Text>
-              </TouchableOpacity>
-            )}
-            {/* Repeat — fullscreen only (state 1 & 2) */}
-            {isFullScreenOpen && (
-              <TouchableOpacity
-                onPress={() => { haptics.select(); cycleRepeatMode(); }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <RepeatGlyph mode={repeatMode} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-        </Animated.View>
-      </Animated.View>
-
-      {/* ── Wavy-line visualizer ──
-          The white line ripples as a scrolling sine wave while playing and
-          flattens back to a straight line on pause (Material wavy-progress look).
-          Fades out (inverse of morphAnim) as the line morphs into the pill, so it
-          only lives on the minimized line. Centered + absolute so it never shifts
-          the circle; the album circle sits on top, the wave flows out both sides. */}
-      <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
-        {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
-            before the pill expands, and only re-ripples once it collapses back —
-            during a jam the pill is always expanded, so the wave simply stays off. */}
-        <WaveVisualizer playing={isPlaying} suppressed={isExpanded} width={REST_BAR_W} waveform={waveform} />
-      </Animated.View>
-
-      {/* ── Draggable circle ── */}
-      <GestureDetector gesture={gesture}>
+        {/* ── Bar → Pill ── */}
         <Animated.View
-          style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }, { scale: scaleAnim }] }]}
+          style={[styles.barBase, {
+            top: barTop,
+            height: barHeight,
+            borderRadius: barRadius,
+            backgroundColor: barBg,
+            borderColor: barBorderC,
+            left: barSideMargin,
+            right: barSideMargin,
+          }]}
         >
-          <View style={styles.grayDisc} />
+          <Animated.View style={[styles.pillContent, { opacity: contentOpacity }]}>
 
-          <View style={styles.rightClip}>
-            <Animated.View style={[styles.halfWrapper, { transform: [{ rotate: rightRot }] }]}>
-              <View style={styles.rightHalfDisc} />
-            </Animated.View>
-          </View>
-
-          <View style={styles.leftClip}>
-            <Animated.View style={[styles.halfWrapperLeft, { transform: [{ rotate: leftRot }] }]}>
-              <View style={styles.leftHalfDisc} />
-            </Animated.View>
-          </View>
-
-          <View style={[styles.innerDisc, isFullScreenOpen && styles.innerDiscOpen]}>
-            {/* Minimised → cover (audio) or thumbnail (video). FS open → transparent
-                centre (the stroked ring lets the FS video show through). */}
-            {!isFullScreenOpen && (
-              (nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
-                <Image
-                  source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
-                  style={styles.albumArt}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={styles.fallbackArt}>
-                  <CoverFallback />
+            {/* ── LEFT ── */}
+            <View style={styles.pillLeft}>
+              {/* Shuffle — fullscreen only (state 1 & 2) */}
+              {isFullScreenOpen && (
+                <TouchableOpacity
+                  onPress={() => { haptics.select(); toggleShuffle(); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <ShuffleGlyph active={shuffleEnabled} />
+                </TouchableOpacity>
+              )}
+              {/* Music icon + Avatar — jam only (state 1 & 3) */}
+              {activeJam && <Icon name="musicNote" size={13} color={COLORS.white} />}
+              {activeJam && (
+                <View style={styles.avatarWrap}>
+                  {/* Same faces as the chat list: a group's members, or the DM partner. */}
+                  <JamPillAvatar
+                    conversationId={activeJam.conversationId}
+                    title={activeJam.conversationTitle}
+                    size={AV}
+                  />
+                  <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
+                  {suggestsUnread > 0 && isHost ? (
+                    <View style={styles.suggestBadge}>
+                      <Text style={styles.suggestBadgeText}>{suggestsUnread > 9 ? '9+' : suggestsUnread}</Text>
+                    </View>
+                  ) : null}
                 </View>
-              )
-            )}
-            {/* Persistent play/pause indicator (driven by global play state).
-                Button convention: shows the action a tap would take — ❚❚ while
-                playing (tap to pause), ▶ while paused (tap to play). */}
-            {nowPlaying && (
-              <Animated.View style={[flash.wrap, { transform: [{ scale: iconScale }] }]} pointerEvents="none">
-                {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
-              </Animated.View>
-            )}
-          </View>
+              )}
+            </View>
+
+            {/* Centre gap — circle sits here */}
+            <View style={styles.circleSpacer} />
+
+            {/* ── RIGHT ── */}
+            <View style={styles.pillRight}>
+              {/* ↑ Jam button — jam only (state 1 & 3) */}
+              {activeJam && (
+                <TouchableOpacity
+                  style={styles.returnChip}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    // The full-screen player is an overlay above every screen, so the jam
+                    // room would open UNDER it. Minimise first, then go to the room.
+                    if (isFullScreenOpen) { closeFullScreenPlayer(); }
+                    navigation.navigate('JamRoom', {
+                      jamRoomId: activeJam.jamRoomId,
+                      conversationId: activeJam.conversationId,
+                    });
+                  }}
+                >
+                  <Text style={styles.returnText}>↑ Jam</Text>
+                </TouchableOpacity>
+              )}
+              {/* Repeat — fullscreen only (state 1 & 2) */}
+              {isFullScreenOpen && (
+                <TouchableOpacity
+                  onPress={() => { haptics.select(); cycleRepeatMode(); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <RepeatGlyph mode={repeatMode} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+          </Animated.View>
         </Animated.View>
-      </GestureDetector>
-    </Animated.View>
+
+        {/* ── Wavy-line visualizer ──
+            The white line ripples as a scrolling sine wave while playing and
+            flattens back to a straight line on pause (Material wavy-progress look).
+            Fades out (inverse of morphAnim) as the line morphs into the pill, so it
+            only lives on the minimized line. Centered + absolute so it never shifts
+            the circle; the album circle sits on top, the wave flows out both sides. */}
+        <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
+          {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
+              before the pill expands, and only re-ripples once it collapses back —
+              during a jam the pill is always expanded, so the wave simply stays off. */}
+          <WaveVisualizer playing={isPlaying} suppressed={isExpanded} width={REST_BAR_W} waveform={waveform} />
+        </Animated.View>
+
+        {/* ── Draggable circle ── */}
+        <GestureDetector gesture={gesture}>
+          <Animated.View
+            style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }, { scale: scaleAnim }] }]}
+          >
+            <View style={styles.grayDisc} />
+
+            <View style={styles.rightClip}>
+              <Animated.View style={[styles.halfWrapper, { transform: [{ rotate: rightRot }] }]}>
+                <View style={styles.rightHalfDisc} />
+              </Animated.View>
+            </View>
+
+            <View style={styles.leftClip}>
+              <Animated.View style={[styles.halfWrapperLeft, { transform: [{ rotate: leftRot }] }]}>
+                <View style={styles.leftHalfDisc} />
+              </Animated.View>
+            </View>
+
+            <View style={[styles.innerDisc, isFullScreenOpen && styles.innerDiscOpen]}>
+              {/* Minimised → cover (audio) or thumbnail (video). FS open → transparent
+                  centre (the stroked ring lets the FS video show through). */}
+              {!isFullScreenOpen && (
+                (nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
+                  <Image
+                    source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+                    style={styles.albumArt}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.fallbackArt}>
+                    <CoverFallback />
+                  </View>
+                )
+              )}
+              {/* Persistent play/pause indicator (driven by global play state).
+                  Button convention: shows the action a tap would take — ❚❚ while
+                  playing (tap to pause), ▶ while paused (tap to play). */}
+              {nowPlaying && (
+                <Animated.View style={[flash.wrap, { transform: [{ scale: iconScale }] }]} pointerEvents="none">
+                  {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
+                </Animated.View>
+              )}
+            </View>
+          </Animated.View>
+        </GestureDetector>
+      </Animated.View>
+
+      <JamExitModal
+        visible={!!activeJam && jamExitRoomId === activeJam.jamRoomId}
+        isHost={isHost}
+        busy={jamExitBusy}
+        onConfirm={() => { void confirmJamExit(); }}
+        onCancel={() => setJamExitRoomId(null)}
+      />
+    </>
   );
 }
 

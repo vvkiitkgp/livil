@@ -83,6 +83,11 @@ type PlaybackContextValue = {
   setNowPlaying: (info: NowPlayingInfo) => void;
   clearNowPlaying: () => void;
   /**
+   * The user closed the player: stop the engine, forget the queue and drop the track, so
+   * the floating player and the lock-screen card go away. Playing anything starts fresh.
+   */
+  closePlayer: () => void;
+  /**
    * Apply a delta to the now-playing post's commentsCount. When
    * `isOriginal` is true (for reposts whose player surface routes to the
    * original post), the delta updates `originalCommentsCount` instead.
@@ -425,6 +430,25 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     setIsFullScreenOpen(false);
     setIsImmersiveState(false);
   }, []);
+
+  const closePlayer = useCallback(() => {
+    console.log('[LIVIL][CTX] closePlayer');
+    handlersRef.current?.pause();
+    // Back to how a fresh app run starts, so nothing here can bring the old queue back.
+    queueRef.current = [];
+    currentIndexRef.current = -1;
+    userQueueRef.current = [];
+    shuffleOrderRef.current = [];
+    shuffleIndexRef.current = -1;
+    queueSourceRef.current = 'home';
+    playSourceRef.current = 'user';
+    pendingStartRef.current = null;
+    seekGuardRef.current = null;
+    setPendingPlayId(null);
+    pauseAll();
+    clearNowPlaying();
+    bumpQueue();
+  }, [pauseAll, clearNowPlaying, bumpQueue]);
 
   const bumpCommentsCount = useCallback((delta: number, isOriginal: boolean) => {
     setNowPlayingState(prev => {
@@ -885,6 +909,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       nowPlaying,
       setNowPlaying,
       clearNowPlaying,
+      closePlayer,
       bumpCommentsCount,
       positionRef,
       scrubbingRef,
@@ -960,6 +985,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       nowPlaying,
       setNowPlaying,
       clearNowPlaying,
+      closePlayer,
       bumpCommentsCount,
       updatePosition,
       updateDuration,
