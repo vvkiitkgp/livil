@@ -18,6 +18,7 @@ import PostCard from '../../components/PostCard';
 import CommentsSheet from '../../components/CommentsSheet';
 import PostLikersSheet from '../../components/PostLikersSheet';
 import { fetchPostById, type FeedPost } from '../../services/posts';
+import { emitPostDeleted } from '../../services/postEvents';
 import { useNowPlayingCommentsSync } from '../../hooks/useNowPlayingCommentsSync';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PostDetail'>;
@@ -104,8 +105,9 @@ export default function PostDetailScreen({ navigation, route }: Props) {
   }, [load]);
 
   const handleDeleted = useCallback(() => {
+    emitPostDeleted(postId);
     navigation.goBack();
-  }, [navigation]);
+  }, [navigation, postId]);
 
   const shown = post
     ? { ...post, commentsCount: Math.max(post.commentsCount + commentsDelta, 0) }

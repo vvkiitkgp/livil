@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-564 TypeScript file(s) under `src/`, 113,504 lines.
+566 TypeScript file(s) under `src/`, 113,791 lines.
 
 ## Size hotspots
 
@@ -31,9 +31,9 @@ reading alone (Constitution P28).
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/screens/main/UserProfileScreen.tsx` | 1470 |
+| `src/screens/main/UserProfileScreen.tsx` | 1475 |
+| `src/screens/main/ProfileScreen.tsx` | 1468 |
 | `src/components/PostCard.tsx` | 1466 |
-| `src/screens/main/ProfileScreen.tsx` | 1463 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,164 lines.
+75 file(s), 35,176 lines.
 
 | File | Lines |
 |---|---:|
@@ -118,8 +118,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UploadScreen.tsx` | 2594 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/screens/main/UserProfileScreen.tsx` | 1470 |
-| `src/screens/main/ProfileScreen.tsx` | 1463 |
+| `src/screens/main/UserProfileScreen.tsx` | 1475 |
+| `src/screens/main/ProfileScreen.tsx` | 1468 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/studio/studioEngine.ts` | 1095 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
@@ -166,7 +166,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/FriendRequestsScreen.tsx` | 223 |
 | `src/screens/auth/ForgotPasswordScreen.tsx` | 218 |
 | `src/screens/studio/BeatsSheet.tsx` | 210 |
-| `src/screens/main/PostDetailScreen.tsx` | 206 |
+| `src/screens/main/PostDetailScreen.tsx` | 208 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 202 |
 | `src/screens/studio/ClipTrack.tsx` | 188 |
@@ -192,7 +192,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-177 file(s), 35,185 lines.
+177 file(s), 35,428 lines.
 
 | File | Lines |
 |---|---:|
@@ -214,12 +214,14 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Icon.tsx` | 374 |
 | `src/components/SharePostSheet.tsx` | 372 |
 | `src/components/CopyrightMatchModal.tsx` | 370 |
+| `src/components/PostGridCard.tsx` | 362 |
 | `src/components/PostLikersSheet.tsx` | 330 |
 | `src/components/ActivityBubble.tsx` | 324 |
 | `src/components/CommentItem.tsx` | 321 |
 | `src/components/guide/primitives.tsx` | 319 |
 | `src/components/TrackContextMenu.tsx` | 307 |
 | `src/components/MessageMenu.tsx` | 305 |
+| `src/components/__tests__/PostGridCard.test.tsx` | 305 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
 | `src/components/ChatSongCard.tsx` | 290 |
 | `src/components/Button.tsx` | 286 |
@@ -229,7 +231,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/guide/cardsPeople.tsx` | 272 |
 | `src/components/ConfirmActionModal.tsx` | 247 |
 | `src/components/__tests__/SpotifyClipboardPrompt.test.tsx` | 246 |
-| `src/components/PostGridCard.tsx` | 244 |
 | `src/components/CommentSongCard.tsx` | 241 |
 | `src/components/ShareProfileSheet.tsx` | 240 |
 | `src/components/StoryReportModal.tsx` | 239 |
@@ -264,7 +265,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ChatReplySnippet.tsx` | 184 |
 | `src/components/UploadPreviewCard.tsx` | 180 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
-| `src/components/__tests__/PostGridCard.test.tsx` | 180 |
 | `src/components/ProfileTabBar.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
 | `src/components/ProfileLinkCard.tsx` | 173 |
@@ -376,7 +376,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-121 file(s), 23,559 lines.
+123 file(s), 23,591 lines.
 
 | File | Lines |
 |---|---:|
@@ -500,6 +500,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/activityMilestone.test.ts` | 25 |
 | `src/services/authStorage.ts` | 24 |
 | `src/services/__tests__/isUploadedAvatar.test.ts` | 16 |
+| `src/services/__tests__/postEvents.test.ts` | 16 |
+| `src/services/postEvents.ts` | 16 |
 | `src/services/uploadEvents.ts` | 15 |
 
 ## Contexts

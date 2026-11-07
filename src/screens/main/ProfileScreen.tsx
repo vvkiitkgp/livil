@@ -67,7 +67,8 @@ import Reanimated from 'react-native-reanimated';
 import { useSwitchFade } from '../../hooks/useSwitchFade';
 import { useProfileTabCache } from '../../hooks/useProfileTabCache';
 import ProfileGridCard from '../../components/ProfileGridCard';
-import PostGridCard from '../../components/PostGridCard';
+import PostGridCard, { PostGridSkeleton } from '../../components/PostGridCard';
+import { onPostDeleted } from '../../services/postEvents';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
 import { useProfileLayout, type ProfileLayout } from '../../hooks/useProfileLayout';
 import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
@@ -163,6 +164,10 @@ export default function ProfileScreen() {
       return next;
     });
   }, []);
+  useEffect(() => {
+    const sub = onPostDeleted(handlePostDeleted);
+    return () => sub.remove();
+  }, [handlePostDeleted]);
 
   // Hide the bottom nav bar on scroll down, show instantly on scroll up (and at
   // the top).
@@ -1036,7 +1041,7 @@ export default function ProfileScreen() {
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
-      return (
+      return layout === 'grid' ? <PostGridSkeleton /> : (
         <>
           <PostCardSkeleton />
           <PostCardSkeleton />
@@ -1052,7 +1057,7 @@ export default function ProfileScreen() {
       );
     }
     return <View style={styles.listFooter} />;
-  }, [loadingMore, endReached, posts.length]);
+  }, [loadingMore, endReached, posts.length, layout]);
   const renderFadingFooter = useCallback(
     () => <Reanimated.View style={fade.style}>{renderFooter()}</Reanimated.View>,
     [renderFooter, fade.style],
