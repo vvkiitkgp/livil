@@ -46,7 +46,8 @@ import Reanimated from 'react-native-reanimated';
 import { useSwitchFade } from '../../hooks/useSwitchFade';
 import { useProfileTabCache } from '../../hooks/useProfileTabCache';
 import ProfileGridCard from '../../components/ProfileGridCard';
-import PostGridCard from '../../components/PostGridCard';
+import PostGridCard, { PostGridSkeleton } from '../../components/PostGridCard';
+import { onPostDeleted } from '../../services/postEvents';
 import ProfileLayoutToggle from '../../components/ProfileLayoutToggle';
 import { useProfileLayout, type ProfileLayout } from '../../hooks/useProfileLayout';
 import { useTrackPlaysTotals } from '../../hooks/useTrackPlaysTotals';
@@ -201,6 +202,10 @@ export default function UserProfileScreen() {
       return next;
     });
   }, []);
+  useEffect(() => {
+    const sub = onPostDeleted(handlePostDeleted);
+    return () => sub.remove();
+  }, [handlePostDeleted]);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   // This person's repost audience. null = unknown (loading, unreadable, or the backend
@@ -1042,7 +1047,7 @@ export default function UserProfileScreen() {
 
   const renderFooter = useCallback(() => {
     if (loadingMore) {
-      return (
+      return layout === 'grid' ? <PostGridSkeleton /> : (
         <>
           <PostCardSkeleton />
           <PostCardSkeleton />
@@ -1058,7 +1063,7 @@ export default function UserProfileScreen() {
       );
     }
     return <View style={styles.listFooter} />;
-  }, [loadingMore, endReached, posts.length]);
+  }, [loadingMore, endReached, posts.length, layout]);
   const renderFadingFooter = useCallback(
     () => <Reanimated.View style={fade.style}>{renderFooter()}</Reanimated.View>,
     [renderFooter, fade.style],

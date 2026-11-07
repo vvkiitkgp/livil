@@ -122,6 +122,11 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
   handled by switching the author's reposts to friends-only.
 - Spotify's logo must be its official file. `SpotifyLogo` is a placeholder wordmark to be
   replaced before public release (same lesson as Sign in with Apple).
+- **One exception to "artwork unaltered" (owner, 2026-11-07):** `PostGridCard` draws the
+  repost's like count on the bottom-right of Spotify's artwork, in the profile grid only. The
+  owner chose this after being told it departs from the rule. If Spotify objects, moving the
+  count back under the artwork is a one-line app change, but it reaches users only with a store
+  release. The feed card (`SpotifyPostCard`) still draws nothing on the artwork.
 
 ## Rejected alternatives
 
