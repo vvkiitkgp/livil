@@ -5,7 +5,8 @@
  */
 
 import React, { useEffect } from 'react';
-import { Text } from 'react-native';
+import { Platform, Text } from 'react-native';
+import { FullWindowOverlay } from 'react-native-screens';
 import TestRenderer, { act } from 'react-test-renderer';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -43,4 +44,34 @@ it('lets a message wrap onto a second line instead of cutting it off', () => {
   const message = tree.root.findAll(n => n.type === Text && n.props.children === SENTENCE);
   expect(message).toHaveLength(1);
   expect(message[0]!.props.numberOfLines).toBe(2);
+});
+
+// FullWindowOverlay is iOS-only: on Android it falls back to a bare <View> under the full-height
+// app, and the absolute toast inside it lands below the screen. Every Android toast was
+// invisible while it wrapped them there (2026-11-07).
+describe('the window a toast is drawn in', () => {
+  const realOS = Platform.OS;
+  afterEach(() => { Platform.OS = realOS; });
+
+  function overlaysFor(os: 'ios' | 'android') {
+    Platform.OS = os;
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <ToastProvider>
+          <Show />
+        </ToastProvider>,
+      );
+    });
+    expect(tree.root.findAll(n => n.type === Text && n.props.children === SENTENCE)).toHaveLength(1);
+    return tree.root.findAllByType(FullWindowOverlay).length;
+  }
+
+  it('Android: a plain sibling of the app, never inside FullWindowOverlay', () => {
+    expect(overlaysFor('android')).toBe(0);
+  });
+
+  it('iOS: FullWindowOverlay, so it shows above modal screens', () => {
+    expect(overlaysFor('ios')).toBe(1);
+  });
 });
