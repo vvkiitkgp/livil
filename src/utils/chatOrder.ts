@@ -39,3 +39,21 @@ export function mergeNewestFirst<T extends Ordered>(prev: T[], incoming: T[]): T
 export function settlePending<T extends Ordered>(prev: T[], pendingId: string, real: T): T[] {
   return mergeNewestFirst(prev.filter(m => m.id !== pendingId), [real]);
 }
+
+/**
+ * The originals to fetch for the replies in `messages`: quoted, above the loaded pages, and
+ * not in `asked` already. A deleted reply draws no quote, so it needs none.
+ */
+export function missingReplyOriginals(
+  messages: { id: string; replyToId: string | null; deletedAt: string | null }[],
+  asked: ReadonlySet<string>,
+): string[] {
+  const loaded = new Set(messages.map(m => m.id));
+  const missing = new Set<string>();
+  for (const m of messages) {
+    if (m.replyToId && !m.deletedAt && !loaded.has(m.replyToId) && !asked.has(m.replyToId)) {
+      missing.add(m.replyToId);
+    }
+  }
+  return [...missing];
+}

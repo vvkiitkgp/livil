@@ -37,6 +37,7 @@ import FormInput from '../../components/FormInput';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import {
   fetchMessages,
+  fetchMessagesByIds,
   sendMessage,
   addReaction,
   removeReaction,
@@ -107,7 +108,7 @@ import SwipeRevealRow from '../../components/SwipeRevealRow';
 import SwipeReplyRow from '../../components/SwipeReplyRow';
 import { SwipeRevealProvider, SwipeRevealGestureView } from '../../contexts/SwipeRevealContext';
 import { formatChatTimestamp, formatChatTimeOnly, sameChatRun, shouldShowTimeSeparator } from '../../utils/chatTime';
-import { mergeNewestFirst, settlePending } from '../../utils/chatOrder';
+import { mergeNewestFirst, missingReplyOriginals, settlePending } from '../../utils/chatOrder';
 import ChatGifPicker from '../../components/ChatGifPicker';
 import CommentGifCard from '../../components/CommentGifCard';
 import { MAX_GIF_QUERY_LENGTH, rememberGif, useGifsEnabled, type Gif } from '../../services/gifs';
@@ -1015,15 +1016,36 @@ export default function ConversationScreen() {
   const [otherReadAt, setOtherReadAt] = useState<string | null>(null);
   const [otherDeliveredAt, setOtherDeliveredAt] = useState<string | null>(null);
 
+  // The originals of replies that quote a message above the loaded pages, fetched by id so
+  // the quote shows it. For the quote only: they never join `messages` (the list keeps its
+  // own order and cursor), and each is asked for once unless the fetch failed.
+  const [quotedOriginals, setQuotedOriginals] = useState<ChatMessage[]>([]);
+  const quoteAskedRef = useRef(new Set<string>());
+  useEffect(() => {
+    const missing = missingReplyOriginals(messages, quoteAskedRef.current);
+    if (missing.length === 0) { return; }
+    for (const id of missing) { quoteAskedRef.current.add(id); }
+    fetchMessagesByIds(conversationId, missing)
+      .then(found => {
+        console.log(`[chat] reply quotes: fetched ${found.length} of ${missing.length} older original(s)`);
+        setQuotedOriginals(prev => mergeNewestFirst(prev, found));
+      })
+      .catch((err: unknown) => {
+        for (const id of missing) { quoteAskedRef.current.delete(id); }
+        console.warn('[chat] reply quotes: fetch failed', err);
+      });
+  }, [conversationId, messages]);
+
   // Memoised lookup so MessageBubble can render the quoted-context strip for
-  // any message whose `replyToId` resolves into the loaded list. Falls back
-  // gracefully — if the original is missing (e.g. loaded later via pagination),
-  // the bubble just shows a generic "Replied to a message" caption.
+  // any message whose `replyToId` resolves to a loaded message or a fetched
+  // original. Until one arrives (or if it can't be fetched), the quote says
+  // "Tap to view". A loaded copy wins: it has the latest reactions and deletes.
   const messagesById = useMemo(() => {
     const map = new Map<string, ChatMessage>();
+    for (const m of quotedOriginals) { map.set(m.id, m); }
     for (const m of messages) { map.set(m.id, m); }
     return map;
-  }, [messages]);
+  }, [messages, quotedOriginals]);
 
   // Seen under my last message they have read, Delivered under my last one that reached
   // their phone, Sent / Sending… under my newest when it is neither — DMs only (a group has
@@ -1344,6 +1366,7 @@ export default function ConversationScreen() {
         // Deleted for everyone by its sender: the placeholder, here and in the saved copy,
         // and its downloaded photo/video (if any) is deleted from this phone.
         setMessages(prev => markDeletedIn(prev, messageId, deletedAt));
+        setQuotedOriginals(prev => markDeletedIn(prev, messageId, deletedAt));
         const shown = messagesRef.current.find(m => m.id === messageId);
         if (shown) { void messageCache.patchMessage(conversationId, asDeleted(shown, deletedAt)); }
         forgetChatMedia(messageId);

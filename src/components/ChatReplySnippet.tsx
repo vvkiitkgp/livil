@@ -34,7 +34,7 @@ export function ChatReplySnippet({
   tone,
   numberOfLines = 2,
 }: {
-  /** null = the original isn't loaded (scrolled out of the page, or deleted). */
+  /** null = the original isn't here yet (being fetched), or could not be fetched. */
   message: ChatMessage | null;
   tone: ReplySnippetTone;
   numberOfLines?: number;
