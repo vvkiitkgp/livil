@@ -1,3 +1,4 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { ChatMessage } from '../services/messages';
 
 export type AuthStackParamList = {
@@ -14,13 +15,18 @@ export type AppTabParamList = {
    */
   Home: { tab?: 'for_you' | 'new_on_livil'; at?: number } | undefined;
   Search: undefined;
+  /**
+   * Messages. Still named `Inbox` because pushes name it: `send-push` routes Jam and chat
+   * pushes to `Inbox`, and shipped apps read that as a root screen. See handleNotificationData.
+   */
+  Inbox: undefined;
   Library: undefined;
   Profile: undefined;
 };
 
 export type RootStackParamList = {
   Auth: undefined;
-  App: undefined;
+  App: NavigatorScreenParams<AppTabParamList> | undefined;
   /**
    * `studio`: a finished Editor mix (developer builds only, ADR-0036). Upload shows it on the
    * song step and uploads nothing until the artist moves on from that step.
@@ -97,7 +103,6 @@ export type RootStackParamList = {
   } | undefined;
   EditAlbum: { albumId: string };
   // ── Chat
-  Inbox: undefined;
   Conversation: { conversationId: string; title: string; kind?: 'dm' | 'group' };
   // Disappearing photos full screen (PROP-0011): the sender's live photos in this chat, oldest
   // first, and the one tapped. Whole messages — plain JSON; the viewer needs each one's

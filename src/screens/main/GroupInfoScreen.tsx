@@ -176,7 +176,7 @@ export default function GroupInfoScreen() {
     try {
       await leaveConversation(conversationId);
       setLeaveOpen(false);
-      navigation.navigate('Inbox');
+      navigation.popTo('App', { screen: 'Inbox' });
     } catch (err) {
       console.warn('[group] leaveConversation failed', err);
       showToast("Couldn't leave the group.", { kind: 'error' });

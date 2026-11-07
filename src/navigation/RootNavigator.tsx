@@ -41,7 +41,6 @@ import ProfilePeopleScreen from '../screens/main/ProfilePeopleScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
 import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
-import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
 import ChatMediaViewerScreen from '../screens/main/ChatMediaViewerScreen';
 import NewConversationScreen from '../screens/main/NewConversationScreen';
@@ -960,11 +959,6 @@ export default function RootNavigator() {
               }}
             />
             {/* ── Chat screens (full-screen, no bottom tab bar) ── */}
-            <Stack.Screen
-              name="Inbox"
-              component={InboxScreen}
-              options={{ animation: 'slide_from_right' }}
-            />
             <Stack.Screen
               name="Conversation"
               component={ConversationScreen}

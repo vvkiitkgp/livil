@@ -28,7 +28,7 @@ import { Platform } from 'react-native';
  *            platform, and long-pressing the icon shows the count.
  *
  * ── Where the number comes from ──────────────────────────────────────────────
- * While the app is running, HomeScreen owns the live total (unread messages +
+ * While the app is running, UnreadBadgeContext owns the live total (unread messages +
  * incoming friend requests + unread livil Bot activity) and pushes it here on
  * every change. When the app is NOT running, only the server can know the
  * total, so `send-push` computes it and ships it in the APNs payload — see
@@ -125,18 +125,17 @@ export async function resyncAppBadgeCount(count: number): Promise<void> {
 }
 
 /**
- * Ask whoever owns the live unread total (HomeScreen) to re-count from the
- * server and re-write the icon.
+ * Ask whoever owns the live unread total (UnreadBadgeContext) to re-count from
+ * the server and re-write the icon.
  *
- * HomeScreen is the only place all three counts exist, but it only re-counts
- * on its own focus and on app foreground. Reading a chat changes the count
- * from ANOTHER screen, and a user who leaves the app straight from that chat
- * never refocuses Home — so the icon kept the number from while they were
- * reading (Home's realtime listener adds +1 for every incoming message, even
- * in the chat currently open). Callers fire this after the read is saved.
+ * It cannot see a count change on its own. Reading a chat changes the count
+ * from another screen, and a user who leaves the app straight from that chat
+ * would keep the number from while they were reading (the realtime listener
+ * adds +1 for every incoming message, even in the chat currently open). Callers
+ * fire this after the read is saved, and Home and Messages fire it on focus.
  *
  * A plain listener set, not a context: the caller is a service-level event,
- * and HomeScreen stays mounted for the whole signed-in session.
+ * and the owner stays mounted for the whole signed-in session.
  */
 const refreshListeners = new Set<() => void>();
 

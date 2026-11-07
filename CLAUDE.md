@@ -424,7 +424,7 @@ profiles (
 Signature gradients: hero `#6D28D9 → #A855F7`; deep background `#0A0A0F → #4C1D95 → #8B3DFF`.
 
 - Animated purple border on input focus
-- Bottom tab bar: Home, Search, Library, Profile
+- Bottom tab bar: Home, Search, Messages, Library, Profile
 
 ### Buttons — NEVER fill a button with solid purple
 

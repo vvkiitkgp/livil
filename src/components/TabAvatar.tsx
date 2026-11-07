@@ -104,7 +104,7 @@ export default function TabAvatar({ color, focused }: { color: string; focused: 
       return (
         <View style={[styles.ring, focused && styles.ringFocused]}>
           <View style={[styles.photo, styles.letterBubble, !focused && styles.photoIdle]}>
-            <Text style={[styles.letter, focused && styles.letterFocused]}>{letter}</Text>
+            <Text style={styles.letter}>{letter}</Text>
           </View>
         </View>
       );
@@ -149,6 +149,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  letter: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '800' },
-  letterFocused: { color: COLORS.white },
+  letter: { color: COLORS.white, fontSize: 13, fontWeight: '800' },
 });

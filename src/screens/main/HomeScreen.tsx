@@ -4,10 +4,8 @@ import {
   Text,
   FlatList,
   Platform,
-  AppState,
   Animated,
   StyleSheet,
-  TouchableOpacity,
   Pressable,
   RefreshControl,
   Image,
@@ -40,7 +38,6 @@ import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { HomeFeedTabs } from '../../components/HomeFeedTabs';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
-import { useRelationships } from '../../contexts/RelationshipContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   isPlayableInLivil,
@@ -59,14 +56,7 @@ import { recordImpression, flushImpressions } from '../../services/feedImpressio
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
-import { listConversations } from '../../services/conversations';
-import { getActivityUnreadCount } from '../../services/activity';
-import {
-  setAppBadgeCount,
-  resyncAppBadgeCount,
-  onBadgeRefreshRequested,
-} from '../../services/appBadge';
-import { retryOnce } from '../../utils/retryOnce';
+import { requestBadgeRefresh } from '../../services/appBadge';
 import { useIsOffline, useOnReconnect } from '../../services/network';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 
@@ -431,7 +421,6 @@ export default function HomeScreen() {
     });
   }, []);
   const { stories, setStories } = useStories();
-  const { pendingIncomingCount } = useRelationships();
   const insets = useSafeAreaInsets();
 
   // Home's two pages (owner design 2026-10-14): For you, and New on Livil — the same
@@ -559,30 +548,6 @@ export default function HomeScreen() {
 
   // Loaded for the hero, which no longer shows it; kept until that load is removed on its own.
   const [_meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
-  const [totalUnread, setTotalUnread] = useState(0);
-  // Unread livil Bot activity (likes/comments/reposts/milestones/friend outcomes).
-  // These live in `activity_notifications` (services/activity), NOT the messages
-  // table — so they must be counted separately from `totalUnread`.
-  const [activityUnread, setActivityUnread] = useState(0);
-  // Total badge count shown on the 💬 button = unread messages + incoming friend
-  // requests + unread livil Bot activity.
-  const notificationCount = totalUnread + pendingIncomingCount + activityUnread;
-
-  // Mirror the in-app badge onto the home-screen icon.
-  //
-  // This screen is the only place all three counts exist at once, and it keeps
-  // them live (realtime subscriptions above + the focus refetch below), so it is
-  // the natural owner. HomeScreen is a bottom-tab screen and therefore stays
-  // mounted while the user is signed in -- the badge keeps tracking on the Search
-  // or Profile tab, not just here.
-  //
-  // iOS gets the exact number. Android cannot be told a number at all and instead
-  // clears when this reaches zero; the rest of the time its launcher sums the
-  // notifications in the tray. See src/services/appBadge.ts.
-  useEffect(() => {
-    void setAppBadgeCount(notificationCount);
-  }, [notificationCount]);
-
   const [storiesLoading, setStoriesLoading] = useState(true);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -939,154 +904,9 @@ export default function HomeScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  // Read by the re-count below without making it re-subscribe on every change.
-  const pendingIncomingRef = useRef(pendingIncomingCount);
-  pendingIncomingRef.current = pendingIncomingCount;
-
-  // Re-fetch the unread counts from the server, then re-write the iOS icon with
-  // the result EVEN IF NOTHING CHANGED. The effect above only fires on a change,
-  // but a push may have set the icon behind the app's back while it was
-  // backgrounded — see resyncAppBadgeCount.
-  //
-  // `isCancelled` guards the state writes against an unmounted / blurred caller.
-  // The icon is only re-written when both reads succeed: a partial total could
-  // clear a number that is still correct.
-  const refreshUnreadCounts = useCallback(async (isCancelled: () => boolean) => {
-    let messages: number | null = null;
-    let activity: number | null = null;
-    try {
-      // Retried: the foreground path fires this the instant iOS resumes the
-      // app, when the first request typically fails — and a failed read means
-      // the icon is left as it is.
-      const convs = await retryOnce(listConversations);
-      messages = convs.reduce((sum, c) => sum + c.unreadCount, 0);
-      if (!isCancelled()) { setTotalUnread(messages); }
-    } catch {
-      // ignore
-    }
-    // livil Bot activity is a separate table — refetch its unread count too.
-    try {
-      activity = await retryOnce(getActivityUnreadCount);
-      if (!isCancelled()) { setActivityUnread(activity); }
-    } catch {
-      // ignore
-    }
-    if (isCancelled() || messages === null || activity === null) { return; }
-    void resyncAppBadgeCount(messages + pendingIncomingRef.current + activity);
-  }, []);
-
-  // Re-count whenever Home regains focus.
-  // Covers: user opens Inbox / Activity Center → reads (last_read_at advances,
-  // markActivityRead) → returns to Home and expects the badge cleared.
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      void refreshUnreadCounts(() => cancelled);
-      return () => { cancelled = true; };
-    }, [refreshUnreadCounts]),
-  );
-
-  // Re-count when the app returns to the foreground. Focus does not fire then
-  // (Home never lost focus), realtime was paused while backgrounded so the
-  // in-app totals may have missed messages, and a push may have changed the
-  // icon. Opening the app from a push is exactly this path.
-  useEffect(() => {
-    let cancelled = false;
-    const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') { void refreshUnreadCounts(() => cancelled); }
-    });
-    return () => {
-      cancelled = true;
-      sub.remove();
-    };
-  }, [refreshUnreadCounts]);
-
-  // Re-count when another screen changed the total — a chat that just marked its
-  // messages read. Without this, leaving the app straight from that chat left
-  // the icon on the count from while it was being read (see requestBadgeRefresh).
-  useEffect(() => {
-    let cancelled = false;
-    const off = onBadgeRefreshRequested(() => { void refreshUnreadCounts(() => cancelled); });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [refreshUnreadCounts]);
-
-  // Live: increment unread when a new message arrives in any of my conversations.
-  // RLS lets the realtime worker filter to messages I can SELECT (i.e. ones in
-  // conversations I'm a member of), so we don't need a per-conversation filter here.
-  // Decrement on read is handled by the focus refetch above.
-  useEffect(() => {
-    let myId: string | null = null;
-    let mounted = true;
-
-    void supabase.auth.getUser().then(({ data }) => {
-      myId = data?.user?.id ?? null;
-    });
-
-    console.log('[realtime] subscribing to home:unread');
-    const channel = supabase
-      .channel('home:unread')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null } }) => {
-          console.log('[realtime] home:unread got messages INSERT');
-          if (!mounted) { return; }
-          const row = payload.new;
-          if (!row) { return; }
-          if (row.kind === 'system') { return; }
-          if (row.deleted_at) { return; }
-          if (myId && row.sender_id === myId) { return; }
-          setTotalUnread(n => n + 1);
-        },
-      )
-      .subscribe(status => {
-        console.log(`[realtime] home:unread status=${status}`);
-      });
-
-    return () => {
-      mounted = false;
-      void supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Live: keep the livil Bot activity contribution to the badge current. Any
-  // insert/update/delete on activity_notifications for me → refetch the count.
-  // Refetch (not increment) because likes aggregate into an existing row (an
-  // arriving like is an UPDATE, not always an INSERT), and mark-read is an
-  // UPDATE too — a naive +1 would drift. `recipient_id` filter mirrors the
-  // ActivityCenterScreen subscription; the channel is gated on the resolved id.
-  useEffect(() => {
-    let cancelled = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    void supabase.auth.getUser().then(({ data }) => {
-      const myId = data?.user?.id;
-      if (!myId || cancelled) { return; }
-      channel = supabase
-        .channel(`home:activity:${myId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'activity_notifications',
-            filter: `recipient_id=eq.${myId}`,
-          },
-          () => {
-            void getActivityUnreadCount()
-              .then(n => { if (!cancelled) { setActivityUnread(n); } })
-              .catch(() => { /* ignore */ });
-          },
-        )
-        .subscribe();
-    });
-    return () => {
-      cancelled = true;
-      if (channel) { void supabase.removeChannel(channel); }
-    };
-  }, []);
+  // Re-count whenever Home regains focus: back from a chat or the Activity Center, or from
+  // another tab. The total itself lives in UnreadBadgeContext.
+  useFocusEffect(useCallback(() => { requestBadgeRefresh(); }, []));
 
   useEffect(() => {
     let cancelled = false;
@@ -1341,10 +1161,9 @@ export default function HomeScreen() {
             <Logo size={96} color={COLORS.white} />
           </Pressable>
           <View style={styles.topBarActions}>
-            {/* The same "+ Post" as the Profile top bar, at this bar's 38pt height so it
-                lines up with the messages button beside it. With Spotify reposts switched
-                on — or not known yet — it asks what to add (ADR-0027); only a real "off" from
-                the server goes straight to Upload. */}
+            {/* The same "+ Post" as the Profile top bar, at this bar's 38pt height. With
+                Spotify reposts switched on — or not known yet — it asks what to add (ADR-0027);
+                only a real "off" from the server goes straight to Upload. */}
             <Button
               label="Post"
               icon="add"
@@ -1354,21 +1173,6 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
               accessibilityLabel={spotify.reposts !== false ? 'Create a post' : 'Upload a track'}
             />
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.inboxButton}
-              onPress={() => navigation.navigate('Inbox')}
-              accessibilityLabel="Open messages"
-            >
-              <Icon name="messages" size={20} color={COLORS.white} />
-              {notificationCount > 0 && (
-                <View style={styles.inboxBadge}>
-                  <Text style={styles.inboxBadgeText}>
-                    {notificationCount > 99 ? '99+' : notificationCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
@@ -1444,33 +1248,6 @@ const styles = StyleSheet.create({
   },
   /** Height only: the pill shape, padding and gradient border are Button's `sm`. */
   uploadButton: { height: 38, paddingVertical: 0 },
-  inboxButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inboxIcon: { fontSize: 18 },
-  inboxBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: COLORS.purple,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: COLORS.bg,
-  },
-  inboxBadgeText: { color: COLORS.white, fontSize: 9, fontWeight: '800' },
-
   storiesSection: {
     paddingBottom: 12,
   },
