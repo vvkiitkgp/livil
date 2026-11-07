@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-11-02
+last_verified: 2026-11-07
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 177 migration(s) in `supabase/migrations/`.
+Reconstructed from 179 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -234,16 +234,24 @@ RLS enabled · realtime · defined in `20261118000000_chat_media.sql`
 
 - `chat_media_saves_message_idx` `(message_id)`
 
-### `conversation_clears`
+### `chat_vibe_kept`
 
-RLS enabled · defined in `20261119010000_chat_delete.sql`
+RLS enabled · defined in `20261119030000_chat_vibe_keeps_points.sql`
+
+| Column | Definition |
+|---|---|
+| `conversation_id` | `uuid primary key references public.conversations(id) on delete cascade` |
+| `points` | `bigint not null default 0 check (points >= 0)` |
+
+### `conversation_hides`
+
+RLS enabled · defined in `20261119020000_chat_delete_rules.sql`
 
 | Column | Definition |
 |---|---|
 | `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
 | `conversation_id` | `uuid not null references public.conversations(id) on delete cascade` |
-| `cleared_at` | `timestamptz not null default now()` |
-| `hidden_at` | `timestamptz` |
+| `hidden_at` | `timestamptz not null default now()` |
 
 **Table constraints**
 
@@ -251,7 +259,7 @@ RLS enabled · defined in `20261119010000_chat_delete.sql`
 
 **Indexes**
 
-- `conversation_clears_conversation_idx` `(conversation_id)`
+- `conversation_hides_conversation_idx` `(conversation_id)`
 
 ### `conversation_members`
 
@@ -535,24 +543,6 @@ RLS enabled · realtime · defined in `20260515120000_home_feed_listen_sessions_
 **Triggers**
 
 - `listen_sessions_stamp` — before insert or update (`20260925000000_listening_now.sql`)
-
-### `message_hides`
-
-RLS enabled · defined in `20261119010000_chat_delete.sql`
-
-| Column | Definition |
-|---|---|
-| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
-| `message_id` | `uuid not null references public.messages(id) on delete cascade` |
-| `created_at` | `timestamptz not null default now()` |
-
-**Table constraints**
-
-- `primary key (user_id, message_id)`
-
-**Indexes**
-
-- `message_hides_message_idx` `(message_id)`
 
 ### `message_reactions`
 
