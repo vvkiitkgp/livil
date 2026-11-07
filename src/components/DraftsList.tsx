@@ -16,13 +16,21 @@ const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec 
 
 type Props = {
   drafts: DraftSummary[];
-  onOpen: (id: string) => void;
+  onOpen: (draft: DraftSummary) => void;
   onDelete: (id: string) => Promise<void>;
   /** Show the on-this-phone note above the rows (default true). */
   showNote?: boolean;
 };
 
-/** Editor drafts as rows: Edit (or the row) to keep editing, the bin to delete (with a confirm). */
+const metaOf = (d: DraftSummary) => (d.uploadKind
+  ? [d.uploadKind === 'video' ? 'Video' : 'Song', d.durationSec > 0 && clock(d.durationSec)]
+  : [
+    `${d.voiceCount} ${d.voiceCount === 1 ? 'voice' : 'voices'}`,
+    d.instrumentCount > 0 && `${d.instrumentCount} ${d.instrumentCount === 1 ? 'instrument' : 'instruments'}`,
+    clock(d.durationSec),
+  ]);
+
+/** Drafts as rows: Edit (or the row) to keep editing, the bin to delete (with a confirm). */
 export function DraftsList({ drafts, onOpen, onDelete, showNote = true }: Props) {
   const { showToast } = useToast();
   const [confirm, setConfirm] = useState<DraftSummary | null>(null);
@@ -39,26 +47,25 @@ export function DraftsList({ drafts, onOpen, onDelete, showNote = true }: Props)
       {drafts.map(d => (
         <Pressable
           key={d.id}
-          onPress={() => onOpen(d.id)}
+          onPress={() => onOpen(d)}
           style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={`Draft ${displayTitle(d.title)}. Open in the Editor.`}
+          accessibilityLabel={`Draft ${displayTitle(d.title)}. Open in ${d.uploadKind ? 'Upload' : 'the Editor'}.`}
         >
           <View style={styles.art}>
-            <Icon name="mic" size={18} color={COLORS.purpleLight} />
+            <Icon
+              name={d.uploadKind === 'video' ? 'video' : d.uploadKind === 'audio' ? 'note' : 'mic'}
+              size={18}
+              color={COLORS.purpleLight}
+            />
           </View>
           <View style={styles.text}>
             <Text style={styles.title} numberOfLines={1}>{displayTitle(d.title)}</Text>
             <Text style={styles.meta} numberOfLines={1}>
-              {[
-                `${d.voiceCount} ${d.voiceCount === 1 ? 'voice' : 'voices'}`,
-                d.instrumentCount > 0 && `${d.instrumentCount} ${d.instrumentCount === 1 ? 'instrument' : 'instruments'}`,
-                clock(d.durationSec),
-                `edited ${relativeTime(d.updatedAt)}`,
-              ].filter(Boolean).join(' · ')}
+              {[...metaOf(d), `edited ${relativeTime(d.updatedAt)}`].filter(Boolean).join(' · ')}
             </Text>
           </View>
-          <Button label="Edit" icon="edit" variant="secondary" size="sm" onPress={() => onOpen(d.id)} accessibilityLabel={`Edit draft ${displayTitle(d.title)}`} />
+          <Button label="Edit" icon="edit" variant="secondary" size="sm" onPress={() => onOpen(d)} accessibilityLabel={`Edit draft ${displayTitle(d.title)}`} />
           <Pressable onPress={() => setConfirm(d)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Delete draft ${displayTitle(d.title)}`}>
             <Icon name="trash" size={18} color={COLORS.textMuted} />
           </Pressable>

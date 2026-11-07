@@ -5,19 +5,20 @@ import { getMyUserId } from '../services/session';
 import type { DraftSummary } from '../screens/studio/draftFormat';
 
 /**
- * The signed-in user's Editor drafts, from this phone. Re-read on every focus, so coming back
- * from the Editor after a save shows it. Developer builds only while the Editor is a
- * prototype (it's the only way to make a draft). Never throws: none → [].
+ * The signed-in user's drafts, from this phone. Re-read on every focus, so coming back from the
+ * Editor or Upload after a save shows it. Upload drafts only in the store app, while the Editor
+ * is a developer-only prototype. Never throws: none → [].
  */
 export function useMyDrafts() {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!__DEV__ || !draftsAvailable()) { setDrafts([]); return; }
+    if (!draftsAvailable()) { setDrafts([]); return; }
     const me = await getMyUserId().catch(() => null);
     setUserId(me);
-    setDrafts(me ? await listDrafts(me) : []);
+    const all = me ? await listDrafts(me) : [];
+    setDrafts(__DEV__ ? all : all.filter(d => d.uploadKind));
   }, []);
 
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));

@@ -23,6 +23,12 @@ import { APP_VERSION_NAME } from '../constants/appVersion';
 import { analyzeWaveformPeaks, WAVEFORM_VERSION, type WaveformData } from './waveform';
 import { resolveAuthorById, resolveAuthorDisplay, type AuthorDisplay } from '../utils/authorDisplay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  isFetchFailure,
+  NO_CONNECTION_MESSAGE,
+  UploadNetworkError,
+  withTimeout,
+} from '../utils/uploadRecovery';
 
 export type PostMode = 'audio' | 'video';
 
@@ -160,6 +166,100 @@ async function safeRemoveUploadedObjects(userId: string, trackId: string): Promi
     await supabase.storage.from(TRACKS_MEDIA_BUCKET).remove(paths);
   } catch {
     // Best-effort; nothing downstream depends on this having succeeded.
+  }
+}
+
+// ─── Network steps around an upload ──────────────────────────────────────────
+//
+// React Native's Android networking has no time limits (connect/read/write are all 0) and
+// supabase-js sets none, so a request over a dead connection can wait for many minutes. The
+// file upload has its own stall watchdog (`uploads.ts`); the small requests around it — the
+// sign-in check, creating the row, saving the URL, and the clean-up after a failure — had
+// nothing, while the screen said "Uploading · 0%" and could not be left. Each is time-boxed
+// here, and a step that never reached the server is an `UploadNetworkError`, which the
+// screen offers to retry rather than reporting as "You must be signed in".
+
+/** How long one small request around an upload may take before it counts as no connection. */
+export const NETWORK_STEP_TIMEOUT_MS = 20_000;
+
+/**
+ * How long the clean-up after a failed upload may hold the error back from the screen. Over
+ * the same dead connection it would otherwise keep the screen on "Uploading" indefinitely
+ * AFTER the stall watchdog had already given up — what is not removed in time is left to
+ * the sweeps (`sweepStagedUploads`, `sweepAbandonedUploads`).
+ */
+export const CLEANUP_TIMEOUT_MS = 10_000;
+
+function uploadLog(...parts: unknown[]): void {
+  console.log('[LIVIL][upload]', ...parts);
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+}
+
+/** Time-box one network step; `onLate` gets the answer if it arrives after we gave up. */
+function networkStep<T>(step: string, run: PromiseLike<T>, onLate?: (value: T) => void): Promise<T> {
+  uploadLog(`${step}…`);
+  const startedAt = Date.now();
+  return withTimeout(
+    run,
+    NETWORK_STEP_TIMEOUT_MS,
+    () => {
+      uploadLog(`${step}: no answer after ${NETWORK_STEP_TIMEOUT_MS / 1000}s — giving up`);
+      return new UploadNetworkError(step, NO_CONNECTION_MESSAGE);
+    },
+    onLate,
+  ).then(value => {
+    uploadLog(`${step}: done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+    return value;
+  });
+}
+
+/**
+ * The signed-in user and access token, for an upload. A check that could not reach the
+ * server is a connection problem — offline, `getUser` answers with an error and no user,
+ * which used to surface as "You must be signed in to upload a track."
+ */
+async function uploadIdentity(): Promise<{ userId: string; accessToken: string }> {
+  const [
+    { data: userData, error: userError },
+    { data: sessionData, error: sessionError },
+  ] = await networkStep('sign-in check', Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]));
+  if (isFetchFailure(userError) || isFetchFailure(sessionError)) {
+    throw new UploadNetworkError('sign-in check', NO_CONNECTION_MESSAGE);
+  }
+  const userId = userData?.user?.id;
+  const accessToken = sessionData.session?.access_token;
+  if (userError || !userId || !accessToken) {
+    throw new Error('You must be signed in to upload a track.');
+  }
+  return { userId, accessToken };
+}
+
+/** Insert the placeholder row an upload is scoped to. A row that lands after the time-out is removed. */
+async function createUploadRow(
+  insert: PromiseLike<{ data: { id: string } | null; error: { message: string } | null }>,
+): Promise<string> {
+  const { data, error } = await networkStep('create track row', insert, late => {
+    if (late.data?.id) {
+      uploadLog('a timed-out track row arrived late — removing it', late.data.id);
+      void safeDeleteTrack(late.data.id);
+    }
+  });
+  if (isFetchFailure(error)) { throw new UploadNetworkError('create track row', NO_CONNECTION_MESSAGE); }
+  if (error || !data) { throw new Error(error?.message ?? 'Failed to create track.'); }
+  return data.id;
+}
+
+/** A failed upload's clean-up, never holding the error back for more than CLEANUP_TIMEOUT_MS. */
+async function boundedCleanup(what: string, run: Promise<void>): Promise<boolean> {
+  try {
+    await withTimeout(run, CLEANUP_TIMEOUT_MS, () => new Error('clean-up timed out'));
+    return true;
+  } catch {
+    uploadLog(`${what}: clean-up unfinished after ${CLEANUP_TIMEOUT_MS / 1000}s — left for the next sweep`);
+    return false;
   }
 }
 
@@ -531,45 +631,33 @@ export async function createTrack(
   }
 
   onProgress?.({ stage: 'preparing', fraction: 0 });
+  uploadLog(`post (${input.mode}): starting — every file uploads now`);
 
-  const [
-    { data: userData, error: userError },
-    { data: sessionData },
-  ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
-
-  const user = userData?.user;
-  const accessToken = sessionData.session?.access_token;
-
-  if (userError || !user || !accessToken) {
-    throw new Error('You must be signed in to upload a track.');
-  }
+  const { userId, accessToken } = await uploadIdentity();
+  const user = { id: userId };
 
   const description = input.description?.trim() ? input.description.trim() : null;
 
   // Insert the track row up front so we have an id to scope storage paths to.
   // For video posts we leave audio_url null; the constraint allows that as long as
   // video_url is set, which we fill in once uploads finish.
-  const { data: inserted, error: insertError } = await supabase
-    .from('tracks')
-    .insert({
-      uploader_id: user.id,
-      title,
-      description,
-      // NULL rather than an empty array when untagged — `tracks_tags_valid` allows only one
-      // representation of "no tags", so every query downstream has one case to handle.
-      tags: tags.length > 0 ? tags : null,
-      media_kind: input.mode,
-      audio_url: input.mode === 'audio' ? 'pending://placeholder' : null,
-      video_url: input.mode === 'video' ? 'pending://placeholder' : null,
-    })
-    .select('id')
-    .single();
-
-  if (insertError || !inserted) {
-    throw new Error(insertError?.message ?? 'Failed to create track.');
-  }
-
-  const trackId = inserted.id;
+  const trackId = await createUploadRow(
+    supabase
+      .from('tracks')
+      .insert({
+        uploader_id: user.id,
+        title,
+        description,
+        // NULL rather than an empty array when untagged — `tracks_tags_valid` allows only one
+        // representation of "no tags", so every query downstream has one case to handle.
+        tags: tags.length > 0 ? tags : null,
+        media_kind: input.mode,
+        audio_url: input.mode === 'audio' ? 'pending://placeholder' : null,
+        video_url: input.mode === 'video' ? 'pending://placeholder' : null,
+      })
+      .select('id')
+      .single(),
+  );
   const plan = planFromInput(input);
   const weights = computeWeights(plan);
 
@@ -586,6 +674,10 @@ export async function createTrack(
     onProgress?.({ stage: 'uploading', fraction: Math.min(1, Math.max(0, fraction)) });
   };
 
+  // One file failing stops the others: over a dead connection they would only stall in
+  // turn, and a retry should not share the line with uploads already given up on.
+  const stopUploads = new AbortController();
+  let stage = 'upload files';
   try {
     onProgress?.({ stage: 'uploading', fraction: 0 });
 
@@ -594,29 +686,31 @@ export async function createTrack(
         ? uploadTrackFile(plan.audio, 'audio', trackId, user.id, accessToken, f => {
             audioFrac = f;
             reportOverall();
-          })
+          }, stopUploads.signal)
         : Promise.resolve<string | undefined>(undefined),
       plan.video
         ? uploadTrackFile(plan.video, 'video', trackId, user.id, accessToken, f => {
             videoFrac = f;
             reportOverall();
-          })
+          }, stopUploads.signal)
         : Promise.resolve<string | undefined>(undefined),
       plan.cover
         ? uploadTrackFile(plan.cover, 'cover', trackId, user.id, accessToken, f => {
             coverFrac = f;
             reportOverall();
-          })
+          }, stopUploads.signal)
         : Promise.resolve<string | undefined>(undefined),
       plan.thumbnail
         ? uploadTrackFile(plan.thumbnail, 'thumbnail', trackId, user.id, accessToken, f => {
             thumbFrac = f;
             reportOverall();
-          })
+          }, stopUploads.signal)
         : Promise.resolve<string | undefined>(undefined),
     ]);
 
-    return await finishTrack({
+    stage = 'save post';
+    uploadLog('post: files uploaded — saving the post');
+    const result = await finishTrack({
       trackId,
       userId: user.id,
       input,
@@ -626,9 +720,18 @@ export async function createTrack(
       scan: onCopyrightMatch ? { kind: 'ask', onCopyrightMatch } : { kind: 'skip' },
       onProgress,
     });
+    uploadLog('post: done', trackId);
+    return result;
   } catch (err) {
-    await safeDeleteTrack(trackId);
-    await safeRemoveUploadedObjects(user.id, trackId);
+    stopUploads.abort();
+    uploadLog(`post failed at "${stage}": ${messageOf(err)}`);
+    const cleaned = await boundedCleanup('post', (async () => {
+      await safeDeleteTrack(trackId);
+      await safeRemoveUploadedObjects(user.id, trackId);
+    })());
+    // Not finished in time — the connection is what failed. Remembered like a staged
+    // upload, so the next visit's `sweepStagedUploads` removes what is left.
+    if (!cleaned) { void rememberStaged({ trackId, userId: user.id }); }
     throw err;
   }
 }
@@ -951,74 +1054,96 @@ export async function stageMediaUpload(
   isAbandoned: () => boolean,
   signal?: AbortSignal,
 ): Promise<StagedUpload> {
-  const [
-    { data: userData, error: userError },
-    { data: sessionData },
-  ] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()]);
-  const user = userData?.user;
-  const accessToken = sessionData.session?.access_token;
-  if (userError || !user || !accessToken) {
-    throw new Error('You must be signed in to upload a track.');
-  }
-  if (isAbandoned()) { throw new StagingAbandonedError(); }
-
-  const { data: inserted, error: insertError } = await supabase
-    .from('tracks')
-    .insert({
-      uploader_id: user.id,
-      title: provisionalTitle(file),
-      media_kind: mediaKind,
-      // `tracks_media_shape_check`: a video row has a video_url and NO audio_url.
-      audio_url: mediaKind === 'audio' ? 'pending://placeholder' : null,
-      video_url: mediaKind === 'video' ? 'pending://placeholder' : null,
-    })
-    .select('id')
-    .single();
-  if (insertError || !inserted) {
-    throw new Error(insertError?.message ?? 'Failed to create track.');
-  }
-  const trackId = inserted.id;
-  // Remembered BEFORE the upload, so a kill at any point after this line is swept.
-  await rememberStaged({ trackId, userId: user.id });
-
-  const discard = async ({ keepReference }: { keepReference: boolean }) => {
-    await safeDeleteTrack(trackId);
-    await safeRemoveUploadedObjects(user.id, trackId);
-    // A STOPPED upload can still land: once the last byte is sent, storage finishes writing
-    // the file whether or not we are still listening — after the removal above found
-    // nothing. So the reference stays, and the next `sweepStagedUploads` lists the folder
-    // again (a missing row is fine there) and removes what arrived late.
-    if (!keepReference) { await forgetStaged(trackId); }
-  };
-
+  const startedAt = Date.now();
+  uploadLog(
+    `staging (${mediaKind}): starting`
+    + (file.size != null ? ` — ${(file.size / (1024 * 1024)).toFixed(1)} MB` : ''),
+  );
+  let stage = 'sign-in check';
+  // Set once each exists: the clean-up below removes only what was actually created.
+  let trackId: string | null = null;
+  let ownerId: string | null = null;
   try {
+    const { userId, accessToken } = await uploadIdentity();
+    ownerId = userId;
+    const user = { id: userId };
+    if (isAbandoned()) { throw new StagingAbandonedError(); }
+
+    stage = 'create track row';
+    trackId = await createUploadRow(
+      supabase
+        .from('tracks')
+        .insert({
+          uploader_id: user.id,
+          title: provisionalTitle(file),
+          media_kind: mediaKind,
+          // `tracks_media_shape_check`: a video row has a video_url and NO audio_url.
+          audio_url: mediaKind === 'audio' ? 'pending://placeholder' : null,
+          video_url: mediaKind === 'video' ? 'pending://placeholder' : null,
+        })
+        .select('id')
+        .single(),
+    );
+    // Remembered BEFORE the upload, so a kill at any point after this line is swept.
+    await rememberStaged({ trackId, userId: user.id });
+
     // Dropped while the row was being created: stop before reading the file (on Android
     // that is a full copy of a possibly 300 MB video) or sending any of it.
     if (isAbandoned()) { throw new StagingAbandonedError(); }
+    stage = 'upload file';
     onProgress({ stage: 'uploading', fraction: 0 });
     const mediaUrl = await uploadTrackFile(file, mediaKind, trackId, user.id, accessToken, f => {
       onProgress({ stage: 'uploading', fraction: f });
     }, signal);
     if (isAbandoned()) { throw new StagingAbandonedError(); }
 
-    const { error: updateError } = await supabase
-      .from('tracks')
-      .update(mediaKind === 'audio' ? { audio_url: mediaUrl } : { video_url: mediaUrl })
-      .eq('id', trackId);
+    stage = 'save file address';
+    const { error: updateError } = await networkStep(
+      'save file address',
+      supabase
+        .from('tracks')
+        .update(mediaKind === 'audio' ? { audio_url: mediaUrl } : { video_url: mediaUrl })
+        .eq('id', trackId),
+    );
+    if (isFetchFailure(updateError)) {
+      throw new UploadNetworkError('save file address', NO_CONNECTION_MESSAGE);
+    }
     if (updateError) {
       throw new Error(`Failed to save the ${mediaKind === 'audio' ? 'song' : 'video'}: ${updateError.message}`);
     }
 
+    stage = 'copyright check';
     onProgress({ stage: 'checking', fraction: 1 });
     // Every 12-second chunk, not one excerpt: the screen is still collecting the cover,
-    // details and credits, so the extra seconds are hidden behind them.
+    // details and credits, so the extra seconds are hidden behind them. Never throws, and
+    // time-limits itself (`copyrightScan.ts`).
     const scan = await scanUpload(supabase, trackId, { fullSong: true });
     if (isAbandoned()) { throw new StagingAbandonedError(); }
 
+    uploadLog(`staging (${mediaKind}): ready after ${((Date.now() - startedAt) / 1000).toFixed(1)}s`, trackId);
     return { trackId, userId: user.id, mediaKind, mediaUrl, scan, declaration: null };
   } catch (err) {
     const abandoned = isAbandoned();
-    await discard({ keepReference: abandoned });
+    uploadLog(
+      abandoned
+        ? `staging (${mediaKind}): stopped at "${stage}" — the screen moved on`
+        : `staging (${mediaKind}) failed at "${stage}": ${messageOf(err)}`,
+    );
+    if (trackId && ownerId) {
+      const id = trackId;
+      const owner = ownerId;
+      // A STOPPED upload can still land: once the last byte is sent, storage finishes
+      // writing the file whether or not we are still listening — after the removal below
+      // found nothing. So for an abandoned attempt the reference stays, and the next
+      // `sweepStagedUploads` lists the folder again (a missing row is fine there) and
+      // removes what arrived late. Never held back past CLEANUP_TIMEOUT_MS: unfinished,
+      // the reference is still there for the sweep (it is forgotten only at the end).
+      await boundedCleanup('staging', (async () => {
+        await safeDeleteTrack(id);
+        await safeRemoveUploadedObjects(owner, id);
+        if (!abandoned) { await forgetStaged(id); }
+      })());
+    }
     // A stopped upload rejects with "Upload aborted."; to the caller that is the screen
     // having moved on, not a failure to fall back from.
     if (abandoned) { throw new StagingAbandonedError(); }
@@ -1097,7 +1222,11 @@ export async function publishStagedTrack(
     const description = input.description?.trim() ? input.description.trim() : null;
 
     onProgress?.({ stage: 'preparing', fraction: 0 });
-    const { data: sessionData } = await supabase.auth.getSession();
+    uploadLog(`post (${staged.mediaKind}, already uploaded): starting`, staged.trackId);
+    // Usually local, but a token past its expiry is refreshed over the network first.
+    const { data: sessionData, error: sessionError } =
+      await networkStep('sign-in check', supabase.auth.getSession());
+    if (isFetchFailure(sessionError)) { throw new UploadNetworkError('sign-in check', NO_CONNECTION_MESSAGE); }
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) { throw new Error('You must be signed in to upload a track.'); }
 
@@ -1125,11 +1254,17 @@ export async function publishStagedTrack(
       fraction: Math.min(1, fractions.reduce((sum, f, i) => sum + f * sizes[i], 0) / total),
     });
     onProgress?.({ stage: 'uploading', fraction: 0 });
+    // As in `createTrack`: one picture failing stops the other.
+    const stopUploads = new AbortController();
     const urls = await Promise.all(pictures.map((p, i) =>
       uploadTrackFile(p.file, p.kind, staged.trackId, staged.userId, accessToken, f => {
         fractions[i] = f;
         report();
-      })));
+      }, stopUploads.signal))).catch((err: unknown) => {
+        stopUploads.abort();
+        throw err;
+      });
+    uploadLog('post: pictures uploaded — saving the post');
     const urlFor = (kind: 'cover' | 'thumbnail') => {
       const i = pictures.findIndex(p => p.kind === kind);
       return i >= 0 ? urls[i] : undefined;
@@ -1150,9 +1285,13 @@ export async function publishStagedTrack(
       onProgress,
     });
     await forgetStaged(staged.trackId);
+    uploadLog('post: done', staged.trackId);
     return result;
   } catch (err) {
-    await discardStagedUpload(staged);
+    uploadLog(`post (already uploaded) failed: ${messageOf(err)}`);
+    // Bounded like every clean-up here; unfinished, the staged reference is still there
+    // (it is forgotten only at the end) for the next visit's sweep.
+    await boundedCleanup('post', discardStagedUpload(staged));
     throw err;
   }
 }
