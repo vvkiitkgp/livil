@@ -225,6 +225,18 @@ type RawReaction = { message_id: string; user_id: string; emoji: string };
 
 type RawMessageRow = Omit<RawMessage, 'profiles'>;
 
+const MESSAGE_COLUMNS = 'id, conversation_id, sender_id, kind, body, metadata, reply_to_id, created_at, deleted_at';
+
+async function fetchSenderProfiles(rows: RawMessageRow[]): Promise<Map<string, NonNullable<RawMessage['profiles']>>> {
+  const senderIds = [...new Set(rows.map(r => r.sender_id).filter(Boolean))] as string[];
+  const { data } = await db.from('profiles').select('id, username, display_name, avatar_url').in('id', senderIds);
+  const profileMap = new Map<string, NonNullable<RawMessage['profiles']>>();
+  for (const p of (data ?? []) as { id: string; username: string; display_name: string | null; avatar_url: string | null }[]) {
+    profileMap.set(p.id, p);
+  }
+  return profileMap;
+}
+
 export async function fetchMessages(
   conversationId: string,
   cursor?: string,
@@ -238,7 +250,7 @@ export async function fetchMessages(
   // (their words are never shown — toMessage). Installed builds keep `deleted_at is null`.
   let query = db
     .from('messages')
-    .select('id, conversation_id, sender_id, kind, body, metadata, reply_to_id, created_at, deleted_at')
+    .select(MESSAGE_COLUMNS)
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
     .limit(limit + 1);
@@ -259,17 +271,12 @@ export async function fetchMessages(
   }
 
   // Sender profiles and the page's reactions, together: each is one round trip.
-  const senderIds = [...new Set(slice.map(r => r.sender_id).filter(Boolean))] as string[];
   const msgIds = slice.map(r => r.id);
-  const [{ data: profileData }, { data: rxnData }, myId] = await Promise.all([
-    db.from('profiles').select('id, username, display_name, avatar_url').in('id', senderIds),
+  const [profileMap, { data: rxnData }, myId] = await Promise.all([
+    fetchSenderProfiles(slice),
     db.from('message_reactions').select('message_id, user_id, emoji').in('message_id', msgIds),
     myIdPromise.then(id => id ?? ''),
   ]);
-  const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
-  for (const p of (profileData ?? []) as { id: string; username: string; display_name: string | null; avatar_url: string | null }[]) {
-    profileMap.set(p.id, p);
-  }
 
   const rawReactions = (rxnData ?? []) as RawReaction[];
 
@@ -282,6 +289,25 @@ export async function fetchMessages(
   const nextCursor = hasMore ? slice[slice.length - 1]!.created_at : null;
 
   return { messages, nextCursor };
+}
+
+/**
+ * Messages of this chat by id: the originals of replies whose original is above the loaded
+ * pages, for the quote. The words and the sender, no reactions (a quote draws none). A
+ * deleted one comes back as its placeholder, like any other (toMessage).
+ */
+export async function fetchMessagesByIds(conversationId: string, ids: string[]): Promise<ChatMessage[]> {
+  if (ids.length === 0) { return []; }
+  const { data, error } = await db
+    .from('messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('conversation_id', conversationId)
+    .in('id', ids);
+  if (error) { throw error; }
+  const rows = (data ?? []) as RawMessageRow[];
+  if (rows.length === 0) { return []; }
+  const profileMap = await fetchSenderProfiles(rows);
+  return rows.map(r => toMessage({ ...r, profiles: r.sender_id ? (profileMap.get(r.sender_id) ?? null) : null }, '', []));
 }
 
 export type SendMessagePayload =

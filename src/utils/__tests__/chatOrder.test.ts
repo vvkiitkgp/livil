@@ -4,7 +4,7 @@
  * message arriving late jumbled the chat until it was reopened (Android, 2026-11-03).
  */
 
-import { mergeNewestFirst, settlePending } from '../chatOrder';
+import { mergeNewestFirst, missingReplyOriginals, settlePending } from '../chatOrder';
 
 const msg = (id: string, createdAt: string) => ({ id, createdAt });
 
@@ -45,4 +45,24 @@ it('does not show a message twice when a catch-up brought it in before its send 
   const pending = [msg('opt-1', '2026-11-02T19:10:24.000Z'), msg('yo', '2026-11-02T19:10:25.000+00:00'), ...onScreen];
   const next = settlePending(pending, 'opt-1', msg('yo', '2026-11-02T19:10:25.000+00:00'));
   expect(next.map(m => m.id)).toEqual(['yo', 'hello', 'hey']);
+});
+
+describe('missingReplyOriginals', () => {
+  const row = (id: string, replyToId: string | null = null, deletedAt: string | null = null) => ({ id, replyToId, deletedAt });
+
+  it('finds a reply whose original is above the loaded pages, once', () => {
+    expect(missingReplyOriginals([row('r1', 'old'), row('r2', 'old'), row('r3')], new Set())).toEqual(['old']);
+  });
+
+  it('skips an original already loaded', () => {
+    expect(missingReplyOriginals([row('r1', 'm1'), row('m1')], new Set())).toEqual([]);
+  });
+
+  it('skips one already asked for', () => {
+    expect(missingReplyOriginals([row('r1', 'old')], new Set(['old']))).toEqual([]);
+  });
+
+  it('skips a deleted reply, which draws no quote', () => {
+    expect(missingReplyOriginals([row('r1', 'old', '2026-11-02T19:10:25.000Z')], new Set())).toEqual([]);
+  });
 });

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-585 TypeScript file(s) under `src/`, 115,429 lines.
+586 TypeScript file(s) under `src/`, 115,620 lines.
 
 ## Size hotspots
 
@@ -26,7 +26,7 @@ reading alone (Constitution P28).
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 3182 |
+| `src/screens/main/ConversationScreen.tsx` | 3205 |
 | `src/screens/main/UploadScreen.tsx` | 2594 |
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
@@ -109,11 +109,11 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,006 lines.
+75 file(s), 35,029 lines.
 
 | File | Lines |
 |---|---:|
-| `src/screens/main/ConversationScreen.tsx` | 3182 |
+| `src/screens/main/ConversationScreen.tsx` | 3205 |
 | `src/screens/main/UploadScreen.tsx` | 2594 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1475 |
@@ -191,7 +191,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-184 file(s), 35,852 lines.
+184 file(s), 35,876 lines.
 
 | File | Lines |
 |---|---:|
@@ -258,10 +258,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/auth/AuthStep.tsx` | 195 |
 | `src/components/MentionText.tsx` | 191 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
+| `src/components/ChatReplySnippet.tsx` | 190 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 186 |
-| `src/components/ChatReplySnippet.tsx` | 184 |
 | `src/components/UploadPreviewCard.tsx` | 180 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ProfileTabBar.tsx` | 179 |
@@ -325,6 +325,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ConfirmActionModal.test.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
 | `src/components/SpotifyLogo.tsx` | 82 |
+| `src/components/__tests__/ChatReplySnippet.test.tsx` | 82 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
 | `src/components/PostCardSkeleton.tsx` | 79 |
 | `src/components/UsernameBadges.tsx` | 78 |
@@ -346,7 +347,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
 | `src/components/RealtimeConnectionGate.tsx` | 64 |
-| `src/components/__tests__/ChatReplySnippet.test.tsx` | 64 |
 | `src/components/FirstHundredBadge.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
 | `src/components/RoundTickButton.tsx` | 61 |
@@ -382,7 +382,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-125 file(s), 23,824 lines.
+126 file(s), 23,930 lines.
 
 | File | Lines |
 |---|---:|
@@ -396,8 +396,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/albums.ts` | 523 |
 | `src/services/spotify.ts` | 514 |
 | `src/services/profileService.ts` | 511 |
+| `src/services/messages.ts` | 482 |
 | `src/services/uploads.ts` | 462 |
-| `src/services/messages.ts` | 456 |
 | `src/services/__tests__/spotify.test.ts` | 433 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
 | `src/services/playlists.ts` | 390 |
@@ -472,6 +472,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/groupFaces.ts` | 86 |
 | `src/services/__tests__/session.test.ts` | 84 |
 | `src/services/__tests__/submitExitFeedback.test.ts` | 81 |
+| `src/services/__tests__/fetchMessagesByIds.test.ts` | 80 |
 | `src/services/googleAuth.ts` | 79 |
 | `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
 | `src/services/__tests__/findMyActiveJam.test.ts` | 78 |
@@ -582,7 +583,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-125 file(s), 11,584 lines.
+125 file(s), 11,622 lines.
 
 | File | Lines |
 |---|---:|
@@ -657,11 +658,13 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/authorDisplay.ts` | 72 |
 | `src/utils/punycode.ts` | 72 |
 | `src/utils/recentSearches.ts` | 72 |
+| `src/utils/__tests__/chatOrder.test.ts` | 69 |
 | `src/utils/__tests__/likeStore.test.ts` | 68 |
 | `src/utils/__tests__/synth.test.ts` | 68 |
 | `src/utils/errorMessages.ts` | 68 |
 | `src/utils/audioFile/wav.ts` | 66 |
 | `src/utils/__tests__/mentions.test.ts` | 62 |
+| `src/utils/chatOrder.ts` | 60 |
 | `src/utils/__tests__/recentSearchOpens.test.ts` | 58 |
 | `src/utils/commentsDelta.ts` | 58 |
 | `src/utils/__tests__/inboxFilter.test.ts` | 56 |
@@ -670,7 +673,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/chatReceipts.test.ts` | 52 |
 | `src/utils/recentSearchOpens.ts` | 52 |
 | `src/utils/__tests__/messageMenuLayout.test.ts` | 51 |
-| `src/utils/__tests__/chatOrder.test.ts` | 49 |
 | `src/utils/messageMenuLayout.ts` | 49 |
 | `src/utils/mutualsText.ts` | 48 |
 | `src/utils/__tests__/shareLinkGate.test.ts` | 47 |
@@ -680,7 +682,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/zoomMath.ts` | 44 |
 | `src/utils/__tests__/mutualsText.test.ts` | 43 |
 | `src/utils/__tests__/chatCopy.test.ts` | 42 |
-| `src/utils/chatOrder.ts` | 42 |
 | `src/utils/__tests__/emojiData.test.ts` | 40 |
 | `src/utils/inboxFilter.ts` | 39 |
 | `src/utils/__tests__/friendOrder.test.ts` | 37 |
