@@ -21,6 +21,7 @@ import MessagesTabIcon from '../components/MessagesTabIcon';
 import TabAvatar from '../components/TabAvatar';
 import TabBarBackground from '../components/TabBarBackground';
 import { UnreadBadgeProvider } from '../contexts/UnreadBadgeContext';
+import TabSwipeBack from './TabSwipeBack';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
@@ -89,6 +90,11 @@ function AnimatedTabBar(props: BottomTabBarProps) {
 // Render callbacks the navigator invokes, hoisted so they aren't rebuilt per render.
 const renderTabBar = (props: BottomTabBarProps) => <AnimatedTabBar {...props} />;
 const renderTabBarBackground = () => <TabBarBackground />;
+const renderTabScreen: React.ComponentProps<typeof Tab.Navigator>['screenLayout'] =
+  Platform.OS === 'ios'
+    ? ({ route, navigation, children }) =>
+        route.name === 'Home' ? children : <TabSwipeBack navigation={navigation}>{children}</TabSwipeBack>
+    : undefined;
 
 export default function AppNavigator() {
   const insets = useSafeAreaInsets();
@@ -99,6 +105,7 @@ export default function AppNavigator() {
       <Tab.Navigator
         initialRouteName="Home"
         tabBar={renderTabBar}
+        screenLayout={renderTabScreen}
         // Light tick on every tab press. A listener rather than a custom
         // tabBarButton so the navigator keeps owning the press — it still decides
         // navigate vs re-select-and-scroll-to-top; this only observes.

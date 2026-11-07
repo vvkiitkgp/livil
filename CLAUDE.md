@@ -543,6 +543,7 @@ from `onLayout`:
 
 - Use `createNativeStackNavigator` — NOT `createStackNavigator`
 - Set `gestureEnabled: false` on auth screens
+- iPhone tabs other than Home go Home on a swipe from the left edge (`TabSwipeBack`), matching Android's back gesture
 - `android:enableOnBackInvokedCallback="false"` in AndroidManifest.xml
 - Wrap app root in `GestureHandlerRootView` in `App.tsx`
 - First line of `index.js` must be `import 'react-native-gesture-handler'`
