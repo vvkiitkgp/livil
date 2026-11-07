@@ -1,4 +1,4 @@
--- Chat vibe (20261106000000_chat_vibes.sql).
+-- Chat vibe (20261106000000_chat_vibes.sql, 20261119030000_chat_vibe_keeps_points.sql).
 --
 -- Asha and Ben chat, share songs, react, Jam and like each other's posts; their vibe adds
 -- it all up, the same for both of them, and never reads what either of them played. Nobody else sees it, a group has none, and a block
@@ -155,6 +155,57 @@ set local role authenticated;
 select pg_temp.assert('#6 someone outside the chat sees nothing',
   exists (select 1 from my_chat_vibes()), false);
 reset role;
+
+-- ── Deleting and clearing never lower the vibe (20261119030000) ─────────────
+create or replace function pg_temp.vibe_of(chat uuid) returns bigint language sql as $$
+  select coalesce(sum(vibe), 0)::bigint from my_chat_vibes() where conversation_id = chat
+$$;
+
+select pg_temp.set_user('e9000000-0000-0000-0000-000000000001');
+set local role authenticated;
+select pg_temp.assert_eq('#8 Asha and Ben start at 25',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 25);
+-- A shared Spotify song, worth 3, whose link the delete erases.
+select public.delete_message_for_everyone('ed000000-0000-0000-0000-000000000004');
+select pg_temp.assert_eq('#9 deleting a shared song keeps its 3 points',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 25);
+-- Her "hi", worth 1, with Ben's reaction, worth 1.
+select public.delete_message_for_everyone('ed000000-0000-0000-0000-000000000001');
+select pg_temp.assert_eq('#9b deleting a message keeps it and its reaction''s points',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 25);
+select public.delete_message_for_everyone('ed000000-0000-0000-0000-000000000001');
+select pg_temp.assert_eq('#9c deleting it again adds nothing',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 25);
+select public.clear_chat_for_both('ec000000-0000-0000-0000-000000000001');
+select pg_temp.assert_eq('#10 Clear chat keeps every point, without counting the deleted ones twice',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 25);
+select pg_temp.assert('#10b her other chat is untouched',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000002') > 0, true);
+reset role;
+select pg_temp.set_user('e9000000-0000-0000-0000-000000000002');
+set local role authenticated;
+select pg_temp.assert_eq('#10c Ben sees the same 25',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 25);
+select pg_temp.assert('#10d no client reads the kept points',
+  (select count(*) = 0 from chat_vibe_kept), true);
+reset role;
+
+-- It keeps growing from there.
+insert into messages (conversation_id, sender_id, kind, body)
+values ('ec000000-0000-0000-0000-000000000001', 'e9000000-0000-0000-0000-000000000002', 'text', 'back again');
+select pg_temp.set_user('e9000000-0000-0000-0000-000000000001');
+set local role authenticated;
+select pg_temp.assert_eq('#11 a new message adds to it',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 26);
+select public.clear_chat_for_both('ec000000-0000-0000-0000-000000000001');
+select pg_temp.assert_eq('#11b a second clear keeps that too',
+  pg_temp.vibe_of('ec000000-0000-0000-0000-000000000001'), 26);
+-- A group has no vibe, so deleting in one keeps nothing.
+select public.delete_message_for_everyone(
+  (select id from messages where conversation_id = 'ec000000-0000-0000-0000-000000000003' limit 1));
+reset role;
+select pg_temp.assert('#12 a group never gets kept points',
+  (select count(*) = 0 from chat_vibe_kept where conversation_id = 'ec000000-0000-0000-0000-000000000003'), true);
 
 -- Cara blocks Asha: their chat's vibe disappears for both.
 insert into blocked_users (blocker_id, blocked_id) values

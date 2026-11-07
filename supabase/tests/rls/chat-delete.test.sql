@@ -1,17 +1,17 @@
--- Chat delete (20261119010000_chat_delete.sql).
+-- Chat delete (20261119010000_chat_delete.sql, 20261119020000_chat_delete_rules.sql).
 --
---   * delete for everyone: only the sender, only while in the chat, never a system line;
---     the words and attachment are ERASED (not just flagged); a client still cannot rewrite
---     or erase content directly; installed apps' `deleted_at is null` read hides it;
+--   * delete a message: only the sender, only while in the chat, never a system line; the
+--     words and attachment are ERASED (not just flagged); a client still cannot rewrite or
+--     erase content directly; installed apps' `deleted_at is null` read hides it;
 --   * the chat-list line never keeps a deleted message's words (v1, which installed apps
 --     read, and v2);
---   * delete for me: only your own hide, only in a chat you are in, invisible to others;
---   * clear chat / delete chat: a private row only you can read — never on
---     conversation_members, never "Seen"; v2 hides a deleted chat until a new message, and
---     shows each person their own preview and unread count;
+--   * delete chat: private, for one person; no message is touched and no "Seen" is sent; it
+--     leaves their list until a new message, and the icon badge agrees;
+--   * clear chat: one-to-one chats only; every message is gone for both people, one line says
+--     who did it, and the chat list and icon badge are empty for both;
 --   * a newer system line ("The Jam Room has ended.") does not keep a deleted message's
 --     words in the chat list;
---   * anon can call none of it.
+--   * anon can call none of it, and the per-person parts of 20261119010000 are gone.
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/chat-delete.test.sql
 
@@ -119,87 +119,129 @@ reset role;
 insert into conversation_members (conversation_id, user_id, role, last_read_at) values
   ('de200000-0000-0000-0000-000000000001', 'de100000-0000-0000-0000-000000000002', 'member', now() - interval '1 day');
 
--- ── Delete for me ───────────────────────────────────────────────────────────
+-- ── Delete chat: hides it for one person, touches nothing else ──────────────
+-- Riya has two unread messages from Sam (…01, …02).
 select pg_temp.set_user('de100000-0000-0000-0000-000000000001');
 set local role authenticated;
-select pg_temp.assert('#9 a member hides a message for themselves', pg_temp.allows($$
-  insert into message_hides (user_id, message_id)
-  values ('de100000-0000-0000-0000-000000000001', 'de300000-0000-0000-0000-000000000002')$$), true);
-select pg_temp.assert('#10 but not for someone else', pg_temp.allows($$
-  insert into message_hides (user_id, message_id)
-  values ('de100000-0000-0000-0000-000000000002', 'de300000-0000-0000-0000-000000000001')$$), false);
-reset role;
-
-select pg_temp.set_user('de100000-0000-0000-0000-000000000003');
-set local role authenticated;
-select pg_temp.assert('#11 an outsider cannot hide a message of a chat they are not in', pg_temp.allows($$
-  insert into message_hides (user_id, message_id)
-  values ('de100000-0000-0000-0000-000000000003', 'de300000-0000-0000-0000-000000000001')$$), false);
-reset role;
-
-select pg_temp.set_user('de100000-0000-0000-0000-000000000002');
-set local role authenticated;
-select pg_temp.assert('#12 nobody else sees your hides',
-  (select count(*) = 0 from message_hides), true);
-reset role;
-
--- Riya now sees: 'old news' (…01) as the newest she has not hidden — after her deleted …03.
-select pg_temp.set_user('de100000-0000-0000-0000-000000000001');
-set local role authenticated;
-select pg_temp.assert('#13 v2 counts unread without what she hid (…01 only)',
-  (select unread_count = 1 from public.list_my_conversations_v2()
+select pg_temp.assert('#9 before: two unread',
+  (select unread_count = 2 from public.list_my_conversations_v2()
     where id = 'de200000-0000-0000-0000-000000000001'), true);
-
--- ── Clear chat / delete chat ────────────────────────────────────────────────
-select public.clear_conversation('de200000-0000-0000-0000-000000000001', false);
-select pg_temp.assert('#14 after Clear chat: still listed, nothing to preview, nothing unread',
-  (select last_message_preview is null and unread_count = 0
-     from public.list_my_conversations_v2()
-    where id = 'de200000-0000-0000-0000-000000000001'), true);
-select public.clear_conversation('de200000-0000-0000-0000-000000000001', true);
-select pg_temp.assert('#15 after Delete chat: gone from her list',
+select pg_temp.assert('#10 Delete chat works for a member', pg_temp.allows($$
+  select public.hide_conversation('de200000-0000-0000-0000-000000000001')$$), true);
+select pg_temp.assert('#10b it leaves her list',
   (select count(*) = 0 from public.list_my_conversations_v2()
     where id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#10c her own row, which she can read',
+  (select count(*) = 1 from conversation_hides), true);
 reset role;
-
--- Private: Sam is told nothing, and nothing reads as "Seen".
-select pg_temp.assert('#16 clearing does not move her last_read_at (no "Seen" for unread messages)',
+select pg_temp.assert('#10d the icon badge agrees: a chat out of the list counts nothing',
+  public.unread_badge_count_for('de100000-0000-0000-0000-000000000001') = 0, true);
+select pg_temp.assert('#10e no message was touched',
+  (select count(*) = 4 from messages where conversation_id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#10f her read marker did not move (no "Seen" for unread messages)',
   (select last_read_at < now() - interval '12 hours' from conversation_members
     where conversation_id = 'de200000-0000-0000-0000-000000000001'
       and user_id = 'de100000-0000-0000-0000-000000000001'), true);
+
 select pg_temp.set_user('de100000-0000-0000-0000-000000000002');
 set local role authenticated;
-select pg_temp.assert('#16b the other member cannot see that she cleared or deleted the chat',
-  (select count(*) = 0 from conversation_clears), true);
-select pg_temp.assert('#16c and nobody writes a clear row directly', pg_temp.allows($$
-  insert into conversation_clears (user_id, conversation_id)
+select pg_temp.assert('#11 Sam still has his chat',
+  (select count(*) = 1 from public.list_my_conversations_v2()
+    where id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#11b and cannot see that she hid it',
+  (select count(*) = 0 from conversation_hides), true);
+select pg_temp.assert('#11c nobody writes a hide directly', pg_temp.allows($$
+  insert into conversation_hides (user_id, conversation_id)
   values ('de100000-0000-0000-0000-000000000002', 'de200000-0000-0000-0000-000000000001')$$), false);
 reset role;
 select pg_temp.set_user('de100000-0000-0000-0000-000000000003');
 set local role authenticated;
-select pg_temp.assert('#16d an outsider cannot clear a chat they are not in', pg_temp.allows($$
-  select public.clear_conversation('de200000-0000-0000-0000-000000000001', true)$$), false);
+select pg_temp.assert('#11d an outsider cannot hide a chat they are not in', pg_temp.allows($$
+  select public.hide_conversation('de200000-0000-0000-0000-000000000001')$$), false);
 reset role;
 
--- A new message brings the chat back, with only what came after.
-select pg_temp.set_user('de100000-0000-0000-0000-000000000002');
-set local role authenticated;
-select pg_temp.assert('#17 Sam still sees his chat as before',
-  (select count(*) = 1 from public.list_my_conversations_v2()
-    where id = 'de200000-0000-0000-0000-000000000001'), true);
-reset role;
--- Sent by Sam (inserted as the owner: the fixture DM has no friendship row for msg_insert,
--- and now() is frozen inside the transaction, so it is dated just after her clear).
-insert into messages (conversation_id, sender_id, kind, body, created_at)
-values ('de200000-0000-0000-0000-000000000001', 'de100000-0000-0000-0000-000000000002', 'text',
-        'hello again', now() + interval '1 minute');
+-- A new message brings it back with everything still there. Inserted as the owner: the fixture
+-- DM has no friendship row for msg_insert, and now() is frozen inside the transaction, so it is
+-- dated just after her hide.
+insert into messages (id, conversation_id, sender_id, kind, body, created_at)
+values ('de300000-0000-0000-0000-000000000005', 'de200000-0000-0000-0000-000000000001',
+        'de100000-0000-0000-0000-000000000002', 'text', 'hello again', now() + interval '1 minute');
 select pg_temp.set_user('de100000-0000-0000-0000-000000000001');
 set local role authenticated;
-select pg_temp.assert('#18 a new message brings the chat back, previewing only it',
-  (select last_message_preview = 'hello again' and unread_count = 1
+select pg_temp.assert('#12 a new message brings the chat back, with the old unread still counted',
+  (select last_message_preview = 'hello again' and unread_count = 3
      from public.list_my_conversations_v2()
     where id = 'de200000-0000-0000-0000-000000000001'), true);
 reset role;
+select pg_temp.assert('#12b the icon badge agrees',
+  public.unread_badge_count_for('de100000-0000-0000-0000-000000000001') = 3, true);
+
+-- ── Clear chat: for both people ─────────────────────────────────────────────
+-- A reply and a reaction, which a clear must not trip over.
+insert into messages (conversation_id, sender_id, kind, body, reply_to_id, created_at)
+values ('de200000-0000-0000-0000-000000000001', 'de100000-0000-0000-0000-000000000001', 'text',
+        'yes I am', 'de300000-0000-0000-0000-000000000002', now() + interval '2 minutes');
+insert into message_reactions (message_id, user_id, emoji)
+values ('de300000-0000-0000-0000-000000000001', 'de100000-0000-0000-0000-000000000001', '🔥');
+insert into conversations (id, kind, name) values ('de200000-0000-0000-0000-000000000009', 'group', 'Band');
+insert into conversation_members (conversation_id, user_id, role) values
+  ('de200000-0000-0000-0000-000000000009', 'de100000-0000-0000-0000-000000000001', 'member');
+insert into messages (conversation_id, sender_id, kind, body)
+values ('de200000-0000-0000-0000-000000000009', 'de100000-0000-0000-0000-000000000001', 'text', 'band practice');
+
+select pg_temp.set_user('de100000-0000-0000-0000-000000000003');
+set local role authenticated;
+select pg_temp.assert('#13 an outsider cannot clear a chat', pg_temp.allows($$
+  select public.clear_chat_for_both('de200000-0000-0000-0000-000000000001')$$), false);
+reset role;
+select pg_temp.set_user('de100000-0000-0000-0000-000000000001');
+set local role authenticated;
+select pg_temp.assert('#13b a group cannot be cleared, even by a member', pg_temp.allows($$
+  select public.clear_chat_for_both('de200000-0000-0000-0000-000000000009')$$), false);
+select pg_temp.allows($$
+  delete from messages where conversation_id = 'de200000-0000-0000-0000-000000000001'$$);
+reset role;
+select pg_temp.assert('#13c a client still cannot delete messages directly',
+  (select count(*) = 6 from messages where conversation_id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.set_user('de100000-0000-0000-0000-000000000001');
+set local role authenticated;
+select pg_temp.assert('#14 either person can clear the chat', pg_temp.allows($$
+  select public.clear_chat_for_both('de200000-0000-0000-0000-000000000001')$$), true);
+reset role;
+select pg_temp.assert('#14b every message is gone from the database, for both',
+  (select count(*) = 0 from messages
+    where conversation_id = 'de200000-0000-0000-0000-000000000001' and kind <> 'system'), true);
+select pg_temp.assert('#14c and so are their reactions',
+  (select count(*) = 0 from message_reactions
+    where message_id = 'de300000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#14d one line says who cleared it, and marks it for the app',
+  (select count(*) = 1 and bool_and(sender_id is null and body = 'del_riya cleared this chat'
+                                    and metadata = '{"chat_cleared": true}'::jsonb)
+     from messages where conversation_id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#14e the group was not touched',
+  (select count(*) = 1 from messages where conversation_id = 'de200000-0000-0000-0000-000000000009'), true);
+
+select pg_temp.assert('#15 the icon badge is empty for both',
+  public.unread_badge_count_for('de100000-0000-0000-0000-000000000001') = 0
+  and public.unread_badge_count_for('de100000-0000-0000-0000-000000000002') = 0, true);
+select pg_temp.set_user('de100000-0000-0000-0000-000000000002');
+set local role authenticated;
+select pg_temp.assert('#16 Sam: no line and nothing unread in v2',
+  (select last_message_preview is null and last_message_at is null and unread_count = 0
+     from public.list_my_conversations_v2()
+    where id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#16b nor in v1, which installed apps read',
+  (select last_message_preview is null and unread_count = 0
+     from public.list_my_conversations()
+    where id = 'de200000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('#16c what an installed app loads is only the line',
+  (select count(*) = 1 from messages
+    where conversation_id = 'de200000-0000-0000-0000-000000000001' and deleted_at is null), true);
+select pg_temp.assert('#17 clearing an empty chat adds no second line', pg_temp.allows($$
+  select public.clear_chat_for_both('de200000-0000-0000-0000-000000000001')$$), true);
+reset role;
+select pg_temp.assert('#17b still one line',
+  (select count(*) = 1 from messages where conversation_id = 'de200000-0000-0000-0000-000000000001'), true);
 
 -- ── A newer system line does not keep deleted words in the list ────────────
 insert into conversations (id, kind) values ('de200000-0000-0000-0000-000000000002', 'dm');
@@ -228,7 +270,16 @@ reset role;
 -- ── anon ────────────────────────────────────────────────────────────────────
 select pg_temp.assert('#19 anon can call none of it',
   not has_function_privilege('anon', 'public.delete_message_for_everyone(uuid)', 'execute')
-  and not has_function_privilege('anon', 'public.clear_conversation(uuid, boolean)', 'execute')
+  and not has_function_privilege('anon', 'public.clear_chat_for_both(uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.hide_conversation(uuid)', 'execute')
   and not has_function_privilege('anon', 'public.list_my_conversations_v2()', 'execute'), true);
+select pg_temp.assert('#22 the per-person parts are gone',
+  to_regclass('public.message_hides') is null
+  and to_regclass('public.conversation_clears') is null
+  and to_regprocedure('public.clear_conversation(uuid, boolean)') is null, true);
+-- Not asserted for `authenticated`: CI's harness grants it every function after the replay.
+select pg_temp.assert('#21 anon cannot read someone''s badge number; send-push (service_role) can',
+  not has_function_privilege('anon', 'public.unread_badge_count_for(uuid)', 'execute')
+  and has_function_privilege('service_role', 'public.unread_badge_count_for(uuid)', 'execute'), true);
 
 rollback;

@@ -27,6 +27,7 @@
 --   list_my_conversations_v2() — the chat list for the new app: what v1 returns, minus
 --     hidden chats, with each person's own preview and unread count (after their clear,
 --     without their hidden messages, "This message was deleted" for a deleted one).
+--   unread_badge_count_for() — the iOS icon number counts the same way, so it agrees.
 --
 -- Chat photos/videos (PROP-0011): delete-for-everyone erases the message's metadata, so no
 -- app can name the file any more, and the chat-media function already refuses a link for a
@@ -45,6 +46,9 @@
 --   * message_hides, conversation_clears and list_my_conversations_v2 are new; installed
 --     apps never read them, so on those apps a cleared/deleted/hidden chat still shows
 --     everything — these are per-person views, kept by the new app only.
+--   * unread_badge_count_for is called only by send-push, with the same arguments and return
+--     type. Its answer changes only for someone with a clear or a hide, and only the new app
+--     writes those.
 --   * No existing table gains a column. msg_update / the direct `deleted_at` update stay as
 --     they are; installed apps never send it.
 -- The new app checks that message_hides exists before offering any of this, and falls
@@ -386,6 +390,57 @@ $$;
 
 revoke all on function public.list_my_conversations_v2() from public, anon;
 grant execute on function public.list_my_conversations_v2() to authenticated, service_role;
+
+-- ── The number on the app's icon must agree with the chat list ─────────────
+-- Restated from 20260914000000 with ONE change, in the messages count: v2's unread predicates.
+-- Clearing deliberately does not move last_read_at (above), so without this the messages
+-- someone cleared or hid stayed in the iOS badge send-push computes: the icon says 5, the
+-- list says 0, and nothing the person does clears it. Nothing changes for anyone until they
+-- clear or hide something, which only the new app can do.
+create or replace function public.unread_badge_count_for(p_user_id uuid)
+returns int
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select (
+    coalesce((
+      select count(*)
+      from conversation_members cm
+      join messages m on m.conversation_id = cm.conversation_id
+      left join conversation_clears cc
+        on cc.conversation_id = cm.conversation_id and cc.user_id = p_user_id
+      where cm.user_id = p_user_id
+        and m.created_at > cm.last_read_at
+        and (cc.cleared_at is null or m.created_at > cc.cleared_at)
+        and m.sender_id <> p_user_id
+        and m.deleted_at is null
+        and not exists (
+          select 1 from message_hides h where h.user_id = p_user_id and h.message_id = m.id
+        )
+    ), 0)
+    + coalesce((
+      select count(*)
+      from friendships f
+      where f.status = 'pending'
+        and f.requested_by <> p_user_id
+        and (f.user_a_id = p_user_id or f.user_b_id = p_user_id)
+    ), 0)
+    + coalesce((
+      select count(*)
+      from activity_notifications an
+      where an.recipient_id = p_user_id
+        and an.is_read = false
+    ), 0)
+  )::int;
+$$;
+
+-- Load-bearing, as in 20260914000000: any signed-in user could otherwise read anyone's count.
+revoke all on function public.unread_badge_count_for(uuid) from public;
+revoke all on function public.unread_badge_count_for(uuid) from anon;
+revoke all on function public.unread_badge_count_for(uuid) from authenticated;
+grant execute on function public.unread_badge_count_for(uuid) to service_role;
 
 -- ── Self-check ──────────────────────────────────────────────────────────────
 do $$
