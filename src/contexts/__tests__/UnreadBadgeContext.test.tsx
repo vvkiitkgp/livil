@@ -35,7 +35,10 @@ jest.mock('../../../lib/supabase', () => ({
           mockChannels.push({ topic, filter, handler });
           return channel;
         },
-        subscribe: () => channel,
+        subscribe: (onStatus?: (status: string) => void) => {
+          onStatus?.('SUBSCRIBED');
+          return channel;
+        },
       };
       return channel;
     },
@@ -70,9 +73,10 @@ jest.mock('../../components/Icon', () => ({ Icon: () => null }));
 import { UnreadBadgeProvider } from '../UnreadBadgeContext';
 import MessagesTabIcon from '../../components/MessagesTabIcon';
 import { requestBadgeRefresh } from '../../services/appBadge';
+import { bumpRealtimeEpoch, getRealtimeEpoch } from '../../utils/realtimeEpoch';
 
-const MESSAGES = 'unread-badge';
-const ACTIVITY = 'unread-badge:activity:me';
+const messagesTopic = () => `unread-badge:${getRealtimeEpoch()}`;
+const activityTopic = () => `unread-badge:activity:me:${getRealtimeEpoch()}`;
 
 /** Riya's chat with 2 unread and Sam's with 1 is `chats(2, 1)`. */
 const chats = (...unread: number[]) => unread.map((unreadCount, i) => ({ id: `chat-${i}`, unreadCount }));
@@ -108,11 +112,11 @@ function subscribed(topic: string) {
 }
 
 async function messageArrives(row: Row) {
-  await act(async () => { subscribed(MESSAGES).handler({ new: { sender_id: 'riya', ...row } }); });
+  await act(async () => { subscribed(messagesTopic()).handler({ new: { sender_id: 'riya', ...row } }); });
 }
 
 async function activityChanges() {
-  await act(async () => { subscribed(ACTIVITY).handler({}); });
+  await act(async () => { subscribed(activityTopic()).handler({}); });
   await settle();
 }
 
@@ -218,7 +222,7 @@ describe('a message arriving', () => {
 
   it('listens to new messages only, not edits', async () => {
     await openApp();
-    expect(subscribed(MESSAGES).filter).toEqual({ event: 'INSERT', schema: 'public', table: 'messages' });
+    expect(subscribed(messagesTopic()).filter).toEqual({ event: 'INSERT', schema: 'public', table: 'messages' });
   });
 });
 
@@ -249,7 +253,7 @@ describe('livil Bot activity', () => {
 
   it('listens to my rows only', async () => {
     await openApp();
-    expect(subscribed(ACTIVITY).filter).toEqual({
+    expect(subscribed(activityTopic()).filter).toEqual({
       event: '*',
       schema: 'public',
       table: 'activity_notifications',
@@ -391,6 +395,45 @@ describe('the app icon', () => {
   });
 });
 
+describe('coming back to the app on an iPhone', () => {
+  // RealtimeConnectionGate closed the socket on leaving, which wiped both channels' listeners.
+  async function socketReopened() {
+    await act(async () => { bumpRealtimeEpoch(); });
+    await settle();
+  }
+
+  it('listens again, so a message after the app switch still adds one', async () => {
+    const tree = await openApp();
+    const before = messagesTopic();
+    await socketReopened();
+    expect(messagesTopic()).not.toBe(before);
+    await messageArrives({});
+    expect(shown(tree)).toBe(1);
+  });
+
+  it('listens again for livil Bot too', async () => {
+    const tree = await openApp();
+    await socketReopened();
+    mockActivityCount.mockResolvedValue(2);
+    await activityChanges();
+    expect(shown(tree)).toBe(2);
+  });
+
+  it('drops the dead channels instead of keeping them', async () => {
+    await openApp();
+    const dead = [messagesTopic(), activityTopic()];
+    await socketReopened();
+    expect(mockRemoved).toEqual(expect.arrayContaining(dead));
+  });
+
+  it('re-counts once listening, for whatever arrived while it was not', async () => {
+    const tree = await openApp();
+    mockListConversations.mockResolvedValue(chats(3));
+    await socketReopened();
+    expect(shown(tree)).toBe(3);
+  });
+});
+
 describe('when the network fails', () => {
   it('keeps the number when the chats cannot be read, and still updates activity', async () => {
     mockListConversations.mockResolvedValue(chats(3));
@@ -422,7 +465,7 @@ describe('signing out', () => {
   it('stops listening, so the next account starts clean', async () => {
     const tree = await openApp();
     await act(async () => { tree.unmount(); });
-    expect(mockRemoved.sort()).toEqual([ACTIVITY, MESSAGES].sort());
+    expect(mockRemoved.sort()).toEqual([activityTopic(), messagesTopic()].sort());
 
     mockListConversations.mockClear();
     requestBadgeRefresh();

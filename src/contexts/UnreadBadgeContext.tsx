@@ -10,6 +10,7 @@ import {
   onBadgeRefreshRequested,
 } from '../services/appBadge';
 import { retryOnce } from '../utils/retryOnce';
+import { useRealtimeEpoch } from '../utils/realtimeEpoch';
 
 /**
  * The live "needs you" total: unread messages + incoming friend requests + unread livil Bot
@@ -104,6 +105,8 @@ export function UnreadBadgeProvider({ children }: { children: React.ReactNode })
     };
   }, [recount]);
 
+  const realtimeEpoch = useRealtimeEpoch();
+
   // Live: increment unread when a new message arrives in any of my conversations.
   // RLS lets the realtime worker filter to messages I can SELECT (i.e. ones in
   // conversations I'm a member of), so we don't need a per-conversation filter here.
@@ -116,9 +119,9 @@ export function UnreadBadgeProvider({ children }: { children: React.ReactNode })
       myId = data?.user?.id ?? null;
     });
 
-    console.log('[realtime] subscribing to unread-badge');
+    console.log('[realtime] subscribing to unread-badge', realtimeEpoch);
     const channel = supabase
-      .channel('unread-badge')
+      .channel(`unread-badge:${realtimeEpoch}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
@@ -135,13 +138,16 @@ export function UnreadBadgeProvider({ children }: { children: React.ReactNode })
       )
       .subscribe(status => {
         console.log(`[realtime] unread-badge status=${status}`);
+        // Rebuilt after an iOS app switch: the re-count on return ran before this listened, so
+        // anything that arrived in between has to be counted now.
+        if (status === 'SUBSCRIBED' && realtimeEpoch > 0) { void recount(); }
       });
 
     return () => {
       mounted = false;
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [realtimeEpoch, recount]);
 
   // Live: keep the livil Bot activity contribution to the badge current. Any
   // insert/update/delete on activity_notifications for me → refetch the count.
@@ -156,7 +162,7 @@ export function UnreadBadgeProvider({ children }: { children: React.ReactNode })
       const myId = data?.user?.id;
       if (!myId || cancelled) { return; }
       channel = supabase
-        .channel(`unread-badge:activity:${myId}`)
+        .channel(`unread-badge:activity:${myId}:${realtimeEpoch}`)
         .on(
           'postgres_changes',
           {
@@ -177,7 +183,7 @@ export function UnreadBadgeProvider({ children }: { children: React.ReactNode })
       cancelled = true;
       if (channel) { void supabase.removeChannel(channel); }
     };
-  }, []);
+  }, [realtimeEpoch]);
 
   return <UnreadBadgeContext.Provider value={count}>{children}</UnreadBadgeContext.Provider>;
 }

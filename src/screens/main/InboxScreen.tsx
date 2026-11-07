@@ -29,6 +29,7 @@ import {
 } from '../../services/conversations';
 import { messageCache } from '../../services/messageCache';
 import { requestBadgeRefresh } from '../../services/appBadge';
+import { useRealtimeEpoch } from '../../utils/realtimeEpoch';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import NotificationNudge from '../../components/NotificationNudge';
@@ -300,10 +301,13 @@ export default function InboxScreen() {
   // badge swap doesn't get briefly painted with stale data. RLS limits
   // delivery to conversations the user is a member of, so no server-side
   // filter is needed on the messages stream.
+  const realtimeEpoch = useRealtimeEpoch();
   useEffect(() => {
     if (!myId) { return; }
-    console.log('[realtime] inbox subscribing', { myId });
-    let joinedOnce = false;
+    console.log('[realtime] inbox subscribing', { myId, realtimeEpoch });
+    // Rebuilt after an iOS app switch: whatever arrived in the gap was never delivered, so that
+    // first join re-reads too.
+    let joinedOnce = realtimeEpoch > 0;
     // My own rows also change when this phone stamps "Delivered" (last_delivered_at), which
     // changes nothing on this list — and the first stamp after an update touches every chat
     // at once. So an update whose last_read_at is the one already seen is skipped, and the
@@ -311,7 +315,7 @@ export default function InboxScreen() {
     const readSeen = new Map<string, string | null>();
     let memberRefresh: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
-      .channel(`inbox:${myId}`)
+      .channel(`inbox:${myId}:${realtimeEpoch}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
@@ -381,7 +385,7 @@ export default function InboxScreen() {
       if (memberRefresh) { clearTimeout(memberRefresh); }
       void supabase.removeChannel(channel);
     };
-  }, [myId, refreshFromNetwork]);
+  }, [myId, realtimeEpoch, refreshFromNetwork]);
 
   // Back in the foreground: re-read the list. Realtime misses what arrives while the app
   // is backgrounded (closed on iOS, frozen on Android; delivery there is push's job), so a message that

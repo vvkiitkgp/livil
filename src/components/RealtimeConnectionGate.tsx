@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useJam } from '../contexts/JamContext';
+import { bumpRealtimeEpoch } from '../utils/realtimeEpoch';
 
 /**
  * iOS only: closes the realtime socket while the app is backgrounded (a background listen
@@ -30,6 +31,8 @@ export default function RealtimeConnectionGate() {
         suspendedRef.current = false;
         console.log('[realtime] foreground → reconnecting socket');
         supabase.realtime.connect();
+        // Reopening restored the socket, not its listeners: subscribers still mounted rebuild.
+        bumpRealtimeEpoch();
         return;
       }
 

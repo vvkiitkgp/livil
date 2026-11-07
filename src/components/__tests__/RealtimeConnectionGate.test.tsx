@@ -43,6 +43,7 @@ jest.mock('../../contexts/JamContext', () => ({
 }));
 
 import RealtimeConnectionGate from '../RealtimeConnectionGate';
+import { getRealtimeEpoch } from '../../utils/realtimeEpoch';
 
 function mount() {
   let tree: TestRenderer.ReactTestRenderer;
@@ -76,6 +77,27 @@ describe('RealtimeConnectionGate', () => {
 
     send('active');
     expect(mockConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells subscribers to rebuild once it has reopened the socket', () => {
+    mount();
+    const before = getRealtimeEpoch();
+
+    send('background');
+    expect(getRealtimeEpoch()).toBe(before); // nothing to rebuild onto yet
+
+    send('active');
+    expect(getRealtimeEpoch()).toBe(before + 1);
+  });
+
+  it('does not make anything rebuild when it never closed the socket', () => {
+    mockActiveJam = { jamRoomId: 'jam-1' };
+    mount();
+    const before = getRealtimeEpoch();
+
+    send('background');
+    send('active');
+    expect(getRealtimeEpoch()).toBe(before);
   });
 
   it('ignores "inactive" — iOS reports it for the app switcher and call banners', () => {
@@ -131,6 +153,14 @@ describe('RealtimeConnectionGate on Android', () => {
     expect(mockDisconnect).not.toHaveBeenCalled();
     expect(mockConnect).not.toHaveBeenCalled();
   });
+
+  it('never makes anything rebuild, since nothing was torn down', () => {
+    mount();
+    const before = getRealtimeEpoch();
+    send('background');
+    send('active');
+    expect(getRealtimeEpoch()).toBe(before);
+  });
 });
 
 describe('realtime-js disconnect() (the real library, why Android must not call it)', () => {
@@ -172,6 +202,37 @@ describe('realtime-js disconnect() (the real library, why Android must not call 
     // disconnect() and RealtimeConnectionGate's Android exemption can be revisited.
     expect(channel.state).toBe('closed');
     expect(channel.bindings).toEqual({});
+  });
+
+  it('a subscriber rebuilding needs a NEW topic: the same one hands back the dead channel', () => {
+    const client = new RealtimeClient('wss://example.supabase.co/realtime/v1', {
+      params: { apikey: 'anon' },
+      transport: FakeSocket,
+    });
+    const dead = client
+      .channel('inbox:me:0')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {});
+    dead.subscribe();
+
+    // What the gate does across an app switch...
+    client.disconnect();
+    client.connect();
+    expect(dead.state).toBe('closed');
+
+    // ...then what useRealtimeEpoch makes the subscriber's effect do. Teardown wiped the hook
+    // that would have dropped this channel from the client, so it stays listed.
+    void client.removeChannel(dead);
+    expect(client.channel('inbox:me:0')).toBe(dead);
+
+    const fresh = client
+      .channel('inbox:me:1')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {});
+    fresh.subscribe();
+
+    expect(fresh).not.toBe(dead);
+    expect(fresh.state).toBe('joining');
+    expect(Object.keys(fresh.bindings)).toContain('postgres_changes');
+    client.disconnect(); // stop the library's reconnect timers
   });
 
   it('keeps them through an unplanned drop, which it rejoins by itself', () => {

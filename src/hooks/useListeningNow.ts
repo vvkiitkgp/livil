@@ -7,6 +7,7 @@ import {
   type ListeningNow,
 } from '../services/listeningStatus';
 import { dropExpiredListeners, nextListeningCheckMs } from '../utils/listeningStatus';
+import { useRealtimeEpoch } from '../utils/realtimeEpoch';
 
 /**
  * Who among `userIds` is playing music in Livil right now, and what — kept live.
@@ -35,6 +36,7 @@ export function useListeningNow(userIds: string[], refreshToken?: unknown): Map<
   mapRef.current = map;
   // The current subscription's full re-read, for refreshToken.
   const loadAllRef = useRef<(() => void) | null>(null);
+  const realtimeEpoch = useRealtimeEpoch();
 
   useEffect(() => {
     const ids = key ? key.split(',') : [];
@@ -83,7 +85,7 @@ export function useListeningNow(userIds: string[], refreshToken?: unknown): Map<
       unsubscribe();
       appSub.remove();
     };
-  }, [key]);
+  }, [key, realtimeEpoch]);
 
   // Re-read when the caller's token changes (not on mount: the subscription just read).
   const tokenRef = useRef(refreshToken);

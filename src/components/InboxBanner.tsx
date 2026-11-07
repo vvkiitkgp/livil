@@ -16,6 +16,7 @@ import GroupAvatarCluster from './GroupAvatarCluster';
 import { LivilBotAvatar } from './LivilBotAvatar';
 import type { GroupFace } from '../utils/groupFaces';
 import { supabase } from '../../lib/supabase';
+import { useRealtimeEpoch } from '../utils/realtimeEpoch';
 import { useRelationships } from '../contexts/RelationshipContext';
 import {
   listIncomingFriendRequests,
@@ -186,11 +187,12 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
     });
   }, []);
 
+  const realtimeEpoch = useRealtimeEpoch();
   useEffect(() => {
     if (!myId) { return; }
     console.log('[realtime] activity-banner subscribing', { myId });
     const channel = supabase
-      .channel(`activity-banner:${myId}`)
+      .channel(`activity-banner:${myId}:${realtimeEpoch}`)
       .on(
         'postgres_changes',
         {
@@ -211,7 +213,7 @@ export function ActivityBanner({ refreshKey }: { refreshKey: number }) {
       console.log('[realtime] activity-banner unsubscribing');
       void supabase.removeChannel(channel);
     };
-  }, [myId]);
+  }, [myId, realtimeEpoch]);
 
   return (
     // Livil's own voice in the inbox, so it wears Livil's purple outline rather than the
