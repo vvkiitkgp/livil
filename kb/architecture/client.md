@@ -107,7 +107,7 @@ JS stack produces touch and gesture problems that the native stack does not.
 ```
 RootNavigator (native stack)
 ├ session === null  → AuthNavigator        (6 screens)
-└ session !== null  → 23 routes, first is AppNavigator (4 bottom tabs)
+└ session !== null  → the app's routes, first is AppNavigator (5 bottom tabs)
                       + global player overlays as siblings
 ```
 

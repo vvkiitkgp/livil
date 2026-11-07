@@ -146,11 +146,11 @@ describe('clearAppBadge', () => {
 });
 
 describe('requestBadgeRefresh', () => {
-  it('asks every subscriber (HomeScreen) to re-count', () => {
-    const home = jest.fn();
-    const off = onBadgeRefreshRequested(home);
+  it('asks every subscriber (UnreadBadgeContext) to re-count', () => {
+    const owner = jest.fn();
+    const off = onBadgeRefreshRequested(owner);
     requestBadgeRefresh();
-    expect(home).toHaveBeenCalledTimes(1);
+    expect(owner).toHaveBeenCalledTimes(1);
     off();
   });
 

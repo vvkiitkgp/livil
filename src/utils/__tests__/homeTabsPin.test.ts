@@ -4,7 +4,8 @@
  * a short list actually rests, or a switch into a near-empty tab leaves the pinned copy
  * floating over the stories (where it swallows taps on the story rings).
  */
-import { clampScrollOffset, isTabBarPinned, keepPinnedOffset, pinTop } from '../homeTabsPin';
+import { Animated } from 'react-native';
+import { clampScrollOffset, isNearFeedTop, isTabBarPinned, makeInListTabsOpacity, keepPinnedOffset, pinTop } from '../homeTabsPin';
 
 const TOP = 64;
 
@@ -45,4 +46,55 @@ it('a switch into a short tab unpins instead of floating over the stories', () =
   const asked = keepPinnedOffset(264, 64);              // 200
   const rests = clampScrollOffset(asked, 600, 700, 0);  // the new tab barely has content
   expect(isTabBarPinned(264, rests, 64)).toBe(false);
+});
+
+describe('the in-list pills', () => {
+  const HIDDEN_Y = -123;
+  function pills(pinned: number, topBarY: number) {
+    const opacity = makeInListTabsOpacity(new Animated.Value(pinned), new Animated.Value(topBarY), HIDDEN_Y);
+    return (opacity as unknown as { __getValue(): number }).__getValue();
+  }
+
+  it('show above the pin point, whatever the top bar is doing', () => {
+    expect(pills(0, 0)).toBe(1);
+    expect(pills(0, HIDDEN_Y)).toBe(1);
+  });
+
+  it('hide while the pinned copy shows over them', () => {
+    expect(pills(1, 0)).toBe(0);
+  });
+
+  it('stay and scroll off with the feed while the top bar and pinned copy are away', () => {
+    expect(pills(1, HIDDEN_Y)).toBe(1);
+  });
+
+  it('are back after scrolling up to the top, where they once stayed invisible', () => {
+    const pinned = new Animated.Value(1);
+    const topBarY = new Animated.Value(0);
+    const opacity = makeInListTabsOpacity(pinned, topBarY, HIDDEN_Y) as unknown as { __getValue(): number };
+    expect(opacity.__getValue()).toBe(0);
+    pinned.setValue(0);
+    expect(opacity.__getValue()).toBe(1);
+  });
+});
+
+describe('the top bar stays up near the top of the feed', () => {
+  const IOS_REST = -TOP;
+  const ANDROID_REST = 0;
+
+  it('for the same distance scrolled on both platforms', () => {
+    for (const scrolled of [0, 10, 73, 74, 200]) {
+      expect(isNearFeedTop(IOS_REST + scrolled, IOS_REST, TOP)).toBe(scrolled < 74);
+      expect(isNearFeedTop(ANDROID_REST + scrolled, ANDROID_REST, TOP)).toBe(scrolled < 74);
+    }
+  });
+
+  it('keeps iOS where it always was: up until the offset reaches 10', () => {
+    expect(isNearFeedTop(9, IOS_REST, TOP)).toBe(true);
+    expect(isNearFeedTop(10, IOS_REST, TOP)).toBe(false);
+  });
+
+  it('counts an iOS overscroll past the top as near it', () => {
+    expect(isNearFeedTop(IOS_REST - 40, IOS_REST, TOP)).toBe(true);
+  });
 });

@@ -435,6 +435,12 @@ export function handleNotificationData(data: Record<string, string> | undefined)
     navigateWhenReady('App', { screen: 'Home', params: { tab, at: Date.now() } });
     return;
   }
+  // Messages is a tab now, but the server keeps sending `Inbox` (Jam pushes, a chat push with no
+  // chat id) because shipped apps read that as a root screen. There is none here to find.
+  if (route === 'Inbox') {
+    navigateWhenReady('App', { screen: 'Inbox' });
+    return;
+  }
   navigateWhenReady(route as keyof RootStackParamList, rest);
 }
 

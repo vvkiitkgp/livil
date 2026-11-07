@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Animated, Text, Image, StatusBar, Dimensions, StyleSheet, AppState, Linking, type AppStateStatus } from 'react-native';
+import { Platform, View, Animated, Text, Image, StatusBar, Dimensions, StyleSheet, AppState, Linking, type AppStateStatus } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Session } from '@supabase/supabase-js';
@@ -41,7 +41,6 @@ import ProfilePeopleScreen from '../screens/main/ProfilePeopleScreen';
 import RecentlyPlayedScreen from '../screens/main/RecentlyPlayedScreen';
 import PostDetailScreen from '../screens/main/PostDetailScreen';
 import CreatePlaylistScreen from '../screens/main/CreatePlaylistScreen';
-import InboxScreen from '../screens/main/InboxScreen';
 import ConversationScreen from '../screens/main/ConversationScreen';
 import ChatMediaViewerScreen from '../screens/main/ChatMediaViewerScreen';
 import NewConversationScreen from '../screens/main/NewConversationScreen';
@@ -97,6 +96,13 @@ import { markSignedInHere } from '../utils/returningListener';
 const StudioScreen: React.ComponentType | null = __DEV__
   ? require('../screens/studio/StudioScreen').default
   : null;
+
+// iOS presents these as sheets, with no status bar above them, so each screen's header sat right
+// against the sheet's rounded top edge. Android shows them full screen, under the status bar.
+const SHEET_CONTENT_STYLE = {
+  backgroundColor: COLORS.bg,
+  paddingTop: Platform.OS === 'ios' ? 12 : 0,
+};
 
 /** How long a saved login waits on the server at launch before the app opens anyway. */
 const STARTUP_WAIT_MS = 5000;
@@ -753,6 +759,7 @@ export default function RootNavigator() {
               component={UploadScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
               }}
@@ -762,6 +769,7 @@ export default function RootNavigator() {
               component={RepostScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
               }}
@@ -771,6 +779,7 @@ export default function RootNavigator() {
               component={AddToLivilScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
               }}
@@ -780,6 +789,7 @@ export default function RootNavigator() {
               component={DraftsScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
               }}
@@ -790,6 +800,7 @@ export default function RootNavigator() {
                 component={StudioScreen}
                 options={{
                   presentation: 'modal',
+                  contentStyle: SHEET_CONTENT_STYLE,
                   gestureEnabled: false,
                   animation: 'slide_from_bottom',
                 }}
@@ -800,6 +811,7 @@ export default function RootNavigator() {
               component={SpotifyRepostScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
               }}
@@ -818,6 +830,7 @@ export default function RootNavigator() {
               component={CollaboratorPickerScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',
               }}
@@ -907,6 +920,7 @@ export default function RootNavigator() {
               component={CreateAlbumScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 animation: 'slide_from_bottom',
                 gestureEnabled: true,
               }}
@@ -916,6 +930,7 @@ export default function RootNavigator() {
               component={EditAlbumScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 animation: 'slide_from_bottom',
                 gestureEnabled: true,
               }}
@@ -925,6 +940,7 @@ export default function RootNavigator() {
               component={EditPlaylistScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 animation: 'slide_from_bottom',
                 gestureEnabled: true,
               }}
@@ -955,16 +971,12 @@ export default function RootNavigator() {
               component={CreatePlaylistScreen}
               options={{
                 presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
                 animation: 'slide_from_bottom',
                 gestureEnabled: true,
               }}
             />
             {/* ── Chat screens (full-screen, no bottom tab bar) ── */}
-            <Stack.Screen
-              name="Inbox"
-              component={InboxScreen}
-              options={{ animation: 'slide_from_right' }}
-            />
             <Stack.Screen
               name="Conversation"
               component={ConversationScreen}

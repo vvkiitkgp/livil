@@ -33,7 +33,7 @@ jest.mock('../../navigation/navigationRef', () => ({
 }));
 
 import { Platform } from 'react-native';
-import { displayPushNotification, handleNotificationPress } from '../pushNotifications';
+import { displayPushNotification, handleNotificationData, handleNotificationPress } from '../pushNotifications';
 
 const realOS = Platform.OS;
 afterAll(() => { Platform.OS = realOS; });
@@ -111,6 +111,13 @@ it('treats a card re-posted for a new message as a new tap, however soon', async
   now += 1_000;
   handleNotificationPress(riyaCard);
   expect(mockNavigate).toHaveBeenCalledTimes(2);
+});
+
+it('opens the Messages tab for a push that names Inbox', () => {
+  // The server and shipped apps both still say `Inbox`; in this build it is a tab inside `App`.
+  handleNotificationData({ route: 'Inbox', kind: 'jam_ended' });
+  expect(mockNavigate).toHaveBeenCalledTimes(1);
+  expect(mockNavigate).toHaveBeenCalledWith('App', { screen: 'Inbox' });
 });
 
 it('ignores a press without data, as the old handler did', () => {

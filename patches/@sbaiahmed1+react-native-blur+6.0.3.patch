@@ -1,0 +1,97 @@
+diff --git a/node_modules/@sbaiahmed1/react-native-blur/ios/Views/VariableBlurView.swift b/node_modules/@sbaiahmed1/react-native-blur/ios/Views/VariableBlurView.swift
+index 5607a76..675b0b7 100644
+--- a/node_modules/@sbaiahmed1/react-native-blur/ios/Views/VariableBlurView.swift
++++ b/node_modules/@sbaiahmed1/react-native-blur/ios/Views/VariableBlurView.swift
+@@ -22,19 +22,13 @@ public enum VariableBlurDirection: String {
+   }
+ }
+ 
+-/// Variable (gradient) blur backed by the private `CAFilter` `variableBlur`
+-/// type, which UIKit does not expose publicly.
++/// Fading blur, public API only.
+ ///
+-/// RISK: this depends on private Core Animation API. It is reached by
+-/// class/selector name (assembled from reversed string literals) and applied
+-/// with KVC, all guarded so that if the private class/keys are unavailable the
+-/// view degrades gracefully to a uniform blur rather than crashing. Two things
+-/// to keep in mind:
+-///   - App Store review can flag private-API access; the string obfuscation
+-///     evades static symbol scanning and is itself a review-policy risk.
+-///   - A future OS release can rename the filter or reorder the effect view's
+-///     backdrop subviews, silently dropping the gradient (again, no crash).
+-/// If Apple ships a public variable-blur API, migrate to it and delete this.
++/// PATCHED (Livil, patches/@sbaiahmed1+react-native-blur+6.0.3.patch): upstream reached the private
++/// Core Animation `variableBlur` filter by names spelled backwards to evade scanning, which risks
++/// App Review rejection under guideline 2.5.1. This fades a normal blur with the effect view's own
++/// `mask` instead, which is where Apple says a mask must go. The blur's strength no longer varies,
++/// only how much of it shows, so `maxBlurRadius` has no effect.
+ open class VariableBlurView: UIVisualEffectView {
+ 
+   private var maxBlurRadius: CGFloat = 20
+@@ -100,58 +94,20 @@ open class VariableBlurView: UIVisualEffectView {
+   }
+ 
+   private func setupVariableBlur() {
+-    // Creates filter via runtime reflection
+-    // This uses a private Core Animation filter called "variableBlur"
+-    let clsName = String("retliFAC".reversed()) // CAFilter
+-    guard let Cls = NSClassFromString(clsName) as? NSObject.Type else {
+-      print("[VariableBlur] Error: Can't find filter class")
+-      return
+-    }
+-
+-    let selName = String(":epyThtiWretlif".reversed()) // filterWithType:
+-    guard let variableBlur = Cls.self.perform(
+-      NSSelectorFromString(selName),
+-      with: "variableBlur"
+-    )?.takeUnretainedValue() as? NSObject else {
+-      print("[VariableBlur] Error: Can't create variableBlur filter")
+-      return
+-    }
+-
+     let gradientImage = makeGradientImage(
+       startOffset: startOffset,
+       direction: direction
+     )
+-
+-    variableBlur.setValue(maxBlurRadius, forKey: "inputRadius")
+-    variableBlur.setValue(gradientImage, forKey: "inputMaskImage")
+-    variableBlur.setValue(true, forKey: "inputNormalizeEdges")
+-
+-    let backdropLayer = subviews.first?.layer
+-    backdropLayer?.filters = [variableBlur]
+-
+-    // Hide the default visual effect view overlays
+-    for subview in subviews.dropFirst() {
+-      subview.alpha = 0
+-    }
++    let maskView = (mask as? UIImageView) ?? UIImageView()
++    maskView.image = UIImage(cgImage: gradientImage)
++    maskView.contentMode = .scaleToFill
++    maskView.frame = bounds
++    mask = maskView
+   }
+ 
+-  open override func didMoveToWindow() {
+-    super.didMoveToWindow()
+-    guard let window, let backdropLayer = subviews.first?.layer else { return }
+-
+-    // UIKit can strip the custom filter while the view is detached (or during
+-    // transitions). Reapply on window re-entry so the view is self-healing
+-    // even when used standalone, without the ProgressiveBlurView wrapper.
+-    setupVariableBlur()
+-
+-    let newScale = window.traitCollection.displayScale
+-    let currentScale = backdropLayer.value(forKey: "scale") as? CGFloat
+-
+-    // Only update scale if it actually changed to prevent unnecessary
+-    // recalculations during navigation gestures
+-    if currentScale != newScale {
+-      backdropLayer.setValue(newScale, forKey: "scale")
+-    }
++  open override func layoutSubviews() {
++    super.layoutSubviews()
++    mask?.frame = bounds
+   }
+ 
+   private func makeGradientImage(

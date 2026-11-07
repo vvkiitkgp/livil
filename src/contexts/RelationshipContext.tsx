@@ -10,6 +10,7 @@ import React, {
 import { AppState, type AppStateStatus } from 'react-native';
 import { isAuthSessionMissingError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { useRealtimeEpoch } from '../utils/realtimeEpoch';
 import * as svc from '../services/relationships';
 
 export type RelationshipStatus =
@@ -130,11 +131,12 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
   // Live updates: any change to the friendships table that RLS lets us see
   // (i.e. rows where we're user_a or user_b) means our sets are stale.
   // Cheapest reliable refresh is to refetch — friendships are small.
+  const realtimeEpoch = useRealtimeEpoch();
   useEffect(() => {
     if (!meId) { return; }
     console.log(`[realtime] subscribing to friendships:${meId}`);
     const channel = supabase
-      .channel(`friendships:${meId}`)
+      .channel(`friendships:${meId}:${realtimeEpoch}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'friendships' },
@@ -147,7 +149,7 @@ export function RelationshipProvider({ children }: { children: React.ReactNode }
         console.log(`[realtime] friendships:${meId} status=${status}`);
       });
     return () => { void supabase.removeChannel(channel); };
-  }, [meId, refresh]);
+  }, [meId, realtimeEpoch, refresh]);
 
   // Realtime misses what happens while the app is backgrounded (the socket is closed on
   // iOS, frozen or dropped on Android) and does not replay it. A friend accepting your request while your phone was

@@ -296,6 +296,7 @@ list as described above.
 "react-native-worklets": "0.9.1",
 "react-native-svg": "15.15.5",
 "react-native-audio-api": "0.12.2",
+"@sbaiahmed1/react-native-blur": "6.0.3",
 "react-native-gesture-handler": "2.22.0",
 "react-native-safe-area-context": "5.7.0",
 "react-native-screens": "4.10.0",
@@ -424,7 +425,7 @@ profiles (
 Signature gradients: hero `#6D28D9 → #A855F7`; deep background `#0A0A0F → #4C1D95 → #8B3DFF`.
 
 - Animated purple border on input focus
-- Bottom tab bar: Home, Search, Library, Profile
+- Bottom tab bar: Home, Search, Messages, Library, Profile
 
 ### Buttons — NEVER fill a button with solid purple
 
@@ -522,6 +523,16 @@ from `onLayout`:
   identity remounts the whole header — which resets `onLayout`-measured children
   (flickering outlines) and throws away the header's subviews on every tab switch.
   Use `ListHeaderComponent={renderHeader()}`.
+- **Glass is iPhone-only: always through `IosGlass` (`src/components/iosGlass.ts`), which is `null` on
+  Android.** Used by the bottom bar, Home's top bar and the pinned feed pills. Android has no way to blur what is
+  behind a view: the library redraws the whole screen in software into a 1/8-size bitmap on the main
+  thread, which looked pixelated and stuttered on a OnePlus 7T. `@sbaiahmed1/react-native-blur` is
+  left out of the Android build (`react-native.config.js`), so never render it on Android.
+  It is also **patched** (`patches/@sbaiahmed1+react-native-blur+6.0.3.patch`, pinned exact): upstream's
+  `ProgressiveBlurView` calls a private Apple filter by names spelled backwards, an App Review risk
+  (guideline 2.5.1), and the patch fades a normal blur with a public mask instead. Nothing renders it
+  today, because Home's status bar uses a plain gradient (`StatusBarFade`, on both platforms). Re-capture after any
+  edit with `npx patch-package @sbaiahmed1/react-native-blur --include '^ios/'`, and rebuild from Xcode.
 - **Brand mark:** use `Logo` (`src/components/Logo.tsx`) — the pulse glyph as SVG,
   same vector as the app icon (`docs/favicon.svg`). Don't add new bitmap copies of
   the mark; regenerate from that SVG so every surface stays in sync.
@@ -532,6 +543,7 @@ from `onLayout`:
 
 - Use `createNativeStackNavigator` — NOT `createStackNavigator`
 - Set `gestureEnabled: false` on auth screens
+- iPhone tabs other than Home go Home on a swipe from the left edge (`TabSwipeBack`), matching Android's back gesture
 - `android:enableOnBackInvokedCallback="false"` in AndroidManifest.xml
 - Wrap app root in `GestureHandlerRootView` in `App.tsx`
 - First line of `index.js` must be `import 'react-native-gesture-handler'`

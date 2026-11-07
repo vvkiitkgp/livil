@@ -662,9 +662,9 @@ async function fetchFirstPageWithRetry(
 }
 
 /**
- * Save the read marker, THEN have Home re-count the icon badge. Reading here is
- * what changes the unread total, and Home cannot see it happen; a user who
- * leaves the app from this screen would otherwise keep the old number.
+ * Save the read marker, THEN have the badge re-count. Reading here is what
+ * changes the unread total, and UnreadBadgeContext cannot see it happen; a user
+ * who leaves the app from this screen would otherwise keep the old number.
  */
 async function markReadAndRefreshBadge(conversationId: string): Promise<void> {
   try {

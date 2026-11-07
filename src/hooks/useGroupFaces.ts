@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { useRealtimeEpoch } from '../utils/realtimeEpoch';
 import {
   cachedGroupFaces,
   fetchGroupFaces,
@@ -25,6 +26,7 @@ export function useGroupFaces(
   const [faces, setFaces] = useState<Map<string, GroupFace[]>>(() => seedFromCache(conversationIds));
   const facesRef = useRef(faces);
   facesRef.current = faces;
+  const realtimeEpoch = useRealtimeEpoch();
 
   useEffect(() => {
     const ids = key ? key.split(',') : [];
@@ -67,7 +69,7 @@ export function useGroupFaces(
       unsubscribe();
       appSub.remove();
     };
-  }, [key, version]);
+  }, [key, version, realtimeEpoch]);
 
   return faces;
 }

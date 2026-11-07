@@ -4,10 +4,8 @@ import {
   Text,
   FlatList,
   Platform,
-  AppState,
   Animated,
   StyleSheet,
-  TouchableOpacity,
   Pressable,
   RefreshControl,
   Image,
@@ -40,7 +38,6 @@ import { FLOATING_PLAYER_HEIGHT } from '../../components/FloatingPlayer';
 import { HomeFeedTabs } from '../../components/HomeFeedTabs';
 import { useCommentsCountDeltas } from '../../hooks/useCommentsCountDeltas';
 import { usePlayback } from '../../contexts/PlaybackContext';
-import { useRelationships } from '../../contexts/RelationshipContext';
 import { useChromeVisibility } from '../../contexts/ChromeVisibilityContext';
 import {
   isPlayableInLivil,
@@ -51,7 +48,9 @@ import { useHomeFeed, type HomeFeedState } from '../../hooks/useHomeFeed';
 import { useNewOnLivilDot } from '../../hooks/useNewOnLivilDot';
 import {
   clampScrollOffset,
+  isNearFeedTop,
   isTabBarPinned,
+  makeInListTabsOpacity,
   pinTop,
 } from '../../utils/homeTabsPin';
 import { useSpotifyAvailability } from '../../services/spotify';
@@ -59,14 +58,10 @@ import { recordImpression, flushImpressions } from '../../services/feedImpressio
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
-import { listConversations } from '../../services/conversations';
-import { getActivityUnreadCount } from '../../services/activity';
-import {
-  setAppBadgeCount,
-  resyncAppBadgeCount,
-  onBadgeRefreshRequested,
-} from '../../services/appBadge';
-import { retryOnce } from '../../utils/retryOnce';
+import { requestBadgeRefresh } from '../../services/appBadge';
+import { IosGlass } from '../../components/iosGlass';
+import TopBarBackground from '../../components/TopBarBackground';
+import StatusBarFade from '../../components/StatusBarFade';
 import { useIsOffline, useOnReconnect } from '../../services/network';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 
@@ -89,6 +84,8 @@ type FeedListItem =
 const FEED_PAGE_SIZE = 12;
 /** The fixed top bar's height; the list clears it (iOS inset, Android spacer). */
 const TOP_BAR_H = 64;
+/** At least the pinned pills' height, so they clear the screen when they slide away. */
+const PINNED_TABS_H = 64;
 /** Where a list rests before any scroll: iOS clears the top bar with a content inset. */
 const RESTING_Y = Platform.OS === 'ios' ? -TOP_BAR_H : 0;
 /** Home's pages, left to right. */
@@ -266,7 +263,7 @@ function HomeListHeader({
   storiesLoading,
   stories,
   showTabs,
-  tabsHidden,
+  tabsOpacity,
   activeTab,
   onSelectTab,
   newDot,
@@ -279,7 +276,7 @@ function HomeListHeader({
   storiesLoading: boolean;
   stories: Story[];
   showTabs: boolean;
-  tabsHidden: boolean;
+  tabsOpacity: Animated.AnimatedSubtraction<number>;
   activeTab: HomeFeedTab;
   onSelectTab: (tab: HomeFeedTab) => void;
   newDot: boolean;
@@ -301,14 +298,14 @@ function HomeListHeader({
       {/* The in-list For you | New on Livil switch. Its position decides when the pinned
           copy (rendered over the pages) takes over. */}
       {showTabs ? (
-        <View
+        <Animated.View
           onLayout={e => onTabsLayout(e.nativeEvent.layout.y)}
-          // While the pinned copy is up, this one is under the translucent top bar,
-          // where it would show through as a ghost of the same pills.
-          style={tabsHidden ? styles.inListTabsHidden : undefined}
+          // Always this style, never added and removed: taking a native-driven style away leaves
+          // its last value on the view, which left these pills invisible back at the top.
+          style={{ opacity: tabsOpacity }}
         >
           <HomeFeedTabs active={activeTab} onSelect={onSelectTab} showNewDot={newDot} />
-        </View>
+        </Animated.View>
       ) : null}
 
       <View style={styles.feedHeadingBlock}>
@@ -431,7 +428,6 @@ export default function HomeScreen() {
     });
   }, []);
   const { stories, setStories } = useStories();
-  const { pendingIncomingCount } = useRelationships();
   const insets = useSafeAreaInsets();
 
   // Home's two pages (owner design 2026-10-14): For you, and New on Livil — the same
@@ -444,8 +440,7 @@ export default function HomeScreen() {
   // Top bar hide/show on scroll direction
   // iOS: clear the floating top bar with an inset rather than a spacer row, so
   // UIRefreshControl sits under the bar instead of behind it. The resting scroll
-  // offset becomes -TOP_BAR_H; handleScroll's `y < 10` "at the top" test still
-  // holds for it.
+  // offset becomes -TOP_BAR_H, which isNearFeedTop allows for.
   const FEED_INSET_IOS = useMemo(() => ({
     contentInset: { top: TOP_BAR_H },
     contentOffset: { x: 0, y: -TOP_BAR_H },
@@ -480,21 +475,24 @@ export default function HomeScreen() {
   // ── For you | New on Livil: the pinned copy ─────────────────────────────────
   // The tab bar lives in the list under the stories. Once it would scroll under the top
   // bar (or off the top, while the top bar is hidden) a copy pinned to the screen takes
-  // over, following the top bar as it slides. Two copies rather than FlatList's
+  // over, sliding in and out with the top bar. Two copies rather than FlatList's
   // stickyHeaderIndices: a sticky header sticks to the list's own top edge, which is
   // underneath the floating top bar whenever that is showing.
   const tabBarYRef = useRef<number | null>(null);
   const pinnedRef = useRef(false);
   const [pinned, setPinned] = useState(false);
+  // The same fact for the native driver. Only ever set, never animated.
+  const pinnedAnim = useRef(new Animated.Value(0)).current;
   const updatePinned = useCallback((scrollY: number) => {
     const tabY = tabBarYRef.current;
     if (tabY === null) { return; }
     const next = isTabBarPinned(tabY, scrollY, pinTop(topBarVisible.current, TOP_BAR_H));
     if (next !== pinnedRef.current) {
       pinnedRef.current = next;
+      pinnedAnim.setValue(next ? 1 : 0);
       setPinned(next);
     }
-  }, []);
+  }, [pinnedAnim]);
   // After a programmatic scroll, decide from where the list can really rest: a short tab
   // clamps the scroll, and iOS may not report that with a scroll event (homeTabsPin.ts).
   const viewportHRef = useRef(0);
@@ -510,10 +508,14 @@ export default function HomeScreen() {
   const pinnedTabsY = useMemo(
     () => topBarAnim.interpolate({
       inputRange: [-(TOP_BAR_H + insets.top), 0],
-      outputRange: [-TOP_BAR_H, 0],
+      outputRange: [-(TOP_BAR_H + insets.top + PINNED_TABS_H), 0],
       extrapolate: 'clamp',
     }),
     [topBarAnim, insets.top],
+  );
+  const inListTabsOpacity = useMemo(
+    () => makeInListTabsOpacity(pinnedAnim, topBarAnim, -(TOP_BAR_H + insets.top)),
+    [pinnedAnim, topBarAnim, insets.top],
   );
 
   const handleScrollFor = useCallback((which: HomeFeedTab, y: number) => {
@@ -527,7 +529,7 @@ export default function HomeScreen() {
     // shared tab bar — otherwise Home could hide it while you are on Library, a tab
     // root with no back gesture, and there is then no way out.
     if (navigation.isFocused()) {
-      if (y < 10) { showTopBar(); showChrome(); }
+      if (isNearFeedTop(y, RESTING_Y, TOP_BAR_H)) { showTopBar(); showChrome(); }
       else if (diff > 4) { hideTopBar(); hideChrome(); }
       else if (diff < -4) { showTopBar(); showChrome(); }
     }
@@ -559,30 +561,6 @@ export default function HomeScreen() {
 
   // Loaded for the hero, which no longer shows it; kept until that load is removed on its own.
   const [_meProfile, setMeProfile] = useState<ProfileSnippet | null>(null);
-  const [totalUnread, setTotalUnread] = useState(0);
-  // Unread livil Bot activity (likes/comments/reposts/milestones/friend outcomes).
-  // These live in `activity_notifications` (services/activity), NOT the messages
-  // table — so they must be counted separately from `totalUnread`.
-  const [activityUnread, setActivityUnread] = useState(0);
-  // Total badge count shown on the 💬 button = unread messages + incoming friend
-  // requests + unread livil Bot activity.
-  const notificationCount = totalUnread + pendingIncomingCount + activityUnread;
-
-  // Mirror the in-app badge onto the home-screen icon.
-  //
-  // This screen is the only place all three counts exist at once, and it keeps
-  // them live (realtime subscriptions above + the focus refetch below), so it is
-  // the natural owner. HomeScreen is a bottom-tab screen and therefore stays
-  // mounted while the user is signed in -- the badge keeps tracking on the Search
-  // or Profile tab, not just here.
-  //
-  // iOS gets the exact number. Android cannot be told a number at all and instead
-  // clears when this reaches zero; the rest of the time its launcher sums the
-  // notifications in the tray. See src/services/appBadge.ts.
-  useEffect(() => {
-    void setAppBadgeCount(notificationCount);
-  }, [notificationCount]);
-
   const [storiesLoading, setStoriesLoading] = useState(true);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -719,7 +697,7 @@ export default function HomeScreen() {
   useEffect(() => {
     const y = lastScrollYRef.current[shownTab];
     updatePinned(y);
-    if (y < 10) { showTopBar(); showChrome(); }
+    if (isNearFeedTop(y, RESTING_Y, TOP_BAR_H)) { showTopBar(); showChrome(); }
   }, [shownTab, updatePinned, showTopBar, showChrome]);
 
   // The tab is missing on the server: put the viewer back on For you.
@@ -939,154 +917,9 @@ export default function HomeScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  // Read by the re-count below without making it re-subscribe on every change.
-  const pendingIncomingRef = useRef(pendingIncomingCount);
-  pendingIncomingRef.current = pendingIncomingCount;
-
-  // Re-fetch the unread counts from the server, then re-write the iOS icon with
-  // the result EVEN IF NOTHING CHANGED. The effect above only fires on a change,
-  // but a push may have set the icon behind the app's back while it was
-  // backgrounded — see resyncAppBadgeCount.
-  //
-  // `isCancelled` guards the state writes against an unmounted / blurred caller.
-  // The icon is only re-written when both reads succeed: a partial total could
-  // clear a number that is still correct.
-  const refreshUnreadCounts = useCallback(async (isCancelled: () => boolean) => {
-    let messages: number | null = null;
-    let activity: number | null = null;
-    try {
-      // Retried: the foreground path fires this the instant iOS resumes the
-      // app, when the first request typically fails — and a failed read means
-      // the icon is left as it is.
-      const convs = await retryOnce(listConversations);
-      messages = convs.reduce((sum, c) => sum + c.unreadCount, 0);
-      if (!isCancelled()) { setTotalUnread(messages); }
-    } catch {
-      // ignore
-    }
-    // livil Bot activity is a separate table — refetch its unread count too.
-    try {
-      activity = await retryOnce(getActivityUnreadCount);
-      if (!isCancelled()) { setActivityUnread(activity); }
-    } catch {
-      // ignore
-    }
-    if (isCancelled() || messages === null || activity === null) { return; }
-    void resyncAppBadgeCount(messages + pendingIncomingRef.current + activity);
-  }, []);
-
-  // Re-count whenever Home regains focus.
-  // Covers: user opens Inbox / Activity Center → reads (last_read_at advances,
-  // markActivityRead) → returns to Home and expects the badge cleared.
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      void refreshUnreadCounts(() => cancelled);
-      return () => { cancelled = true; };
-    }, [refreshUnreadCounts]),
-  );
-
-  // Re-count when the app returns to the foreground. Focus does not fire then
-  // (Home never lost focus), realtime was paused while backgrounded so the
-  // in-app totals may have missed messages, and a push may have changed the
-  // icon. Opening the app from a push is exactly this path.
-  useEffect(() => {
-    let cancelled = false;
-    const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') { void refreshUnreadCounts(() => cancelled); }
-    });
-    return () => {
-      cancelled = true;
-      sub.remove();
-    };
-  }, [refreshUnreadCounts]);
-
-  // Re-count when another screen changed the total — a chat that just marked its
-  // messages read. Without this, leaving the app straight from that chat left
-  // the icon on the count from while it was being read (see requestBadgeRefresh).
-  useEffect(() => {
-    let cancelled = false;
-    const off = onBadgeRefreshRequested(() => { void refreshUnreadCounts(() => cancelled); });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [refreshUnreadCounts]);
-
-  // Live: increment unread when a new message arrives in any of my conversations.
-  // RLS lets the realtime worker filter to messages I can SELECT (i.e. ones in
-  // conversations I'm a member of), so we don't need a per-conversation filter here.
-  // Decrement on read is handled by the focus refetch above.
-  useEffect(() => {
-    let myId: string | null = null;
-    let mounted = true;
-
-    void supabase.auth.getUser().then(({ data }) => {
-      myId = data?.user?.id ?? null;
-    });
-
-    console.log('[realtime] subscribing to home:unread');
-    const channel = supabase
-      .channel('home:unread')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null } }) => {
-          console.log('[realtime] home:unread got messages INSERT');
-          if (!mounted) { return; }
-          const row = payload.new;
-          if (!row) { return; }
-          if (row.kind === 'system') { return; }
-          if (row.deleted_at) { return; }
-          if (myId && row.sender_id === myId) { return; }
-          setTotalUnread(n => n + 1);
-        },
-      )
-      .subscribe(status => {
-        console.log(`[realtime] home:unread status=${status}`);
-      });
-
-    return () => {
-      mounted = false;
-      void supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Live: keep the livil Bot activity contribution to the badge current. Any
-  // insert/update/delete on activity_notifications for me → refetch the count.
-  // Refetch (not increment) because likes aggregate into an existing row (an
-  // arriving like is an UPDATE, not always an INSERT), and mark-read is an
-  // UPDATE too — a naive +1 would drift. `recipient_id` filter mirrors the
-  // ActivityCenterScreen subscription; the channel is gated on the resolved id.
-  useEffect(() => {
-    let cancelled = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    void supabase.auth.getUser().then(({ data }) => {
-      const myId = data?.user?.id;
-      if (!myId || cancelled) { return; }
-      channel = supabase
-        .channel(`home:activity:${myId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'activity_notifications',
-            filter: `recipient_id=eq.${myId}`,
-          },
-          () => {
-            void getActivityUnreadCount()
-              .then(n => { if (!cancelled) { setActivityUnread(n); } })
-              .catch(() => { /* ignore */ });
-          },
-        )
-        .subscribe();
-    });
-    return () => {
-      cancelled = true;
-      if (channel) { void supabase.removeChannel(channel); }
-    };
-  }, []);
+  // Re-count whenever Home regains focus: back from a chat or the Activity Center, or from
+  // another tab. The total itself lives in UnreadBadgeContext.
+  useFocusEffect(useCallback(() => { requestBadgeRefresh(); }, []));
 
   useEffect(() => {
     let cancelled = false;
@@ -1225,7 +1058,7 @@ export default function HomeScreen() {
             storiesLoading={storiesLoading}
             stories={stories}
             showTabs={newTabAvailable}
-            tabsHidden={pinned && which === shownTab}
+            tabsOpacity={inListTabsOpacity}
             activeTab={shownTab}
             onSelectTab={selectTab}
             newDot={newDot}
@@ -1283,6 +1116,9 @@ export default function HomeScreen() {
         // a normal row above its list): iOS via the content inset, Android via
         // progressViewOffset. Default colours, matching the inbox's spinner.
         {...(Platform.OS === 'ios' ? FEED_INSET_IOS : null)}
+        // `overflow: visible` lets the feed run up behind the status bar. The list's frame stays
+        // below it, so every scroll offset and the pills' pin line mean what they always did.
+        style={styles.feedList}
         refreshControl={
           <RefreshControl
             refreshing={refreshing && which === shownTab}
@@ -1317,11 +1153,14 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
+      <StatusBarFade />
+
       {/* Fixed top bar — slides up on scroll down, returns on scroll up */}
       <Animated.View
-        style={[styles.topBarFixed, { top: insets.top, transform: [{ translateY: topBarAnim }] }]}
+        style={[styles.topBarFixed, { paddingTop: insets.top, transform: [{ translateY: topBarAnim }] }]}
         pointerEvents="box-none"
       >
+        <TopBarBackground />
         <View style={styles.topBar}>
           {/* The mark carries the brand on its own now, so the row needs an
               explicit label — without the "livil" text there is nothing for a
@@ -1341,42 +1180,27 @@ export default function HomeScreen() {
             <Logo size={96} color={COLORS.white} />
           </Pressable>
           <View style={styles.topBarActions}>
-            {/* The same "+ Post" as the Profile top bar, at this bar's 38pt height so it
-                lines up with the messages button beside it. With Spotify reposts switched
-                on — or not known yet — it asks what to add (ADR-0027); only a real "off" from
-                the server goes straight to Upload. */}
+            {/* The same "+ Post" as the Profile top bar, at this bar's 38pt height. With
+                Spotify reposts switched on — or not known yet — it asks what to add (ADR-0027);
+                only a real "off" from the server goes straight to Upload. */}
             <Button
               label="Post"
               icon="add"
               variant="primary"
               size="sm"
               style={styles.uploadButton}
+              // On glass, bright artwork can pass right behind its purple label.
+              onMedia={IosGlass != null}
               onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
               accessibilityLabel={spotify.reposts !== false ? 'Create a post' : 'Upload a track'}
             />
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.inboxButton}
-              onPress={() => navigation.navigate('Inbox')}
-              accessibilityLabel="Open messages"
-            >
-              <Icon name="messages" size={20} color={COLORS.white} />
-              {notificationCount > 0 && (
-                <View style={styles.inboxBadge}>
-                  <Text style={styles.inboxBadgeText}>
-                    {notificationCount > 99 ? '99+' : notificationCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
 
       {/* The pinned For you | New on Livil switch: shown once the in-list one has scrolled
-          under the top bar, and slid with the top bar so it sits right below it — or at
-          the top of the screen while the top bar is hidden. Under the top bar (zIndex) so
-          the bar slides over it, never under it. */}
+          under the top bar, right below the bar, and off the screen with it while it is hidden.
+          Under the top bar (zIndex) so the bar slides over it, never under it. */}
       {pinned && newTabAvailable ? (
         <Animated.View
           style={[
@@ -1384,7 +1208,7 @@ export default function HomeScreen() {
             { top: insets.top + TOP_BAR_H, transform: [{ translateY: pinnedTabsY }] },
           ]}
         >
-          <HomeFeedTabs active={shownTab} onSelect={selectTab} showNewDot={newDot} />
+          <HomeFeedTabs active={shownTab} onSelect={selectTab} showNewDot={newDot} glass />
         </Animated.View>
       ) : null}
 
@@ -1419,9 +1243,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(10, 10, 15, 0.90)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(139, 61, 255, 0.25)',
     zIndex: 10,
   },
   topBar: {
@@ -1444,33 +1265,6 @@ const styles = StyleSheet.create({
   },
   /** Height only: the pill shape, padding and gradient border are Button's `sm`. */
   uploadButton: { height: 38, paddingVertical: 0 },
-  inboxButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inboxIcon: { fontSize: 18 },
-  inboxBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: COLORS.purple,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: COLORS.bg,
-  },
-  inboxBadgeText: { color: COLORS.white, fontSize: 9, fontWeight: '800' },
-
   storiesSection: {
     paddingBottom: 12,
   },
@@ -1608,8 +1402,8 @@ const styles = StyleSheet.create({
   feedLayerActive: {
     zIndex: 1,
   },
-  inListTabsHidden: {
-    opacity: 0,
+  feedList: {
+    overflow: 'visible',
   },
   pinnedTabs: {
     position: 'absolute',

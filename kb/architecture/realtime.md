@@ -68,7 +68,12 @@ their listeners. Both behaviours are pinned against the real library in
 `RealtimeConnectionGate.test.tsx`.
 
 `RealtimeConnectionGate` therefore closes the socket in the background **on iOS only**, where
-`background` means really leaving the app and every count refetches on return. **On Android
+`background` means really leaving the app and every count refetches on return. Refetching
+does not revive a listener, so a subscriber that stays mounted across an app switch (a tab, a
+context) puts `useRealtimeEpoch()` (`src/utils/realtimeEpoch.ts`) in its effect's dependencies
+and in its channel's topic; the gate bumps it after reconnecting. Without it the socket reads
+"open", the channel "closed", and the screen goes quiet until the app restarts: moving
+Messages into a tab did exactly that. **On Android
 it never closes it**: Android reports `background` on every pause of the activity (the
 notification-tap trampoline, the share sheet, a permission dialog), so the teardown killed
 Home's unread count and every other mounted subscription after the first one (fixed

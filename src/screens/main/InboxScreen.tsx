@@ -11,9 +11,15 @@ import {
   type TextInput,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import {
+  useNavigation,
+  useFocusEffect,
+  useNavigationState,
+  type CompositeNavigationProp,
+} from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../navigation/types';
+import type { AppTabParamList, RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
 import {
@@ -22,6 +28,8 @@ import {
   type ConversationSummary,
 } from '../../services/conversations';
 import { messageCache } from '../../services/messageCache';
+import { requestBadgeRefresh } from '../../services/appBadge';
+import { useRealtimeEpoch } from '../../utils/realtimeEpoch';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import NotificationNudge from '../../components/NotificationNudge';
@@ -41,7 +49,12 @@ import { useListeningNow } from '../../hooks/useListeningNow';
 import FormInput from '../../components/FormInput';
 import { conversationMatches, normalizeInboxQuery } from '../../utils/inboxFilter';
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Nav = CompositeNavigationProp<
+  BottomTabNavigationProp<AppTabParamList, 'Inbox'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
+const NO_IDS: string[] = [];
 
 const AVATAR_SIZE = 52;
 
@@ -176,6 +189,14 @@ export default function InboxScreen() {
   // The realtime handler needs to know the current user id to filter out our
   // own outgoing messages without re-creating the channel on every render.
   const myIdRef = useRef<string | null>(null);
+  // A tab stays mounted once opened, so this screen is still here while Home is showing. True
+  // with a chat open on top too: that chat comes back to this list, and it should be current.
+  const tabOpen = useNavigationState<AppTabParamList, boolean>(
+    state => state.routes[state.index]?.name === 'Inbox',
+  );
+  const tabOpenRef = useRef(tabOpen);
+  tabOpenRef.current = tabOpen;
+  const listRef = useRef<FlatList<ConversationSummary>>(null);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => {
@@ -187,7 +208,11 @@ export default function InboxScreen() {
 
   // Network-only refresh — no cache read. Used by the realtime listener so
   // a new-message event doesn't get muddied by a momentary stale-cache paint.
+  //
+  // Skipped on another tab: re-reading every chat for each incoming message would cost data
+  // and battery for a list nobody can see, and focus re-reads it on the way back.
   const refreshFromNetwork = useCallback(async () => {
+    if (!tabOpenRef.current) { return; }
     try {
       const data = await listConversations();
       setConversations(data);
@@ -240,7 +265,18 @@ export default function InboxScreen() {
     void load();
     void refreshRelationships();
     setBannerKey(k => k + 1);
+    // Back from a chat or the Activity Center: what was read just left the tab's number.
+    requestBadgeRefresh();
   }, [load, refreshRelationships]));
+
+  // Tapping Messages while already on it goes back to the top, as Home does. `tabPress` also
+  // fires when ARRIVING from another tab, which must leave the list where it was.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      if (navigation.isFocused()) { listRef.current?.scrollToOffset({ offset: 0, animated: true }); }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Live inbox: a single channel listens to two tables so the unread badge,
   // preview text, last_message_at ordering, and "Seen by me" propagation all
@@ -265,10 +301,13 @@ export default function InboxScreen() {
   // badge swap doesn't get briefly painted with stale data. RLS limits
   // delivery to conversations the user is a member of, so no server-side
   // filter is needed on the messages stream.
+  const realtimeEpoch = useRealtimeEpoch();
   useEffect(() => {
     if (!myId) { return; }
-    console.log('[realtime] inbox subscribing', { myId });
-    let joinedOnce = false;
+    console.log('[realtime] inbox subscribing', { myId, realtimeEpoch });
+    // Rebuilt after an iOS app switch: whatever arrived in the gap was never delivered, so that
+    // first join re-reads too.
+    let joinedOnce = realtimeEpoch > 0;
     // My own rows also change when this phone stamps "Delivered" (last_delivered_at), which
     // changes nothing on this list — and the first stamp after an update touches every chat
     // at once. So an update whose last_read_at is the one already seen is skipped, and the
@@ -276,7 +315,7 @@ export default function InboxScreen() {
     const readSeen = new Map<string, string | null>();
     let memberRefresh: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
-      .channel(`inbox:${myId}`)
+      .channel(`inbox:${myId}:${realtimeEpoch}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
@@ -346,12 +385,12 @@ export default function InboxScreen() {
       if (memberRefresh) { clearTimeout(memberRefresh); }
       void supabase.removeChannel(channel);
     };
-  }, [myId, refreshFromNetwork]);
+  }, [myId, realtimeEpoch, refreshFromNetwork]);
 
   // Back in the foreground: re-read the list. Realtime misses what arrives while the app
   // is backgrounded (closed on iOS, frozen on Android; delivery there is push's job), so a message that
   // arrived meanwhile — the push you just tapped past — never reached this screen, and
-  // focus does not fire (the inbox never lost it). Home re-counts unread the same way.
+  // focus does not fire (the inbox never lost it). UnreadBadgeContext re-counts the same way.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') { void refreshFromNetwork(); }
@@ -380,7 +419,8 @@ export default function InboxScreen() {
   // opens, and a listener whose app was swiped away never says "stopped".
   const [listeningFocus, setListeningFocus] = useState(0);
   useFocusEffect(useCallback(() => { setListeningFocus(n => n + 1); }, []));
-  const listening = useListeningNow(dmUserIds, listeningFocus);
+  // Nobody on another tab sees who is listening, and every listener re-stamps once a minute.
+  const listening = useListeningNow(tabOpen ? dmUserIds : NO_IDS, listeningFocus);
   const vibes = useChatVibes(conversations);
 
   // The group picture reshuffles once per VISIT (not per render): a new random
@@ -403,6 +443,11 @@ export default function InboxScreen() {
   // this filters on the device — see utils/inboxFilter.ts for what a query matches.
   const [query, setQuery] = useState('');
   const searchRef = useRef<TextInput>(null);
+  // A new visit starts with the whole list. Only on leaving the tab: a chat opened from the
+  // results comes back to those results.
+  useEffect(() => {
+    if (!tabOpen) { setQuery(''); }
+  }, [tabOpen]);
   const normalizedQuery = normalizeInboxQuery(query);
   const searching = normalizedQuery.length > 0;
   const shown = useMemo(
@@ -427,16 +472,9 @@ export default function InboxScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          activeOpacity={0.7}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="back" size={28} color={COLORS.purple} />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity
           style={styles.composeButton}
@@ -444,7 +482,6 @@ export default function InboxScreen() {
           onPress={() => navigation.navigate('NewConversation')}
           accessibilityLabel="New message"
         >
-          {/* Same round button and glyph size as Home's two-bubble messages button, its pair. */}
           <Icon name="compose" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
@@ -493,6 +530,7 @@ export default function InboxScreen() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={shown}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -557,7 +595,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
-  backButton: { padding: 4, marginRight: 4 },
   headerTitle: {
     flex: 1,
     color: COLORS.white,
@@ -565,7 +602,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  /** Mirrors HomeScreen `inboxButton`: the messages button and the new-message button match. */
   composeButton: {
     width: 38,
     height: 38,
