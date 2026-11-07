@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-582 TypeScript file(s) under `src/`, 115,238 lines.
+582 TypeScript file(s) under `src/`, 115,330 lines.
 
 ## Size hotspots
 
@@ -33,7 +33,7 @@ reading alone (Constitution P28).
 | `src/components/PostCard.tsx` | 1497 |
 | `src/screens/main/UserProfileScreen.tsx` | 1475 |
 | `src/screens/main/ProfileScreen.tsx` | 1468 |
-| `src/screens/main/HomeScreen.tsx` | 1459 |
+| `src/screens/main/HomeScreen.tsx` | 1465 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -109,7 +109,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,000 lines.
+75 file(s), 35,006 lines.
 
 | File | Lines |
 |---|---:|
@@ -118,7 +118,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1475 |
 | `src/screens/main/ProfileScreen.tsx` | 1468 |
-| `src/screens/main/HomeScreen.tsx` | 1459 |
+| `src/screens/main/HomeScreen.tsx` | 1465 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/studio/studioEngine.ts` | 1095 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
@@ -582,7 +582,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-123 file(s), 11,458 lines.
+123 file(s), 11,544 lines.
 
 | File | Lines |
 |---|---:|
@@ -632,6 +632,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/audioFx.test.ts` | 105 |
 | `src/utils/spotifyLinks.ts` | 105 |
 | `src/utils/__tests__/haptics.test.ts` | 101 |
+| `src/utils/__tests__/homeTabsPin.test.ts` | 101 |
 | `src/utils/storyPlayback.ts` | 98 |
 | `src/utils/__tests__/chatMedia.test.ts` | 96 |
 | `src/utils/__tests__/chatTime.test.ts` | 95 |
@@ -652,6 +653,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/magicTune/psola.ts` | 76 |
 | `src/utils/audioClean/breath.ts` | 74 |
 | `src/utils/chatReceipts.ts` | 74 |
+| `src/utils/homeTabsPin.ts` | 73 |
 | `src/utils/authorDisplay.ts` | 72 |
 | `src/utils/punycode.ts` | 72 |
 | `src/utils/recentSearches.ts` | 72 |
@@ -669,7 +671,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/recentSearchOpens.ts` | 52 |
 | `src/utils/__tests__/messageMenuLayout.test.ts` | 51 |
 | `src/utils/__tests__/chatOrder.test.ts` | 49 |
-| `src/utils/__tests__/homeTabsPin.test.ts` | 49 |
 | `src/utils/messageMenuLayout.ts` | 49 |
 | `src/utils/mutualsText.ts` | 48 |
 | `src/utils/__tests__/shareLinkGate.test.ts` | 47 |
@@ -681,7 +682,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/chatCopy.test.ts` | 42 |
 | `src/utils/chatOrder.ts` | 42 |
 | `src/utils/__tests__/emojiData.test.ts` | 40 |
-| `src/utils/homeTabsPin.ts` | 39 |
 | `src/utils/inboxFilter.ts` | 39 |
 | `src/utils/__tests__/friendOrder.test.ts` | 37 |
 | `src/utils/__tests__/retryOnce.test.ts` | 35 |
