@@ -64,6 +64,15 @@ refs; they never produce audio.
 | **`FloatingPlayer`** | The persistent pill/circle control and waveform. | no |
 | **`PostCard`** | Cover art and a play button. Sets `nowPlaying`; requests playback. | no |
 
+**Closing the player.** Dragging the circle down shows an X (`PlayerCloseTarget`); holding
+it there for `CLOSE_HOLD_MS` calls `closePlayer` in `PlaybackContext`, which pauses, empties
+every queue ref and clears `nowPlaying`. `GlobalAudioPlayer` then renders nothing, and that
+unmount is what removes the lock-screen card. The queue must be emptied, not just paused:
+`GlobalAudioPlayer` loads `queueRef[currentIndexRef]` when the active post changes. In a jam
+the hold opens `JamExitModal` instead, because ending one stops the music for everyone. The X
+is not offered in full screen, where a down-drag minimises, or on the Jam room screen, which
+has its own exit.
+
 `FullScreenPlayer` decodes the *same file* the engine is decoding, purely for pictures. It
 drift-corrects toward `positionRef` and takes an eager seek on paused scrubs. It carries
 `playInBackground={false}` and no notification controls.
