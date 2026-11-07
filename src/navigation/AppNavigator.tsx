@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Platform, Animated, Pressable } from 'react-native';
+import { StyleSheet, Platform, Animated, Pressable } from 'react-native';
 import {
   createBottomTabNavigator,
   BottomTabBar,
@@ -19,6 +19,7 @@ import { AppTabParamList } from './types';
 import { Icon } from '../components/Icon';
 import MessagesTabIcon from '../components/MessagesTabIcon';
 import TabAvatar from '../components/TabAvatar';
+import TabBarBackground from '../components/TabBarBackground';
 import { UnreadBadgeProvider } from '../contexts/UnreadBadgeContext';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
@@ -87,7 +88,7 @@ function AnimatedTabBar(props: BottomTabBarProps) {
 
 // Render callbacks the navigator invokes, hoisted so they aren't rebuilt per render.
 const renderTabBar = (props: BottomTabBarProps) => <AnimatedTabBar {...props} />;
-const renderTabBarBackground = () => <View style={styles.tabBarBg} />;
+const renderTabBarBackground = () => <TabBarBackground />;
 
 export default function AppNavigator() {
   const insets = useSafeAreaInsets();
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     backgroundColor: 'transparent',
-    // The outline is tabBarBg's, which can curve. The library's own border and elevation would
+    // The outline is TabBarBackground's, which can curve. The library's own border and elevation would
     // draw a straight edge and square corners behind it.
     borderTopWidth: 0,
     elevation: 0,
@@ -177,17 +178,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 24 : 8,
     // Android height/paddingBottom are overridden in screenOptions with insets.bottom
-  },
-  tabBarBg: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(10, 10, 15, 0.90)',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    // On the sides as well: a top-only border thins out to nothing around a curve.
-    borderColor: 'rgba(139, 61, 255, 0.25)',
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
   },
   tabItem: {
     paddingVertical: 4,

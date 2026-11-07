@@ -17,4 +17,9 @@
  */
 module.exports = {
   assets: ['./assets/fonts'],
+  dependencies: {
+    // iPhone only (see src/components/TabBarBackground.tsx). Left out of the Android build so it
+    // ships no unused native code and release builds do not depend on JitPack for its blur library.
+    '@sbaiahmed1/react-native-blur': { platforms: { android: null } },
+  },
 };

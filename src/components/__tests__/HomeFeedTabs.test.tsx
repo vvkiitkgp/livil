@@ -7,6 +7,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { HomeFeedTabs } from '../HomeFeedTabs';
 import { Button } from '../Button';
+import GlassBackdrop from '../GlassBackdrop';
 
 function render(active: 'for_you' | 'new_on_livil', showNewDot: boolean, onSelect = jest.fn()) {
   let tree!: TestRenderer.ReactTestRenderer;
@@ -39,4 +40,32 @@ it('wears the selected pill on the open feed and reports which one was pressed',
 it('leaves the haptic to Home, so a switch buzzes once', () => {
   const tree = render('for_you', false);
   expect(pill(tree, 'for_you').props.haptic).toBe('none');
+});
+
+describe('glass, for the pinned copy on iPhone', () => {
+  function renderPinned() {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <HomeFeedTabs active="for_you" onSelect={jest.fn()} showNewDot={false} glass />,
+      );
+    });
+    return tree;
+  }
+
+  it('puts glass behind both pills in place of the opaque fill', () => {
+    const tree = renderPinned();
+    expect(tree.root.findAllByType(GlassBackdrop)).toHaveLength(2);
+    tree.root.findAllByType(Button).forEach(button => {
+      expect(button.props.onMedia).toBe(false);
+    });
+  });
+
+  it('leaves the copy in the list on its opaque fill', () => {
+    const tree = render('for_you', false);
+    expect(tree.root.findAllByType(GlassBackdrop)).toHaveLength(0);
+    tree.root.findAllByType(Button).forEach(button => {
+      expect(button.props.onMedia).toBe(true);
+    });
+  });
 });

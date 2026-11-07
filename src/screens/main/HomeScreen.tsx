@@ -57,6 +57,9 @@ import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
 import { groupStoriesByAuthor } from '../../utils/groupStoriesByAuthor';
 import { requestBadgeRefresh } from '../../services/appBadge';
+import { IosGlass } from '../../components/iosGlass';
+import TopBarBackground from '../../components/TopBarBackground';
+import StatusBarFade from '../../components/StatusBarFade';
 import { useIsOffline, useOnReconnect } from '../../services/network';
 import { friendlyErrorMessage } from '../../utils/errorMessages';
 
@@ -1103,6 +1106,9 @@ export default function HomeScreen() {
         // a normal row above its list): iOS via the content inset, Android via
         // progressViewOffset. Default colours, matching the inbox's spinner.
         {...(Platform.OS === 'ios' ? FEED_INSET_IOS : null)}
+        // `overflow: visible` lets the feed run up behind the status bar. The list's frame stays
+        // below it, so every scroll offset and the pills' pin line mean what they always did.
+        style={styles.feedList}
         refreshControl={
           <RefreshControl
             refreshing={refreshing && which === shownTab}
@@ -1137,11 +1143,14 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
+      <StatusBarFade />
+
       {/* Fixed top bar — slides up on scroll down, returns on scroll up */}
       <Animated.View
-        style={[styles.topBarFixed, { top: insets.top, transform: [{ translateY: topBarAnim }] }]}
+        style={[styles.topBarFixed, { paddingTop: insets.top, transform: [{ translateY: topBarAnim }] }]}
         pointerEvents="box-none"
       >
+        <TopBarBackground />
         <View style={styles.topBar}>
           {/* The mark carries the brand on its own now, so the row needs an
               explicit label — without the "livil" text there is nothing for a
@@ -1170,6 +1179,8 @@ export default function HomeScreen() {
               variant="primary"
               size="sm"
               style={styles.uploadButton}
+              // On glass, bright artwork can pass right behind its purple label.
+              onMedia={IosGlass != null}
               onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
               accessibilityLabel={spotify.reposts !== false ? 'Create a post' : 'Upload a track'}
             />
@@ -1188,7 +1199,7 @@ export default function HomeScreen() {
             { top: insets.top + TOP_BAR_H, transform: [{ translateY: pinnedTabsY }] },
           ]}
         >
-          <HomeFeedTabs active={shownTab} onSelect={selectTab} showNewDot={newDot} />
+          <HomeFeedTabs active={shownTab} onSelect={selectTab} showNewDot={newDot} glass />
         </Animated.View>
       ) : null}
 
@@ -1223,9 +1234,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(10, 10, 15, 0.90)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(139, 61, 255, 0.25)',
     zIndex: 10,
   },
   topBar: {
@@ -1384,6 +1392,9 @@ const styles = StyleSheet.create({
   // indicator are never behind the other's.
   feedLayerActive: {
     zIndex: 1,
+  },
+  feedList: {
+    overflow: 'visible',
   },
   inListTabsHidden: {
     opacity: 0,

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { Button } from './Button';
+import { IosGlass } from './iosGlass';
 import type { HomeFeedTab } from '../services/posts';
 
 const PILL_HIT_SLOP = { top: 6, bottom: 6, left: 3, right: 3 };
@@ -22,17 +23,23 @@ const TABS: { key: HomeFeedTab; label: string }[] = [
  * at the top of the screen once that one scrolls away. Purely presentational so the two
  * can never disagree.
  *
+ * `glass` is for the pinned copy on iPhone: glass in place of `onMedia`'s fill. The copy in the list
+ * sits on the plain page, where glass would have nothing to show.
+ *
  * `showNewDot` marks New on Livil when someone uploaded since the viewer last opened it.
  */
 export function HomeFeedTabs({
   active,
   onSelect,
   showNewDot,
+  glass = false,
 }: {
   active: HomeFeedTab;
   onSelect: (tab: HomeFeedTab) => void;
   showNewDot: boolean;
+  glass?: boolean;
 }) {
+  const Glass = glass ? IosGlass : null;
   return (
     <View style={styles.bar} accessibilityRole="tablist">
       {TABS.map(t => {
@@ -40,6 +47,7 @@ export function HomeFeedTabs({
         const dot = t.key === 'new_on_livil' && showNewDot && !selected;
         return (
           <View key={t.key} style={styles.pillSlot} testID={`home-tab-${t.key}`}>
+            {Glass ? <Glass style={styles.pillGlass} /> : null}
             <Button
               label={t.label}
               size="sm"
@@ -48,7 +56,7 @@ export function HomeFeedTabs({
               // HomeScreen fires the tab-switch haptic itself.
               haptic="none"
               // Opaque near-black fill: the pinned copy floats over posts and artwork.
-              onMedia
+              onMedia={!Glass}
               // The pill reads ~40pt tall; this makes the touch target 52pt without
               // making it look bigger. Sideways only as far as half the gap between pills,
               // so a tap there can never land on the wrong one.
@@ -81,6 +89,16 @@ const styles = StyleSheet.create({
   pillSlot: {
     paddingVertical: PILL_HIT_SLOP.top,
     paddingHorizontal: PILL_HIT_SLOP.left,
+  },
+  // Exactly the pill's box, inside the slot's touch padding. A radius past half its height is a
+  // full pill.
+  pillGlass: {
+    position: 'absolute',
+    top: PILL_HIT_SLOP.top,
+    bottom: PILL_HIT_SLOP.bottom,
+    left: PILL_HIT_SLOP.left,
+    right: PILL_HIT_SLOP.right,
+    borderRadius: 22,
   },
   // Bigger than Button's `sm` (owner request), keeping its full pill radius — `md` would
   // square the corners off.
