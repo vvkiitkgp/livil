@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-536 TypeScript file(s) under `src/`, 110,140 lines.
+538 TypeScript file(s) under `src/`, 110,326 lines.
 
 ## Size hotspots
 
@@ -373,7 +373,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-112 file(s), 22,816 lines.
+114 file(s), 22,972 lines.
 
 | File | Lines |
 |---|---:|
@@ -458,17 +458,20 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/teamMessages.test.ts` | 87 |
 | `src/services/__tests__/crashReporting.test.ts` | 86 |
 | `src/services/groupFaces.ts` | 86 |
+| `src/services/__tests__/session.test.ts` | 84 |
 | `src/services/__tests__/submitExitFeedback.test.ts` | 81 |
 | `src/services/googleAuth.ts` | 79 |
 | `src/services/__tests__/clearConversationNotifications.test.ts` | 78 |
 | `src/services/__tests__/findMyActiveJam.test.ts` | 78 |
 | `src/services/studioFiles.ts` | 78 |
 | `src/services/terms.ts` | 78 |
+| `src/services/__tests__/authStorage.test.ts` | 72 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
 | `src/services/__tests__/createTrackStreamingGrant.test.ts` | 67 |
 | `src/services/__tests__/sharedRepostAuthor.test.ts` | 66 |
 | `src/services/mutuals.ts` | 66 |
+| `src/services/session.ts` | 66 |
 | `src/services/activeConversation.ts` | 62 |
 | `src/services/__tests__/waveformLosslessGuard.test.ts` | 59 |
 | `src/services/__tests__/chatGifMessage.test.ts` | 57 |
@@ -479,14 +482,13 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/trackPlaysTotals.test.ts` | 52 |
 | `src/services/pushDispatch.ts` | 51 |
 | `src/services/chatVibes.ts` | 49 |
-| `src/services/__tests__/session.test.ts` | 47 |
 | `src/services/__tests__/activeConversation.test.ts` | 44 |
 | `src/services/musicScore.ts` | 43 |
-| `src/services/session.ts` | 43 |
 | `src/services/jamHeartbeat.ts` | 42 |
 | `src/services/authSession.ts` | 36 |
 | `src/services/friendActivity.ts` | 33 |
 | `src/services/__tests__/activityMilestone.test.ts` | 25 |
+| `src/services/authStorage.ts` | 24 |
 | `src/services/__tests__/isUploadedAvatar.test.ts` | 16 |
 | `src/services/uploadEvents.ts` | 15 |
 

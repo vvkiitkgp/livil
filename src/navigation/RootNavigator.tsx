@@ -20,6 +20,8 @@ import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import FirstRunGuideScreen from '../screens/auth/FirstRunGuideScreen';
 import AddPhotoScreen from '../screens/auth/AddPhotoScreen';
 import { getGuideSeen, getUsernameSet, markGuideSeen } from '../services/profileService';
+import { getSavedSession } from '../services/authStorage';
+import { isFailedRefreshEvent, startupSession } from '../services/session';
 import UploadScreen from '../screens/main/UploadScreen';
 import DraftsScreen from '../screens/studio/DraftsScreen';
 import RepostScreen from '../screens/main/RepostScreen';
@@ -94,6 +96,9 @@ import { markSignedInHere } from '../utils/returningListener';
 const StudioScreen: React.ComponentType | null = __DEV__
   ? require('../screens/studio/StudioScreen').default
   : null;
+
+/** How long a saved login waits on the server at launch before the app opens anyway. */
+const STARTUP_WAIT_MS = 5000;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const { width } = Dimensions.get('window');
@@ -503,9 +508,26 @@ export default function RootNavigator() {
   useEffect(() => {
     let cancelled = false;
 
+    // However the network behaves, a saved login is never held on the splash for long: past this,
+    // the checks below count as a network problem (let in, as they already do), and whatever
+    // they answer later still applies.
+    const overdue = setTimeout(() => {
+      void getSavedSession().then(saved => {
+        if (cancelled || !saved) { return; }
+        console.log('[LIVIL][startup] no answer yet, opening with the saved login');
+        setNeedsUsername(v => v ?? false);
+        setNeedsTerms(v => v ?? false);
+        setNeedsGuide(v => v ?? false);
+        setSession(current => current ?? saved);
+        setLoading(false);
+      });
+    }, STARTUP_WAIT_MS);
+
     supabase.auth
       .getSession()
-      .then(async ({ data: { session: s } }) => {
+      .then(async ({ data: { session: loaded }, error }) => {
+        if (cancelled) { return; }
+        const s = await startupSession(loaded, error, getSavedSession);
         if (cancelled) { return; }
         // Realtime channels gate on the user's JWT; without this, RLS-protected
         // postgres_changes events (chat messages, reactions) are dropped silently.
@@ -543,13 +565,18 @@ export default function RootNavigator() {
         }
         if (!cancelled) { setSession(s); }
       })
-      .catch(() => {
-        // Offline / transient fetch failures — stay signed out but never hang on splash.
+      .catch(async () => {
+        // Something unexpected: keep a saved login, and never hang on splash.
+        const saved = await getSavedSession();
         if (!cancelled) {
-          setSession(null);
+          setNeedsUsername(v => v ?? false);
+          setNeedsTerms(v => v ?? false);
+          setNeedsGuide(v => v ?? false);
+          setSession(saved);
         }
       })
       .finally(() => {
+        clearTimeout(overdue);
         if (!cancelled) {
           setLoading(false);
         }
@@ -558,7 +585,7 @@ export default function RootNavigator() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, s) => {
-      if (!cancelled) {
+      if (!cancelled && !isFailedRefreshEvent(event, s)) {
         console.log(`[realtime] auth event=${event} token=${s?.access_token ? 'present' : 'null'}`);
         supabase.realtime.setAuth(s?.access_token ?? null);
         setSession(s);
@@ -585,9 +612,11 @@ export default function RootNavigator() {
           // account must not inherit the previous one's number, and the previous
           // one's notifications must not stay readable from the tray.
           void clearAppBadge();
-        } else if (event === 'SIGNED_IN' && s?.user?.id && pushUserIdRef.current !== s.user.id) {
-          // Fresh sign-in (new user id) — register push + resolve onboarding.
-          // The id guard skips re-checks on resume/token-refresh SIGNED_IN events.
+        } else if (s?.user?.id && pushUserIdRef.current !== s.user.id) {
+          // Fresh sign-in (new user id) — register push + resolve onboarding. Any event, not only
+          // SIGNED_IN: a login that came back with the connection arrives as TOKEN_REFRESHED, and
+          // unresolved checks would leave no screen at all, the splash being long gone.
+          // The id guard skips re-checks on resume/token-refresh events.
           pushUserIdRef.current = s.user.id;
           void registerDeviceForUser(s.user.id);
           void sweepAbandonedUploads(s.user.id);
@@ -608,6 +637,7 @@ export default function RootNavigator() {
 
     return () => {
       cancelled = true;
+      clearTimeout(overdue);
       subscription.unsubscribe();
     };
   }, []);
