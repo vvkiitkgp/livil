@@ -7,6 +7,7 @@ import {
   resolveSpotifyLinkCached,
   useSpotifyTrack,
 } from '../services/spotify';
+import { chatMediaFrom } from '../utils/chatMedia';
 import { findSpotifyLinkInText } from '../utils/spotifyLinks';
 import { profileHandleIfExactLink } from '../utils/shareLinks';
 import { Icon } from './Icon';
@@ -18,9 +19,9 @@ import { SpotifyLogo } from './SpotifyLogo';
  * "Replying to …" bar above the composer.
  *
  * A SONG (a Livil track share, or a Spotify link) is shown as a small song row — cover,
- * title, artist, source mark — the same for both sources, never the raw link. Anything
- * else is the message's text, truncated. Only this line is drawn here; the caller draws
- * the author line above it.
+ * title, artist, source mark — the same for both sources, never the raw link. A disappearing
+ * photo or video says just that. Anything else is the message's text, truncated. Only this
+ * line is drawn here; the caller draws the author line above it.
  *
  *   me   — inside a sent (purple) bubble
  *   them — inside a received (dark) bubble
@@ -62,6 +63,11 @@ export function ChatReplySnippet({
   }
 
   if (message.kind === 'text' && message.body) {
+    // A disappearing photo/video: its body is the line older builds show, never quoted.
+    const media = chatMediaFrom(message.metadata);
+    if (media) {
+      return <Text style={textStyle} numberOfLines={1}>{media.type === 'video' ? 'Video' : 'Photo'}</Text>;
+    }
     const spotify = findSpotifyLinkInText(message.body);
     if (spotify) {
       return (

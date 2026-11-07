@@ -1,6 +1,7 @@
 /**
  * What a reply shows of the message it answers. Pins: a song — Livil or Spotify — quotes
- * as a song row (title + artist), never as its raw link; everything else is its text.
+ * as a song row (title + artist), never as its raw link; a disappearing photo or video
+ * says just that, never its upgrade line; everything else is its text.
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
@@ -20,6 +21,7 @@ jest.mock('../Logo', () => ({ Logo: () => null }));
 jest.mock('../SpotifyLogo', () => ({ SpotifyLogo: () => null }));
 
 import { ChatReplySnippet } from '../ChatReplySnippet';
+import { CHAT_PHOTO_LABEL, CHAT_VIDEO_LABEL } from '../../utils/chatMedia';
 
 function msg(over: Partial<ChatMessage>): ChatMessage {
   return {
@@ -56,6 +58,22 @@ it('ordinary text is the text', async () => {
 
 it('a profile link reads as whose profile it is', async () => {
   expect(await texts(msg({ body: 'https://livil-music.com/@riya' }))).toEqual(["@riya's profile"]);
+});
+
+const OBJECT = 'c1000000-0000-0000-0000-000000000001/d1000000-0000-0000-0000-000000000001';
+
+it('a disappearing photo quotes as a photo, not the line older apps show', async () => {
+  expect(await texts(msg({
+    body: CHAT_PHOTO_LABEL,
+    metadata: { media: { v: 1, type: 'photo', object: `${OBJECT}.jpg`, mime: 'image/jpeg', w: 1080, h: 1920, bytes: 200000 } },
+  }))).toEqual(['Photo']);
+});
+
+it('a disappearing video quotes as a video, not the line older apps show', async () => {
+  expect(await texts(msg({
+    body: CHAT_VIDEO_LABEL,
+    metadata: { media: { v: 1, type: 'video', object: `${OBJECT}.mp4`, mime: 'video/mp4', w: 1080, h: 1920, bytes: 900000, duration_ms: 8000 } },
+  }))).toEqual(['Video']);
 });
 
 it('an original that is not loaded says to tap', async () => {

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-585 TypeScript file(s) under `src/`, 115,429 lines.
+585 TypeScript file(s) under `src/`, 115,453 lines.
 
 ## Size hotspots
 
@@ -191,7 +191,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-184 file(s), 35,852 lines.
+184 file(s), 35,876 lines.
 
 | File | Lines |
 |---|---:|
@@ -258,10 +258,10 @@ case the call fails silently wherever its result is discarded.
 | `src/components/auth/AuthStep.tsx` | 195 |
 | `src/components/MentionText.tsx` | 191 |
 | `src/components/__tests__/GlobalAudioPlayer.loadError.test.tsx` | 191 |
+| `src/components/ChatReplySnippet.tsx` | 190 |
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 186 |
-| `src/components/ChatReplySnippet.tsx` | 184 |
 | `src/components/UploadPreviewCard.tsx` | 180 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ProfileTabBar.tsx` | 179 |
@@ -325,6 +325,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/ConfirmActionModal.test.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
 | `src/components/SpotifyLogo.tsx` | 82 |
+| `src/components/__tests__/ChatReplySnippet.test.tsx` | 82 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
 | `src/components/PostCardSkeleton.tsx` | 79 |
 | `src/components/UsernameBadges.tsx` | 78 |
@@ -346,7 +347,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsHeader.tsx` | 66 |
 | `src/components/onboarding/ScreenBackdrop.tsx` | 65 |
 | `src/components/RealtimeConnectionGate.tsx` | 64 |
-| `src/components/__tests__/ChatReplySnippet.test.tsx` | 64 |
 | `src/components/FirstHundredBadge.tsx` | 63 |
 | `src/components/CoverFallback.tsx` | 62 |
 | `src/components/RoundTickButton.tsx` | 61 |
