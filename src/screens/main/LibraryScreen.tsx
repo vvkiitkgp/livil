@@ -367,7 +367,7 @@ export default function LibraryScreen() {
           <PlaylistSkeleton />
         ) : (
           <View style={styles.list}>
-            {/* Liked Indie Vibes — virtual: liked Livil songs (Spotify reposts are left out) */}
+            {/* Liked Indie Vibes — virtual: liked uploads (reposts are left out) */}
             <TouchableOpacity style={styles.row} onPress={goToLiked} activeOpacity={0.75}>
               <View style={[styles.thumb, { backgroundColor: COLORS.purple }]}>
                 <Icon name="heart" size={22} color={COLORS.white} weight="fill" />

@@ -46,17 +46,17 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 /**
- * How many songs "Liked Indie Vibes" holds: likes on posts that carry a Livil track. A liked
- * Spotify repost has no track, and fetchLikedPosts leaves it out of the list, so it must be
- * left out of the count too (the number used to include them — owner, 2026-10-19).
+ * How many songs "Liked Indie Vibes" holds: likes on uploads, the same rows as fetchLikedPosts.
+ * Reposts stay out, Spotify and Livil alike. A repost of a Livil song carries a track too, so
+ * filtering on the track listed one song once per reposter (owner, 2026-11-07).
  */
 export async function getLikedPostCount(): Promise<number> {
   const me = await getCurrentUserId();
   const { count, error } = await supabase
     .from('post_likes')
-    .select('post_id, posts!inner(track_id)', { count: 'exact', head: true })
+    .select('post_id, posts!inner(kind)', { count: 'exact', head: true })
     .eq('user_id', me)
-    .not('posts.track_id', 'is', null);
+    .eq('posts.kind', 'upload');
   if (error) { throw new Error(error.message); }
   return count ?? 0;
 }
@@ -79,7 +79,7 @@ export async function fetchLikedPosts(limit = 200): Promise<PlaylistItem[]> {
     .select(`
       post_id,
       created_at,
-      post:posts (
+      post:posts!inner (
         id,
         author_id,
         track:tracks (
@@ -100,6 +100,8 @@ export async function fetchLikedPosts(limit = 200): Promise<PlaylistItem[]> {
       )
     `)
     .eq('user_id', me)
+    // Uploads only (see getLikedPostCount). In the query, so reposts don't use up `limit`.
+    .eq('post.kind', 'upload')
     .order('created_at', { ascending: false })
     .limit(limit);
 
