@@ -23,7 +23,7 @@ jest.mock('../../../lib/supabase', () => ({
 }));
 jest.mock('../session', () => ({ getMyUserId: () => Promise.resolve('me') }));
 
-import { __resetChatDeletionForTest, fetchMessages } from '../messages';
+import { __resetChatDeletionForTest, fetchMessages, getChatDeletionAvailable } from '../messages';
 
 const row = (id: string, min: number, extra: Record<string, unknown> = {}) => ({
   id,
@@ -42,8 +42,6 @@ beforeEach(() => {
   __resetChatDeletionForTest();
   mockTables.profiles = () => ({ data: [{ id: 'riya', username: 'riya', display_name: 'Riya', avatar_url: null }], error: null });
   mockTables.message_reactions = () => ({ data: [], error: null });
-  mockTables.message_hides = () => ({ data: [], error: null });
-  mockTables.conversation_clears = () => ({ data: null, error: null });
 });
 
 it('a message deleted for everyone is a placeholder, without its words', async () => {
@@ -62,32 +60,41 @@ it('a message deleted for everyone is a placeholder, without its words', async (
   expect(messages[1]!.deletedAt).toBe('2026-11-02T10:04:00.000Z');
 });
 
-it('a message I deleted for myself is left out', async () => {
-  mockTables.messages = () => ({ data: [row('m3', 3), row('m2', 2), row('m1', 1)], error: null });
-  mockTables.message_hides = () => ({ data: [{ message_id: 'm2' }], error: null });
-  const { messages } = await fetchMessages('c1');
-  expect(messages.map(m => m.id)).toEqual(['m3', 'm1']);
-});
-
-it('after Clear chat: only what came after, and no older page', async () => {
-  // A full page (limit 2 → 3 rows asked) straddling the clear at 10:02.
-  mockTables.messages = () => ({ data: [row('m4', 4), row('m3', 3), row('m2', 2)], error: null });
-  mockTables.conversation_clears = () => ({ data: { cleared_at: '2026-11-02T10:02:30.000Z' }, error: null });
-  const { messages, nextCursor } = await fetchMessages('c1', undefined, 2);
-  expect(messages.map(m => m.id)).toEqual(['m4', 'm3']);
-  // The page was full, but the next older one is all before the clear.
-  mockTables.messages = () => ({ data: [row('m5', 5), row('m4', 4), row('m3', 3)], error: null });
-  expect((await fetchMessages('c1', undefined, 2)).nextCursor).not.toBeNull();
-  mockTables.messages = () => ({ data: [row('m3', 3), row('m2', 2), row('m1', 1)], error: null });
-  expect((await fetchMessages('c1', undefined, 2)).nextCursor).toBeNull();
+it('a cleared chat loads as its one line', async () => {
+  mockTables.messages = () => ({
+    data: [row('m1', 1, { kind: 'system', sender_id: null, body: 'Riya cleared this chat', metadata: { chat_cleared: true } })],
+    error: null,
+  });
+  const { messages, nextCursor } = await fetchMessages('c1');
+  expect(messages.map(m => m.body)).toEqual(['Riya cleared this chat']);
+  expect(messages[0]!.metadata).toEqual({ chat_cleared: true });
   expect(nextCursor).toBeNull();
 });
 
-it('without the migration (no tables) the chat loads as before', async () => {
-  mockTables.messages = () => ({ data: [row('m2', 2), row('m1', 1)], error: null });
-  mockTables.message_hides = () => ({ data: null, error: { code: 'PGRST205', message: 'no table' } });
-  mockTables.conversation_clears = () => ({ data: null, error: { code: 'PGRST205', message: 'no table' } });
-  const { messages } = await fetchMessages('c1');
-  expect(messages.map(m => m.id)).toEqual(['m2', 'm1']);
-  expect(messages[0]!.body).toBe('message m2');
+it('a full page has a next page', async () => {
+  mockTables.messages = () => ({ data: [row('m3', 3), row('m2', 2), row('m1', 1)], error: null });
+  const { messages, nextCursor } = await fetchMessages('c1', undefined, 2);
+  expect(messages.map(m => m.id)).toEqual(['m3', 'm2']);
+  expect(nextCursor).toBe(messages[1]!.createdAt);
+});
+
+describe('getChatDeletionAvailable', () => {
+  it('is on once the delete rules are live', async () => {
+    mockTables.conversation_hides = () => ({ data: [], error: null });
+    await expect(getChatDeletionAvailable()).resolves.toBe(true);
+  });
+
+  it('stays off, for this launch, without them', async () => {
+    mockTables.conversation_hides = () => ({ data: null, error: { code: 'PGRST205', message: 'no table' } });
+    await expect(getChatDeletionAvailable()).resolves.toBe(false);
+    mockTables.conversation_hides = () => ({ data: [], error: null });
+    await expect(getChatDeletionAvailable()).resolves.toBe(false);
+  });
+
+  it('asks again after a failed read, which may only be a bad connection', async () => {
+    mockTables.conversation_hides = () => ({ data: null, error: { code: 'XX000', message: 'network' } });
+    await expect(getChatDeletionAvailable()).resolves.toBe(false);
+    mockTables.conversation_hides = () => ({ data: [], error: null });
+    await expect(getChatDeletionAvailable()).resolves.toBe(true);
+  });
 });

@@ -32,7 +32,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
-import { Icon, type IconName } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import FormInput from '../../components/FormInput';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import {
@@ -41,9 +41,7 @@ import {
   addReaction,
   removeReaction,
   deleteMessageForEveryone,
-  deleteMessageForMe,
   getChatDeletionAvailable,
-  noteConversationCleared,
   type ChatMessage,
   type SendMessagePayload,
 } from '../../services/messages';
@@ -60,10 +58,15 @@ import {
   getOtherMemberReadAt,
   getConversationKind,
   markConversationDelivered,
-  clearConversation,
+  clearChatForBoth,
+  hideConversation,
   type ConversationKind,
 } from '../../services/conversations';
-import { applyServerDeletes, asDeleted, markDeletedIn, withoutMessage } from '../../utils/chatDelete';
+import { applyServerDeletes, asDeleted, isChatClearedLine, markDeletedIn, withoutClearedHistory } from '../../utils/chatDelete';
+import MessageMenu, { type MessageMenuAction } from '../../components/MessageMenu';
+import { takeBlurSnapshot } from '../../services/blurSnapshot';
+import ReactionEmojiSheet from '../../components/ReactionEmojiSheet';
+import type { MenuAnchor } from '../../utils/messageMenuLayout';
 import DetailActionSheet, { type DetailAction } from '../../components/DetailActionSheet';
 import { chatReceipts, type ReceiptStatus } from '../../utils/chatReceipts';
 import NowPlayingPill from '../../components/NowPlayingPill';
@@ -141,7 +144,7 @@ import { copyText } from '../../services/clipboard';
 import { copyableText } from '../../utils/chatCopy';
 import { splitChatLinks, type CheckedLink } from '../../utils/chatLinks';
 import { openLivilLink } from '../../services/livilLinks';
-import ConfirmActionModal from '../../components/ConfirmActionModal';
+import ConfirmActionModal, { ConfirmEmphasis } from '../../components/ConfirmActionModal';
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -149,6 +152,9 @@ type Route = RouteProp<RootStackParamList, 'Conversation'>;
 
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
 const MAX_CHARS = 250;
+
+/** How long a long-press waits for the blur picture before opening the menu without it. */
+const MENU_SNAPSHOT_WAIT_MS = 120;
 
 /** How many characters from the cap the countdown starts showing. */
 const COUNTER_VISIBLE_FROM = 50;
@@ -171,19 +177,6 @@ function clampComposerInput(raw: string): string {
   const lines = byChars.split('\n');
   return lines.length <= MAX_LINES ? byChars : lines.slice(0, MAX_LINES).join('\n');
 }
-
-const MORE_EMOJIS = [
-  '😀','😃','😄','😁','😆','😅','🤣','😊','😇','🥰',
-  '😍','🤩','😘','😗','😙','😚','🙂','🤗','🤭','🫡',
-  '🤔','🫠','🤐','🤨','😐','😑','😶','😏','😒','🙄',
-  '😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕',
-  '🥳','🤯','😤','😠','😡','🤬','😈','👿','💀','💩',
-  '👋','🤚','🖐','✋','🤙','👍','👎','✊','🤜','👏',
-  '🙌','🤲','🙏','💪','🫶','❤️','🧡','💛','💚','💙',
-  '💜','🖤','🤍','💔','❤️‍🔥','✨','💫','⭐','🌟','🎉',
-  '🎊','🎶','🎵','🔥','💯','✅','❌','⚡','💥','🌈',
-];
-
 
 function JamInviteBubble({
   msg,
@@ -369,7 +362,7 @@ function MessageBubble({
   const hasLinks = !!textParts && textParts.some(p => p.link);
 
   // Deleted for everyone: a quiet placeholder. No words (the server erased them), no
-  // reactions, no reply; a long-press offers only "Delete for me".
+  // reactions, no reply, and nothing left for a long-press to offer.
   if (msg.deletedAt && !isSystem) {
     return (
       <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
@@ -378,8 +371,8 @@ function MessageBubble({
           {!isMe && showName ? (
             <Text style={styles.senderName}>{msg.senderDisplayName || msg.senderUsername}</Text>
           ) : null}
-          <Pressable
-            onLongPress={() => onLongPress(msg)}
+          <View
+            accessible
             accessibilityLabel={isMe ? 'You deleted this message' : 'This message was deleted'}
             style={[styles.bubble, styles.bubbleDeleted]}
           >
@@ -389,7 +382,7 @@ function MessageBubble({
                 {isMe ? 'You deleted this message' : 'This message was deleted'}
               </Text>
             </View>
-          </Pressable>
+          </View>
         </View>
       </View>
     );
@@ -639,102 +632,11 @@ function MessageBubble({
   );
 }
 
-/** A row under the reactions in the long-press menu (Copy, …). */
-type MessageMenuAction = {
-  key: string;
-  label: string;
-  icon: IconName;
-  destructive?: boolean;
-  onPress: () => void;
-};
-
-/**
- * The long-press menu: quick reactions on top (the "+" opens every emoji), then what can be
- * done with the message — `actions`, built for the pressed message by the screen.
- */
-function MessageMenu({
-  visible,
-  onPick,
-  onClose,
-  actions,
-  showReactions = true,
-}: {
-  visible: boolean;
-  onPick: (emoji: string) => void;
-  onClose: () => void;
-  actions: MessageMenuAction[];
-  /** Off for a deleted message: there is nothing left to react to. */
-  showReactions?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!visible) { return null; }
-
-  return (
-    <Pressable style={styles.reactionPickerOverlay} onPress={onClose}>
-      <View style={styles.reactionPickerCard}>
-        {/* Quick row */}
-        {showReactions ? (
-        <View style={styles.reactionPickerRow}>
-          {QUICK_REACTIONS.map(emoji => (
-            <TouchableOpacity
-              key={emoji}
-              style={styles.reactionPickerBtn}
-              activeOpacity={0.7}
-              onPress={() => onPick(emoji)}
-            >
-              <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[styles.reactionPickerBtn, styles.reactionPickerMoreBtn, expanded && styles.reactionPickerMoreBtnActive]}
-            activeOpacity={0.7}
-            onPress={() => setExpanded(e => !e)}
-          >
-            <Text style={styles.reactionPickerMoreIcon}>+</Text>
-          </TouchableOpacity>
-        </View>
-        ) : null}
-
-        {/* Expanded emoji grid */}
-        {expanded && (
-          <View style={styles.emojiGrid}>
-            {MORE_EMOJIS.map((emoji, i) => (
-              <TouchableOpacity
-                key={`${emoji}-${i}`}
-                style={styles.emojiGridBtn}
-                activeOpacity={0.7}
-                onPress={() => onPick(emoji)}
-              >
-                <Text style={styles.emojiGridEmoji}>{emoji}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* What can be done with the message. Hidden while the full emoji grid is open, so
-            the card never outgrows a small screen. */}
-        {!expanded && actions.length > 0 ? (
-          <View style={[styles.menuActions, !showReactions && styles.menuActionsAlone]}>
-            {actions.map(a => (
-              <Pressable
-                key={a.key}
-                onPress={a.onPress}
-                accessibilityRole="button"
-                accessibilityLabel={a.label}
-                style={({ pressed }) => [styles.menuAction, pressed && styles.menuActionPressed]}
-              >
-                <Icon name={a.icon} size={20} color={a.destructive ? COLORS.error : COLORS.white} />
-                <Text style={[styles.menuActionLabel, a.destructive && styles.menuActionLabelDanger]}>
-                  {a.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
-    </Pressable>
-  );
+/** Deletes the downloaded copies of these messages' disappearing photos and videos. */
+function forgetChatMediaOf(messages: ChatMessage[]): void {
+  for (const m of messages) {
+    if (m.kind === 'text' && chatMediaFrom(m.metadata)) { forgetChatMedia(m.id); }
+  }
 }
 
 /**
@@ -777,7 +679,8 @@ async function markReadAndRefreshBadge(conversationId: string): Promise<void> {
 type RowActions = {
   onReply: (msg: ChatMessage) => void;
   onReplyQuotePress: (originalId: string) => void;
-  onLongPress: (msg: ChatMessage) => void;
+  /** `anchor`: where the bubble is on screen, for the menu to lift it from there. */
+  onLongPress: (msg: ChatMessage, anchor: MenuAnchor | null) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
   onPlaySharedPost: (postId: string) => void;
   onRepostSharedPost: (postId: string) => void;
@@ -828,35 +731,46 @@ const MessageRow = React.memo(function ChatRow({
   mediaLoading,
   actions,
 }: MessageRowProps) {
+  const bubbleRef = useRef<View>(null);
+  const openMenu = (msg: ChatMessage) => {
+    const bubble = bubbleRef.current;
+    if (!bubble) {
+      actions.onLongPress(msg, null);
+      return;
+    }
+    bubble.measureInWindow((_x, y, _width, height) => actions.onLongPress(msg, { y, height }));
+  };
   return (
     <>
       {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
       <SwipeRevealRow timestamp={formatChatTimeOnly(item.createdAt)}>
-        <MessageBubble
-          msg={item}
-          isMe={isMe}
-          // A run of one person's bubbles: name on the first, photo beside the last.
-          showName={showName}
-          showAvatar={showAvatar}
-          conversationId={conversationId}
-          conversationTitle={conversationTitle}
-          repliedTo={repliedTo}
-          isHighlighted={isHighlighted}
-          onReply={() => actions.onReply(item)}
-          onReplyQuotePress={actions.onReplyQuotePress}
-          onLongPress={actions.onLongPress}
-          onReactionToggle={actions.onReactionToggle}
-          onPlaySharedPost={actions.onPlaySharedPost}
-          onRepostSharedPost={actions.onRepostSharedPost}
-          onOpenSharedProfile={actions.onOpenSharedProfile}
-          onOpenSharedRepost={actions.onOpenSharedRepost}
-          onOpenReposterProfile={actions.onOpenReposterProfile}
-          mediaSavers={mediaSavers}
-          mediaLoading={mediaLoading}
-          onOpenChatMedia={actions.onOpenChatMedia}
-          onOpenLink={actions.onOpenLink}
-          onCopyLink={actions.onCopyLink}
-        />
+        <View ref={bubbleRef} collapsable={false}>
+          <MessageBubble
+            msg={item}
+            isMe={isMe}
+            // A run of one person's bubbles: name on the first, photo beside the last.
+            showName={showName}
+            showAvatar={showAvatar}
+            conversationId={conversationId}
+            conversationTitle={conversationTitle}
+            repliedTo={repliedTo}
+            isHighlighted={isHighlighted}
+            onReply={() => actions.onReply(item)}
+            onReplyQuotePress={actions.onReplyQuotePress}
+            onLongPress={openMenu}
+            onReactionToggle={actions.onReactionToggle}
+            onPlaySharedPost={actions.onPlaySharedPost}
+            onRepostSharedPost={actions.onRepostSharedPost}
+            onOpenSharedProfile={actions.onOpenSharedProfile}
+            onOpenSharedRepost={actions.onOpenSharedRepost}
+            onOpenReposterProfile={actions.onOpenReposterProfile}
+            mediaSavers={mediaSavers}
+            mediaLoading={mediaLoading}
+            onOpenChatMedia={actions.onOpenChatMedia}
+            onOpenLink={actions.onOpenLink}
+            onCopyLink={actions.onCopyLink}
+          />
+        </View>
         {readStatus ? (
           <Text style={styles.readStatus}>
             {RECEIPT_LABEL[readStatus]}
@@ -1071,6 +985,16 @@ export default function ConversationScreen() {
     return 'not-friends';
   }, [kind, otherUserId, rel]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  // The chat, blurred behind the menu. Taken before the menu is drawn, so it is not in the picture.
+  const screenRef = useRef<View>(null);
+  const [menuBackdrop, setMenuBackdrop] = useState<string | null>(null);
+  const menuOpeningRef = useRef(0);
+  const closeMessageMenu = useCallback(() => setReactionTarget(null), []);
+  // The message the emoji sheet is open for.
+  const [emojiFor, setEmojiFor] = useState<ChatMessage | null>(null);
+  // My message waiting on "Delete this message?".
+  const [deleteAsk, setDeleteAsk] = useState<ChatMessage | null>(null);
   // Deleting (20261119010000): offered only once the backend answers that it has it.
   const [deletionOn, setDeletionOn] = useState(false);
   useEffect(() => {
@@ -1237,14 +1161,19 @@ export default function ConversationScreen() {
   useEffect(() => () => { aliveRef.current = false; }, []);
   const refreshLatest = useCallback(async (reason: string) => {
     try {
-      const { messages: latest } = await fetchFirstPageWithRetry(conversationId);
+      const { messages: latest, nextCursor: latestCursor } = await fetchFirstPageWithRetry(conversationId);
       if (!aliveRef.current) { return; }
       const onScreen = new Set(messagesRef.current.map(m => m.id));
       const added = latest.filter(m => !onScreen.has(m.id)).length;
       // In server order, not on top: a catch-up can bring an older message in after newer
       // ones (utils/chatOrder.ts).
-      // …and a message deleted meanwhile becomes its placeholder (merging only adds).
-      setMessages(prev => applyServerDeletes(mergeNewestFirst(prev, latest), latest));
+      // …and a message deleted meanwhile becomes its placeholder (merging only adds), and a chat
+      // cleared meanwhile loses everything older than its line.
+      setMessages(prev => withoutClearedHistory(applyServerDeletes(mergeNewestFirst(prev, latest), latest)));
+      if (latest.some(isChatClearedLine)) {
+        setNextCursor(latestCursor);
+        void messageCache.setMessages(conversationId, latest);
+      }
       void markConversationDelivered(conversationId, latest[0]?.createdAt ?? null);
       if (added > 0) {
         console.log(`[chat] catch-up (${reason}) added ${added} message(s)`);
@@ -1349,9 +1278,20 @@ export default function ConversationScreen() {
             return prev;
           }
           console.log(`[realtime] ConversationScreen setMessages adding id=${msg.id} (was ${prev.length} msgs)`);
-          return mergeNewestFirst(prev, [msg]);
+          return withoutClearedHistory(mergeNewestFirst(prev, [msg]));
         });
         setTimeout(scrollToLatest, 50);
+        if (isChatClearedLine(msg)) {
+          // Either of us cleared the chat: nothing older exists any more, here or saved.
+          forgetChatMediaOf(messagesRef.current);
+          setNextCursor(null);
+          setReplyingTo(null);
+          setReactionTarget(null);
+          setEmojiFor(null);
+          setDeleteAsk(null);
+          void messageCache.setMessages(conversationId, [msg]);
+          return;
+        }
         // Keep cache warm so the next open of this conversation shows the new msg
         void messageCache.prependMessages(conversationId, [msg]);
         // Re-mark read whenever an incoming message lands while the chat is
@@ -1409,6 +1349,7 @@ export default function ConversationScreen() {
         forgetChatMedia(messageId);
         setReplyingTo(r => (r?.id === messageId ? null : r));
         setReactionTarget(t => (t?.id === messageId ? null : t));
+        setEmojiFor(t => (t?.id === messageId ? null : t));
       },
     );
 
@@ -1975,53 +1916,58 @@ export default function ConversationScreen() {
     }
   }, [showToast]);
 
-  const handleLongPress = useCallback((msg: ChatMessage) => {
-    // A deleted message has nothing to react to; without deleting, nothing to offer at all.
-    if (msg.deletedAt && !deletionOn) { return; }
+  const handleLongPress = useCallback((msg: ChatMessage, anchor: MenuAnchor | null) => {
+    // Nothing left of a deleted message to react to, copy or delete.
+    if (msg.deletedAt) { return; }
+    if (KeyboardController.isVisible()) {
+      KeyboardController.dismiss().catch(() => {});
+    }
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
     // its threshold, so activation feels consistent across gestures.
     haptics.impact();
-    setReactionTarget(msg);
-  }, [deletionOn]);
+    const opening = ++menuOpeningRef.current;
+    let opened = false;
+    const open = () => {
+      if (opened || opening !== menuOpeningRef.current) { return; }
+      opened = true;
+      setMenuAnchor(anchor);
+      setReactionTarget(msg);
+    };
+    setMenuBackdrop(null);
+    // The menu waits for the picture only this long: a slow phone gets it dimmed, then blurred.
+    const giveUp = setTimeout(open, MENU_SNAPSHOT_WAIT_MS);
+    void takeBlurSnapshot(screenRef).then(picture => {
+      if (opening !== menuOpeningRef.current) { return; }
+      clearTimeout(giveUp);
+      setMenuBackdrop(picture);
+      open();
+    });
+  }, []);
 
-  // ── Deleting a message ─────────────────────────────────────────────────────
-  const [deleteAsk, setDeleteAsk] = useState<{ msg: ChatMessage; everyone: boolean } | null>(null);
-  // The dialog keeps its words while it fades out.
-  const shownDeleteAskRef = useRef(deleteAsk);
-  if (deleteAsk) { shownDeleteAskRef.current = deleteAsk; }
+  // ── Deleting a message: my own, always for everyone ────────────────────────
   const [deletingMsg, setDeletingMsg] = useState(false);
-  const askDelete = useCallback(async (msg: ChatMessage, everyone: boolean) => {
+  const askDelete = useCallback((msg: ChatMessage) => {
     setReactionTarget(null);
-    if (KeyboardController.isVisible()) {
-      await KeyboardController.dismiss().catch(() => {});
-    }
-    setDeleteAsk({ msg, everyone });
+    setDeleteAsk(msg);
   }, []);
   /**
    * Waits for the server (the button shows it is busy) rather than hiding the message first:
    * a delete that silently failed would put the words back on the next open.
    */
   const confirmDelete = useCallback(async () => {
-    const ask = deleteAsk;
-    if (!ask || deletingMsg) { return; }
+    const msg = deleteAsk;
+    if (!msg || deletingMsg) { return; }
     setDeletingMsg(true);
-    const { msg, everyone } = ask;
     try {
-      if (everyone) {
-        await deleteMessageForEveryone(msg.id);
-        const at = new Date().toISOString();
-        setMessages(prev => markDeletedIn(prev, msg.id, at));
-        void messageCache.patchMessage(conversationId, asDeleted(msg, at));
-        forgetChatMedia(msg.id);
-      } else {
-        await deleteMessageForMe(msg.id);
-        setMessages(prev => withoutMessage(prev, msg.id));
-        void messageCache.removeMessage(conversationId, msg.id);
-      }
+      await deleteMessageForEveryone(msg.id);
+      const at = new Date().toISOString();
+      setMessages(prev => markDeletedIn(prev, msg.id, at));
+      void messageCache.patchMessage(conversationId, asDeleted(msg, at));
+      forgetChatMedia(msg.id);
       setReplyingTo(r => (r?.id === msg.id ? null : r));
       setDeleteAsk(null);
     } catch (e) {
-      console.warn(`[chat] delete (${everyone ? 'everyone' : 'me'}) failed`, e);
+      console.warn('[chat] delete failed', e);
       setDeleteAsk(null);
       showToast("Couldn't delete that message. Please try again.", { kind: 'error' });
     } finally {
@@ -2042,27 +1988,35 @@ export default function ConversationScreen() {
     setChatMenuOpen(true);
   }, []);
   const chatMenuActions = useMemo<DetailAction[]>(() => [
-    { key: 'clear', label: 'Clear chat', icon: 'eraser', onPress: () => setChatAsk('clear') },
+    // For both people, so only where there are two: never one member wiping a whole group.
+    ...(isGroup ? [] : [
+      { key: 'clear', label: 'Clear chat', icon: 'eraser', destructive: true, onPress: () => setChatAsk('clear') } as DetailAction,
+    ]),
     { key: 'delete', label: 'Delete chat', icon: 'trash', destructive: true, onPress: () => setChatAsk('delete') },
-  ], []);
+  ], [isGroup]);
   const confirmChatAsk = useCallback(async () => {
     const ask = chatAsk;
     if (!ask || clearingChat) { return; }
     setClearingChat(true);
     try {
-      await clearConversation(conversationId, ask === 'delete');
-      noteConversationCleared(conversationId, new Date().toISOString());
-      void messageCache.setMessages(conversationId, []);
-      setChatAsk(null);
       if (ask === 'delete') {
+        // Only out of my list, until a new message: every message stays.
+        await hideConversation(conversationId);
+        setChatAsk(null);
         void messageCache.removeFromInbox(conversationId);
         showToast('Chat deleted', { kind: 'success' });
         if (navigation.canGoBack()) { navigation.goBack(); }
       } else {
+        await clearChatForBoth(conversationId);
+        setChatAsk(null);
+        forgetChatMediaOf(messagesRef.current);
         setMessages([]);
         setNextCursor(null);
         setReplyingTo(null);
+        void messageCache.setMessages(conversationId, []);
         showToast('Chat cleared', { kind: 'success' });
+        // Brings in the one line the clear left, whichever way the realtime event went.
+        void refreshLatest('cleared');
       }
     } catch (e) {
       console.warn(`[chat] ${ask} chat failed`, e);
@@ -2071,7 +2025,7 @@ export default function ConversationScreen() {
     } finally {
       setClearingChat(false);
     }
-  }, [chatAsk, clearingChat, conversationId, navigation, showToast]);
+  }, [chatAsk, clearingChat, conversationId, navigation, showToast, refreshLatest]);
 
   const handleReactionToggle = useCallback(async (msg: ChatMessage, emoji: string) => {
     const myCurrentReaction = msg.reactions.find(r => r.users.includes(myId));
@@ -2117,6 +2071,17 @@ export default function ConversationScreen() {
     const msg = reactionTarget;
     if (!msg) { return []; }
     const actions: MessageMenuAction[] = [];
+    if (!msg.id.startsWith('opt-')) {
+      actions.push({
+        key: 'reply',
+        label: 'Reply',
+        icon: 'reply',
+        onPress: () => {
+          setReactionTarget(null);
+          latestRowActions.current?.onReply(msg);
+        },
+      });
+    }
     const copyable = copyableText(msg);
     if (copyable) {
       actions.push({
@@ -2136,26 +2101,27 @@ export default function ConversationScreen() {
         },
       });
     }
-    if (deletionOn && !msg.id.startsWith('opt-') && msg.kind !== 'system') {
-      if (msg.senderId === myId && !msg.deletedAt) {
-        actions.push({
-          key: 'delete-everyone',
-          label: 'Delete for everyone',
-          icon: 'trash',
-          destructive: true,
-          onPress: () => { void askDelete(msg, true); },
-        });
-      }
+    if (deletionOn && !msg.id.startsWith('opt-') && msg.senderId === myId) {
       actions.push({
-        key: 'delete-me',
-        label: 'Delete for me',
+        key: 'delete',
+        label: 'Delete',
         icon: 'trash',
         destructive: true,
-        onPress: () => { void askDelete(msg, false); },
+        onPress: () => askDelete(msg),
       });
     }
     return actions;
   }, [reactionTarget, showToast, deletionOn, myId, askDelete]);
+
+  // The pressed message's place in its run, so the menu draws it exactly as the chat does.
+  const menuRowRun = useMemo(() => {
+    const i = reactionTarget ? messages.findIndex(m => m.id === reactionTarget.id) : -1;
+    if (i < 0) { return { showName: false, showAvatar: true }; }
+    const item = messages[i]!;
+    const prev = messages[i + 1] ?? null;
+    const next = i > 0 ? messages[i - 1]! : null;
+    return { showName: !prev || !sameChatRun(prev, item), showAvatar: !next || !sameChatRun(item, next) };
+  }, [reactionTarget, messages]);
 
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
@@ -2166,6 +2132,19 @@ export default function ConversationScreen() {
     setReactionTarget(null);
     await handleReactionToggle(msg, emoji);
   }, [reactionTarget, handleReactionToggle]);
+
+  // The "+" in the menu: every emoji, in a sheet over the chat.
+  const openEmojiSheet = useCallback(() => {
+    setEmojiFor(reactionTarget);
+    setReactionTarget(null);
+  }, [reactionTarget]);
+  const handleSheetReaction = useCallback((emoji: string) => {
+    const msg = emojiFor;
+    setEmojiFor(null);
+    if (!msg) { return; }
+    haptics.select();
+    void handleReactionToggle(msg, emoji);
+  }, [emojiFor, handleReactionToggle]);
 
   const handleStartJam = useCallback(async () => {
     if (activeJam) {
@@ -2229,7 +2208,7 @@ export default function ConversationScreen() {
     return {
       onReply: msg => now().onReply(msg),
       onReplyQuotePress: id => now().onReplyQuotePress(id),
-      onLongPress: msg => now().onLongPress(msg),
+      onLongPress: (msg, anchor) => now().onLongPress(msg, anchor),
       onReactionToggle: (msg, emoji) => now().onReactionToggle(msg, emoji),
       onPlaySharedPost: id => now().onPlaySharedPost(id),
       onRepostSharedPost: id => now().onRepostSharedPost(id),
@@ -2282,7 +2261,7 @@ export default function ConversationScreen() {
   const otherListening = useListeningNow(listeningIds, listeningFocus).get(otherUserId ?? '') ?? null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView ref={screenRef} style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -2683,21 +2662,53 @@ export default function ConversationScreen() {
 
       <MessageMenu
         visible={!!reactionTarget}
-        onPick={handlePickReaction}
-        onClose={() => setReactionTarget(null)}
+        anchor={menuAnchor}
+        backdropUri={menuBackdrop}
+        alignRight={reactionTarget?.senderId === myId}
+        timeLabel={reactionTarget ? formatChatTimestamp(reactionTarget.createdAt).toUpperCase() : ''}
+        reactions={QUICK_REACTIONS}
+        myReaction={reactionTarget?.reactions.find(r => r.users.includes(myId))?.emoji ?? null}
         actions={menuActions}
-        showReactions={!reactionTarget?.deletedAt}
+        onPick={handlePickReaction}
+        onMore={openEmojiSheet}
+        onClose={closeMessageMenu}
+      >
+        {reactionTarget ? (
+          // Its own provider: the list's ends at the list, and a row cannot draw without one.
+          <SwipeRevealProvider>
+            <MessageRow
+              item={reactionTarget}
+              isMe={reactionTarget.senderId === myId}
+              showSep={false}
+              showName={menuRowRun.showName}
+              showAvatar={menuRowRun.showAvatar}
+              conversationId={conversationId}
+              conversationTitle={title}
+              repliedTo={reactionTarget.replyToId ? messagesById.get(reactionTarget.replyToId) ?? null : null}
+              isHighlighted={false}
+              readStatus={null}
+              mediaSavers={mediaSavers[reactionTarget.id]}
+              mediaLoading={false}
+              actions={rowActions}
+            />
+          </SwipeRevealProvider>
+        ) : null}
+      </MessageMenu>
+
+      <ReactionEmojiSheet
+        visible={!!emojiFor}
+        quickReactions={QUICK_REACTIONS}
+        onPick={handleSheetReaction}
+        onClose={() => setEmojiFor(null)}
       />
 
       <ConfirmActionModal
         visible={!!deleteAsk}
-        title={shownDeleteAskRef.current?.everyone ? 'Delete for everyone?' : 'Delete for you?'}
+        title="Delete this message?"
         message={
-          shownDeleteAskRef.current?.everyone
-            ? "It's removed for everyone in this chat. Anyone who already read it has seen it."
-            : isGroup
-              ? "It's removed for you only. Everyone else still sees it."
-              : `It's removed for you only. ${title || 'They'} still sees it.`
+          isGroup
+            ? "It's deleted for everyone in this group. This can't be undone."
+            : <>It's deleted for <ConfirmEmphasis>both</ConfirmEmphasis> you and {title || 'them'}. This can't be undone.</>
         }
         icon="trash"
         tone="destructive"
@@ -2718,15 +2729,13 @@ export default function ConversationScreen() {
         message={
           shownChatAskRef.current === 'delete'
             ? (isGroup
-              ? 'It leaves your chats until someone sends a new message. You stay in the group.'
-              : 'It leaves your chats until someone sends a new message. Only for you.')
-            : (isGroup
-              ? 'Messages are removed for you only. Everyone else still sees them.'
-              : `Messages are removed for you only. ${title || 'They'} still sees them.`)
+              ? <>It's hidden for <ConfirmEmphasis>only you</ConfirmEmphasis>, until a new message arrives. You stay in the group, and nothing changes for anyone else.</>
+              : <>It's hidden for <ConfirmEmphasis>only you</ConfirmEmphasis>, until a new message arrives. Your messages stay, and nothing changes for {title || 'them'}.</>)
+            : <>All messages are permanently deleted for <ConfirmEmphasis>both</ConfirmEmphasis> you and {title || 'them'}, and they'll see that you cleared the chat. This can't be undone.</>
         }
         icon={shownChatAskRef.current === 'delete' ? 'trash' : 'eraser'}
         tone="destructive"
-        confirmLabel={shownChatAskRef.current === 'delete' ? 'Delete' : 'Clear'}
+        confirmLabel={shownChatAskRef.current === 'delete' ? 'Delete chat' : 'Clear chat'}
         busy={clearingChat}
         onConfirm={() => { void confirmChatAsk(); }}
         onCancel={() => setChatAsk(null)}
@@ -3075,86 +3084,6 @@ const styles = StyleSheet.create({
   },
   reactionEmoji: { fontSize: 14, lineHeight: 16 },
   reactionCount: { color: COLORS.white, fontSize: 11, fontWeight: '600' },
-  // Reaction picker overlay
-  reactionPickerOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  reactionPickerCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 24,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    width: '100%',
-  },
-  reactionPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  reactionPickerBtn: { padding: 6 },
-  reactionPickerEmoji: { fontSize: 26 },
-  reactionPickerMoreBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  reactionPickerMoreBtnActive: {
-    backgroundColor: COLORS.purpleDim,
-  },
-  reactionPickerMoreIcon: { color: COLORS.textSecondary, fontSize: 20, fontWeight: '600' },
-  // Long-press menu rows (Copy, …) under the reactions.
-  menuActions: {
-    marginTop: 6,
-    paddingTop: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
-  },
-  // A deleted message's menu has no reactions above the rows.
-  menuActionsAlone: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
-  menuAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    minHeight: 44,
-    borderRadius: 12,
-  },
-  menuActionPressed: { backgroundColor: COLORS.surface },
-  menuActionLabel: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
-  menuActionLabelDanger: { color: COLORS.error },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingTop: 8,
-    paddingHorizontal: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
-    marginTop: 6,
-  },
-  emojiGridBtn: {
-    width: '10%',
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiGridEmoji: { fontSize: 22 },
   // Inline banner that appears between the message list and the input when
   // the user has armed a reply via the swipe gesture. Tap × to cancel and
   // fall back to a normal send.

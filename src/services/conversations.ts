@@ -248,12 +248,20 @@ export async function markAsRead(conversationId: string): Promise<void> {
 }
 
 /**
- * Clear chat (`hide` false): I no longer see anything sent up to now; the chat stays in my
- * list. Delete chat (`hide` true): the same, and the chat leaves my list until a new message
- * arrives. Mine only — nobody else's chat changes. Throws on failure.
+ * Clear chat: permanently deletes every message in a one-to-one chat, for both people, and
+ * leaves one line saying who did it. Throws on failure.
  */
-export async function clearConversation(conversationId: string, hide: boolean): Promise<void> {
-  const { error } = await db.rpc('clear_conversation', { p_conversation_id: conversationId, p_hide: hide });
+export async function clearChatForBoth(conversationId: string): Promise<void> {
+  const { error } = await db.rpc('clear_chat_for_both', { p_conversation_id: conversationId });
+  if (error) { throw error; }
+}
+
+/**
+ * Delete chat: the chat leaves MY list until a new message arrives. No message is touched, and
+ * nobody else's chat changes. Throws on failure.
+ */
+export async function hideConversation(conversationId: string): Promise<void> {
+  const { error } = await db.rpc('hide_conversation', { p_conversation_id: conversationId });
   if (error) { throw error; }
 }
 

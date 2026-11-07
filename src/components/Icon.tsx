@@ -22,6 +22,7 @@ import {
   ArrowSquareOut,
   ArrowUp,
   ArrowsClockwise,
+  Car,
   Clock,
   Copy,
   ArrowsInSimple,
@@ -30,7 +31,13 @@ import {
   Broadcast,
   Camera,
   DownloadSimple,
+  ForkKnife,
+  Hash,
   Image as PhImage,
+  Lightbulb,
+  PawPrint,
+  Smiley,
+  SoccerBall,
   Timer,
   VideoCamera,
   CaretDown,
@@ -114,6 +121,8 @@ import Svg, { Path } from 'react-native-svg';
 import { COLORS } from '../theme/colors';
 
 export type IconName =
+  // the reaction sheet's emoji categories
+  | 'emojiSmileys' | 'emojiPeople' | 'emojiNature' | 'emojiFood' | 'emojiActivity' | 'emojiTravel' | 'emojiObjects' | 'emojiSymbols'
   // playback & transport
   | 'play' | 'playCircle' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
@@ -174,6 +183,14 @@ const FEED_SEAM =
  * `compose` (CHAT_CIRCLE_PLUS) and `layoutList` (FEED_SEAM).
  */
 const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [PhComponent, IconWeight]> = {
+  emojiSmileys: [Smiley, 'regular'],
+  emojiPeople: [HandWaving, 'regular'],
+  emojiNature: [PawPrint, 'regular'],
+  emojiFood: [ForkKnife, 'regular'],
+  emojiActivity: [SoccerBall, 'regular'],
+  emojiTravel: [Car, 'regular'],
+  emojiObjects: [Lightbulb, 'regular'],
+  emojiSymbols: [Hash, 'regular'],
   // playback
   play: [Play, 'fill'],
   // A filled disc with the triangle cut out — the Spotify repost card's play (SpotifyPostCard).

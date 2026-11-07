@@ -247,24 +247,12 @@ export async function fetchMessages(
     query = query.lt('created_at', cursor);
   }
 
-  // Alongside the page: up to when I cleared this chat (Clear chat / Delete chat).
-  const [{ data, error }, clearedAt] = await Promise.all([
-    query,
-    cursor ? Promise.resolve(clearedAtCache.get(conversationId) ?? null) : fetchClearedAt(conversationId, myIdPromise),
-  ]);
+  const { data, error } = await query;
   if (error) { throw error; }
 
   const rows = (data ?? []) as RawMessageRow[];
-  const pageFull = rows.length > limit;
-  const page = pageFull ? rows.slice(0, limit) : rows;
-  // Nothing at or before a clear is shown, and nothing older is fetched after it.
-  const clearedMs = clearedAt ? Date.parse(clearedAt) : NaN;
-  const slice = Number.isFinite(clearedMs)
-    ? page.filter(r => Date.parse(r.created_at) > clearedMs)
-    : page;
-  // More only if the row past this page (the +1 asked for) is itself after the clear.
-  const extra = pageFull ? rows[limit] : undefined;
-  const hasMore = !!extra && (!Number.isFinite(clearedMs) || Date.parse(extra.created_at) > clearedMs);
+  const hasMore = rows.length > limit;
+  const slice = hasMore ? rows.slice(0, limit) : rows;
 
   if (slice.length === 0) {
     return { messages: [], nextCursor: null };
@@ -273,11 +261,10 @@ export async function fetchMessages(
   // Sender profiles and the page's reactions, together: each is one round trip.
   const senderIds = [...new Set(slice.map(r => r.sender_id).filter(Boolean))] as string[];
   const msgIds = slice.map(r => r.id);
-  const [{ data: profileData }, { data: rxnData }, myId, hidden] = await Promise.all([
+  const [{ data: profileData }, { data: rxnData }, myId] = await Promise.all([
     db.from('profiles').select('id, username, display_name, avatar_url').in('id', senderIds),
     db.from('message_reactions').select('message_id, user_id, emoji').in('message_id', msgIds),
     myIdPromise.then(id => id ?? ''),
-    fetchHiddenIds(msgIds),
   ]);
   const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
   for (const p of (profileData ?? []) as { id: string; username: string; display_name: string | null; avatar_url: string | null }[]) {
@@ -291,8 +278,7 @@ export async function fetchMessages(
     profiles: r.sender_id ? (profileMap.get(r.sender_id) ?? null) : null,
   }));
 
-  // Deleted for me: left out (the page's cursor still steps past them).
-  const messages = withProfiles.filter(r => !hidden.has(r.id)).map(r => toMessage(r, myId, rawReactions));
+  const messages = withProfiles.map(r => toMessage(r, myId, rawReactions));
   const nextCursor = hasMore ? slice[slice.length - 1]!.created_at : null;
 
   return { messages, nextCursor };
@@ -371,61 +357,20 @@ export async function sendMessage(
   return toMessage(raw, myId, []);
 }
 
-// ── Deleting (20261119010000) ────────────────────────────────────────────────
-
-/** Clear chat / Delete chat time per chat, from the first page's lookup — older pages reuse it. */
-const clearedAtCache = new Map<string, string | null>();
-
-async function fetchClearedAt(conversationId: string, myIdPromise: Promise<string | null>): Promise<string | null> {
-  try {
-    const me = await myIdPromise;
-    if (!me) { return null; }
-    // My own row of the private conversation_clears (only I can read it).
-    const { data, error } = await db
-      .from('conversation_clears')
-      .select('cleared_at')
-      .eq('conversation_id', conversationId)
-      .eq('user_id', me)
-      .maybeSingle();
-    // A missing table (migration not applied) reads as "never cleared".
-    const at = error ? null : ((data as { cleared_at?: string | null } | null)?.cleared_at ?? null);
-    clearedAtCache.set(conversationId, at);
-    return at;
-  } catch {
-    return clearedAtCache.get(conversationId) ?? null;
-  }
-}
-
-/** The page's messages I deleted for myself. None when the table is not there yet. */
-async function fetchHiddenIds(messageIds: string[]): Promise<Set<string>> {
-  if (messageIds.length === 0) { return new Set(); }
-  try {
-    const { data, error } = await db.from('message_hides').select('message_id').in('message_id', messageIds);
-    if (error || !data) { return new Set(); }
-    return new Set((data as { message_id: string }[]).map(r => r.message_id));
-  } catch {
-    return new Set();
-  }
-}
-
-/** After Clear chat / Delete chat on this phone: the next page load uses the new time. */
-export function noteConversationCleared(conversationId: string, atIso: string): void {
-  clearedAtCache.set(conversationId, atIso);
-}
+// ── Deleting (20261119010000, 20261119020000) ──────────────────────────────────
 
 let deletionAvailable: Promise<boolean> | null = null;
 
 /**
- * Whether this backend has message deleting (20261119010000) — asked once per launch (a
- * one-row read of message_hides). Until it answers true, the app offers none of Delete for
- * me / Delete for everyone / Clear chat / Delete chat. A failed read that is not "no such
- * table" (offline) is asked again next time.
+ * Whether this backend has the delete rules (20261119020000) — asked once per launch (a one-row
+ * read of conversation_hides). Until it answers true, the app offers none of Delete, Clear chat
+ * or Delete chat. A failed read that is not "no such table" (offline) is asked again next time.
  */
 export function getChatDeletionAvailable(): Promise<boolean> {
   if (!deletionAvailable) {
     const asking = (async () => {
       try {
-        const { error } = await db.from('message_hides').select('message_id').limit(1);
+        const { error } = await db.from('conversation_hides').select('user_id').limit(1);
         if (!error) { return true; }
         if (error.code !== '42P01' && error.code !== 'PGRST205') { deletionAvailable = null; }
         return false;
@@ -442,26 +387,15 @@ export function getChatDeletionAvailable(): Promise<boolean> {
 /** Test-only. */
 export function __resetChatDeletionForTest(): void {
   deletionAvailable = null;
-  clearedAtCache.clear();
 }
 
 /**
- * Delete for everyone — my own message. The server marks it deleted AND erases its words and
- * attachment; every app then shows it as deleted (installed builds simply stop showing it).
- * Throws on failure, so the caller can put the message back.
+ * Delete — my own message, for everyone in the chat. The server marks it deleted AND erases its
+ * words and attachment; every app then shows it as deleted (installed builds simply stop showing
+ * it). Throws on failure, so the caller can put the message back.
  */
 export async function deleteMessageForEveryone(messageId: string): Promise<void> {
   const { error } = await db.rpc('delete_message_for_everyone', { p_message_id: messageId });
-  if (error) { throw error; }
-}
-
-/** Delete for me — the message is hidden for me only. Throws on failure. */
-export async function deleteMessageForMe(messageId: string): Promise<void> {
-  const me = await getMyUserId();
-  if (!me) { throw new Error('not_authenticated'); }
-  const { error } = await db
-    .from('message_hides')
-    .upsert({ user_id: me, message_id: messageId }, { onConflict: 'user_id,message_id', ignoreDuplicates: true });
   if (error) { throw error; }
 }
 

@@ -280,10 +280,11 @@ export default function InboxScreen() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null; conversation_id?: string } }) => {
+        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null; metadata?: { chat_cleared?: boolean } | null; conversation_id?: string } }) => {
           const row = payload.new;
           if (!row || row.deleted_at) { return; }
-          if (row.kind === 'system') { return; }
+          // System lines never reach the list, except that a cleared chat's line is empty now.
+          if (row.kind === 'system' && !row.metadata?.chat_cleared) { return; }
           if (row.sender_id && row.sender_id === myIdRef.current) { return; }
           console.log('[realtime] inbox got messages INSERT', { conv: row.conversation_id, sender: row.sender_id });
           void refreshFromNetwork();

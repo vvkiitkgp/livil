@@ -1,14 +1,15 @@
-import { applyServerDeletes, asDeleted, markDeletedIn, withoutMessage } from '../chatDelete';
+import { applyServerDeletes, asDeleted, isChatClearedLine, markDeletedIn, withoutClearedHistory } from '../chatDelete';
 
 type Msg = {
   id: string;
+  kind: string;
   deletedAt: string | null;
   body: string | null;
   metadata: Record<string, unknown> | null;
   reactions: { emoji: string }[];
 };
 const msg = (id: string, body: string, extra: Partial<Msg> = {}): Msg =>
-  ({ id, deletedAt: null, body, metadata: null, reactions: [], ...extra });
+  ({ id, kind: 'text', deletedAt: null, body, metadata: null, reactions: [], ...extra });
 const AT = '2026-11-02T10:00:00.000Z';
 
 // Newest first.
@@ -20,7 +21,7 @@ const CHAT = [
 
 describe('asDeleted', () => {
   it('keeps who and when, drops the words, the attachment and the reactions', () => {
-    expect(asDeleted(CHAT[0]!, AT)).toEqual({ id: 'm3', deletedAt: AT, body: null, metadata: null, reactions: [] });
+    expect(asDeleted(CHAT[0]!, AT)).toEqual({ id: 'm3', kind: 'text', deletedAt: AT, body: null, metadata: null, reactions: [] });
     expect(asDeleted(CHAT[2]!, AT).metadata).toBeNull();
   });
 });
@@ -40,10 +41,24 @@ describe('markDeletedIn', () => {
   });
 });
 
-describe('withoutMessage', () => {
-  it('Delete for me takes the message off the list', () => {
-    expect(withoutMessage(CHAT, 'm2').map(m => m.id)).toEqual(['m3', 'm1']);
-    expect(withoutMessage(CHAT, 'nope')).toBe(CHAT);
+describe('a cleared chat', () => {
+  const line = { ...CHAT[0]!, id: 'cleared', kind: 'system', body: 'Riya cleared this chat', metadata: { chat_cleared: true } };
+
+  it('recognises only its own line', () => {
+    expect(isChatClearedLine(line)).toBe(true);
+    expect(isChatClearedLine({ kind: 'system', metadata: null })).toBe(false);
+    expect(isChatClearedLine({ kind: 'text', metadata: { chat_cleared: true } })).toBe(false);
+  });
+
+  it('drops everything older than the line, keeping what came after', () => {
+    const newer = { ...CHAT[0]!, id: 'after' };
+    expect(withoutClearedHistory([newer, line, ...CHAT]).map(m => m.id)).toEqual(['after', 'cleared']);
+  });
+
+  it('leaves a list with nothing to drop as the same array', () => {
+    expect(withoutClearedHistory(CHAT)).toBe(CHAT);
+    const onlyLine = [line];
+    expect(withoutClearedHistory(onlyLine)).toBe(onlyLine);
   });
 });
 
