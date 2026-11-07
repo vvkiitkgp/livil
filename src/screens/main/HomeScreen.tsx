@@ -48,7 +48,9 @@ import { useHomeFeed, type HomeFeedState } from '../../hooks/useHomeFeed';
 import { useNewOnLivilDot } from '../../hooks/useNewOnLivilDot';
 import {
   clampScrollOffset,
+  isNearFeedTop,
   isTabBarPinned,
+  makeInListTabsOpacity,
   pinTop,
 } from '../../utils/homeTabsPin';
 import { useSpotifyAvailability } from '../../services/spotify';
@@ -82,6 +84,8 @@ type FeedListItem =
 const FEED_PAGE_SIZE = 12;
 /** The fixed top bar's height; the list clears it (iOS inset, Android spacer). */
 const TOP_BAR_H = 64;
+/** At least the pinned pills' height, so they clear the screen when they slide away. */
+const PINNED_TABS_H = 64;
 /** Where a list rests before any scroll: iOS clears the top bar with a content inset. */
 const RESTING_Y = Platform.OS === 'ios' ? -TOP_BAR_H : 0;
 /** Home's pages, left to right. */
@@ -259,7 +263,7 @@ function HomeListHeader({
   storiesLoading,
   stories,
   showTabs,
-  tabsHidden,
+  tabsOpacity,
   activeTab,
   onSelectTab,
   newDot,
@@ -272,7 +276,7 @@ function HomeListHeader({
   storiesLoading: boolean;
   stories: Story[];
   showTabs: boolean;
-  tabsHidden: boolean;
+  tabsOpacity: Animated.AnimatedSubtraction<number>;
   activeTab: HomeFeedTab;
   onSelectTab: (tab: HomeFeedTab) => void;
   newDot: boolean;
@@ -294,14 +298,14 @@ function HomeListHeader({
       {/* The in-list For you | New on Livil switch. Its position decides when the pinned
           copy (rendered over the pages) takes over. */}
       {showTabs ? (
-        <View
+        <Animated.View
           onLayout={e => onTabsLayout(e.nativeEvent.layout.y)}
-          // While the pinned copy is up, this one is under the translucent top bar,
-          // where it would show through as a ghost of the same pills.
-          style={tabsHidden ? styles.inListTabsHidden : undefined}
+          // Always this style, never added and removed: taking a native-driven style away leaves
+          // its last value on the view, which left these pills invisible back at the top.
+          style={{ opacity: tabsOpacity }}
         >
           <HomeFeedTabs active={activeTab} onSelect={onSelectTab} showNewDot={newDot} />
-        </View>
+        </Animated.View>
       ) : null}
 
       <View style={styles.feedHeadingBlock}>
@@ -436,8 +440,7 @@ export default function HomeScreen() {
   // Top bar hide/show on scroll direction
   // iOS: clear the floating top bar with an inset rather than a spacer row, so
   // UIRefreshControl sits under the bar instead of behind it. The resting scroll
-  // offset becomes -TOP_BAR_H; handleScroll's `y < 10` "at the top" test still
-  // holds for it.
+  // offset becomes -TOP_BAR_H, which isNearFeedTop allows for.
   const FEED_INSET_IOS = useMemo(() => ({
     contentInset: { top: TOP_BAR_H },
     contentOffset: { x: 0, y: -TOP_BAR_H },
@@ -472,21 +475,24 @@ export default function HomeScreen() {
   // ── For you | New on Livil: the pinned copy ─────────────────────────────────
   // The tab bar lives in the list under the stories. Once it would scroll under the top
   // bar (or off the top, while the top bar is hidden) a copy pinned to the screen takes
-  // over, following the top bar as it slides. Two copies rather than FlatList's
+  // over, sliding in and out with the top bar. Two copies rather than FlatList's
   // stickyHeaderIndices: a sticky header sticks to the list's own top edge, which is
   // underneath the floating top bar whenever that is showing.
   const tabBarYRef = useRef<number | null>(null);
   const pinnedRef = useRef(false);
   const [pinned, setPinned] = useState(false);
+  // The same fact for the native driver. Only ever set, never animated.
+  const pinnedAnim = useRef(new Animated.Value(0)).current;
   const updatePinned = useCallback((scrollY: number) => {
     const tabY = tabBarYRef.current;
     if (tabY === null) { return; }
     const next = isTabBarPinned(tabY, scrollY, pinTop(topBarVisible.current, TOP_BAR_H));
     if (next !== pinnedRef.current) {
       pinnedRef.current = next;
+      pinnedAnim.setValue(next ? 1 : 0);
       setPinned(next);
     }
-  }, []);
+  }, [pinnedAnim]);
   // After a programmatic scroll, decide from where the list can really rest: a short tab
   // clamps the scroll, and iOS may not report that with a scroll event (homeTabsPin.ts).
   const viewportHRef = useRef(0);
@@ -502,10 +508,14 @@ export default function HomeScreen() {
   const pinnedTabsY = useMemo(
     () => topBarAnim.interpolate({
       inputRange: [-(TOP_BAR_H + insets.top), 0],
-      outputRange: [-TOP_BAR_H, 0],
+      outputRange: [-(TOP_BAR_H + insets.top + PINNED_TABS_H), 0],
       extrapolate: 'clamp',
     }),
     [topBarAnim, insets.top],
+  );
+  const inListTabsOpacity = useMemo(
+    () => makeInListTabsOpacity(pinnedAnim, topBarAnim, -(TOP_BAR_H + insets.top)),
+    [pinnedAnim, topBarAnim, insets.top],
   );
 
   const handleScrollFor = useCallback((which: HomeFeedTab, y: number) => {
@@ -519,7 +529,7 @@ export default function HomeScreen() {
     // shared tab bar — otherwise Home could hide it while you are on Library, a tab
     // root with no back gesture, and there is then no way out.
     if (navigation.isFocused()) {
-      if (y < 10) { showTopBar(); showChrome(); }
+      if (isNearFeedTop(y, RESTING_Y, TOP_BAR_H)) { showTopBar(); showChrome(); }
       else if (diff > 4) { hideTopBar(); hideChrome(); }
       else if (diff < -4) { showTopBar(); showChrome(); }
     }
@@ -687,7 +697,7 @@ export default function HomeScreen() {
   useEffect(() => {
     const y = lastScrollYRef.current[shownTab];
     updatePinned(y);
-    if (y < 10) { showTopBar(); showChrome(); }
+    if (isNearFeedTop(y, RESTING_Y, TOP_BAR_H)) { showTopBar(); showChrome(); }
   }, [shownTab, updatePinned, showTopBar, showChrome]);
 
   // The tab is missing on the server: put the viewer back on For you.
@@ -1048,7 +1058,7 @@ export default function HomeScreen() {
             storiesLoading={storiesLoading}
             stories={stories}
             showTabs={newTabAvailable}
-            tabsHidden={pinned && which === shownTab}
+            tabsOpacity={inListTabsOpacity}
             activeTab={shownTab}
             onSelectTab={selectTab}
             newDot={newDot}
@@ -1189,9 +1199,8 @@ export default function HomeScreen() {
       </Animated.View>
 
       {/* The pinned For you | New on Livil switch: shown once the in-list one has scrolled
-          under the top bar, and slid with the top bar so it sits right below it — or at
-          the top of the screen while the top bar is hidden. Under the top bar (zIndex) so
-          the bar slides over it, never under it. */}
+          under the top bar, right below the bar, and off the screen with it while it is hidden.
+          Under the top bar (zIndex) so the bar slides over it, never under it. */}
       {pinned && newTabAvailable ? (
         <Animated.View
           style={[
@@ -1395,9 +1404,6 @@ const styles = StyleSheet.create({
   },
   feedList: {
     overflow: 'visible',
-  },
-  inListTabsHidden: {
-    opacity: 0,
   },
   pinnedTabs: {
     position: 'absolute',
