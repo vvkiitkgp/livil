@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 import { COLORS } from '../theme/colors';
@@ -99,6 +99,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ToastContextValue>(() => ({ showToast }), [showToast]);
 
   const palette = toast ? KIND_STYLES[toast.kind] : null;
+  // iOS only. On Android FullWindowOverlay falls back to a bare <View> under the full-height app,
+  // and the absolute layer inside it measures from there: below the screen, so every Android
+  // toast was invisible (2026-11-07).
+  const ToastWindow = Platform.OS === 'ios' ? FullWindowOverlay : React.Fragment;
 
   return (
     <ToastContext.Provider value={value}>
@@ -106,8 +110,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {toast && palette ? (
         // iOS: in a window above everything. Drawn as a plain sibling of the app, a toast sat
         // BEHIND any `presentation: 'modal'` screen (the Editor, Upload) — "Save does nothing"
-        // was its error toast, hidden under the Editor (2026-10-31). Elsewhere it's a no-op.
-        <FullWindowOverlay>
+        // was its error toast, hidden under the Editor (2026-10-31).
+        <ToastWindow>
           <View
             pointerEvents="box-none"
             style={[styles.layer, { paddingTop: insets.top + HEADER_OFFSET }]}
@@ -134,7 +138,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </Pressable>
             </Animated.View>
           </View>
-        </FullWindowOverlay>
+        </ToastWindow>
       ) : null}
     </ToastContext.Provider>
   );

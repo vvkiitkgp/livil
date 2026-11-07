@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-566 TypeScript file(s) under `src/`, 113,791 lines.
+570 TypeScript file(s) under `src/`, 114,150 lines.
 
 ## Size hotspots
 
@@ -31,9 +31,9 @@ reading alone (Constitution P28).
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/HomeScreen.tsx` | 1671 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
+| `src/components/PostCard.tsx` | 1497 |
 | `src/screens/main/UserProfileScreen.tsx` | 1475 |
 | `src/screens/main/ProfileScreen.tsx` | 1468 |
-| `src/components/PostCard.tsx` | 1466 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -50,7 +50,7 @@ reading alone (Constitution P28).
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 23 file(s) over the threshold against **35 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 23 file(s) over the threshold against **37 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -192,12 +192,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-177 file(s), 35,428 lines.
+177 file(s), 35,459 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/components/PostCard.tsx` | 1466 |
+| `src/components/PostCard.tsx` | 1497 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 926 |
@@ -376,12 +376,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-123 file(s), 23,591 lines.
+125 file(s), 23,812 lines.
 
 | File | Lines |
 |---|---:|
 | `src/services/tracks.ts` | 1639 |
-| `src/services/posts.ts` | 1336 |
+| `src/services/posts.ts` | 1364 |
 | `src/services/pushNotifications.ts` | 982 |
 | `src/services/activity.ts` | 715 |
 | `src/services/chatMedia.ts` | 630 |
@@ -394,7 +394,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/messages.ts` | 456 |
 | `src/services/__tests__/spotify.test.ts` | 433 |
 | `src/services/__tests__/stagedUpload.test.ts` | 408 |
-| `src/services/playlists.ts` | 388 |
+| `src/services/playlists.ts` | 390 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/conversations.ts` | 360 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 317 |
@@ -439,6 +439,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/conversationsDelivered.test.ts` | 127 |
 | `src/services/__tests__/sweepAbandonedUploads.test.ts` | 127 |
 | `src/services/__tests__/feedImpressions.test.ts` | 119 |
+| `src/services/__tests__/originalLikes.test.ts` | 117 |
 | `src/services/__tests__/recentlyPlayed.test.ts` | 116 |
 | `src/services/messageCache.ts` | 116 |
 | `src/services/__tests__/commentNotifyCalls.test.ts` | 115 |
@@ -470,6 +471,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/findMyActiveJam.test.ts` | 78 |
 | `src/services/studioFiles.ts` | 78 |
 | `src/services/terms.ts` | 78 |
+| `src/services/__tests__/likedPosts.test.ts` | 74 |
 | `src/services/__tests__/authStorage.test.ts` | 72 |
 | `src/services/searchAnalytics.ts` | 72 |
 | `src/services/profileBadges.ts` | 70 |
@@ -506,29 +508,29 @@ case the call fails silently wherever its result is discarded.
 
 ## Contexts
 
-15 file(s), 3,422 lines.
+15 file(s), 3,457 lines.
 
 | File | Lines |
 |---|---:|
 | `src/contexts/PlaybackContext.tsx` | 1032 |
 | `src/contexts/JamRealtimeContext.tsx` | 487 |
 | `src/contexts/RelationshipContext.tsx` | 379 |
+| `src/contexts/ToastContext.tsx` | 204 |
 | `src/contexts/JamSuggestionsContext.tsx` | 200 |
-| `src/contexts/ToastContext.tsx` | 200 |
 | `src/contexts/ProfileBadgesContext.tsx` | 172 |
 | `src/contexts/__tests__/ProfileBadgesContext.test.tsx` | 171 |
 | `src/contexts/__tests__/RelationshipContext.test.tsx` | 163 |
 | `src/contexts/__tests__/PlaybackContext.clipSession.test.tsx` | 148 |
 | `src/contexts/__tests__/PlaybackContext.jamListenerGuard.test.tsx` | 125 |
 | `src/contexts/SwipeRevealContext.tsx` | 107 |
+| `src/contexts/__tests__/ToastContext.test.tsx` | 78 |
 | `src/contexts/ChromeVisibilityContext.tsx` | 69 |
 | `src/contexts/JamContext.tsx` | 68 |
 | `src/contexts/StoriesContext.tsx` | 54 |
-| `src/contexts/__tests__/ToastContext.test.tsx` | 47 |
 
 ## Hooks
 
-35 file(s), 2,380 lines.
+37 file(s), 2,452 lines.
 
 | File | Lines |
 |---|---:|
@@ -557,6 +559,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/usePlayRecentlyPlayed.ts` | 56 |
 | `src/hooks/useTrackWaveform.ts` | 52 |
 | `src/hooks/useRunAfterDismiss.ts` | 50 |
+| `src/hooks/__tests__/useOriginalLikes.test.tsx` | 49 |
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |
 | `src/hooks/__tests__/usePinnedTabsScroll.test.tsx` | 48 |
 | `src/hooks/__tests__/useNowPlayingCommentsSync.test.tsx` | 45 |
@@ -567,6 +570,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useTrackPlaysTotals.ts` | 30 |
 | `src/hooks/useOpenMention.ts` | 27 |
 | `src/hooks/useNowPlayingCommentsSync.ts` | 25 |
+| `src/hooks/useOriginalLikes.ts` | 23 |
 
 ## Utilities
 
