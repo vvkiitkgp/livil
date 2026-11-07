@@ -63,6 +63,11 @@ export type FeedPost = {
   originalAuthor: AuthorRef | null;
   /** Set when kind === 'repost' — id of the original upload post (needed for navigation). */
   originalPostId: string | null;
+  /**
+   * Set on a repost of a Livil upload: the upload's own likes, for the repost's cover
+   * (attachOriginalLikes). Missing when unknown, and the cover then shows no number.
+   */
+  originalLikesCount?: number;
   /** True if the currently signed-in viewer has liked this post. */
   viewerHasLiked: boolean;
   /** Optional clip window selected during repost (seconds). */
@@ -312,7 +317,7 @@ async function hydrateRawPostRows(
     clipEndSec: r.clip_end_sec ?? null,
     credits: toCreditFaces(r.track),
     spotifyTrackId: null,
-  }))).then(attachSpotifyTrackIds);
+  }))).then(attachSpotifyTrackIds).then(attachOriginalLikes);
 }
 
 /**
@@ -372,6 +377,28 @@ async function attachSpotifyTrackIds(posts: FeedPost[]): Promise<FeedPost[]> {
   const byId = await fetchSpotifyTrackIds(candidates);
   if (byId.size === 0) {return posts;}
   return posts.map(p => (byId.has(p.id) ? { ...p, spotifyTrackId: byId.get(p.id)! } : p));
+}
+
+/**
+ * Fill in `originalLikesCount` for reposts of a Livil upload. A second query, like
+ * attachSpotifyTrackIds, so the feed RPC stays as it shipped. A number on a cover never fails a
+ * feed: on an error, or an upload this viewer can't see, the post simply has no number.
+ */
+async function attachOriginalLikes(posts: FeedPost[]): Promise<FeedPost[]> {
+  const originalIds = Array.from(
+    new Set(posts.filter(p => p.kind === 'repost' && p.originalPostId).map(p => p.originalPostId!)),
+  );
+  if (originalIds.length === 0) {return posts;}
+  const { data, error } = await supabase
+    .from('posts')
+    .select('id, likes_count')
+    .in('id', originalIds);
+  if (error || !data) {return posts;}
+  const likesById = new Map(data.map(o => [o.id as string, o.likes_count as number]));
+  return posts.map(p => {
+    const likes = p.originalPostId ? likesById.get(p.originalPostId) : undefined;
+    return likes === undefined ? p : { ...p, originalLikesCount: likes };
+  });
 }
 
 export type HomeFeedCursor = {
@@ -484,7 +511,7 @@ export async function fetchHomeFeedPage(options: {
     return { posts: [], nextCursor: null };
   }
 
-  const posts = await attachSpotifyTrackIds(rows.map(r => mapRpcFeedPost(r.post)));
+  const posts = await attachOriginalLikes(await attachSpotifyTrackIds(rows.map(r => mapRpcFeedPost(r.post))));
 
   const last = rows[rows.length - 1]!;
   const nextCursor: HomeFeedCursor | null =
@@ -1330,6 +1357,7 @@ export function feedPostToNowPlaying(post: FeedPost): NowPlayingInfo {
     clipEndSec: post.clipEndSec,
     kind: post.kind,
     originalPostId: post.originalPostId,
+    originalLikesCount: post.originalLikesCount,
     knownDurationSec: post.track.durationSeconds ?? 0,
   };
 }

@@ -15,6 +15,7 @@ import AddToAlbumSheet from './AddToAlbumSheet';
 import type { FeedPost } from '../services/posts';
 import { deletePost } from '../services/posts';
 import { usePostLike } from '../hooks/usePostLike';
+import { useOriginalLikes } from '../hooks/useOriginalLikes';
 import { fetchAlbumForTrack, removeTrackFromAlbum, addTrackToAlbum, type AlbumForTrack } from '../services/albums';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import PostReportModal from './PostReportModal';
@@ -196,6 +197,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
 
   // Engagement state (optimistic).
   const { liked, likesCount, likePulse, toggleLike: handleToggleLike, like: handleDoubleTapLike } = usePostLike(post);
+  const originalLikes = useOriginalLikes(post.originalPostId, post.originalLikesCount);
 
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
   const [currentAlbum, setCurrentAlbum] = useState<AlbumForTrack | null>(null);
@@ -257,6 +259,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
       clipEndSec: post.clipEndSec,
       kind: post.kind,
       originalPostId: post.originalPostId,
+      originalLikesCount: post.originalLikesCount,
       knownDurationSec: post.track.durationSeconds ?? 0,
     };
   }, [post]);
@@ -347,6 +350,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
       clipEndSec: post.clipEndSec,
       kind: post.kind,
       originalPostId: post.originalPostId,
+      originalLikesCount: post.originalLikesCount,
       knownDurationSec: post.track.durationSeconds ?? 0,
     };
   }, [post]);
@@ -844,6 +848,19 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
             <Text style={styles.missingMediaText}>Media unavailable</Text>
           </View>
         )}
+        {/* A repost's cover carries the UPLOAD's likes; the heart below counts the repost's own
+            (owner, 2026-11-07). Read-only: it takes no touches, so a tap on it is a tap on the cover. */}
+        {originalLikes > 0 ? (
+          <View
+            style={styles.originalLikesChip}
+            pointerEvents="none"
+            accessible
+            accessibilityLabel={`Original upload has ${originalLikes} ${originalLikes === 1 ? 'like' : 'likes'}`}
+          >
+            <Icon name="heart" size={15} color={COLORS.white} weight="fill" />
+            <Text style={styles.originalLikesText}>{formatCount(originalLikes)}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* The wave is here to show WHERE A CLIP SITS inside the track it came from —
@@ -1288,6 +1305,20 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: COLORS.card,
   },
+  // The same chip as PostGridCard's likesChip / likesText.
+  originalLikesChip: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+  },
+  originalLikesText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
   videoBadge: {
     position: 'absolute',
     top: 10,
